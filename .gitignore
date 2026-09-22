@@ -1,0 +1,28 @@
+# private working repo — design decisions, research, agent config
+.workspace/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Local artefacts
+*.db
+*.sqlite3
