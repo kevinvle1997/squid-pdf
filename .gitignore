@@ -26,3 +26,6 @@ dist/
 # Local artefacts
 *.db
 *.sqlite3
+
+# private working rules, symlinked from .workspace/
+/CLAUDE.md
