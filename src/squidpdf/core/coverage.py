@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 
+from fontTools.agl import UV2AGL
 from fontTools.cffLib import CFFFontSet
 from fontTools.pens.recordingPen import RecordingPen
 from fontTools.ttLib import TTFont
@@ -84,7 +85,7 @@ class Coverage:
         names = set(font.getGlyphOrder())
         for cp in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
             name = _adobe_name(cp)
-            if name is not None and name in names:
+            if name in names:
                 self._cmap[cp] = name
 
     def covers(self, ch: str) -> bool:
@@ -123,10 +124,6 @@ class Coverage:
         return out
 
 
-def _adobe_name(cp: int) -> str | None:
+def _adobe_name(cp: int) -> str:
     """Standard Adobe glyph name for a codepoint, for fonts with no cmap."""
-    from fontTools.agl import UV2AGL
-
-    if cp in UV2AGL:
-        return UV2AGL[cp]
-    return f"uni{cp:04X}"
+    return UV2AGL.get(cp, f"uni{cp:04X}")

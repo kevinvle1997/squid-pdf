@@ -94,6 +94,10 @@ def verify_redactions(
         if not isinstance(edit, Redact):
             continue
         span = index.get(edit.span_id)
-        if span is not None:
-            out[edit.span_id] = engine.absent(span.text)
+        if span is None:
+            # apply() already raised for an unknown span id in this same edit
+            # list; a silent skip here would drop a span from a redaction
+            # report, the wrong direction for something Rule 4 depends on.
+            raise KeyError(f"no span {edit.span_id} in this index")
+        out[edit.span_id] = engine.absent(span.text)
     return out

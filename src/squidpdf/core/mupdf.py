@@ -41,9 +41,8 @@ class MuPDFEngine:
         """Open the PDF at `path` and set up the empty per-font caches."""
         self.path = path
         self.doc = pymupdf.open(path)
-        # All keyed by (page, font name); each fills in lazily, on first lookup.
+        # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
-        self._buffers: dict[tuple[int, str], bytes] = {}  # its raw bytes, for redraw
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
 
     def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
@@ -65,7 +64,6 @@ class MuPDFEngine:
                     _basename, _ext, _type, buf = self.doc.extract_font(xref)
                     if buf:
                         font = pymupdf.Font(fontbuffer=buf)
-                        self._buffers[key] = buf
                 except (RuntimeError, ValueError):
                     pass
             break
@@ -90,9 +88,9 @@ class MuPDFEngine:
         ordinal = 0
 
         for pno in range(len(self.doc)):
-            for block in self.doc[pno].get_text("dict").get("blocks", []):
-                for line in block.get("lines", []):
-                    for group in _merge(line.get("spans", [])):
+            for block in self.doc[pno].get_text("dict")["blocks"]:
+                for line in block.get("lines", []):  # image blocks have no "lines"
+                    for group in _merge(line["spans"]):
                         span = self._build(pno, group, ordinal)
                         if span is not None:
                             spans.append(span)
@@ -125,7 +123,7 @@ class MuPDFEngine:
             text=text,
             font=head["font"],
             size=round(head["size"], 2),
-            color=_rgb(head.get("color", 0)),
+            color=_rgb(head["color"]),
             bbox=bbox,
             origin=frags[0].origin,
             fragments=frags,
@@ -158,24 +156,30 @@ class MuPDFEngine:
         Asks the glyph to draw rather than trusting the charset — a subsetted
         font still lists glyphs whose outlines were emptied. See core.coverage.
         """
-        if self._embedded(span.page, span.font) is None:
+        embedded = self._embedded(span.page, span.font)
+        if embedded is None:
             return []  # the substitute carries full Latin coverage
 
         key = (span.page, strip_subset(span.font))
         cov = self._coverage.get(key)
         if cov is None:
-            cov = self._coverage[key] = Coverage(self._buffers.get(key, b""))
+            cov = self._coverage[key] = Coverage(embedded.buffer)
         return cov.missing(text)
 
     def remove(self, spans: list[Span]) -> None:
         """Delete these spans' glyph runs. Real removal, not a covering rectangle.
 
         Each fragment is redacted separately: the union box of a multi-fragment
-        span can overlap text belonging to something else.
+        span can overlap text belonging to something else. Each span's embedded
+        font is resolved and cached before its own redaction runs: apply_redactions
+        can drop a page's now-unused font resource, and if that font was only used
+        by the text just removed, it would otherwise be gone by the time draw()
+        goes looking for it.
         """
         by_page: dict[int, list[Span]] = {}
         for s in spans:
             by_page.setdefault(s.page, []).append(s)
+            self._embedded(s.page, s.font)
 
         for pno, group in by_page.items():
             page = self.doc[pno]
@@ -188,13 +192,17 @@ class MuPDFEngine:
     def draw(self, span: Span, text: str) -> None:
         """Redraw at the span's baseline, in its own font where the file has it."""
         page = self.doc[span.page]
+        embedded = self._embedded(span.page, span.font)
+
         alias = None
-        buf = self._buffers.get((span.page, strip_subset(span.font)))
-        if buf:
+        if embedded is not None:
             alias = "F" + span.id
             try:
-                page.insert_font(fontname=alias, fontbuffer=buf)
+                page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
             except (RuntimeError, ValueError):
+                # These bytes already parsed as a Font object in _embedded(), but
+                # embedding as a page resource is a different MuPDF code path;
+                # degrade to the substitute rather than fail the edit outright.
                 alias = None
 
         page.insert_text(
