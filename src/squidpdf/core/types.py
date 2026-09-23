@@ -111,6 +111,10 @@ class SpanIndex:
         return self._by_id.get(span_id)
 
 
+_SPAN_ID_DIGEST_SIZE = 6  # bytes -> 12 hex chars; documents have spans in the
+# thousands at most, nowhere near enough for a collision at this length
+
+
 def span_id(page: int, bbox: Rect, font: str, text: str, ordinal: int) -> str:
     """Stable within a document, distinct between near-identical cells.
 
@@ -118,4 +122,4 @@ def span_id(page: int, bbox: Rect, font: str, text: str, ordinal: int) -> str:
     empty table cells, say — which a content hash alone would collide.
     """
     seed = f"{page}:{bbox.x0:.1f}:{bbox.y0:.1f}:{font}:{text}:{ordinal}"
-    return hashlib.blake2s(seed.encode(), digest_size=6).hexdigest()
+    return hashlib.blake2s(seed.encode(), digest_size=_SPAN_ID_DIGEST_SIZE).hexdigest()

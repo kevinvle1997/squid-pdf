@@ -5,7 +5,13 @@ convention, not enforced, so watch it in review.
 """
 
 from squidpdf.core.engine import Engine
-from squidpdf.core.fidelity import Fidelity, FidelityReport, green_rate
+from squidpdf.core.fidelity import (
+    GREEN_RATE_TARGET,
+    GREEN_RATE_WARN,
+    Fidelity,
+    FidelityReport,
+    green_rate,
+)
 from squidpdf.core.mupdf import MuPDFEngine
 from squidpdf.core.types import Fragment, Rect, Span, SpanIndex
 
@@ -15,6 +21,8 @@ __all__ = [
     "Fidelity",
     "FidelityReport",
     "green_rate",
+    "GREEN_RATE_TARGET",
+    "GREEN_RATE_WARN",
     "Fragment",
     "Rect",
     "Span",

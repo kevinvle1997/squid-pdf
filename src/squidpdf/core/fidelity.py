@@ -13,6 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+GREEN_RATE_TARGET = 0.8  # below this, substitution is the normal case, not the exception
+GREEN_RATE_WARN = 0.5  # below this, the CLI marks a document red rather than yellow
+
 
 class Fidelity(StrEnum):
     """The three ways an edit can turn out, in terms of the original font."""
@@ -35,9 +38,9 @@ class FidelityReport:
 def green_rate(reports: list[FidelityReport]) -> float:
     """The share of spans that keep their original font.
 
-    The one number the product is judged on. Below roughly 0.8 the promise
-    inverts: substitution becomes the normal case and the signal reads as an
-    apology rather than reassurance.
+    The one number the product is judged on. Below GREEN_RATE_TARGET the
+    promise inverts: substitution becomes the normal case and the signal reads
+    as an apology rather than reassurance.
     """
     if not reports:
         return 0.0

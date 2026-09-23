@@ -20,13 +20,17 @@ BASELINE_EPS = 0.6
 SIZE_EPS = 0.1
 GAP_RATIO = 0.35
 
+_BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
+
+_GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
+
 
 def _rgb(packed: int) -> tuple[float, float, float]:
     """PDF's packed 0xRRGGBB color into the (r, g, b) 0-1 floats PyMuPDF wants."""
     return (
-        ((packed >> 16) & 255) / 255,
-        ((packed >> 8) & 255) / 255,
-        (packed & 255) / 255,
+        ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,
+        ((packed >> 8) & _BYTE_MAX) / _BYTE_MAX,
+        (packed & _BYTE_MAX) / _BYTE_MAX,
     )
 
 
@@ -58,7 +62,7 @@ class MuPDFEngine:
                 continue
             if ext not in ("n/a", ""):
                 try:
-                    buf = self.doc.extract_font(xref)[3]
+                    _basename, _ext, _type, buf = self.doc.extract_font(xref)
                     if buf:
                         font = pymupdf.Font(fontbuffer=buf)
                         self._buffers[key] = buf
@@ -217,7 +221,7 @@ class MuPDFEngine:
 
     def save(self, path: str) -> None:
         """Write the (possibly edited) document to `path`."""
-        self.doc.save(path, garbage=3, deflate=True)
+        self.doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True)
 
     def absent(self, text: str) -> bool:
         """Confirm removed text is really gone. A black rectangle would fail this."""

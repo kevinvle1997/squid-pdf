@@ -13,10 +13,14 @@ from __future__ import annotations
 import argparse
 import sys
 
-from squidpdf.core import Fidelity, MuPDFEngine, green_rate
+from squidpdf.core import GREEN_RATE_TARGET, GREEN_RATE_WARN, Fidelity, MuPDFEngine, green_rate
 from squidpdf.editing import Redact, Replace, apply, check, verify_redactions
 
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
+
+_TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
+_NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
+_NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
 
 
 def cmd_spans(args: argparse.Namespace) -> int:
@@ -33,7 +37,11 @@ def cmd_spans(args: argparse.Namespace) -> int:
             mark = f"{GREEN}exact{OFF}     " if is_exact else f"{YELLOW}substitute{OFF}"
             note = f" -> {r.substitute}" if r.substitute else ""
             frags = f" {DIM}({len(span.fragments)} fragments){OFF}" if span.merged else ""
-            text = span.text if len(span.text) <= 46 else span.text[:43] + "..."
+            text = (
+                span.text
+                if len(span.text) <= _TEXT_PREVIEW_LEN + 3
+                else span.text[:_TEXT_PREVIEW_LEN] + "..."
+            )
             print(
                 f"  {span.id}  p{span.page + 1}  {mark}  "
                 f"{DIM}{span.font}{note} {span.size}pt{OFF}{frags}\n"
@@ -47,7 +55,7 @@ def _summary(reports: list) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     n_sub = sum(1 for r in reports if r.state is not Fidelity.EXACT)
-    colour = GREEN if rate >= 0.8 else YELLOW
+    colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
     print(
         f"\n  {len(reports)} spans · {len(reports) - n_sub} exact · {n_sub} substitute"
         f" · {colour}{rate:.0%} keep the original font{OFF}"
@@ -130,7 +138,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             with MuPDFEngine(path) as eng:
                 reports = eng.assess(eng.index())
         except Exception as exc:  # noqa: BLE001 — one bad file must not stop the run
-            rows.append((path, None, str(exc)[:38]))
+            rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
             continue
         n_exact = sum(1 for r in reports if r.state is Fidelity.EXACT)
         exact, total = exact + n_exact, total + len(reports)
@@ -138,15 +146,21 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     print()
     for path, rate, note in rows:
-        name = path.rsplit("/", 1)[-1][:38]
+        name = path.rsplit("/", 1)[-1][:_NAME_COL_WIDTH]
         if rate is None:
-            print(f"  {RED}failed{OFF}   {name:<40}{DIM}{note}{OFF}")
+            print(f"  {RED}failed{OFF}   {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
         else:
-            c = GREEN if rate >= 0.8 else YELLOW if rate >= 0.5 else RED
-            print(f"  {c}{rate:>5.0%}{OFF}    {name:<40}{DIM}{note}{OFF}")
+            c = (
+                GREEN
+                if rate >= GREEN_RATE_TARGET
+                else YELLOW
+                if rate >= GREEN_RATE_WARN
+                else RED
+            )
+            print(f"  {c}{rate:>5.0%}{OFF}    {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
     if total:
         overall = exact / total
-        c = GREEN if overall >= 0.8 else YELLOW
+        c = GREEN if overall >= GREEN_RATE_TARGET else YELLOW
         print(f"\n  {c}{overall:.0%}{OFF} of {total} spans keep the original font\n")
     return 0
 

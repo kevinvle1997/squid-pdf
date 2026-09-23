@@ -17,6 +17,19 @@ from fontTools.ttLib import TTFont
 _BLANK = {" ", "\t", "\n", "\r", " ", " ", " "}
 
 
+# A bare CFF font program starts with this header (major.minor version 1.0);
+# anything else handed to Coverage is assumed to be a TrueType/OpenType wrapper.
+_BARE_CFF_SIGNATURE = b"\x01\x00"
+
+# The codepoints worth checking for a name-keyed CFF's glyph names: from the
+# first printable ASCII character through the end of Supplemental Punctuation,
+# covering Latin, Greek, Cyrillic and friends. A document needing coverage
+# checked past this is rare enough not to justify scanning the full Unicode
+# space on every font load.
+_CODEPOINT_SCAN_START = 0x20
+_CODEPOINT_SCAN_END = 0x2E00
+
+
 class Coverage:
     """Which characters an embedded font program can really render.
 
@@ -38,7 +51,7 @@ class Coverage:
         if not buffer:
             return
         try:
-            if buffer[:2] == b"\x01\x00":
+            if buffer[:2] == _BARE_CFF_SIGNATURE:
                 self._load_bare_cff(buffer)
             else:
                 self._load_sfnt(buffer)
@@ -69,7 +82,7 @@ class Coverage:
             raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
         self._glyphs = font.CharStrings
         names = set(font.getGlyphOrder())
-        for cp in range(0x20, 0x2E00):
+        for cp in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
             name = _adobe_name(cp)
             if name is not None and name in names:
                 self._cmap[cp] = name
