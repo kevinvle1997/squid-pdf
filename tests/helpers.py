@@ -1,12 +1,44 @@
-"""Assertion helpers that name the offending item on failure.
+"""Assertion helpers that leave a human-readable message on failure.
 
-`all(pred(x) for x in xs)` and `any(...)` tell you the check failed, not which
-`x` broke it. These do the same check but report which one, and what it was.
+A bare `assert x == y` makes pytest reconstruct a message from the expression;
+`all(pred(x) for x in xs)` and `any(...)` do not even give it that — a failure
+just reads `assert False`. Every check in this suite goes through one of these
+instead, so a failure always says what was expected and what it found.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Container, Iterable
+
+
+def assert_true(condition: bool, message: str) -> None:
+    """Assert `condition` holds; `message` says what was expected."""
+    assert condition, message
+
+
+def assert_false(condition: bool, message: str) -> None:
+    """Assert `condition` does not hold; `message` says what was expected."""
+    assert not condition, message
+
+
+def assert_equal(actual: object, expected: object, label: str) -> None:
+    """Assert `actual == expected`; name what was being compared."""
+    assert actual == expected, f"{label}: expected {expected!r}, got {actual!r}"
+
+
+def assert_in(item: object, container: Container, label: str) -> None:
+    """Assert `item` is in `container`; name what was being checked."""
+    assert item in container, f"{label}: {item!r} not found in {container!r}"
+
+
+def assert_not_in(item: object, container: Container, label: str) -> None:
+    """Assert `item` is not in `container`; name what was being checked."""
+    assert item not in container, f"{label}: {item!r} unexpectedly found in {container!r}"
+
+
+def assert_between(value: float, low: float, high: float, label: str) -> None:
+    """Assert `low < value < high`; name what was being measured."""
+    assert low < value < high, f"{label}: {value!r} not between {low!r} and {high!r}"
 
 
 def assert_all[T](
