@@ -1,0 +1,61 @@
+[project]
+name = "squidpdf"
+version = "0.1.0"
+description = "Correct text already in a PDF, and know beforehand whether it will look identical."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.13"
+dependencies = [
+    "pymupdf>=1.24",
+    "fonttools>=4.53",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "orjson>=3.10",
+    "xxhash>=3.5",
+]
+
+[project.scripts]
+squidpdf = "squidpdf.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/squidpdf"]
+
+[tool.ruff]
+line-length = 96
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src", "tests"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["pymupdf.*", "fontTools.*"]
+ignore_missing_imports = true
+
+# Only the shipped package is required to be fully annotated; tests are not.
+[[tool.mypy.overrides]]
+module = "squidpdf.*"
+disallow_untyped_defs = true
