@@ -1,0 +1,266 @@
+"""PyMuPDF implementation of the engine.
+
+Two things here are not obvious from the interface: fragments are merged into
+logical spans at extraction, and the index is only ever built from the pristine
+document.
+"""
+
+from __future__ import annotations
+
+import pymupdf
+
+from squidpdf.core.coverage import Coverage
+from squidpdf.core.fidelity import Fidelity, FidelityReport
+from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
+from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, span_id
+
+# Two runs belong to the same span when they sit on one baseline, share a face,
+# and are close enough that the gap is kerning rather than a layout decision.
+BASELINE_EPS = 0.6
+SIZE_EPS = 0.1
+GAP_RATIO = 0.35
+
+
+def _rgb(packed: int) -> tuple[float, float, float]:
+    """PDF's packed 0xRRGGBB color into the (r, g, b) 0-1 floats PyMuPDF wants."""
+    return (
+        ((packed >> 16) & 255) / 255,
+        ((packed >> 8) & 255) / 255,
+        (packed & 255) / 255,
+    )
+
+
+class MuPDFEngine:
+    """Implements `core.engine.Engine`."""
+
+    def __init__(self, path: str) -> None:
+        """Open the PDF at `path` and set up the empty per-font caches."""
+        self.path = path
+        self.doc = pymupdf.open(path)
+        # All keyed by (page, font name); each fills in lazily, on first lookup.
+        self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
+        self._buffers: dict[tuple[int, str], bytes] = {}  # its raw bytes, for redraw
+        self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
+
+    def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
+        """The document's own font, or None when the file only references it.
+
+        Not embedded is the common case for anything exported from Word, and it
+        is exactly what the substitute state warns about.
+        """
+        key = (page, strip_subset(name))
+        if key in self._fonts:
+            return self._fonts[key]
+
+        font = None
+        for xref, ext, _t, basefont, *_ in self.doc[page].get_fonts(full=True):
+            if strip_subset(basefont) != key[1]:
+                continue
+            if ext not in ("n/a", ""):
+                try:
+                    buf = self.doc.extract_font(xref)[3]
+                    if buf:
+                        font = pymupdf.Font(fontbuffer=buf)
+                        self._buffers[key] = buf
+                except (RuntimeError, ValueError):
+                    pass
+            break
+
+        self._fonts[key] = font
+        return font
+
+    def _drawing_font(self, span: Span) -> pymupdf.Font:
+        """The font to actually draw with: the real one, or its base-14 stand-in."""
+        embedded = self._embedded(span.page, span.font)
+        if embedded is not None:
+            return embedded
+        return pymupdf.Font(fontname=base14_for(span.font))
+
+    def index(self) -> SpanIndex:
+        """Built once, from the pristine document. Never rebuilt from a patched one.
+
+        That invariant is what keeps span ids stable: re-extracting after an edit
+        would change every id and dangle every reference the client holds.
+        """
+        spans: list[Span] = []
+        ordinal = 0
+
+        for pno in range(len(self.doc)):
+            for block in self.doc[pno].get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    for group in _merge(line.get("spans", [])):
+                        span = self._build(pno, group, ordinal)
+                        if span is not None:
+                            spans.append(span)
+                            ordinal += 1
+
+        return SpanIndex(spans)
+
+    def _build(self, pno: int, group: list[dict], ordinal: int) -> Span | None:
+        """Turn one merged group of raw fragments into a Span, or None if blank."""
+        text = "".join(s["text"] for s in group)
+        if not text.strip():
+            return None
+
+        frags = tuple(
+            Fragment(
+                text=s["text"],
+                bbox=Rect(*(round(v, 2) for v in s["bbox"])),
+                origin=tuple(round(v, 2) for v in s["origin"]),
+            )
+            for s in group
+        )
+        bbox = frags[0].bbox
+        for f in frags[1:]:
+            bbox = bbox.union(f.bbox)
+
+        head = group[0]
+        return Span(
+            id=span_id(pno, bbox, head["font"], text, ordinal),
+            page=pno,
+            text=text,
+            font=head["font"],
+            size=round(head["size"], 2),
+            color=_rgb(head.get("color", 0)),
+            bbox=bbox,
+            origin=frags[0].origin,
+            fragments=frags,
+        )
+
+    def assess(self, index: SpanIndex) -> list[FidelityReport]:
+        """Judge every span in the index as exact or substitute."""
+        out = []
+        for span in index:
+            if self._embedded(span.page, span.font) is not None:
+                out.append(FidelityReport(span.id, Fidelity.EXACT, span.font))
+            else:
+                out.append(
+                    FidelityReport(
+                        span.id,
+                        Fidelity.SUBSTITUTE,
+                        span.font,
+                        substitute_for(span.font),
+                    )
+                )
+        return out
+
+    def measure(self, span: Span, text: str) -> float:
+        """How wide `text` would render, in this span's font and size."""
+        return self._drawing_font(span).text_length(text, fontsize=span.size)
+
+    def missing(self, span: Span, text: str) -> list[str]:
+        """Characters this span's font cannot actually draw.
+
+        Asks the glyph to draw rather than trusting the charset — a subsetted
+        font still lists glyphs whose outlines were emptied. See core.coverage.
+        """
+        if self._embedded(span.page, span.font) is None:
+            return []  # the substitute carries full Latin coverage
+
+        key = (span.page, strip_subset(span.font))
+        cov = self._coverage.get(key)
+        if cov is None:
+            cov = self._coverage[key] = Coverage(self._buffers.get(key, b""))
+        return cov.missing(text)
+
+    def remove(self, spans: list[Span]) -> None:
+        """Delete these spans' glyph runs. Real removal, not a covering rectangle.
+
+        Each fragment is redacted separately: the union box of a multi-fragment
+        span can overlap text belonging to something else.
+        """
+        by_page: dict[int, list[Span]] = {}
+        for s in spans:
+            by_page.setdefault(s.page, []).append(s)
+
+        for pno, group in by_page.items():
+            page = self.doc[pno]
+            for span in group:
+                for frag in span.fragments:
+                    r = frag.bbox
+                    page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
+            page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)  # type: ignore[attr-defined]
+
+    def draw(self, span: Span, text: str) -> None:
+        """Redraw at the span's baseline, in its own font where the file has it."""
+        page = self.doc[span.page]
+        alias = None
+        buf = self._buffers.get((span.page, strip_subset(span.font)))
+        if buf:
+            alias = "F" + span.id
+            try:
+                page.insert_font(fontname=alias, fontbuffer=buf)
+            except (RuntimeError, ValueError):
+                alias = None
+
+        page.insert_text(
+            pymupdf.Point(*span.origin),
+            text,
+            fontname=alias or base14_for(span.font),
+            fontsize=span.size,
+            color=span.color,
+            overlay=True,
+        )
+
+    def draw_at(
+        self,
+        page: int,
+        origin: tuple[float, float],
+        text: str,
+        size: float,
+        color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    ) -> None:
+        """Draw where the document has no text — a signature, an annotation."""
+        self.doc[page].insert_text(
+            pymupdf.Point(*origin), text, fontsize=size, color=color, overlay=True
+        )
+
+    def save(self, path: str) -> None:
+        """Write the (possibly edited) document to `path`."""
+        self.doc.save(path, garbage=3, deflate=True)
+
+    def absent(self, text: str) -> bool:
+        """Confirm removed text is really gone. A black rectangle would fail this."""
+        return not any(text in self.doc[i].get_text() for i in range(len(self.doc)))
+
+    def close(self) -> None:
+        """Release the open document."""
+        self.doc.close()
+
+    def __enter__(self) -> MuPDFEngine:
+        """Lets the engine be used as `with MuPDFEngine(path) as eng:`."""
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        """Close the document when the `with` block ends."""
+        self.close()
+
+
+def _merge(raw: list[dict]) -> list[list[dict]]:
+    """Group a line's fragments into logical spans.
+
+    Generators split a sentence into several show-text operators so they can
+    insert kerning, so a fragment is often a few letters and sometimes half a
+    word. Without this, find-and-replace misses most real matches and the user
+    can click something that is not a whole word.
+    """
+    groups: list[list[dict]] = []
+    for frag in raw:
+        if groups and _continues(groups[-1][-1], frag):
+            groups[-1].append(frag)
+        else:
+            groups.append([frag])
+    return groups
+
+
+def _continues(prev: dict, nxt: dict) -> bool:
+    """Whether fragment `nxt` is a continuation of `prev`, on the same span."""
+    if prev["font"] != nxt["font"]:
+        return False
+    if abs(prev["size"] - nxt["size"]) > SIZE_EPS:
+        return False
+    if abs(prev["origin"][1] - nxt["origin"][1]) > BASELINE_EPS:
+        return False
+    gap = nxt["bbox"][0] - prev["bbox"][2]
+    # A small negative gap is kerning pulling letters together, not a new run.
+    return -1.0 <= gap <= nxt["size"] * GAP_RATIO
