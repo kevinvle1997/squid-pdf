@@ -3,8 +3,6 @@
 A web PDF editor that corrects the text already in a document, and tells you
 before you commit whether the correction will look identical to the original.
 
-> **Status: in design.** No code yet.
-
 ## The problem
 
 A PDF is a program that paints a page, not a document with content. Text is a
