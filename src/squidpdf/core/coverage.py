@@ -41,7 +41,7 @@ class Coverage:
 
     def __init__(self, buffer: bytes) -> None:
         """Parse a font's raw bytes so `covers()` and `missing()` can be asked."""
-        self._cmap: dict[int, str] = {}  # codepoint -> glyph name, once loaded
+        self._glyph_names: dict[int, str] = {}  # codepoint -> glyph name, once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
         self._usable = False  # True once a parseable font has been loaded
@@ -63,7 +63,7 @@ class Coverage:
     def _load_sfnt(self, buffer: bytes) -> None:
         """TrueType or OpenType, where a cmap table gives us character mapping."""
         tt = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        self._cmap = dict(tt.getBestCmap())
+        self._glyph_names = dict(tt.getBestCmap())
         self._glyphs = tt.getGlyphSet()
 
     def _load_bare_cff(self, buffer: bytes) -> None:
@@ -86,7 +86,7 @@ class Coverage:
         for cp in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
             name = _adobe_name(cp)
             if name in names:
-                self._cmap[cp] = name
+                self._glyph_names[cp] = name
 
     def covers(self, ch: str) -> bool:
         """True when this font will actually put ink on the page for `ch`."""
@@ -101,7 +101,7 @@ class Coverage:
 
     def _draws(self, ch: str) -> bool:
         """Ask the glyph itself to draw, and check that it produced any ink."""
-        name = self._cmap.get(ord(ch))
+        name = self._glyph_names.get(ord(ch))
         if name is None or self._glyphs is None:
             return False
         try:
