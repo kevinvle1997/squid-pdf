@@ -30,8 +30,11 @@ jobs:
       - name: Format
         run: uv run ruff format --check src tests
 
-      - name: Types
+      - name: Types (mypy)
         run: uv run mypy src tests
+
+      - name: Types (ty)
+        run: uv run ty check
 
       - name: Test
         run: uv run pytest -q

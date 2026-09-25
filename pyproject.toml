@@ -26,6 +26,8 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.7",
     "mypy>=1.13",
+    # Pre-1.0: its checks change between releases, so move this pin on purpose.
+    "ty==0.0.84",
 ]
 
 [build-system]
@@ -40,7 +42,12 @@ line-length = 96
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# BLE: a broad except says why. D1: docstrings everywhere. RUF100: no stale noqa.
+select = ["E", "F", "I", "UP", "B", "BLE", "D1", "RUF100"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names are sentences already; a docstring there is welcome, not required.
+"tests/**" = ["D1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -50,6 +57,8 @@ python_version = "3.13"
 files = ["src", "tests"]
 warn_unused_ignores = true
 warn_redundant_casts = true
+# Test functions are unannotated; without this mypy skips their bodies entirely.
+check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = ["pymupdf.*", "fontTools.*"]
@@ -59,3 +68,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "squidpdf.*"
 disallow_untyped_defs = true
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+include = ["src", "tests"]

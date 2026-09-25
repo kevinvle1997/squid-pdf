@@ -7,6 +7,8 @@ document.
 
 from __future__ import annotations
 
+import hashlib
+
 import pymupdf
 
 from squidpdf.core.coverage import Coverage
@@ -23,6 +25,17 @@ GAP_RATIO = 0.35
 _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
 
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
+
+# The index throws images away; decoding them was most of its time.
+_INDEX_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+
+# insert_text draws base-14 fonts a byte per character; past Latin-1 comes out a dot.
+_SIMPLE_FONT_CODES = 256
+
+_EM = 1000  # advances are given per 1000 em, as PDF font widths are
+_ADVANCE_DP = 2  # finer than any page can show
+
+_ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:
@@ -44,6 +57,7 @@ class MuPDFEngine:
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
+        self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
 
     def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
         """The document's own font, or None when the file only references it.
@@ -88,8 +102,8 @@ class MuPDFEngine:
         ordinal = 0
 
         for pno in range(len(self.doc)):
-            for block in self.doc[pno].get_text("dict")["blocks"]:
-                for line in block.get("lines", []):  # image blocks have no "lines"
+            for block in self.doc[pno].get_text("dict", flags=_INDEX_FLAGS)["blocks"]:
+                for line in block["lines"]:
                     for group in _merge(line["spans"]):
                         span = self._build(pno, group, ordinal)
                         if span is not None:
@@ -129,6 +143,22 @@ class MuPDFEngine:
             fragments=frags,
         )
 
+    def pages(self) -> list[tuple[float, float]]:
+        """Each page's width and height in points, as displayed: rotation applied."""
+        rects = [self.doc[pno].rect for pno in range(len(self.doc))]
+        return [(r.width, r.height) for r in rects]
+
+    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
+        """The page as a PNG, `scale` pixels per point, or only the `clip` box of it.
+
+        No alpha channel: the page is white whatever the app's theme (Rule 2).
+        """
+        box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
+        pix = self.doc[page].get_pixmap(
+            matrix=pymupdf.Matrix(scale, scale), clip=box, alpha=False
+        )
+        return pix.tobytes("png")
+
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
         """Judge every span in the index as exact or substitute."""
         out = []
@@ -145,6 +175,30 @@ class MuPDFEngine:
                     )
                 )
         return out
+
+    def glyphs(self, span: Span) -> dict[str, float]:
+        """Every character this span's drawing font really draws, to its advance per 1000 em.
+
+        The font `measure` uses, so widths agree. A subset's emptied glyphs don't
+        count; a font Coverage can't read falls back to MuPDF's list, a claim.
+        """
+        embedded = self._embedded(span.page, span.font)
+        if embedded is None:
+            font = pymupdf.Font(fontname=base14_for(span.font))
+            chars = [chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES]
+        else:
+            font = embedded
+            key = (span.page, strip_subset(span.font))
+            cov = self._coverage.get(key)
+            if cov is None:
+                cov = self._coverage[key] = Coverage(embedded.buffer)
+            drawable = cov.drawable()
+            chars = (
+                drawable
+                if drawable is not None
+                else [chr(cp) for cp in font.valid_codepoints()]
+            )
+        return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, in this span's font and size."""
@@ -187,23 +241,32 @@ class MuPDFEngine:
                 for frag in span.fragments:
                     r = frag.bbox
                     page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
-            page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)  # type: ignore[attr-defined]
+            page.apply_redactions(images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE)
 
     def draw(self, span: Span, text: str) -> None:
-        """Redraw at the span's baseline, in its own font where the file has it."""
-        page = self.doc[span.page]
-        embedded = self._embedded(span.page, span.font)
+        """Redraw at the span's baseline, in its own font where the file has it.
 
-        alias = None
-        if embedded is not None:
-            alias = "F" + span.id
-            try:
-                page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
-            except (RuntimeError, ValueError):
-                # These bytes already parsed as a Font object in _embedded(), but
-                # embedding as a page resource is a different MuPDF code path;
-                # degrade to the substitute rather than fail the edit outright.
-                alias = None
+        The font goes onto the page once, not once per span: a resource per span
+        piled up on the page and made every redraw slower.
+        """
+        page = self.doc[span.page]
+        key = (span.page, strip_subset(span.font))
+        if key not in self._aliases:
+            embedded = self._embedded(span.page, span.font)
+            alias = None
+            if embedded is not None:
+                # Named from the font, so it can't clash with a resource already on the page.
+                digest = hashlib.blake2s(key[1].encode(), digest_size=_ALIAS_DIGEST_SIZE)
+                alias = "F" + digest.hexdigest()
+                try:
+                    page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
+                except (RuntimeError, ValueError):
+                    # These bytes already parsed as a Font object in _embedded(), but
+                    # embedding as a page resource is a different MuPDF code path;
+                    # degrade to the substitute rather than fail the edit outright.
+                    alias = None
+            self._aliases[key] = alias
+        alias = self._aliases[key]
 
         page.insert_text(
             pymupdf.Point(*span.origin),

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from squidpdf.core.coverage import Coverage
-from tests.helpers import assert_equal, assert_in, assert_true
+from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+
+_EM = 1000  # glyph advances are per 1000 em
+_WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
 
 
 def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
@@ -21,3 +26,33 @@ def test_coverage_treats_whitespace_as_drawable():
     cov = Coverage(b"")  # unparseable
     assert_true(cov.covers(" ") is True, "whitespace is always drawable")
     assert_true(cov.covers("x") is True, "never claims a problem it cannot prove")
+
+
+def test_glyphs_leave_out_what_a_subset_emptied(engine):
+    """The browser's live check reads this table, so it must not promise é."""
+    span = next(s for s in engine.index() if s.page == 1)
+    glyphs = engine.glyphs(span)
+    assert_in("M", glyphs, "a letter the page uses")
+    assert_not_in("é", glyphs, "an accent the subset emptied")
+
+
+def test_a_substitute_draws_nothing_past_latin_1(engine):
+    """The base-14 stand-in turns € and — into a dot, so neither is offered."""
+    span = next(s for s in engine.index() if s.page == 0)
+    glyphs = engine.glyphs(span)
+    assert_in("é", glyphs, "an accent in Latin-1")
+    assert_not_in("€", glyphs, "a character past Latin-1")
+    assert_not_in("—", glyphs, "a character past Latin-1")
+
+
+def test_glyph_advances_agree_with_the_server_measure(engine):
+    """A width the browser works out from the table must match the server's."""
+    for span in engine.index():
+        glyphs = engine.glyphs(span)
+        word = "".join(ch for ch in "March" if ch in glyphs)
+        from_table = sum(glyphs[ch] for ch in word) * span.size / _EM
+        assert_equal(
+            from_table,
+            pytest.approx(engine.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
+            f"width of {word!r} in {span.font}",
+        )
