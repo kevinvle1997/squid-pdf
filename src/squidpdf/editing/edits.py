@@ -1,7 +1,7 @@
 """Everything the user did, as one ordered log.
 
 One union rather than a list per kind. Undo is then truncation regardless of what
-was undone, and export applies a single list in order — which matters when a
+was undone, and export applies a single list in order, which matters when a
 redaction and an edit touch the same region and the result depends on which
 happened first.
 """
@@ -37,7 +37,7 @@ class Redact:
 
 @dataclass(frozen=True, slots=True)
 class Insert:
-    """Draw new text where the document has none — a signature, an annotation."""
+    """Draw new text where the document has none: a signature, an annotation."""
 
     page: int
     origin: tuple[float, float]
@@ -56,7 +56,7 @@ class EditLog:
 
     Held by the client in the stateless design and sent with each render, so this
     is a value object: no document, no engine, nothing that cannot be serialised.
-    `edits` is a plain list — append, iterate, or take its length directly.
+    `edits` is a plain list: append, iterate, or take its length directly.
     """
 
     def __init__(self, edits: list[Edit] | None = None) -> None:

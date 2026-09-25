@@ -16,6 +16,7 @@ api = [
     "uvicorn[standard]>=0.32",
     "orjson>=3.10",
     "xxhash>=3.5",
+    "pebble>=5.2",
 ]
 
 [project.scripts]
@@ -28,6 +29,9 @@ dev = [
     "mypy>=1.13",
     # Pre-1.0: its checks change between releases, so move this pin on purpose.
     "ty==0.0.84",
+    "httpx>=0.28",
+    # The API's tests need it, and the CLI must still run without it.
+    "squidpdf[api]",
 ]
 
 [build-system]

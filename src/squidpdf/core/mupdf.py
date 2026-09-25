@@ -207,7 +207,7 @@ class MuPDFEngine:
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's font cannot actually draw.
 
-        Asks the glyph to draw rather than trusting the charset — a subsetted
+        Asks the glyph to draw rather than trusting the charset: a subsetted
         font still lists glyphs whose outlines were emptied. See core.coverage.
         """
         embedded = self._embedded(span.page, span.font)
@@ -285,7 +285,7 @@ class MuPDFEngine:
         size: float,
         color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> None:
-        """Draw where the document has no text — a signature, an annotation."""
+        """Draw where the document has no text: a signature, an annotation."""
         self.doc[page].insert_text(
             pymupdf.Point(*origin), text, fontsize=size, color=color, overlay=True
         )

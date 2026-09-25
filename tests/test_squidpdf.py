@@ -2,7 +2,7 @@
 
 Everything under tests/core and tests/editing exercises one piece in isolation.
 This is the one place that checks they still fit together the way
-squidpdf/__init__.py promises they do — import from `squidpdf`, not a submodule.
+squidpdf/__init__.py promises they do: import from `squidpdf`, not a submodule.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """Assertion helpers that leave a human-readable message on failure.
 
 A bare `assert x == y` makes pytest reconstruct a message from the expression;
-`all(pred(x) for x in xs)` and `any(...)` do not even give it that — a failure
+`all(pred(x) for x in xs)` and `any(...)` do not even give it that: a failure
 just reads `assert False`. Every check in this suite goes through one of these
 instead, so a failure always says what was expected and what it found.
 """
@@ -9,6 +9,8 @@ instead, so a failure always says what was expected and what it found.
 from __future__ import annotations
 
 from collections.abc import Callable, Container, Iterable
+
+from httpx import Response
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -61,3 +63,17 @@ def assert_any[T](
     assert any(predicate(i) for i in items), (
         f"none matched, checked: {', '.join(describe(i) for i in items)}"
     )
+
+
+def assert_problem(response: Response, type: str, status: int) -> None:
+    """Assert `response` is Problem Details of this `type` and status; show what came back."""
+    body = response.text
+    assert response.status_code == status, (
+        f"status: expected {status}, got {response.status_code}: {body}"
+    )
+    media = response.headers.get("content-type")
+    assert media == "application/problem+json", f"content-type: got {media!r}: {body}"
+    got = response.json()
+    assert got.get("type") == type, f"problem type: expected {type!r}, got {got!r}"
+    assert got.get("status") == status, f"problem status: expected {status}, got {got!r}"
+    assert got.get("detail"), f"problem detail: expected a sentence, got {got!r}"

@@ -1,6 +1,6 @@
 """What a font can actually draw, as opposed to what it claims.
 
-A subsetted font still lists glyphs it emptied the outlines of — has_glyph and
+A subsetted font still lists glyphs it emptied the outlines of: has_glyph and
 valid_codepoints report the claim, not reality. The only honest test is asking
 the glyph to draw and checking it produces contours.
 """
@@ -57,7 +57,7 @@ class Coverage:
             else:
                 self._load_sfnt(buffer)
             self._usable = True
-        except Exception:  # noqa: BLE001 — a font we cannot parse is not a crash
+        except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
             self._usable = False
 
     def _load_sfnt(self, buffer: bytes) -> None:
@@ -80,7 +80,7 @@ class Coverage:
         standard Adobe names the charset already carries. That only works for
         name-keyed CFFs; a CID-keyed one carries CID glyph names instead
         (`cid00034`, not `eacute`), which cannot be mapped back to Unicode from
-        the font bytes alone — raised so the font is marked unusable rather than
+        the font bytes alone. Raised so the font is marked unusable rather than
         silently reporting every character as missing.
         """
         cff = CFFFontSet()
@@ -115,7 +115,7 @@ class Coverage:
             pen = RecordingPen()
             self._glyphs[name].draw(pen)
             return bool(pen.value)
-        except Exception:  # noqa: BLE001 — a glyph that will not draw is missing
+        except Exception:  # noqa: BLE001 (a glyph that will not draw is missing)
             return False
 
     def drawable(self) -> list[str] | None:

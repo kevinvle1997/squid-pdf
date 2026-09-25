@@ -79,7 +79,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         if problem:
             print(f"  {RED}{problem}{OFF}")
             for opt in fit.options:
-                print(f"    {DIM}{opt.name:<9}{OFF} {opt.label} {DIM}— {opt.detail}{OFF}")
+                print(f"    {DIM}{opt.name:<9}{OFF} {opt.label}{DIM}: {opt.detail}{OFF}")
             print()
         else:
             print(f"  {GREEN}fits in place{OFF}\n")
@@ -96,7 +96,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
 
         fit = check(eng, span, args.text)
         if not fit.ok and not args.force:
-            print(f"  {RED}{fit.describe()}{OFF} {DIM}— pass --force to do it anyway{OFF}")
+            print(f"  {RED}{fit.describe()}{OFF} {DIM}(pass --force to do it anyway){OFF}")
             return 1
 
         apply(eng, [Replace(span.id, args.text)], index)
@@ -137,7 +137,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         try:
             with MuPDFEngine(path) as eng:
                 reports = eng.assess(eng.index())
-        except Exception as exc:  # noqa: BLE001 — one bad file must not stop the run
+        except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
             rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
             continue
         n_exact = sum(1 for r in reports if r.state is Fidelity.EXACT)
@@ -191,7 +191,7 @@ def cmd_fixture(args: argparse.Namespace) -> int:
         fontsize=11,
     )
 
-    # Embedded then subsetted, the way a real generator leaves it — so only the
+    # Embedded then subsetted, the way a real generator leaves it, so only the
     # glyphs this page used survive and typing an accent will fail.
     p2 = doc.new_page()
     p2.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
@@ -212,7 +212,7 @@ def cmd_fixture(args: argparse.Namespace) -> int:
 
 def _no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
-    print(f"  {RED}no span {span_id}{OFF} {DIM}— run `squidpdf spans` to list them{OFF}")
+    print(f"  {RED}no span {span_id}{OFF} {DIM}(run `squidpdf spans` to list them){OFF}")
     return 1
 
 

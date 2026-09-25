@@ -54,9 +54,9 @@ def bare_name(font: str) -> str:
 
     Subset prefixes and style suffixes are noise when looking up a *family*.
     Note this deliberately reads the name; the classifier that handles unmapped
-    fonts must not, because names lie — `NimbusRomNo9L` is a serif despite
+    fonts must not, because names lie: `NimbusRomNo9L` is a serif despite
     containing no "roman". Do not use this to identify one font resource on a
-    page — two different weights share a bare name; use `strip_subset` there.
+    page, where two different weights share a bare name; use `strip_subset` there.
     """
     name = strip_subset(font).split("-", 1)[0].split(",", 1)[0]
     return name.replace(" ", "").lower()
@@ -71,7 +71,7 @@ def base14_for(font: str) -> str:
     """The built-in PDF font actually used to draw a substitute, today.
 
     Only a stand-in for `substitute_for`'s answer until the real files in
-    SUBSTITUTES are bundled — see HANDOFF gap #1. Kept separate so the name
+    SUBSTITUTES are bundled (see HANDOFF gap #1). Kept separate so the name
     shown to the user (`substitute_for`) does not silently change to match
     whatever we can currently render with.
     """
