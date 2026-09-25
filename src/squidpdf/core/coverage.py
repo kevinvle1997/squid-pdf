@@ -61,9 +61,16 @@ class Coverage:
             self._usable = False
 
     def _load_sfnt(self, buffer: bytes) -> None:
-        """TrueType or OpenType, where a cmap table gives us character mapping."""
+        """TrueType or OpenType, where a cmap table gives us character mapping.
+
+        A font with no Unicode cmap (a symbol font, say) raises, so it is marked
+        unusable rather than reporting every character as missing.
+        """
         tt = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        self._glyph_names = dict(tt.getBestCmap())
+        cmap = tt.getBestCmap()
+        if cmap is None:
+            raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
+        self._glyph_names = dict(cmap)
         self._glyphs = tt.getGlyphSet()
 
     def _load_bare_cff(self, buffer: bytes) -> None:

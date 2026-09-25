@@ -33,7 +33,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
 
     verified = verify_redactions(engine, edits, index)[span.id]
     assert_true(verified is True, "verify_redactions() result for the redacted span")
-    text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf"))
+    text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
     assert_not_in(span.text, text, "the saved page after a redact")
 
 

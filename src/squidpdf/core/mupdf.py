@@ -241,7 +241,7 @@ class MuPDFEngine:
                 for frag in span.fragments:
                     r = frag.bbox
                     page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
-            page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)  # type: ignore[attr-defined]
+            page.apply_redactions(images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE)
 
     def draw(self, span: Span, text: str) -> None:
         """Redraw at the span's baseline, in its own font where the file has it.

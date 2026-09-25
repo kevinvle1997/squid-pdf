@@ -13,7 +13,7 @@ def test_check_reports_overflow_with_options(engine):
     assert_equal(engine.missing(span, longer), [], "missing chars, isolating the width case")
     fit = check(engine, span, longer)
     assert_false(fit.ok, "fit.ok for text that overflows the line")
-    assert_in("too long", fit.describe(), "the overflow description")
+    assert_in("too long", fit.describe() or "", "the overflow description")
     offered = {o.name for o in fit.options}
     missing = {"shrink", "as-is"} - offered
     assert_true(not missing, f"options offered ({offered}) are missing {missing}")
