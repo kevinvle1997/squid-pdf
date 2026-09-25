@@ -137,6 +137,22 @@ class MuPDFEngine:
             fragments=frags,
         )
 
+    def pages(self) -> list[tuple[float, float]]:
+        """Each page's width and height in points, as displayed: rotation applied."""
+        rects = [self.doc[pno].rect for pno in range(len(self.doc))]
+        return [(r.width, r.height) for r in rects]
+
+    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
+        """The page as a PNG, `scale` pixels per point, or only the `clip` box of it.
+
+        No alpha channel: the page is white whatever the app's theme (Rule 2).
+        """
+        box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
+        pix = self.doc[page].get_pixmap(
+            matrix=pymupdf.Matrix(scale, scale), clip=box, alpha=False
+        )
+        return pix.tobytes("png")
+
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
         """Judge every span in the index as exact or substitute."""
         out = []

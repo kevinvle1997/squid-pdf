@@ -14,13 +14,21 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from squidpdf.core.fidelity import FidelityReport
-from squidpdf.core.types import Span, SpanIndex
+from squidpdf.core.types import Rect, Span, SpanIndex
 
 
 @runtime_checkable
 class Engine(Protocol):
     def index(self) -> SpanIndex:
         """Every editable span, extracted once from the pristine document."""
+        ...
+
+    def pages(self) -> list[tuple[float, float]]:
+        """Each page's width and height in points, as displayed: rotation applied."""
+        ...
+
+    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
+        """The page as a PNG, `scale` pixels per point, or only the `clip` box of it."""
         ...
 
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
