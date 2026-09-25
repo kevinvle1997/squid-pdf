@@ -19,6 +19,8 @@ from squidpdf.core.types import Rect, Span, SpanIndex
 
 @runtime_checkable
 class Engine(Protocol):
+    """Everything the app asks of a PDF library. `MuPDFEngine` is the one there is."""
+
     def index(self) -> SpanIndex:
         """Every editable span, extracted once from the pristine document."""
         ...
@@ -66,10 +68,14 @@ class Engine(Protocol):
         """Draw where the document has no text."""
         ...
 
-    def save(self, path: str) -> None: ...
+    def save(self, path: str) -> None:
+        """Write the document, edits and all, to `path`."""
+        ...
 
     def absent(self, text: str) -> bool:
         """Confirm a removed string is really gone. Verified redaction depends on this."""
         ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Release the open document."""
+        ...
