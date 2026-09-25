@@ -12,9 +12,10 @@ import hashlib
 import pymupdf
 
 from squidpdf.core.coverage import Coverage
+from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
-from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, span_id
+from squidpdf.core.fonts import LIBRARY_VERSION, base14_for, strip_subset, substitute_for
+from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, span_id
 
 # Two runs belong to the same span when they sit on one baseline, share a face,
 # and are close enough that the gap is kerning rather than a layout decision.
@@ -37,6 +38,10 @@ _ADVANCE_DP = 2  # finer than any page can show
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
+# What drew and judged a page: MuPDF's version and our fonts'. A new build means
+# every image and fidelity worked out before it may be different.
+BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
+
 
 def _rgb(packed: int) -> tuple[float, float, float]:
     """PDF's packed 0xRRGGBB color into the (r, g, b) 0-1 floats PyMuPDF wants."""
@@ -53,7 +58,11 @@ class MuPDFEngine:
     def __init__(self, path: str) -> None:
         """Open the PDF at `path` and set up the empty per-font caches."""
         self.path = path
-        self.doc = pymupdf.open(path)
+        try:
+            # Only ever as a PDF: left to sniff, MuPDF opens a PNG as a document.
+            self.doc = pymupdf.open(path, filetype="pdf")
+        except pymupdf.FileDataError as exc:  # garbage, truncated or empty
+            raise Unreadable(path) from exc
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
@@ -143,19 +152,24 @@ class MuPDFEngine:
             fragments=frags,
         )
 
-    def pages(self) -> list[tuple[float, float]]:
-        """Each page's width and height in points, as displayed: rotation applied."""
-        rects = [self.doc[pno].rect for pno in range(len(self.doc))]
-        return [(r.width, r.height) for r in rects]
+    def pages(self) -> list[Page]:
+        """Each page's size, unrotated like the span boxes, and the turn it asks for."""
+        pages = [self.doc[pno] for pno in range(len(self.doc))]
+        return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
         """The page as a PNG, `scale` pixels per point, or only the `clip` box of it.
 
         No alpha channel: the page is white whatever the app's theme (Rule 2).
+        Unrotated, so the image lines up with the span boxes; the browser turns
+        it. The clip is mapped into the rotated page, where MuPDF clips.
         """
+        pg = self.doc[page]
         box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
-        pix = self.doc[page].get_pixmap(
-            matrix=pymupdf.Matrix(scale, scale), clip=box, alpha=False
+        pix = pg.get_pixmap(
+            matrix=pg.derotation_matrix * pymupdf.Matrix(scale, scale),
+            clip=None if box is None else box * pg.rotation_matrix,
+            alpha=False,
         )
         return pix.tobytes("png")
 

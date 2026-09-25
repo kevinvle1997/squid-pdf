@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 from starlette.exceptions import HTTPException
 
-from squidpdf.core import words
+from squidpdf.core import Unreadable, words
 
 
 class Problem(Enum):
@@ -58,6 +58,8 @@ async def _handle(request: Request, exc: Exception) -> Response:
     match exc:
         case ApiError():
             error = exc
+        case Unreadable():
+            error = ApiError(Problem.DAMAGED)  # from a worker, as the file opened
         case RequestValidationError():
             # FastAPI's body is a list of jargon. Only the browser sends
             # requests, so this is a browser bug: one line for the report.
@@ -82,6 +84,6 @@ async def _handle(request: Request, exc: Exception) -> Response:
 
 def install(app: FastAPI) -> None:
     """Make every error the app can raise leave as Problem Details."""
-    # FastAPI has its own handlers for the first three; Exception catches the rest.
-    for raised in (ApiError, RequestValidationError, HTTPException, Exception):
+    # FastAPI has its own handlers for validation and HTTP errors; Exception is the rest.
+    for raised in (ApiError, Unreadable, RequestValidationError, HTTPException, Exception):
         app.add_exception_handler(raised, _handle)

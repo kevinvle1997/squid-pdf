@@ -14,6 +14,7 @@ from collections.abc import Callable
 from types import ModuleType
 from typing import cast
 
+from fastapi import Request
 from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import limits
@@ -58,6 +59,11 @@ class Pool:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
         self._pool.stop()
         self._pool.join()
+
+
+def current(request: Request) -> Pool:
+    """The app's pool, started with it. A route's dependency."""
+    return request.app.state.pool
 
 
 def _limit_memory() -> None:

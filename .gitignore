@@ -24,6 +24,7 @@ dist/
 .DS_Store
 
 # Local artefacts
+/data/
 *.db
 *.sqlite3
 

@@ -1,25 +1,28 @@
-"""The `api` extra is optional, so the CLI must never pull in the web framework."""
+"""The web framework stays in `api/` and the `api.py` files.
+
+The `api` extra is optional, so the CLI must run without it; and pool work
+must import without it, so the worker only loads what the PDF needs.
+"""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 
+import pytest
+
 from tests.helpers import assert_equal
 
 _FRAMEWORK = ("fastapi", "starlette", "pydantic")
 
 
-def test_importing_the_cli_loads_no_web_framework():
+@pytest.mark.parametrize("module", ["squidpdf.cli", "squidpdf.documents.analyse"])
+def test_importing_it_loads_no_web_framework(module):
     # A fresh interpreter: this one has already imported FastAPI for other tests.
-    loaded = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            f"import sys, squidpdf.cli; print([m for m in {_FRAMEWORK!r} if m in sys.modules])",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    assert_equal(loaded, "[]", "web framework modules loaded by importing the CLI")
+    code = f"import sys, {module}; print([m for m in {_FRAMEWORK!r} if m in sys.modules])"
+    run = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert_equal(
+        run.stdout.strip(), "[]", f"web framework modules loaded by importing {module}"
+    )

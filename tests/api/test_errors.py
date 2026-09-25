@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.api.conftest import BASE_URL
+from tests.api.conftest import BASE_URL, upload
 from tests.helpers import assert_equal, assert_not_in, assert_problem
 
 
@@ -12,13 +12,16 @@ def test_an_unknown_path_is_not_found(browser):
     assert_problem(browser().get("/api/nothing-here"), "not_found", 404)
 
 
-def test_a_bad_request_is_one_plain_line_not_a_list(browser):
-    response = browser().get("/api/things/some-id", params={"scale": "big"})
+def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
+    mine = browser()
+    doc = upload(mine, pdf_bytes).json()
+    params = {"scale": 9, "build": doc["build"]}
+    response = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
     assert_problem(response, "invalid_request", 400)
     assert_equal(
         response.json()["detail"],
         "Something in the request isn't right "
-        "(scale: Input should be a valid integer, unable to parse string as an integer).",
+        "(scale: Input should be less than or equal to 4).",
         "the invalid request sentence",
     )
 

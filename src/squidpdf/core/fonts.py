@@ -23,6 +23,10 @@ SUBSTITUTES: dict[str, str] = {
     "cambria": "Caladea",
 }
 
+# Half of `build`: bump it whenever SUBSTITUTES, FALLBACK or the bundled fonts
+# change, so browsers drop everything worked out with the old ones.
+LIBRARY_VERSION = "1"
+
 # The floor. Reached when nothing above matches, or when the replacement needs a
 # character no Latin face carries. An edit should degrade visibly, never fail.
 FALLBACK = "Noto Sans"
