@@ -10,7 +10,7 @@ from squidpdf.core import MuPDFEngine
 
 @pytest.fixture(scope="module")
 def pdf(tmp_path_factory) -> str:
-    """Page 1 references its fonts; page 2 embeds one and subsets it."""
+    """Page 1 references its fonts; page 2 embeds one, subsets it, and uses it twice."""
     path = tmp_path_factory.mktemp("fx") / "sample.pdf"
     doc = pymupdf.open()
 
@@ -30,6 +30,9 @@ def pdf(tmp_path_factory) -> str:
         "Delivery begins 14 March 2026 and runs eighteen months.",
         fontname="emb",
         fontsize=11,
+    )
+    p2.insert_text(
+        (72, 124), "Invoices are due within thirty days.", fontname="emb", fontsize=11
     )
     doc.subset_fonts(verbose=False)
 

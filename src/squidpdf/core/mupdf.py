@@ -7,6 +7,8 @@ document.
 
 from __future__ import annotations
 
+import hashlib
+
 import pymupdf
 
 from squidpdf.core.coverage import Coverage
@@ -26,6 +28,8 @@ _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused object
 
 # The index throws images away; decoding them was most of its time.
 _INDEX_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+
+_ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:
@@ -47,6 +51,7 @@ class MuPDFEngine:
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
+        self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
 
     def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
         """The document's own font, or None when the file only references it.
@@ -193,20 +198,29 @@ class MuPDFEngine:
             page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)  # type: ignore[attr-defined]
 
     def draw(self, span: Span, text: str) -> None:
-        """Redraw at the span's baseline, in its own font where the file has it."""
-        page = self.doc[span.page]
-        embedded = self._embedded(span.page, span.font)
+        """Redraw at the span's baseline, in its own font where the file has it.
 
-        alias = None
-        if embedded is not None:
-            alias = "F" + span.id
-            try:
-                page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
-            except (RuntimeError, ValueError):
-                # These bytes already parsed as a Font object in _embedded(), but
-                # embedding as a page resource is a different MuPDF code path;
-                # degrade to the substitute rather than fail the edit outright.
-                alias = None
+        The font goes onto the page once, not once per span: a resource per span
+        piled up on the page and made every redraw slower.
+        """
+        page = self.doc[span.page]
+        key = (span.page, strip_subset(span.font))
+        if key not in self._aliases:
+            embedded = self._embedded(span.page, span.font)
+            alias = None
+            if embedded is not None:
+                # Named from the font, so it can't clash with a resource already on the page.
+                digest = hashlib.blake2s(key[1].encode(), digest_size=_ALIAS_DIGEST_SIZE)
+                alias = "F" + digest.hexdigest()
+                try:
+                    page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
+                except (RuntimeError, ValueError):
+                    # These bytes already parsed as a Font object in _embedded(), but
+                    # embedding as a page resource is a different MuPDF code path;
+                    # degrade to the substitute rather than fail the edit outright.
+                    alias = None
+            self._aliases[key] = alias
+        alias = self._aliases[key]
 
         page.insert_text(
             pymupdf.Point(*span.origin),
