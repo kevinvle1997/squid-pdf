@@ -18,9 +18,7 @@ from pathlib import Path
 import orjson
 
 from squidpdf.core import Fragment, Page, Rect, Span, SpanIndex
-
-IDLE_S = 3600  # a document untouched this long is deleted
-SWEEP_EVERY_S = 60
+from squidpdf.documents.constants import IDLE_S
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"

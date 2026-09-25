@@ -17,12 +17,8 @@ from typing import cast
 from fastapi import Request
 from pebble import ProcessExpired, ProcessPool
 
-from squidpdf.api import limits
+from squidpdf.api import constants
 from squidpdf.api.errors import ApiError, Problem
-
-# A worker is replaced after this many tasks, so memory MuPDF never hands back
-# can't pile up. A starting guess, not a measurement.
-_TASKS_PER_WORKER = 100
 
 
 class Pool:
@@ -31,7 +27,7 @@ class Pool:
     def __init__(self) -> None:
         """Set the pool up; pebble starts the workers on the first task."""
         self._pool = ProcessPool(
-            max_tasks=_TASKS_PER_WORKER,
+            max_tasks=constants.TASKS_PER_WORKER,
             initializer=_limit_memory,
             # Spawn, not fork: forking a server that already runs threads can
             # copy a held lock into the worker, which then hangs on it.
@@ -74,5 +70,5 @@ def _limit_memory() -> None:
     if sys.platform == "linux":
         import resource
 
-        cap = limits.WORKER_MEMORY_BYTES
+        cap = constants.WORKER_MEMORY_BYTES
         resource.setrlimit(resource.RLIMIT_AS, (cap, cap))

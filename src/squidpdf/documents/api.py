@@ -8,64 +8,32 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, TypedDict
+from typing import Annotated
 
 import orjson
 import xxhash
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from squidpdf.api import limits, owner, pool
+from squidpdf.api import constants as limits
+from squidpdf.api import owner, pool
 from squidpdf.api.errors import ApiError, Problem
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, words
+from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
 from squidpdf.documents import store
-from squidpdf.documents.analyse import Analysis, analyse, page_image
-from squidpdf.editing.fit import CONDENSE_LIMIT, TOLERANCE_PT
+from squidpdf.documents.analyse import analyse, page_image
+from squidpdf.documents.constants import IDLE_S, SWEEP_EVERY_S
+from squidpdf.documents.types import Analysis, Document, Loaded
 
 router = APIRouter(prefix="/api/documents")
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 # The URL carries `build`, so its bytes never change; an hour matches the idle expiry.
-_PAGE_CACHE = f"private, max-age={store.IDLE_S}, immutable"
+_PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 _DOCUMENT_CACHE = "private, no-cache"
-
-
-class FitRules(TypedDict):
-    """The thresholds the browser runs the fit check with, the server's own."""
-
-    tolerance_pt: float
-    condense_limit: float
-
-
-class Copy(TypedDict):
-    """The sentences the browser fills in as the user types."""
-
-    missing: str
-    too_long: str
-    options: dict[str, dict[str, str]]
-
-
-class Document(Analysis):
-    """The stored document, as the browser gets it."""
-
-    id: str
-    expires_at: str
-    fit: FitRules
-    copy: Copy
-    notices: list[dict[str, str]]
-
-
-@dataclass(frozen=True, slots=True)
-class Loaded:
-    """A document this browser owns, with its hour just restarted."""
-
-    id: str
-    folder: Path
-    expires_at: float
 
 
 def load(doc_id: str, request: Request) -> Loaded:
@@ -157,7 +125,7 @@ async def page(
 async def sweep_forever() -> None:
     """Every minute, delete documents idle past the hour. Runs for the app's life."""
     while True:
-        await asyncio.sleep(store.SWEEP_EVERY_S)
+        await asyncio.sleep(SWEEP_EVERY_S)
         await asyncio.to_thread(store.sweep)
 
 

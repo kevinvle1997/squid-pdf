@@ -1,66 +1,18 @@
 """Pool work for documents: what the browser needs before the first edit.
 
 Framework-free and handed only paths, so the pool can pickle it and a test can
-call it directly. The shapes are what the Document sends.
+call it directly.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
 
 import orjson
 
 from squidpdf.core import BUILD, MuPDFEngine
 from squidpdf.documents import store
-
-
-class Box(TypedDict):
-    """A box on the page in points, top-left origin."""
-
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-
-
-class PageInfo(TypedDict):
-    """A page unrotated, and the turn the browser gives it."""
-
-    width: float
-    height: float
-    rotation: int
-
-
-class SpanInfo(TypedDict):
-    """One editable span and whether it keeps its own font."""
-
-    id: str
-    page: int
-    text: str
-    font: str
-    size: float
-    color: list[float]
-    bbox: Box
-    origin: list[float]
-    fidelity: str
-
-
-class FontInfo(TypedDict):
-    """A font the spans use: what stands in for it, and every glyph it really draws."""
-
-    name: str
-    substitute: str | None
-    glyphs: dict[str, float]
-
-
-class Analysis(TypedDict):
-    """Everything worked out from the original under one build."""
-
-    build: str
-    pages: list[PageInfo]
-    spans: list[SpanInfo]
-    fonts: list[FontInfo]
+from squidpdf.documents.types import Analysis, FontInfo
 
 
 def analyse(folder: str) -> Analysis:

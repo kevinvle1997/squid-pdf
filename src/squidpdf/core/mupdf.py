@@ -11,17 +11,12 @@ import hashlib
 
 import pymupdf
 
+from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import LIBRARY_VERSION, base14_for, strip_subset, substitute_for
 from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, span_id
-
-# Two runs belong to the same span when they sit on one baseline, share a face,
-# and are close enough that the gap is kerning rather than a layout decision.
-BASELINE_EPS = 0.6
-SIZE_EPS = 0.1
-GAP_RATIO = 0.35
 
 _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
 

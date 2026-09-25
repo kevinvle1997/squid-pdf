@@ -1,4 +1,4 @@
-"""What the server will accept. Starting values, not findings.
+"""What the server will accept and how hard it works. Starting values, not findings.
 
 These protect the server, not the business, so no plan or account lifts them.
 """
@@ -31,3 +31,6 @@ UPLOAD_TIMEOUT_S = 30
 RENDER_TIMEOUT_S = 10
 EXPORT_TIMEOUT_S = 60
 WORKER_MEMORY_BYTES = 1024 * _MB
+# A worker is replaced after this many tasks, so memory MuPDF never hands back
+# can't pile up. A starting guess, not a measurement.
+TASKS_PER_WORKER = 100

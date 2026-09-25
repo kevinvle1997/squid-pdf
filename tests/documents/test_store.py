@@ -8,6 +8,7 @@ import time
 import pytest
 
 from squidpdf.documents import store
+from squidpdf.documents.constants import IDLE_S
 from tests.helpers import assert_equal, assert_false, assert_true
 
 
@@ -27,7 +28,7 @@ def test_a_saved_index_comes_back_span_for_span(engine):
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = store.create("owner")
     _, fresh = store.create("owner")
-    past = time.time() - store.IDLE_S - 1
+    past = time.time() - IDLE_S - 1
     os.utime(idle, (past, past))
     store.sweep()
     assert_false(idle.exists(), "a document idle past the hour is still on disk")

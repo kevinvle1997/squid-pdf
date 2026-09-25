@@ -7,10 +7,10 @@ import os
 import pymupdf
 import pytest
 
-from squidpdf.api import limits
+from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, words
+from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
 from squidpdf.documents import store
-from squidpdf.editing.fit import CONDENSE_LIMIT, TOLERANCE_PT
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
 

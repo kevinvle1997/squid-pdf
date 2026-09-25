@@ -10,13 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from squidpdf.core import words
-
-# Beyond this the line is visibly disturbed.
-TOLERANCE_PT = 4.0
-
-# A horizontal squeeze up to here is invisible; past it the text reads as
-# condensed, which is worse than a slightly long line.
-CONDENSE_LIMIT = 0.05
+from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
 
 
 @dataclass(frozen=True, slots=True)
