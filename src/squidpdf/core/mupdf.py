@@ -24,6 +24,9 @@ _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
 
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
 
+# The index throws images away; decoding them was most of its time.
+_INDEX_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+
 
 def _rgb(packed: int) -> tuple[float, float, float]:
     """PDF's packed 0xRRGGBB color into the (r, g, b) 0-1 floats PyMuPDF wants."""
@@ -88,8 +91,8 @@ class MuPDFEngine:
         ordinal = 0
 
         for pno in range(len(self.doc)):
-            for block in self.doc[pno].get_text("dict")["blocks"]:
-                for line in block.get("lines", []):  # image blocks have no "lines"
+            for block in self.doc[pno].get_text("dict", flags=_INDEX_FLAGS)["blocks"]:
+                for line in block["lines"]:
                     for group in _merge(line["spans"]):
                         span = self._build(pno, group, ordinal)
                         if span is not None:
