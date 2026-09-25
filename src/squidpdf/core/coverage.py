@@ -111,6 +111,12 @@ class Coverage:
         except Exception:  # noqa: BLE001 — a glyph that will not draw is missing
             return False
 
+    def drawable(self) -> list[str] | None:
+        """Every character the font maps that really draws, or None if it would not parse."""
+        if not self._usable:
+            return None
+        return [chr(cp) for cp in sorted(self._glyph_names) if self.covers(chr(cp))]
+
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""
         out: list[str] = []

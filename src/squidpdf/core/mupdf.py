@@ -29,6 +29,12 @@ _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused object
 # The index throws images away; decoding them was most of its time.
 _INDEX_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
+# insert_text draws base-14 fonts a byte per character; past Latin-1 comes out a dot.
+_SIMPLE_FONT_CODES = 256
+
+_EM = 1000  # advances are given per 1000 em, as PDF font widths are
+_ADVANCE_DP = 2  # finer than any page can show
+
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
 
@@ -169,6 +175,30 @@ class MuPDFEngine:
                     )
                 )
         return out
+
+    def glyphs(self, span: Span) -> dict[str, float]:
+        """Every character this span's drawing font really draws, to its advance per 1000 em.
+
+        The font `measure` uses, so widths agree. A subset's emptied glyphs don't
+        count; a font Coverage can't read falls back to MuPDF's list, a claim.
+        """
+        embedded = self._embedded(span.page, span.font)
+        if embedded is None:
+            font = pymupdf.Font(fontname=base14_for(span.font))
+            chars = [chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES]
+        else:
+            font = embedded
+            key = (span.page, strip_subset(span.font))
+            cov = self._coverage.get(key)
+            if cov is None:
+                cov = self._coverage[key] = Coverage(embedded.buffer)
+            drawable = cov.drawable()
+            chars = (
+                drawable
+                if drawable is not None
+                else [chr(cp) for cp in font.valid_codepoints()]
+            )
+        return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, in this span's font and size."""
