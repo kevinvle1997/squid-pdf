@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from squidpdf.core import words
+
 # Beyond this the line is visibly disturbed.
 TOLERANCE_PT = 4.0
 
@@ -47,9 +49,9 @@ class FitCheck:
     def describe(self) -> str | None:
         """Plain language, or None when nothing is wrong. Never jargon."""
         if self.missing:
-            return f"no {' or '.join(self.missing)} in this font"
+            return words.MISSING.format(chars=" or ".join(self.missing))
         if self.delta_pt > TOLERANCE_PT:
-            return f"{self.delta_pt:.1f} pt too long"
+            return words.TOO_LONG.format(delta_pt=f"{self.delta_pt:.1f}")
         return None
 
 
@@ -62,26 +64,15 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
     if delta_pt <= TOLERANCE_PT or original_width <= 0:
         return []
 
-    out = [
-        Option(
-            "shrink",
-            "Make it slightly smaller",
-            "Reduces the type size just enough to fit.",
-        )
-    ]
+    names = ["shrink"]
     if delta_pt / original_width <= CONDENSE_LIMIT:
-        out.append(
-            Option(
-                "condense",
-                "Tighten the letters",
-                "Squeezes the spacing by a few percent — not noticeable at this size.",
-            )
-        )
-    out.append(
+        names.append("condense")
+    names.append("as-is")
+    return [
         Option(
-            "as-is",
-            "Leave it long",
-            f"Runs {delta_pt:.1f} pt past where the original ended.",
+            name,
+            words.OPTIONS[name]["label"],
+            words.OPTIONS[name]["detail"].format(delta_pt=f"{delta_pt:.1f}"),
         )
-    )
-    return out
+        for name in names
+    ]
