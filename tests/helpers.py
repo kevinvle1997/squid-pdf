@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Container, Iterable
 
+from httpx import Response
+
 
 def assert_true(condition: bool, message: str) -> None:
     """Assert `condition` holds; `message` says what was expected."""
@@ -61,3 +63,17 @@ def assert_any[T](
     assert any(predicate(i) for i in items), (
         f"none matched, checked: {', '.join(describe(i) for i in items)}"
     )
+
+
+def assert_problem(response: Response, type: str, status: int) -> None:
+    """Assert `response` is Problem Details of this `type` and status; show what came back."""
+    body = response.text
+    assert response.status_code == status, (
+        f"status: expected {status}, got {response.status_code}: {body}"
+    )
+    media = response.headers.get("content-type")
+    assert media == "application/problem+json", f"content-type: got {media!r}: {body}"
+    got = response.json()
+    assert got.get("type") == type, f"problem type: expected {type!r}, got {got!r}"
+    assert got.get("status") == status, f"problem status: expected {status}, got {got!r}"
+    assert got.get("detail"), f"problem detail: expected a sentence, got {got!r}"
