@@ -1,45 +1,24 @@
-"""The real app, a stand-in for documents, and browsers to call it with."""
+"""The real app with its workers running, and browsers to call it with."""
 
 from __future__ import annotations
 
-import secrets
-from collections.abc import Callable
-from typing import Annotated
+from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import pytest
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+from httpx import Response
 
-from squidpdf.api import owner
 from squidpdf.api.app import create_app
-from squidpdf.api.errors import ApiError, Problem
 
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
 
 
-def _stand_in() -> APIRouter:
-    """Documents' ownership without documents, until they exist.
-
-    Create hands out an id and keeps the owner's digest, as a document folder
-    will; reading checks it, as the load-document dependency will.
-    """
+def _crashes() -> APIRouter:
+    """A route with a bug in it, to see what a crash looks like from outside."""
     router = APIRouter()
-    owners: dict[str, str] = {}
-
-    @router.post("/api/things", status_code=201)
-    def create(token: Annotated[str, Depends(owner.token)]) -> dict[str, str]:
-        thing = secrets.token_urlsafe(16)
-        owners[thing] = owner.digest(token)
-        return {"id": thing}
-
-    # `scale` is only there to have something to get wrong.
-    @router.get("/api/things/{thing}")
-    def read(thing: str, request: Request, scale: int = 1) -> dict[str, str]:
-        if thing not in owners:
-            raise ApiError(Problem.NOT_FOUND)
-        owner.check(request, owners[thing])
-        return {"id": thing}
 
     @router.get("/api/crash")
     def crash() -> None:
@@ -48,14 +27,30 @@ def _stand_in() -> APIRouter:
     return router
 
 
-@pytest.fixture
-def app() -> FastAPI:
-    app = create_app()
-    app.include_router(_stand_in())
-    return app
+@pytest.fixture(scope="module")
+def app(tmp_path_factory) -> Iterator[FastAPI]:
+    """One app per test module, workers started, documents kept in a fresh folder."""
+    with pytest.MonkeyPatch.context() as env:
+        env.setenv("SQUIDPDF_DATA", str(tmp_path_factory.mktemp("data")))
+        app = create_app()
+        app.include_router(_crashes())
+        with TestClient(app):  # runs the lifespan: the pool and the sweeper
+            yield app
 
 
 @pytest.fixture
 def browser(app: FastAPI) -> Callable[[], TestClient]:
     """Opens a new browser on the app each call; each keeps its own cookies."""
     return lambda: TestClient(app, base_url=BASE_URL)
+
+
+def upload(client: TestClient, body: bytes) -> Response:
+    """Send a file the way the browser does: the raw bytes, no form."""
+    return client.post(
+        "/api/documents", content=body, headers={"content-type": "application/pdf"}
+    )
+
+
+@pytest.fixture
+def pdf_bytes(pdf: str) -> bytes:
+    return Path(pdf).read_bytes()

@@ -6,6 +6,7 @@ The only module that imports a feature's `api.py`. Run it with
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,15 +14,18 @@ from fastapi import FastAPI
 
 from squidpdf.api import errors
 from squidpdf.api.pool import Pool
+from squidpdf.documents import api as documents
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Workers start with the app and stop with it."""
+    """Workers and the expiry sweeper start with the app and stop with it."""
     app.state.pool = Pool()
+    sweeper = asyncio.create_task(documents.sweep_forever())
     try:
         yield
     finally:
+        sweeper.cancel()
         app.state.pool.close()
 
 
@@ -36,6 +40,7 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     errors.install(app)
+    app.include_router(documents.router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

@@ -43,6 +43,19 @@ class Rect:
 
 
 @dataclass(frozen=True, slots=True)
+class Page:
+    """A page's size in points, unrotated like every box here, and its turn.
+
+    `rotation` is the file's own /Rotate, clockwise: 0, 90, 180 or 270. Nothing
+    on the server applies it; the browser turns the page.
+    """
+
+    width: float
+    height: float
+    rotation: int
+
+
+@dataclass(frozen=True, slots=True)
 class Fragment:
     """One show-text operator as the file records it.
 

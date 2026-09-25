@@ -9,8 +9,8 @@ import time
 
 import pytest
 
+from squidpdf.api.constants import WORKER_MEMORY_BYTES
 from squidpdf.api.errors import ApiError
-from squidpdf.api.limits import WORKER_MEMORY_BYTES
 from squidpdf.api.pool import Pool
 from tests.helpers import assert_equal, assert_true
 

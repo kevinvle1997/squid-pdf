@@ -11,16 +11,12 @@ import hashlib
 
 import pymupdf
 
+from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SIZE_EPS
 from squidpdf.core.coverage import Coverage
+from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
-from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, span_id
-
-# Two runs belong to the same span when they sit on one baseline, share a face,
-# and are close enough that the gap is kerning rather than a layout decision.
-BASELINE_EPS = 0.6
-SIZE_EPS = 0.1
-GAP_RATIO = 0.35
+from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, span_id
 
 _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
 
@@ -36,6 +32,9 @@ _EM = 1000  # advances are given per 1000 em, as PDF font widths are
 _ADVANCE_DP = 2  # finer than any page can show
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
+
+# What drew and judged a page; a new one means earlier images and fidelity may differ.
+BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:
@@ -53,7 +52,11 @@ class MuPDFEngine:
     def __init__(self, path: str) -> None:
         """Open the PDF at `path` and set up the empty per-font caches."""
         self.path = path
-        self.doc = pymupdf.open(path)
+        try:
+            # Only ever as a PDF: left to sniff, MuPDF opens a PNG as a document.
+            self.doc = pymupdf.open(path, filetype="pdf")
+        except pymupdf.FileDataError as exc:  # garbage, truncated or empty
+            raise Unreadable(path) from exc
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
@@ -143,19 +146,24 @@ class MuPDFEngine:
             fragments=frags,
         )
 
-    def pages(self) -> list[tuple[float, float]]:
-        """Each page's width and height in points, as displayed: rotation applied."""
-        rects = [self.doc[pno].rect for pno in range(len(self.doc))]
-        return [(r.width, r.height) for r in rects]
+    def pages(self) -> list[Page]:
+        """Each page's size, unrotated like the span boxes, and the turn it asks for."""
+        pages = [self.doc[pno] for pno in range(len(self.doc))]
+        return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
         """The page as a PNG, `scale` pixels per point, or only the `clip` box of it.
 
         No alpha channel: the page is white whatever the app's theme (Rule 2).
+        Unrotated, so the image lines up with the span boxes; the browser turns
+        it. The clip is mapped into the rotated page, where MuPDF clips.
         """
+        pg = self.doc[page]
         box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
-        pix = self.doc[page].get_pixmap(
-            matrix=pymupdf.Matrix(scale, scale), clip=box, alpha=False
+        pix = pg.get_pixmap(
+            matrix=pg.derotation_matrix * pymupdf.Matrix(scale, scale),
+            clip=None if box is None else box * pg.rotation_matrix,
+            alpha=False,
         )
         return pix.tobytes("png")
 
@@ -189,7 +197,7 @@ class MuPDFEngine:
         else:
             font = embedded
             key = (span.page, strip_subset(span.font))
-            cov = self._coverage.get(key)
+            cov = self._coverage.get(key)  # built on first use
             if cov is None:
                 cov = self._coverage[key] = Coverage(embedded.buffer)
             drawable = cov.drawable()
@@ -215,7 +223,7 @@ class MuPDFEngine:
             return []  # the substitute carries full Latin coverage
 
         key = (span.page, strip_subset(span.font))
-        cov = self._coverage.get(key)
+        cov = self._coverage.get(key)  # built on first use
         if cov is None:
             cov = self._coverage[key] = Coverage(embedded.buffer)
         return cov.missing(text)

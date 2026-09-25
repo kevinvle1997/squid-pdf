@@ -14,14 +14,11 @@ from collections.abc import Callable
 from types import ModuleType
 from typing import cast
 
+from fastapi import Request
 from pebble import ProcessExpired, ProcessPool
 
-from squidpdf.api import limits
+from squidpdf.api import constants
 from squidpdf.api.errors import ApiError, Problem
-
-# A worker is replaced after this many tasks, so memory MuPDF never hands back
-# can't pile up. A starting guess, not a measurement.
-_TASKS_PER_WORKER = 100
 
 
 class Pool:
@@ -30,11 +27,10 @@ class Pool:
     def __init__(self) -> None:
         """Set the pool up; pebble starts the workers on the first task."""
         self._pool = ProcessPool(
-            max_tasks=_TASKS_PER_WORKER,
+            max_tasks=constants.TASKS_PER_WORKER,
             initializer=_limit_memory,
-            # Spawn, not fork: forking a server that already runs threads can
-            # copy a held lock into the worker, which then hangs on it.
-            # pebble annotates `context` as the module but takes any context.
+            # Spawn: a fork of a threaded server can inherit a held lock and hang.
+            # The cast because pebble types `context` as a module; it takes any.
             context=cast(ModuleType, multiprocessing.get_context("spawn")),
         )
 
@@ -49,8 +45,7 @@ class Pool:
         future = self._pool.submit(fn, timeout, *args, **kwargs)
         try:
             return await asyncio.wrap_future(future)
-        # pebble raises these for a task out of time, or a worker that died;
-        # the task itself raises MemoryError at the ceiling.
+        # Out of time, a worker that died, or a task past the memory ceiling.
         except (TimeoutError, ProcessExpired, MemoryError) as exc:
             raise ApiError(Problem.DAMAGED) from exc
 
@@ -58,6 +53,11 @@ class Pool:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
         self._pool.stop()
         self._pool.join()
+
+
+def current(request: Request) -> Pool:
+    """The app's pool, started with it. A route's dependency."""
+    return request.app.state.pool
 
 
 def _limit_memory() -> None:
@@ -68,5 +68,5 @@ def _limit_memory() -> None:
     if sys.platform == "linux":
         import resource
 
-        cap = limits.WORKER_MEMORY_BYTES
+        cap = constants.WORKER_MEMORY_BYTES
         resource.setrlimit(resource.RLIMIT_AS, (cap, cap))

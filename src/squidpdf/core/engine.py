@@ -14,7 +14,11 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from squidpdf.core.fidelity import FidelityReport
-from squidpdf.core.types import Rect, Span, SpanIndex
+from squidpdf.core.types import Page, Rect, Span, SpanIndex
+
+
+class Unreadable(Exception):
+    """The file isn't a PDF the engine can open: garbage, truncated or empty."""
 
 
 @runtime_checkable
@@ -25,12 +29,12 @@ class Engine(Protocol):
         """Every editable span, extracted once from the pristine document."""
         ...
 
-    def pages(self) -> list[tuple[float, float]]:
-        """Each page's width and height in points, as displayed: rotation applied."""
+    def pages(self) -> list[Page]:
+        """Each page's size, unrotated like the span boxes, and the turn it asks for."""
         ...
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
-        """The page as a PNG, `scale` pixels per point, or only the `clip` box of it."""
+        """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box."""
         ...
 
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
