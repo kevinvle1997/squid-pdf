@@ -5,16 +5,9 @@ from __future__ import annotations
 import os
 import time
 
-import pytest
-
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
 from tests.helpers import assert_equal, assert_false, assert_true
-
-
-@pytest.fixture(autouse=True)
-def data(tmp_path, monkeypatch):
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
 
 
 def test_a_saved_index_comes_back_span_for_span(engine):

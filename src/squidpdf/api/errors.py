@@ -61,8 +61,7 @@ async def _handle(request: Request, exc: Exception) -> Response:
         case Unreadable():
             error = ApiError(Problem.DAMAGED)  # from a worker, as the file opened
         case RequestValidationError():
-            # FastAPI's body is a list of jargon. Only the browser sends
-            # requests, so this is a browser bug: one line for the report.
+            # One plain line, not FastAPI's jargon list: it's a browser bug report.
             lines = []
             for item in exc.errors():
                 loc = item["loc"]

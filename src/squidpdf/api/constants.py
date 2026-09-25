@@ -31,6 +31,4 @@ UPLOAD_TIMEOUT_S = 30
 RENDER_TIMEOUT_S = 10
 EXPORT_TIMEOUT_S = 60
 WORKER_MEMORY_BYTES = 1024 * _MB
-# A worker is replaced after this many tasks, so memory MuPDF never hands back
-# can't pile up. A starting guess, not a measurement.
-TASKS_PER_WORKER = 100
+TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess

@@ -29,9 +29,8 @@ class Pool:
         self._pool = ProcessPool(
             max_tasks=constants.TASKS_PER_WORKER,
             initializer=_limit_memory,
-            # Spawn, not fork: forking a server that already runs threads can
-            # copy a held lock into the worker, which then hangs on it.
-            # pebble annotates `context` as the module but takes any context.
+            # Spawn: a fork of a threaded server can inherit a held lock and hang.
+            # The cast because pebble types `context` as a module; it takes any.
             context=cast(ModuleType, multiprocessing.get_context("spawn")),
         )
 
@@ -46,8 +45,7 @@ class Pool:
         future = self._pool.submit(fn, timeout, *args, **kwargs)
         try:
             return await asyncio.wrap_future(future)
-        # pebble raises these for a task out of time, or a worker that died;
-        # the task itself raises MemoryError at the ceiling.
+        # Out of time, a worker that died, or a task past the memory ceiling.
         except (TimeoutError, ProcessExpired, MemoryError) as exc:
             raise ApiError(Problem.DAMAGED) from exc
 

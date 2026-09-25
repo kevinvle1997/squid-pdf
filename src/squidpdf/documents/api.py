@@ -9,12 +9,11 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Annotated
 
 import orjson
 import xxhash
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
@@ -24,16 +23,13 @@ from squidpdf.core import BUILD, words
 from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
-from squidpdf.documents.constants import IDLE_S, SWEEP_EVERY_S
+from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.types import Analysis, Document, Loaded
 
 router = APIRouter(prefix="/api/documents")
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
-# The URL carries `build`, so its bytes never change; an hour matches the idle expiry.
-_PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
-_DOCUMENT_CACHE = "private, no-cache"
 
 
 def load(doc_id: str, request: Request) -> Loaded:
@@ -46,16 +42,32 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
-@router.post("", status_code=201, response_model=Document)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
 async def upload(
     request: Request,
     token: Annotated[str, Depends(owner.token)],
     workers: Annotated[Pool, Depends(pool.current)],
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
+    declared = request.headers.get("content-length")  # absent when the body is chunked
+    if declared is not None and int(declared) > limits.MAX_FILE_BYTES:
+        raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
     doc_id, folder = store.create(owner.digest(token))
     try:
-        await _receive(request, folder / store.ORIGINAL)
+        # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
+        size, head = 0, b""
+        with (folder / store.ORIGINAL).open("wb") as out:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limits.MAX_FILE_BYTES:
+                    raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
+                if len(head) < _HEADER_WINDOW:
+                    head += chunk[: _HEADER_WINDOW - len(head)]
+                    if len(head) == _HEADER_WINDOW and _PDF_HEADER not in head:
+                        raise ApiError(Problem.NOT_A_PDF)
+                out.write(chunk)
+        if _PDF_HEADER not in head:
+            raise ApiError(Problem.NOT_A_PDF)
         analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
@@ -79,14 +91,14 @@ async def read(
         analysis = orjson.loads(raw)
     # Over the analysis only: `expires_at` moves on every visit and is a hint.
     etag = f'"{xxhash.xxh3_64_hexdigest(raw)}"'
-    headers = {"ETag": etag, "Cache-Control": _DOCUMENT_CACHE}
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=headers)
+    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE}
+    if request.headers.get("if-none-match") == etag:  # absent on a first read
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)
     return _document(doc.id, doc.expires_at, analysis)
 
 
-@router.delete("/{doc_id}", status_code=204)
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     """The document and everything worked out from it, now rather than in an hour."""
     store.delete(doc.folder)
@@ -118,7 +130,7 @@ async def page(
     png = await workers.run(
         limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, min(scale, largest)
     )
-    cache = _PAGE_CACHE if build == BUILD else "no-store"
+    cache = PAGE_CACHE if build == BUILD else "no-store"
     return Response(png, media_type="image/png", headers={"Cache-Control": cache})
 
 
@@ -127,26 +139,6 @@ async def sweep_forever() -> None:
     while True:
         await asyncio.sleep(SWEEP_EVERY_S)
         await asyncio.to_thread(store.sweep)
-
-
-async def _receive(request: Request, dest: Path) -> None:
-    """Stream the body to disk, refusing it as soon as it's too big or plainly not a PDF."""
-    declared = request.headers.get("content-length")  # absent when the body is chunked
-    if declared is not None and int(declared) > limits.MAX_FILE_BYTES:
-        raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
-    size, head = 0, b""
-    with dest.open("wb") as out:
-        async for chunk in request.stream():
-            size += len(chunk)
-            if size > limits.MAX_FILE_BYTES:
-                raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
-            if len(head) < _HEADER_WINDOW:
-                head += chunk[: _HEADER_WINDOW - len(head)]
-                if len(head) == _HEADER_WINDOW and _PDF_HEADER not in head:
-                    raise ApiError(Problem.NOT_A_PDF)
-            out.write(chunk)
-    if _PDF_HEADER not in head:
-        raise ApiError(Problem.NOT_A_PDF)
 
 
 def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:

@@ -11,11 +11,11 @@ import hashlib
 
 import pymupdf
 
-from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
+from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SIZE_EPS
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import LIBRARY_VERSION, base14_for, strip_subset, substitute_for
+from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
 from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, span_id
 
 _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
@@ -33,8 +33,7 @@ _ADVANCE_DP = 2  # finer than any page can show
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
-# What drew and judged a page: MuPDF's version and our fonts'. A new build means
-# every image and fidelity worked out before it may be different.
+# What drew and judged a page; a new one means earlier images and fidelity may differ.
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
 
 
@@ -198,7 +197,7 @@ class MuPDFEngine:
         else:
             font = embedded
             key = (span.page, strip_subset(span.font))
-            cov = self._coverage.get(key)
+            cov = self._coverage.get(key)  # built on first use
             if cov is None:
                 cov = self._coverage[key] = Coverage(embedded.buffer)
             drawable = cov.drawable()
@@ -224,7 +223,7 @@ class MuPDFEngine:
             return []  # the substitute carries full Latin coverage
 
         key = (span.page, strip_subset(span.font))
-        cov = self._coverage.get(key)
+        cov = self._coverage.get(key)  # built on first use
         if cov is None:
             cov = self._coverage[key] = Coverage(embedded.buffer)
         return cov.missing(text)

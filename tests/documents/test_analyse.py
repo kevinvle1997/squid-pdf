@@ -12,8 +12,7 @@ from tests.helpers import assert_equal, assert_true
 
 
 @pytest.fixture
-def folder(pdf, tmp_path, monkeypatch):
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
+def folder(pdf):
     _, folder = store.create("owner")
     shutil.copy(pdf, folder / store.ORIGINAL)
     return folder

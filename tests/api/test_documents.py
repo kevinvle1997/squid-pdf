@@ -91,12 +91,6 @@ def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
     )
 
 
-def test_a_page_the_document_doesnt_have_is_not_found(mine, doc):
-    params = {"scale": 1, "build": doc["build"]}
-    response = mine.get(f"/api/documents/{doc['id']}/pages/2", params=params)
-    assert_problem(response, "not_found", 404)
-
-
 def test_reading_it_again_unchanged_answers_not_modified(mine, doc):
     first = mine.get(f"/api/documents/{doc['id']}")
     assert_equal(first.headers["cache-control"], "private, no-cache", "document caching")

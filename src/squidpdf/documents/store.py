@@ -25,20 +25,18 @@ _OWNER = "owner"
 _INDEX = "index.json"
 _PAGES = "pages.json"
 _ID_BYTES = 16
-# What `secrets.token_urlsafe(_ID_BYTES)` makes. Anything else never reaches the
-# filesystem, so an id can't climb out of the root.
+# What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _ID_SHAPE = re.compile(r"[A-Za-z0-9_-]{22}")
 
 
 def root() -> Path:
     """The folder every document lives under: `SQUIDPDF_DATA`, or ./data."""
-    return Path(os.environ.get("SQUIDPDF_DATA", "data")).resolve()
+    return Path(os.environ.get("SQUIDPDF_DATA", "data")).resolve()  # unset in development
 
 
 def create(owner_digest: str) -> tuple[str, Path]:
     """A new, empty document folder that answers to this owner."""
-    # One disk on one box is the only copy. At a second box this moves to S3
-    # or the like, and the idle clock with it.
+    # One disk on one box is the only copy: at a second box, this moves to S3.
     doc_id = secrets.token_urlsafe(_ID_BYTES)
     folder = root() / doc_id
     folder.mkdir(parents=True)
@@ -87,7 +85,25 @@ def load_index(folder: Path) -> SpanIndex | None:
         raw = orjson.loads((folder / _INDEX).read_bytes())
     except FileNotFoundError:  # not analysed yet
         return None
-    return SpanIndex([_span(s) for s in raw])
+    return SpanIndex(
+        [
+            Span(
+                id=s["id"],
+                page=s["page"],
+                text=s["text"],
+                font=s["font"],
+                size=s["size"],
+                color=tuple(s["color"]),
+                bbox=Rect(**s["bbox"]),
+                origin=tuple(s["origin"]),
+                fragments=tuple(
+                    Fragment(f["text"], Rect(**f["bbox"]), tuple(f["origin"]))
+                    for f in s["fragments"]
+                ),
+            )
+            for s in raw
+        ]
+    )
 
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
@@ -111,20 +127,3 @@ def load_analysis(folder: Path, build: str) -> bytes | None:
         return (folder / f"analysis-{build}.json").read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
-
-
-def _span(raw: dict) -> Span:
-    """A span back from its saved JSON."""
-    return Span(
-        id=raw["id"],
-        page=raw["page"],
-        text=raw["text"],
-        font=raw["font"],
-        size=raw["size"],
-        color=tuple(raw["color"]),
-        bbox=Rect(**raw["bbox"]),
-        origin=tuple(raw["origin"]),
-        fragments=tuple(
-            Fragment(f["text"], Rect(**f["bbox"]), tuple(f["origin"])) for f in raw["fragments"]
-        ),
-    )
