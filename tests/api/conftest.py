@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api import owner
 from squidpdf.api.app import create_app
-from squidpdf.api.errors import ApiError
+from squidpdf.api.errors import ApiError, Problem
 
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
@@ -37,7 +37,7 @@ def _stand_in() -> APIRouter:
     @router.get("/api/things/{thing}")
     def read(thing: str, request: Request, scale: int = 1) -> dict[str, str]:
         if thing not in owners:
-            raise ApiError("not_found")
+            raise ApiError(Problem.NOT_FOUND)
         owner.check(request, owners[thing])
         return {"id": thing}
 
