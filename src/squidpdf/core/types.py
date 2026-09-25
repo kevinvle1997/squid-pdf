@@ -2,7 +2,7 @@
 
 A Span holds what the file states and nothing we concluded. Whether an edit here
 will look identical depends on the font library we happen to ship, which is a
-judgement that can change without the document changing — so it lives in
+judgement that can change without the document changing, so it lives in
 `core.fidelity`, not here.
 """
 
@@ -62,7 +62,7 @@ class Span:
 
     `font` is the name as the file records it, subset prefix and all
     (`ABCDEE+Calibri`). `origin` is the baseline start, not the top-left of the
-    box — two points out is visible.
+    box: two points out is visible.
 
     `id` is stable for the life of a document because the index is built once
     from the pristine file and never rebuilt from an edited one. See SpanIndex.
@@ -118,8 +118,8 @@ _SPAN_ID_DIGEST_SIZE = 6  # bytes -> 12 hex chars; documents have spans in the
 def span_id(page: int, bbox: Rect, font: str, text: str, ordinal: int) -> str:
     """Stable within a document, distinct between near-identical cells.
 
-    The ordinal separates spans that share text, font and a rounded box — two
-    empty table cells, say — which a content hash alone would collide.
+    The ordinal separates spans that share text, font and a rounded box (two
+    empty table cells, say), which a content hash alone would collide.
     """
     seed = f"{page}:{bbox.x0:.1f}:{bbox.y0:.1f}:{font}:{text}:{ordinal}"
     return hashlib.blake2s(seed.encode(), digest_size=_SPAN_ID_DIGEST_SIZE).hexdigest()

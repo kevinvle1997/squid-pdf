@@ -1,6 +1,6 @@
 """What the PDF says, and what we can promise about changing it.
 
-Imported by every feature. Nothing here may import a feature — that rule is
+Imported by every feature. Nothing here may import a feature. That rule is
 convention, not enforced, so watch it in review.
 """
 

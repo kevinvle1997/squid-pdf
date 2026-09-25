@@ -5,7 +5,7 @@ project ever needs a permissive licence, only this gets reimplemented against
 pypdfium2 and pikepdf, not the app.
 
 Two rules hold this in place. Nothing outside `core` imports PyMuPDF. And the
-engine speaks only in primitives — remove, draw — so it never learns what a
+engine speaks only in primitives (remove, draw), so it never learns what a
 Replace or a Redact is, which is what keeps `core` free of feature imports.
 """
 

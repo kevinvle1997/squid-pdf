@@ -17,7 +17,7 @@ from typing import cast
 from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import limits
-from squidpdf.api.errors import Problem
+from squidpdf.api.errors import ApiError
 
 # A worker is replaced after this many tasks, so memory MuPDF never hands back
 # can't pile up. A starting guess, not a measurement.
@@ -52,7 +52,7 @@ class Pool:
         # pebble raises these for a task out of time, or a worker that died;
         # the task itself raises MemoryError at the ceiling.
         except (TimeoutError, ProcessExpired, MemoryError) as exc:
-            raise Problem("damaged") from exc
+            raise ApiError("damaged") from exc
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""

@@ -1,7 +1,7 @@
 """Assertion helpers that leave a human-readable message on failure.
 
 A bare `assert x == y` makes pytest reconstruct a message from the expression;
-`all(pred(x) for x in xs)` and `any(...)` do not even give it that — a failure
+`all(pred(x) for x in xs)` and `any(...)` do not even give it that: a failure
 just reads `assert False`. Every check in this suite goes through one of these
 instead, so a failure always says what was expected and what it found.
 """

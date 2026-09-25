@@ -13,7 +13,7 @@ import secrets
 
 from fastapi import Request, Response
 
-from squidpdf.api.errors import Problem
+from squidpdf.api.errors import ApiError
 
 # `__Host-` makes the browser refuse it unless it's Secure, on /, and set by
 # this host, so a sibling subdomain can't plant one.
@@ -44,4 +44,4 @@ def check(request: Request, stored: str) -> None:
     """Raise not_found unless this browser's cookie is the one `stored` came from."""
     presented = request.cookies.get(COOKIE)  # None if this browser never uploaded
     if presented is None or not hmac.compare_digest(digest(presented), stored):
-        raise Problem("not_found")
+        raise ApiError("not_found")

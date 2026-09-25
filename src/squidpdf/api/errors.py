@@ -7,12 +7,12 @@ what it can: by the time the server says no, it's a backstop, never news.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-from typing import Any, Literal
+from typing import Literal
 
-from fastapi import Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.core import words
@@ -50,14 +50,11 @@ _PROBLEMS: dict[ProblemType, tuple[int, str]] = {
     "server_error": (500, words.SERVER_ERROR),
 }
 
-_MEDIA_TYPE = "application/problem+json"
-_NOT_FOUND_STATUS = 404
 
-
-class Problem(Exception):
+class ApiError(Exception):
     """Raise anywhere a request is handled and the browser gets Problem Details.
 
-    `fill` fills the sentence's placeholders, e.g. `Problem("too_large", mb=100)`.
+    `fill` fills the sentence's placeholders, e.g. `ApiError("too_large", mb=100)`.
     """
 
     def __init__(self, type: ProblemType, **fill: object) -> None:
@@ -68,52 +65,35 @@ class Problem(Exception):
         self.detail = sentence.format(**fill)
 
 
-def _respond(problem: Problem) -> JSONResponse:
-    """The Problem Details body, with its own media type."""
+async def _handle(request: Request, exc: Exception) -> Response:
+    """Whatever was raised, answered as the Problem Details the browser gets."""
+    match exc:
+        case ApiError():
+            problem = exc
+        case RequestValidationError():
+            # FastAPI's body is a list of jargon. Only the browser sends
+            # requests, so this is a browser bug: one line for the report.
+            lines = []
+            for error in exc.errors():
+                loc = error["loc"]
+                where = ".".join(str(part) for part in loc[1:]) or loc[0]  # drop "body"
+                lines.append(f"{where}: {error['msg']}")
+            problem = ApiError("invalid_request", problem="; ".join(lines))
+        case HTTPException(status_code=status.HTTP_404_NOT_FOUND):
+            problem = ApiError("not_found")  # Starlette's own, for an unknown path
+        case HTTPException():
+            problem = ApiError("invalid_request", problem=exc.detail)
+        case _:
+            problem = ApiError("server_error")  # Starlette logs the traceback after
     return JSONResponse(
         {"type": problem.type, "status": problem.status, "detail": problem.detail},
         status_code=problem.status,
-        media_type=_MEDIA_TYPE,
+        media_type="application/problem+json",
     )
 
 
-async def _problem(request: Request, exc: Problem) -> Response:
-    """A Problem a route raised on purpose."""
-    return _respond(exc)
-
-
-async def _invalid(request: Request, exc: RequestValidationError) -> Response:
-    """Replaces FastAPI's validation body, a list of jargon, with one line.
-
-    Only the browser sends requests, so this is a browser bug; the line is for
-    whoever reads the report.
-    """
-    lines = []
-    for error in exc.errors():
-        loc = error["loc"]
-        where = ".".join(str(part) for part in loc[1:]) or loc[0]  # drop "body", "query"
-        lines.append(f"{where}: {error['msg']}")
-    return _respond(Problem("invalid_request", problem="; ".join(lines)))
-
-
-async def _http(request: Request, exc: HTTPException) -> Response:
-    """Starlette's own: an unknown path is not_found, anything else a bad request."""
-    if exc.status_code == _NOT_FOUND_STATUS:
-        return _respond(Problem("not_found"))
-    return _respond(Problem("invalid_request", problem=exc.detail))
-
-
-async def _crash(request: Request, exc: Exception) -> Response:
-    """Anything unhandled. Starlette logs the traceback after this has answered."""
-    return _respond(Problem("server_error"))
-
-
-# Passed to FastAPI whole, so every error the app can raise leaves as Problem Details.
-HANDLERS: dict[
-    int | type[Exception], Callable[[Request, Any], Coroutine[Any, Any, Response]]
-] = {
-    Problem: _problem,
-    RequestValidationError: _invalid,
-    HTTPException: _http,
-    Exception: _crash,
-}
+def install(app: FastAPI) -> None:
+    """Make every error the app can raise leave as Problem Details."""
+    # FastAPI has its own handlers for the first three; Exception catches the rest.
+    for raised in (ApiError, RequestValidationError, HTTPException, Exception):
+        app.add_exception_handler(raised, _handle)

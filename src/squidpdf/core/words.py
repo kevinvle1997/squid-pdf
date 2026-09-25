@@ -20,7 +20,7 @@ OPTIONS = {
     },
     "condense": {
         "label": "Tighten the letters",
-        "detail": "Squeezes the spacing by a few percent — not noticeable at this size.",
+        "detail": "Squeezes the spacing by a few percent, which isn't noticeable at this size.",
     },
     "as-is": {
         "label": "Leave it long",
@@ -28,18 +28,18 @@ OPTIONS = {
     },
 }
 
-# A Problem's `detail`, shown to the user verbatim. Limits are placeholders so
+# An ApiError's `detail`, shown to the user verbatim. Limits are placeholders so
 # the sentence can't drift from the number the server enforces.
 NOT_A_PDF = "This isn't a PDF."
 TOO_LARGE = "This file is over {mb} MB."
 TOO_MANY_PAGES = "This PDF has more than {pages} pages."
-ENCRYPTED = "This PDF is password-protected — open it with the password and save a copy first."
+ENCRYPTED = "This PDF is password-protected. Open it with the password and save a copy first."
 DAMAGED = "This PDF is damaged and can't be opened."
-NOT_FOUND = "Nothing here — it may have expired."  # never shown: the browser re-uploads
-REDACTION_CONFLICT = "This text has a redaction — undo it to edit."
+NOT_FOUND = "Nothing here. It may have expired."  # never shown: the browser re-uploads
+REDACTION_CONFLICT = "This text has a redaction. Undo it to edit."
 BAD_REFERENCE = "A redaction points at text that isn't in this document: {span_id}."
 REDACTION_FAILED = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
-FONT_MISMATCH = "This isn't the font the document uses — its letters are a different width."
-INVALID_REQUEST = "Something in the request isn't right — {problem}."
-RATE_LIMITED = "Too many files at once — try again in a minute."
-SERVER_ERROR = "Something went wrong on our side — try again."
+FONT_MISMATCH = "This isn't the font the document uses. Its letters are a different width."
+INVALID_REQUEST = "Something in the request isn't right ({problem})."
+RATE_LIMITED = "Too many files at once. Try again in a minute."
+SERVER_ERROR = "Something went wrong on our side. Try again."

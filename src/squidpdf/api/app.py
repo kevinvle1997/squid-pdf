@@ -30,12 +30,12 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="squid-pdf",
         lifespan=_lifespan,
-        exception_handlers=errors.HANDLERS,
         # Everything lives under /api; the rest of the host is the frontend's.
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",
         redoc_url=None,
     )
+    errors.install(app)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

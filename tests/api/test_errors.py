@@ -17,8 +17,8 @@ def test_a_bad_request_is_one_plain_line_not_a_list(browser):
     assert_problem(response, "invalid_request", 400)
     assert_equal(
         response.json()["detail"],
-        "Something in the request isn't right — "
-        "scale: Input should be a valid integer, unable to parse string as an integer.",
+        "Something in the request isn't right "
+        "(scale: Input should be a valid integer, unable to parse string as an integer).",
         "the invalid request sentence",
     )
 

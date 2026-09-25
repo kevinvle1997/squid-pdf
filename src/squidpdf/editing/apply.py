@@ -18,7 +18,7 @@ from squidpdf.editing.fit import FitCheck, options_for
 def _collapse(edits: Sequence[Edit]) -> tuple[list[Replace | Redact], list[Insert]]:
     """Reduce a log to the last edit per span (order preserved), plus inserts.
 
-    A span edited twice must only ever be drawn once, in its final state —
+    A span edited twice must only ever be drawn once, in its final state:
     otherwise a second correction draws on top of the first instead of
     replacing it, and a Redact after a Replace would leave the replacement text
     visible while still being reported as gone.
@@ -85,7 +85,7 @@ def verify_redactions(
 
     A covering rectangle would pass a visual check and fail this one, which is
     the entire point of running it. Only the last edit per span counts, matching
-    what apply() actually drew — a Replace after a Redact means it was not
+    what apply() actually drew. A Replace after a Redact means it was not
     redacted after all.
     """
     span_edits, _ = _collapse(edits)
