@@ -12,6 +12,7 @@ from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.api.errors.generic import InvalidRequest, NotFound, ServerError
+from squidpdf.api.language import headers, of
 from squidpdf.core import Problem
 
 
@@ -46,21 +47,32 @@ def adopt(exc: Exception) -> Problem:
     return ServerError()  # Starlette logs the traceback after
 
 
-def response(problem: Problem) -> JSONResponse:
-    """A Problem as Problem Details: the plain `detail`, and `debug` when there is one."""
+def response(problem: Problem, language: str) -> JSONResponse:
+    """A Problem as Problem Details, `detail` in `language`, and `debug` when there is one.
+
+    `code` and `params` are its Message, so the browser can say it in its own words;
+    `code` is always `type`.
+    """
     body: dict[str, object] = {
         "type": problem.type,
         "status": problem.status,
-        "detail": problem.detail,
+        "detail": problem.said_in(language),
+        "code": problem.type,
+        "params": problem.fill,
     }
     if problem.debug is not None:
         body["debug"] = problem.debug
-    return JSONResponse(body, status_code=problem.status, media_type="application/problem+json")
+    return JSONResponse(
+        body,
+        status_code=problem.status,
+        media_type="application/problem+json",
+        headers=headers(language),
+    )
 
 
 async def _handle(request: Request, exc: Exception) -> Response:
     """Whatever was raised, answered as the Problem Details the browser gets."""
-    return response(adopt(exc))
+    return response(adopt(exc), of(request))
 
 
 def _describe(item: dict[str, Any]) -> str:

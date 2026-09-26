@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core.message import Message
+from squidpdf.core.message import Message, MessageInfo
 from squidpdf.core.types import Category, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
@@ -90,7 +90,8 @@ class FitInfo(TypedDict):
     left_out: list[str]
     options: list[Strategy]
     strategy: Strategy
-    message: str | None
+    message: str | None  # every part below in the reader's words, in one line
+    message_parts: list[MessageInfo]  # what's wrong, each for the browser to say itself
 
 
 class InsertFitInfo(FitInfo):
@@ -99,16 +100,22 @@ class InsertFitInfo(FitInfo):
     edit: int
 
 
-class SkippedInfo(TypedDict):
-    """An edit left out, by its place in the list the browser sent, and why."""
+class SkippedInfo(MessageInfo):
+    """An edit left out, by its place in the list the browser sent, and why.
+
+    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+    """
 
     edit: int
     type: str
     detail: str
 
 
-class NoticeInfo(TypedDict):
-    """An edit drawn other than asked, by its span or its place in the list, and why."""
+class NoticeInfo(MessageInfo):
+    """An edit drawn other than asked, by its span or its place in the list, and why.
+
+    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+    """
 
     span_id: str | None
     detail: str

@@ -17,15 +17,16 @@ import xxhash
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
-from squidpdf.api import owner, pool
+from squidpdf.api import language, owner, pool
+from squidpdf.api.language import Language
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, NotFound, Page, words
+from squidpdf.core import BUILD, Message, NotFound, Page, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
-from squidpdf.documents.types import Analysis, Document, Loaded
+from squidpdf.documents.types import Analysis, Copy, Document, DocumentNoticeInfo, Loaded
 
 router = APIRouter(prefix="/api/documents")
 
@@ -61,6 +62,8 @@ async def upload(
     request: Request,
     token: Annotated[str, Depends(owner.token)],
     workers: Annotated[Pool, Depends(pool.current)],
+    said_in: Language,
+    response: Response,
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     declared = request.headers.get("content-length")  # absent when the body is chunked
@@ -89,7 +92,8 @@ async def upload(
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
-    return _document(doc_id, store.touch(folder), analysis)
+    response.headers.update(language.headers(said_in))
+    return _document(doc_id, store.touch(folder), analysis, said_in)
 
 
 @router.get("/{doc_id}", response_model=Document)
@@ -98,8 +102,9 @@ async def read(
     request: Request,
     response: Response,
     workers: Annotated[Pool, Depends(pool.current)],
+    said_in: Language,
 ) -> Document | Response:
-    """The document. Worked out again only when `build` has changed since."""
+    """The document, in the reader's language. Worked out again only for a new `build`."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
         analysis = await workers.run(
@@ -108,13 +113,16 @@ async def read(
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
-    # Over the analysis only: `expires_at` moves on every visit and is a hint.
-    etag = f'"{xxhash.xxh3_64_hexdigest(raw)}"'
-    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE}
+    # Over the analysis and the words it's said in: `expires_at` moves on every
+    # visit and is a hint. The words, so another language or a reworded
+    # sentence is never answered with a body the browser kept from before.
+    said = orjson.dumps(_copy(said_in)) + orjson.dumps(_notices(analysis, said_in))
+    etag = f'"{xxhash.xxh3_64_hexdigest(raw + said)}"'
+    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **language.headers(said_in)}
     if request.headers.get("if-none-match") == etag:  # absent on a first read
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)
-    return _document(doc.id, doc.expires_at, analysis)
+    return _document(doc.id, doc.expires_at, analysis, said_in)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -164,8 +172,8 @@ async def sweep_forever() -> None:
             _logger.exception("A sweep failed; the next runs in %s s", SWEEP_EVERY_S)
 
 
-def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
-    """The analysis, plus what belongs to this document and this moment."""
+def _document(doc_id: str, expires_at: float, analysis: Analysis, said_in: str) -> Document:
+    """The analysis, plus what belongs to this document and this moment, in `said_in`."""
     return {
         **analysis,
         "id": doc_id,
@@ -175,17 +183,31 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
             "condense_limit": CONDENSE_LIMIT,
             "shrink_floor": SHRINK_FLOOR,
         },
-        "copy": {
-            "missing": words.MISSING,
-            "too_long": words.TOO_LONG,
-            "stand_in": words.STAND_IN,
-            "stand_in_same_widths": words.STAND_IN_SAME_WIDTHS,
-            "undo_redaction": words.UNDO_REDACTION,
-            "options": {
-                name: {part: words.sentence(key) for part, key in keys.items()}
-                for name, keys in words.OPTION_KEYS.items()
-            },
-        },
-        # A scan has no text layer: say so, rather than show a page nothing on can be edited.
-        "notices": [] if analysis["spans"] else [{"type": "no_text", "detail": words.NO_TEXT}],
+        "copy": _copy(said_in),
+        "notices": _notices(analysis, said_in),
     }
+
+
+def _copy(said_in: str) -> Copy:
+    """The sentences the browser fills in as the user types, in `said_in`, unfilled."""
+    options = {
+        name: {part: words.sentence(key, said_in) for part, key in keys.items()}
+        for name, keys in words.OPTION_KEYS.items()
+    }
+    return {
+        "missing": words.sentence("missing", said_in),
+        "too_long": words.sentence("too_long", said_in),
+        "stand_in": words.sentence("stand_in", said_in),
+        "stand_in_same_widths": words.sentence("stand_in_same_widths", said_in),
+        "undo_redaction": words.sentence("undo_redaction", said_in),
+        "options": options,
+    }
+
+
+def _notices(analysis: Analysis, said_in: str) -> list[DocumentNoticeInfo]:
+    """What may not be what the user expected of this document, in `said_in`."""
+    # A scan has no text layer: say so, rather than show a page nothing on can be edited.
+    if analysis["spans"]:
+        return []
+    no_text = Message("no_text")
+    return [{"type": "no_text", "detail": words.render(no_text, said_in), **no_text.as_info()}]

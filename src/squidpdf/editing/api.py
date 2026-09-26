@@ -3,7 +3,7 @@
 Also the font list: every face we ship that new text can be drawn in.
 
 Routes stay thin: load, validate, pool, reply. The reply is where what went
-wrong is put into words: the pool hands back Messages. Imports `documents.api`
+wrong is put into the reader's words: the pool hands back Messages. Imports `documents.api`
 for `load`, the one allowed direction; documents never imports editing.
 """
 
@@ -17,8 +17,9 @@ from fastapi import APIRouter, Body, Depends, Response
 from pydantic import Field
 
 from squidpdf.api import constants as limits
-from squidpdf.api import pool
+from squidpdf.api import language, pool
 from squidpdf.api.errors import InvalidRequest
+from squidpdf.api.language import Language
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, words
 from squidpdf.documents import api as documents
@@ -74,6 +75,8 @@ async def render(
     scale: Annotated[int, Body(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     regions: Annotated[list[Region], Body()],
     workers: Annotated[Pool, Depends(pool.current)],
+    said_in: Language,
+    response: Response,
 ) -> Render:
     """Each region drawn with the edits on its page, a fit per replace, and what was skipped.
 
@@ -102,39 +105,52 @@ async def render(
     rendered = await workers.run(
         limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
     )
+    response.headers.update(language.headers(said_in))
     fits = rendered.fits
     return {
         "images": rendered.images,
-        "fits": {span_id: _fit_info(fit) for span_id, fit in fits.replaces.items()},
+        "fits": {span_id: _fit_info(fit, said_in) for span_id, fit in fits.replaces.items()},
         "insert_fits": [
-            {**_fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
+            {**_fit_info(fit, said_in), "edit": position}
+            for position, fit in fits.inserts.items()
         ],
         "redactions": [],  # verdicts come with export and the redaction check
-        "skipped": [_skipped_info(skipped) for skipped in rendered.skipped],
-        "notices": [_notice_info(notice) for notice in rendered.notices],
+        "skipped": [_skipped_info(skipped, said_in) for skipped in rendered.skipped],
+        "notices": [_notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,
         "expires_at": datetime.fromtimestamp(doc.expires_at, UTC).isoformat(),
     }
 
 
-def _fit_info(fit: FitReport) -> FitInfo:
+def _fit_info(fit: FitReport, said_in: str) -> FitInfo:
     """A fit as the browser gets it: option names, since it has their sentences."""
+    parts = fit.describe()
     return {
         "delta_pt": fit.delta_pt,
         "missing": fit.missing,
         "left_out": fit.left_out,
-        "options": [o.name for o in fit.options],
+        "options": [option.name for option in fit.options],
         "strategy": fit.strategy,
-        "message": words.render_all(fit.describe()),
+        "message": words.render_all(parts, said_in),
+        "message_parts": [part.as_info() for part in parts],
     }
 
 
-def _skipped_info(skipped: Skipped) -> SkippedInfo:
-    """An edit left out, as the browser gets it: why, in words."""
-    return {"edit": skipped.edit, "type": skipped.type, "detail": words.render(skipped.detail)}
+def _skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:
+    """An edit left out, as the browser gets it: why, in words and unsaid."""
+    return {
+        "edit": skipped.edit,
+        "type": skipped.type,
+        "detail": words.render(skipped.detail, said_in),
+        **skipped.detail.as_info(),
+    }
 
 
-def _notice_info(notice: Notice) -> NoticeInfo:
-    """An edit drawn other than asked, as the browser gets it: why, in words."""
-    detail = words.render(notice.detail)
-    return {"span_id": notice.span_id, "detail": detail, "edit": notice.edit}
+def _notice_info(notice: Notice, said_in: str) -> NoticeInfo:
+    """An edit drawn other than asked, as the browser gets it: why, in words and unsaid."""
+    return {
+        "span_id": notice.span_id,
+        "detail": words.render(notice.detail, said_in),
+        "edit": notice.edit,
+        **notice.detail.as_info(),
+    }
