@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 import orjson
@@ -22,7 +23,7 @@ from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, Page, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
-from squidpdf.documents.analyse import analyse, page_image
+from squidpdf.documents.analyse import TooManyPages, analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.types import Analysis, Document, Loaded
 
@@ -80,7 +81,7 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise ApiError(Problem.NOT_A_PDF)
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+        analysis = await _analyse(workers, folder)
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -97,7 +98,7 @@ async def read(
     """The document. Worked out again only when `build` has changed since."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder))
+        analysis = await _analyse(workers, doc.folder)
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -150,6 +151,14 @@ async def sweep_forever() -> None:
         await asyncio.to_thread(store.sweep)
 
 
+async def _analyse(workers: Pool, folder: Path) -> Analysis:
+    """The document worked out in a worker, refused plainly if it has too many pages."""
+    try:
+        return await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+    except TooManyPages as exc:
+        raise ApiError(Problem.TOO_MANY_PAGES, pages=limits.MAX_PAGES) from exc
+
+
 def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
     """The analysis, plus what belongs to this document and this moment."""
     return {
@@ -164,6 +173,7 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
         "copy": {
             "missing": words.MISSING,
             "too_long": words.TOO_LONG,
+            "stand_in": words.STAND_IN,
             "options": words.OPTIONS,
         },
         # A scan has no text layer: say so, rather than show a page nothing on can be edited.

@@ -44,6 +44,9 @@ _BASE14 = {
 }
 _BASE14_FALLBACK = "helv"
 
+# What each of those is called, for telling the user which face drew their edit.
+_BASE14_NAMES = {"helv": "Helvetica", "tiro": "Times", "cour": "Courier"}
+
 
 def strip_subset(font: str) -> str:
     """`ABCDEE+Calibri-Bold` -> `Calibri-Bold`. Style is kept, only the prefix goes."""
@@ -65,7 +68,10 @@ def bare_name(font: str) -> str:
 
 
 def substitute_for(font: str) -> str:
-    """The closest face that will not move anything on the page."""
+    """The closest face that will not move anything on the page, once it's bundled.
+
+    Not what draws today: tell the user `drawn_in`'s answer until it is.
+    """
     return SUBSTITUTES.get(bare_name(font), FALLBACK)
 
 
@@ -73,8 +79,15 @@ def base14_for(font: str) -> str:
     """The built-in PDF font actually used to draw a substitute, today.
 
     Only a stand-in for `substitute_for`'s answer until the real files in
-    SUBSTITUTES are bundled (see HANDOFF gap #1). Kept separate so the name
-    shown to the user (`substitute_for`) does not silently change to match
-    whatever we can currently render with.
+    SUBSTITUTES are bundled (see HANDOFF gap #1).
     """
     return _BASE14.get(bare_name(font), _BASE14_FALLBACK)
+
+
+def drawn_in(font: str) -> str:
+    """The name of the face that really draws an edit in this font today, e.g. "Helvetica".
+
+    The one to tell the user: naming a look-alike we don't ship would promise
+    a width we can't keep.
+    """
+    return _BASE14_NAMES[base14_for(font)]

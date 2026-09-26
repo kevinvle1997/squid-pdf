@@ -18,7 +18,7 @@ class Fidelity(StrEnum):
     """The three ways an edit can turn out, in terms of the original font."""
 
     EXACT = "exact"  # the document's own font is in the file and covers it
-    SUBSTITUTE = "substitute"  # not embedded; a metric-compatible stand-in is used
+    SUBSTITUTE = "substitute"  # the file's own copy can't be used; another face draws
     IMAGE = "image"  # no text layer here at all
 
 

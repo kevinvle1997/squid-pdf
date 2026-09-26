@@ -76,6 +76,7 @@ class Copy(TypedDict):
 
     missing: str
     too_long: str
+    stand_in: str
     options: dict[str, dict[str, str]]
 
 

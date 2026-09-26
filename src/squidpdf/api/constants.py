@@ -26,7 +26,7 @@ MAX_BODY_BYTES = 5 * _MB
 MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
-# Workers. Past a timeout the task is killed and reported as a damaged file.
+# Workers. Past a timeout the task is killed and the user told it took too long.
 UPLOAD_TIMEOUT_S = 30
 RENDER_TIMEOUT_S = 10
 EXPORT_TIMEOUT_S = 60

@@ -37,6 +37,11 @@ class Problem(Enum):
     FONT_MISMATCH = 422, words.FONT_MISMATCH
     INVALID_REQUEST = 400, words.INVALID_REQUEST
     RATE_LIMITED = 429, words.RATE_LIMITED
+    TOO_SLOW = 503, words.TOO_SLOW
+    TOO_HEAVY = 422, words.TOO_HEAVY
+    TOO_MANY_EDITS = 422, words.TOO_MANY_EDITS
+    TEXT_TOO_LONG = 422, words.TEXT_TOO_LONG
+    REQUEST_TOO_LARGE = 413, words.REQUEST_TOO_LARGE
     SERVER_ERROR = 500, words.SERVER_ERROR
 
 
@@ -44,14 +49,16 @@ class ApiError(Exception):
     """Raise anywhere a request is handled and the browser gets Problem Details.
 
     `fill` fills the sentence's placeholders, e.g. `ApiError(Problem.TOO_LARGE, mb=100)`.
+    `debug` is the technical why, for a developer: sent beside `detail`, never in it.
     """
 
-    def __init__(self, problem: Problem, **fill: object) -> None:
+    def __init__(self, problem: Problem, debug: str | None = None, **fill: object) -> None:
         """Word the sentence for this problem."""
         super().__init__(problem.name)
         self.type = problem.name.lower()
         self.status, sentence = problem.value
         self.detail = sentence.format(**fill)
+        self.debug = debug
 
 
 async def _handle(request: Request, exc: Exception) -> Response:
@@ -64,20 +71,28 @@ async def _handle(request: Request, exc: Exception) -> Response:
         case Unreadable():
             error = ApiError(Problem.DAMAGED)
         case RequestValidationError():
-            # One plain line, not FastAPI's jargon list: it's a browser bug report.
-            reason = "; ".join(_describe(item) for item in exc.errors())
-            error = ApiError(Problem.INVALID_REQUEST, reason=reason)
+            # A browser bug: a plain sentence for the user, FastAPI's list for us.
+            debug = "; ".join(_describe(item) for item in exc.errors())
+            error = ApiError(Problem.INVALID_REQUEST, debug=debug)
         case HTTPException(status_code=status.HTTP_404_NOT_FOUND):
             error = ApiError(Problem.NOT_FOUND)  # Starlette's own, for an unknown path
         case HTTPException():
-            error = ApiError(Problem.INVALID_REQUEST, reason=exc.detail)
+            error = ApiError(Problem.INVALID_REQUEST, debug=str(exc.detail))
         case _:
             error = ApiError(Problem.SERVER_ERROR)  # Starlette logs the traceback after
-    return JSONResponse(
-        {"type": error.type, "status": error.status, "detail": error.detail},
-        status_code=error.status,
-        media_type="application/problem+json",
-    )
+    return problem_response(error)
+
+
+def problem_response(error: ApiError) -> JSONResponse:
+    """An ApiError as Problem Details: the plain `detail`, and `debug` when there is one."""
+    body: dict[str, object] = {
+        "type": error.type,
+        "status": error.status,
+        "detail": error.detail,
+    }
+    if error.debug is not None:
+        body["debug"] = error.debug
+    return JSONResponse(body, status_code=error.status, media_type="application/problem+json")
 
 
 def _describe(item: dict[str, Any]) -> str:

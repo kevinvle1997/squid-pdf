@@ -10,21 +10,28 @@ from pathlib import Path
 
 import orjson
 
+from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span
 from squidpdf.documents import store
 from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
+
+
+class TooManyPages(Exception):
+    """The PDF has more pages than the server works on; checked before any other work."""
 
 
 def analyse(folder: str) -> Analysis:
     """Judge every span and list each font's letters, under this build, and keep it.
 
     The index is built on the first run and reused after, so a new build judges
-    the same spans and every id holds.
+    the same spans and every id holds. Raises TooManyPages first, if it has.
     """
     path = Path(folder)
     with MuPDFEngine(str(path / store.ORIGINAL)) as eng:
         index = store.load_index(path)
         if index is None:
+            if len(eng.pages()) > limits.MAX_PAGES:
+                raise TooManyPages
             index = eng.index()
             store.save_index(path, index)
             store.save_pages(path, eng.pages())

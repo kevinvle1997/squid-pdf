@@ -53,7 +53,7 @@ def test_referenced_font_is_a_substitution(engine):
     referenced = [s for s in engine.index() if s.page == REFERENCED_PAGE]
     describe = _describe_report(reports)
     assert_all(referenced, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
-    assert_all(referenced, lambda s: bool(reports[s.id].substitute), describe)
+    assert_all(referenced, lambda s: reports[s.id].substitute == "Times", describe)  # drawn in
     not_stored = words.FONT_NOT_IN_FILE
     assert_all(referenced, lambda s: reports[s.id].why == not_stored, describe)
 

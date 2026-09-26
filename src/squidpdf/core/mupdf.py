@@ -18,7 +18,7 @@ from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SI
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
+from squidpdf.core.fonts import base14_for, drawn_in, strip_subset
 from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
 from squidpdf.core.types import (
     CodedFont,
@@ -218,7 +218,7 @@ class MuPDFEngine:
             span.id,
             Fidelity.SUBSTITUTE,
             span.font,
-            substitute=substitute_for(span.font),
+            substitute=drawn_in(span.font),
             why=self._why_not(span) if not in_file else words.FONT_LACKS_LETTERS,
         )
 
