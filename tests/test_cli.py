@@ -12,7 +12,7 @@ import pymupdf
 import pytest
 
 from squidpdf.cli import main
-from squidpdf.core import MuPDFEngine
+from squidpdf.core import MuPDFEngine, words
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 
@@ -112,7 +112,7 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     code = main(["redact", pdf, span_id, "-o", str(out_pdf)])
 
     assert_equal(code, 0, "exit code of `squidpdf redact`")
-    assert_in("is gone", capsys.readouterr().out, "the redact output")
+    assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 
@@ -130,7 +130,8 @@ def test_an_unknown_span_id_fails_and_points_at_spans(pdf, argv, capsys):
 
     out = capsys.readouterr().out
     assert_equal(code, 1, f"exit code of `squidpdf {argv[0]}` with an unknown span id")
-    assert_in("no span nope", out, "the unknown-span error")
+    assert_in(words.NO_SPAN, out, "the unknown-span error")
+    assert_in("nope", out, "the unknown-span error names the id")
     assert_in("squidpdf spans", out, "the unknown-span error names the command to run")
 
 
