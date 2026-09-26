@@ -245,6 +245,29 @@ def _no_span(span_id: str) -> int:
     return 1
 
 
+def _existing_file(path: str) -> str:
+    """A path to a file that's there; otherwise a usage error that names it."""
+    if not Path(path).is_file():
+        raise argparse.ArgumentTypeError(f"there's no file at {path}")
+    return path
+
+
+def _new_file(path: str) -> str:
+    """A path to save to: in a folder that's there, and not a folder itself."""
+    target = Path(path)
+    if target.is_dir():
+        raise argparse.ArgumentTypeError(f"{path} is a folder, not a file")
+    if not target.parent.is_dir():
+        folder, name = target.parent, target.name
+        raise argparse.ArgumentTypeError(f"there's no folder {folder} to save {name} in")
+    return path
+
+
+def _same_file(pdf: str, out: str) -> bool:
+    """Whether `out` is `pdf` itself, under this name or another."""
+    return Path(out).exists() and Path(out).samefile(pdf)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and run the chosen subcommand."""
     parser = argparse.ArgumentParser(
@@ -255,39 +278,44 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="cmd", required=True)
 
     command = commands.add_parser("spans", help="list editable text and how it would edit")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("-p", "--page", type=int, default=None)
     command.set_defaults(fn=cmd_spans)
 
     command = commands.add_parser("check", help="what would happen if you typed this")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
     command.set_defaults(fn=cmd_check)
 
     command = commands.add_parser("edit", help="replace a span and save")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
-    command.add_argument("-o", "--out", default="out.pdf")
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
     command.set_defaults(fn=cmd_edit)
 
     command = commands.add_parser("redact", help="remove a span and verify it is gone")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
-    command.add_argument("-o", "--out", default="out.pdf")
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.set_defaults(fn=cmd_redact)
 
+    # No check here: one file that won't open is a row in the report, not the end of it.
     command = commands.add_parser("report", help="green rate across a corpus")
     command.add_argument("pdfs", nargs="+")
     command.set_defaults(fn=cmd_report)
 
     command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default="fixtures/sample.pdf")
+    command.add_argument("out", nargs="?", default="fixtures/sample.pdf", type=_new_file)
     command.set_defaults(fn=cmd_fixture)
 
     args = parser.parse_args(argv)
+    # Saving over the PDF being read would lose the original if anything went wrong.
+    overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
+    if overwrites:
+        parser.error(f"-o {args.out} is the PDF being read; save to a new file")
     try:
         return args.fn(args)
     except Problem as exc:  # e.g. the one PDF a command was given won't open
