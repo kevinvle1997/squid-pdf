@@ -16,7 +16,7 @@ from squidpdf.editing.types import Strategy
 
 @dataclass(frozen=True, slots=True)
 class Replace:
-    """Swap a span's text. Remove the old glyph run, redraw a new one."""
+    """Swap a span's text: remove the old letters and draw the new ones in their place."""
 
     span_id: str
     text: str
@@ -30,7 +30,8 @@ class Redact:
 
     Mechanically the first half of a Replace. A covering rectangle would leave
     the text extractable underneath, which is how documents get leaked, so this
-    deletes the operators and the result is checked by re-reading the output.
+    deletes the text from the page itself and the result is checked by re-reading
+    the output.
     """
 
     span_id: str

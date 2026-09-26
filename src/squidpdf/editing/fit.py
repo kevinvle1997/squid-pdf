@@ -23,7 +23,7 @@ class Option:
     detail: str
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class FitCheck:
     """The answer to 'what happens if I type this'.
 
@@ -58,13 +58,17 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
     Condensing is offered only while it stays invisible, and shrinking only down
     to the floor. Past that it is not a solution, it is a different-looking page.
     """
+    # It fits, or there's no width to compare against.
     if delta_pt <= TOLERANCE_PT or original_width <= 0:
         return []
 
+    # What shrinking to fit would scale the size to, and how much condensing squeezes.
+    shrunk_to = original_width / (original_width + delta_pt)
+    squeezed_by = delta_pt / original_width
     names: list[Strategy] = []
-    if original_width / (original_width + delta_pt) >= SHRINK_FLOOR:
+    if shrunk_to >= SHRINK_FLOOR:
         names.append("shrink")
-    if delta_pt / original_width <= CONDENSE_LIMIT:
+    if squeezed_by <= CONDENSE_LIMIT:
         names.append("condense")
     names.append("as-is")
     return [

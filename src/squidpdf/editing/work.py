@@ -33,30 +33,33 @@ def render(
         raise LookupError(f"no index in {folder}")
     pages = store.load_pages(path)
 
-    with MuPDFEngine(str(path / store.ORIGINAL)) as eng:
-        checked = fits(eng, edits, index)  # before apply: remove() can drop the fonts
-        skipped = apply(eng, edits, index, pages={r.page for r in regions})
-        images = [_draw(eng, r, pages[r.page], scales[r.page]) for r in regions]
+    with MuPDFEngine(str(path / store.ORIGINAL)) as engine:
+        checked = fits(engine, edits, index)  # before apply: remove() can drop the fonts
+        skipped = apply(engine, edits, index, pages={region.page for region in regions})
+        images = [
+            _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
+        ]
 
     return {
         "images": images,
-        "fits": {span_id: _fit(f) for span_id, f in checked.items()},
+        "fits": {span_id: _fit(fit) for span_id, fit in checked.items()},
         "redactions": [],  # verdicts come with export and the redaction check
         "skipped": skipped,
     }
 
 
-def _draw(eng: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
+def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
     """One region as a base64 PNG: the whole page, or a full-width strip of it."""
-    if region.y0 is None and region.y1 is None:
-        png, top = eng.page_image(region.page, scale), 0.0
-    else:
-        # Out to whole pixels, so the strip's rows are the page image's rows.
-        y0 = 0.0 if region.y0 is None else max(region.y0, 0.0)
-        top = math.floor(y0 * scale) / scale
-        y1 = page.height if region.y1 is None else min(region.y1, page.height)
-        bottom = math.ceil(y1 * scale) / scale
-        png = eng.page_image(region.page, scale, Rect(0, top, page.width, bottom))
+    whole_page = region.y0 is None and region.y1 is None
+    if whole_page:
+        png = engine.page_image(region.page, scale)
+        return {"page": region.page, "y": 0.0, "image": base64.b64encode(png).decode()}
+    # A strip, out to whole pixels so its rows are the page image's rows.
+    y0 = 0.0 if region.y0 is None else max(region.y0, 0.0)
+    top = math.floor(y0 * scale) / scale
+    y1 = page.height if region.y1 is None else min(region.y1, page.height)
+    bottom = math.ceil(y1 * scale) / scale
+    png = engine.page_image(region.page, scale, Rect(0, top, page.width, bottom))
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}
 
 

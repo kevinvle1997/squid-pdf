@@ -36,19 +36,15 @@ def _collapse(edits: Sequence[Edit]) -> tuple[list[Replace | Redact], list[Inser
     replacing it, and a Redact after a Replace would leave the replacement text
     visible while still being reported as gone.
     """
+    # Overwriting a key keeps its place, so spans stay in the order first edited.
     latest: dict[str, Replace | Redact] = {}
-    order: list[str] = []
     inserts: list[Insert] = []
-
     for edit in edits:
         if isinstance(edit, Insert):
             inserts.append(edit)
             continue
-        if edit.span_id not in latest:
-            order.append(edit.span_id)
         latest[edit.span_id] = edit
-
-    return [latest[span_id] for span_id in order], inserts
+    return list(latest.values()), inserts
 
 
 def _resolve(
@@ -58,25 +54,32 @@ def _resolve(
 
     A redaction that points at nothing raises BadReference instead.
     """
-    page_count = len(engine.pages()) if any(isinstance(e, Insert) for e in edits) else 0
+    # Only inserts need the page count, so skip reading the pages without one.
+    has_inserts = any(isinstance(e, Insert) for e in edits)
+    page_count = len(engine.pages()) if has_inserts else 0
     spans: dict[str, Span] = {}
     kept: list[Edit] = []
     skipped: list[Skipped] = []
-    for i, edit in enumerate(edits):
-        if isinstance(edit, Insert):
-            if 0 <= edit.page < page_count:
-                kept.append(edit)
-            else:
-                skipped.append(Skipped(i, _BAD_REFERENCE, words.NO_PAGE))
+    for position, edit in enumerate(edits):
+        # An insert on a page the document doesn't have.
+        if isinstance(edit, Insert) and not 0 <= edit.page < page_count:
+            skipped.append(Skipped(position, _BAD_REFERENCE, words.NO_PAGE))
             continue
-        span = index.get(edit.span_id)
-        if span is not None:
-            spans[span.id] = span
+        # An insert on a real page.
+        if isinstance(edit, Insert):
             kept.append(edit)
-        elif isinstance(edit, Redact):
+            continue
+        # The browser can send an id this document doesn't have.
+        span = index.get(edit.span_id)
+        # A redaction of missing text: skipping it would be a leak.
+        if span is None and isinstance(edit, Redact):
             raise BadReference(edit.span_id)
-        else:
-            skipped.append(Skipped(i, _BAD_REFERENCE, words.NO_SPAN))
+        # A replace of missing text.
+        if span is None:
+            skipped.append(Skipped(position, _BAD_REFERENCE, words.NO_SPAN))
+            continue
+        spans[span.id] = span
+        kept.append(edit)
     span_edits, inserts = _collapse(kept)
     return [(e, spans[e.span_id]) for e in span_edits], inserts, skipped
 
@@ -99,7 +102,8 @@ def apply(
     to_remove: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
     for edit, span in span_edits:
-        if pages is not None and span.page not in pages:
+        off_screen = pages is not None and span.page not in pages
+        if off_screen:
             continue
         to_remove.append(span)
         if isinstance(edit, Replace):
@@ -111,20 +115,29 @@ def apply(
         engine.remove(to_remove)
     for span, text, size, scale_x in to_draw:
         engine.draw(span, text, size, scale_x)
-    for ins in inserts:
-        if pages is None or ins.page in pages:
-            engine.draw_at(ins.page, ins.origin, ins.text, ins.size, ins.color)
+    for insert in inserts:
+        on_screen = pages is None or insert.page in pages
+        if on_screen:
+            engine.draw_at(insert.page, insert.origin, insert.text, insert.size, insert.color)
     return skipped
 
 
 def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, float]:
-    """The size and horizontal scale the edit's strategy draws at, if it's offered."""
+    """The font size and horizontal stretch to draw a replacement at.
+
+    A None size keeps the span's own. The edit's strategy counts only if it was offered.
+    """
     strategy = check(engine, span, edit.text, edit.strategy).strategy
+    # Drawn as typed: the span's size, no stretch.
     if strategy == "as-is":
         return None, 1.0
     # Width is linear in both, so this ratio lands the text on the original's end.
     ratio = engine.measure(span, span.text) / engine.measure(span, edit.text)
-    return (span.size * ratio, 1.0) if strategy == "shrink" else (None, ratio)
+    # Smaller letters, same shape.
+    if strategy == "shrink":
+        return span.size * ratio, 1.0
+    # Condense: same size, letters squeezed narrower.
+    return None, ratio
 
 
 def fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> dict[str, FitCheck]:
