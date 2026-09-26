@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import posixpath
 import sys
+from pathlib import Path
 
 from squidpdf.core import (
     GREEN_RATE_TARGET,
@@ -24,7 +25,7 @@ from squidpdf.core import (
     green_rate,
     words,
 )
-from squidpdf.editing import Redact, Replace, apply, check, verify_redactions
+from squidpdf.editing import Redact, Replace, apply, check
 
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
@@ -128,16 +129,21 @@ def cmd_redact(args: argparse.Namespace) -> int:
         if span is None:
             return _no_span(args.span_id)
 
-        edits = [Redact(span.id)]
-        apply(engine, edits, index)
+        apply(engine, [Redact(span.id)], index)
         engine.save(args.out)
-        gone = verify_redactions(engine, edits, index)[span.id]
 
-        colour, verdict = (GREEN, "is gone") if gone else (RED, "IS STILL PRESENT")
-        print(f"\n  removed {span.text!r}")
-        print(f"  {GREEN}saved{OFF} {args.out}")
-        print(f"  {colour}text {verdict}{OFF} {DIM}· verified by re-reading the output{OFF}\n")
-        return 0 if gone else 1
+    # Re-read the saved file, as the app does before a download.
+    with MuPDFEngine(args.out) as saved:
+        gone = saved.absent(span.text)
+    # Still there: keep nothing, as the app downloads nothing.
+    if not gone:
+        Path(args.out).unlink()
+        failed = words.REDACTION_FAILED.format(text=span.text, page=span.page + 1)
+        print(f"  {RED}{failed}{OFF}")
+        return 1
+    print(f"\n  removed {span.text!r}")
+    print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
+    return 0
 
 
 def cmd_report(args: argparse.Namespace) -> int:

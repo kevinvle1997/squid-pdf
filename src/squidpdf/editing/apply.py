@@ -47,6 +47,19 @@ def _collapse(edits: Sequence[Edit]) -> tuple[list[Replace | Redact], list[Inser
     return list(latest.values()), inserts
 
 
+def _undone_redactions(edits: Sequence[Edit]) -> list[str]:
+    """The spans a Replace brought back after they were redacted: the last edit wins."""
+    redacted: set[str] = set()
+    undone: dict[str, None] = {}  # a dict, to keep the order and drop repeats
+    for edit in edits:
+        if isinstance(edit, Redact):
+            redacted.add(edit.span_id)
+            undone.pop(edit.span_id, None)  # redacted again: the redaction holds
+        elif isinstance(edit, Replace) and edit.span_id in redacted:
+            undone[edit.span_id] = None
+    return list(undone)
+
+
 def _resolve(
     engine: Engine, edits: Sequence[Edit], index: SpanIndex
 ) -> tuple[list[tuple[Replace | Redact, Span]], list[Insert], list[Skipped]]:
@@ -114,7 +127,7 @@ def apply(
 
     if to_remove:
         engine.remove(to_remove)
-    notices: list[Notice] = []
+    notices = [Notice(span_id, words.REDACTION_UNDONE) for span_id in _undone_redactions(edits)]
     for span, text, size, scale_x in to_draw:
         for detail in engine.draw(span, text, size, scale_x):
             notices.append(Notice(span.id, detail))

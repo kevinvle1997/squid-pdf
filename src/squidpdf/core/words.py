@@ -41,6 +41,10 @@ FONT_NOT_ADDED = (
     "The file's own font couldn't be used for this edit, so a similar font drew it."
 )
 LEFT_OUT = "Left out {letters}: no font we have can draw them."
+REDACTION_UNDONE = "Editing this text undid its redaction."
+
+# Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
+UNDO_REDACTION = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
 
 # The ways out of an overflow, keyed by the name an edit's `strategy` uses.
 OPTIONS = {

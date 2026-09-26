@@ -72,6 +72,10 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
     assert_not_in(span.text, text, "the saved page after a redact")
 
+    # Editing it afterwards brings the text back, and render says so.
+    undone = apply(engine, [*edits, Replace(span.id, "Services")], index).notices
+    assert_equal(undone, [Notice(span.id, words.REDACTION_UNDONE)], "notices after the edit")
+
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
     """A resource per redrawn span piled up on the page."""

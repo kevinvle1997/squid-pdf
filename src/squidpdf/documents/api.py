@@ -174,6 +174,7 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
             "missing": words.MISSING,
             "too_long": words.TOO_LONG,
             "stand_in": words.STAND_IN,
+            "undo_redaction": words.UNDO_REDACTION,
             "options": words.OPTIONS,
         },
         # A scan has no text layer: say so, rather than show a page nothing on can be edited.
