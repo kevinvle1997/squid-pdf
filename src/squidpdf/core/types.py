@@ -97,6 +97,29 @@ class Span:
         return len(self.fragments) > 1
 
 
+@dataclass(frozen=True, slots=True)
+class FontCode:
+    """One code in a font, and what it draws."""
+
+    value: int  # the code the page writes, e.g. 0x21
+    letter: str  # the letter the font's ToUnicode says it is
+    glyph: int  # the shape it draws; 0 means none
+    width: float  # per 1000 em, from the font's width list
+
+
+@dataclass(frozen=True, slots=True)
+class CodedFont:
+    """An embedded font the page writes with codes, not letters.
+
+    The font can't look letters up itself; its ToUnicode says which code is which letter.
+    """
+
+    resource: str  # its name in the page's font resources, e.g. "F1"
+    xref: int  # its PDF object
+    code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
+    letters: dict[str, FontCode]  # each letter it can write, and the code for it
+
+
 class SpanIndex:
     """Every editable span in a document, built once and never rebuilt.
 
