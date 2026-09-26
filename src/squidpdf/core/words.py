@@ -49,6 +49,11 @@ FONT_NOT_ADDED = (
     "The file's own font couldn't be used for this edit, so a similar font drew it."
 )
 LEFT_OUT = "Left out {letters}: no font we have can draw them."
+# `{font}` is a face we ship.
+FACE_NOT_TRIMMED = (
+    "{font} went into the file whole, not only the letters used,"
+    " so the file is larger than it needs to be."
+)
 REDACTION_UNDONE = "Editing this text undid its redaction."
 
 # Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.

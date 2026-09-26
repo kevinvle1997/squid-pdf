@@ -102,13 +102,9 @@ class PdfFile:
         A font only named by one of the 14 standard names often has none. A
         two-byte (Type0) font keeps it on the font inside it.
         """
-        owner = xref
-        kind, value = self._doc.xref_get_key(xref, "DescendantFonts")
-        if kind == "array":
-            inner = _FIRST_REFERENCE.match(value)
-            if inner is None:  # written out in place, not pointed at: rare, and not worth it
-                return None
-            owner = int(inner.group(1))
+        owner = self._describing_font(xref)
+        if owner is None:
+            return None
         kind, _value = self._doc.xref_get_key(owner, "FontDescriptor")
         if kind == "null":
             return None
@@ -119,6 +115,36 @@ class PdfFile:
             weight=self._number(owner, "FontDescriptor/FontWeight"),
             italic_angle=0.0 if angle is None else angle,
         )
+
+    def replace_font_file(self, xref: int, font_file: bytes) -> None:
+        """Store `font_file` in place of the TrueType file inside font `xref`.
+
+        Only the file changes. The font's widths and letter list (ToUnicode)
+        stay, so the new file must keep every glyph at the same number.
+        """
+        owner = self._describing_font(xref)
+        if owner is None:  # MuPDF always points at the inner font, so this is someone else's
+            raise ValueError(f"font {xref} has its inner font written out in place")
+        _kind, value = self._doc.xref_get_key(owner, "FontDescriptor/FontFile2")
+        file_xref = int(value.split()[0])  # "7 0 R" -> 7
+        self._doc.update_stream(file_xref, font_file)
+        # A TrueType file states its size before compression, too.
+        self._doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
+
+    def _describing_font(self, xref: int) -> int | None:
+        """The font object that holds the description: `xref` itself, or a Type0's inner font.
+
+        None when a Type0 writes its inner font out in place, not pointed at.
+        """
+        kind, value = self._doc.xref_get_key(xref, "DescendantFonts")
+        # A simple font describes itself.
+        if kind != "array":
+            return xref
+        inner = _FIRST_REFERENCE.match(value)
+        # Written out in place: rare, and not worth it.
+        if inner is None:
+            return None
+        return int(inner.group(1))
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""

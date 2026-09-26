@@ -113,10 +113,10 @@ def cmd_edit(args: argparse.Namespace) -> int:
             return 1
 
         applied = apply(engine, [Replace(span.id, args.text)], index)
-        engine.save(args.out)
+        saved = engine.save(args.out)
         print(f"\n  {span.text!r} -> {args.text!r}")
-        for notice in applied.notices:
-            print(f"  {YELLOW}{notice.detail}{OFF}")
+        for detail in [notice.detail for notice in applied.notices] + saved:
+            print(f"  {YELLOW}{detail}{OFF}")
         print(f"  {GREEN}saved{OFF} {args.out}\n")
     return 0
 
