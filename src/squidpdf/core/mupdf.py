@@ -18,7 +18,16 @@ from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
 from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
-from squidpdf.core.types import CodedFont, Fragment, Page, Rect, Span, SpanIndex, span_id
+from squidpdf.core.types import (
+    CodedFont,
+    FontCode,
+    Fragment,
+    Page,
+    Rect,
+    Span,
+    SpanIndex,
+    span_id,
+)
 
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
 
@@ -27,6 +36,9 @@ _SIMPLE_FONT_CODES = 256
 
 _EM = 1000  # advances are given per 1000 em, as PDF font widths are
 _ADVANCE_DP = 2  # finer than any page can show
+
+# Bytes per code, for the font kinds we can write by code.
+_CODE_BYTES = {"TrueType": 1, "Type0": 2}
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
@@ -85,7 +97,8 @@ class MuPDFEngine:
                         ):
                             coded = _read_coded_font(self._pdf, page_font)
                             if coded is not None:
-                                coded_cov = Coverage(buf, glyph_ids=coded.glyphs)
+                                glyph_ids = {ch: c.glyph for ch, c in coded.letters.items()}
+                                coded_cov = Coverage(buf, glyph_ids=glyph_ids)
                                 if coded_cov.usable:
                                     cov, self._coded[key] = coded_cov, coded
                         if cov.usable or claimed:
@@ -174,21 +187,17 @@ class MuPDFEngine:
         Exact only if the span's own font draws its own text: `draw` swaps the
         run otherwise, so a redraw of it would be in the substitute.
         """
-        out = []
-        for span in index:
-            own = self._embedded(span.page, span.font) is not None
-            if own and not self.missing(span, span.text):
-                out.append(FidelityReport(span.id, Fidelity.EXACT, span.font))
-            else:
-                out.append(
-                    FidelityReport(
-                        span.id,
-                        Fidelity.SUBSTITUTE,
-                        span.font,
-                        substitute_for(span.font),
-                    )
-                )
-        return out
+        return [self._assess_one(span) for span in index]
+
+    def _assess_one(self, span: Span) -> FidelityReport:
+        """Exact or substitute, for one span."""
+        in_file = self._embedded(span.page, span.font) is not None
+        exact = in_file and not self.missing(span, span.text)
+        if exact:
+            return FidelityReport(span.id, Fidelity.EXACT, span.font)
+        return FidelityReport(
+            span.id, Fidelity.SUBSTITUTE, span.font, substitute_for(span.font)
+        )
 
     def glyphs(self, span: Span) -> dict[str, float]:
         """Every character this span's drawing font really draws, to its advance per 1000 em.
@@ -199,22 +208,27 @@ class MuPDFEngine:
         """
         key = (span.page, strip_subset(span.font))
         embedded = self._embedded(span.page, span.font)
+
+        # Not in the file: the stand-in font draws it.
         if embedded is None:
-            font = pymupdf.Font(fontname=base14_for(span.font))
-            chars = sorted(_simple_chars(font))
-        else:
-            font = embedded
-            chars = self._coverage[key].drawable()
-            coded = self._coded.get(key)
-            if coded is not None:
-                return {ch: round(coded.widths[ch], _ADVANCE_DP) for ch in chars}
-        return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
+            stand_in = pymupdf.Font(fontname=base14_for(span.font))
+            return _advances(stand_in, sorted(_simple_chars(stand_in)))
+
+        chars = self._coverage[key].drawable()
+
+        # Written by code: widths come from the font's width list.
+        coded = self._coded.get(key)
+        if coded is not None:
+            return {ch: round(coded.letters[ch].width, _ADVANCE_DP) for ch in chars}
+
+        # Written by letter: widths come from the font itself.
+        return _advances(embedded, chars)
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, in the face `draw` would pick and this span's size."""
         coded = self._coded_for(span, text)
         if coded is not None:
-            return sum(coded.widths[ch] for ch in text) * span.size / _EM
+            return sum(coded.letters[ch].width for ch in text) * span.size / _EM
         font, text = self._run(span, text)
         return font.text_length(text, fontsize=span.size)
 
@@ -307,7 +321,9 @@ class MuPDFEngine:
         self._pdf.restore_font(span.page, coded.resource, coded.xref)
         x, y = self._pdf.to_pdf_space(span.page, span.origin)
         r, g, b = span.color
-        hex_codes = "".join(f"{coded.codes[ch]:0{coded.code_bytes * 2}x}" for ch in text)
+        hex_codes = "".join(
+            f"{coded.letters[ch].value:0{coded.code_bytes * 2}x}" for ch in text
+        )
         stream = (
             f"q BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
             f" /{coded.resource} {size:.{_PDF_DP}f} Tf"
@@ -380,28 +396,27 @@ def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
     private-use characters, and codes with no glyph. A letter with two codes
     keeps the lowest.
     """
-    if font.kind == "TrueType":
-        code_bytes = 1
-    elif font.kind == "Type0" and font.encoding == "Identity-H":
-        code_bytes = 2
-    else:
+    code_bytes = _code_bytes(font)
+    if code_bytes is None:
         return None
     font_codes = pdf.font_codes(font.xref, code_bytes)
     if font_codes is None:
         return None
 
-    codes: dict[str, int] = {}
-    glyphs: dict[str, int] = {}
-    widths: dict[str, float] = {}
-    for code in font_codes:  # lowest first, so the first code for a letter wins
-        if code.glyph == 0 or code.letter in codes or _is_control(code.letter):
-            continue
-        codes[code.letter] = code.value
-        glyphs[code.letter] = code.glyph
-        widths[code.letter] = code.width
-    if not codes:
+    letters: dict[str, FontCode] = {}
+    for code in font_codes:  # lowest code first
+        if code.glyph and not _is_control(code.letter):
+            letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
+    if not letters:
         return None
-    return CodedFont(font.resource, font.xref, code_bytes, codes, glyphs, widths)
+    return CodedFont(font.resource, font.xref, code_bytes, letters)
+
+
+def _code_bytes(font: PageFont) -> int | None:
+    """How many bytes each code takes in this font, or None if we can't write it."""
+    if font.kind == "Type0" and font.encoding != "Identity-H":
+        return None  # its codes aren't glyph numbers, so we can't work them out
+    return _CODE_BYTES.get(font.kind)
 
 
 def _is_control(ch: str) -> bool:
@@ -412,6 +427,11 @@ def _is_control(ch: str) -> bool:
 def _simple_chars(font: pymupdf.Font) -> set[str]:
     """What a base-14 font draws through insert_text: its glyphs within Latin-1."""
     return {chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES}
+
+
+def _advances(font: pymupdf.Font, chars: list[str]) -> dict[str, float]:
+    """Each character's advance in `font`, per 1000 em."""
+    return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
 
 
 def _round_box(box: Rect) -> Rect:
@@ -427,10 +447,14 @@ def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
     word. Without this, find-and-replace misses most real matches and the user
     can click something that is not a whole word.
     """
-    groups: list[list[TextPiece]] = []
-    for piece in pieces:
-        if groups and _continues(groups[-1][-1], piece):
-            groups[-1].append(piece)
+    if not pieces:
+        return []
+    groups = [[pieces[0]]]
+    for piece in pieces[1:]:
+        current_group = groups[-1]  # the newest group, the one still being built
+        last_piece = current_group[-1]  # the piece just before this one on the line
+        if _continues(last_piece, piece):
+            current_group.append(piece)
         else:
             groups.append([piece])
     return groups

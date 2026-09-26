@@ -5,8 +5,8 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.core.pdf import FontCode, PdfFile
-from squidpdf.core.types import Rect
+from squidpdf.core.pdf import PdfFile
+from squidpdf.core.types import FontCode, Rect
 from tests.helpers import assert_between, assert_equal
 
 _TOLERANCE_PT = 0.01

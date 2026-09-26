@@ -8,6 +8,7 @@ import pymupdf
 import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
@@ -29,19 +30,33 @@ _DESCRIPTOR = (
 )
 
 
+def _square() -> Glyph:
+    """A plain filled square, 500 wide and 700 tall.
+
+    The tests only ask whether a letter has a shape, not what it looks like,
+    so A and B are both drawn as this.
+    """
+    pen = TTGlyphPen(None)
+    pen.moveTo((50, 0))
+    pen.lineTo((50, 700))
+    pen.lineTo((550, 700))
+    pen.lineTo((550, 0))
+    pen.closePath()
+    return pen.glyph()
+
+
 def _truetype(cmap: dict[int, str] | None, symbol: bool = True) -> bytes:
-    """A TrueType with only this cmap, (3,0) symbol, or with no cmap table at all."""
+    """A tiny made-up TrueType font, built fresh for the tests.
+
+    A and B are squares; space, C and .notdef have no shape. C is empty on
+    purpose, the way a trimmed-down font leaves out letters it didn't need.
+    `cmap` is its own letter lookup: a (3,0) symbol one, or none at all.
+    """
     fb = FontBuilder(_EM, isTTF=True)
     fb.setupGlyphOrder(_GLYPHS)
     fb.setupCharacterMap(cmap or {})
-    box = TTGlyphPen(None)
-    box.moveTo((50, 0))
-    box.lineTo((50, 700))
-    box.lineTo((550, 700))
-    box.lineTo((550, 0))
-    box.closePath()
-    outline = box.glyph()  # the pen resets on glyph(), so one outline serves both letters
-    fb.setupGlyf({n: outline if n in ("A", "B") else TTGlyphPen(None).glyph() for n in _GLYPHS})
+    square, empty = _square(), TTGlyphPen(None).glyph()
+    fb.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
     fb.setupHorizontalMetrics({n: (600, 50) for n in _GLYPHS})
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "Symbolic", "styleName": "Regular"})
@@ -58,8 +73,12 @@ def _truetype(cmap: dict[int, str] | None, symbol: bool = True) -> bytes:
     return out.getvalue()
 
 
+# The fixtures below write a one-page PDF by hand, object by object, so the
+# font is stored exactly the way the problem PDFs store theirs.
+
+
 def _to_unicode(codespace: str, body: str) -> bytes:
-    """A ToUnicode CMap: which letter each code is."""
+    """A ToUnicode CMap: the list saying which letter each code is."""
     return (
         "/CIDInit /ProcSet findresource begin 12 dict begin begincmap"
         " /CMapName /Test def /CMapType 2 def"

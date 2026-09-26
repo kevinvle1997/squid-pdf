@@ -1,9 +1,9 @@
-"""The one place that talks to MuPDF's low-level API.
+"""The only file that uses MuPDF's low-level API.
 
-PyMuPDF's everyday calls (insert_text, get_pixmap, save) read fine and stay
-in the engine. What lives here is the rest: raw C bindings, tuples and dicts
-with no names. Everything leaves as a typed dataclass, and nothing here
-decides anything: it reports what the file says, and the engine chooses.
+Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
+they stay in the engine. The hard-to-read calls live here, and their results
+come back as named dataclasses. This file only reports what the PDF says;
+the engine decides what to do with it.
 """
 
 from __future__ import annotations
@@ -13,26 +13,26 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import Rect
+from squidpdf.core.types import FontCode, Rect
 
-_BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
+_BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
-# Text extraction throws images away; decoding them was most of its time.
+# Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
-_ONE_BYTE_CODES = 256  # a simple font's codes are one byte
+_ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
-    """One run of text as the page draws it, often only part of a word."""
+    """A bit of text the page draws in one go, often only part of a word."""
 
     text: str
     font: str
     size: float
     color: tuple[float, float, float]  # r, g, b, each 0-1
     box: Rect
-    origin: tuple[float, float]  # where its baseline starts
+    origin: tuple[float, float]  # where the text starts, on its baseline
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,36 +42,26 @@ class PageFont:
     xref: int  # its PDF object
     name: str  # e.g. "ABCDEF+Arial"
     kind: str  # "TrueType", "Type0", ...
-    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not embedded
+    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not in the file
     resource: str  # its name in the page's font resources, e.g. "F1"
-    encoding: str  # "Identity-H", "WinAnsiEncoding", ...
-    in_form: bool  # used inside a form, not by the page itself
+    encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
+    in_form: bool  # used inside a form (a reusable drawing), not by the page itself
 
     @property
     def is_embedded(self) -> bool:
-        """Whether the file carries the font itself, not just its name."""
+        """Whether the PDF contains the font, not just its name."""
         return self.file_type not in ("n/a", "")
 
 
-@dataclass(frozen=True, slots=True)
-class FontCode:
-    """One code a font's ToUnicode names, and what it draws."""
-
-    value: int  # the code the page writes, e.g. 0x21
-    letter: str  # what ToUnicode says it is
-    glyph: int  # the glyph it draws; 0 means none
-    width: float  # per 1000 em, from /Widths or /W
-
-
 class PdfFile:
-    """Plain questions and edits on an open document, answered through MuPDF."""
+    """An open PDF, with simple methods to read and change it."""
 
     def __init__(self, doc: pymupdf.Document) -> None:
-        """Wrap a document the caller opened, and still owns and closes."""
+        """Wrap an open document. The caller still closes it."""
         self._doc = doc
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
-        """Each line of text on the page, as the pieces it is drawn in."""
+        """Each line of text on the page, split into the pieces it is drawn in."""
         lines = []
         for block in self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]:
             for line in block["lines"]:
@@ -79,7 +69,7 @@ class PdfFile:
         return lines
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, in its forms too."""
+        """Every font the page uses, including inside forms."""
         return [
             PageFont(
                 xref=xref,
@@ -96,7 +86,7 @@ class PdfFile:
         ]
 
     def font_bytes(self, xref: int) -> bytes | None:
-        """The font program the file embeds, or None when MuPDF can't get it out."""
+        """The font file stored in the PDF, or None if MuPDF can't read it."""
         try:
             _name, _ext, _kind, buffer = self._doc.extract_font(xref)
         except (RuntimeError, ValueError):
@@ -104,12 +94,10 @@ class PdfFile:
         return buffer or None
 
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
-        """Every code the font's ToUnicode names, lowest first.
+        """Each code the font has a letter for, lowest first.
 
-        None without a ToUnicode MuPDF can read. A code for several letters
-        (a ligature) is left out. `code_bytes` is 1 for a simple font, 2 for
-        Identity-H. Read through MuPDF's own font loader, so each glyph is
-        the one it renders.
+        None if the font has no letter list (its ToUnicode) or MuPDF can't
+        read it. `code_bytes` is 1 for a simple font, 2 for a Type0 font.
         """
         if self._doc.xref_get_key(xref, "ToUnicode")[0] == "null":
             return None
@@ -120,16 +108,16 @@ class PdfFile:
             pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
         )
         try:
-            if font.to_unicode is None:  # MuPDF couldn't parse it
+            if font.to_unicode is None:  # MuPDF couldn't read it
                 return None
             if code_bytes == 1:
                 code_count = _ONE_BYTE_CODES
-            else:  # Identity-H: codes are CIDs, and none past the last glyph draws
+            else:  # Type0: one code per glyph, so stop after the last glyph
                 code_count = font.cid_to_gid_len or font.font.glyph_count
             found = []
             for value in range(code_count):
                 letter = mu.ll_pdf_lookup_cmap(font.to_unicode, value)
-                if not 0 <= letter <= sys.maxunicode:  # unmapped, or a ligature
+                if not 0 <= letter <= sys.maxunicode:  # no letter, or several (like "fi")
                     continue
                 cid = mu.ll_pdf_lookup_cmap(font.encoding, value)
                 found.append(
@@ -145,7 +133,7 @@ class PdfFile:
             mu.ll_pdf_drop_font(font)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
-        """Really delete the text inside these boxes; images and line art stay."""
+        """Delete the text inside these boxes. Images and drawings stay."""
         pg = self._doc[page]
         for box in boxes:
             pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
@@ -155,10 +143,10 @@ class PdfFile:
         )
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Make `resource` name font `xref` on the page again; erasing drops unused ones.
+        """Point the page's font name `resource` back at font `xref`.
 
-        Written where the page finds its resources, inherited or not, so no
-        font is added.
+        Erasing text can remove a font the page no longer uses. This puts
+        the same font back under the same name; nothing new is added.
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
@@ -172,10 +160,10 @@ class PdfFile:
         mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
 
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
-        """A point in the unrotated page's space, as the PDF's own content sees it.
+        """Turn a point on the page as you see it into the PDF's own coordinates.
 
-        Not via page.transformation_matrix: it drops the mediabox offset on a
-        rotated page.
+        Not page.transformation_matrix: on a turned page it forgets where the
+        page's box starts.
         """
         mu = pymupdf.mupdf
         pg = self._doc[page]
@@ -187,8 +175,8 @@ class PdfFile:
     def add_content(self, page: int, stream: bytes) -> None:
         """Draw `stream` on top of everything on the page.
 
-        The page's own drawing is wrapped in q/Q first, so no state it leaves
-        set leaks into ours.
+        The page's own drawing is wrapped first, so its settings (color,
+        position) can't leak into ours.
         """
         pg = self._doc[page]
         if not pg.is_wrapped:
@@ -202,12 +190,12 @@ class PdfFile:
         )
 
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
-        """The document as MuPDF's low-level API sees it."""
+        """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self._doc.this)
 
 
 def _text_piece(raw: dict) -> TextPiece:
-    """One span dict from get_text("dict"), named."""
+    """One piece of text from get_text("dict"), with named fields."""
     return TextPiece(
         text=raw["text"],
         font=raw["font"],
@@ -219,7 +207,7 @@ def _text_piece(raw: dict) -> TextPiece:
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:
-    """PDF's packed 0xRRGGBB color as r, g, b, each 0-1."""
+    """A 0xRRGGBB color as r, g, b, each 0-1."""
     return (
         ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,
         ((packed >> 8) & _BYTE_MAX) / _BYTE_MAX,
