@@ -17,14 +17,10 @@ from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
+from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
 from squidpdf.core.types import CodedFont, Fragment, Page, Rect, Span, SpanIndex, span_id
 
-_BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
-
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
-
-# The index throws images away; decoding them was most of its time.
-_INDEX_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 # insert_text draws base-14 fonts a byte per character; past Latin-1 comes out a dot.
 _SIMPLE_FONT_CODES = 256
@@ -34,20 +30,10 @@ _ADVANCE_DP = 2  # finer than any page can show
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
-_ONE_BYTE_CODES = 256  # a simple font's codes are one byte
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
-
-
-def _rgb(packed: int) -> tuple[float, float, float]:
-    """PDF's packed 0xRRGGBB color into the (r, g, b) 0-1 floats PyMuPDF wants."""
-    return (
-        ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,
-        ((packed >> 8) & _BYTE_MAX) / _BYTE_MAX,
-        (packed & _BYTE_MAX) / _BYTE_MAX,
-    )
 
 
 class MuPDFEngine:
@@ -61,6 +47,7 @@ class MuPDFEngine:
             self.doc = pymupdf.open(path, filetype="pdf")
         except pymupdf.FileDataError as exc:  # garbage, truncated or empty
             raise Unreadable(path) from exc
+        self._pdf = PdfFile(self.doc)
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage, if kept
@@ -80,28 +67,30 @@ class MuPDFEngine:
             return self._fonts[key]
 
         font = None
-        for xref, ext, kind, basefont, ref, encoding, referencer in self.doc[page].get_fonts(
-            full=True
-        ):
-            if strip_subset(basefont) != key[1]:
+        for page_font in self._pdf.fonts(page):
+            if strip_subset(page_font.name) != key[1]:
                 continue
-            if ext not in ("n/a", ""):
+            if page_font.is_embedded:
                 try:
-                    _basename, _ext, _type, buf = self.doc.extract_font(xref)
+                    buf = self._pdf.font_bytes(page_font.xref)
                     if buf:
                         candidate = pymupdf.Font(fontbuffer=buf)
                         claimed = candidate.valid_codepoints()
                         cov = Coverage(buf, claimed)
                         # Only fonts on the page itself, not inside a form.
-                        if not cov.usable and ext == "ttf" and referencer == 0:
-                            coded = _read_coded_font(self.doc, xref, ref, kind, encoding)
+                        if (
+                            not cov.usable
+                            and page_font.file_type == "ttf"
+                            and not page_font.in_form
+                        ):
+                            coded = _read_coded_font(self._pdf, page_font)
                             if coded is not None:
                                 coded_cov = Coverage(buf, glyph_ids=coded.glyphs)
                                 if coded_cov.usable:
                                     cov, self._coded[key] = coded_cov, coded
                         if cov.usable or claimed:
                             font, self._coverage[key] = candidate, cov
-                except (RuntimeError, ValueError):  # MuPDF can't extract or open it
+                except (RuntimeError, ValueError):  # MuPDF can't open it
                     pass
             break
 
@@ -118,29 +107,28 @@ class MuPDFEngine:
         ordinal = 0
 
         for pno in range(len(self.doc)):
-            for block in self.doc[pno].get_text("dict", flags=_INDEX_FLAGS)["blocks"]:
-                for line in block["lines"]:
-                    for group in _merge(line["spans"]):
-                        span = self._build(pno, group, ordinal)
-                        if span is not None:
-                            spans.append(span)
-                            ordinal += 1
+            for line in self._pdf.text_lines(pno):
+                for group in _merge(line):
+                    span = self._build(pno, group, ordinal)
+                    if span is not None:
+                        spans.append(span)
+                        ordinal += 1
 
         return SpanIndex(spans)
 
-    def _build(self, pno: int, group: list[dict], ordinal: int) -> Span | None:
-        """Turn one merged group of raw fragments into a Span, or None if blank."""
-        text = "".join(s["text"] for s in group)
+    def _build(self, pno: int, group: list[TextPiece], ordinal: int) -> Span | None:
+        """Turn one merged group of text pieces into a Span, or None if blank."""
+        text = "".join(piece.text for piece in group)
         if not text.strip():
             return None
 
         frags = tuple(
             Fragment(
-                text=s["text"],
-                bbox=Rect(*(round(v, 2) for v in s["bbox"])),
-                origin=tuple(round(v, 2) for v in s["origin"]),
+                text=piece.text,
+                bbox=_round_box(piece.box),
+                origin=(round(piece.origin[0], 2), round(piece.origin[1], 2)),
             )
-            for s in group
+            for piece in group
         )
         bbox = frags[0].bbox
         for f in frags[1:]:
@@ -148,12 +136,12 @@ class MuPDFEngine:
 
         head = group[0]
         return Span(
-            id=span_id(pno, bbox, head["font"], text, ordinal),
+            id=span_id(pno, bbox, head.font, text, ordinal),
             page=pno,
             text=text,
-            font=head["font"],
-            size=round(head["size"], 2),
-            color=_rgb(head["color"]),
+            font=head.font,
+            size=round(head.size, 2),
+            color=head.color,
             bbox=bbox,
             origin=frags[0].origin,
             fragments=frags,
@@ -274,14 +262,7 @@ class MuPDFEngine:
             self._embedded(s.page, s.font)
 
         for pno, group in by_page.items():
-            page = self.doc[pno]
-            for span in group:
-                r = span.bbox
-                page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
-            page.apply_redactions(
-                images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
-                graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
-            )
+            self._pdf.erase_text(pno, [span.bbox for span in group])
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
@@ -323,9 +304,8 @@ class MuPDFEngine:
         self, span: Span, coded: CodedFont, text: str, size: float, scale_x: float
     ) -> None:
         """Write `text` as codes in the file's own font, on top of the page."""
-        page = self.doc[span.page]
-        self._restore_font(span.page, coded)
-        x, y = self._pdf_point(page, span.origin)
+        self._pdf.restore_font(span.page, coded.resource, coded.xref)
+        x, y = self._pdf.to_pdf_space(span.page, span.origin)
         r, g, b = span.color
         hex_codes = "".join(f"{coded.codes[ch]:0{coded.code_bytes * 2}x}" for ch in text)
         stream = (
@@ -334,42 +314,7 @@ class MuPDFEngine:
             f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
             f" <{hex_codes}> Tj ET Q"
         )
-        # Wrap the page's own drawing in q/Q first, so no state leaks into ours.
-        if not page.is_wrapped:
-            page.wrap_contents()
-        xref = self.doc.get_new_xref()
-        self.doc.update_object(xref, "<<>>")
-        self.doc.update_stream(xref, stream.encode())
-        parts = [*page.get_contents(), xref]
-        self.doc.xref_set_key(
-            page.xref, "Contents", "[" + " ".join(f"{c} 0 R" for c in parts) + "]"
-        )
-
-    def _restore_font(self, page: int, coded: CodedFont) -> None:
-        """Put the font back in the page's resources; redaction drops unused ones."""
-        mu = pymupdf.mupdf
-        pdf = mu.pdf_document_from_fz_document(self.doc.this)
-        page_obj = mu.pdf_lookup_page_obj(pdf, page)
-        res = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        if not res.m_internal:
-            res = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
-        fonts = mu.pdf_dict_get(res, mu.PDF_ENUM_NAME_Font)
-        if not fonts.m_internal:
-            fonts = mu.pdf_dict_put_dict(res, mu.PDF_ENUM_NAME_Font, 1)
-        mu.pdf_dict_puts(fonts, coded.resource, mu.pdf_new_indirect(pdf, coded.xref, 0))
-
-    @staticmethod
-    def _pdf_point(page: pymupdf.Page, point: tuple[float, float]) -> tuple[float, float]:
-        """A page point in PDF space.
-
-        Not via page.transformation_matrix: it drops the mediabox offset on a
-        rotated page.
-        """
-        mu = pymupdf.mupdf
-        _mediabox, ctm = mu.FzRect(), mu.FzMatrix()
-        mu.pdf_page_transform(mu.pdf_page_from_fz_page(page.this), _mediabox, ctm)
-        x, y = pymupdf.Point(*point) * page.rotation_matrix * ~pymupdf.Matrix(ctm)
-        return x, y
+        self._pdf.add_content(span.page, stream.encode())
 
     def _alias(self, span: Span) -> str | None:
         """The page's resource name for this span's embedded font, put there on first use.
@@ -428,56 +373,40 @@ class MuPDFEngine:
         self.close()
 
 
-def _read_coded_font(
-    doc: pymupdf.Document, xref: int, resource: str, kind: str, encoding: str
-) -> CodedFont | None:
-    """Which code, glyph and width draws each letter, read from the font's ToUnicode.
+def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
+    """Which code, glyph and width draws each letter, from the font's ToUnicode.
 
-    None without a readable ToUnicode: guessing would draw the wrong letters.
-    Skips ligatures, control and private-use characters, and codes with no
-    glyph. A letter with two codes keeps the lowest.
+    None without one: guessing would draw the wrong letters. Skips control and
+    private-use characters, and codes with no glyph. A letter with two codes
+    keeps the lowest.
     """
-    if kind == "TrueType":
+    if font.kind == "TrueType":
         code_bytes = 1
-    elif kind == "Type0" and encoding == "Identity-H":
+    elif font.kind == "Type0" and font.encoding == "Identity-H":
         code_bytes = 2
     else:
         return None
-    if doc.xref_get_key(xref, "ToUnicode")[0] == "null":
+    font_codes = pdf.font_codes(font.xref, code_bytes)
+    if font_codes is None:
         return None
 
-    # MuPDF's own loader, so each code reaches the glyph the renderer draws.
-    mu = pymupdf.mupdf
-    pdf = mu.pdf_document_from_fz_document(doc.this)
-    font = mu.ll_pdf_load_font(pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal)
-    try:
-        if font.to_unicode is None:  # MuPDF couldn't parse it
-            return None
-        if code_bytes == 1:
-            code_count = _ONE_BYTE_CODES
-        else:  # Identity-H: codes are CIDs, and none past the last glyph draws
-            code_count = font.cid_to_gid_len or font.font.glyph_count
-        codes: dict[str, int] = {}
-        glyphs: dict[str, int] = {}
-        widths: dict[str, float] = {}
-        for code in range(code_count):
-            letter = mu.ll_pdf_lookup_cmap(font.to_unicode, code)
-            if letter < 0:  # unmapped, or a ligature
-                continue
-            ch = chr(letter)
-            if ch in codes or unicodedata.category(ch).startswith("C"):
-                continue
-            cid = mu.ll_pdf_lookup_cmap(font.encoding, code)
-            glyph = mu.ll_pdf_font_cid_to_gid(font, cid)
-            if glyph == 0:  # .notdef
-                continue
-            codes[ch], glyphs[ch] = code, glyph
-            widths[ch] = mu.ll_pdf_lookup_hmtx(font, cid).w
-    finally:
-        mu.ll_pdf_drop_font(font)
+    codes: dict[str, int] = {}
+    glyphs: dict[str, int] = {}
+    widths: dict[str, float] = {}
+    for code in font_codes:  # lowest first, so the first code for a letter wins
+        if code.glyph == 0 or code.letter in codes or _is_control(code.letter):
+            continue
+        codes[code.letter] = code.value
+        glyphs[code.letter] = code.glyph
+        widths[code.letter] = code.width
     if not codes:
         return None
-    return CodedFont(resource, xref, code_bytes, codes, glyphs, widths)
+    return CodedFont(font.resource, font.xref, code_bytes, codes, glyphs, widths)
+
+
+def _is_control(ch: str) -> bool:
+    """A control, format, private-use or unassigned character: nothing to type."""
+    return unicodedata.category(ch).startswith("C")
 
 
 def _simple_chars(font: pymupdf.Font) -> set[str]:
@@ -485,7 +414,12 @@ def _simple_chars(font: pymupdf.Font) -> set[str]:
     return {chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES}
 
 
-def _merge(raw: list[dict]) -> list[list[dict]]:
+def _round_box(box: Rect) -> Rect:
+    """The box to 2 decimals, as span ids and the client see it."""
+    return Rect(round(box.x0, 2), round(box.y0, 2), round(box.x1, 2), round(box.y1, 2))
+
+
+def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
     """Group a line's fragments into logical spans.
 
     Generators split a sentence into several show-text operators so they can
@@ -493,23 +427,23 @@ def _merge(raw: list[dict]) -> list[list[dict]]:
     word. Without this, find-and-replace misses most real matches and the user
     can click something that is not a whole word.
     """
-    groups: list[list[dict]] = []
-    for frag in raw:
-        if groups and _continues(groups[-1][-1], frag):
-            groups[-1].append(frag)
+    groups: list[list[TextPiece]] = []
+    for piece in pieces:
+        if groups and _continues(groups[-1][-1], piece):
+            groups[-1].append(piece)
         else:
-            groups.append([frag])
+            groups.append([piece])
     return groups
 
 
-def _continues(prev: dict, nxt: dict) -> bool:
-    """Whether fragment `nxt` is a continuation of `prev`, on the same span."""
-    if prev["font"] != nxt["font"]:
+def _continues(prev: TextPiece, nxt: TextPiece) -> bool:
+    """Whether piece `nxt` carries on from `prev`, in the same span."""
+    if prev.font != nxt.font:
         return False
-    if abs(prev["size"] - nxt["size"]) > SIZE_EPS:
+    if abs(prev.size - nxt.size) > SIZE_EPS:
         return False
-    if abs(prev["origin"][1] - nxt["origin"][1]) > BASELINE_EPS:
+    if abs(prev.origin[1] - nxt.origin[1]) > BASELINE_EPS:
         return False
-    gap = nxt["bbox"][0] - prev["bbox"][2]
+    gap = nxt.box.x0 - prev.box.x1
     # A small negative gap is kerning pulling letters together, not a new run.
-    return -1.0 <= gap <= nxt["size"] * GAP_RATIO
+    return -1.0 <= gap <= nxt.size * GAP_RATIO
