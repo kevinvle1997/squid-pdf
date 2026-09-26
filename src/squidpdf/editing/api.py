@@ -71,19 +71,20 @@ async def render(
     if len(edits) > limits.MAX_EDITS:
         raise TooManyEdits(limits.MAX_EDITS)
     too_long = any(
-        isinstance(edit, Replace) and len(edit.text) > limits.MAX_REPLACE_CHARS
+        isinstance(edit, Replace | Insert) and len(edit.text) > limits.MAX_TEXT_CHARS
         for edit in edits
     )
     if too_long:
-        raise TextTooLong(limits.MAX_REPLACE_CHARS)
+        raise TextTooLong(limits.MAX_TEXT_CHARS)
     pages = store.load_pages(doc.folder)
     for region in regions:
         if not 0 <= region.page < len(pages):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
         top = 0.0 if region.y0 is None else region.y0
         bottom = pages[region.page].height if region.y1 is None else region.y1
-        if top >= bottom:
-            reason = f"regions: y0 must be above y1 on page {region.page}"
+        # `not <` rather than `>=`: every comparison with NaN is false, so this refuses it too.
+        if not top < bottom:
+            reason = f"regions: y0 must be a number above y1 on page {region.page}"
             raise InvalidRequest(debug=reason)
     scales = {r.page: documents.page_scale(pages[r.page], scale) for r in regions}
     # A redaction pointing at nothing raises BadReference in the worker.

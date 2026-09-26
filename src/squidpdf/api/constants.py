@@ -19,7 +19,7 @@ UPLOADS_PER_MINUTE = 20  # per IP
 
 # Render and export requests.
 MAX_EDITS = 10_000
-MAX_REPLACE_CHARS = 1_000
+MAX_TEXT_CHARS = 1_000  # typed in one edit: a replacement or an insert
 MAX_BODY_BYTES = 5 * _MB
 
 # Attached fonts.

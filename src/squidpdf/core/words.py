@@ -102,7 +102,7 @@ TOO_HEAVY = (
 TOO_MANY_EDITS = (
     "That's more than {edits} changes at once. Download what you have and go on from there."
 )
-TEXT_TOO_LONG = "A replacement can be up to {chars} characters."
+TEXT_TOO_LONG = "New text can be up to {chars} characters."
 REQUEST_TOO_LARGE = (
     "That's too much to send at once. Download what you have and go on from there."
 )
