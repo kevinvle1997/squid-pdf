@@ -9,7 +9,7 @@ from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 def test_check_reports_overflow_with_options(engine):
     index = engine.index()
     span = next(s for s in index if s.page == 1)
-    longer = span.text + " and much more time and more months and more"
+    longer = span.text + " and"
     assert_equal(engine.missing(span, longer), [], "missing chars, isolating the width case")
     fit = check(engine, span, longer)
     assert_false(fit.ok, "fit.ok for text that overflows the line")
@@ -26,3 +26,11 @@ def test_check_is_quiet_when_nothing_is_wrong(engine):
     assert_true(fit.ok, "fit.ok for a replacement that fits cleanly")
     assert_true(fit.describe() is None, "describe() when nothing is wrong")
     assert_equal(fit.options, [], "options when nothing is wrong")
+
+
+def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
+    index = engine.index()
+    span = next(s for s in index if s.page == 0 and s.text.startswith("Made"))
+    fit = check(engine, span, span.text * 2, "shrink")
+    assert_equal([o.name for o in fit.options], ["as-is"], "options for twice the length")
+    assert_equal(fit.strategy, "as-is", "the strategy drawn when shrink isn't offered")

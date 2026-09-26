@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from squidpdf.core.coverage import Coverage
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 _EM = 1000  # glyph advances are per 1000 em
 _WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
@@ -22,10 +22,12 @@ def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
     assert_equal(engine.missing(span, "March"), [], "an all-covered word")
 
 
-def test_coverage_treats_whitespace_as_drawable():
-    cov = Coverage(b"")  # unparseable
-    assert_true(cov.covers(" ") is True, "whitespace is always drawable")
-    assert_true(cov.covers("x") is True, "never claims a problem it cannot prove")
+def test_a_font_coverage_cant_read_draws_what_mupdf_claims():
+    """It used to claim everything, and a symbol-only cmap redrew as boxes."""
+    cov = Coverage(b"", claimed=[ord("x")])  # unparseable
+    assert_true(cov.covers(" "), "whitespace is always drawable")
+    assert_true(cov.covers("x"), "a character MuPDF claims")
+    assert_false(cov.covers("y"), "a character nothing claims")
 
 
 def test_glyphs_leave_out_what_a_subset_emptied(engine):
@@ -56,3 +58,11 @@ def test_glyph_advances_agree_with_the_server_measure(engine):
             pytest.approx(engine.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
             f"width of {word!r} in {span.font}",
         )
+
+
+def test_a_substitute_reports_what_it_cannot_draw_as_missing(engine):
+    """So a fit on a substitute span is honest, and agrees with the glyph table."""
+    span = next(s for s in engine.index() if s.page == 0)
+    assert_equal(engine.missing(span, "Février → 2026"), ["→"], "missing from the substitute")
+    drawable = "".join(engine.glyphs(span))
+    assert_equal(engine.missing(span, drawable), [], "missing from what glyphs() lists")

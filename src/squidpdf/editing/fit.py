@@ -10,14 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from squidpdf.core import words
-from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
+from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.editing.types import Strategy
 
 
 @dataclass(frozen=True, slots=True)
 class Option:
     """One way to make a too-long replacement work."""
 
-    name: str
+    name: Strategy
     label: str  # shown to the user, verbatim
     detail: str
 
@@ -28,12 +29,14 @@ class FitCheck:
 
     Carries facts and option *identifiers*. The user-facing sentence is assembled
     in `describe()` rather than baked into the data, so the API layer can
-    localise it later without the engine knowing about language.
+    localise it later without the engine knowing about language. `strategy` is
+    the one drawn: the one asked for if it was offered, else as-is.
     """
 
     delta_pt: float
     missing: list[str] = field(default_factory=list)
     options: list[Option] = field(default_factory=list)
+    strategy: Strategy = "as-is"
 
     @property
     def ok(self) -> bool:
@@ -52,13 +55,15 @@ class FitCheck:
 def options_for(delta_pt: float, original_width: float) -> list[Option]:
     """The three ways out of an overflow, in the order worth trying.
 
-    Condensing is offered only while it stays invisible. Past that it is not a
-    solution, it is a different-looking page.
+    Condensing is offered only while it stays invisible, and shrinking only down
+    to the floor. Past that it is not a solution, it is a different-looking page.
     """
     if delta_pt <= TOLERANCE_PT or original_width <= 0:
         return []
 
-    names = ["shrink"]
+    names: list[Strategy] = []
+    if original_width / (original_width + delta_pt) >= SHRINK_FLOOR:
+        names.append("shrink")
     if delta_pt / original_width <= CONDENSE_LIMIT:
         names.append("condense")
     names.append("as-is")

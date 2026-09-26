@@ -8,6 +8,7 @@ the glyph to draw and checking it produces contours.
 from __future__ import annotations
 
 import io
+from collections.abc import Iterable
 
 from fontTools.agl import UV2AGL
 from fontTools.cffLib import CFFFontSet
@@ -35,16 +36,18 @@ class Coverage:
     """Which characters an embedded font program can really render.
 
     Built from the raw bytes as extracted from the PDF, which may be a bare CFF,
-    a TrueType, or an OpenType wrapper. Results are cached per character because
-    the check runs on every keystroke.
+    a TrueType, or an OpenType wrapper. Bytes it can't read (Type1, a symbol-only
+    cmap) fall back to `claimed`, the font engine's own list: the best word left.
+    Results are cached per character because the check runs on every keystroke.
     """
 
-    def __init__(self, buffer: bytes) -> None:
-        """Parse a font's raw bytes so `covers()` and `missing()` can be asked."""
+    def __init__(self, buffer: bytes, claimed: Iterable[int] = ()) -> None:
+        """Parse a font's raw bytes; `claimed` is what it draws if they won't parse."""
         self._glyph_names: dict[int, str] = {}  # codepoint -> glyph name, once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
-        self._usable = False  # True once a parseable font has been loaded
+        self._claimed = frozenset(claimed)
+        self.usable = False  # True once a parseable font has been loaded
         self._load(buffer)
 
     def _load(self, buffer: bytes) -> None:
@@ -56,9 +59,9 @@ class Coverage:
                 self._load_bare_cff(buffer)
             else:
                 self._load_sfnt(buffer)
-            self._usable = True
+            self.usable = True
         except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
-            self._usable = False
+            self.usable = False
 
     def _load_sfnt(self, buffer: bytes) -> None:
         """TrueType or OpenType, where a cmap table gives us character mapping.
@@ -99,8 +102,8 @@ class Coverage:
         """True when this font will actually put ink on the page for `ch`."""
         if ch in _BLANK:
             return True
-        if not self._usable:
-            return True  # unparseable: do not claim a problem we cannot prove
+        if not self.usable:
+            return ord(ch) in self._claimed
         hit = self._cache.get(ch)
         if hit is None:
             hit = self._cache[ch] = self._draws(ch)
@@ -118,11 +121,10 @@ class Coverage:
         except Exception:  # noqa: BLE001 (a glyph that will not draw is missing)
             return False
 
-    def drawable(self) -> list[str] | None:
-        """Every character the font maps that really draws, or None if it would not parse."""
-        if not self._usable:
-            return None
-        return [chr(cp) for cp in sorted(self._glyph_names) if self.covers(chr(cp))]
+    def drawable(self) -> list[str]:
+        """Every character `covers` says draws, blanks included, in code point order."""
+        codes = self._glyph_names if self.usable else self._claimed
+        return sorted(_BLANK.union(chr(cp) for cp in codes if self.covers(chr(cp))))
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""
