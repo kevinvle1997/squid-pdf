@@ -35,11 +35,12 @@ _CODEPOINT_SCAN_END = 0x2E00
 class Coverage:
     """Which characters an embedded font program can really render.
 
-    Built from the raw bytes as extracted from the PDF, which may be a bare CFF,
-    a TrueType, or an OpenType wrapper. Bytes it can't read (Type1, a symbol-only
-    cmap) fall back to `claimed`, the font engine's own list: the best word left.
-    A TrueType with no Unicode cmap can be given `glyph_ids` (letter -> glyph id)
-    instead; then only those letters count.
+    Built from the raw bytes as extracted from the PDF, which may be a bare CFF
+    (Adobe's compact outline format), a TrueType, or an OpenType wrapper. Bytes
+    it can't read (Type1, a font whose letter table has no Unicode) fall back to
+    `claimed`, the font engine's own list: the best word left. A TrueType with no
+    Unicode letter table can be given `glyph_ids` (letter -> glyph id) instead;
+    then only those letters count.
     Results are cached per character because the check runs on every keystroke.
     """
 
@@ -73,21 +74,10 @@ class Coverage:
             self.usable = False
 
     def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, int] | None) -> None:
-        """TrueType or OpenType, mapped by its cmap table or by `glyph_ids`.
-
-        With neither (a symbol font, say) it raises, so the font is marked
-        unusable rather than reporting every character as missing.
-        """
-        tt = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        if glyph_ids is None:
-            cmap = tt.getBestCmap()
-            if cmap is None:
-                raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
-        else:
-            order = tt.getGlyphOrder()
-            cmap = {ord(ch): order[gid] for ch, gid in glyph_ids.items() if gid < len(order)}
-        self._glyph_names = dict(cmap)
-        self._glyphs = tt.getGlyphSet()
+        """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
+        font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
+        self._glyph_names = _sfnt_glyph_names(font, glyph_ids)
+        self._glyphs = font.getGlyphSet()
 
     def _load_bare_cff(self, buffer: bytes) -> None:
         """A bare CFF, as CIDFontType0 subsets are embedded.
@@ -106,10 +96,10 @@ class Coverage:
             raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
         self._glyphs = font.CharStrings
         names = set(font.getGlyphOrder())
-        for cp in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
-            name = _adobe_name(cp)
+        for codepoint in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
+            name = _adobe_name(codepoint)
             if name in names:
-                self._glyph_names[cp] = name
+                self._glyph_names[codepoint] = name
 
     def covers(self, ch: str) -> bool:
         """True when this font will actually put ink on the page for `ch`."""
@@ -117,10 +107,10 @@ class Coverage:
             return True
         if not self.usable:
             return ord(ch) in self._claimed
-        hit = self._cache.get(ch)
-        if hit is None:
-            hit = self._cache[ch] = self._draws(ch)
-        return hit
+        draws = self._cache.get(ch)
+        if draws is None:
+            draws = self._cache[ch] = self._draws(ch)
+        return draws
 
     def _draws(self, ch: str) -> bool:
         """Ask the glyph itself to draw, and check that it produced any ink."""
@@ -137,21 +127,35 @@ class Coverage:
     def drawable(self) -> list[str]:
         """Every character `covers` says draws, blanks included, in code point order."""
         codes = self._glyph_names if self.usable else self._claimed
-        return sorted(self._blanks.union(chr(cp) for cp in codes if self.covers(chr(cp))))
+        chars = (chr(codepoint) for codepoint in codes)
+        return sorted(self._blanks.union(ch for ch in chars if self.covers(ch)))
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""
-        out: list[str] = []
-        seen: set[str] = set()
-        for ch in text:
-            if ch in seen:
-                continue
-            seen.add(ch)
-            if not self.covers(ch):
-                out.append(ch)
-        return out
+        unique = dict.fromkeys(text)  # drops repeats, keeps first-seen order
+        return [ch for ch in unique if not self.covers(ch)]
 
 
-def _adobe_name(cp: int) -> str:
-    """Standard Adobe glyph name for a codepoint, for fonts with no cmap."""
-    return UV2AGL.get(cp, f"uni{cp:04X}")
+def _sfnt_glyph_names(font: TTFont, glyph_ids: Mapping[str, int] | None) -> dict[int, str]:
+    """Code point -> glyph name, from `glyph_ids` when given, else the font's letter table.
+
+    With neither (a symbol font, say) it raises, so the font is marked
+    unusable rather than reporting every character as missing.
+    """
+    # The caller already knows which glyph draws each letter.
+    if glyph_ids is not None:
+        order = font.getGlyphOrder()
+        return {
+            ord(ch): order[glyph_id]
+            for ch, glyph_id in glyph_ids.items()
+            if glyph_id < len(order)
+        }
+    cmap = font.getBestCmap()
+    if cmap is None:
+        raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
+    return dict(cmap)
+
+
+def _adobe_name(codepoint: int) -> str:
+    """Standard Adobe glyph name for a code point, for fonts with no letter table."""
+    return UV2AGL.get(codepoint, f"uni{codepoint:04X}")

@@ -57,11 +57,11 @@ class Page:
 
 @dataclass(frozen=True, slots=True)
 class Fragment:
-    """One show-text operator as the file records it.
+    """One piece of text the file draws in one go.
 
-    Generators split a sentence into several of these so they can insert kerning,
-    so a fragment is often a few letters and sometimes half a word. Users never
-    see fragments; they exist so a merged span can be redrawn accurately.
+    PDF writers split a sentence into many of these to adjust letter spacing, so
+    a fragment is often a few letters and sometimes half a word. Users never see
+    fragments; they exist so a merged span can be redrawn accurately.
     """
 
     text: str
@@ -102,7 +102,7 @@ class FontCode:
     """One code in a font, and what it draws."""
 
     value: int  # the code the page writes, e.g. 0x21
-    letter: str  # the letter the font's ToUnicode says it is
+    letter: str  # the letter the font's letter list (ToUnicode) says it is
     glyph: int  # the shape it draws; 0 means none
     width: float  # per 1000 em, from the font's width list
 
@@ -111,7 +111,8 @@ class FontCode:
 class CodedFont:
     """An embedded font the page writes with codes, not letters.
 
-    The font can't look letters up itself; its ToUnicode says which code is which letter.
+    The font can't look letters up itself; its letter list (ToUnicode) says which
+    code is which letter.
     """
 
     resource: str  # its name in the page's font resources, e.g. "F1"
@@ -147,12 +148,13 @@ class SpanIndex:
         return self._by_id.get(span_id)
 
 
-_SPAN_ID_DIGEST_SIZE = 6  # bytes -> 12 hex chars; documents have spans in the
-# thousands at most, nowhere near enough for a collision at this length
+# 6 bytes -> 12 hex chars: documents have thousands of spans at most, nowhere
+# near enough for a collision at this length.
+_SPAN_ID_DIGEST_SIZE = 6
 
 
 def span_id(page: int, bbox: Rect, font: str, text: str, ordinal: int) -> str:
-    """Stable within a document, distinct between near-identical cells.
+    """A span's id: stable within a document, distinct between near-identical cells.
 
     The ordinal separates spans that share text, font and a rounded box (two
     empty table cells, say), which a content hash alone would collide.

@@ -7,7 +7,7 @@ question this module answers.
 
 from __future__ import annotations
 
-# Metric-compatible stand-ins: identical advance widths, so a substitution shifts
+# Metric-compatible stand-ins: identical letter widths, so a substitution shifts
 # nothing on the page and only the letterforms differ. All OFL or Apache, all
 # free to embed. Keyed on the bare family name.
 SUBSTITUTES: dict[str, str] = {
@@ -42,6 +42,7 @@ _BASE14 = {
     "couriernew": "cour",
     "courier": "cour",
 }
+_BASE14_FALLBACK = "helv"
 
 
 def strip_subset(font: str) -> str:
@@ -58,8 +59,9 @@ def bare_name(font: str) -> str:
     containing no "roman". Do not use this to identify one font resource on a
     page, where two different weights share a bare name; use `strip_subset` there.
     """
-    name = strip_subset(font).split("-", 1)[0].split(",", 1)[0]
-    return name.replace(" ", "").lower()
+    family = strip_subset(font).split("-", 1)[0]  # Calibri-Bold -> Calibri
+    family = family.split(",", 1)[0]  # Arial,Bold -> Arial
+    return family.replace(" ", "").lower()
 
 
 def substitute_for(font: str) -> str:
@@ -75,4 +77,4 @@ def base14_for(font: str) -> str:
     shown to the user (`substitute_for`) does not silently change to match
     whatever we can currently render with.
     """
-    return _BASE14.get(bare_name(font), "helv")
+    return _BASE14.get(bare_name(font), _BASE14_FALLBACK)

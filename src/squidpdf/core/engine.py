@@ -42,7 +42,7 @@ class Engine(Protocol):
         ...
 
     def glyphs(self, span: Span) -> dict[str, float]:
-        """Every character this span's drawing font really draws, to its advance per 1000 em."""
+        """Each character this span's drawing font really draws, to its width per 1000 em."""
         ...
 
     def measure(self, span: Span, text: str) -> float:

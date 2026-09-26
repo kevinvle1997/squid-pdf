@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import unicodedata
+from dataclasses import dataclass
 
 import pymupdf
 
@@ -34,8 +35,9 @@ _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused object
 # insert_text draws base-14 fonts a byte per character; past Latin-1 comes out a dot.
 _SIMPLE_FONT_CODES = 256
 
-_EM = 1000  # advances are given per 1000 em, as PDF font widths are
-_ADVANCE_DP = 2  # finer than any page can show
+_EM = 1000  # widths are given per 1000 em, as PDF font widths are
+_WIDTH_DP = 2  # finer than any page can show
+_POSITION_DP = 2  # boxes, origins and sizes, as span ids and the client see them
 
 # Bytes per code, for the font kinds we can write by code.
 _CODE_BYTES = {"TrueType": 1, "Type0": 2}
@@ -46,6 +48,15 @@ _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
+
+
+@dataclass(frozen=True, slots=True)
+class _EmbeddedFont:
+    """A font stored in the file, and what it really draws."""
+
+    font: pymupdf.Font
+    coverage: Coverage  # which letters draw a shape
+    coded: CodedFont | None  # set when we write it by code, not by letter
 
 
 class MuPDFEngine:
@@ -60,55 +71,36 @@ class MuPDFEngine:
         except pymupdf.FileDataError as exc:  # garbage, truncated or empty
             raise Unreadable(path) from exc
         self._pdf = PdfFile(self.doc)
-        # Keyed by (page, font name); each fills in lazily, on first lookup.
-        self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
-        self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage, if kept
+        # Keyed by (page, font name); each fills in on first lookup.
+        self._fonts: dict[tuple[int, str], _EmbeddedFont | None] = {}  # None: only named
         self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
-        self._coded: dict[tuple[int, str], CodedFont] = {}  # fonts drawn by code, not by letter
 
-    def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
-        """The document's own font, or None when the file only references it.
+    def _embedded(self, span: Span) -> _EmbeddedFont | None:
+        """The file's own copy of the span's font, or None when the file only names it.
 
-        Not embedded is the common case for anything exported from Word, and it
-        is exactly what the substitute state warns about. A font with no letter
-        lookup (only a symbol cmap, say) counts only if its ToUnicode tells us
-        which code draws each letter; `draw` then writes those codes.
+        Only named is the common case for anything exported from Word, and it is
+        exactly what the substitute state warns about.
         """
-        key = (page, strip_subset(name))
-        if key in self._fonts:
-            return self._fonts[key]
+        font_name = strip_subset(span.font)
+        key = (span.page, font_name)
+        if key not in self._fonts:
+            self._fonts[key] = self._load_font(span.page, font_name)
+        return self._fonts[key]
 
-        font = None
-        for page_font in self._pdf.fonts(page):
-            if strip_subset(page_font.name) != key[1]:
-                continue
-            if page_font.is_embedded:
-                try:
-                    buf = self._pdf.font_bytes(page_font.xref)
-                    if buf:
-                        candidate = pymupdf.Font(fontbuffer=buf)
-                        claimed = candidate.valid_codepoints()
-                        cov = Coverage(buf, claimed)
-                        # Only fonts on the page itself, not inside a form.
-                        if (
-                            not cov.usable
-                            and page_font.file_type == "ttf"
-                            and not page_font.in_form
-                        ):
-                            coded = _read_coded_font(self._pdf, page_font)
-                            if coded is not None:
-                                glyph_ids = {ch: c.glyph for ch, c in coded.letters.items()}
-                                coded_cov = Coverage(buf, glyph_ids=glyph_ids)
-                                if coded_cov.usable:
-                                    cov, self._coded[key] = coded_cov, coded
-                        if cov.usable or claimed:
-                            font, self._coverage[key] = candidate, cov
-                except (RuntimeError, ValueError):  # MuPDF can't open it
-                    pass
-            break
-
-        self._fonts[key] = font
-        return font
+    def _load_font(self, page: int, font_name: str) -> _EmbeddedFont | None:
+        """Find the font on the page and open the file's copy of it."""
+        # The first font by this name, in MuPDF's order; a later one is never tried.
+        page_font = next(
+            (font for font in self._pdf.fonts(page) if strip_subset(font.name) == font_name),
+            None,
+        )
+        # Not on the page, or only named there.
+        if page_font is None or not page_font.is_embedded:
+            return None
+        try:
+            return _open_font(self._pdf, page_font)
+        except (RuntimeError, ValueError):  # MuPDF can't open it
+            return None
 
     def index(self) -> SpanIndex:
         """Built once, from the pristine document. Never rebuilt from a patched one.
@@ -135,29 +127,27 @@ class MuPDFEngine:
         if not text.strip():
             return None
 
-        frags = tuple(
+        fragments = tuple(
             Fragment(
-                text=piece.text,
-                bbox=_round_box(piece.box),
-                origin=(round(piece.origin[0], 2), round(piece.origin[1], 2)),
+                text=piece.text, bbox=_round_box(piece.box), origin=_round_point(piece.origin)
             )
             for piece in group
         )
-        bbox = frags[0].bbox
-        for f in frags[1:]:
-            bbox = bbox.union(f.bbox)
+        bbox = fragments[0].bbox
+        for fragment in fragments[1:]:
+            bbox = bbox.union(fragment.bbox)
 
-        head = group[0]
+        first = group[0]  # the span takes its style from its first piece
         return Span(
-            id=span_id(pno, bbox, head.font, text, ordinal),
+            id=span_id(pno, bbox, first.font, text, ordinal),
             page=pno,
             text=text,
-            font=head.font,
-            size=round(head.size, 2),
-            color=head.color,
+            font=first.font,
+            size=round(first.size, _POSITION_DP),
+            color=first.color,
             bbox=bbox,
-            origin=frags[0].origin,
-            fragments=frags,
+            origin=fragments[0].origin,
+            fragments=fragments,
         )
 
     def pages(self) -> list[Page]:
@@ -191,7 +181,7 @@ class MuPDFEngine:
 
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact or substitute, for one span."""
-        in_file = self._embedded(span.page, span.font) is not None
+        in_file = self._embedded(span) is not None
         exact = in_file and not self.missing(span, span.text)
         if exact:
             return FidelityReport(span.id, Fidelity.EXACT, span.font)
@@ -200,29 +190,28 @@ class MuPDFEngine:
         )
 
     def glyphs(self, span: Span) -> dict[str, float]:
-        """Every character this span's drawing font really draws, to its advance per 1000 em.
+        """Each letter the span's font really draws, and its width per 1000 em.
 
-        The font `measure` uses, so widths agree, and what `missing` checks
-        against. A subset's emptied glyphs don't count; a font Coverage can't
-        read falls back to MuPDF's list, a claim.
+        The same font `measure` uses, so widths agree. A trimmed (subset) font's
+        emptied letters don't count; if Coverage can't read the font, MuPDF's own
+        list stands in.
         """
-        key = (span.page, strip_subset(span.font))
-        embedded = self._embedded(span.page, span.font)
+        embedded = self._embedded(span)
 
         # Not in the file: the stand-in font draws it.
         if embedded is None:
             stand_in = pymupdf.Font(fontname=base14_for(span.font))
-            return _advances(stand_in, sorted(_simple_chars(stand_in)))
+            return _widths(stand_in, sorted(_simple_chars(stand_in)))
 
-        chars = self._coverage[key].drawable()
+        letters = embedded.coverage.drawable()
 
         # Written by code: widths come from the font's width list.
-        coded = self._coded.get(key)
-        if coded is not None:
-            return {ch: round(coded.letters[ch].width, _ADVANCE_DP) for ch in chars}
+        if embedded.coded is not None:
+            codes = embedded.coded.letters
+            return {ch: round(codes[ch].width, _WIDTH_DP) for ch in letters}
 
         # Written by letter: widths come from the font itself.
-        return _advances(embedded, chars)
+        return _widths(embedded.font, letters)
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, in the face `draw` would pick and this span's size."""
@@ -235,15 +224,16 @@ class MuPDFEngine:
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's font cannot actually draw.
 
-        Asks the glyph to draw rather than trusting the charset: a subsetted
-        font still lists glyphs whose outlines were emptied. See core.coverage.
-        A substitute is checked against what it draws, as `glyphs` lists it.
+        Checks each letter draws a shape rather than trusting the font's list: a
+        trimmed (subset) font still lists letters whose shapes were emptied. A
+        substitute is checked against what it draws, as `glyphs` lists it.
         """
-        embedded = self._embedded(span.page, span.font)
+        embedded = self._embedded(span)
+        # Not in the file: the substitute draws it.
         if embedded is None:
             drawable = _simple_chars(pymupdf.Font(fontname=base14_for(span.font)))
             return [ch for ch in dict.fromkeys(text) if ch not in drawable]
-        return self._coverage[(span.page, strip_subset(span.font))].missing(text)
+        return embedded.coverage.missing(text)
 
     def _run(self, span: Span, text: str) -> tuple[pymupdf.Font, str]:
         """The face `text` is drawn in, and the text as it can be drawn.
@@ -251,48 +241,47 @@ class MuPDFEngine:
         The span's own font if it draws every character; otherwise the whole run
         in the substitute, less what even that can't draw.
         """
-        embedded = self._embedded(span.page, span.font)
+        embedded = self._embedded(span)
         if embedded is not None and not self.missing(span, text):
-            return embedded, text
+            return embedded.font, text
         substitute = pymupdf.Font(fontname=base14_for(span.font))
         drawable = _simple_chars(substitute)
         return substitute, "".join(ch for ch in text if ch in drawable)
 
     def remove(self, spans: list[Span]) -> None:
-        """Delete these spans' glyph runs. Real removal, not a covering rectangle.
+        """Delete these spans' text for real, not by covering it with a box.
 
-        One box per span, not per fragment: MuPDF's cost grows with the box
-        count, and a span's fragments only ever sit a kerning gap apart, so its
-        box covers nothing theirs don't. Line art is left alone, so underlines
-        and rules survive. Each span's embedded font is resolved and cached
-        before its own redaction runs, with its resource name and codes:
-        apply_redactions can drop a page's now-unused font resource, and if
-        that font was only used by the text just removed, it would otherwise
-        be gone by the time draw() goes looking for it.
+        One box per span, not per fragment: the cost grows with the box count,
+        and a span's box covers its fragments. Lines and underlines stay. Each
+        span's font is read first: erasing can delete a font the page no longer
+        uses, and `draw` still needs it.
         """
         by_page: dict[int, list[Span]] = {}
-        for s in spans:
-            by_page.setdefault(s.page, []).append(s)
-            self._embedded(s.page, s.font)
+        for span in spans:
+            by_page.setdefault(span.page, []).append(span)
+            self._embedded(span)
 
-        for pno, group in by_page.items():
-            self._pdf.erase_text(pno, [span.bbox for span in group])
+        for pno, page_spans in by_page.items():
+            self._pdf.erase_text(pno, [span.bbox for span in page_spans])
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
     ) -> None:
-        """Redraw at the span's baseline, in its own font where the file has it.
+        """Redraw `text` at the span's baseline, in its own font where the file has it.
 
         `size` replaces the span's own; `scale_x` narrows the run from its start.
         A character the font can't draw sends the whole run to the substitute,
-        so the line never mixes two faces. The font goes onto the page once,
-        not once per span: a resource per span piled up on the page and made
-        every redraw slower. A font drawn by code gets codes, as the original did.
+        so a line never mixes two faces.
         """
+        font_size = span.size if size is None else size
+
+        # A font written by code gets codes, as the original did.
         coded = self._coded_for(span, text)
         if coded is not None:
-            self._draw_codes(span, coded, text, span.size if size is None else size, scale_x)
+            self._draw_codes(span, coded, text, font_size, scale_x)
             return
+
+        # Written by letter: in the file's font if it draws them all, else the substitute.
         alias = None if self.missing(span, text) else self._alias(span)
         if alias is None:  # the substitute draws the whole run
             _font, text = self._run(span, text)
@@ -301,7 +290,7 @@ class MuPDFEngine:
             origin,
             text,
             fontname=alias or base14_for(span.font),
-            fontsize=span.size if size is None else size,
+            fontsize=font_size,
             color=span.color,
             overlay=True,
             morph=(origin, pymupdf.Matrix(scale_x, 1)),
@@ -309,10 +298,10 @@ class MuPDFEngine:
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
         """The span's font drawn by code, if it has one and it can draw all of `text`."""
-        coded = self._coded.get((span.page, strip_subset(span.font)))
-        if coded is None or self.missing(span, text):
+        embedded = self._embedded(span)
+        if embedded is None or embedded.coded is None or self.missing(span, text):
             return None
-        return coded
+        return embedded.coded
 
     def _draw_codes(
         self, span: Span, coded: CodedFont, text: str, size: float, scale_x: float
@@ -321,9 +310,10 @@ class MuPDFEngine:
         self._pdf.restore_font(span.page, coded.resource, coded.xref)
         x, y = self._pdf.to_pdf_space(span.page, span.origin)
         r, g, b = span.color
-        hex_codes = "".join(
-            f"{coded.letters[ch].value:0{coded.code_bytes * 2}x}" for ch in text
-        )
+        hex_digits = coded.code_bytes * 2
+        hex_codes = "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
+        # Save the page's settings, set color, font and size, place the text,
+        # write the codes, then put the settings back.
         stream = (
             f"q BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
             f" /{coded.resource} {size:.{_PDF_DP}f} Tf"
@@ -333,27 +323,33 @@ class MuPDFEngine:
         self._pdf.add_content(span.page, stream.encode())
 
     def _alias(self, span: Span) -> str | None:
-        """The page's resource name for this span's embedded font, put there on first use.
+        """The page's name for this span's font, added to the page on first use.
 
-        None when the file only references the font, or MuPDF won't embed it.
+        Once per page, not per span: a copy per span piled up and slowed every
+        redraw. None when the file only names the font, or MuPDF won't add it.
         """
-        key = (span.page, strip_subset(span.font))
+        font_name = strip_subset(span.font)
+        key = (span.page, font_name)
         if key not in self._aliases:
-            embedded = self._embedded(span.page, span.font)
-            alias = None
-            if embedded is not None:
-                # Named from the font, so it can't clash with a resource already on the page.
-                digest = hashlib.blake2s(key[1].encode(), digest_size=_ALIAS_DIGEST_SIZE)
-                alias = "F" + digest.hexdigest()
-                try:
-                    self.doc[span.page].insert_font(fontname=alias, fontbuffer=embedded.buffer)
-                except (RuntimeError, ValueError):
-                    # These bytes already parsed as a Font object in _embedded(), but
-                    # embedding as a page resource is a different MuPDF code path;
-                    # degrade to the substitute rather than fail the edit outright.
-                    alias = None
-            self._aliases[key] = alias
+            self._aliases[key] = self._add_font(span, font_name)
         return self._aliases[key]
+
+    def _add_font(self, span: Span, font_name: str) -> str | None:
+        """Add the file's copy of the span's font to its page, under a new name."""
+        embedded = self._embedded(span)
+        # Only named in the file: nothing to add.
+        if embedded is None:
+            return None
+        # Named from the font, so it can't clash with a name already on the page.
+        digest = hashlib.blake2s(font_name.encode(), digest_size=_ALIAS_DIGEST_SIZE)
+        alias = "F" + digest.hexdigest()
+        try:
+            self.doc[span.page].insert_font(fontname=alias, fontbuffer=embedded.font.buffer)
+        except (RuntimeError, ValueError):
+            # The bytes opened as a Font, but adding them to a page is another MuPDF
+            # path that can still fail; the substitute draws instead.
+            return None
+        return alias
 
     def draw_at(
         self,
@@ -389,12 +385,59 @@ class MuPDFEngine:
         self.close()
 
 
-def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
-    """Which code, glyph and width draws each letter, from the font's ToUnicode.
+def _open_font(pdf: PdfFile, page_font: PageFont) -> _EmbeddedFont | None:
+    """Open the file's copy of a font, or None if it draws nothing we can use.
 
-    None without one: guessing would draw the wrong letters. Skips control and
-    private-use characters, and codes with no glyph. A letter with two codes
-    keeps the lowest.
+    A font with no letter lookup of its own (only a symbol table, say) still
+    counts if its letter list (ToUnicode) says which code draws each letter;
+    `draw` then writes those codes.
+    """
+    font_file = pdf.font_bytes(page_font.xref)
+    # Stored, but MuPDF can't read it out.
+    if not font_file:
+        return None
+    font = pymupdf.Font(fontbuffer=font_file)
+    claimed = font.valid_codepoints()
+    coverage = Coverage(font_file, claimed)
+
+    # Looks letters up itself: the usual case.
+    if coverage.usable:
+        return _EmbeddedFont(font, coverage, None)
+
+    # Written by code, as its letter list says.
+    by_code = _read_by_code(pdf, page_font, font_file)
+    if by_code is not None:
+        coded, coded_coverage = by_code
+        return _EmbeddedFont(font, coded_coverage, coded)
+
+    # Unreadable either way: keep it only if MuPDF says it has letters.
+    if claimed:
+        return _EmbeddedFont(font, coverage, None)
+    return None
+
+
+def _read_by_code(
+    pdf: PdfFile, page_font: PageFont, font_file: bytes
+) -> tuple[CodedFont, Coverage] | None:
+    """The font's codes and which letters they really draw, if we can write it by code."""
+    # Only a TrueType font the page uses itself, not one inside a form (a reusable drawing).
+    writable = page_font.file_type == "ttf" and not page_font.in_form
+    if not writable:
+        return None
+    coded = _read_coded_font(pdf, page_font)
+    if coded is None:
+        return None
+    glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
+    coverage = Coverage(font_file, glyph_ids=glyph_ids)
+    if not coverage.usable:
+        return None
+    return coded, coverage
+
+
+def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
+    """Which code draws each letter, from the font's letter list (ToUnicode).
+
+    None without a letter list: guessing would draw the wrong letters.
     """
     code_bytes = _code_bytes(font)
     if code_bytes is None:
@@ -405,7 +448,9 @@ def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
 
     letters: dict[str, FontCode] = {}
     for code in font_codes:  # lowest code first
-        if code.glyph and not _is_control(code.letter):
+        # Only codes that draw a shape, for a letter someone could type.
+        typeable = code.glyph != 0 and not _is_control(code.letter)
+        if typeable:
             letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
         return None
@@ -425,27 +470,34 @@ def _is_control(ch: str) -> bool:
 
 
 def _simple_chars(font: pymupdf.Font) -> set[str]:
-    """What a base-14 font draws through insert_text: its glyphs within Latin-1."""
+    """What a standard (base-14) font draws through insert_text: its letters within Latin-1."""
     return {chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES}
 
 
-def _advances(font: pymupdf.Font, chars: list[str]) -> dict[str, float]:
-    """Each character's advance in `font`, per 1000 em."""
-    return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
+def _widths(font: pymupdf.Font, chars: list[str]) -> dict[str, float]:
+    """Each character's width in `font`, per 1000 em."""
+    return {ch: round(font.glyph_advance(ord(ch)) * _EM, _WIDTH_DP) for ch in chars}
 
 
 def _round_box(box: Rect) -> Rect:
     """The box to 2 decimals, as span ids and the client see it."""
-    return Rect(round(box.x0, 2), round(box.y0, 2), round(box.x1, 2), round(box.y1, 2))
+    dp = _POSITION_DP
+    return Rect(round(box.x0, dp), round(box.y0, dp), round(box.x1, dp), round(box.y1, dp))
+
+
+def _round_point(point: tuple[float, float]) -> tuple[float, float]:
+    """The point to 2 decimals, like its box."""
+    x, y = point
+    return (round(x, _POSITION_DP), round(y, _POSITION_DP))
 
 
 def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
-    """Group a line's fragments into logical spans.
+    """Group a line's pieces into spans, one per run of same-style text.
 
-    Generators split a sentence into several show-text operators so they can
-    insert kerning, so a fragment is often a few letters and sometimes half a
-    word. Without this, find-and-replace misses most real matches and the user
-    can click something that is not a whole word.
+    PDF writers split a sentence into many pieces to adjust letter spacing, so
+    a piece is often a few letters and sometimes half a word. Without this,
+    find-and-replace misses most real matches and the user can click something
+    that is not a whole word.
     """
     if not pieces:
         return []
@@ -460,14 +512,18 @@ def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
     return groups
 
 
-def _continues(prev: TextPiece, nxt: TextPiece) -> bool:
-    """Whether piece `nxt` carries on from `prev`, in the same span."""
-    if prev.font != nxt.font:
+def _continues(previous: TextPiece, piece: TextPiece) -> bool:
+    """Whether `piece` carries on the span that `previous` ends."""
+    # Another font or size.
+    if previous.font != piece.font:
         return False
-    if abs(prev.size - nxt.size) > SIZE_EPS:
+    if abs(previous.size - piece.size) > SIZE_EPS:
         return False
-    if abs(prev.origin[1] - nxt.origin[1]) > BASELINE_EPS:
+    # Another baseline.
+    _x, previous_y = previous.origin
+    _x, y = piece.origin
+    if abs(previous_y - y) > BASELINE_EPS:
         return False
-    gap = nxt.box.x0 - prev.box.x1
-    # A small negative gap is kerning pulling letters together, not a new run.
-    return -1.0 <= gap <= nxt.size * GAP_RATIO
+    # Close enough: a small negative gap is kerning pulling letters together.
+    gap = piece.box.x0 - previous.box.x1
+    return -1.0 <= gap <= piece.size * GAP_RATIO
