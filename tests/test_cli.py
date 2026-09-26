@@ -112,7 +112,7 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     code = main(["redact", pdf, span_id, "-o", str(out_pdf)])
 
     assert_equal(code, 0, "exit code of `squidpdf redact`")
-    assert_in("checked gone", capsys.readouterr().out, "the redact output")
+    assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 
