@@ -7,9 +7,12 @@ import os
 import time
 from pathlib import Path
 
+import pytest
+
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
+from squidpdf.documents.errors import Gone
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 
 _A_MOMENT_S = 0.2  # many passes, when they're zero seconds apart
@@ -21,6 +24,14 @@ def test_a_saved_index_comes_back_span_for_span(engine):
     store.save_index(folder, index)
     loaded = store.load_index(folder)
     assert_equal(list(loaded or []), list(index), "spans after a save and a load")
+
+
+def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
+    """Found, then deleted by its owner before its clock restarts: gone, not a crash."""
+    _, folder = store.create("owner")
+    store.delete(folder)
+    with pytest.raises(Gone):
+        store.touch(folder)
 
 
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
