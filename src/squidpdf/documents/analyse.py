@@ -43,7 +43,7 @@ def analyse(folder: str) -> Analysis:
                 "substitute": reports[span.id].substitute,
                 "why": reports[span.id].why,
                 "same_widths": reports[span.id].same_widths,
-                "glyphs": eng.glyphs(span),
+                "glyphs": eng.widths(span),
             }
             for span in first_span_of_font.values()
         ]

@@ -21,8 +21,8 @@ from squidpdf.editing import (
     Replace,
     Skipped,
     apply,
-    check,
-    check_insert,
+    insert_fit,
+    replace_fit,
     verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
@@ -248,7 +248,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     with MuPDFEngine(path) as eng:
         index = eng.index()
         span = next(iter(index))
-        fit = check(eng, span, "Hi Ωμέγα")
+        fit = replace_fit(eng, span, "Hi Ωμέγα")
         applied = apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
         eng.save(out)
 
@@ -289,7 +289,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     out = tmp_path / "inserted.pdf"
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 12.0, font)
 
-    fit = check_insert(engine, insert)
+    fit = insert_fit(engine, insert)
     apply(engine, [insert], engine.index())
     engine.save(str(out))
 
@@ -307,7 +307,7 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
     text = "15\u202f000 EUR"  # French thousands, with a narrow no-break space
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
 
-    fit = check_insert(engine, insert)
+    fit = insert_fit(engine, insert)
     measured = engine.measure(_insert_as_span(insert), text)
     apply(engine, [insert], engine.index())
     engine.save(str(out))
@@ -372,7 +372,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
         Replace(span.id, "Made on 2 April 2026."),
         signed,
     ]
-    fit = check_insert(engine, signed)
+    fit = insert_fit(engine, signed)
     applied = apply(engine, edits, index)
     engine.save(str(out))
 

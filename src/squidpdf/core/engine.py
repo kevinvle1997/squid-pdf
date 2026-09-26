@@ -37,7 +37,7 @@ class Engine(Protocol):
         """Whether each span can be edited in its own font."""
         ...
 
-    def glyphs(self, span: Span) -> dict[str, float]:
+    def widths(self, span: Span) -> dict[str, float]:
         """Each character this span's drawing font really draws, to its width per 1000 em."""
         ...
 

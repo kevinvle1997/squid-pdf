@@ -24,7 +24,7 @@ class Option:
 
 
 @dataclass(frozen=True, slots=True)
-class FitCheck:
+class FitReport:
     """The answer to 'what happens if I type this'.
 
     Carries facts and option *identifiers*. The user-facing sentence is assembled
@@ -73,6 +73,14 @@ class FitCheck:
         if passed_over and self.delta_pt > TOLERANCE_PT:
             parts.append(words.NOT_OFFERED)
         return "; ".join(parts) or None
+
+
+@dataclass(frozen=True, slots=True)
+class LogFits:
+    """A fit for every replace and insert an edit log leaves, drawn or not."""
+
+    replaces: dict[str, FitReport]  # by the replaced span's id
+    inserts: dict[int, FitReport]  # by the insert's place in the log
 
 
 def options_for(delta_pt: float, original_width: float) -> list[Option]:

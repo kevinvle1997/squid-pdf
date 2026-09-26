@@ -1,7 +1,8 @@
 """The shapes a document takes: what's worked out from it, and what the browser gets.
 
 TypedDicts for the JSON, so the analysis is typed where it's built and the
-OpenAPI schema describes it; no framework, so the pool can import them.
+OpenAPI schema describes it; no framework, so the pool can import them. A name
+ending in Info is JSON the browser gets.
 """
 
 from __future__ import annotations

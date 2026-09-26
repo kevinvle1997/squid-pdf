@@ -8,7 +8,7 @@ import pymupdf
 import pytest
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, face_glyphs, words
+from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.core.fonts import FACES
 from squidpdf.documents import store
@@ -88,7 +88,7 @@ def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):
     # The widths the server measures with, so a preview matches the draw.
     carlito_bold = faces["Carlito Bold"]
     assert_equal(carlito_bold["style"], "bold", "its style")
-    assert_equal(carlito_bold["glyphs"], face_glyphs(FACES["Carlito Bold"]), "its widths")
+    assert_equal(carlito_bold["glyphs"], face_widths(FACES["Carlito Bold"]), "its widths")
 
     # An old build still gets it, but not to keep.
     old = mine.get("/api/fonts", params={"build": "an-older-build"})

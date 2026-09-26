@@ -25,7 +25,7 @@ from squidpdf.core import (
     green_rate,
     words,
 )
-from squidpdf.editing import Redact, Replace, apply, check
+from squidpdf.editing import Redact, Replace, apply, replace_fit
 
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
@@ -80,7 +80,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         if span is None:
             return _no_span(args.span_id)
 
-        fit = check(engine, span, args.text)
+        fit = replace_fit(engine, span, args.text)
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {DIM}{span.font} {span.size}pt{OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
@@ -106,7 +106,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
         if span is None:
             return _no_span(args.span_id)
 
-        fit = check(engine, span, args.text)
+        fit = replace_fit(engine, span, args.text)
         refused = not fit.ok and not args.force
         if refused:
             print(f"  {RED}{fit.describe()}{OFF} {DIM}(pass --force to do it anyway){OFF}")

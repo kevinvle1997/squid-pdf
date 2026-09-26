@@ -6,31 +6,30 @@ module owns both.
 
 from squidpdf.editing.apply import (
     apply,
-    check,
-    check_insert,
-    fits,
-    insert_fits,
+    insert_fit,
+    log_fits,
+    replace_fit,
     verify_redactions,
 )
 from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
 from squidpdf.editing.errors import BadReference
-from squidpdf.editing.fit import FitCheck, Option, options_for
+from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 __all__ = [
     "BadReference",
     "apply",
-    "check",
-    "check_insert",
-    "fits",
-    "insert_fits",
+    "replace_fit",
+    "insert_fit",
+    "log_fits",
     "verify_redactions",
     "Edit",
     "EditLog",
     "Insert",
     "Redact",
     "Replace",
-    "FitCheck",
+    "FitReport",
+    "LogFits",
     "Option",
     "options_for",
     "Applied",

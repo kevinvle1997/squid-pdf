@@ -177,10 +177,10 @@ def test_a_redraw_by_code_lands_where_the_original_was(coded, tmp_path):
 
 
 def test_widths_by_code_come_from_the_font_dict(coded):
-    """The browser's live check reads glyphs(), the server measure(); both read /Widths, /W."""
+    """The browser's live check reads widths(), the server measure(); both read /Widths, /W."""
     with MuPDFEngine(coded) as eng:
         span = next(iter(eng.index()))
-        assert_equal(eng.glyphs(span), _ADVANCES, "letters it draws, to their advances")
+        assert_equal(eng.widths(span), _ADVANCES, "letters it draws, to their advances")
         width = sum(_ADVANCES[ch] for ch in "BA AB") * _SIZE / _EM
         assert_equal(round(eng.measure(span, "BA AB"), 4), width, "measured width")
 

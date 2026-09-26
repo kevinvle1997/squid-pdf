@@ -1,7 +1,7 @@
-"""Shapes editing shares between the log, the fit check and what render sends back.
+"""Shapes editing shares between the log, the fit reports and what render sends back.
 
 TypedDicts for the JSON, as in `documents/types.py`; no framework, so the pool
-can import them.
+can import them. A name ending in Info is JSON the browser gets.
 """
 
 from __future__ import annotations
