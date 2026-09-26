@@ -1,54 +1,174 @@
-"""Which font can draw this, and what to use when the document's own cannot.
+"""The fonts we ship, and which one stands in when a document's own can't be used.
 
 A PDF usually embeds only the glyphs the document actually used, so whether an
-edit is possible in the original face depends on what the user types. That is the
-question this module answers.
+edit is possible in the original face depends on what the user types. When it
+isn't, a face from this catalog draws instead: where we can, one whose letters
+are exactly as wide as the original's, so nothing on the page moves.
 """
 
 from __future__ import annotations
 
-# Metric-compatible stand-ins: identical letter widths, so a substitution shifts
-# nothing on the page and only the letterforms differ. All OFL or Apache, all
-# free to embed. Keyed on the bare family name.
-SUBSTITUTES: dict[str, str] = {
-    "arial": "Liberation Sans",
-    "helvetica": "Liberation Sans",
-    "arialnarrow": "Liberation Sans Narrow",
-    "timesnewroman": "Liberation Serif",
-    "times": "Liberation Serif",
-    "timesroman": "Liberation Serif",
-    "couriernew": "Liberation Mono",
-    "courier": "Liberation Mono",
-    "calibri": "Carlito",
-    "cambria": "Caladea",
+from functools import cache
+from importlib import resources
+
+from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
+
+_OFL = "OFL-1.1"  # every face we ship is under the SIL Open Font License
+
+_ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
+
+# How each style is written in a face's name and in its file's name.
+_STYLE_NAMES: dict[Style, str] = {
+    "regular": "Regular",
+    "bold": "Bold",
+    "italic": "Italic",
+    "bold-italic": "Bold Italic",
+}
+_STYLE_FILES: dict[Style, str] = {
+    "regular": "Regular",
+    "bold": "Bold",
+    "italic": "Italic",
+    "bold-italic": "BoldItalic",
 }
 
-# The floor. Reached when nothing above matches, or when the replacement needs a
-# character no Latin face carries. An edit should degrade visibly, never fail.
-FALLBACK = "Noto Sans"
 
-# None of SUBSTITUTES is bundled yet (see HANDOFF gap #1), so drawing still needs
-# a real font today. These three PDF base-14 names ship with every reader and
-# need no file of ours, and are historically metric-compatible with the family
-# they stand in for. Calibri and Cambria have no base-14 equivalent and fall
-# through to Helvetica until Carlito/Caladea are actually bundled.
-_BASE14 = {
-    "arial": "helv",
-    "helvetica": "helv",
-    "arialnarrow": "helv",
-    "timesnewroman": "tiro",
-    "times": "tiro",
-    "timesroman": "tiro",
-    "couriernew": "cour",
-    "courier": "cour",
+def _family(
+    family: str,
+    category: Category,
+    same_widths_as: tuple[str, ...] = (),
+    styles: tuple[Style, ...] = _ALL_STYLES,
+) -> tuple[Face, ...]:
+    """Every face of one family, named and filed the same way."""
+    file_stem = family.replace(" ", "")
+    return tuple(
+        Face(
+            name=f"{family} {_STYLE_NAMES[style]}",
+            family=family,
+            style=style,
+            category=category,
+            file=f"{file_stem}-{_STYLE_FILES[style]}.ttf",
+            license=_OFL,
+            same_widths_as=same_widths_as,
+        )
+        for style in styles
+    )
+
+
+# Every face we ship. Where it came from and its version: `fonts/README.md`.
+CATALOG: tuple[Face, ...] = (
+    # Same letter widths as the fonts documents most often name but don't embed.
+    *_family(
+        "Liberation Sans",
+        "sans",
+        ("Arial", "ArialMT", "Helvetica", "Arimo", "Nimbus Sans", "NimbusSanL"),
+    ),
+    *_family(
+        "Liberation Serif",
+        "serif",
+        (
+            "Times New Roman",
+            "TimesNewRomanPSMT",
+            "TimesNewRomanPS",
+            "Times",
+            "Times Roman",
+            "Tinos",
+            "Nimbus Roman",
+            "NimbusRomNo9L",
+        ),
+    ),
+    *_family(
+        "Liberation Mono",
+        "mono",
+        ("Courier New", "CourierNewPSMT", "CourierNewPS", "Courier", "Cousine", "NimbusMonL"),
+    ),
+    *_family("Carlito", "sans", ("Calibri",)),
+    *_family("Caladea", "serif", ("Cambria",)),
+    # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
+    *_family("Noto Sans", "sans"),
+    *_family("Noto Serif", "serif"),
+    # More choice for new text.
+    *_family("Inter", "sans"),
+    *_family("Roboto", "sans"),
+    *_family("Lato", "sans"),
+    *_family("EB Garamond", "serif"),
+    *_family("IBM Plex Serif", "serif"),
+    *_family("IBM Plex Mono", "mono"),
+    *_family("Caveat", "handwriting", styles=("regular", "bold")),
+    *_family("Great Vibes", "handwriting", styles=("regular",)),
+)
+
+# Each face by the name an insert asks for it by.
+FACES: dict[str, Face] = {face.name: face for face in CATALOG}
+
+# The face that draws a letter a look-alike lacks, by the look-alike's kind of font.
+_BROADEST: dict[Category, str] = {
+    "sans": "Noto Sans",
+    "serif": "Noto Serif",
+    "mono": "Noto Sans",
+    "handwriting": "Noto Sans",
 }
-_BASE14_FALLBACK = "helv"
 
-# What each of those is called, for telling the user which face drew their edit.
-_BASE14_NAMES = {"helv": "Helvetica", "tiro": "Times", "cour": "Courier"}
+# A document font we know nothing about gets a face of its kind; letter widths will differ.
+_PLAIN: dict[Category, str] = {
+    "sans": "Liberation Sans",
+    "serif": "Liberation Serif",
+    "mono": "Liberation Mono",
+}
 
-# The faces new text can always be drawn in, by the name the user picks.
-BUILT_IN = tuple(_BASE14_NAMES.values())
+# A style a family lacks falls back one step at a time.
+_NEAREST_STYLE: dict[Style, Style] = {
+    "bold-italic": "bold",
+    "italic": "regular",
+    "bold": "regular",
+}
+
+# Bits of a PDF font description's /Flags.
+_FIXED_WIDTH = 1 << 0
+_SERIF = 1 << 1
+_ITALIC = 1 << 6
+_FORCE_BOLD = 1 << 18
+_BOLD_WEIGHT = 600  # /FontWeight at or past this reads as bold
+
+# A style by whether it's (bold, italic).
+_STYLES: dict[tuple[bool, bool], Style] = {
+    (False, False): "regular",
+    (True, False): "bold",
+    (False, True): "italic",
+    (True, True): "bold-italic",
+}
+
+# Words in a font's name after the family, and what they say about its style.
+_BOLD_WORDS = ("bold", "black", "heavy")
+_ITALIC_WORDS = ("italic", "oblique", "ital")
+# Another weight or width than regular or bold: the letters are wider or narrower.
+_OTHER_CUT_WORDS = (
+    "light",
+    "thin",
+    "medium",
+    "medi",
+    "semi",
+    "demi",
+    "extra",
+    "ultra",
+    "black",
+    "heavy",
+    "narrow",
+    "condensed",
+    "wide",
+)
+# Words that can end a spaced name, like "Calibri Bold", and aren't part of the family.
+_STYLE_WORDS = {
+    "regular",
+    "normal",
+    "book",
+    "bold",
+    "italic",
+    "oblique",
+    "light",
+    "medium",
+    "semibold",
+    "black",
+}
 
 
 def strip_subset(font: str) -> str:
@@ -56,41 +176,120 @@ def strip_subset(font: str) -> str:
     return font.split("+", 1)[-1]
 
 
+def _split(font: str) -> tuple[str, str]:
+    """A font's name as its family and the style words after it.
+
+    `ABCDEE+Calibri-Bold` -> (`Calibri`, `Bold`); `Arial,BoldItalic` and
+    `Calibri Bold` split the same way.
+    """
+    name = strip_subset(font)
+    # "Calibri-Bold" and "Arial,Bold": the style comes after the first dash or comma.
+    for mark in ("-", ","):
+        if mark in name:
+            family, style = name.split(mark, 1)
+            return family, style
+    # "Calibri Bold": the style is the words at the end that name one.
+    words = name.split()
+    style_words: list[str] = []
+    while len(words) > 1 and words[-1].lower() in _STYLE_WORDS:
+        style_words.insert(0, words.pop())
+    return " ".join(words), " ".join(style_words)
+
+
 def bare_name(font: str) -> str:
     """`ABCDEE+Calibri-Bold` -> `calibri`.
 
     Subset prefixes and style suffixes are noise when looking up a *family*.
-    Note this deliberately reads the name; the classifier that handles unmapped
-    fonts must not, because names lie: `NimbusRomNo9L` is a serif despite
+    Note this deliberately reads the name; picking a face for a font we don't
+    know must not, because names lie: `NimbusRomNo9L` is a serif despite
     containing no "roman". Do not use this to identify one font resource on a
     page, where two different weights share a bare name; use `strip_subset` there.
     """
-    family = strip_subset(font).split("-", 1)[0]  # Calibri-Bold -> Calibri
-    family = family.split(",", 1)[0]  # Arial,Bold -> Arial
+    family, _style = _split(font)
     return family.replace(" ", "").lower()
 
 
-def substitute_for(font: str) -> str:
-    """The closest face that will not move anything on the page, once it's bundled.
+def _by_family() -> dict[str, dict[Style, Face]]:
+    """Each family's faces by style, under its bare name and those of the fonts it matches."""
+    families: dict[str, dict[Style, Face]] = {}
+    for face in CATALOG:
+        for name in (face.family, *face.same_widths_as):
+            families.setdefault(bare_name(name), {})[face.style] = face
+    return families
 
-    Not what draws today: tell the user `drawn_in`'s answer until it is.
+
+_BY_FAMILY = _by_family()
+
+
+def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike:
+    """The face that stands in for a document font, in its style.
+
+    A face we ship by its exact name is itself. A family we know gets the face
+    with the same letter widths. Anything else gets a plain face of its kind,
+    judged by the PDF's own description of the font (`descriptor`), not its
+    name. The style comes from both.
     """
-    return SUBSTITUTES.get(bare_name(font), FALLBACK)
+    # Asked for by name, as an insert does.
+    if font in FACES:
+        return LookAlike(FACES[font], same_widths=True)
+
+    style, usual_cut = _style_of(font, descriptor)
+    family = _BY_FAMILY.get(bare_name(font))  # None: a family we don't ship
+    # A family we know: the same letter widths, if it's a cut we have.
+    if family is not None:
+        face = _nearest(family, style)
+        return LookAlike(face, same_widths=usual_cut and face.style == style)
+
+    # Unknown: a plain face of its kind.
+    category = _category_of(descriptor)
+    face = _nearest(_BY_FAMILY[bare_name(_PLAIN[category])], style)
+    return LookAlike(face, same_widths=False)
 
 
-def base14_for(font: str) -> str:
-    """The built-in PDF font actually used to draw a substitute, today.
+def broadest(face: Face) -> Face:
+    """The face with the most letters, of the same kind and style as `face`."""
+    family = _BY_FAMILY[bare_name(_BROADEST[face.category])]
+    return _nearest(family, face.style)
 
-    Only a stand-in for `substitute_for`'s answer until the real files in
-    SUBSTITUTES are bundled (see HANDOFF gap #1).
+
+@cache
+def face_bytes(face: Face) -> bytes:
+    """The face's font file, as shipped in the package."""
+    return resources.files("squidpdf").joinpath("fonts", face.file).read_bytes()
+
+
+def _nearest(family: dict[Style, Face], style: Style) -> Face:
+    """The family's face in `style`, or the nearest style it has."""
+    while style not in family:
+        style = _NEAREST_STYLE[style]
+    return family[style]
+
+
+def _style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]:
+    """The style a font's name and description say it is, and whether it's a usual cut.
+
+    A usual cut is plain regular, bold or italic: a light or narrow cut of a
+    family we know still has other letter widths than the face we ship.
     """
-    return _BASE14.get(bare_name(font), _BASE14_FALLBACK)
+    _family_name, style_words = _split(font)
+    words = style_words.lower()
+    bold = any(word in words for word in _BOLD_WORDS)
+    italic = any(word in words for word in _ITALIC_WORDS)
+    usual_cut = not any(word in words for word in _OTHER_CUT_WORDS)
+    if descriptor is not None:
+        heavy = descriptor.weight is not None and descriptor.weight >= _BOLD_WEIGHT
+        bold = bold or bool(descriptor.flags & _FORCE_BOLD) or heavy
+        italic = italic or bool(descriptor.flags & _ITALIC) or descriptor.italic_angle != 0
+    return _STYLES[(bold, italic)], usual_cut
 
 
-def drawn_in(font: str) -> str:
-    """The name of the face that really draws an edit in this font today, e.g. "Helvetica".
-
-    The one to tell the user: naming a look-alike we don't ship would promise
-    a width we can't keep.
-    """
-    return _BASE14_NAMES[base14_for(font)]
+def _category_of(descriptor: FontDescriptor | None) -> Category:
+    """Serif, fixed width or sans, as the PDF describes the font; sans when it doesn't."""
+    # Nothing to go on: most document text is sans.
+    if descriptor is None:
+        return "sans"
+    if descriptor.flags & _FIXED_WIDTH:
+        return "mono"
+    if descriptor.flags & _SERIF:
+        return "serif"
+    return "sans"

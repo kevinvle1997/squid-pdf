@@ -165,6 +165,7 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
             "missing": words.MISSING,
             "too_long": words.TOO_LONG,
             "stand_in": words.STAND_IN,
+            "stand_in_same_widths": words.STAND_IN_SAME_WIDTHS,
             "undo_redaction": words.UNDO_REDACTION,
             "options": words.OPTIONS,
         },

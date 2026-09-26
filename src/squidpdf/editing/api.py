@@ -1,5 +1,7 @@
 """Render: the browser's edits drawn on the rows it's showing, with a fit for each.
 
+Also the font list: every face we ship that new text can be drawn in.
+
 Routes stay thin: load, validate, pool, reply. Imports `documents.api` for
 `load`, the one allowed direction; documents never imports editing.
 """
@@ -9,7 +11,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends
+import orjson
+from fastapi import APIRouter, Body, Depends, Response
 from pydantic import Field
 
 from squidpdf.api import constants as limits
@@ -22,14 +25,34 @@ from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import work
+from squidpdf.editing.constants import FONT_LIST_CACHE
 from squidpdf.editing.edits import Insert, Redact, Replace
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
-from squidpdf.editing.types import Region, Render
+from squidpdf.editing.fonts import font_list
+from squidpdf.editing.types import FontList, Region, Render
 
 router = APIRouter(prefix="/api/documents")
+fonts_router = APIRouter(prefix="/api/fonts")
 
 # Read by `kind` first: one bad kind is one error, not one per edit type.
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
+
+# The font list, worked out once per server under this build: the same for everyone.
+_font_lists: dict[str, bytes] = {}
+
+
+@fonts_router.get("", response_model=FontList)
+async def fonts(build: str, workers: Annotated[Pool, Depends(pool.current)]) -> Response:
+    """Every face new text can be drawn in, by family, with each letter's width.
+
+    An old `build` still gets the list, but not to keep.
+    """
+    body = _font_lists.get(BUILD)  # None until the first ask since the server started
+    if body is None:
+        listed = await workers.run(limits.UPLOAD_TIMEOUT_S, font_list)
+        body = _font_lists[BUILD] = orjson.dumps(listed)
+    cache = FONT_LIST_CACHE if build == BUILD else "no-store"
+    return Response(body, media_type="application/json", headers={"Cache-Control": cache})
 
 
 @router.post("/{doc_id}/render", response_model=Render)

@@ -11,7 +11,7 @@ from collections.abc import Collection, Sequence
 
 from squidpdf.core import words
 from squidpdf.core.engine import Engine
-from squidpdf.core.fonts import BUILT_IN, drawn_in
+from squidpdf.core.fonts import FACES
 from squidpdf.core.types import Span, SpanIndex, new_text
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
 from squidpdf.editing.errors import BadReference
@@ -178,14 +178,14 @@ def check_insert(engine: Engine, insert: Insert) -> FitCheck:
     """
     span = _insert_span(insert)
     [report] = engine.assess(SpanIndex([span]))
-    built_in = insert.font in BUILT_IN
-    # Chosen from the document, and the file's copy can't be used here at all.
-    unusable = not built_in and report.why not in (None, words.FONT_LACKS_LETTERS)
+    shipped = insert.font in FACES
+    # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
+    unusable = not shipped and report.why not in (None, words.FONT_LACKS_LETTERS)
     return FitCheck(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),
         left_out=engine.left_out(span, insert.text),
-        stand_in=drawn_in(insert.font),
+        stand_in=engine.stand_in(span, insert.text),
         unavailable=insert.font if unusable else "",
     )
 
@@ -206,7 +206,7 @@ def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -
         options=options,
         strategy=strategy if offered else "as-is",
         left_out=engine.left_out(span, text),
-        stand_in=drawn_in(span.font),
+        stand_in=engine.stand_in(span, text),
         asked=strategy,
     )
 

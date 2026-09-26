@@ -53,6 +53,10 @@ class Engine(Protocol):
         """Characters this span's drawing font cannot draw, substitute or not."""
         ...
 
+    def stand_in(self, span: Span, text: str) -> str:
+        """The face we ship that draws `text` when the span's own font can't."""
+        ...
+
     def remove(self, spans: list[Span]) -> None:
         """Delete these glyph runs. Real deletion, not a covering rectangle."""
         ...

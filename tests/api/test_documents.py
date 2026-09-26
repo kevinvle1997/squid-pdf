@@ -8,9 +8,11 @@ import pymupdf
 import pytest
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, words
+from squidpdf.core import BUILD, face_glyphs, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.core.fonts import FACES
 from squidpdf.documents import store
+from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
 
@@ -63,8 +65,34 @@ def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
     assert_equal(doc["fit"], rules, "fit")
     assert_equal(doc["copy"]["missing"], words.MISSING, "the missing-glyph sentence")
     assert_equal(doc["notices"], [], "notices")
-    faces = [face["name"] for face in doc["insert_fonts"]]
-    assert_equal(faces, ["Helvetica", "Times", "Courier"], "faces new text can use")
+    copy = doc["copy"]
+    assert_equal(
+        copy["stand_in_same_widths"], words.STAND_IN_SAME_WIDTHS, "same-width sentence"
+    )
+    # A font only named here: the face that really draws it, whose letters are as wide.
+    times = next(f for f in doc["fonts"] if f["name"] == "Times-Roman")
+    expected = ("Liberation Serif Regular", True)
+    assert_equal((times["substitute"], times["same_widths"]), expected, "Times' stand-in")
+
+
+def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):
+    response = mine.get("/api/fonts", params={"build": BUILD})
+    assert_equal(response.headers["cache-control"], FONT_LIST_CACHE, "font list caching")
+    listed = response.json()
+    assert_equal(listed["build"], BUILD, "build")
+    families = {family["family"]: family for family in listed["families"]}
+    assert_equal(families["Carlito"]["same_widths_as"], ["Calibri"], "what Carlito matches")
+    assert_equal(families["Caveat"]["category"], "handwriting", "Caveat's kind")
+    faces = {face["name"]: face for family in families.values() for face in family["faces"]}
+    assert_equal(set(faces), set(FACES), "every face an insert can ask for")
+    # The widths the server measures with, so a preview matches the draw.
+    carlito_bold = faces["Carlito Bold"]
+    assert_equal(carlito_bold["style"], "bold", "its style")
+    assert_equal(carlito_bold["glyphs"], face_glyphs(FACES["Carlito Bold"]), "its widths")
+
+    # An old build still gets it, but not to keep.
+    old = mine.get("/api/fonts", params={"build": "an-older-build"})
+    assert_equal(old.headers["cache-control"], "no-store", "caching under an old build")
 
 
 def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):

@@ -17,7 +17,13 @@ _FRAMEWORK = ("fastapi", "starlette", "pydantic")
 
 
 @pytest.mark.parametrize(
-    "module", ["squidpdf.cli", "squidpdf.documents.analyse", "squidpdf.editing.work"]
+    "module",
+    [
+        "squidpdf.cli",
+        "squidpdf.documents.analyse",
+        "squidpdf.editing.work",
+        "squidpdf.editing.fonts",
+    ],
 )
 def test_importing_it_loads_no_web_framework(module):
     # A fresh interpreter: this one has already imported FastAPI for other tests.

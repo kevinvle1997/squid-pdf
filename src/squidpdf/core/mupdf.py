@@ -10,20 +10,29 @@ from __future__ import annotations
 import hashlib
 import unicodedata
 from dataclasses import dataclass
+from functools import cache
 
 import pymupdf
 
 from squidpdf.core import words
-from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SIZE_EPS
+from squidpdf.core.constants import (
+    BASELINE_EPS,
+    GAP_RATIO,
+    GLYPH_LIST_RANGES,
+    LIBRARY_VERSION,
+    SIZE_EPS,
+)
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.errors import Damaged, Encrypted
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import base14_for, drawn_in, strip_subset
+from squidpdf.core.fonts import broadest, face_bytes, look_alike, strip_subset
 from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
 from squidpdf.core.types import (
     CodedFont,
+    Face,
     FontCode,
     Fragment,
+    LookAlike,
     Page,
     Rect,
     Span,
@@ -32,9 +41,6 @@ from squidpdf.core.types import (
 )
 
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
-
-# insert_text draws base-14 fonts a byte per character; past Latin-1 comes out a dot.
-_SIMPLE_FONT_CODES = 256
 
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
@@ -58,6 +64,15 @@ class _EmbeddedFont:
     font: pymupdf.Font
     coverage: Coverage  # which letters draw a shape
     coded: CodedFont | None  # set when we write it by code, not by letter
+
+
+@dataclass(frozen=True, slots=True)
+class _StandIn:
+    """A face we ship drawing a line the span's own font can't, less what even it can't draw."""
+
+    face: Face
+    text: str  # the line as it's drawn, without the letters left out
+    left_out: list[str]  # each once, in the order typed
 
 
 class _FontUnusable(Exception):
@@ -87,6 +102,8 @@ class MuPDFEngine:
         # Keyed by (page, font name); each fills in on first lookup.
         self._fonts: dict[tuple[int, str], _EmbeddedFont | _FontUnusable] = {}
         self._aliases: dict[tuple[int, str], str | _FontUnusable] = {}  # once drawn
+        self._look_alikes: dict[tuple[int, str], LookAlike] = {}
+        self._face_aliases: dict[tuple[int, str], str] = {}  # by (page, file), once drawn
 
     def _lookup(self, span: Span) -> _EmbeddedFont | _FontUnusable:
         """The file's own copy of the span's font, or why we can't use it."""
@@ -118,11 +135,7 @@ class MuPDFEngine:
 
         Raises _FontUnusable, saying why, when there's no copy we can use.
         """
-        # The first font by this name, in MuPDF's order; a later one is never tried.
-        page_font = next(
-            (font for font in self._pdf.fonts(page) if strip_subset(font.name) == font_name),
-            None,
-        )
+        page_font = self._page_font(page, font_name)
         # Not on the page, or only named there.
         if page_font is None or not page_font.is_embedded:
             raise _FontUnusable(words.FONT_NOT_IN_FILE)
@@ -130,6 +143,40 @@ class MuPDFEngine:
             return _open_font(self._pdf, page_font)
         except (RuntimeError, ValueError) as exc:  # MuPDF can't open it
             raise _FontUnusable(words.FONT_UNREADABLE) from exc
+
+    def _page_font(self, page: int, font_name: str) -> PageFont | None:
+        """The page's font by this name, subset prefix aside; None when the page has none.
+
+        The first by this name, in MuPDF's order; a later one is never tried.
+        """
+        return next(
+            (font for font in self._pdf.fonts(page) if strip_subset(font.name) == font_name),
+            None,
+        )
+
+    def _look_alike(self, span: Span) -> LookAlike:
+        """The face we ship that stands in for the span's font, in its style."""
+        font_name = strip_subset(span.font)
+        key = (span.page, font_name)
+        if key not in self._look_alikes:
+            page_font = self._page_font(span.page, font_name)
+            # New text, or a font the page doesn't list: go by the name alone.
+            descriptor = (
+                None if page_font is None else self._pdf.font_descriptor(page_font.xref)
+            )
+            self._look_alikes[key] = look_alike(span.font, descriptor)
+        return self._look_alikes[key]
+
+    def _stand_in(self, span: Span, text: str) -> _StandIn:
+        """The face that draws `text` when the span's own font can't, and what it leaves out.
+
+        The look-alike when it has every letter; otherwise whichever of it and
+        the broadest face we ship leaves out fewer, the look-alike on a tie.
+        One face for the whole line: two would look like a mistake.
+        """
+        first_choice = self._look_alike(span).face
+        runs = [_stand_in_run(face, text) for face in (first_choice, broadest(first_choice))]
+        return min(runs, key=lambda run: len(run.left_out))  # min keeps the first of a tie
 
     def index(self) -> SpanIndex:
         """Built once, from the pristine document. Never rebuilt from a patched one.
@@ -214,12 +261,15 @@ class MuPDFEngine:
         exact = in_file and not self.missing(span, span.text)
         if exact:
             return FidelityReport(span.id, Fidelity.EXACT, span.font)
+        match = self._look_alike(span)
+        stand_in = self._stand_in(span, span.text)
         return FidelityReport(
             span.id,
             Fidelity.SUBSTITUTE,
             span.font,
-            substitute=drawn_in(span.font),
+            substitute=stand_in.face.name,
             why=self._why_not(span) if not in_file else words.FONT_LACKS_LETTERS,
+            same_widths=match.same_widths and stand_in.face == match.face,
         )
 
     def glyphs(self, span: Span) -> dict[str, float]:
@@ -227,14 +277,14 @@ class MuPDFEngine:
 
         The same font `measure` uses, so widths agree. A trimmed (subset) font's
         emptied letters don't count; if Coverage can't read the font, MuPDF's own
-        list stands in.
+        list stands in. A font not in the file is drawn in its look-alike, whose
+        list is kept to GLYPH_LIST_RANGES.
         """
         embedded = self._embedded(span)
 
-        # Not in the file: the stand-in font draws it.
+        # Not in the file: the look-alike draws it.
         if embedded is None:
-            stand_in = pymupdf.Font(fontname=base14_for(span.font))
-            return _widths(stand_in, sorted(_simple_chars(stand_in)))
+            return face_glyphs(self._look_alike(span).face)
 
         letters = embedded.coverage.drawable()
 
@@ -259,33 +309,35 @@ class MuPDFEngine:
 
         Checks each letter draws a shape rather than trusting the font's list: a
         trimmed (subset) font still lists letters whose shapes were emptied. A
-        substitute is checked against what it draws, as `glyphs` lists it.
+        font not in the file is checked against its look-alike, the real file we ship.
         """
         embedded = self._embedded(span)
-        # Not in the file: the substitute draws it.
+        # Not in the file: the look-alike draws it.
         if embedded is None:
-            drawable = _simple_chars(pymupdf.Font(fontname=base14_for(span.font)))
-            return [ch for ch in dict.fromkeys(text) if ch not in drawable]
+            return _face_coverage(self._look_alike(span).face).missing(text)
         return embedded.coverage.missing(text)
 
     def left_out(self, span: Span, text: str) -> list[str]:
         """Characters no font we have can draw here, so a redraw leaves them out."""
         if not self.missing(span, text):
             return []
-        return _left_out_by(base14_for(span.font), text)
+        return self._stand_in(span, text).left_out
+
+    def stand_in(self, span: Span, text: str) -> str:
+        """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
+        return self._stand_in(span, text).face.name
 
     def _run(self, span: Span, text: str) -> tuple[pymupdf.Font, str]:
         """The face `text` is drawn in, and the text as it can be drawn.
 
         The span's own font if it draws every character; otherwise the whole run
-        in the substitute, less what even that can't draw.
+        in the stand-in, less what even that can't draw.
         """
         embedded = self._embedded(span)
         if embedded is not None and not self.missing(span, text):
             return embedded.font, text
-        substitute = pymupdf.Font(fontname=base14_for(span.font))
-        drawable = _simple_chars(substitute)
-        return substitute, "".join(ch for ch in text if ch in drawable)
+        stand_in = self._stand_in(span, text)
+        return _face_font(stand_in.face), stand_in.text
 
     def remove(self, spans: list[Span]) -> None:
         """Delete these spans' text for real, not by covering it with a box.
@@ -309,7 +361,7 @@ class MuPDFEngine:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
         `size` replaces the span's own; `scale_x` narrows the run from its start.
-        A character the font can't draw sends the whole run to the substitute,
+        A character the font can't draw sends the whole run to the stand-in,
         so a line never mixes two faces. Returns, in plain words, anything that
         came out other than asked; empty when nothing did.
         """
@@ -333,13 +385,12 @@ class MuPDFEngine:
                 self._insert(span, text, alias, font_size, scale_x)
                 return notices
 
-        # Otherwise the substitute draws the whole run, less what even it can't draw.
-        substitute = base14_for(span.font)
-        left_out = _left_out_by(substitute, text)
-        if left_out:
-            notices.append(words.LEFT_OUT.format(letters=" ".join(left_out)))
-        kept = "".join(ch for ch in text if ch not in left_out)
-        self._insert(span, kept, substitute, font_size, scale_x)
+        # Otherwise the stand-in draws the whole run, less what even it can't draw.
+        stand_in = self._stand_in(span, text)
+        if stand_in.left_out:
+            notices.append(words.LEFT_OUT.format(letters=" ".join(stand_in.left_out)))
+        alias = self._face_alias(span.page, stand_in.face)
+        self._insert(span, stand_in.text, alias, font_size, scale_x)
         return notices
 
     def _insert(
@@ -409,9 +460,23 @@ class MuPDFEngine:
             self.doc[page].insert_font(fontname=alias, fontbuffer=embedded.font.buffer)
         except (RuntimeError, ValueError):
             # The bytes opened as a Font, but adding them to a page is another MuPDF
-            # path that can still fail; the substitute draws instead.
+            # path that can still fail; the stand-in draws instead.
             return _FontUnusable(words.FONT_NOT_ADDED)
         return alias
+
+    def _face_alias(self, page: int, face: Face) -> str:
+        """The page's name for a face we ship, added to the page on first use.
+
+        Once per page, as `_alias` does for the file's own fonts.
+        """
+        key = (page, face.file)
+        if key not in self._face_aliases:
+            # From the file's name, so it can't clash with the page's own names.
+            digest = hashlib.blake2s(face.file.encode(), digest_size=_ALIAS_DIGEST_SIZE)
+            alias = "S" + digest.hexdigest()
+            self.doc[page].insert_font(fontname=alias, fontbuffer=face_bytes(face))
+            self._face_aliases[key] = alias
+        return self._face_aliases[key]
 
     def save(self, path: str) -> None:
         """Write the (possibly edited) document to `path`."""
@@ -515,15 +580,40 @@ def _is_control(ch: str) -> bool:
     return unicodedata.category(ch).startswith("C")
 
 
-def _left_out_by(base14: str, text: str) -> list[str]:
-    """The characters of `text` a base-14 font can't draw, each once, in order."""
-    drawable = _simple_chars(pymupdf.Font(fontname=base14))
-    return [ch for ch in dict.fromkeys(text) if ch not in drawable]
+@cache
+def face_glyphs(face: Face) -> dict[str, float]:
+    """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
+
+    The list the browser previews new text with, so it is kept short; letters
+    past those ranges still draw, and the server's fit says so.
+    """
+    coverage = _face_coverage(face)
+    letters = [
+        chr(codepoint)
+        for start, end in GLYPH_LIST_RANGES
+        for codepoint in range(start, end)
+        if coverage.covers(chr(codepoint))
+    ]
+    return _widths(_face_font(face), letters)
 
 
-def _simple_chars(font: pymupdf.Font) -> set[str]:
-    """What a standard (base-14) font draws through insert_text: its letters within Latin-1."""
-    return {chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES}
+@cache
+def _face_font(face: Face) -> pymupdf.Font:
+    """A face we ship, opened once per process: it measures what `_face_alias` draws."""
+    return pymupdf.Font(fontbuffer=face_bytes(face))
+
+
+@cache
+def _face_coverage(face: Face) -> Coverage:
+    """Which letters a face we ship really draws, read from its file once per process."""
+    return Coverage(face_bytes(face))
+
+
+def _stand_in_run(face: Face, text: str) -> _StandIn:
+    """`text` drawn in `face`: what it draws, and what it leaves out."""
+    left_out = _face_coverage(face).missing(text)
+    kept = "".join(ch for ch in text if ch not in left_out)
+    return _StandIn(face, kept, left_out)
 
 
 def _widths(font: pymupdf.Font, chars: list[str]) -> dict[str, float]:

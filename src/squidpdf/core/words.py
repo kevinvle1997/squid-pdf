@@ -17,6 +17,10 @@ NOT_OFFERED = "too far to fit without looking different, so it's left long"
 TOO_LONG = "{delta_pt} pt too long"
 # A font the file doesn't let us use. `{font}` is the face that draws instead.
 STAND_IN = "Edits here use {font}, which may be a different width from the original."
+# The same, when that face's letters are exactly as wide as the original's.
+STAND_IN_SAME_WIDTHS = (
+    "Edits here use {font}, whose letters are the same width as the original's."
+)
 
 # Why an edit was left out.
 NO_SPAN = "This edit points at text that isn't in this document."

@@ -42,15 +42,16 @@ class Redact:
 class Insert:
     """Draw new text where the document has none: a signature, an annotation.
 
-    `font` is one of the built-in faces (`core.fonts.BUILT_IN`) or a font the
-    document uses on this page. Its fit says what will really be drawn.
+    `font` names a face we ship (`core.fonts.FACES`, e.g. "Caveat Bold") or a
+    font the document uses on this page. Anything else is drawn in a look-alike,
+    and its fit says so: the fit always says what will really be drawn.
     """
 
     page: int
     origin: tuple[float, float]
     text: str
     size: float
-    font: str = "Helvetica"
+    font: str = "Liberation Sans Regular"
     color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     kind: Literal["insert"] = "insert"
 
