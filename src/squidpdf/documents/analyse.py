@@ -10,7 +10,7 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.core import BUILD, FidelityReport, Span, open_pdf
+from squidpdf.core import BUILD, FidelityReport, Span, open_pdf, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
@@ -41,7 +41,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": reports[span.id].why,
+                "why": _said(reports[span.id]),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": eng.widths(span),
             }
@@ -65,6 +65,11 @@ def page_image(folder: str, page: int, scale: float) -> bytes:
     """One page of the original as a PNG, unrotated."""
     with open_pdf(str(Path(folder) / store.ORIGINAL)) as eng:
         return eng.page_image(page, scale)
+
+
+def _said(report: FidelityReport) -> str | None:
+    """Why the span's own font can't be used, in English; None when it can."""
+    return None if report.why is None else words.render(report.why)
 
 
 def _span_info(span: Span, report: FidelityReport) -> SpanInfo:

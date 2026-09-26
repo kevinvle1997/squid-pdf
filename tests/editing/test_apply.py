@@ -19,7 +19,6 @@ from squidpdf.editing import (
     Notice,
     Redact,
     Replace,
-    Skipped,
     apply,
     insert_fit,
     replace_fit,
@@ -49,6 +48,11 @@ def _drawn(path, page: int, needle: str) -> dict:
         if needle in span["text"]:
             return span
     raise LookupError(f"nothing drawn on page {page} contains {needle!r}")
+
+
+def _said(notices: list[Notice]) -> list[tuple[str | None, str, int | None]]:
+    """Each notice as the user reads it in English, with the edit it's about."""
+    return [(notice.span_id, words.render(notice.detail), notice.edit) for notice in notices]
 
 
 def _assert_cut(path, page: int, face: str, text: str) -> None:
@@ -110,7 +114,8 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
 
     # Editing it afterwards brings the text back, and render says so.
     undone = apply(engine, [*edits, Replace(span.id, "Services")], index).notices
-    assert_equal(undone, [Notice(span.id, words.REDACTION_UNDONE)], "notices after the edit")
+    expected = [(span.id, words.REDACTION_UNDONE, None)]
+    assert_equal(_said(undone), expected, "notices after the edit")
 
 
 def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tmp_path):
@@ -198,8 +203,8 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
     assert_equal(drawn["font"], saved_as("Liberation Serif Regular"), "the font that drew it")
-    left_out = Notice(span.id, words.LEFT_OUT.format(letters="中"))
-    assert_equal(applied.notices, [left_out], "what render tells the user")
+    left_out = (span.id, words.LEFT_OUT.format(letters="中"), None)
+    assert_equal(_said(applied.notices), [left_out], "what render tells the user")
     assert_equal(said_on_save, [], "what save tells the user")
     _assert_cut(
         out, EMBEDDED_PAGE, "Liberation Serif Regular", "Delivery begins 14 Février 2026"
@@ -230,7 +235,7 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
     said_on_save = engine.save(str(out))
 
     said = words.FACE_NOT_TRIMMED.format(font="Liberation Serif Regular")
-    assert_equal(said_on_save, [said], "what save tells the user")
+    assert_equal([words.render(m) for m in said_on_save], [said], "what save tells the user")
     stored = stored_file(str(out), REFERENCED_PAGE, "Liberation Serif Regular")
     shipped = face_bytes(FACES["Liberation Serif Regular"])
     assert_true(stored == shipped, "the whole shipped file went in")
@@ -254,7 +259,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
 
     greek = "Ω or μ or έ or γ or α"  # noqa: RUF001 (Greek on purpose: Caladea has none)
     said = words.MISSING.format(chars=greek, font="Noto Serif Regular")
-    assert_equal(fit.describe(), said, "what the fit says")
+    assert_equal(words.render_all(fit.describe()), said, "what the fit says")
     assert_equal(applied.notices, [], "nothing left out")
     drawn = _drawn(out, 0, "Hi")
     expected = ("Hi Ωμέγα", saved_as("Noto Serif Regular"))
@@ -293,7 +298,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     apply(engine, [insert], engine.index())
     engine.save(str(out))
 
-    assert_equal(fit.describe(), said, "what the fit says")
+    assert_equal(words.render_all(fit.describe()), said, "what the fit says")
     drawn = _drawn(out, REFERENCED_PAGE, "Signed")
     assert_equal(
         (drawn["text"], drawn["font"]), (text, saved_as(face)), "what drew, and in what"
@@ -376,12 +381,13 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
     applied = apply(engine, edits, index)
     engine.save(str(out))
 
-    assert_equal(applied.skipped, [Skipped(0, "bad_reference", words.NO_SPAN)], "skipped")
+    skipped = [(s.edit, s.type, words.render(s.detail)) for s in applied.skipped]
+    assert_equal(skipped, [(0, "bad_reference", words.NO_SPAN)], "skipped")
     edited = pymupdf.open(out)[REFERENCED_PAGE].get_text()
     assert_in("2 April 2026", edited, "the edit that was good")
     # What the fit promised is what was drawn: Caveat, 中 left out and said so.
     left_out = words.LEFT_OUT.format(letters="中")
-    assert_equal(applied.notices, [Notice(None, left_out, edit=2)], "what render says")
+    assert_equal(_said(applied.notices), [(None, left_out, 2)], "what render says")
     assert_equal(fit.left_out, ["中"], "what the fit said would be left out")
     drawn = _drawn(out, REFERENCED_PAGE, "Signed")
     expected = ("Signed: Zoë", saved_as("Caveat Regular"))

@@ -8,6 +8,8 @@ squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
 """
 
+# Speaks English only: everything it tells a person goes through core/words.py.
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +22,7 @@ from squidpdf.core import (
     GREEN_RATE_WARN,
     Fidelity,
     FidelityReport,
+    Message,
     Problem,
     green_rate,
     open_pdf,
@@ -86,7 +89,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"  {DIM}{span.font} {span.size}pt{OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
 
-        problem = fit.describe()
+        problem = words.render_all(fit.describe())
         # It fits: nothing to choose between.
         if not problem:
             print(f"  {GREEN}fits in place{OFF}\n")
@@ -94,7 +97,8 @@ def cmd_check(args: argparse.Namespace) -> int:
         # It doesn't: say why and list the ways out.
         print(f"  {RED}{problem}{OFF}")
         for option in fit.options:
-            print(f"    {DIM}{option.name:<9}{OFF} {option.label}{DIM}: {option.detail}{OFF}")
+            label, detail = words.render(option.label), words.render(option.detail)
+            print(f"    {DIM}{option.name:<9}{OFF} {label}{DIM}: {detail}{OFF}")
         print()
         return 0
 
@@ -110,14 +114,15 @@ def cmd_edit(args: argparse.Namespace) -> int:
         fit = replace_fit(engine, span, args.text)
         refused = not fit.ok and not args.force
         if refused:
-            print(f"  {RED}{fit.describe()}{OFF} {DIM}(pass --force to do it anyway){OFF}")
+            problem = words.render_all(fit.describe())
+            print(f"  {RED}{problem}{OFF} {DIM}(pass --force to do it anyway){OFF}")
             return 1
 
         applied = apply(engine, [Replace(span.id, args.text)], index)
         saved = engine.save(args.out)
         print(f"\n  {span.text!r} -> {args.text!r}")
-        for detail in [notice.detail for notice in applied.notices] + saved:
-            print(f"  {YELLOW}{detail}{OFF}")
+        for said in [notice.detail for notice in applied.notices] + saved:
+            print(f"  {YELLOW}{words.render(said)}{OFF}")
         print(f"  {GREEN}saved{OFF} {args.out}\n")
     return 0
 
@@ -139,8 +144,8 @@ def cmd_redact(args: argparse.Namespace) -> int:
     # Still there: keep nothing, as the app downloads nothing.
     if not gone:
         Path(args.out).unlink()
-        failed = words.REDACTION_FAILED.format(text=span.text, page=span.page + 1)
-        print(f"  {RED}{failed}{OFF}")
+        failed = Message("redaction_failed", {"text": span.text, "page": span.page + 1})
+        print(f"  {RED}{words.render(failed)}{OFF}")
         return 1
     print(f"\n  removed {span.text!r}")
     print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")

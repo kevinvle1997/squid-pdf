@@ -2,8 +2,9 @@
 
 Also the font list: every face we ship that new text can be drawn in.
 
-Routes stay thin: load, validate, pool, reply. Imports `documents.api` for
-`load`, the one allowed direction; documents never imports editing.
+Routes stay thin: load, validate, pool, reply. The reply is where what went
+wrong is put into words: the pool hands back Messages. Imports `documents.api`
+for `load`, the one allowed direction; documents never imports editing.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from squidpdf.api import constants as limits
 from squidpdf.api import pool
 from squidpdf.api.errors import InvalidRequest
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD
+from squidpdf.core import BUILD, words
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
@@ -28,8 +29,18 @@ from squidpdf.editing import work
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from squidpdf.editing.edits import Insert, Redact, Replace
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
+from squidpdf.editing.fit import FitReport
 from squidpdf.editing.fonts import font_list
-from squidpdf.editing.types import FontList, Region, Render
+from squidpdf.editing.types import (
+    FitInfo,
+    FontList,
+    Notice,
+    NoticeInfo,
+    Region,
+    Render,
+    Skipped,
+    SkippedInfo,
+)
 
 router = APIRouter(prefix="/api/documents")
 fonts_router = APIRouter(prefix="/api/fonts")
@@ -91,8 +102,39 @@ async def render(
     rendered = await workers.run(
         limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
     )
+    fits = rendered.fits
     return {
-        **rendered,
+        "images": rendered.images,
+        "fits": {span_id: _fit_info(fit) for span_id, fit in fits.replaces.items()},
+        "insert_fits": [
+            {**_fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
+        ],
+        "redactions": [],  # verdicts come with export and the redaction check
+        "skipped": [_skipped_info(skipped) for skipped in rendered.skipped],
+        "notices": [_notice_info(notice) for notice in rendered.notices],
         "build": BUILD,
         "expires_at": datetime.fromtimestamp(doc.expires_at, UTC).isoformat(),
     }
+
+
+def _fit_info(fit: FitReport) -> FitInfo:
+    """A fit as the browser gets it: option names, since it has their sentences."""
+    return {
+        "delta_pt": fit.delta_pt,
+        "missing": fit.missing,
+        "left_out": fit.left_out,
+        "options": [o.name for o in fit.options],
+        "strategy": fit.strategy,
+        "message": words.render_all(fit.describe()),
+    }
+
+
+def _skipped_info(skipped: Skipped) -> SkippedInfo:
+    """An edit left out, as the browser gets it: why, in words."""
+    return {"edit": skipped.edit, "type": skipped.type, "detail": words.render(skipped.detail)}
+
+
+def _notice_info(notice: Notice) -> NoticeInfo:
+    """An edit drawn other than asked, as the browser gets it: why, in words."""
+    detail = words.render(notice.detail)
+    return {"span_id": notice.span_id, "detail": detail, "edit": notice.edit}

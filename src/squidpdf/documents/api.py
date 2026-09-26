@@ -181,7 +181,10 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
             "stand_in": words.STAND_IN,
             "stand_in_same_widths": words.STAND_IN_SAME_WIDTHS,
             "undo_redaction": words.UNDO_REDACTION,
-            "options": words.OPTIONS,
+            "options": {
+                name: {part: words.sentence(key) for part, key in keys.items()}
+                for name, keys in words.OPTION_KEYS.items()
+            },
         },
         # A scan has no text layer: say so, rather than show a page nothing on can be edited.
         "notices": [] if analysis["spans"] else [{"type": "no_text", "detail": words.NO_TEXT}],

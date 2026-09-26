@@ -10,35 +10,49 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from squidpdf.core import words
+from squidpdf.core.message import Message, Param
 
 
 class Problem(Exception):
     """Subclass it and set the three class attributes; `fill` fills the sentence.
 
-    `debug` is the technical why, for a developer: sent beside `detail`, never in it.
+    A Message like any other: `type` is its sentence's key in `core.words`, and
+    `fill` holds the facts. `debug` is the technical why, for a developer: sent
+    beside `detail`, never in it.
     """
 
     type: ClassVar[str] = "server_error"  # what the browser branches on: never renamed
     status: ClassVar[int] = 500
+    # In English: the catalog's sentence under `type`, and said when no catalog has one.
     sentence: ClassVar[str] = words.SERVER_ERROR
 
-    def __init__(self, debug: str | None = None, **fill: object) -> None:
+    def __init__(self, debug: str | None = None, **fill: Param) -> None:
         """Keep what the sentence needs, and the developer's why."""
         super().__init__(self.type)
         self.debug = debug
         self.fill = fill
 
     @property
+    def message(self) -> Message:
+        """What the user is told, in no language yet: the sentence's key and its facts."""
+        return Message(self.type, dict(self.fill))
+
+    def said_in(self, language: str) -> str:
+        """The sentence the user reads, in `language`, placeholders filled."""
+        template = words.sentence(self.type, language, default=self.sentence)
+        return words.fill(template, self.fill, language)
+
+    @property
     def detail(self) -> str:
-        """The sentence the user reads, placeholders filled."""
-        return self.sentence.format(**self.fill)
+        """The sentence the user reads, in English, placeholders filled."""
+        return self.said_in(words.ENGLISH)
 
     def __reduce__(self) -> tuple[Any, ...]:
         """Raised in a worker, it reaches the server whole: `fill` isn't in `args`."""
         return _rebuild, (type(self), self.debug, self.fill)
 
 
-def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, object]) -> Problem:
+def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, Param]) -> Problem:
     """A pickled Problem as it was raised, bypassing the subclass's own arguments."""
     problem = cls.__new__(cls)
     Problem.__init__(problem, debug, **fill)

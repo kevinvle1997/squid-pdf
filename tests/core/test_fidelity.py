@@ -43,6 +43,11 @@ def _font_objects(path: str) -> list[tuple[str, str, str]]:
     return sorted((name, kind, file_type) for _xref, file_type, kind, name, *_ in fonts)
 
 
+def _said(report: FidelityReport) -> str | None:
+    """Why the report says the span's own font can't be used, in English; None when it can."""
+    return None if report.why is None else words.render(report.why)
+
+
 def _describe_report(reports: dict[str, FidelityReport]) -> Callable[[Span], str]:
     """Names a span by its text and the state it was given, for a failure message."""
     return lambda s: f"{s.text!r} -> {reports[s.id].state}"
@@ -62,7 +67,7 @@ def test_referenced_font_is_a_substitution(engine):
     assert_all(referenced, lambda s: reports[s.id].substitute == look_alikes[s.font], describe)
     assert_all(referenced, lambda s: reports[s.id].same_widths, describe)
     not_stored = words.FONT_NOT_IN_FILE
-    assert_all(referenced, lambda s: reports[s.id].why == not_stored, describe)
+    assert_all(referenced, lambda s: _said(reports[s.id]) == not_stored, describe)
 
 
 @pytest.mark.parametrize(
@@ -121,7 +126,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
         eng.save(str(out))
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
-    assert_equal(report.why, words.FONT_NO_LETTER_LIST, "why, as the user reads it")
+    assert_equal(_said(report), words.FONT_NO_LETTER_LIST, "why, as the user reads it")
     # Nothing to go on but a plain description, so a plain sans draws it, and says so.
     assert_equal(report.substitute, "Liberation Sans Regular", "the face it names")
     first_drawn = _drawn(str(out))[0]
@@ -139,7 +144,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
         eng.save(out)
 
     expected = (Fidelity.SUBSTITUTE, words.FONT_UNREADABLE)
-    assert_equal((report.state, report.why), expected, "fidelity, and why")
+    assert_equal((report.state, _said(report)), expected, "fidelity, and why")
     [drawn] = _drawn(out)
     assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
 

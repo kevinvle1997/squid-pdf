@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pickle
 
-from squidpdf.core import Damaged, Encrypted, Problem, Unreadable, words
+from squidpdf.core import Damaged, Encrypted, Message, Problem, Unreadable, words
+from squidpdf.documents.errors import TooLarge
+from tests.conftest import pseudo_sentence
 from tests.helpers import assert_equal, assert_true
 
 
@@ -37,3 +39,17 @@ def test_both_unreadable_kinds_are_unreadable_and_say_which():
     for kind, sentence in ((Encrypted, words.ENCRYPTED), (Damaged, words.DAMAGED)):
         assert_true(issubclass(kind, Unreadable), f"{kind.__name__} is Unreadable")
         assert_equal(kind().detail, sentence, f"what {kind.__name__} says")
+
+
+def test_a_problem_is_a_message_its_type_the_key():
+    assert_equal(TooLarge(100).message, Message("too_large", {"mb": 100}), "the message")
+
+
+def test_a_problem_is_said_in_the_language_asked_for(pseudo):
+    expected = pseudo_sentence(words.TOO_LARGE).format(mb=100)
+    assert_equal(TooLarge(100).said_in(pseudo), expected, "the sentence in the pseudo-language")
+    assert_equal(TooLarge(100).detail, "This file is over 100 MB.", "the sentence in English")
+
+
+def test_a_problem_no_catalog_has_says_its_own_sentence_in_any_language(pseudo):
+    assert_equal(_Sized(100).said_in(pseudo), "over 100 MB", "the class's own sentence")

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
-from squidpdf.core import words
+from squidpdf.core import Message
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import FACES
 from squidpdf.core.types import Span, SpanIndex, new_text
@@ -67,7 +67,7 @@ def _resolve(
     for position, edit in enumerate(edits):
         # An insert on a page the document doesn't have.
         if isinstance(edit, Insert) and not 0 <= edit.page < page_count:
-            skipped.append(Skipped(position, _BAD_REFERENCE, words.NO_PAGE))
+            skipped.append(Skipped(position, _BAD_REFERENCE, Message("no_page")))
             continue
         # An insert on a real page.
         if isinstance(edit, Insert):
@@ -80,7 +80,7 @@ def _resolve(
             raise BadReference(edit.span_id)
         # A replace of missing text.
         if span is None:
-            skipped.append(Skipped(position, _BAD_REFERENCE, words.NO_SPAN))
+            skipped.append(Skipped(position, _BAD_REFERENCE, Message("no_span")))
             continue
         spans[span.id] = span
         kept.append(edit)
@@ -118,15 +118,16 @@ def apply(
 
     if to_remove:
         engine.remove(to_remove)
-    notices = [Notice(span_id, words.REDACTION_UNDONE) for span_id in _undone_redactions(edits)]
+    undone = Message("redaction_undone")
+    notices = [Notice(span_id, undone) for span_id in _undone_redactions(edits)]
     for span, text, size, scale_x in to_draw:
-        for detail in engine.draw(span, text, size, scale_x):
-            notices.append(Notice(span.id, detail))
+        for said in engine.draw(span, text, size, scale_x):
+            notices.append(Notice(span.id, said))
     for position, insert in inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
-            for detail in engine.draw(_insert_span(insert), insert.text):
-                notices.append(Notice(None, detail, edit=position))
+            for said in engine.draw(_insert_span(insert), insert.text):
+                notices.append(Notice(None, said, edit=position))
     return Applied(skipped, notices)
 
 
@@ -180,7 +181,9 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     [report] = engine.assess(SpanIndex([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
-    unusable = not shipped and report.why not in (None, words.FONT_LACKS_LETTERS)
+    # One that only lacks a letter can: the stand-in draws that line, as for a replace.
+    why_not = None if report.why is None else report.why.key
+    unusable = not shipped and why_not not in (None, "font_lacks_letters")
     return FitReport(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),

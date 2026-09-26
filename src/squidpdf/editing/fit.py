@@ -9,28 +9,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from squidpdf.core import words
+from squidpdf.core import Message, Param, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.editing.types import Strategy
 
 
 @dataclass(frozen=True, slots=True)
 class Option:
-    """One way to make a too-long replacement work."""
+    """One way to make a too-long replacement work: its name, and what the user reads of it."""
 
     name: Strategy
-    label: str  # shown to the user, verbatim
-    detail: str
+    label: Message
+    detail: Message
 
 
 @dataclass(frozen=True, slots=True)
 class FitReport:
     """The answer to 'what happens if I type this'.
 
-    Carries facts and option *identifiers*. The user-facing sentence is assembled
-    in `describe()` rather than baked into the data, so the API layer can
-    localise it later without the engine knowing about language. `strategy` is
-    the one drawn: the one asked for if it was offered, else as-is.
+    Carries facts and option *identifiers*. What's wrong comes out of
+    `describe()` as Messages, which the edge puts into the reader's words, so
+    the engine never learns about language. `strategy` is the one drawn: the
+    one asked for if it was offered, else as-is.
 
     It describes what will really be drawn: `delta_pt` is measured without the
     `left_out` letters, since they won't be there.
@@ -50,29 +50,27 @@ class FitReport:
         """True when the replacement can be drawn as-is, no compromise needed."""
         return not self.missing and self.delta_pt <= TOLERANCE_PT
 
-    def describe(self) -> str | None:
-        """Everything that won't come out as typed, in plain words; None if nothing."""
-        parts: list[str] = []
+    def describe(self) -> list[Message]:
+        """Everything that won't come out as typed, in the order it's told; empty if nothing."""
+        parts: list[Message] = []
         # New text in a font that can't be used here: all of it is in the stand-in.
         if self.unavailable:
-            chosen = words.CHOSEN_UNAVAILABLE.format(
-                chosen=self.unavailable, font=self.stand_in
-            )
-            parts.append(chosen)
+            chosen: dict[str, Param] = {"chosen": self.unavailable, "font": self.stand_in}
+            parts.append(Message("chosen_unavailable", chosen))
         # Letters its own font lacks but the stand-in has: the whole line switches.
         switched = [ch for ch in self.missing if ch not in self.left_out]
         if switched:
-            parts.append(words.MISSING.format(chars=" or ".join(switched), font=self.stand_in))
+            parts.append(Message("missing", {"chars": switched, "font": self.stand_in}))
         # Letters nothing can draw.
         if self.left_out:
-            parts.append(words.WILL_LEAVE_OUT.format(letters=" ".join(self.left_out)))
+            parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))
         if self.delta_pt > TOLERANCE_PT:
-            parts.append(words.TOO_LONG.format(delta_pt=f"{self.delta_pt:.1f}"))
+            parts.append(Message("too_long", {"delta_pt": self.delta_pt}))
         # The user's choice of way out wasn't one on offer.
         passed_over = self.asked != "as-is" and self.strategy != self.asked
         if passed_over and self.delta_pt > TOLERANCE_PT:
-            parts.append(words.NOT_OFFERED)
-        return "; ".join(parts) or None
+            parts.append(Message("not_offered"))
+        return parts
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,8 +103,8 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
     return [
         Option(
             name,
-            words.OPTIONS[name]["label"],
-            words.OPTIONS[name]["detail"].format(delta_pt=f"{delta_pt:.1f}"),
+            Message(words.OPTION_KEYS[name]["label"]),
+            Message(words.OPTION_KEYS[name]["detail"], {"delta_pt": delta_pt}),
         )
         for name in names
     ]

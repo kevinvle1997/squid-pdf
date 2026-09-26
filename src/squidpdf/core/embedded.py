@@ -8,9 +8,9 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass
 
-from squidpdf.core import words
 from squidpdf.core.backend import Backend, FontProgram
 from squidpdf.core.coverage import Coverage
+from squidpdf.core.message import Message
 from squidpdf.core.types import CodedFont, FontCode, PageFont
 
 # Bytes per code, for the font kinds we can write by code.
@@ -30,8 +30,8 @@ class EmbeddedFont:
 class FontUnusable(Exception):
     """Why the file's own copy of a font can't be used, so a similar font draws instead."""
 
-    def __init__(self, reason: str) -> None:
-        """`reason` is a sentence from `core.words`, shown to the user as it is."""
+    def __init__(self, reason: Message) -> None:
+        """`reason` names a sentence in `core.words`, for the edge to put into words."""
         super().__init__(reason)
         self.reason = reason
 
@@ -45,15 +45,15 @@ def open_embedded(backend: Backend, page_font: PageFont) -> EmbeddedFont:
     """
     # Not in the file at all: only named.
     if not page_font.is_embedded:
-        raise FontUnusable(words.FONT_NOT_IN_FILE)
+        raise FontUnusable(Message("font_not_in_file"))
     font_file = backend.font_bytes(page_font.xref)
     # Stored, but the library can't read it out.
     if not font_file:
-        raise FontUnusable(words.FONT_UNREADABLE)
+        raise FontUnusable(Message("font_unreadable"))
     try:
         return _open(backend, page_font, font_file)
     except ValueError as exc:  # the library can't read the font
-        raise FontUnusable(words.FONT_UNREADABLE) from exc
+        raise FontUnusable(Message("font_unreadable")) from exc
 
 
 def _open(backend: Backend, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
@@ -84,12 +84,12 @@ def _read_by_code(
     # Only a TrueType font the page uses itself, not one inside a form (a reusable drawing).
     writable = page_font.file_type == "ttf" and not page_font.in_form
     if not writable:
-        raise FontUnusable(words.FONT_CANT_WRITE)
+        raise FontUnusable(Message("font_cant_write"))
     coded = _read_coded_font(backend, page_font)
     glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
     coverage = Coverage(font_file, glyph_ids=glyph_ids)
     if not coverage.usable:
-        raise FontUnusable(words.FONT_UNREADABLE)
+        raise FontUnusable(Message("font_unreadable"))
     return coded, coverage
 
 
@@ -100,10 +100,10 @@ def _read_coded_font(backend: Backend, font: PageFont) -> CodedFont:
     """
     code_bytes = _code_bytes(font)
     if code_bytes is None:
-        raise FontUnusable(words.FONT_CANT_WRITE)
+        raise FontUnusable(Message("font_cant_write"))
     font_codes = backend.font_codes(font.xref, code_bytes)
     if font_codes is None:
-        raise FontUnusable(words.FONT_NO_LETTER_LIST)
+        raise FontUnusable(Message("font_no_letter_list"))
 
     letters: dict[str, FontCode] = {}
     for code in font_codes:  # lowest code first
@@ -112,7 +112,7 @@ def _read_coded_font(backend: Backend, font: PageFont) -> CodedFont:
         if typeable:
             letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
-        raise FontUnusable(words.FONT_NO_LETTER_LIST)
+        raise FontUnusable(Message("font_no_letter_list"))
     return CodedFont(font.resource, font.xref, code_bytes, letters)
 
 

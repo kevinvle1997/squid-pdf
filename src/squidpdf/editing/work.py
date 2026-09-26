@@ -1,7 +1,8 @@
 """Pool work for render: the edits on the pages being drawn, applied, then drawn.
 
 Framework-free and handed only a path and dataclasses: an open document doesn't
-pickle, and a test can call it directly.
+pickle, and a test can call it directly. It says nothing in anyone's words: what
+went wrong comes back as Messages, and `editing/api.py` puts them into words.
 """
 
 from __future__ import annotations
@@ -15,14 +16,13 @@ from squidpdf.documents import store
 from squidpdf.documents.errors import Gone
 from squidpdf.editing.apply import apply, log_fits
 from squidpdf.editing.edits import Edit
-from squidpdf.editing.fit import FitReport
-from squidpdf.editing.types import FitInfo, ImageInfo, Region, Rendered
+from squidpdf.editing.types import ImageInfo, Region, Rendered
 
 
 def render(
     folder: str, edits: list[Edit], regions: list[Region], scales: dict[int, float]
 ) -> Rendered:
-    """Each region drawn with the edits on its page, and a fit for every replaced span.
+    """Each region drawn with the edits on its page, and a fit for every replace and insert.
 
     `scales` is each drawn page's pixels per point, clamped as its page image is,
     so a strip lines up with it. The index is the saved one: rebuilt, every id
@@ -41,16 +41,7 @@ def render(
             _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
         ]
 
-    return {
-        "images": images,
-        "fits": {span_id: _fit_info(fit) for span_id, fit in fits.replaces.items()},
-        "insert_fits": [
-            {**_fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
-        ],
-        "redactions": [],  # verdicts come with export and the redaction check
-        "skipped": applied.skipped,
-        "notices": applied.notices,
-    }
+    return Rendered(images, fits, applied.skipped, applied.notices)
 
 
 def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
@@ -66,15 +57,3 @@ def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo
     bottom = math.ceil(y1 * scale) / scale
     png = engine.page_image(region.page, scale, Rect(0, top, page.width, bottom))
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}
-
-
-def _fit_info(fit: FitReport) -> FitInfo:
-    """A fit as the browser gets it: option names, since it has their sentences."""
-    return {
-        "delta_pt": fit.delta_pt,
-        "missing": fit.missing,
-        "left_out": fit.left_out,
-        "options": [o.name for o in fit.options],
-        "strategy": fit.strategy,
-        "message": fit.describe(),
-    }

@@ -12,11 +12,12 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 
-from squidpdf.core import faces, words
+from squidpdf.core import faces
 from squidpdf.core.backend import Backend, FontProgram
 from squidpdf.core.embedded import EmbeddedFont, FontUnusable, open_embedded
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import face_bytes, look_alike, strip_subset, trimmed
+from squidpdf.core.message import Message
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
     CodedFont,
@@ -96,7 +97,7 @@ class Engine:
             Fidelity.SUBSTITUTE,
             span.font,
             substitute=drawn_in.face.name,
-            why=self._why_not(span) if not in_file else words.FONT_LACKS_LETTERS,
+            why=self._why_not(span) if not in_file else Message("font_lacks_letters"),
             same_widths=match.same_widths and drawn_in.face == match.face,
         )
 
@@ -177,13 +178,13 @@ class Engine:
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
-    ) -> list[str]:
+    ) -> list[Message]:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
         `size` in points replaces the span's own; `scale_x` narrows the run from
         its start. A character the font can't draw sends the whole run to the
-        stand-in, so a line never mixes two faces. Returns, in plain words,
-        anything that came out other than asked; empty when nothing did.
+        stand-in, so a line never mixes two faces. Returns anything that came
+        out other than asked, for the edge to put into words; empty when nothing did.
         """
         font_size = span.size if size is None else size
 
@@ -194,7 +195,7 @@ class Engine:
             return []
 
         # Written by letter, in the file's own font when it has every letter.
-        notices: list[str] = []
+        notices: list[Message] = []
         embedded = self._embedded(span)
         if embedded is not None and not self.missing(span, text):
             try:
@@ -208,26 +209,26 @@ class Engine:
         # Otherwise the stand-in draws the whole run, less what even it can't draw.
         drawn_in = self._stand_in(span, text)
         if drawn_in.left_out:
-            notices.append(words.LEFT_OUT.format(letters=" ".join(drawn_in.left_out)))
+            notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
         alias = self._face_alias(span.page, drawn_in.face)
         self._drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
         self._write(span, drawn_in.text, alias, font_size, scale_x)
         return notices
 
-    def save(self, path: str) -> list[str]:
+    def save(self, path: str) -> list[Message]:
         """Write the document to `path`, our faces cut to the letters drawn in them.
 
         Call it last: afterwards our faces can't draw any new letter. Returns
-        anything that came out other than asked.
+        anything that came out other than asked, for the edge to put into words.
         """
-        notices: list[str] = []
+        notices: list[Message] = []
         for xref, face in self._faces_added.items():
             try:
                 font_file = trimmed(face, self._drawn[face])
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = face_bytes(face)
-                notices.append(words.FACE_NOT_TRIMMED.format(font=face.name))
+                notices.append(Message("face_not_trimmed", {"font": face.name}))
             self._backend.replace_font_file(xref, font_file)
         self._backend.save(path)
         return notices
@@ -276,8 +277,8 @@ class Engine:
         found = self._lookup(span)
         return found if isinstance(found, EmbeddedFont) else None
 
-    def _why_not(self, span: Span) -> str | None:
-        """Why the span's own font can't be used, in plain words; None when it can."""
+    def _why_not(self, span: Span) -> Message | None:
+        """Why the span's own font can't be used; None when it can."""
         found = self._lookup(span)
         return found.reason if isinstance(found, FontUnusable) else None
 
@@ -289,7 +290,7 @@ class Engine:
         page_font = self._page_font(page, font_name)
         # Not on the page: new text in a font it doesn't have.
         if page_font is None:
-            raise FontUnusable(words.FONT_NOT_IN_FILE)
+            raise FontUnusable(Message("font_not_in_file"))
         return open_embedded(self._backend, page_font)
 
     def _page_font(self, page: int, font_name: str) -> PageFont | None:
@@ -394,7 +395,7 @@ class Engine:
         except ValueError:
             # The bytes opened as a font, but adding them to a page is another path
             # that can still fail; the stand-in draws instead.
-            return FontUnusable(words.FONT_NOT_ADDED)
+            return FontUnusable(Message("font_not_added"))
         return alias
 
     def _face_alias(self, page: int, face: Face) -> str:
