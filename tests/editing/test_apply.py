@@ -52,7 +52,7 @@ def _drawn(path, page: int, needle: str) -> dict:
 
 
 def _assert_cut(path, page: int, face: str, text: str) -> None:
-    """The saved file carries `face` cut down, still drawing all of `text`, hinting kept."""
+    """`face` is stored cut down, still draws `text`, and keeps its hinting."""
     cut = stored_file(str(path), page, face)
     shipped = face_bytes(FACES[face])
     assert_true(len(cut) < len(shipped), f"{face} stored {len(cut)} bytes of {len(shipped)}")
@@ -63,7 +63,7 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
 
 
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
-    """Stands in for fontTools meeting a font it can't cut."""
+    """Fails, as fontTools can on an odd font."""
     raise ValueError("fontTools can't cut this font")
 
 
@@ -145,9 +145,8 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 ):
     """The subset has no é. Drawn in it, the letter would be blank.
 
-    No face we ship has 中, so that is left out, and the user is told. The
-    saved file carries Liberation Serif cut to the letters drawn, and the
-    document's own font as it came.
+    No face we ship has 中, so that is left out, and the user is told.
+    Only Liberation Serif is cut; the document's own font is left alone.
     """
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE and "14 March" in s.text)
@@ -181,8 +180,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monkeypatch):
     """Times is only named here; Liberation Serif redraws it and ends where it did.
 
-    Here fontTools can't cut the face, so it goes in whole and save says so:
-    a bigger file, but drawn the same.
+    Here the face can't be cut, so it goes in whole, and save says so.
     """
     monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
     index = engine.index()

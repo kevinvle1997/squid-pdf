@@ -484,14 +484,9 @@ class MuPDFEngine:
         return self._face_aliases[key]
 
     def save(self, path: str) -> list[str]:
-        """Write the (possibly edited) document to `path`, our faces cut to the letters drawn.
+        """Write the document to `path`, our faces cut to the letters drawn in them.
 
-        Only the faces we added are cut; the document's own fonts go out as
-        they came in. Returns, in plain words, anything that came out other
-        than asked; empty when nothing did.
-
-        Call it last: afterwards our faces hold only the letters already drawn,
-        and saving renumbers the objects MuPDF remembers adding.
+        Call it last: afterwards our faces can't draw any new letter.
         """
         notices: list[str] = []
         for xref, face in self._faces_added.items():

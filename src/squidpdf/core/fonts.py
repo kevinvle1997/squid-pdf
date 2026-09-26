@@ -258,7 +258,7 @@ def face_bytes(face: Face) -> bytes:
 
 
 def trimmed(face: Face, letters: Iterable[str]) -> bytes:
-    """The face's font file cut down to `letters`, so a saved PDF carries only what it draws."""
+    """The face's font file, cut down to `letters`."""
     options = Options(
         hinting=True,  # keeps small text crisp on screen, for a few KB
         layout_features=[],  # the PDF places each letter itself: no ligatures or kerning

@@ -28,7 +28,7 @@ def saved_as(face: str) -> str:
 
 
 def stored_file(path: str, page: int, font: str) -> bytes:
-    """The font file a saved PDF stores for the font a page names `font`, uncompressed."""
+    """The font file a saved page stores under the name `font`."""
     doc = pymupdf.open(path)
     [xref] = [xref for xref, _ext, _kind, name, *_ in doc[page].get_fonts() if name == font]
     _name, _ext, _kind, buffer = doc.extract_font(xref)

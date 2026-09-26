@@ -117,11 +117,7 @@ class PdfFile:
         )
 
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
-        """Store `font_file` in place of the TrueType file inside font `xref`.
-
-        Only the file changes. The font's widths and letter list (ToUnicode)
-        stay, so the new file must keep every glyph at the same number.
-        """
+        """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         owner = self._describing_font(xref)
         if owner is None:  # MuPDF always points at the inner font, so this is someone else's
             raise ValueError(f"font {xref} has its inner font written out in place")
@@ -132,10 +128,7 @@ class PdfFile:
         self._doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
 
     def _describing_font(self, xref: int) -> int | None:
-        """The font object that holds the description: `xref` itself, or a Type0's inner font.
-
-        None when a Type0 writes its inner font out in place, not pointed at.
-        """
+        """Where the font's description lives: the font itself, or a Type0's inner font."""
         kind, value = self._doc.xref_get_key(xref, "DescendantFonts")
         # A simple font describes itself.
         if kind != "array":
