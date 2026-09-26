@@ -87,7 +87,7 @@ class MuPDFEngine:
                         cov = Coverage(buf, claimed)
                         if cov.usable or claimed:
                             font, self._coverage[key] = candidate, cov
-                except (RuntimeError, ValueError):
+                except (RuntimeError, ValueError):  # MuPDF can't extract or open it
                     pass
             break
 

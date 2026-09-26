@@ -58,7 +58,7 @@ def symbolic(tmp_path_factory) -> str:
     doc.update_object(
         xref["descriptor"],
         "<</Type/FontDescriptor/FontName/Symbolic/Flags 4/FontBBox[0 -200 600 800]"
-        f"/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80"
+        "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80"
         f"/FontFile2 {xref['file']} 0 R>>",
     )
     doc.update_object(

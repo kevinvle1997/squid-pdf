@@ -51,19 +51,34 @@ def _collapse(edits: Sequence[Edit]) -> tuple[list[Replace | Redact], list[Inser
     return [latest[span_id] for span_id in order], inserts
 
 
-def _unresolved(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> list[Skipped]:
-    """Each edit that points at nothing. A redaction that does raises BadReference."""
+def _resolve(
+    engine: Engine, edits: Sequence[Edit], index: SpanIndex
+) -> tuple[list[tuple[Replace | Redact, Span]], list[Insert], list[Skipped]]:
+    """The log collapsed, each span edit with its span, its inserts, and what points at nothing.
+
+    A redaction that points at nothing raises BadReference instead.
+    """
     page_count = len(engine.pages()) if any(isinstance(e, Insert) for e in edits) else 0
-    out: list[Skipped] = []
+    spans: dict[str, Span] = {}
+    kept: list[Edit] = []
+    skipped: list[Skipped] = []
     for i, edit in enumerate(edits):
         if isinstance(edit, Insert):
-            if not 0 <= edit.page < page_count:
-                out.append(Skipped(i, _BAD_REFERENCE, words.NO_PAGE))
-        elif index.get(edit.span_id) is None:
-            if isinstance(edit, Redact):
-                raise BadReference(edit.span_id)
-            out.append(Skipped(i, _BAD_REFERENCE, words.NO_SPAN))
-    return out
+            if 0 <= edit.page < page_count:
+                kept.append(edit)
+            else:
+                skipped.append(Skipped(i, _BAD_REFERENCE, words.NO_PAGE))
+            continue
+        span = index.get(edit.span_id)
+        if span is not None:
+            spans[span.id] = span
+            kept.append(edit)
+        elif isinstance(edit, Redact):
+            raise BadReference(edit.span_id)
+        else:
+            skipped.append(Skipped(i, _BAD_REFERENCE, words.NO_SPAN))
+    span_edits, inserts = _collapse(kept)
+    return [(e, spans[e.span_id]) for e in span_edits], inserts, skipped
 
 
 def apply(
@@ -79,16 +94,13 @@ def apply(
     before any redraw: PyMuPDF applies redactions per page, and a redaction
     applied after a redraw would erase the new text.
     """
-    skipped = _unresolved(engine, edits, index)
-    left_out = {s.edit for s in skipped}
-    span_edits, inserts = _collapse([e for i, e in enumerate(edits) if i not in left_out])
+    span_edits, inserts, skipped = _resolve(engine, edits, index)
 
     to_remove: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
-    for edit in span_edits:
-        span = index.get(edit.span_id)
-        if span is None or (pages is not None and span.page not in pages):
-            continue  # None was skipped above; the narrowing is for the type checker
+    for edit, span in span_edits:
+        if pages is not None and span.page not in pages:
+            continue
         to_remove.append(span)
         if isinstance(edit, Replace):
             # Worked out before remove(), which can drop the fonts it measures with.
@@ -141,18 +153,11 @@ def verify_redactions(
     A covering rectangle would pass a visual check and fail this one, which is
     the entire point of running it. Only the last edit per span counts, matching
     what apply() actually drew. A Replace after a Redact means it was not
-    redacted after all.
+    redacted after all. A redaction of an unknown span raises, as in apply().
     """
-    span_edits, _ = _collapse(edits)
-    out: dict[str, bool] = {}
-    for edit in span_edits:
-        if not isinstance(edit, Redact):
-            continue
-        span = index.get(edit.span_id)
-        if span is None:
-            # apply() already raised for a redaction of an unknown span in this same
-            # edit list; a silent skip here would drop a span from a redaction
-            # report, the wrong direction for something Rule 4 depends on.
-            raise BadReference(edit.span_id)
-        out[edit.span_id] = engine.absent(span.text)
-    return out
+    span_edits, _inserts, _skipped = _resolve(engine, edits, index)
+    return {
+        span.id: engine.absent(span.text)
+        for edit, span in span_edits
+        if isinstance(edit, Redact)
+    }
