@@ -58,6 +58,15 @@ def test_every_problem_has_its_own_wire_type(app):
             assert_equal(shared.get(cls), owner, f"{cls.__name__} reuses {cls.type!r}")
 
 
+def test_every_problem_says_the_english_catalog_s_sentence_under_its_type(app):
+    # `app` imports every feature, so every Problem subclass is defined by now.
+    for cls in _every(Problem):
+        if cls.__module__.startswith("tests."):
+            continue
+        in_catalog = words.ENGLISH_SENTENCES.get(cls.type)
+        assert_equal(in_catalog, cls.sentence, f"the catalog's sentence for {cls.__name__}")
+
+
 def test_a_worker_s_problem_arrives_saying_the_same_thing():
     for raised in (TooManyPages(3), BadReference("s1"), Gone(), Encrypted(), Damaged()):
         back = pickle.loads(pickle.dumps(raised))

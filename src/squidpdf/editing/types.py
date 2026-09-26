@@ -7,9 +7,13 @@ can import them. A name ending in Info is JSON the browser gets.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
+from squidpdf.core.message import Message
 from squidpdf.core.types import Category, Style
+
+if TYPE_CHECKING:  # fit.py imports this module for Strategy
+    from squidpdf.editing.fit import LogFits
 
 # How a too-long replacement is drawn; the names the user's options go by.
 type Strategy = Literal["as-is", "shrink", "condense"]
@@ -24,19 +28,19 @@ class Skipped:
 
     edit: int
     type: str
-    detail: str
+    detail: Message
 
 
 @dataclass(frozen=True, slots=True)
 class Notice:
-    """An edit that went in, but not quite as asked, and why in plain words.
+    """An edit that went in, but not quite as asked, and why.
 
     A replace is named by its span; an insert, which has none, by its place in
     the list the browser sent, as Skipped does.
     """
 
     span_id: str | None
-    detail: str
+    detail: Message
     edit: int | None = None
 
 
@@ -55,6 +59,19 @@ class Region:
     page: int
     y0: float | None = None
     y1: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Rendered:
+    """What render worked out, in no one's words yet: the strips, the fits, and the skips.
+
+    `notices` are edits drawn other than asked, such as in a stand-in font.
+    """
+
+    images: list[ImageInfo]
+    fits: LogFits
+    skipped: list[Skipped]
+    notices: list[Notice]
 
 
 class ImageInfo(TypedDict):
@@ -80,6 +97,22 @@ class InsertFitInfo(FitInfo):
     """An insert's fit, named by its place in the list the browser sent."""
 
     edit: int
+
+
+class SkippedInfo(TypedDict):
+    """An edit left out, by its place in the list the browser sent, and why."""
+
+    edit: int
+    type: str
+    detail: str
+
+
+class NoticeInfo(TypedDict):
+    """An edit drawn other than asked, by its span or its place in the list, and why."""
+
+    span_id: str | None
+    detail: str
+    edit: int | None
 
 
 class FaceInfo(TypedDict):
@@ -111,8 +144,8 @@ class FontList(TypedDict):
     families: list[FamilyInfo]
 
 
-class Rendered(TypedDict):
-    """What render worked out: the strips, a fit per replaced span, and what it skipped.
+class Render(TypedDict):
+    """Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
 
     `notices` are edits drawn other than asked, such as in a stand-in font.
     """
@@ -121,12 +154,7 @@ class Rendered(TypedDict):
     fits: dict[str, FitInfo]
     insert_fits: list[InsertFitInfo]
     redactions: list[dict[str, str]]
-    skipped: list[Skipped]
-    notices: list[Notice]
-
-
-class Render(Rendered):
-    """Render's reply, as the browser gets it."""
-
+    skipped: list[SkippedInfo]
+    notices: list[NoticeInfo]
     build: str
     expires_at: str
