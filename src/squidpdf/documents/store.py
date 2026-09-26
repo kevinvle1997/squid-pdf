@@ -58,9 +58,15 @@ def find(doc_id: str) -> tuple[Path, str] | None:
 
 
 def touch(folder: Path) -> float:
-    """Restart the idle clock; returns when the document now expires, as epoch seconds."""
-    os.utime(folder)
-    return folder.stat().st_mtime + IDLE_S
+    """Restart the idle clock; returns when the document now expires, as epoch seconds.
+
+    Raises Gone if it was deleted since it was found, by its owner or the sweeper.
+    """
+    try:
+        os.utime(folder)
+        return folder.stat().st_mtime + IDLE_S
+    except FileNotFoundError as exc:  # deleted between find() and here
+        raise Gone from exc
 
 
 def delete(folder: Path) -> None:
