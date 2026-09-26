@@ -25,7 +25,7 @@ from squidpdf.core.constants import (
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.errors import Damaged, Encrypted
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import broadest, face_bytes, look_alike, strip_subset
+from squidpdf.core.fonts import broadest, face_bytes, look_alike, strip_subset, trimmed
 from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
 from squidpdf.core.types import (
     CodedFont,
@@ -104,6 +104,8 @@ class MuPDFEngine:
         self._aliases: dict[tuple[int, str], str | _FontUnusable] = {}  # once drawn
         self._look_alikes: dict[tuple[int, str], LookAlike] = {}
         self._face_aliases: dict[tuple[int, str], str] = {}  # by (page, file), once drawn
+        self._faces_added: dict[int, Face] = {}  # by font object; pages share one per face
+        self._drawn: dict[Face, set[str]] = {}  # every letter drawn in each face, all pages
 
     def _lookup(self, span: Span) -> _EmbeddedFont | _FontUnusable:
         """The file's own copy of the span's font, or why we can't use it."""
@@ -391,6 +393,7 @@ class MuPDFEngine:
         if stand_in.left_out:
             notices.append(words.LEFT_OUT.format(letters=" ".join(stand_in.left_out)))
         alias = self._face_alias(span.page, stand_in.face)
+        self._drawn.setdefault(stand_in.face, set()).update(stand_in.text)
         self._insert(span, stand_in.text, alias, font_size, scale_x)
         return notices
 
@@ -475,13 +478,28 @@ class MuPDFEngine:
             # From the file's name, so it can't clash with the page's own names.
             digest = hashlib.blake2s(face.file.encode(), digest_size=_ALIAS_DIGEST_SIZE)
             alias = "S" + digest.hexdigest()
-            self.doc[page].insert_font(fontname=alias, fontbuffer=face_bytes(face))
+            xref = self.doc[page].insert_font(fontname=alias, fontbuffer=face_bytes(face))
             self._face_aliases[key] = alias
+            self._faces_added[xref] = face
         return self._face_aliases[key]
 
-    def save(self, path: str) -> None:
-        """Write the (possibly edited) document to `path`."""
-        self.doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True)
+    def save(self, path: str) -> list[str]:
+        """Write the document to `path`, our faces cut to the letters drawn in them.
+
+        Call it last: afterwards our faces can't draw any new letter.
+        """
+        notices: list[str] = []
+        for xref, face in self._faces_added.items():
+            try:
+                font_file = trimmed(face, self._drawn[face])
+            except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
+                # The whole file still draws every letter; the file is only bigger.
+                font_file = face_bytes(face)
+                notices.append(words.FACE_NOT_TRIMMED.format(font=face.name))
+            self._pdf.replace_font_file(xref, font_file)
+        # Object streams compress the plain objects too: a face's width list is most of it.
+        self.doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True, use_objstms=True)
+        return notices
 
     def absent(self, text: str) -> bool:
         """Confirm removed text is really gone. A black rectangle would fail this."""

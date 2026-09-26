@@ -27,6 +27,14 @@ def saved_as(face: str) -> str:
     return str(font["name"].getDebugName(_POSTSCRIPT_NAME))
 
 
+def stored_file(path: str, page: int, font: str) -> bytes:
+    """The font file a saved page stores under the name `font`."""
+    doc = pymupdf.open(path)
+    [xref] = [xref for xref, _ext, _kind, name, *_ in doc[page].get_fonts() if name == font]
+    _name, _ext, _kind, buffer = doc.extract_font(xref)
+    return buffer
+
+
 def named_only(path: str, base_font: str, flags: int | None = None) -> str:
     """One line in a font the file only names, never stores, as Word does with Calibri.
 

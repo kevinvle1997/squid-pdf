@@ -8,8 +8,13 @@ are exactly as wide as the original's, so nothing on the page moves.
 
 from __future__ import annotations
 
+import io
+from collections.abc import Iterable
 from functools import cache
 from importlib import resources
+
+from fontTools.subset import Options, Subsetter
+from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
@@ -250,6 +255,24 @@ def broadest(face: Face) -> Face:
 def face_bytes(face: Face) -> bytes:
     """The face's font file, as shipped in the package."""
     return resources.files("squidpdf").joinpath("fonts", face.file).read_bytes()
+
+
+def trimmed(face: Face, letters: Iterable[str]) -> bytes:
+    """The face's font file, cut down to `letters`."""
+    options = Options(
+        hinting=True,  # keeps small text crisp on screen, for a few KB
+        layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
+        retain_gids=True,  # text already on the page points at its glyphs by number
+        # FontForge's timestamps: nothing draws with them, and fontTools can't cut them.
+        drop_tables=[*Options().drop_tables, "FFTM"],
+    )
+    subsetter = Subsetter(options)
+    subsetter.populate(unicodes=[ord(ch) for ch in letters])
+    font = TTFont(io.BytesIO(face_bytes(face)))
+    subsetter.subset(font)
+    cut = io.BytesIO()
+    font.save(cut)
+    return cut.getvalue()
 
 
 def _nearest(family: dict[Style, Face], style: Style) -> Face:

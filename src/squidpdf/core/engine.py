@@ -71,8 +71,8 @@ class Engine(Protocol):
         """
         ...
 
-    def save(self, path: str) -> None:
-        """Write the document, edits and all, to `path`."""
+    def save(self, path: str) -> list[str]:
+        """Write the document to `path`. Returns anything that came out other than asked."""
         ...
 
     def absent(self, text: str) -> bool:

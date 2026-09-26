@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import io
+
 import pymupdf
 import pytest
+from fontTools.subset import Subsetter
+from fontTools.ttLib import TTFont
 
 from squidpdf.core import MuPDFEngine, Span, words
+from squidpdf.core.coverage import Coverage
+from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
     BadReference,
     Edit,
@@ -19,7 +25,7 @@ from squidpdf.editing import (
     check_insert,
     verify_redactions,
 )
-from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as
+from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
@@ -27,6 +33,9 @@ _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
 _EDGE_PT = 0.5  # how far past the original's end a fitted run may land, in points
 _HEIGHT_PT = 0.1  # finer than the shrink changes a line's height, coarser than rounding
 _SAME_WIDTH_PT = 0.25  # how far a same-width redraw's ends may move: far below visible
+_ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to the file
+# A TrueType font's hinting: code that snaps letters to the screen's pixels.
+_HINTING = ("fpgm", "prep", "cvt ")
 
 
 def _drawn(path, page: int, needle: str) -> dict:
@@ -40,6 +49,22 @@ def _drawn(path, page: int, needle: str) -> dict:
         if needle in span["text"]:
             return span
     raise LookupError(f"nothing drawn on page {page} contains {needle!r}")
+
+
+def _assert_cut(path, page: int, face: str, text: str) -> None:
+    """`face` is stored cut down, still draws `text`, and keeps its hinting."""
+    cut = stored_file(str(path), page, face)
+    shipped = face_bytes(FACES[face])
+    assert_true(len(cut) < len(shipped), f"{face} stored {len(cut)} bytes of {len(shipped)}")
+    assert_equal(Coverage(cut).missing(text), [], f"letters {face} lost in the cut")
+    kept = [table for table in _HINTING if table in TTFont(io.BytesIO(cut))]
+    shipped_hinting = [table for table in _HINTING if table in TTFont(io.BytesIO(shipped))]
+    assert_equal(kept, shipped_hinting, f"{face}'s hinting, cut and as shipped")
+
+
+def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
+    """Fails, as fontTools can on an odd font."""
+    raise ValueError("fontTools can't cut this font")
 
 
 def _substituted(engine) -> Span:
@@ -115,33 +140,61 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     assert_not_in("48,500", edited.get_text(), "the saved page after a replace")
 
 
-def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(engine, tmp_path):
+def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
+    engine, pdf, tmp_path
+):
     """The subset has no é. Drawn in it, the letter would be blank.
 
     No face we ship has 中, so that is left out, and the user is told.
+    Only Liberation Serif is cut; the document's own font is left alone.
     """
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE and "14 March" in s.text)
-    out = tmp_path / "accented.pdf"
+    out, unedited = tmp_path / "accented.pdf", tmp_path / "unedited.pdf"
 
     applied = apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026中")], index)
-    engine.save(str(out))
+    said_on_save = engine.save(str(out))
+    with MuPDFEngine(pdf) as plain:
+        plain.save(str(unedited))
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
     assert_equal(drawn["font"], saved_as("Liberation Serif Regular"), "the font that drew it")
     left_out = Notice(span.id, words.LEFT_OUT.format(letters="中"))
     assert_equal(applied.notices, [left_out], "what render tells the user")
+    assert_equal(said_on_save, [], "what save tells the user")
+    _assert_cut(
+        out, EMBEDDED_PAGE, "Liberation Serif Regular", "Delivery begins 14 Février 2026"
+    )
+    added = out.stat().st_size - unedited.stat().st_size
+    assert_true(added < _ONE_EDIT_ADDS_AT_MOST, f"the edit added {added} bytes to the file")
+    # The document's own font still draws the other line, and nothing in it changed.
+    own = strip_subset(span.font)
+    [own_name] = [f[3] for f in pymupdf.open(pdf)[EMBEDDED_PAGE].get_fonts() if own in f[3]]
+    assert_equal(
+        stored_file(str(out), EMBEDDED_PAGE, own_name),
+        stored_file(pdf, EMBEDDED_PAGE, own_name),
+        "the document's own font file, saved and as it came",
+    )
 
 
-def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path):
-    """Times is only named here; Liberation Serif redraws it and ends where it did."""
+def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monkeypatch):
+    """Times is only named here; Liberation Serif redraws it and ends where it did.
+
+    Here the face can't be cut, so it goes in whole, and save says so.
+    """
+    monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
     index = engine.index()
     span = _substituted(engine)
     out = tmp_path / "same.pdf"
 
     apply(engine, [Replace(span.id, span.text)], index)
-    engine.save(str(out))
+    said_on_save = engine.save(str(out))
 
+    said = words.FACE_NOT_TRIMMED.format(font="Liberation Serif Regular")
+    assert_equal(said_on_save, [said], "what save tells the user")
+    stored = stored_file(str(out), REFERENCED_PAGE, "Liberation Serif Regular")
+    shipped = face_bytes(FACES["Liberation Serif Regular"])
+    assert_true(stored == shipped, "the whole shipped file went in")
     drawn = _drawn(out, REFERENCED_PAGE, "Made on")
     assert_equal(drawn["font"], saved_as("Liberation Serif Regular"), "the font that drew it")
     x0, _y0, x1, _y1 = drawn["bbox"]
@@ -166,6 +219,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     drawn = _drawn(out, 0, "Hi")
     expected = ("Hi Ωμέγα", saved_as("Noto Serif Regular"))
     assert_equal((drawn["text"], drawn["font"]), expected, "what drew, and in what")
+    _assert_cut(out, 0, "Noto Serif Regular", "Hi Ωμέγα")
 
 
 @pytest.mark.parametrize(
@@ -204,6 +258,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     assert_equal(
         (drawn["text"], drawn["font"]), (text, saved_as(face)), "what drew, and in what"
     )
+    _assert_cut(out, REFERENCED_PAGE, face, text)
 
 
 @pytest.mark.parametrize("strategy", ["shrink", "condense"])
