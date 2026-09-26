@@ -16,6 +16,30 @@ TOO_LONG = "{delta_pt} pt too long"
 NO_SPAN = "This edit points at text that isn't in this document."
 NO_PAGE = "This edit points at a page that isn't in this document."
 
+# Why a font's own copy can't be used, so a similar font stands in. One per font.
+FONT_NOT_IN_FILE = "This font isn't stored in the file, so a similar font stands in for it."
+FONT_UNREADABLE = (
+    "This font is stored in the file but can't be read, so a similar font stands in for it."
+)
+FONT_NO_LETTER_LIST = (
+    "This font is stored in the file without saying which shape is which letter,"
+    " so a similar font stands in for it."
+)
+FONT_LACKS_LETTERS = (
+    "The file's copy of this font can't draw every letter here,"
+    " so a similar font stands in for it."
+)
+FONT_CANT_WRITE = (
+    "This font is stored in the file in a way we can't write new text with yet,"
+    " so a similar font stands in for it."
+)
+
+# An edit that went in, but not quite as asked. `{letters}` is space-separated.
+FONT_NOT_ADDED = (
+    "The file's own font couldn't be used for this edit, so a similar font drew it."
+)
+LEFT_OUT = "Left out {letters}: no font we have can draw them."
+
 # The ways out of an overflow, keyed by the name an edit's `strategy` uses.
 OPTIONS = {
     "shrink": {

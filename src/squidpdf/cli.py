@@ -109,9 +109,11 @@ def cmd_edit(args: argparse.Namespace) -> int:
             print(f"  {RED}{fit.describe()}{OFF} {DIM}(pass --force to do it anyway){OFF}")
             return 1
 
-        apply(engine, [Replace(span.id, args.text)], index)
+        applied = apply(engine, [Replace(span.id, args.text)], index)
         engine.save(args.out)
         print(f"\n  {span.text!r} -> {args.text!r}")
+        for notice in applied.notices:
+            print(f"  {YELLOW}{notice.detail}{OFF}")
         print(f"  {GREEN}saved{OFF} {args.out}\n")
     return 0
 

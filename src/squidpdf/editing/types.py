@@ -26,6 +26,22 @@ class Skipped:
 
 
 @dataclass(frozen=True, slots=True)
+class Notice:
+    """An edit that went in, but not quite as asked, and why in plain words."""
+
+    span_id: str
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class Applied:
+    """What applying the log left out, and what it drew other than asked."""
+
+    skipped: list[Skipped]
+    notices: list[Notice]
+
+
+@dataclass(frozen=True, slots=True)
 class Region:
     """What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it."""
 
@@ -53,12 +69,16 @@ class FitInfo(TypedDict):
 
 
 class Rendered(TypedDict):
-    """What render worked out: the strips, a fit per replaced span, and what it skipped."""
+    """What render worked out: the strips, a fit per replaced span, and what it skipped.
+
+    `notices` are edits drawn other than asked, such as in a stand-in font.
+    """
 
     images: list[ImageInfo]
     fits: dict[str, FitInfo]
     redactions: list[dict[str, str]]
     skipped: list[Skipped]
+    notices: list[Notice]
 
 
 class Render(Rendered):

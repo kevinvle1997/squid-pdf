@@ -59,10 +59,11 @@ class Engine(Protocol):
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
-    ) -> None:
+    ) -> list[str]:
         """Redraw at the span's baseline, in its own font where it draws every character.
 
         `size` in points replaces the span's own; `scale_x` narrows it horizontally.
+        Returns, in plain words, anything that came out other than asked.
         """
         ...
 

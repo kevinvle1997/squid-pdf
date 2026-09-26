@@ -7,7 +7,7 @@ module owns both.
 from squidpdf.editing.apply import BadReference, apply, check, fits, verify_redactions
 from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
 from squidpdf.editing.fit import FitCheck, Option, options_for
-from squidpdf.editing.types import Skipped, Strategy
+from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 __all__ = [
     "BadReference",
@@ -23,6 +23,8 @@ __all__ = [
     "FitCheck",
     "Option",
     "options_for",
+    "Applied",
+    "Notice",
     "Skipped",
     "Strategy",
 ]

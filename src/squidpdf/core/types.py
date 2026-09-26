@@ -11,6 +11,12 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import NewType
+
+# Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
+Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
+GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty .notdef
+type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +109,7 @@ class FontCode:
 
     value: int  # the code the page writes, e.g. 0x21
     letter: str  # the letter the font's letter list (ToUnicode) says it is
-    glyph: int  # the shape it draws; 0 means none
+    glyph: GlyphId  # the shape it draws; 0 means none
     width: float  # per 1000 em, from the font's width list
 
 

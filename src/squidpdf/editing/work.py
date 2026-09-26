@@ -35,7 +35,7 @@ def render(
 
     with MuPDFEngine(str(path / store.ORIGINAL)) as engine:
         checked = fits(engine, edits, index)  # before apply: remove() can drop the fonts
-        skipped = apply(engine, edits, index, pages={region.page for region in regions})
+        applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [
             _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
         ]
@@ -44,7 +44,8 @@ def render(
         "images": images,
         "fits": {span_id: _fit(fit) for span_id, fit in checked.items()},
         "redactions": [],  # verdicts come with export and the redaction check
-        "skipped": skipped,
+        "skipped": applied.skipped,
+        "notices": applied.notices,
     }
 
 

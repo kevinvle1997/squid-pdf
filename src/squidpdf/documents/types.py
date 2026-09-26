@@ -50,6 +50,7 @@ class FontInfo(TypedDict):
 
     name: str
     substitute: str | None
+    why: str | None  # why the file's own copy can't be used, in plain words
     glyphs: dict[str, float]
 
 

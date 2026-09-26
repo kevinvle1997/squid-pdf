@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import pymupdf
 
-from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate
+from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate, words
 from squidpdf.core.fonts import base14_for
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_all, assert_between, assert_equal, assert_true
@@ -54,6 +54,8 @@ def test_referenced_font_is_a_substitution(engine):
     describe = _describe_report(reports)
     assert_all(referenced, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
     assert_all(referenced, lambda s: bool(reports[s.id].substitute), describe)
+    not_stored = words.FONT_NOT_IN_FILE
+    assert_all(referenced, lambda s: reports[s.id].why == not_stored, describe)
 
 
 def test_embedded_font_is_exact(engine):
@@ -79,6 +81,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
         eng.save(str(out))
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
+    assert_equal(report.why, words.FONT_NO_LETTER_LIST, "why, as the user reads it")
     first_drawn = _drawn(str(out))[0]
     substitute = pymupdf.Font(base14_for(span.font)).name
     assert_equal(first_drawn["font"], substitute, "the font that redrew it")

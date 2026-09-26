@@ -30,6 +30,7 @@ class FidelityReport:
     state: Fidelity
     font: str
     substitute: str | None = None
+    why: str | None = None  # why the file's own font can't be used, in plain words
 
 
 def green_rate(reports: list[FidelityReport]) -> float:

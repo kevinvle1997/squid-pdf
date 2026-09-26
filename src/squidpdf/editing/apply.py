@@ -14,7 +14,7 @@ from squidpdf.core.engine import Engine
 from squidpdf.core.types import Span, SpanIndex
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
 from squidpdf.editing.fit import FitCheck, options_for
-from squidpdf.editing.types import Skipped, Strategy
+from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 _BAD_REFERENCE = "bad_reference"
 
@@ -89,13 +89,14 @@ def apply(
     edits: Sequence[Edit],
     index: SpanIndex,
     pages: Collection[int] | None = None,
-) -> list[Skipped]:
+) -> Applied:
     """Apply the log in memory, one span in its final state. Nothing is written.
 
-    Only edits on `pages` are drawn, or on every page when it's None. Edits that
-    point at nothing are left out and returned. Removal happens in one pass
-    before any redraw: PyMuPDF applies redactions per page, and a redaction
-    applied after a redraw would erase the new text.
+    Only edits on `pages` are drawn, or on every page when it's None. Returns the
+    edits that point at nothing, left out, and notices for any drawn other than
+    asked. Removal happens in one pass before any redraw: PyMuPDF applies
+    redactions per page, and a redaction applied after a redraw would erase the
+    new text.
     """
     span_edits, inserts, skipped = _resolve(engine, edits, index)
 
@@ -113,13 +114,15 @@ def apply(
 
     if to_remove:
         engine.remove(to_remove)
+    notices: list[Notice] = []
     for span, text, size, scale_x in to_draw:
-        engine.draw(span, text, size, scale_x)
+        for detail in engine.draw(span, text, size, scale_x):
+            notices.append(Notice(span.id, detail))
     for insert in inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
             engine.draw_at(insert.page, insert.origin, insert.text, insert.size, insert.color)
-    return skipped
+    return Applied(skipped, notices)
 
 
 def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, float]:

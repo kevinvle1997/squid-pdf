@@ -6,7 +6,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core.pdf import PdfFile
-from squidpdf.core.types import FontCode, Rect
+from squidpdf.core.types import FontCode, GlyphId, Rect
 from tests.helpers import assert_between, assert_equal
 
 _TOLERANCE_PT = 0.01
@@ -51,7 +51,7 @@ def test_font_codes_list_what_each_code_draws(request, fixture, code_bytes, firs
     [font] = pdf.fonts(0)
     # As conftest.py builds them: glyphs 1 to 4 in this order, widths from _WIDTHS.
     expected = [
-        FontCode(first_code + i, letter, glyph=i + 1, width=width)
+        FontCode(first_code + i, letter, glyph=GlyphId(i + 1), width=width)
         for i, (letter, width) in enumerate([("A", 500), ("B", 550), (" ", 250), ("C", 600)])
     ]
     assert_equal(pdf.font_codes(font.xref, code_bytes), expected, "codes, lowest first")

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import FontCode, Rect
+from squidpdf.core.types import FontCode, GlyphId, Rect
 
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
@@ -194,7 +194,7 @@ def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None
     return FontCode(
         value=value,
         letter=chr(codepoint),
-        glyph=mu.ll_pdf_font_cid_to_gid(font, cid),
+        glyph=GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid)),
         width=mu.ll_pdf_lookup_hmtx(font, cid).w,
     )
 

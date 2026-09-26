@@ -15,6 +15,8 @@ from fontTools.cffLib import CFFFontSet
 from fontTools.pens.recordingPen import RecordingPen
 from fontTools.ttLib import TTFont
 
+from squidpdf.core.types import Codepoint, GlyphId, GlyphName
+
 # Characters that legitimately draw nothing.
 _BLANK = {" ", "\t", "\n", "\r", " ", " ", " "}
 
@@ -48,10 +50,10 @@ class Coverage:
         self,
         buffer: bytes,
         claimed: Iterable[int] = (),
-        glyph_ids: Mapping[str, int] | None = None,
+        glyph_ids: Mapping[str, GlyphId] | None = None,
     ) -> None:
         """Parse a font's raw bytes; `claimed` is what it draws if they won't parse."""
-        self._glyph_names: dict[int, str] = {}  # codepoint -> glyph name, once loaded
+        self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
         self._claimed = frozenset(claimed)
@@ -60,7 +62,7 @@ class Coverage:
         self.usable = False  # True once a parseable font has been loaded
         self._load(buffer, glyph_ids)
 
-    def _load(self, buffer: bytes, glyph_ids: Mapping[str, int] | None) -> None:
+    def _load(self, buffer: bytes, glyph_ids: Mapping[str, GlyphId] | None) -> None:
         """Figure out the font's format and parse it, or give up quietly."""
         if not buffer:
             return
@@ -73,10 +75,10 @@ class Coverage:
         except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
             self.usable = False
 
-    def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, int] | None) -> None:
+    def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, GlyphId] | None) -> None:
         """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
         font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        self._glyph_names = _sfnt_glyph_names(font, glyph_ids)
+        self._glyph_names = _glyph_name_for_each_letter(font, glyph_ids)
         self._glyphs = font.getGlyphSet()
 
     def _load_bare_cff(self, buffer: bytes) -> None:
@@ -99,7 +101,7 @@ class Coverage:
         for codepoint in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
             name = _adobe_name(codepoint)
             if name in names:
-                self._glyph_names[codepoint] = name
+                self._glyph_names[Codepoint(codepoint)] = name
 
     def covers(self, ch: str) -> bool:
         """True when this font will actually put ink on the page for `ch`."""
@@ -114,7 +116,7 @@ class Coverage:
 
     def _draws(self, ch: str) -> bool:
         """Ask the glyph itself to draw, and check that it produced any ink."""
-        name = self._glyph_names.get(ord(ch))
+        name = self._glyph_names.get(Codepoint(ord(ch)))
         if name is None or self._glyphs is None:
             return False
         try:
@@ -136,8 +138,10 @@ class Coverage:
         return [ch for ch in unique if not self.covers(ch)]
 
 
-def _sfnt_glyph_names(font: TTFont, glyph_ids: Mapping[str, int] | None) -> dict[int, str]:
-    """Code point -> glyph name, from `glyph_ids` when given, else the font's letter table.
+def _glyph_name_for_each_letter(
+    font: TTFont, glyph_ids: Mapping[str, GlyphId] | None
+) -> dict[Codepoint, GlyphName]:
+    """Which shape draws each letter: from `glyph_ids` when given, else the font's letter table.
 
     With neither (a symbol font, say) it raises, so the font is marked
     unusable rather than reporting every character as missing.
@@ -146,14 +150,14 @@ def _sfnt_glyph_names(font: TTFont, glyph_ids: Mapping[str, int] | None) -> dict
     if glyph_ids is not None:
         order = font.getGlyphOrder()
         return {
-            ord(ch): order[glyph_id]
-            for ch, glyph_id in glyph_ids.items()
+            Codepoint(ord(letter)): order[glyph_id]
+            for letter, glyph_id in glyph_ids.items()
             if glyph_id < len(order)
         }
     cmap = font.getBestCmap()
     if cmap is None:
         raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
-    return dict(cmap)
+    return {Codepoint(codepoint): name for codepoint, name in cmap.items()}
 
 
 def _adobe_name(codepoint: int) -> str:

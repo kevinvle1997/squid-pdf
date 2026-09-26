@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from squidpdf.core import words
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SIZE_EPS
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
@@ -59,6 +60,15 @@ class _EmbeddedFont:
     coded: CodedFont | None  # set when we write it by code, not by letter
 
 
+class _FontUnusable(Exception):
+    """Why the file's own copy of a font can't be used, so a similar font draws instead."""
+
+    def __init__(self, reason: str) -> None:
+        """`reason` is a sentence from `core.words`, shown to the user as it is."""
+        super().__init__(reason)
+        self.reason = reason
+
+
 class MuPDFEngine:
     """Implements `core.engine.Engine`."""
 
@@ -72,23 +82,39 @@ class MuPDFEngine:
             raise Unreadable(path) from exc
         self._pdf = PdfFile(self.doc)
         # Keyed by (page, font name); each fills in on first lookup.
-        self._fonts: dict[tuple[int, str], _EmbeddedFont | None] = {}  # None: only named
-        self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
+        self._fonts: dict[tuple[int, str], _EmbeddedFont | _FontUnusable] = {}
+        self._aliases: dict[tuple[int, str], str | _FontUnusable] = {}  # once drawn
 
-    def _embedded(self, span: Span) -> _EmbeddedFont | None:
-        """The file's own copy of the span's font, or None when the file only names it.
-
-        Only named is the common case for anything exported from Word, and it is
-        exactly what the substitute state warns about.
-        """
+    def _lookup(self, span: Span) -> _EmbeddedFont | _FontUnusable:
+        """The file's own copy of the span's font, or why we can't use it."""
         font_name = strip_subset(span.font)
         key = (span.page, font_name)
         if key not in self._fonts:
-            self._fonts[key] = self._load_font(span.page, font_name)
+            try:
+                self._fonts[key] = self._load_font(span.page, font_name)
+            except _FontUnusable as problem:
+                self._fonts[key] = problem
         return self._fonts[key]
 
-    def _load_font(self, page: int, font_name: str) -> _EmbeddedFont | None:
-        """Find the font on the page and open the file's copy of it."""
+    def _embedded(self, span: Span) -> _EmbeddedFont | None:
+        """The file's own copy of the span's font, or None when we can't use it.
+
+        Only named, not stored, is the common case for anything exported from
+        Word, and it is exactly what the substitute state warns about.
+        """
+        found = self._lookup(span)
+        return found if isinstance(found, _EmbeddedFont) else None
+
+    def _why_not(self, span: Span) -> str | None:
+        """Why the span's own font can't be used, in plain words; None when it can."""
+        found = self._lookup(span)
+        return found.reason if isinstance(found, _FontUnusable) else None
+
+    def _load_font(self, page: int, font_name: str) -> _EmbeddedFont:
+        """Find the font on the page and open the file's copy of it.
+
+        Raises _FontUnusable, saying why, when there's no copy we can use.
+        """
         # The first font by this name, in MuPDF's order; a later one is never tried.
         page_font = next(
             (font for font in self._pdf.fonts(page) if strip_subset(font.name) == font_name),
@@ -96,11 +122,11 @@ class MuPDFEngine:
         )
         # Not on the page, or only named there.
         if page_font is None or not page_font.is_embedded:
-            return None
+            raise _FontUnusable(words.FONT_NOT_IN_FILE)
         try:
             return _open_font(self._pdf, page_font)
-        except (RuntimeError, ValueError):  # MuPDF can't open it
-            return None
+        except (RuntimeError, ValueError) as exc:  # MuPDF can't open it
+            raise _FontUnusable(words.FONT_UNREADABLE) from exc
 
     def index(self) -> SpanIndex:
         """Built once, from the pristine document. Never rebuilt from a patched one.
@@ -186,7 +212,11 @@ class MuPDFEngine:
         if exact:
             return FidelityReport(span.id, Fidelity.EXACT, span.font)
         return FidelityReport(
-            span.id, Fidelity.SUBSTITUTE, span.font, substitute_for(span.font)
+            span.id,
+            Fidelity.SUBSTITUTE,
+            span.font,
+            substitute=substitute_for(span.font),
+            why=self._why_not(span) if not in_file else words.FONT_LACKS_LETTERS,
         )
 
     def glyphs(self, span: Span) -> dict[str, float]:
@@ -266,12 +296,13 @@ class MuPDFEngine:
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
-    ) -> None:
+    ) -> list[str]:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
         `size` replaces the span's own; `scale_x` narrows the run from its start.
         A character the font can't draw sends the whole run to the substitute,
-        so a line never mixes two faces.
+        so a line never mixes two faces. Returns, in plain words, anything that
+        came out other than asked; empty when nothing did.
         """
         font_size = span.size if size is None else size
 
@@ -279,18 +310,40 @@ class MuPDFEngine:
         coded = self._coded_for(span, text)
         if coded is not None:
             self._draw_codes(span, coded, text, font_size, scale_x)
-            return
+            return []
 
-        # Written by letter: in the file's font if it draws them all, else the substitute.
-        alias = None if self.missing(span, text) else self._alias(span)
-        if alias is None:  # the substitute draws the whole run
-            _font, text = self._run(span, text)
+        # Written by letter, in the file's own font when it has every letter.
+        notices: list[str] = []
+        embedded = self._embedded(span)
+        if embedded is not None and not self.missing(span, text):
+            try:
+                alias = self._alias(span, embedded)
+            except _FontUnusable as problem:  # the page wouldn't take the font
+                notices.append(problem.reason)
+            else:
+                self._insert(span, text, alias, font_size, scale_x)
+                return notices
+
+        # Otherwise the substitute draws the whole run, less what even it can't draw.
+        substitute = base14_for(span.font)
+        drawable = _simple_chars(pymupdf.Font(fontname=substitute))
+        left_out = [ch for ch in dict.fromkeys(text) if ch not in drawable]
+        if left_out:
+            notices.append(words.LEFT_OUT.format(letters=" ".join(left_out)))
+        kept = "".join(ch for ch in text if ch in drawable)
+        self._insert(span, kept, substitute, font_size, scale_x)
+        return notices
+
+    def _insert(
+        self, span: Span, text: str, fontname: str, size: float, scale_x: float
+    ) -> None:
+        """Write `text` at the span's baseline in `fontname`, in the span's color."""
         origin = pymupdf.Point(*span.origin)
         self.doc[span.page].insert_text(
             origin,
             text,
-            fontname=alias or base14_for(span.font),
-            fontsize=font_size,
+            fontname=fontname,
+            fontsize=size,
             color=span.color,
             overlay=True,
             morph=(origin, pymupdf.Matrix(scale_x, 1)),
@@ -322,33 +375,34 @@ class MuPDFEngine:
         )
         self._pdf.add_content(span.page, stream.encode())
 
-    def _alias(self, span: Span) -> str | None:
+    def _alias(self, span: Span, embedded: _EmbeddedFont) -> str:
         """The page's name for this span's font, added to the page on first use.
 
         Once per page, not per span: a copy per span piled up and slowed every
-        redraw. None when the file only names the font, or MuPDF won't add it.
+        redraw. Raises _FontUnusable when MuPDF won't add it.
         """
         font_name = strip_subset(span.font)
         key = (span.page, font_name)
         if key not in self._aliases:
-            self._aliases[key] = self._add_font(span, font_name)
-        return self._aliases[key]
+            self._aliases[key] = self._add_font(span.page, font_name, embedded)
+        found = self._aliases[key]
+        if isinstance(found, _FontUnusable):
+            raise _FontUnusable(found.reason)
+        return found
 
-    def _add_font(self, span: Span, font_name: str) -> str | None:
-        """Add the file's copy of the span's font to its page, under a new name."""
-        embedded = self._embedded(span)
-        # Only named in the file: nothing to add.
-        if embedded is None:
-            return None
+    def _add_font(
+        self, page: int, font_name: str, embedded: _EmbeddedFont
+    ) -> str | _FontUnusable:
+        """Add the file's copy of a font to a page under a new name, or say why it failed."""
         # Named from the font, so it can't clash with a name already on the page.
         digest = hashlib.blake2s(font_name.encode(), digest_size=_ALIAS_DIGEST_SIZE)
         alias = "F" + digest.hexdigest()
         try:
-            self.doc[span.page].insert_font(fontname=alias, fontbuffer=embedded.font.buffer)
+            self.doc[page].insert_font(fontname=alias, fontbuffer=embedded.font.buffer)
         except (RuntimeError, ValueError):
             # The bytes opened as a Font, but adding them to a page is another MuPDF
             # path that can still fail; the substitute draws instead.
-            return None
+            return _FontUnusable(words.FONT_NOT_ADDED)
         return alias
 
     def draw_at(
@@ -385,8 +439,8 @@ class MuPDFEngine:
         self.close()
 
 
-def _open_font(pdf: PdfFile, page_font: PageFont) -> _EmbeddedFont | None:
-    """Open the file's copy of a font, or None if it draws nothing we can use.
+def _open_font(pdf: PdfFile, page_font: PageFont) -> _EmbeddedFont:
+    """Open the file's copy of a font. Raises _FontUnusable, saying why, if we can't use it.
 
     A font with no letter lookup of its own (only a symbol table, say) still
     counts if its letter list (ToUnicode) says which code draws each letter;
@@ -395,7 +449,7 @@ def _open_font(pdf: PdfFile, page_font: PageFont) -> _EmbeddedFont | None:
     font_file = pdf.font_bytes(page_font.xref)
     # Stored, but MuPDF can't read it out.
     if not font_file:
-        return None
+        raise _FontUnusable(words.FONT_UNREADABLE)
     font = pymupdf.Font(fontbuffer=font_file)
     claimed = font.valid_codepoints()
     coverage = Coverage(font_file, claimed)
@@ -405,46 +459,43 @@ def _open_font(pdf: PdfFile, page_font: PageFont) -> _EmbeddedFont | None:
         return _EmbeddedFont(font, coverage, None)
 
     # Written by code, as its letter list says.
-    by_code = _read_by_code(pdf, page_font, font_file)
-    if by_code is not None:
-        coded, coded_coverage = by_code
-        return _EmbeddedFont(font, coded_coverage, coded)
-
-    # Unreadable either way: keep it only if MuPDF says it has letters.
-    if claimed:
-        return _EmbeddedFont(font, coverage, None)
-    return None
+    try:
+        coded, coded_coverage = _read_by_code(pdf, page_font, font_file)
+    except _FontUnusable:
+        # Unreadable either way: keep it only if MuPDF says it has letters.
+        if claimed:
+            return _EmbeddedFont(font, coverage, None)
+        raise
+    return _EmbeddedFont(font, coded_coverage, coded)
 
 
 def _read_by_code(
     pdf: PdfFile, page_font: PageFont, font_file: bytes
-) -> tuple[CodedFont, Coverage] | None:
-    """The font's codes and which letters they really draw, if we can write it by code."""
+) -> tuple[CodedFont, Coverage]:
+    """The font's codes and which letters they really draw. Raises _FontUnusable if we can't."""
     # Only a TrueType font the page uses itself, not one inside a form (a reusable drawing).
     writable = page_font.file_type == "ttf" and not page_font.in_form
     if not writable:
-        return None
+        raise _FontUnusable(words.FONT_CANT_WRITE)
     coded = _read_coded_font(pdf, page_font)
-    if coded is None:
-        return None
     glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
     coverage = Coverage(font_file, glyph_ids=glyph_ids)
     if not coverage.usable:
-        return None
+        raise _FontUnusable(words.FONT_UNREADABLE)
     return coded, coverage
 
 
-def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
+def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont:
     """Which code draws each letter, from the font's letter list (ToUnicode).
 
-    None without a letter list: guessing would draw the wrong letters.
+    Raises _FontUnusable without one: guessing would draw the wrong letters.
     """
     code_bytes = _code_bytes(font)
     if code_bytes is None:
-        return None
+        raise _FontUnusable(words.FONT_CANT_WRITE)
     font_codes = pdf.font_codes(font.xref, code_bytes)
     if font_codes is None:
-        return None
+        raise _FontUnusable(words.FONT_NO_LETTER_LIST)
 
     letters: dict[str, FontCode] = {}
     for code in font_codes:  # lowest code first
@@ -453,7 +504,7 @@ def _read_coded_font(pdf: PdfFile, font: PageFont) -> CodedFont | None:
         if typeable:
             letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
-        return None
+        raise _FontUnusable(words.FONT_NO_LETTER_LIST)
     return CodedFont(font.resource, font.xref, code_bytes, letters)
 
 

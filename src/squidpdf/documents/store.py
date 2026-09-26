@@ -14,6 +14,7 @@ import secrets
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 import orjson
 
@@ -85,27 +86,24 @@ def load_index(folder: Path) -> SpanIndex | None:
         raw = orjson.loads((folder / _INDEX).read_bytes())
     except FileNotFoundError:  # not analysed yet
         return None
-    return SpanIndex(
-        [
-            Span(
-                id=span["id"],
-                page=span["page"],
-                text=span["text"],
-                font=span["font"],
-                size=span["size"],
-                color=tuple(span["color"]),
-                bbox=Rect(**span["bbox"]),
-                origin=tuple(span["origin"]),
-                fragments=tuple(
-                    Fragment(
-                        fragment["text"], Rect(**fragment["bbox"]), tuple(fragment["origin"])
-                    )
-                    for fragment in span["fragments"]
-                ),
-            )
-            for span in raw
-        ]
-    )
+    return SpanIndex([_span(span) for span in raw])
+
+
+def _span(saved: dict[str, Any]) -> Span:
+    """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
+    rebuilt: dict[str, Any] = {
+        "color": tuple(saved["color"]),
+        "bbox": Rect(**saved["bbox"]),
+        "origin": tuple(saved["origin"]),
+        "fragments": tuple(_fragment(fragment) for fragment in saved["fragments"]),
+    }
+    return Span(**saved | rebuilt)
+
+
+def _fragment(saved: dict[str, Any]) -> Fragment:
+    """One saved fragment, the same way."""
+    rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
+    return Fragment(**saved | rebuilt)
 
 
 def save_pages(folder: Path, pages: list[Page]) -> None:

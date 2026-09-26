@@ -37,6 +37,7 @@ def analyse(folder: str) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
+                "why": reports[span.id].why,
                 "glyphs": eng.glyphs(span),
             }
             for span in first_span_of_font.values()

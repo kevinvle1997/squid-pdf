@@ -7,7 +7,15 @@ import pytest
 
 from squidpdf.core import MuPDFEngine, Span, words
 from squidpdf.core.fonts import base14_for
-from squidpdf.editing import BadReference, Redact, Replace, Skipped, apply, verify_redactions
+from squidpdf.editing import (
+    BadReference,
+    Notice,
+    Redact,
+    Replace,
+    Skipped,
+    apply,
+    verify_redactions,
+)
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
@@ -100,17 +108,22 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
 
 
 def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(engine, tmp_path):
-    """The subset has no é. Drawn in it, the letter would be blank."""
+    """The subset has no é. Drawn in it, the letter would be blank.
+
+    The substitute has no € either, so that is left out, and the user is told.
+    """
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE and "14 March" in s.text)
     out = tmp_path / "accented.pdf"
 
-    apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026")], index)
+    applied = apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026€")], index)
     engine.save(str(out))
 
     substitute = pymupdf.Font(base14_for(span.font)).name
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
     assert_equal(drawn["font"], substitute, "the font that drew the run")
+    left_out = Notice(span.id, words.LEFT_OUT.format(letters="€"))
+    assert_equal(applied.notices, [left_out], "what render tells the user")
 
 
 @pytest.mark.parametrize("strategy", ["shrink", "condense"])
@@ -151,7 +164,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
     out = tmp_path / "skipped.pdf"
 
     edits = [Replace("nosuchid", "x"), Replace(span.id, "Made on 2 April 2026.")]
-    skipped = apply(engine, edits, index)
+    skipped = apply(engine, edits, index).skipped
     engine.save(str(out))
 
     assert_equal(skipped, [Skipped(0, "bad_reference", words.NO_SPAN)], "skipped")

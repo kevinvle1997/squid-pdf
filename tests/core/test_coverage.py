@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
+import io
 
-from squidpdf.core.coverage import Coverage
+import pytest
+from fontTools.ttLib import TTFont
+
+from squidpdf.core.coverage import Coverage, _glyph_name_for_each_letter
+from squidpdf.core.types import Codepoint, GlyphId
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
+from tests.core.conftest import _truetype
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 _EM = 1000  # glyph advances are per 1000 em
@@ -67,3 +72,19 @@ def test_a_substitute_reports_what_it_cannot_draw_as_missing(engine):
     assert_equal(engine.missing(span, "Février → 2026"), ["→"], "missing from the substitute")
     drawable = "".join(engine.glyphs(span))
     assert_equal(engine.missing(span, drawable), [], "missing from what glyphs() lists")
+
+
+def test_glyph_names_come_from_the_ids_given_when_the_font_has_no_letter_table():
+    """The fixture font has no cmap: the ids a letter list gave name each letter's shape."""
+    font = TTFont(io.BytesIO(_truetype(None)))
+    glyph_ids = {"A": GlyphId(1), "B": GlyphId(2), " ": GlyphId(3), "Z": GlyphId(99)}
+    expected = {
+        Codepoint(ord("A")): "A",
+        Codepoint(ord("B")): "B",
+        Codepoint(ord(" ")): "space",
+    }
+    assert_equal(
+        _glyph_name_for_each_letter(font, glyph_ids),
+        expected,
+        "each letter's shape, Z past the end",
+    )
