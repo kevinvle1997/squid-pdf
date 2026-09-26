@@ -26,7 +26,7 @@ from squidpdf.editing import (
     verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
 _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
@@ -104,6 +104,38 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     # Editing it afterwards brings the text back, and render says so.
     undone = apply(engine, [*edits, Replace(span.id, "Services")], index).notices
     assert_equal(undone, [Notice(span.id, words.REDACTION_UNDONE)], "notices after the edit")
+
+
+def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tmp_path):
+    """The same line on another page is other text, not a leak."""
+    out = tmp_path / "redacted.pdf"
+    with MuPDFEngine(repeated) as eng:
+        index = eng.index()
+        first = next(iter(index))
+        edits = [Redact(first.id)]
+        apply(eng, edits, index)
+        eng.save(str(out))
+        verified = verify_redactions(eng, edits, index)
+
+    assert_equal(verified, {first.id: True}, "the redaction's verdict")
+    pages = [page.get_text().strip() for page in pymupdf.open(out).pages()]
+    assert_equal(pages, ["", "CONFIDENTIAL"], "each page's text after redacting the first")
+
+
+def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
+    """What verified redaction is for: covered text is still in the file."""
+    with MuPDFEngine(pdf) as eng:
+        span = next(iter(eng.index()))
+    covered = tmp_path / "covered.pdf"
+    doc = pymupdf.open(pdf)
+    box = span.bbox
+    doc[span.page].draw_rect(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1), fill=(0, 0, 0))
+    doc.save(covered)
+
+    with MuPDFEngine(str(covered)) as eng:
+        assert_false(eng.absent(span), "text under a black box, counted as gone")
+        eng.remove([span])
+        assert_true(eng.absent(span), "the same text really removed, counted as gone")
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):

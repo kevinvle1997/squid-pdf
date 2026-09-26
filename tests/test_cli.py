@@ -116,6 +116,17 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 
+def test_redact_verifies_words_the_document_repeats_elsewhere(repeated, tmp_path, capsys):
+    """A header on every page: removing one must not fail over the others."""
+    out_pdf = tmp_path / "redacted.pdf"
+
+    code = main(["redact", repeated, _span_id(repeated, "CONFIDENTIAL"), "-o", str(out_pdf)])
+
+    assert_equal(code, 0, "exit code of `squidpdf redact` on a line the document repeats")
+    assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
+    assert_true(out_pdf.exists(), "the redacted file is kept")
+
+
 @pytest.mark.parametrize(
     "argv",
     [

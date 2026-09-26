@@ -75,8 +75,8 @@ class Engine(Protocol):
         """Write the document to `path`. Returns anything that came out other than asked."""
         ...
 
-    def absent(self, text: str) -> bool:
-        """Confirm a removed string is really gone. Verified redaction depends on this."""
+    def absent(self, span: Span) -> bool:
+        """Whether the span's text is gone from its place. Verified redaction rests on this."""
         ...
 
     def close(self) -> None:

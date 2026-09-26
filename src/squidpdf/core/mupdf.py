@@ -501,9 +501,15 @@ class MuPDFEngine:
         self.doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True, use_objstms=True)
         return notices
 
-    def absent(self, text: str) -> bool:
-        """Confirm removed text is really gone. A black rectangle would fail this."""
-        return not any(text in self.doc[i].get_text() for i in range(len(self.doc)))
+    def absent(self, span: Span) -> bool:
+        """Whether the span's text is gone from where it was. A black box would fail this.
+
+        Only the span's own box on its own page is read: the same words
+        elsewhere in the document are other text, not a leak. Spaces are
+        ignored, so a leftover can't pass for gone by being spaced differently.
+        """
+        left = self._pdf.text_in(span.page, span.bbox)
+        return _unspaced(span.text) not in _unspaced(left)
 
     def close(self) -> None:
         """Release the open document."""
@@ -592,6 +598,11 @@ def _code_bytes(font: PageFont) -> int | None:
     if font.kind == "Type0" and font.encoding != "Identity-H":
         return None  # its codes aren't glyph numbers, so we can't work them out
     return _CODE_BYTES.get(font.kind)
+
+
+def _unspaced(text: str) -> str:
+    """`text` with every space, tab and line break taken out."""
+    return "".join(text.split())
 
 
 def _is_control(ch: str) -> bool:
