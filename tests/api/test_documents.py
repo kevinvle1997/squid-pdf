@@ -20,11 +20,13 @@ _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
 @pytest.fixture
 def mine(browser):
+    """The browser that uploads, and so owns, the document."""
     return browser()
 
 
 @pytest.fixture
 def doc(mine, pdf_bytes) -> dict:
+    """The sample PDF as uploaded by `mine`: what the upload answered."""
     return upload(mine, pdf_bytes).json()
 
 
@@ -114,7 +116,9 @@ def test_deleting_it_leaves_nothing_behind(mine, doc):
     ("body", "problem", "status"),
     [
         (b"Dear Sir, please find attached.", "not_a_pdf", 415),
+        # A PNG's opening bytes, then zeros.
         (b"\x89PNG\r\n\x1a\n" + bytes(4096), "not_a_pdf", 415),
+        # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
     ],
     ids=["text", "png", "garbage after the header"],

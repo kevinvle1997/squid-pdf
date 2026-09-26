@@ -21,20 +21,24 @@ _ENOUGH_S = 10
 
 @pytest.fixture(scope="module")
 def pool():
+    """One pool of workers for the module, shut down after."""
     pool = Pool()
     yield pool
     pool.close()
 
 
 def _pid() -> int:
+    """The process this runs in."""
     return os.getpid()
 
 
 def _hang() -> None:
+    """Work that takes far longer than any timeout here."""
     time.sleep(_HANG_S)
 
 
 def _overeat() -> int:
+    """Work that asks for twice a worker's memory."""
     return len(bytearray(2 * WORKER_MEMORY_BYTES))
 
 

@@ -10,7 +10,7 @@ from tests.helpers import assert_all, assert_equal, assert_in, assert_problem
 _UNKNOWN = "A" * 22  # shaped like an id, belongs to nothing
 
 
-@pytest.mark.parametrize("doc_id", [_UNKNOWN, "..%2F..%2Fetc"])
+@pytest.mark.parametrize("doc_id", [_UNKNOWN, "..%2F..%2Fetc"])  # the second climbs folders
 def test_an_unknown_id_is_not_found(browser, doc_id):
     assert_problem(browser().get(f"/api/documents/{doc_id}"), "not_found", 404)
 
@@ -26,12 +26,15 @@ def test_another_browsers_document_is_not_found_exactly_like_an_unknown_one(brow
         theirs.delete(base),
     ]
     upload(theirs, pdf_bytes)  # now it has a cookie of its own
-    attempts.append(theirs.get(base))
+    with_own_cookie = theirs.get(base)
+    attempts.append(with_own_cookie)
     unknown = theirs.get(f"/api/documents/{_UNKNOWN}")
 
     for attempt in attempts:
         assert_problem(attempt, "not_found", 404)
-    assert_equal(attempts[-1].json(), unknown.json(), "someone else's id beside an unknown one")
+    assert_equal(
+        with_own_cookie.json(), unknown.json(), "someone else's id beside an unknown one"
+    )
     assert_equal(mine.get(base).status_code, 200, "the uploader reading it after all that")
 
 

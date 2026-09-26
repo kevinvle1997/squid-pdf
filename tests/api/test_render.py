@@ -20,11 +20,13 @@ _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
 
 @pytest.fixture
 def mine(browser):
+    """The browser that uploads, and so owns, the document."""
     return browser()
 
 
 @pytest.fixture
 def doc(mine, pdf_bytes) -> dict:
+    """The sample PDF as uploaded by `mine`: what the upload answered."""
     return upload(mine, pdf_bytes).json()
 
 
@@ -83,16 +85,19 @@ def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     edit = {"kind": "replace", "span_id": edited["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
-    images = _render(mine, doc, [edit], [strip, {"page": 0}]).json()["images"]
+    rendered = _render(mine, doc, [edit], [strip, {"page": 0}]).json()["images"]
+    # One image per region, in the order asked.
+    strip_image, whole_page = rendered[0], rendered[1]
 
     params = {"scale": _SCALE, "build": doc["build"]}
     page_png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
-    assert_equal(_png(images[1]), page_png, "the whole page, against the page image")
-    page, rows = pymupdf.Pixmap(page_png), pymupdf.Pixmap(_png(images[0]))
-    top = round(images[0]["y"] * _SCALE)
+    assert_equal(_png(whole_page), page_png, "the whole page, against the page image")
+    page, rows = pymupdf.Pixmap(page_png), pymupdf.Pixmap(_png(strip_image))
+    # The page image's pixel rows under the strip; stride is the bytes in one row.
+    top = round(strip_image["y"] * _SCALE)
     expected = page.samples[top * page.stride : (top + rows.height) * page.stride]
     assert_equal(rows.width, page.width, "strip width")
-    assert_true(rows.samples == expected, f"the strip at y={images[0]['y']} matches its rows")
+    assert_true(rows.samples == expected, f"the strip at y={strip_image['y']} matches its rows")
 
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_named(mine, doc):

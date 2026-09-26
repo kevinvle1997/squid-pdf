@@ -53,4 +53,5 @@ def upload(client: TestClient, body: bytes) -> Response:
 
 @pytest.fixture
 def pdf_bytes(pdf: str) -> bytes:
+    """The shared sample PDF, as a browser would upload it."""
     return Path(pdf).read_bytes()
