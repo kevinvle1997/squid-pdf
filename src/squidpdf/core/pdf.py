@@ -141,10 +141,8 @@ class PdfFile:
         if kind != "array":
             return xref
         inner = _FIRST_REFERENCE.match(value)
-        # Written out in place: rare, and not worth it.
-        if inner is None:
-            return None
-        return int(inner.group(1))
+        # None when written out in place: rare, and not worth it.
+        return int(inner.group(1)) if inner else None
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""

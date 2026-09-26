@@ -258,17 +258,14 @@ def face_bytes(face: Face) -> bytes:
 
 
 def trimmed(face: Face, letters: Iterable[str]) -> bytes:
-    """The face's font file cut down to `letters`, so a saved PDF carries only what it draws.
-
-    Hinting stays: it keeps small text crisp on screen, for a few KB. Each
-    glyph keeps its number, as text already on the page points at them by number.
-    """
-    options = Options()
-    options.hinting = True
-    options.layout_features = []  # the PDF places each letter itself: no ligatures or kerning
-    options.retain_gids = True
-    # FontForge's timestamps: nothing draws with them, and fontTools warns it can't cut them.
-    options.drop_tables = [*options.drop_tables, "FFTM"]
+    """The face's font file cut down to `letters`, so a saved PDF carries only what it draws."""
+    options = Options(
+        hinting=True,  # keeps small text crisp on screen, for a few KB
+        layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
+        retain_gids=True,  # text already on the page points at its glyphs by number
+        # FontForge's timestamps: nothing draws with them, and fontTools can't cut them.
+        drop_tables=[*Options().drop_tables, "FFTM"],
+    )
     subsetter = Subsetter(options)
     subsetter.populate(unicodes=[ord(ch) for ch in letters])
     font = TTFont(io.BytesIO(face_bytes(face)))
