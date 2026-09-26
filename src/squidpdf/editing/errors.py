@@ -35,7 +35,7 @@ class TooManyEdits(Problem):
 
 
 class TextTooLong(Problem):
-    """A replacement over the length limit."""
+    """New text over the length limit: a replacement's or an insert's."""
 
     type = "text_too_long"
     status = 422

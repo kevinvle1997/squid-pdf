@@ -8,6 +8,7 @@ happened first.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -54,6 +55,18 @@ class Insert:
     font: str = "Liberation Sans Regular"
     color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     kind: Literal["insert"] = "insert"
+
+    def __post_init__(self) -> None:
+        """Refuse a place, size or color nothing can draw, however the insert is made.
+
+        From the browser, pydantic turns the ValueError into a bad request.
+        """
+        if not all(math.isfinite(xy) for xy in self.origin):
+            raise ValueError(f"origin must be finite, got {self.origin}")
+        if not (math.isfinite(self.size) and self.size > 0):
+            raise ValueError(f"size must be above 0, got {self.size}")
+        if not all(0 <= channel <= 1 for channel in self.color):
+            raise ValueError(f"color channels must be from 0 to 1, got {self.color}")
 
 
 type Edit = Replace | Redact | Insert
