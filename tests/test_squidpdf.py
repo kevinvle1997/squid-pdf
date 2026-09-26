@@ -15,7 +15,7 @@ from tests.helpers import assert_between, assert_in, assert_true
 
 
 def test_public_api_indexes_assesses_edits_and_verifies(pdf, tmp_path):
-    with squidpdf.MuPDFEngine(pdf) as eng:
+    with squidpdf.open_pdf(pdf) as eng:
         index = eng.index()
         reports = eng.assess(index)
         assert_between(squidpdf.green_rate(reports), 0.0, 1.0, "green rate on this fixture")

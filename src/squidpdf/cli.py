@@ -20,12 +20,13 @@ from squidpdf.core import (
     GREEN_RATE_WARN,
     Fidelity,
     FidelityReport,
-    MuPDFEngine,
     Problem,
     green_rate,
+    open_pdf,
     words,
+    write_sample,
 )
-from squidpdf.editing import Redact, Replace, apply, check
+from squidpdf.editing import Redact, Replace, apply, replace_fit
 
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
@@ -36,7 +37,7 @@ _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
 
 def cmd_spans(args: argparse.Namespace) -> int:
     """List every editable span and whether it would keep its own font."""
-    with MuPDFEngine(args.pdf) as engine:
+    with open_pdf(args.pdf) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
@@ -74,13 +75,13 @@ def _summary(reports: list[FidelityReport]) -> None:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
-    with MuPDFEngine(args.pdf) as engine:
+    with open_pdf(args.pdf) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
             return _no_span(args.span_id)
 
-        fit = check(engine, span, args.text)
+        fit = replace_fit(engine, span, args.text)
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {DIM}{span.font} {span.size}pt{OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
@@ -100,13 +101,13 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def cmd_edit(args: argparse.Namespace) -> int:
     """Replace a span's text and save. Refuses if it will not fit, unless --force."""
-    with MuPDFEngine(args.pdf) as engine:
+    with open_pdf(args.pdf) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
             return _no_span(args.span_id)
 
-        fit = check(engine, span, args.text)
+        fit = replace_fit(engine, span, args.text)
         refused = not fit.ok and not args.force
         if refused:
             print(f"  {RED}{fit.describe()}{OFF} {DIM}(pass --force to do it anyway){OFF}")
@@ -123,7 +124,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
 
 def cmd_redact(args: argparse.Namespace) -> int:
     """Remove a span, save, and verify by re-reading the output that it is gone."""
-    with MuPDFEngine(args.pdf) as engine:
+    with open_pdf(args.pdf) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
@@ -133,8 +134,8 @@ def cmd_redact(args: argparse.Namespace) -> int:
         engine.save(args.out)
 
     # Re-read the saved file, as the app does before a download.
-    with MuPDFEngine(args.out) as saved:
-        gone = saved.absent(span.text)
+    with open_pdf(args.out) as saved:
+        gone = saved.absent(span)
     # Still there: keep nothing, as the app downloads nothing.
     if not gone:
         Path(args.out).unlink()
@@ -152,7 +153,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     total = exact = 0
     for path in args.pdfs:
         try:
-            with MuPDFEngine(path) as engine:
+            with open_pdf(path) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))
@@ -191,48 +192,7 @@ def _rate_colour(rate: float) -> str:
 
 def cmd_fixture(args: argparse.Namespace) -> int:
     """Two pages: one whose fonts are only referenced, one where they are embedded."""
-    import pymupdf
-
-    doc = pymupdf.open()
-    # "tibo" and "tiro" are MuPDF's short names for Times Bold and Times Roman,
-    # which it never puts in the file.
-    referenced = doc.new_page()
-    referenced.insert_text((72, 96), "SERVICES AGREEMENT", fontname="tibo", fontsize=13)
-    referenced.insert_text(
-        (72, 128),
-        "This agreement is made on 14 March 2026 between",
-        fontname="tiro",
-        fontsize=11,
-    )
-    referenced.insert_text(
-        (72, 146),
-        "Wescott Analytics Ltd and Lindqvist & Rowe LLP.",
-        fontname="tiro",
-        fontsize=11,
-    )
-    referenced.insert_text(
-        (72, 176),
-        "The Client shall pay 48,500 per quarter in arrears.",
-        fontname="tiro",
-        fontsize=11,
-    )
-
-    # Embedded then subsetted, the way a real generator leaves it, so only the
-    # glyphs this page used survive and typing an accent will fail.
-    embedded = doc.new_page()
-    # "emb" is only the name the page files the font under.
-    embedded.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
-    embedded.insert_text((72, 96), "Schedule 1 - Scope of work", fontname="emb", fontsize=12)
-    embedded.insert_text(
-        (72, 124),
-        "Delivery begins 14 March 2026 and runs eighteen months.",
-        fontname="emb",
-        fontsize=11,
-    )
-    doc.subset_fonts(verbose=False)
-
-    doc.save(args.out)
-    doc.close()
+    write_sample(args.out)
     print(f"  wrote {args.out} {DIM}· page 1 not embedded, page 2 embedded{OFF}")
     return 0
 
@@ -245,6 +205,29 @@ def _no_span(span_id: str) -> int:
     return 1
 
 
+def _existing_file(path: str) -> str:
+    """A path to a file that's there; otherwise a usage error that names it."""
+    if not Path(path).is_file():
+        raise argparse.ArgumentTypeError(f"there's no file at {path}")
+    return path
+
+
+def _new_file(path: str) -> str:
+    """A path to save to: in a folder that's there, and not a folder itself."""
+    target = Path(path)
+    if target.is_dir():
+        raise argparse.ArgumentTypeError(f"{path} is a folder, not a file")
+    if not target.parent.is_dir():
+        folder, name = target.parent, target.name
+        raise argparse.ArgumentTypeError(f"there's no folder {folder} to save {name} in")
+    return path
+
+
+def _same_file(pdf: str, out: str) -> bool:
+    """Whether `out` is `pdf` itself, under this name or another."""
+    return Path(out).exists() and Path(out).samefile(pdf)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and run the chosen subcommand."""
     parser = argparse.ArgumentParser(
@@ -255,39 +238,44 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="cmd", required=True)
 
     command = commands.add_parser("spans", help="list editable text and how it would edit")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("-p", "--page", type=int, default=None)
     command.set_defaults(fn=cmd_spans)
 
     command = commands.add_parser("check", help="what would happen if you typed this")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
     command.set_defaults(fn=cmd_check)
 
     command = commands.add_parser("edit", help="replace a span and save")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
-    command.add_argument("-o", "--out", default="out.pdf")
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
     command.set_defaults(fn=cmd_edit)
 
     command = commands.add_parser("redact", help="remove a span and verify it is gone")
-    command.add_argument("pdf")
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
-    command.add_argument("-o", "--out", default="out.pdf")
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.set_defaults(fn=cmd_redact)
 
+    # No check here: one file that won't open is a row in the report, not the end of it.
     command = commands.add_parser("report", help="green rate across a corpus")
     command.add_argument("pdfs", nargs="+")
     command.set_defaults(fn=cmd_report)
 
     command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default="fixtures/sample.pdf")
+    command.add_argument("out", nargs="?", default="fixtures/sample.pdf", type=_new_file)
     command.set_defaults(fn=cmd_fixture)
 
     args = parser.parse_args(argv)
+    # Saving over the PDF being read would lose the original if anything went wrong.
+    overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
+    if overwrites:
+        parser.error(f"-o {args.out} is the PDF being read; save to a new file")
     try:
         return args.fn(args)
     except Problem as exc:  # e.g. the one PDF a command was given won't open

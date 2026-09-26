@@ -7,7 +7,7 @@ few seconds, too long for the server's own thread.
 from __future__ import annotations
 
 # Not through `Engine`: these are our own files, with no document to open.
-from squidpdf.core import BUILD, face_glyphs
+from squidpdf.core import BUILD, face_widths
 from squidpdf.core.fonts import CATALOG
 from squidpdf.editing.types import FamilyInfo, FontList
 
@@ -25,6 +25,6 @@ def font_list() -> FontList:
         }
         family = families.setdefault(face.family, new_family)
         family["faces"].append(
-            {"name": face.name, "style": face.style, "glyphs": face_glyphs(face)}
+            {"name": face.name, "style": face.style, "glyphs": face_widths(face)}
         )
     return {"build": BUILD, "families": list(families.values())}

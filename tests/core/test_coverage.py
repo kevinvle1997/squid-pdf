@@ -9,7 +9,7 @@ import pytest
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.coverage import Coverage, _glyph_name_for_each_letter
-from squidpdf.core.fonts import CATALOG, face_bytes
+from squidpdf.core.fonts import CATALOG, FACES, face_bytes
 from squidpdf.core.types import Codepoint, GlyphId
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.core.conftest import _truetype
@@ -19,6 +19,7 @@ _EM = 1000  # glyph advances are per 1000 em
 _WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
 _NOWHERE = "中"  # a letter no face we ship draws: none of them has Chinese
 _FAMILY, _STYLE = 1, 2  # a font's name table entries for its family and style
+_NARROW_NO_BREAK = "\u202f"  # the space in "15 000 €"; Liberation Mono has none, Noto Sans does
 
 
 def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
@@ -40,22 +41,32 @@ def test_a_font_coverage_cant_read_draws_what_mupdf_claims():
     assert_false(cov.covers("y"), "a character nothing claims")
 
 
-def test_glyphs_leave_out_what_a_subset_emptied(engine):
+def test_a_space_counts_only_if_the_font_maps_it_the_plain_one_always():
+    """Unmapped, a narrow no-break space drew as .notdef and was measured narrow."""
+    mono = Coverage(face_bytes(FACES["Liberation Mono Regular"]))
+    noto = Coverage(face_bytes(FACES["Noto Sans Regular"]))
+    assert_false(mono.covers(_NARROW_NO_BREAK), "a narrow no-break space Liberation Mono lacks")
+    assert_true(noto.covers(_NARROW_NO_BREAK), "a narrow no-break space Noto Sans maps")
+    assert_true(mono.covers(" "), "the plain space, which extraction adds between words")
+    assert_not_in(_NARROW_NO_BREAK, mono.drawable(), "what Liberation Mono lists as drawable")
+
+
+def test_widths_leave_out_what_a_subset_emptied(engine):
     """The browser's live check reads this table, so it must not promise é."""
     span = next(s for s in engine.index() if s.page == EMBEDDED_PAGE)
-    glyphs = engine.glyphs(span)
-    assert_in("M", glyphs, "a letter the page uses")
-    assert_not_in("é", glyphs, "an accent the subset emptied")
+    widths = engine.widths(span)
+    assert_in("M", widths, "a letter the page uses")
+    assert_not_in("é", widths, "an accent the subset emptied")
 
 
 def test_a_substitute_lists_what_its_look_alike_really_draws(engine):
     """The file we ship draws past Latin-1, so € and Ω are offered; 中 no face of ours has."""
     span = next(s for s in engine.index() if s.page == REFERENCED_PAGE)
-    glyphs = engine.glyphs(span)
-    assert_in("é", glyphs, "an accent in Latin-1")
-    assert_in("€", glyphs, "a character past Latin-1")
-    assert_in("Ω", glyphs, "a Greek letter")
-    assert_not_in(_NOWHERE, glyphs, "a letter no face we ship draws")
+    widths = engine.widths(span)
+    assert_in("é", widths, "an accent in Latin-1")
+    assert_in("€", widths, "a character past Latin-1")
+    assert_in("Ω", widths, "a Greek letter")
+    assert_not_in(_NOWHERE, widths, "a letter no face we ship draws")
 
 
 def test_every_face_we_ship_is_the_file_it_names_and_draws():
@@ -74,9 +85,9 @@ def test_every_face_we_ship_is_the_file_it_names_and_draws():
 def test_glyph_advances_agree_with_the_server_measure(engine):
     """A width the browser works out from the table must match the server's."""
     for span in engine.index():
-        glyphs = engine.glyphs(span)
-        word = "".join(ch for ch in "March" if ch in glyphs)
-        from_table = sum(glyphs[ch] for ch in word) * span.size / _EM
+        widths = engine.widths(span)
+        word = "".join(ch for ch in "March" if ch in widths)
+        from_table = sum(widths[ch] for ch in word) * span.size / _EM
         assert_equal(
             from_table,
             pytest.approx(engine.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
@@ -89,8 +100,8 @@ def test_a_substitute_reports_what_it_cannot_draw_as_missing(engine):
     span = next(s for s in engine.index() if s.page == REFERENCED_PAGE)
     missing = engine.missing(span, f"Février → 2026 {_NOWHERE}")
     assert_equal(missing, [_NOWHERE], "missing from the substitute")
-    drawable = "".join(engine.glyphs(span))
-    assert_equal(engine.missing(span, drawable), [], "missing from what glyphs() lists")
+    drawable = "".join(engine.widths(span))
+    assert_equal(engine.missing(span, drawable), [], "missing from what widths() lists")
 
 
 def test_glyph_names_come_from_the_ids_given_when_the_font_has_no_letter_table():

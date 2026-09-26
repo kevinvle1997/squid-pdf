@@ -1,20 +1,19 @@
 """The only file that uses MuPDF's low-level API.
 
 Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
-they stay in the engine. The hard-to-read calls live here, and their results
-come back as named dataclasses. This file only reports what the PDF says;
-the engine decides what to do with it.
+they stay in `core.mupdf`, whose backend extends this. The hard-to-read calls
+live here, and their results come back as named dataclasses. This file only
+reports what the PDF says; the engine decides what to do with it.
 """
 
 from __future__ import annotations
 
 import re
 import sys
-from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, Rect
+from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, PageFont, Rect, TextPiece
 
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
@@ -26,35 +25,9 @@ _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 
-
-@dataclass(frozen=True, slots=True)
-class TextPiece:
-    """A bit of text the page draws in one go, often only part of a word."""
-
-    text: str
-    font: str
-    size: float
-    color: tuple[float, float, float]  # r, g, b, each 0-1
-    box: Rect
-    origin: tuple[float, float]  # where the text starts, on its baseline
-
-
-@dataclass(frozen=True, slots=True)
-class PageFont:
-    """A font a page uses."""
-
-    xref: int  # its PDF object
-    name: str  # e.g. "ABCDEF+Arial"
-    kind: str  # "TrueType", "Type0", ...
-    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not in the file
-    resource: str  # its name in the page's font resources, e.g. "F1"
-    encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
-    in_form: bool  # used inside a form (a reusable drawing), not by the page itself
-
-    @property
-    def is_embedded(self) -> bool:
-        """Whether the PDF contains the font, not just its name."""
-        return self.file_type not in ("n/a", "")
+# What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
+# which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
+MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
 
 
 class PdfFile:
@@ -71,6 +44,22 @@ class PdfFile:
             for line in block["lines"]:
                 lines.append([_text_piece(raw) for raw in line["spans"]])
         return lines
+
+    def text_in(self, page: int, box: Rect) -> str:
+        """The letters drawn inside `box` on the page, in reading order.
+
+        A letter counts when its middle is inside, so one on the next line that
+        only grazes the box's edge doesn't.
+        """
+        blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
+        letters = (
+            char
+            for block in blocks
+            for line in block["lines"]
+            for piece in line["spans"]
+            for char in piece["chars"]
+        )
+        return "".join(char["c"] for char in letters if _middle_inside(char["bbox"], box))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -92,7 +81,7 @@ class PdfFile:
         """The font file stored in the PDF, or None if MuPDF can't read it."""
         try:
             _name, _ext, _kind, buffer = self._doc.extract_font(xref)
-        except (RuntimeError, ValueError):
+        except MUPDF_ERRORS:
             return None
         return buffer or None
 
@@ -147,8 +136,9 @@ class PdfFile:
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first.
 
-        None if the font has no letter list (its ToUnicode) or MuPDF can't
-        read it. `code_bytes` is 1 for a simple font, 2 for a Type0 (two-byte) font.
+        None if the font has no letter list (its ToUnicode) or MuPDF can't read
+        that list; ValueError if MuPDF can't load the font at all. `code_bytes`
+        is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
         value_type, _value = self._doc.xref_get_key(xref, "ToUnicode")
         if value_type == "null":
@@ -156,9 +146,12 @@ class PdfFile:
 
         mu = pymupdf.mupdf
         pdf = self._pdf()
-        font = mu.ll_pdf_load_font(
-            pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
-        )
+        try:
+            font = mu.ll_pdf_load_font(
+                pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
+            )
+        except MUPDF_ERRORS as exc:
+            raise ValueError(f"MuPDF can't load font {xref}") from exc
         try:
             if font.to_unicode is None:  # MuPDF couldn't read it
                 return None
@@ -261,6 +254,12 @@ def _text_piece(raw: dict) -> TextPiece:
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )
+
+
+def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
+    """Whether the middle of `bbox` lies inside `box`."""
+    x0, y0, x1, y1 = bbox
+    return box.x0 <= (x0 + x1) / 2 <= box.x1 and box.y0 <= (y0 + y1) / 2 <= box.y1
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

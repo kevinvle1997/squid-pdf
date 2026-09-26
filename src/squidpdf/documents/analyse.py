@@ -1,7 +1,7 @@
 """Pool work for documents: what the browser needs before the first edit.
 
-Framework-free and handed only paths, so the pool can pickle it and a test can
-call it directly.
+Framework-free and handed only paths and numbers, so the pool can pickle it and
+a test can call it directly.
 """
 
 from __future__ import annotations
@@ -10,25 +10,25 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span
+from squidpdf.core import BUILD, FidelityReport, Span, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
 
 
-def analyse(folder: str) -> Analysis:
+def analyse(folder: str, max_pages: int) -> Analysis:
     """Judge every span and list each font's letters, under this build, and keep it.
 
     The index is built on the first run and reused after, so a new build judges
-    the same spans and every id holds. Raises TooManyPages first, if it has.
+    the same spans and every id holds. Raises TooManyPages first, if it has
+    more than `max_pages`.
     """
     path = Path(folder)
-    with MuPDFEngine(str(path / store.ORIGINAL)) as eng:
+    with open_pdf(str(path / store.ORIGINAL)) as eng:
         index = store.load_index(path)
         if index is None:
-            if len(eng.pages()) > limits.MAX_PAGES:
-                raise TooManyPages(limits.MAX_PAGES)
+            if len(eng.pages()) > max_pages:
+                raise TooManyPages(max_pages)
             index = eng.index()
             store.save_index(path, index)
             store.save_pages(path, eng.pages())
@@ -43,7 +43,7 @@ def analyse(folder: str) -> Analysis:
                 "substitute": reports[span.id].substitute,
                 "why": reports[span.id].why,
                 "same_widths": reports[span.id].same_widths,
-                "glyphs": eng.glyphs(span),
+                "glyphs": eng.widths(span),
             }
             for span in first_span_of_font.values()
         ]
@@ -63,7 +63,7 @@ def analyse(folder: str) -> Analysis:
 
 def page_image(folder: str, page: int, scale: float) -> bytes:
     """One page of the original as a PNG, unrotated."""
-    with MuPDFEngine(str(Path(folder) / store.ORIGINAL)) as eng:
+    with open_pdf(str(Path(folder) / store.ORIGINAL)) as eng:
         return eng.page_image(page, scale)
 
 

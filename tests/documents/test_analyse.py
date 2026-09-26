@@ -6,7 +6,8 @@ import shutil
 
 import pytest
 
-from squidpdf.core import MuPDFEngine
+from squidpdf.api.constants import MAX_PAGES
+from squidpdf.core import Engine
 from squidpdf.documents import analyse, store
 from tests.helpers import assert_equal, assert_true
 
@@ -20,15 +21,15 @@ def folder(pdf):
 
 
 def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch):
-    first = analyse.analyse(str(folder))
+    first = analyse.analyse(str(folder), MAX_PAGES)
 
     def reindex(self):
         """Stands in for the engine's index, to fail if anything builds one."""
         raise AssertionError("the index was rebuilt")
 
-    monkeypatch.setattr(MuPDFEngine, "index", reindex)
+    monkeypatch.setattr(Engine, "index", reindex)
     monkeypatch.setattr(analyse, "BUILD", "a-later-build")
-    later = analyse.analyse(str(folder))
+    later = analyse.analyse(str(folder), MAX_PAGES)
 
     assert_equal(later["build"], "a-later-build", "build of the second analysis")
     first_ids = [s["id"] for s in first["spans"]]

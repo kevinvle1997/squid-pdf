@@ -7,6 +7,7 @@ reuses it. Routes stay thin: owner, validate, pool, reply.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from datetime import UTC, datetime
 from typing import Annotated
@@ -27,6 +28,8 @@ from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
 from squidpdf.documents.types import Analysis, Document, Loaded
 
 router = APIRouter(prefix="/api/documents")
+
+_logger = logging.getLogger(__name__)
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
@@ -80,7 +83,9 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise NotAPdf()
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+        analysis = await workers.run(
+            limits.UPLOAD_TIMEOUT_S, analyse, str(folder), limits.MAX_PAGES
+        )
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -97,7 +102,9 @@ async def read(
     """The document. Worked out again only when `build` has changed since."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder))
+        analysis = await workers.run(
+            limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder), limits.MAX_PAGES
+        )
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -144,10 +151,17 @@ async def page(
 
 
 async def sweep_forever() -> None:
-    """Every minute, delete documents idle past the hour. Runs for the app's life."""
+    """Every minute, delete documents idle past the hour. Runs for the app's life.
+
+    A pass that fails is logged and the next one runs as usual: stopping would
+    keep every document on disk from then on.
+    """
     while True:
         await asyncio.sleep(SWEEP_EVERY_S)
-        await asyncio.to_thread(store.sweep)
+        try:
+            await asyncio.to_thread(store.sweep)
+        except Exception:  # one bad pass must not end expiry for good
+            _logger.exception("A sweep failed; the next runs in %s s", SWEEP_EVERY_S)
 
 
 def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:

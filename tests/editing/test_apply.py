@@ -9,7 +9,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import MuPDFEngine, Span, words
+from squidpdf.core import Span, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
@@ -21,12 +21,12 @@ from squidpdf.editing import (
     Replace,
     Skipped,
     apply,
-    check,
-    check_insert,
+    insert_fit,
+    replace_fit,
     verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
 _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
@@ -65,6 +65,13 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
     """Fails, as fontTools can on an odd font."""
     raise ValueError("fontTools can't cut this font")
+
+
+def _insert_as_span(insert: Insert) -> Span:
+    """An insert as the span it's measured and drawn as."""
+    return new_text(
+        insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
+    )
 
 
 def _substituted(engine) -> Span:
@@ -106,6 +113,38 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     assert_equal(undone, [Notice(span.id, words.REDACTION_UNDONE)], "notices after the edit")
 
 
+def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tmp_path):
+    """The same line on another page is other text, not a leak."""
+    out = tmp_path / "redacted.pdf"
+    with open_pdf(repeated) as eng:
+        index = eng.index()
+        first = next(iter(index))
+        edits = [Redact(first.id)]
+        apply(eng, edits, index)
+        eng.save(str(out))
+        verified = verify_redactions(eng, edits, index)
+
+    assert_equal(verified, {first.id: True}, "the redaction's verdict")
+    pages = [page.get_text().strip() for page in pymupdf.open(out).pages()]
+    assert_equal(pages, ["", "CONFIDENTIAL"], "each page's text after redacting the first")
+
+
+def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
+    """What verified redaction is for: covered text is still in the file."""
+    with open_pdf(pdf) as eng:
+        span = next(iter(eng.index()))
+    covered = tmp_path / "covered.pdf"
+    doc = pymupdf.open(pdf)
+    box = span.bbox
+    doc[span.page].draw_rect(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1), fill=(0, 0, 0))
+    doc.save(covered)
+
+    with open_pdf(str(covered)) as eng:
+        assert_false(eng.absent(span), "text under a black box, counted as gone")
+        eng.remove([span])
+        assert_true(eng.absent(span), "the same text really removed, counted as gone")
+
+
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
     """A resource per redrawn span piled up on the page."""
     index = engine.index()
@@ -130,7 +169,7 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     page.draw_line((73, 101.5), (148, 101.5))  # just under the baseline, inside the text's box
     doc.save(path)
 
-    with MuPDFEngine(str(path)) as eng:
+    with open_pdf(str(path)) as eng:
         index = eng.index()
         apply(eng, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
         eng.save(str(out))
@@ -154,7 +193,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 
     applied = apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026中")], index)
     said_on_save = engine.save(str(out))
-    with MuPDFEngine(pdf) as plain:
+    with open_pdf(pdf) as plain:
         plain.save(str(unedited))
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
@@ -206,14 +245,15 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     """Caladea has no Greek, so the line goes to Noto Serif, whole, and the fit said so."""
     path = named_only(str(tmp_path / "cambria.pdf"), "Cambria")
     out = str(tmp_path / "greek.pdf")
-    with MuPDFEngine(path) as eng:
+    with open_pdf(path) as eng:
         index = eng.index()
         span = next(iter(index))
-        fit = check(eng, span, "Hi Ωμέγα")
+        fit = replace_fit(eng, span, "Hi Ωμέγα")
         applied = apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
         eng.save(out)
 
-    said = words.MISSING.format(chars="Ω or μ or έ or γ or α", font="Noto Serif Regular")
+    greek = "Ω or μ or έ or γ or α"  # noqa: RUF001 (Greek on purpose: Caladea has none)
+    said = words.MISSING.format(chars=greek, font="Noto Serif Regular")
     assert_equal(fit.describe(), said, "what the fit says")
     assert_equal(applied.notices, [], "nothing left out")
     drawn = _drawn(out, 0, "Hi")
@@ -249,7 +289,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     out = tmp_path / "inserted.pdf"
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 12.0, font)
 
-    fit = check_insert(engine, insert)
+    fit = insert_fit(engine, insert)
     apply(engine, [insert], engine.index())
     engine.save(str(out))
 
@@ -259,6 +299,26 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
         (drawn["text"], drawn["font"]), (text, saved_as(face)), "what drew, and in what"
     )
     _assert_cut(out, REFERENCED_PAGE, face, text)
+
+
+def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_path):
+    """Liberation Mono has no narrow no-break space: it drew as .notdef and ran 8 pt long."""
+    out = tmp_path / "spaced.pdf"
+    text = "15\u202f000 EUR"  # French thousands, with a narrow no-break space
+    insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
+
+    fit = insert_fit(engine, insert)
+    measured = engine.measure(_insert_as_span(insert), text)
+    apply(engine, [insert], engine.index())
+    engine.save(str(out))
+
+    assert_equal(fit.missing, ["\u202f"], "what the fit says the face lacks")
+    drawn = _drawn(out, REFERENCED_PAGE, "15")
+    expected = (text, saved_as("Noto Sans Regular"))
+    assert_equal((drawn["text"], drawn["font"]), expected, "what drew, and in what")
+    x0, _y0, x1, _y1 = drawn["bbox"]
+    width = x1 - x0
+    assert_true(abs(width - measured) < _SAME_WIDTH_PT, f"drawn {width}, measured {measured}")
 
 
 @pytest.mark.parametrize("strategy", ["shrink", "condense"])
@@ -272,7 +332,7 @@ def test_a_fitting_strategy_ends_the_run_where_the_original_did(
     apply(engine, [Replace(span.id, span.text + _LONGER, strategy)], index)
     engine.save(str(out))
     # The same text left long, for its height: the look-alike's box, not the original's.
-    with MuPDFEngine(pdf) as plain:
+    with open_pdf(pdf) as plain:
         apply(plain, [Replace(span.id, span.text + _LONGER)], plain.index())
         plain.save(str(as_is))
 
@@ -312,7 +372,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
         Replace(span.id, "Made on 2 April 2026."),
         signed,
     ]
-    fit = check_insert(engine, signed)
+    fit = insert_fit(engine, signed)
     applied = apply(engine, edits, index)
     engine.save(str(out))
 

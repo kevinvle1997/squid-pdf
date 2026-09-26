@@ -38,7 +38,9 @@ async def _limit_body(request: Request, call_next: RequestResponseEndpoint) -> R
     Only a body that says its size up front; a chunked one is read regardless.
     """
     declared = request.headers.get("content-length")  # absent when the body is chunked
-    is_upload = request.method == "POST" and request.url.path == "/api/documents"
+    # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
+    upload_path = request.app.url_path_for(documents.upload.__name__)
+    is_upload = request.method == "POST" and request.url.path == upload_path
     too_large = declared is not None and not is_upload and int(declared) > limits.MAX_BODY_BYTES
     if too_large:
         return errors.response(errors.RequestTooLarge())

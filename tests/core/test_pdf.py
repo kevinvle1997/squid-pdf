@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 import pymupdf
 import pytest
 
@@ -86,6 +88,16 @@ def test_erase_text_then_restore_and_add_content_redraws_in_the_same_font(coded)
     pdf.add_content(0, f"BT /{font.resource} 12 Tf 1 0 0 1 {x} {y} Tm <{code}> Tj ET".encode())
     [[drawn]] = pdf.text_lines(0)
     assert_equal((drawn.text, drawn.font), ("B", "Coded"), "what was drawn, and in what")
+
+
+def test_text_in_reads_only_the_letters_inside_the_box(pdf):
+    """The shared sample: page 2 has two lines, and each line's box holds only that line."""
+    wrapped = _open(pdf)
+    for line in wrapped.text_lines(1):
+        box = functools.reduce(Rect.union, [piece.box for piece in line])
+        expected = "".join(piece.text for piece in line)
+        assert_equal(wrapped.text_in(1, box), expected, "the letters inside one line's box")
+    assert_equal(wrapped.text_in(1, Rect(0, 0, 10, 10)), "", "the letters in an empty corner")
 
 
 def test_erase_text_leaves_text_outside_the_boxes(pdf):
