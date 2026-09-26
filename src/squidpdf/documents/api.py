@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Annotated
 
 import orjson
@@ -18,13 +17,13 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
-from squidpdf.api.errors import ApiError, Problem
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, Page, words
+from squidpdf.core import BUILD, NotFound, Page, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
-from squidpdf.documents.analyse import TooManyPages, analyse, page_image
+from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
+from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
 from squidpdf.documents.types import Analysis, Document, Loaded
 
 router = APIRouter(prefix="/api/documents")
@@ -37,7 +36,7 @@ def load(doc_id: str, request: Request) -> Loaded:
     """This browser's document, or not_found for any other: missing, expired or not theirs."""
     found = store.find(doc_id)
     if found is None:
-        raise ApiError(Problem.NOT_FOUND)
+        raise NotFound()
     folder, digest = found
     owner.check(request, digest)
     return Loaded(doc_id, folder, store.touch(folder))
@@ -64,7 +63,7 @@ async def upload(
     declared = request.headers.get("content-length")  # absent when the body is chunked
     declared_too_large = declared is not None and int(declared) > limits.MAX_FILE_BYTES
     if declared_too_large:
-        raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
+        raise TooLarge(limits.MAX_FILE_MB)
     doc_id, folder = store.create(owner.digest(token))
     try:
         # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
@@ -73,15 +72,15 @@ async def upload(
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > limits.MAX_FILE_BYTES:
-                    raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
+                    raise TooLarge(limits.MAX_FILE_MB)
                 first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
                 header_missing = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
                 if header_missing:
-                    raise ApiError(Problem.NOT_A_PDF)
+                    raise NotAPdf()
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
-            raise ApiError(Problem.NOT_A_PDF)
-        analysis = await _analyse(workers, folder)
+            raise NotAPdf()
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -98,7 +97,7 @@ async def read(
     """The document. Worked out again only when `build` has changed since."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await _analyse(workers, doc.folder)
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder))
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -136,7 +135,7 @@ async def page(
     """
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
-        raise ApiError(Problem.NO_SUCH_PAGE)
+        raise NoSuchPage()
     png = await workers.run(
         limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
     )
@@ -149,14 +148,6 @@ async def sweep_forever() -> None:
     while True:
         await asyncio.sleep(SWEEP_EVERY_S)
         await asyncio.to_thread(store.sweep)
-
-
-async def _analyse(workers: Pool, folder: Path) -> Analysis:
-    """The document worked out in a worker, refused plainly if it has too many pages."""
-    try:
-        return await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
-    except TooManyPages as exc:
-        raise ApiError(Problem.TOO_MANY_PAGES, pages=limits.MAX_PAGES) from exc
 
 
 def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:

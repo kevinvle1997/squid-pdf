@@ -13,7 +13,7 @@ import secrets
 
 from fastapi import Request, Response
 
-from squidpdf.api.errors import ApiError, Problem
+from squidpdf.core import NotFound
 
 _COOKIE = "__Host-owner"  # __Host-: only this host can set it, so no subdomain plants one
 _TOKEN_BYTES = 32
@@ -43,4 +43,4 @@ def check(request: Request, stored: str) -> None:
     presented = request.cookies.get(_COOKIE)  # None if this browser never uploaded
     owns = presented is not None and hmac.compare_digest(digest(presented), stored)
     if not owns:
-        raise ApiError(Problem.NOT_FOUND)
+        raise NotFound()

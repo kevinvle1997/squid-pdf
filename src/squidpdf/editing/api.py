@@ -14,15 +14,16 @@ from pydantic import Field
 
 from squidpdf.api import constants as limits
 from squidpdf.api import pool
-from squidpdf.api.errors import ApiError, Problem
+from squidpdf.api.errors import InvalidRequest
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
+from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import work
-from squidpdf.editing.apply import BadReference
 from squidpdf.editing.edits import Insert, Redact, Replace
+from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Region, Render
 
 router = APIRouter(prefix="/api/documents")
@@ -44,29 +45,27 @@ async def render(
     Keeps nothing. A redaction pointing at nothing fails the whole request.
     """
     if len(edits) > limits.MAX_EDITS:
-        raise ApiError(Problem.TOO_MANY_EDITS, edits=limits.MAX_EDITS)
+        raise TooManyEdits(limits.MAX_EDITS)
     too_long = any(
         isinstance(edit, Replace) and len(edit.text) > limits.MAX_REPLACE_CHARS
         for edit in edits
     )
     if too_long:
-        raise ApiError(Problem.TEXT_TOO_LONG, chars=limits.MAX_REPLACE_CHARS)
+        raise TextTooLong(limits.MAX_REPLACE_CHARS)
     pages = store.load_pages(doc.folder)
     for region in regions:
         if not 0 <= region.page < len(pages):
-            raise ApiError(Problem.NO_SUCH_PAGE, debug=f"regions: no page {region.page}")
+            raise NoSuchPage(debug=f"regions: no page {region.page}")
         top = 0.0 if region.y0 is None else region.y0
         bottom = pages[region.page].height if region.y1 is None else region.y1
         if top >= bottom:
             reason = f"regions: y0 must be above y1 on page {region.page}"
-            raise ApiError(Problem.INVALID_REQUEST, debug=reason)
+            raise InvalidRequest(debug=reason)
     scales = {r.page: documents.page_scale(pages[r.page], scale) for r in regions}
-    try:
-        rendered = await workers.run(
-            limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
-        )
-    except BadReference as exc:  # a redaction pointing at nothing, from apply()
-        raise ApiError(Problem.BAD_REFERENCE, span_id=exc.span_id) from exc
+    # A redaction pointing at nothing raises BadReference in the worker.
+    rendered = await workers.run(
+        limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
+    )
     return {
         **rendered,
         "build": BUILD,

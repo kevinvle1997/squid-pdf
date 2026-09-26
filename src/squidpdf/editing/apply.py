@@ -14,19 +14,11 @@ from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import BUILT_IN, drawn_in
 from squidpdf.core.types import Span, SpanIndex, new_text
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
+from squidpdf.editing.errors import BadReference
 from squidpdf.editing.fit import FitCheck, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 _BAD_REFERENCE = "bad_reference"
-
-
-class BadReference(Exception):
-    """A redaction points at text that isn't there. Skipping it would be a leak."""
-
-    def __init__(self, span_id: str) -> None:
-        """Name the span the redaction asked for."""
-        super().__init__(span_id)
-        self.span_id = span_id
 
 
 def _collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:

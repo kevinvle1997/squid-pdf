@@ -21,7 +21,7 @@ from squidpdf.core import (
     Fidelity,
     FidelityReport,
     MuPDFEngine,
-    Unreadable,
+    Problem,
     green_rate,
     words,
 )
@@ -154,7 +154,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         try:
             with MuPDFEngine(path) as engine:
                 reports = engine.assess(engine.index())
-        except Unreadable as exc:  # damaged or password-protected: say which
+        except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))
             continue
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
@@ -290,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.fn(args)
-    except Unreadable as exc:  # the one PDF a command was given won't open
+    except Problem as exc:  # e.g. the one PDF a command was given won't open
         print(f"  {RED}{exc.detail}{OFF}")
         return 1
 

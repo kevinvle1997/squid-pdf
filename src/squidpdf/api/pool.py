@@ -18,7 +18,8 @@ from fastapi import Request
 from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import constants
-from squidpdf.api.errors import ApiError, Problem
+from squidpdf.api.errors import TooHeavy, TooSlow
+from squidpdf.core import Damaged
 
 
 class Pool:
@@ -46,11 +47,11 @@ class Pool:
         try:
             return await asyncio.wrap_future(future)
         except TimeoutError as exc:  # out of time: slow, not necessarily broken
-            raise ApiError(Problem.TOO_SLOW) from exc
+            raise TooSlow() from exc
         except MemoryError as exc:  # past the memory ceiling
-            raise ApiError(Problem.TOO_HEAVY) from exc
+            raise TooHeavy() from exc
         except ProcessExpired as exc:  # the worker died: MuPDF crashed on the file
-            raise ApiError(Problem.DAMAGED) from exc
+            raise Damaged() from exc
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""

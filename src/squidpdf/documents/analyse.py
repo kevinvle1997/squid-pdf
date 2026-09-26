@@ -14,11 +14,8 @@ from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span, new_text
 from squidpdf.core.fonts import BUILT_IN
 from squidpdf.documents import store
+from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontInfo, InsertFontInfo, SpanInfo
-
-
-class TooManyPages(Exception):
-    """The PDF has more pages than the server works on; checked before any other work."""
 
 
 def analyse(folder: str) -> Analysis:
@@ -32,7 +29,7 @@ def analyse(folder: str) -> Analysis:
         index = store.load_index(path)
         if index is None:
             if len(eng.pages()) > limits.MAX_PAGES:
-                raise TooManyPages
+                raise TooManyPages(limits.MAX_PAGES)
             index = eng.index()
             store.save_index(path, index)
             store.save_pages(path, eng.pages())

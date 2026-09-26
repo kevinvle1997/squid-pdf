@@ -12,6 +12,7 @@ from pathlib import Path
 
 from squidpdf.core import Engine, MuPDFEngine, Page, Rect
 from squidpdf.documents import store
+from squidpdf.documents.errors import Gone
 from squidpdf.editing.apply import apply, fits, insert_fits
 from squidpdf.editing.edits import Edit
 from squidpdf.editing.fit import FitCheck
@@ -30,7 +31,7 @@ def render(
     path = Path(folder)
     index = store.load_index(path)
     if index is None:  # upload saves it before it answers, so only a sweep removes it
-        raise store.Gone
+        raise Gone
     pages = store.load_pages(path)
 
     with MuPDFEngine(str(path / store.ORIGINAL)) as engine:

@@ -20,6 +20,7 @@ import orjson
 
 from squidpdf.core import Fragment, Page, Rect, Span, SpanIndex
 from squidpdf.documents.constants import IDLE_S
+from squidpdf.documents.errors import Gone
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
@@ -109,10 +110,6 @@ def _fragment(saved: dict[str, Any]) -> Fragment:
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
     (folder / _PAGES).write_bytes(orjson.dumps(pages))
-
-
-class Gone(Exception):
-    """The document was deleted while a request was using it: it expired mid-way."""
 
 
 def load_pages(folder: Path) -> list[Page]:

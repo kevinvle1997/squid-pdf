@@ -41,7 +41,7 @@ async def _limit_body(request: Request, call_next: RequestResponseEndpoint) -> R
     is_upload = request.method == "POST" and request.url.path == "/api/documents"
     too_large = declared is not None and not is_upload and int(declared) > limits.MAX_BODY_BYTES
     if too_large:
-        return errors.problem_response(errors.ApiError(errors.Problem.REQUEST_TOO_LARGE))
+        return errors.response(errors.RequestTooLarge())
     return await call_next(request)
 
 

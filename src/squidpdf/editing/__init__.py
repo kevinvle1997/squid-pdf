@@ -5,7 +5,6 @@ module owns both.
 """
 
 from squidpdf.editing.apply import (
-    BadReference,
     apply,
     check,
     check_insert,
@@ -14,6 +13,7 @@ from squidpdf.editing.apply import (
     verify_redactions,
 )
 from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
+from squidpdf.editing.errors import BadReference
 from squidpdf.editing.fit import FitCheck, Option, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 

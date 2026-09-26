@@ -16,7 +16,7 @@ import pymupdf
 from squidpdf.core import words
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, LIBRARY_VERSION, SIZE_EPS
 from squidpdf.core.coverage import Coverage
-from squidpdf.core.engine import Unreadable
+from squidpdf.core.errors import Damaged, Encrypted
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import base14_for, drawn_in, strip_subset
 from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
@@ -79,10 +79,10 @@ class MuPDFEngine:
             # Only ever as a PDF: left to sniff, MuPDF opens a PNG as a document.
             self.doc = pymupdf.open(path, filetype="pdf")
         except pymupdf.FileDataError as exc:  # garbage, truncated or empty
-            raise Unreadable(path) from exc
+            raise Damaged from exc
         if self.doc.needs_pass:  # it opens, but every page is locked behind a password
             self.doc.close()
-            raise Unreadable(path, encrypted=True)
+            raise Encrypted
         self._pdf = PdfFile(self.doc)
         # Keyed by (page, font name); each fills in on first lookup.
         self._fonts: dict[tuple[int, str], _EmbeddedFont | _FontUnusable] = {}
