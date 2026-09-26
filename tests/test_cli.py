@@ -8,6 +8,8 @@ these only check that the commands wire them together.
 
 from __future__ import annotations
 
+import shutil
+
 import pymupdf
 import pytest
 
@@ -169,6 +171,53 @@ def test_fixture_writes_a_pdf_the_other_commands_can_read(tmp_path, capsys):
     assert_in("SERVICES AGREEMENT", _text(out_pdf), "the fixture PDF")
     capsys.readouterr()
     assert_equal(main(["spans", str(out_pdf)]), 0, "exit code of `squidpdf spans` on it")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["spans", "{missing}"],
+        ["check", "{missing}", "some-id", "text"],
+        ["edit", "{missing}", "some-id", "text"],
+        ["redact", "{missing}", "some-id"],
+    ],
+    ids=["spans", "check", "edit", "redact"],
+)
+def test_a_pdf_that_is_not_there_is_a_usage_error_not_a_crash(tmp_path, argv, capsys):
+    missing = str(tmp_path / "missing.pdf")
+
+    with pytest.raises(SystemExit) as exc:
+        main([a.format(missing=missing) for a in argv])
+
+    assert_equal(exc.value.code, 2, f"exit code of `squidpdf {argv[0]}` for a missing file")
+    assert_in(f"there's no file at {missing}", capsys.readouterr().err, "the usage error")
+
+
+def test_saving_into_a_missing_folder_is_a_usage_error(tmp_path, monkeypatch, capsys):
+    """`fixture` writes to fixtures/ by default, which only the repository has."""
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["fixture"])
+
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf fixture` outside the repository")
+    assert_in("there's no folder fixtures", capsys.readouterr().err, "the usage error")
+
+
+@pytest.mark.parametrize("command", ["edit", "redact"])
+def test_saving_over_the_pdf_being_read_is_refused(pdf, tmp_path, command, capsys):
+    """Were anything to go wrong, the original would be lost with it."""
+    copy = tmp_path / "copy.pdf"
+    shutil.copy(pdf, copy)
+    before = copy.read_bytes()
+    text = ["Invoices are due within ninety days."] if command == "edit" else []
+
+    with pytest.raises(SystemExit) as exc:
+        main([command, str(copy), _span_id(pdf, "Invoices"), *text, "-o", str(copy)])
+
+    assert_equal(exc.value.code, 2, f"exit code of `squidpdf {command}` writing over its input")
+    assert_in("is the PDF being read", capsys.readouterr().err, "the usage error")
+    assert_true(copy.read_bytes() == before, "the PDF being read is unchanged")
 
 
 def test_no_command_is_a_usage_error(capsys):
