@@ -77,6 +77,7 @@ __all__ = [
     "render",
     "render_all",
     "fill",
+    "catalog",
 ]
 
 # What's wrong with a replacement.
@@ -250,6 +251,11 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
     if found is None:
         raise KeyError(key)
     return found
+
+
+def catalog(language: str) -> dict[str, str]:
+    """Every sentence as `language` says it, English where it has none."""
+    return {key: sentence(key, language) for key in ENGLISH_SENTENCES}
 
 
 def render(message: Message, language: str = ENGLISH) -> str:
