@@ -66,7 +66,7 @@ OPTIONS = {
     },
 }
 
-# An ApiError's `detail`, shown to the user verbatim. Limits are placeholders so
+# A Problem's `detail`, shown to the user verbatim. Limits are placeholders so
 # the sentence can't drift from the number the server enforces.
 NOT_A_PDF = "This isn't a PDF."
 TOO_LARGE = "This file is over {mb} MB."

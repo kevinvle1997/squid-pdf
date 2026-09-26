@@ -45,6 +45,14 @@ def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, object]) -> 
     return problem
 
 
+class NotFound(Problem):
+    """Missing, expired, or someone else's. Never 403: another's id looks unknown."""
+
+    type = "not_found"
+    status = 404
+    sentence = words.NOT_FOUND
+
+
 class Unreadable(Problem):
     """The engine can't open the file. Catch this for both kinds."""
 
