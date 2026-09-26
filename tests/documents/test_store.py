@@ -26,6 +26,15 @@ def test_a_saved_index_comes_back_span_for_span(engine):
     assert_equal(list(loaded or []), list(index), "spans after a save and a load")
 
 
+def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
+    """The router refuses a slash before the store sees it; this is the store's own guard."""
+    store.create("owner")  # the store's folder, where a climb would start
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "owner").write_text("anyone")  # shaped like a document
+    assert_equal(store.find("../outside"), None, "a lookup that climbs out of the store")
+
+
 def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
     """Found, then deleted by its owner before its clock restarts: gone, not a crash."""
     _, folder = store.create("owner")

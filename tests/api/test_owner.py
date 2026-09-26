@@ -10,7 +10,9 @@ from tests.helpers import assert_all, assert_equal, assert_in, assert_problem
 _UNKNOWN = "A" * 22  # shaped like an id, belongs to nothing
 
 
-@pytest.mark.parametrize("doc_id", [_UNKNOWN, "..%2F..%2Fetc"])  # the second climbs folders
+# The second climbs folders. The router refuses its slashes before the store sees it;
+# the store's own guard is tested in tests/documents/test_store.py.
+@pytest.mark.parametrize("doc_id", [_UNKNOWN, "..%2F..%2Fetc"])
 def test_an_unknown_id_is_not_found(browser, doc_id):
     assert_problem(browser().get(f"/api/documents/{doc_id}"), "not_found", 404)
 
