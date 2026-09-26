@@ -72,7 +72,11 @@ def sweep() -> None:
     """Delete every document left untouched for longer than the idle hour."""
     cutoff = time.time() - IDLE_S
     for folder in root().glob("*"):
-        if folder.is_dir() and folder.stat().st_mtime < cutoff:
+        try:
+            idle = folder.is_dir() and folder.stat().st_mtime < cutoff
+        except FileNotFoundError:  # its owner deleted it since the listing
+            continue
+        if idle:
             delete(folder)
 
 
