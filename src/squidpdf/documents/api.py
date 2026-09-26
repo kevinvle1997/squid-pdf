@@ -19,8 +19,8 @@ from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
 from squidpdf.api.errors import ApiError, Problem
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, words
-from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
+from squidpdf.core import BUILD, Page, words
+from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
@@ -40,6 +40,17 @@ def load(doc_id: str, request: Request) -> Loaded:
     folder, digest = found
     owner.check(request, digest)
     return Loaded(doc_id, folder, store.touch(folder))
+
+
+def page_scale(page: Page, scale: int) -> float:
+    """`scale`, or the largest that keeps this page under the pixel limit.
+
+    Render's strips use it too, so they line up with the page image.
+    """
+    width, height = page.width, page.height
+    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
+    largest = math.sqrt(limits.MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
+    return min(scale, largest)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
@@ -124,11 +135,8 @@ async def page(
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
         raise ApiError(Problem.NOT_FOUND)
-    width, height = pages[n].width, pages[n].height
-    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
-    largest = math.sqrt(limits.MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
     png = await workers.run(
-        limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, min(scale, largest)
+        limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
     )
     cache = PAGE_CACHE if build == BUILD else "no-store"
     return Response(png, media_type="image/png", headers={"Cache-Control": cache})
@@ -147,7 +155,11 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
         **analysis,
         "id": doc_id,
         "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
-        "fit": {"tolerance_pt": TOLERANCE_PT, "condense_limit": CONDENSE_LIMIT},
+        "fit": {
+            "tolerance_pt": TOLERANCE_PT,
+            "condense_limit": CONDENSE_LIMIT,
+            "shrink_floor": SHRINK_FLOOR,
+        },
         "copy": {
             "missing": words.MISSING,
             "too_long": words.TOO_LONG,

@@ -127,6 +127,16 @@ def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, 
     return (span.size * ratio, 1.0) if strategy == "shrink" else (None, ratio)
 
 
+def fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> dict[str, FitCheck]:
+    """A fit for each span the log leaves replaced, drawn or not. Measurement only."""
+    span_edits, _inserts, _skipped = _resolve(engine, edits, index)
+    return {
+        span.id: check(engine, span, edit.text, edit.strategy)
+        for edit, span in span_edits
+        if isinstance(edit, Replace)
+    }
+
+
 def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -> FitCheck:
     """What would happen if the user typed this, with the ways out if it will not fit.
 

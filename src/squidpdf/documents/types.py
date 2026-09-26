@@ -64,6 +64,7 @@ class FitRules(TypedDict):
 
     tolerance_pt: float
     condense_limit: float
+    shrink_floor: float
 
 
 class Copy(TypedDict):

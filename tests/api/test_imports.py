@@ -16,7 +16,9 @@ from tests.helpers import assert_equal
 _FRAMEWORK = ("fastapi", "starlette", "pydantic")
 
 
-@pytest.mark.parametrize("module", ["squidpdf.cli", "squidpdf.documents.analyse"])
+@pytest.mark.parametrize(
+    "module", ["squidpdf.cli", "squidpdf.documents.analyse", "squidpdf.editing.work"]
+)
 def test_importing_it_loads_no_web_framework(module):
     # A fresh interpreter: this one has already imported FastAPI for other tests.
     code = f"import sys, {module}; print([m for m in {_FRAMEWORK!r} if m in sys.modules])"

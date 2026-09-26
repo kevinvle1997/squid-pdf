@@ -9,7 +9,7 @@ import pytest
 
 from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, words
-from squidpdf.core.constants import CONDENSE_LIMIT, TOLERANCE_PT
+from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
@@ -53,9 +53,12 @@ def test_every_font_lists_only_the_glyphs_it_really_draws(doc):
 def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
     assert_equal(doc["build"], BUILD, "build")
     assert_equal(doc["pages"], [_A4, _A4], "pages")
-    assert_equal(
-        doc["fit"], {"tolerance_pt": TOLERANCE_PT, "condense_limit": CONDENSE_LIMIT}, "fit"
-    )
+    rules = {
+        "tolerance_pt": TOLERANCE_PT,
+        "condense_limit": CONDENSE_LIMIT,
+        "shrink_floor": SHRINK_FLOOR,
+    }
+    assert_equal(doc["fit"], rules, "fit")
     assert_equal(doc["copy"]["missing"], words.MISSING, "the missing-glyph sentence")
     assert_equal(doc["notices"], [], "notices")
 
