@@ -111,7 +111,15 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named(mine, doc):
 
     rendered = _render(mine, doc, edits, [_around(span)]).json()
 
-    expected = [{"edit": 0, "type": "bad_reference", "detail": words.NO_SPAN}]
+    expected = [
+        {
+            "edit": 0,
+            "type": "bad_reference",
+            "detail": words.NO_SPAN,
+            "code": "no_span",
+            "params": {},
+        }
+    ]
     assert_equal(rendered["skipped"], expected, "skipped")
     assert_not_in("nosuchspan00", rendered["fits"], "fits")
 

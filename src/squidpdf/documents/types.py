@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
+from squidpdf.core.message import MessageInfo
+
 
 class Box(TypedDict):
     """A box on the page in points, top-left origin."""
@@ -76,7 +78,7 @@ class FitRules(TypedDict):
 
 
 class Copy(TypedDict):
-    """The sentences the browser fills in as the user types."""
+    """The sentences the browser fills in as the user types, in the reader's language."""
 
     missing: str
     too_long: str
@@ -86,6 +88,17 @@ class Copy(TypedDict):
     options: dict[str, dict[str, str]]
 
 
+class DocumentNoticeInfo(MessageInfo):
+    """Something about the document that may not be what the user expected.
+
+    `type` is what the browser branches on; `detail` says it in the reader's
+    words, and `code` and `params` are the same, unsaid.
+    """
+
+    type: str
+    detail: str
+
+
 class Document(Analysis):
     """The stored document, as the browser gets it."""
 
@@ -93,7 +106,7 @@ class Document(Analysis):
     expires_at: str
     fit: FitRules
     copy: Copy
-    notices: list[dict[str, str]]
+    notices: list[DocumentNoticeInfo]
 
 
 @dataclass(frozen=True, slots=True)
