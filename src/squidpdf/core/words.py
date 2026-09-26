@@ -71,3 +71,6 @@ FONT_MISMATCH = "This isn't the font the document uses. Its letters are a differ
 INVALID_REQUEST = "Something in the request isn't right ({reason})."
 RATE_LIMITED = "Too many files at once. Try again in a minute."
 SERVER_ERROR = "Something went wrong on our side. Try again."
+
+# A notice on an upload that worked, but may not be what the user expected.
+NO_TEXT = "This PDF has no text we can edit. It may be a scan or a photo of the page."

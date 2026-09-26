@@ -112,6 +112,16 @@ def test_deleting_it_leaves_nothing_behind(mine, doc):
     assert_equal(_kept(), before - 1, "documents on disk after a delete")
 
 
+_AES_256 = 5  # pymupdf.PDF_ENCRYPT_AES_256, which its type stubs leave out
+
+
+def _locked() -> bytes:
+    """A real one-page PDF that opens only with a password."""
+    doc = pymupdf.open()
+    doc.new_page()
+    return doc.tobytes(encryption=_AES_256, user_pw="user", owner_pw="owner")
+
+
 @pytest.mark.parametrize(
     ("body", "problem", "status"),
     [
@@ -120,8 +130,9 @@ def test_deleting_it_leaves_nothing_behind(mine, doc):
         (b"\x89PNG\r\n\x1a\n" + bytes(4096), "not_a_pdf", 415),
         # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
+        (_locked(), "encrypted", 422),
     ],
-    ids=["text", "png", "garbage after the header"],
+    ids=["text", "png", "garbage after the header", "password-protected"],
 )
 def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, status):
     before = _kept()

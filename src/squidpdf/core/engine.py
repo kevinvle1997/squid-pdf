@@ -13,12 +13,20 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from squidpdf.core import words
 from squidpdf.core.fidelity import FidelityReport
 from squidpdf.core.types import Page, Rect, Span, SpanIndex
 
 
 class Unreadable(Exception):
-    """The file isn't a PDF the engine can open: garbage, truncated or empty."""
+    """The file isn't a PDF the engine can open: garbage, truncated, empty, or locked."""
+
+    def __init__(self, path: str, encrypted: bool = False) -> None:
+        """`encrypted`: it opened, but only a password would let us read it."""
+        super().__init__(path, encrypted)  # as args, so it survives the trip from a worker
+        self.path = path
+        self.encrypted = encrypted
+        self.detail = words.ENCRYPTED if encrypted else words.DAMAGED  # for the user
 
 
 @runtime_checkable

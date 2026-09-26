@@ -59,8 +59,10 @@ async def _handle(request: Request, exc: Exception) -> Response:
     match exc:
         case ApiError():
             error = exc
+        case Unreadable(encrypted=True):
+            error = ApiError(Problem.ENCRYPTED)  # from a worker, as the file opened
         case Unreadable():
-            error = ApiError(Problem.DAMAGED)  # from a worker, as the file opened
+            error = ApiError(Problem.DAMAGED)
         case RequestValidationError():
             # One plain line, not FastAPI's jargon list: it's a browser bug report.
             reason = "; ".join(_describe(item) for item in exc.errors())

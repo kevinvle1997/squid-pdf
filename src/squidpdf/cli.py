@@ -20,7 +20,9 @@ from squidpdf.core import (
     Fidelity,
     FidelityReport,
     MuPDFEngine,
+    Unreadable,
     green_rate,
+    words,
 )
 from squidpdf.editing import Redact, Replace, apply, check, verify_redactions
 
@@ -146,6 +148,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         try:
             with MuPDFEngine(path) as engine:
                 reports = engine.assess(engine.index())
+        except Unreadable as exc:  # damaged or password-protected: say which
+            rows.append((path, None, exc.detail))
+            continue
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
             rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
             continue
@@ -228,7 +233,9 @@ def cmd_fixture(args: argparse.Namespace) -> int:
 
 def _no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
-    print(f"  {RED}no span {span_id}{OFF} {DIM}(run `squidpdf spans` to list them){OFF}")
+    print(
+        f"  {RED}{words.NO_SPAN}{OFF} {DIM}({span_id}: run `squidpdf spans` to list them){OFF}"
+    )
     return 1
 
 
@@ -275,7 +282,11 @@ def main(argv: list[str] | None = None) -> int:
     command.set_defaults(fn=cmd_fixture)
 
     args = parser.parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except Unreadable as exc:  # the one PDF a command was given won't open
+        print(f"  {RED}{exc.detail}{OFF}")
+        return 1
 
 
 if __name__ == "__main__":

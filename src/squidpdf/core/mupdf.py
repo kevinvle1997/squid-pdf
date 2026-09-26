@@ -80,6 +80,9 @@ class MuPDFEngine:
             self.doc = pymupdf.open(path, filetype="pdf")
         except pymupdf.FileDataError as exc:  # garbage, truncated or empty
             raise Unreadable(path) from exc
+        if self.doc.needs_pass:  # it opens, but every page is locked behind a password
+            self.doc.close()
+            raise Unreadable(path, encrypted=True)
         self._pdf = PdfFile(self.doc)
         # Keyed by (page, font name); each fills in on first lookup.
         self._fonts: dict[tuple[int, str], _EmbeddedFont | _FontUnusable] = {}

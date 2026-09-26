@@ -166,5 +166,6 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
             "too_long": words.TOO_LONG,
             "options": words.OPTIONS,
         },
-        "notices": [],  # signed, scanned: once upload checks for them
+        # A scan has no text layer: say so, rather than show a page nothing on can be edited.
+        "notices": [] if analysis["spans"] else [{"type": "no_text", "detail": words.NO_TEXT}],
     }
