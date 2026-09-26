@@ -17,8 +17,11 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
-# Characters that legitimately draw nothing.
-_BLANK = {" ", "\t", "\n", "\r", " ", " ", " "}
+# Counted as drawable whether the font maps them or not: tabs and line breaks
+# aren't drawn, and the plain space is one text extraction adds between words a
+# font never drew a space for. Any other space (no-break, figure, thin...) draws
+# nothing yet still needs the font to map it: unmapped, it's drawn as .notdef.
+_ALWAYS_DRAWABLE = frozenset({" ", "\t", "\n", "\r"})
 
 
 # A bare CFF font program starts with this header (major.minor version 1.0);
@@ -57,8 +60,8 @@ class Coverage:
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
         self._claimed = frozenset(claimed)
-        # With glyph_ids, any space it maps is blank: a thin space draws nothing too.
-        self._blanks = _BLANK if glyph_ids is None else {ch for ch in glyph_ids if ch.isspace()}
+        # With glyph_ids the font is written by code, and a space with no code can't be.
+        self._always = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
         self.usable = False  # True once a parseable font has been loaded
         self._load(buffer, glyph_ids)
 
@@ -104,11 +107,14 @@ class Coverage:
                 self._glyph_names[Codepoint(codepoint)] = name
 
     def covers(self, ch: str) -> bool:
-        """True when this font will actually put ink on the page for `ch`."""
-        if ch in self._blanks:
+        """True when this font really puts ink on the page for `ch`, or places its space."""
+        if ch in self._always:
             return True
         if not self.usable:
             return ord(ch) in self._claimed
+        # A space draws no ink, so being mapped is all it takes.
+        if ch.isspace():
+            return Codepoint(ord(ch)) in self._glyph_names
         draws = self._cache.get(ch)
         if draws is None:
             draws = self._cache[ch] = self._draws(ch)
@@ -127,10 +133,10 @@ class Coverage:
             return False
 
     def drawable(self) -> list[str]:
-        """Every character `covers` says draws, blanks included, in code point order."""
+        """Every character `covers` says draws, spaces included, in code point order."""
         codes = self._glyph_names if self.usable else self._claimed
         chars = (chr(codepoint) for codepoint in codes)
-        return sorted(self._blanks.union(ch for ch in chars if self.covers(ch)))
+        return sorted(self._always.union(ch for ch in chars if self.covers(ch)))
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""

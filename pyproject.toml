@@ -50,7 +50,8 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 # BLE: a broad except says why. D1: docstrings everywhere. RUF100: no stale noqa.
 # TID: only core/pdf.py talks to MuPDF's low-level API.
-select = ["E", "F", "I", "UP", "B", "BLE", "D1", "RUF100", "TID"]
+# RUF001-3: no invisible or look-alike characters in strings, docstrings or comments.
+select = ["E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test names are sentences already; a docstring there is welcome, not required.
