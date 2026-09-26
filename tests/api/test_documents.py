@@ -76,6 +76,12 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     pix = pymupdf.Pixmap(response.content)
     assert_equal((pix.width, pix.height), (595 * 2, 842 * 2), "pixels at scale 2")
 
+    # A page it doesn't have is its own problem: "not found" would make the browser re-upload.
+    params = {"scale": 2, "build": doc["build"]}
+    assert_problem(
+        mine.get(f"/api/documents/{doc['id']}/pages/9", params=params), "no_such_page", 422
+    )
+
 
 def test_a_page_asked_for_under_an_old_build_is_not_kept(mine, doc):
     params = {"scale": 1, "build": "an-older-build"}

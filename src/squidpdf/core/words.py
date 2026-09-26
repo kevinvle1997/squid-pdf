@@ -73,6 +73,7 @@ TOO_MANY_PAGES = "This PDF has more than {pages} pages."
 ENCRYPTED = "This PDF is password-protected. Open it with the password and save a copy first."
 DAMAGED = "This PDF is damaged and can't be opened."
 NOT_FOUND = "Nothing here. It may have expired."  # never shown: the browser re-uploads
+NO_SUCH_PAGE = "This document doesn't have that page."
 REDACTION_CONFLICT = "This text has a redaction. Undo it to edit."
 BAD_REFERENCE = "A redaction points at text that isn't in this document: {span_id}."
 REDACTION_FAILED = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."

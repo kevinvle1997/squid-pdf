@@ -54,7 +54,7 @@ async def render(
     pages = store.load_pages(doc.folder)
     for region in regions:
         if not 0 <= region.page < len(pages):
-            raise ApiError(Problem.INVALID_REQUEST, debug=f"regions: no page {region.page}")
+            raise ApiError(Problem.NO_SUCH_PAGE, debug=f"regions: no page {region.page}")
         top = 0.0 if region.y0 is None else region.y0
         bottom = pages[region.page].height if region.y1 is None else region.y1
         if top >= bottom:

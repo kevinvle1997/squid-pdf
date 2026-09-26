@@ -136,7 +136,7 @@ async def page(
     """
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
-        raise ApiError(Problem.NOT_FOUND)
+        raise ApiError(Problem.NO_SUCH_PAGE)
     png = await workers.run(
         limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
     )

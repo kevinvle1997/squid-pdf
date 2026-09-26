@@ -29,8 +29,8 @@ def render(
     """
     path = Path(folder)
     index = store.load_index(path)
-    if index is None:  # upload saves it before it answers
-        raise LookupError(f"no index in {folder}")
+    if index is None:  # upload saves it before it answers, so only a sweep removes it
+        raise store.Gone
     pages = store.load_pages(path)
 
     with MuPDFEngine(str(path / store.ORIGINAL)) as engine:

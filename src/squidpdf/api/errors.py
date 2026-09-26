@@ -17,6 +17,7 @@ from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.core import Unreadable, words
+from squidpdf.documents import store
 
 
 class Problem(Enum):
@@ -31,6 +32,7 @@ class Problem(Enum):
     ENCRYPTED = 422, words.ENCRYPTED
     DAMAGED = 422, words.DAMAGED
     NOT_FOUND = 404, words.NOT_FOUND  # never 403: someone else's id looks unknown
+    NO_SUCH_PAGE = 422, words.NO_SUCH_PAGE  # not 404, which tells the browser to re-upload
     REDACTION_CONFLICT = 422, words.REDACTION_CONFLICT
     BAD_REFERENCE = 422, words.BAD_REFERENCE
     REDACTION_FAILED = 422, words.REDACTION_FAILED
@@ -70,6 +72,8 @@ async def _handle(request: Request, exc: Exception) -> Response:
             error = ApiError(Problem.ENCRYPTED)  # from a worker, as the file opened
         case Unreadable():
             error = ApiError(Problem.DAMAGED)
+        case store.Gone():
+            error = ApiError(Problem.NOT_FOUND)  # expired mid-request: the browser re-uploads
         case RequestValidationError():
             # A browser bug: a plain sentence for the user, FastAPI's list for us.
             debug = "; ".join(_describe(item) for item in exc.errors())
@@ -106,5 +110,6 @@ def _describe(item: dict[str, Any]) -> str:
 def install(app: FastAPI) -> None:
     """Make every error the app can raise leave as Problem Details."""
     # FastAPI has its own handlers for validation and HTTP errors; Exception is the rest.
-    for raised in (ApiError, Unreadable, RequestValidationError, HTTPException, Exception):
+    handled = (ApiError, Unreadable, store.Gone, RequestValidationError, HTTPException)
+    for raised in (*handled, Exception):
         app.add_exception_handler(raised, _handle)

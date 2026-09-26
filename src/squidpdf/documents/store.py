@@ -111,9 +111,17 @@ def save_pages(folder: Path, pages: list[Page]) -> None:
     (folder / _PAGES).write_bytes(orjson.dumps(pages))
 
 
+class Gone(Exception):
+    """The document was deleted while a request was using it: it expired mid-way."""
+
+
 def load_pages(folder: Path) -> list[Page]:
-    """The saved page list."""
-    return [Page(**page) for page in orjson.loads((folder / _PAGES).read_bytes())]
+    """The saved page list. Raises Gone if the sweep deleted the document meanwhile."""
+    try:
+        saved = orjson.loads((folder / _PAGES).read_bytes())
+    except FileNotFoundError as exc:  # upload saves it first, so only a sweep removes it
+        raise Gone from exc
+    return [Page(**page) for page in saved]
 
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:
