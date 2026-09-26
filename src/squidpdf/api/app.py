@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from squidpdf.api import errors
 from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
+from squidpdf.editing import api as editing
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     app.include_router(documents.router)
+    app.include_router(editing.router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
