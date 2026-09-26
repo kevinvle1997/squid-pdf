@@ -26,6 +26,7 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
 _PAGES = "pages.json"
+_ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _ID_SHAPE = re.compile(r"[A-Za-z0-9_-]{22}")
@@ -133,12 +134,21 @@ def load_pages(folder: Path) -> list[Page]:
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:
     """Keep what was worked out under this build; another build works it out again."""
-    (folder / f"analysis-{build}.json").write_bytes(analysis)
+    (folder / _analysis(build)).write_bytes(analysis)
 
 
 def load_analysis(folder: Path, build: str) -> bytes | None:
     """The analysis saved under this build, or None if it hasn't been worked out."""
     try:
-        return (folder / f"analysis-{build}.json").read_bytes()
+        return (folder / _analysis(build)).read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
+
+
+def _analysis(build: str) -> str:
+    """The file the analysis under `build` is kept in.
+
+    Named for how it's kept too: one kept before its sentences were codes
+    reads as not worked out yet, and is worked out again over the same index.
+    """
+    return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"

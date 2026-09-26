@@ -26,7 +26,15 @@ from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
-from squidpdf.documents.types import Analysis, Copy, Document, DocumentNoticeInfo, Loaded
+from squidpdf.documents.types import (
+    Analysis,
+    Copy,
+    Document,
+    DocumentNoticeInfo,
+    FontFacts,
+    FontInfo,
+    Loaded,
+)
 
 router = APIRouter(prefix="/api/documents")
 
@@ -113,10 +121,10 @@ async def read(
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
-    # Over the analysis and the words it's said in: `expires_at` moves on every
-    # visit and is a hint. The words, so another language or a reworded
-    # sentence is never answered with a body the browser kept from before.
-    said = orjson.dumps(_copy(said_in)) + orjson.dumps(_notices(analysis, said_in))
+    # Over the analysis and the words it's said in; not `expires_at`, which moves
+    # on every visit and is a hint. The analysis is in no language, so the words
+    # too: another language, or a sentence reworded since, is another body.
+    said = orjson.dumps([said_in, words.catalog(said_in)])
     etag = f'"{xxhash.xxh3_64_hexdigest(raw + said)}"'
     headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **language.headers(said_in)}
     if request.headers.get("if-none-match") == etag:  # absent on a first read
@@ -175,7 +183,10 @@ async def sweep_forever() -> None:
 def _document(doc_id: str, expires_at: float, analysis: Analysis, said_in: str) -> Document:
     """The analysis, plus what belongs to this document and this moment, in `said_in`."""
     return {
-        **analysis,
+        "build": analysis["build"],
+        "pages": analysis["pages"],
+        "spans": analysis["spans"],
+        "fonts": [_font_info(font, said_in) for font in analysis["fonts"]],
         "id": doc_id,
         "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
         "fit": {
@@ -185,6 +196,20 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis, said_in: str) 
         },
         "copy": _copy(said_in),
         "notices": _notices(analysis, said_in),
+    }
+
+
+def _font_info(font: FontFacts, said_in: str) -> FontInfo:
+    """A font as the browser gets it: why its own copy can't be used, in `said_in`."""
+    why = None if font["why"] is None else Message.from_info(font["why"])
+    return {
+        "name": font["name"],
+        "substitute": font["substitute"],
+        "why": None if why is None else words.render(why, said_in),
+        "why_code": None if why is None else why.key,
+        "why_params": {} if why is None else why.params,
+        "same_widths": font["same_widths"],
+        "glyphs": font["glyphs"],
     }
 
 

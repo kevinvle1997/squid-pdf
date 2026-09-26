@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core.message import MessageInfo
+from squidpdf.core.message import MessageInfo, Param
 
 
 class Box(TypedDict):
@@ -45,28 +45,49 @@ class SpanInfo(TypedDict):
     fidelity: str
 
 
-class FontInfo(TypedDict):
-    """A font the spans use: what stands in for it, and each letter it really draws, by width.
+class FontFacts(TypedDict):
+    """A font the spans use, as the analysis keeps it: in no language, so any can say it.
 
-    Widths are in thousandths of the font size, from the face that draws: the
-    file's own copy, or the substitute when that can't be used.
+    What stands in for it, and each letter it really draws, by width. Widths are
+    in thousandths of the font size, from the face that draws: the file's own
+    copy, or the substitute when that can't be used.
     """
 
     name: str
     substitute: str | None  # the face we ship that draws it instead, e.g. "Carlito Bold"
-    why: str | None  # why the file's own copy can't be used, in plain words
+    why: MessageInfo | None  # why the file's own copy can't be used
     same_widths: bool  # the substitute's letters are as wide as the original's
     glyphs: dict[str, float]
 
 
-class Analysis(TypedDict):
-    """Everything worked out from the original under one build."""
+class FontInfo(TypedDict):
+    """A font the spans use, as the browser gets it: its facts, and why in the reader's words.
+
+    `why_code` and `why_params` are `why` unsaid, both empty when `why` is None.
+    """
+
+    name: str
+    substitute: str | None
+    why: str | None  # why the file's own copy can't be used, in the reader's words
+    why_code: str | None
+    why_params: dict[str, Param]
+    same_widths: bool
+    glyphs: dict[str, float]
+
+
+class _Analysed(TypedDict):
+    """What every form of the analysis has."""
 
     build: str
     pages: list[PageInfo]
     spans: list[SpanInfo]
+
+
+class Analysis(_Analysed):
+    """Everything worked out from the original under one build, in no language."""
+
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
-    fonts: list[FontInfo]
+    fonts: list[FontFacts]
 
 
 class FitRules(TypedDict):
@@ -99,8 +120,10 @@ class DocumentNoticeInfo(MessageInfo):
     detail: str
 
 
-class Document(Analysis):
-    """The stored document, as the browser gets it."""
+class Document(_Analysed):
+    """The stored document, as the browser gets it, in the reader's language."""
+
+    fonts: list[FontInfo]
 
     id: str
     expires_at: str

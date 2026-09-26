@@ -81,6 +81,21 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(shrink, pseudo_sentence(words.SHRINK_LABEL), "a way out's name")
 
 
+def test_why_a_font_stands_in_is_said_in_the_language_asked_for(pseudo, mine, doc):
+    def times(document: dict) -> dict:
+        """What the document says about Times, which the sample only names."""
+        return next(font for font in document["fonts"] if font["name"] == "Times-Roman")
+
+    english = times(doc)
+    expected: tuple[str, str, dict] = (words.FONT_NOT_IN_FILE, "font_not_in_file", {})
+    said = (english["why"], english["why_code"], english["why_params"])
+    assert_equal(said, expected, "why, in English and unsaid")
+    other = times(mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO)).json())
+    assert_equal(other["why"], pseudo_sentence(words.FONT_NOT_IN_FILE), "why, in pseudo")
+    exact = next(font for font in doc["fonts"] if font["why"] is None)
+    assert_equal((exact["why_code"], exact["why_params"]), (None, {}), "a font that's used")
+
+
 def test_one_language_s_etag_never_answers_for_another(pseudo, mine, doc):
     url = f"/api/documents/{doc['id']}"
     english = mine.get(url)

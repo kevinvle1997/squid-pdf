@@ -195,6 +195,11 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
     return found
 
 
+def catalog(language: str) -> dict[str, str]:
+    """Every sentence as `language` says it, English where it has none."""
+    return {key: sentence(key, language) for key in ENGLISH_SENTENCES}
+
+
 def render(message: Message, language: str = ENGLISH) -> str:
     """`message` as a person reads it in `language`: its sentence, placeholders filled."""
     return fill(sentence(message.key, language), message.params, language)
