@@ -97,6 +97,23 @@ class Span:
         return len(self.fragments) > 1
 
 
+@dataclass(frozen=True, slots=True)
+class Codes:
+    """How the file writes each letter in a font it reaches only by code.
+
+    Some embedded fonts have no cmap a letter can be looked up in: the page
+    writes codes, and the font's ToUnicode says which letter each one is. `ref`
+    is the font's resource name on this page, `xref` its object.
+    """
+
+    ref: str
+    xref: int
+    digits: int  # hex digits per code: 2 for a simple font, 4 for Identity-H
+    code: dict[str, int]  # letter -> the code that draws it
+    glyph: dict[str, int]  # letter -> the glyph id that code reaches
+    advance: dict[str, float]  # letter -> advance per 1000 em, from the font dict
+
+
 class SpanIndex:
     """Every editable span in a document, built once and never rebuilt.
 

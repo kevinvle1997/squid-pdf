@@ -8,6 +8,7 @@ document.
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 
 import pymupdf
 
@@ -16,7 +17,7 @@ from squidpdf.core.coverage import Coverage
 from squidpdf.core.engine import Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import base14_for, strip_subset, substitute_for
-from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, span_id
+from squidpdf.core.types import Codes, Fragment, Page, Rect, Span, SpanIndex, span_id
 
 _BYTE_MAX = 255  # one channel of PDF's packed 0xRRGGBB color, 0-255
 
@@ -32,6 +33,9 @@ _EM = 1000  # advances are given per 1000 em, as PDF font widths are
 _ADVANCE_DP = 2  # finer than any page can show
 
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
+
+_SIMPLE_CODES = 256  # a simple font's codes are one byte
+_PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
@@ -61,21 +65,25 @@ class MuPDFEngine:
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
         self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage, if kept
         self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
+        self._codes: dict[tuple[int, str], Codes] = {}  # how it writes letters, if only by code
 
     def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
         """The document's own font, or None when the file only references it.
 
         Not embedded is the common case for anything exported from Word, and it
         is exactly what the substitute state warns about. A font nothing can map
-        a character through, like one with only a symbol cmap, draws boxes, so
-        it counts as not embedded either.
+        a letter through, like one with only a symbol cmap, draws boxes through
+        insert_text; it counts as embedded only when its ToUnicode says which
+        code writes each letter, and then `draw` writes codes.
         """
         key = (page, strip_subset(name))
         if key in self._fonts:
             return self._fonts[key]
 
         font = None
-        for xref, ext, _t, basefont, *_ in self.doc[page].get_fonts(full=True):
+        for xref, ext, kind, basefont, ref, encoding, referencer in self.doc[page].get_fonts(
+            full=True
+        ):
             if strip_subset(basefont) != key[1]:
                 continue
             if ext not in ("n/a", ""):
@@ -85,6 +93,13 @@ class MuPDFEngine:
                         candidate = pymupdf.Font(fontbuffer=buf)
                         claimed = candidate.valid_codepoints()
                         cov = Coverage(buf, claimed)
+                        # Drawn through the page's own resource, so not one inside a form.
+                        if not cov.usable and ext == "ttf" and referencer == 0:
+                            codes = _read_codes(self.doc, xref, ref, kind, encoding)
+                            if codes is not None:
+                                by_code = Coverage(buf, glyphs=codes.glyph)
+                                if by_code.usable:
+                                    cov, self._codes[key] = by_code, codes
                         if cov.usable or claimed:
                             font, self._coverage[key] = candidate, cov
                 except (RuntimeError, ValueError):  # MuPDF can't extract or open it
@@ -195,17 +210,24 @@ class MuPDFEngine:
         against. A subset's emptied glyphs don't count; a font Coverage can't
         read falls back to MuPDF's list, a claim.
         """
+        key = (span.page, strip_subset(span.font))
         embedded = self._embedded(span.page, span.font)
         if embedded is None:
             font = pymupdf.Font(fontname=base14_for(span.font))
             chars = sorted(_simple_chars(font))
         else:
             font = embedded
-            chars = self._coverage[(span.page, strip_subset(span.font))].drawable()
+            chars = self._coverage[key].drawable()
+            codes = self._codes.get(key)  # only fonts reached by code are there
+            if codes is not None:
+                return {ch: round(codes.advance[ch], _ADVANCE_DP) for ch in chars}
         return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, in the face `draw` would pick and this span's size."""
+        codes = self._codes.get((span.page, strip_subset(span.font)))  # only if reached by code
+        if codes is not None and not self.missing(span, text):
+            return sum(codes.advance[ch] for ch in text) * span.size / _EM
         font, text = self._run(span, text)
         return font.text_length(text, fontsize=span.size)
 
@@ -242,10 +264,10 @@ class MuPDFEngine:
         count, and a span's fragments only ever sit a kerning gap apart, so its
         box covers nothing theirs don't. Line art is left alone, so underlines
         and rules survive. Each span's embedded font is resolved and cached
-        before its own redaction runs: apply_redactions can drop a page's
-        now-unused font resource, and if that font was only used by the text
-        just removed, it would otherwise be gone by the time draw() goes
-        looking for it.
+        before its own redaction runs, with its resource name and codes:
+        apply_redactions can drop a page's now-unused font resource, and if
+        that font was only used by the text just removed, it would otherwise
+        be gone by the time draw() goes looking for it.
         """
         by_page: dict[int, list[Span]] = {}
         for s in spans:
@@ -271,8 +293,13 @@ class MuPDFEngine:
         A character the font can't draw sends the whole run to the substitute,
         so the line never mixes two faces. The font goes onto the page once,
         not once per span: a resource per span piled up on the page and made
-        every redraw slower.
+        every redraw slower. A font the file reaches only by code is drawn
+        with codes, through its own resource, as the original was.
         """
+        codes = self._codes.get((span.page, strip_subset(span.font)))  # only if reached by code
+        if codes is not None and not self.missing(span, text):
+            self._draw_codes(span, codes, text, span.size if size is None else size, scale_x)
+            return
         alias = None if self.missing(span, text) else self._alias(span)
         if alias is None:  # the substitute draws the whole run
             _font, text = self._run(span, text)
@@ -285,6 +312,51 @@ class MuPDFEngine:
             color=span.color,
             overlay=True,
             morph=(origin, pymupdf.Matrix(scale_x, 1)),
+        )
+
+    def _draw_codes(
+        self, span: Span, codes: Codes, text: str, size: float, scale_x: float
+    ) -> None:
+        """Write `text` as codes in the file's own font resource, on top of the page.
+
+        Its own q/Q, after wrapping the page's, so no state leaks either way.
+        The origin goes into PDF space through the page's full transform:
+        PyMuPDF's transformation_matrix drops a mediabox offset on a rotated page.
+        """
+        mu = pymupdf.mupdf
+        page = self.doc[span.page]
+        pdf = mu.pdf_document_from_fz_document(self.doc.this)
+        page_obj = mu.pdf_lookup_page_obj(pdf, span.page)
+
+        # apply_redactions drops a font nothing uses any more; put it back.
+        res = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
+        if not res.m_internal:
+            res = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
+        fonts = mu.pdf_dict_get(res, mu.PDF_ENUM_NAME_Font)
+        if not fonts.m_internal:
+            fonts = mu.pdf_dict_put_dict(res, mu.PDF_ENUM_NAME_Font, 1)
+        mu.pdf_dict_puts(fonts, codes.ref, mu.pdf_new_indirect(pdf, codes.xref, 0))
+
+        _mediabox, ctm = mu.FzRect(), mu.FzMatrix()
+        mu.pdf_page_transform(mu.pdf_page_from_fz_page(page.this), _mediabox, ctm)
+        x, y = pymupdf.Point(*span.origin) * page.rotation_matrix * ~pymupdf.Matrix(ctm)
+
+        r, g, b = span.color
+        hexed = "".join(f"{codes.code[ch]:0{codes.digits}x}" for ch in text)
+        stream = (
+            f"q BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
+            f" /{codes.ref} {size:.{_PDF_DP}f} Tf"
+            f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
+            f" <{hexed}> Tj ET Q"
+        )
+        if not page.is_wrapped:
+            page.wrap_contents()
+        xref = self.doc.get_new_xref()
+        self.doc.update_object(xref, "<<>>")
+        self.doc.update_stream(xref, stream.encode())
+        parts = [*page.get_contents(), xref]
+        self.doc.xref_set_key(
+            page.xref, "Contents", "[" + " ".join(f"{c} 0 R" for c in parts) + "]"
         )
 
     def _alias(self, span: Span) -> str | None:
@@ -342,6 +414,57 @@ class MuPDFEngine:
     def __exit__(self, *_exc: object) -> None:
         """Close the document when the `with` block ends."""
         self.close()
+
+
+def _read_codes(
+    doc: pymupdf.Document, xref: int, ref: str, kind: str, encoding: str
+) -> Codes | None:
+    """Letter to code, glyph and advance, for a TrueType the file reaches only by code.
+
+    Read through MuPDF's own font loader, so the glyph a code reaches is the one
+    it renders. None when no ToUnicode says which letter a code is: a guess
+    would draw the wrong letters. A code mapping to several letters (a
+    ligature), a control or private-use character is skipped. A letter written
+    by two codes takes the lowest.
+    """
+    if kind == "TrueType":
+        digits = 2
+    elif kind == "Type0" and encoding == "Identity-H":
+        digits = 4
+    else:
+        return None
+    if doc.xref_get_key(xref, "ToUnicode")[0] == "null":
+        return None
+
+    mu = pymupdf.mupdf
+    pdf = mu.pdf_document_from_fz_document(doc.this)
+    desc = mu.ll_pdf_load_font(pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal)
+    try:
+        if desc.to_unicode is None:  # a ToUnicode MuPDF couldn't parse
+            return None
+        # Identity-H codes are CIDs, and none past the CID-to-glyph map or the last glyph draws.
+        codes = _SIMPLE_CODES if digits == 2 else desc.cid_to_gid_len or desc.font.glyph_count
+        code: dict[str, int] = {}
+        glyph: dict[str, int] = {}
+        advance: dict[str, float] = {}
+        for c in range(codes):
+            u = mu.ll_pdf_lookup_cmap(desc.to_unicode, c)
+            if u < 0:  # unmapped, or mapped to several letters
+                continue
+            ch = chr(u)
+            if ch in code or unicodedata.category(ch).startswith("C"):
+                continue
+            cid = mu.ll_pdf_lookup_cmap(desc.encoding, c)
+            gid = mu.ll_pdf_font_cid_to_gid(desc, cid)
+            if gid == 0:  # .notdef: the code reaches no glyph
+                continue
+            code[ch], glyph[ch] = c, gid
+            advance[ch] = mu.ll_pdf_lookup_hmtx(desc, cid).w
+    finally:
+        mu.ll_pdf_drop_font(desc)
+    if not code:
+        return None
+    return Codes(ref, xref, digits, code, glyph, advance)
 
 
 def _simple_chars(font: pymupdf.Font) -> set[str]:
