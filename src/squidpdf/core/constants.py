@@ -22,7 +22,8 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 
 # Half of `build`: bump it when the fonts we ship change, so browsers refetch.
 # 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
-LIBRARY_VERSION = "2"
+# 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.
+LIBRARY_VERSION = "3"
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.

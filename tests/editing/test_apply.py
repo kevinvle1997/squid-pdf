@@ -9,7 +9,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import MuPDFEngine, Span, words
+from squidpdf.core import MuPDFEngine, Span, new_text, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
@@ -65,6 +65,13 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
     """Fails, as fontTools can on an odd font."""
     raise ValueError("fontTools can't cut this font")
+
+
+def _insert_as_span(insert: Insert) -> Span:
+    """An insert as the span it's measured and drawn as."""
+    return new_text(
+        insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
+    )
 
 
 def _substituted(engine) -> Span:
@@ -245,7 +252,8 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
         applied = apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
         eng.save(out)
 
-    said = words.MISSING.format(chars="Ω or μ or έ or γ or α", font="Noto Serif Regular")
+    greek = "Ω or μ or έ or γ or α"  # noqa: RUF001 (Greek on purpose: Caladea has none)
+    said = words.MISSING.format(chars=greek, font="Noto Serif Regular")
     assert_equal(fit.describe(), said, "what the fit says")
     assert_equal(applied.notices, [], "nothing left out")
     drawn = _drawn(out, 0, "Hi")
@@ -291,6 +299,26 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
         (drawn["text"], drawn["font"]), (text, saved_as(face)), "what drew, and in what"
     )
     _assert_cut(out, REFERENCED_PAGE, face, text)
+
+
+def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_path):
+    """Liberation Mono has no narrow no-break space: it drew as .notdef and ran 8 pt long."""
+    out = tmp_path / "spaced.pdf"
+    text = "15\u202f000 EUR"  # French thousands, with a narrow no-break space
+    insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
+
+    fit = check_insert(engine, insert)
+    measured = engine.measure(_insert_as_span(insert), text)
+    apply(engine, [insert], engine.index())
+    engine.save(str(out))
+
+    assert_equal(fit.missing, ["\u202f"], "what the fit says the face lacks")
+    drawn = _drawn(out, REFERENCED_PAGE, "15")
+    expected = (text, saved_as("Noto Sans Regular"))
+    assert_equal((drawn["text"], drawn["font"]), expected, "what drew, and in what")
+    x0, _y0, x1, _y1 = drawn["bbox"]
+    width = x1 - x0
+    assert_true(abs(width - measured) < _SAME_WIDTH_PT, f"drawn {width}, measured {measured}")
 
 
 @pytest.mark.parametrize("strategy", ["shrink", "condense"])

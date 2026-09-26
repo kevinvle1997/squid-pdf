@@ -9,7 +9,7 @@ import pytest
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.coverage import Coverage, _glyph_name_for_each_letter
-from squidpdf.core.fonts import CATALOG, face_bytes
+from squidpdf.core.fonts import CATALOG, FACES, face_bytes
 from squidpdf.core.types import Codepoint, GlyphId
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.core.conftest import _truetype
@@ -19,6 +19,7 @@ _EM = 1000  # glyph advances are per 1000 em
 _WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
 _NOWHERE = "中"  # a letter no face we ship draws: none of them has Chinese
 _FAMILY, _STYLE = 1, 2  # a font's name table entries for its family and style
+_NARROW_NO_BREAK = "\u202f"  # the space in "15 000 €"; Liberation Mono has none, Noto Sans does
 
 
 def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
@@ -38,6 +39,16 @@ def test_a_font_coverage_cant_read_draws_what_mupdf_claims():
     assert_true(cov.covers(" "), "whitespace is always drawable")
     assert_true(cov.covers("x"), "a character MuPDF claims")
     assert_false(cov.covers("y"), "a character nothing claims")
+
+
+def test_a_space_counts_only_if_the_font_maps_it_the_plain_one_always():
+    """Unmapped, a narrow no-break space drew as .notdef and was measured narrow."""
+    mono = Coverage(face_bytes(FACES["Liberation Mono Regular"]))
+    noto = Coverage(face_bytes(FACES["Noto Sans Regular"]))
+    assert_false(mono.covers(_NARROW_NO_BREAK), "a narrow no-break space Liberation Mono lacks")
+    assert_true(noto.covers(_NARROW_NO_BREAK), "a narrow no-break space Noto Sans maps")
+    assert_true(mono.covers(" "), "the plain space, which extraction adds between words")
+    assert_not_in(_NARROW_NO_BREAK, mono.drawable(), "what Liberation Mono lists as drawable")
 
 
 def test_glyphs_leave_out_what_a_subset_emptied(engine):
