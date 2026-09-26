@@ -62,6 +62,36 @@ class Page:
 
 
 @dataclass(frozen=True, slots=True)
+class TextPiece:
+    """A bit of text the page draws in one go, as the backend reads it: often part of a word."""
+
+    text: str
+    font: str
+    size: float
+    color: tuple[float, float, float]  # r, g, b, each 0-1
+    box: Rect
+    origin: tuple[float, float]  # where the text starts, on its baseline
+
+
+@dataclass(frozen=True, slots=True)
+class PageFont:
+    """A font a page uses."""
+
+    xref: int  # its PDF object
+    name: str  # e.g. "ABCDEF+Arial"
+    kind: str  # "TrueType", "Type0", ...
+    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not in the file
+    resource: str  # its name in the page's font resources, e.g. "F1"
+    encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
+    in_form: bool  # used inside a form (a reusable drawing), not by the page itself
+
+    @property
+    def is_embedded(self) -> bool:
+        """Whether the PDF contains the font, not just its name."""
+        return self.file_type not in ("n/a", "")
+
+
+@dataclass(frozen=True, slots=True)
 class Fragment:
     """One piece of text the file draws in one go.
 

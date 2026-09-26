@@ -11,7 +11,7 @@ from pathlib import Path
 import orjson
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span
+from squidpdf.core import BUILD, FidelityReport, Span, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
@@ -24,7 +24,7 @@ def analyse(folder: str) -> Analysis:
     the same spans and every id holds. Raises TooManyPages first, if it has.
     """
     path = Path(folder)
-    with MuPDFEngine(str(path / store.ORIGINAL)) as eng:
+    with open_pdf(str(path / store.ORIGINAL)) as eng:
         index = store.load_index(path)
         if index is None:
             if len(eng.pages()) > limits.MAX_PAGES:
@@ -63,7 +63,7 @@ def analyse(folder: str) -> Analysis:
 
 def page_image(folder: str, page: int, scale: float) -> bytes:
     """One page of the original as a PNG, unrotated."""
-    with MuPDFEngine(str(Path(folder) / store.ORIGINAL)) as eng:
+    with open_pdf(str(Path(folder) / store.ORIGINAL)) as eng:
         return eng.page_image(page, scale)
 
 

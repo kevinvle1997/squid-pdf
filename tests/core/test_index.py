@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pymupdf
 
-from squidpdf.core import MuPDFEngine
+from squidpdf.core import open_pdf
 from tests.helpers import assert_any, assert_equal, assert_true
 
 _GREY = 128  # any picture will do; this one is a plain grey square
@@ -33,7 +33,7 @@ def test_index_finds_text(engine):
 
 def test_span_ids_are_stable_across_reindexing(pdf):
     """The client holds these. They must not move."""
-    with MuPDFEngine(pdf) as a, MuPDFEngine(pdf) as b:
+    with open_pdf(pdf) as a, open_pdf(pdf) as b:
         assert_equal(
             [s.id for s in a.index()],
             [s.id for s in b.index()],
@@ -46,7 +46,7 @@ def test_an_image_on_the_page_changes_no_span(tmp_path):
     plain_path = _one_line_page(tmp_path / "plain.pdf", with_image=False)
     pictured_path = _one_line_page(tmp_path / "pictured.pdf", with_image=True)
 
-    with MuPDFEngine(plain_path) as plain, MuPDFEngine(pictured_path) as pictured:
+    with open_pdf(plain_path) as plain, open_pdf(pictured_path) as pictured:
         assert_equal(
             list(pictured.index()),
             list(plain.index()),

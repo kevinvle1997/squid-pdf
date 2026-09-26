@@ -9,7 +9,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import MuPDFEngine, Span, new_text, words
+from squidpdf.core import Span, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
@@ -116,7 +116,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
 def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tmp_path):
     """The same line on another page is other text, not a leak."""
     out = tmp_path / "redacted.pdf"
-    with MuPDFEngine(repeated) as eng:
+    with open_pdf(repeated) as eng:
         index = eng.index()
         first = next(iter(index))
         edits = [Redact(first.id)]
@@ -131,7 +131,7 @@ def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tm
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     """What verified redaction is for: covered text is still in the file."""
-    with MuPDFEngine(pdf) as eng:
+    with open_pdf(pdf) as eng:
         span = next(iter(eng.index()))
     covered = tmp_path / "covered.pdf"
     doc = pymupdf.open(pdf)
@@ -139,7 +139,7 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     doc[span.page].draw_rect(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1), fill=(0, 0, 0))
     doc.save(covered)
 
-    with MuPDFEngine(str(covered)) as eng:
+    with open_pdf(str(covered)) as eng:
         assert_false(eng.absent(span), "text under a black box, counted as gone")
         eng.remove([span])
         assert_true(eng.absent(span), "the same text really removed, counted as gone")
@@ -169,7 +169,7 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     page.draw_line((73, 101.5), (148, 101.5))  # just under the baseline, inside the text's box
     doc.save(path)
 
-    with MuPDFEngine(str(path)) as eng:
+    with open_pdf(str(path)) as eng:
         index = eng.index()
         apply(eng, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
         eng.save(str(out))
@@ -193,7 +193,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 
     applied = apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026中")], index)
     said_on_save = engine.save(str(out))
-    with MuPDFEngine(pdf) as plain:
+    with open_pdf(pdf) as plain:
         plain.save(str(unedited))
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
@@ -245,7 +245,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     """Caladea has no Greek, so the line goes to Noto Serif, whole, and the fit said so."""
     path = named_only(str(tmp_path / "cambria.pdf"), "Cambria")
     out = str(tmp_path / "greek.pdf")
-    with MuPDFEngine(path) as eng:
+    with open_pdf(path) as eng:
         index = eng.index()
         span = next(iter(index))
         fit = replace_fit(eng, span, "Hi Ωμέγα")
@@ -332,7 +332,7 @@ def test_a_fitting_strategy_ends_the_run_where_the_original_did(
     apply(engine, [Replace(span.id, span.text + _LONGER, strategy)], index)
     engine.save(str(out))
     # The same text left long, for its height: the look-alike's box, not the original's.
-    with MuPDFEngine(pdf) as plain:
+    with open_pdf(pdf) as plain:
         apply(plain, [Replace(span.id, span.text + _LONGER)], plain.index())
         plain.save(str(as_is))
 

@@ -7,7 +7,7 @@ from collections.abc import Callable
 import pymupdf
 import pytest
 
-from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate, words
+from squidpdf.core import Fidelity, FidelityReport, Span, green_rate, open_pdf, words
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as
 from tests.helpers import assert_all, assert_between, assert_equal, assert_true
 
@@ -84,12 +84,12 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
     out = str(tmp_path / "redrawn.pdf")
     # Drawn with nothing asked first: remove() must read the font before erasing it.
-    with MuPDFEngine(path) as eng:
+    with open_pdf(path) as eng:
         span = next(iter(eng.index()))
         eng.remove([span])
         eng.draw(span, "Hello again")
         eng.save(out)
-    with MuPDFEngine(path) as eng:
+    with open_pdf(path) as eng:
         [report] = eng.assess(eng.index())
 
     assert_equal((report.substitute, report.same_widths), (face, same_widths), "the report")
@@ -113,7 +113,7 @@ def test_green_rate_is_the_share_that_keep_their_font(engine):
 def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_path):
     """Called exact, every redraw in it came out as empty boxes."""
     out = tmp_path / "redrawn.pdf"
-    with MuPDFEngine(symbolic) as eng:
+    with open_pdf(symbolic) as eng:
         span = next(iter(eng.index()))
         [report] = eng.assess(eng.index())
         eng.remove([span])
@@ -131,7 +131,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
 def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path):
     """Its program is garbage. Judging the page crashed, and took the whole upload with it."""
     out = str(tmp_path / "redrawn.pdf")
-    with MuPDFEngine(corrupt) as eng:
+    with open_pdf(corrupt) as eng:
         span = next(iter(eng.index()))
         [report] = eng.assess(eng.index())
         eng.remove([span])
@@ -147,7 +147,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
     """No letter can be looked up in it, but its ToUnicode says which code writes each."""
     out = str(tmp_path / "redrawn.pdf")
-    with MuPDFEngine(coded) as eng:
+    with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
         [report] = eng.assess(eng.index())
         eng.remove([span])
@@ -163,7 +163,7 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
 def test_a_redraw_by_code_really_removes_the_old_text(coded, tmp_path):
     """Rule 4: re-read the saved file, not the open one."""
     out = str(tmp_path / "redrawn.pdf")
-    with MuPDFEngine(coded) as eng:
+    with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
         eng.remove([span])
         eng.draw(span, "BAB")
@@ -171,14 +171,14 @@ def test_a_redraw_by_code_really_removes_the_old_text(coded, tmp_path):
 
     [drawn] = _drawn(out)
     assert_equal(drawn["font"], "Coded", "the font that redrew it")
-    with MuPDFEngine(out) as saved:
+    with open_pdf(out) as saved:
         assert_true(saved.absent(span), "the old text is gone from the saved file")
 
 
 def test_a_redraw_by_code_lands_where_the_original_was(coded, tmp_path):
     """On a mediabox not at 0,0, and turned for the Type0."""
     out = str(tmp_path / "redrawn.pdf")
-    with MuPDFEngine(coded) as eng:
+    with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
         eng.remove([span])
         eng.draw(span, span.text)
@@ -194,7 +194,7 @@ def test_a_redraw_by_code_lands_where_the_original_was(coded, tmp_path):
 
 def test_widths_by_code_come_from_the_font_dict(coded):
     """The browser's live check reads widths(), the server measure(); both read /Widths, /W."""
-    with MuPDFEngine(coded) as eng:
+    with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
         assert_equal(eng.widths(span), _ADVANCES, "letters it draws, to their advances")
         width = sum(_ADVANCES[ch] for ch in "BA AB") * _SIZE / _EM
@@ -204,7 +204,7 @@ def test_widths_by_code_come_from_the_font_dict(coded):
 def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_path):
     """C's outline was emptied and D has no code: the fit says so, and nothing mixes faces."""
     out = str(tmp_path / "redrawn.pdf")
-    with MuPDFEngine(coded) as eng:
+    with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
         missing = eng.missing(span, "ABCD")
         eng.remove([span])
