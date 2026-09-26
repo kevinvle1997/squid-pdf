@@ -14,13 +14,13 @@ import pymupdf
 import pytest
 
 from squidpdf.cli import main
-from squidpdf.core import MuPDFEngine, words
+from squidpdf.core import open_pdf, words
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 
 def _span_id(pdf: str, needle: str) -> str:
     """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
-    with MuPDFEngine(pdf) as eng:
+    with open_pdf(pdf) as eng:
         return next(s.id for s in eng.index() if needle in s.text)
 
 

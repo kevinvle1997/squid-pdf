@@ -8,7 +8,7 @@ import pymupdf
 import pytest
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import MuPDFEngine
+from squidpdf.core import open_pdf
 from squidpdf.core.fonts import FACES, face_bytes
 
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
@@ -110,5 +110,5 @@ def repeated(tmp_path_factory) -> str:
 @pytest.fixture
 def engine(pdf):
     """The sample, open in the engine for one test."""
-    with MuPDFEngine(pdf) as eng:
+    with open_pdf(pdf) as eng:
         yield eng

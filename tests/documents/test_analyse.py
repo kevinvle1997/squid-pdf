@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from squidpdf.core import MuPDFEngine
+from squidpdf.core import Engine
 from squidpdf.documents import analyse, store
 from tests.helpers import assert_equal, assert_true
 
@@ -26,7 +26,7 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
         """Stands in for the engine's index, to fail if anything builds one."""
         raise AssertionError("the index was rebuilt")
 
-    monkeypatch.setattr(MuPDFEngine, "index", reindex)
+    monkeypatch.setattr(Engine, "index", reindex)
     monkeypatch.setattr(analyse, "BUILD", "a-later-build")
     later = analyse.analyse(str(folder))
 

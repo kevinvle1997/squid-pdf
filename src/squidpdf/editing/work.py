@@ -10,7 +10,7 @@ import base64
 import math
 from pathlib import Path
 
-from squidpdf.core import Engine, MuPDFEngine, Page, Rect
+from squidpdf.core import Engine, Page, Rect, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone
 from squidpdf.editing.apply import apply, log_fits
@@ -34,7 +34,7 @@ def render(
         raise Gone
     pages = store.load_pages(path)
 
-    with MuPDFEngine(str(path / store.ORIGINAL)) as engine:
+    with open_pdf(str(path / store.ORIGINAL)) as engine:
         fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
         applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [

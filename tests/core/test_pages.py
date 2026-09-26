@@ -5,7 +5,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.core import MuPDFEngine, Page, Rect
+from squidpdf.core import Page, Rect, open_pdf
 from tests.helpers import assert_equal, assert_true
 
 _A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
@@ -50,7 +50,7 @@ def test_a_clip_gives_only_that_strip(engine):
 
 def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
     """The browser turns it; everything the server sends stays in one system."""
-    with MuPDFEngine(turned) as eng:
+    with open_pdf(turned) as eng:
         pages = eng.pages()
         pix = pymupdf.Pixmap(eng.page_image(0, _SCALE))
     assert_equal(pages, [Page(_A4_WIDTH, _A4_HEIGHT, 90)], "a quarter-turned page")
@@ -60,7 +60,7 @@ def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
 
 def test_on_a_turned_page_the_span_box_covers_its_ink(turned):
     """A box that misses its text would show fidelity on the wrong words."""
-    with MuPDFEngine(turned) as eng:
+    with open_pdf(turned) as eng:
         box = next(iter(eng.index())).bbox
         pix = pymupdf.Pixmap(eng.page_image(0, _SCALE, box))
     darkest = min(pix.samples)
