@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 from starlette.exceptions import HTTPException
 
-from squidpdf.core import Unreadable, words
+from squidpdf.core import Encrypted, Unreadable, words
 from squidpdf.documents import store
 
 
@@ -68,7 +68,7 @@ async def _handle(request: Request, exc: Exception) -> Response:
     match exc:
         case ApiError():
             error = exc
-        case Unreadable(encrypted=True):
+        case Encrypted():
             error = ApiError(Problem.ENCRYPTED)  # from a worker, as the file opened
         case Unreadable():
             error = ApiError(Problem.DAMAGED)

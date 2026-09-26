@@ -5,7 +5,8 @@ convention, not enforced, so watch it in review.
 """
 
 from squidpdf.core.constants import GREEN_RATE_TARGET, GREEN_RATE_WARN
-from squidpdf.core.engine import Engine, Unreadable
+from squidpdf.core.engine import Engine
+from squidpdf.core.errors import Damaged, Encrypted, Problem, Unreadable
 from squidpdf.core.fidelity import Fidelity, FidelityReport, green_rate
 from squidpdf.core.mupdf import BUILD, MuPDFEngine
 from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, new_text
@@ -13,7 +14,10 @@ from squidpdf.core.types import Fragment, Page, Rect, Span, SpanIndex, new_text
 __all__ = [
     "BUILD",
     "Engine",
+    "Problem",
     "Unreadable",
+    "Encrypted",
+    "Damaged",
     "MuPDFEngine",
     "Fidelity",
     "FidelityReport",
