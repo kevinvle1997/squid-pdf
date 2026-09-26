@@ -134,7 +134,7 @@ def cmd_redact(args: argparse.Namespace) -> int:
 
     # Re-read the saved file, as the app does before a download.
     with MuPDFEngine(args.out) as saved:
-        gone = saved.absent(span.text)
+        gone = saved.absent(span)
     # Still there: keep nothing, as the app downloads nothing.
     if not gone:
         Path(args.out).unlink()

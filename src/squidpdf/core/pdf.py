@@ -72,6 +72,22 @@ class PdfFile:
                 lines.append([_text_piece(raw) for raw in line["spans"]])
         return lines
 
+    def text_in(self, page: int, box: Rect) -> str:
+        """The letters drawn inside `box` on the page, in reading order.
+
+        A letter counts when its middle is inside, so one on the next line that
+        only grazes the box's edge doesn't.
+        """
+        blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
+        letters = (
+            char
+            for block in blocks
+            for line in block["lines"]
+            for piece in line["spans"]
+            for char in piece["chars"]
+        )
+        return "".join(char["c"] for char in letters if _middle_inside(char["bbox"], box))
+
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
         listed = self._doc[page].get_fonts(full=True)
@@ -261,6 +277,12 @@ def _text_piece(raw: dict) -> TextPiece:
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )
+
+
+def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
+    """Whether the middle of `bbox` lies inside `box`."""
+    x0, y0, x1, y1 = bbox
+    return box.x0 <= (x0 + x1) / 2 <= box.x1 and box.y0 <= (y0 + y1) / 2 <= box.y1
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

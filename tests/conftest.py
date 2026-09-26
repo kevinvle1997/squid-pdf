@@ -95,6 +95,18 @@ def pdf(tmp_path_factory) -> str:
     return str(path)
 
 
+@pytest.fixture(scope="module")
+def repeated(tmp_path_factory) -> str:
+    """Two pages that open with the same line, as a header on every page does."""
+    path = tmp_path_factory.mktemp("repeated") / "repeated.pdf"
+    doc = pymupdf.open()
+    for _page in range(2):
+        doc.new_page().insert_text((72, 72), "CONFIDENTIAL", fontname="helv", fontsize=10)
+    doc.save(path)
+    doc.close()
+    return str(path)
+
+
 @pytest.fixture
 def engine(pdf):
     """The sample, open in the engine for one test."""

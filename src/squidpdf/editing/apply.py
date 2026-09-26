@@ -214,16 +214,16 @@ def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -
 def verify_redactions(
     engine: Engine, edits: Sequence[Edit], index: SpanIndex
 ) -> dict[str, bool]:
-    """Confirm each redacted string is really gone from the saved document.
+    """Confirm each redacted span's text is really gone from where it was.
 
     A covering rectangle would pass a visual check and fail this one, which is
-    the entire point of running it. Only the last edit per span counts, matching
-    what apply() actually drew. A Replace after a Redact means it was not
-    redacted after all. A redaction of an unknown span raises, as in apply().
+    the entire point of running it. The same words elsewhere, such as a header
+    repeated on other pages, don't count against it. Only the last edit per
+    span counts, matching what apply() actually drew. A Replace after a Redact
+    means it was not redacted after all. A redaction of an unknown span raises,
+    as in apply().
     """
     span_edits, _inserts, _skipped = _resolve(engine, edits, index)
     return {
-        span.id: engine.absent(span.text)
-        for edit, span in span_edits
-        if isinstance(edit, Redact)
+        span.id: engine.absent(span) for edit, span in span_edits if isinstance(edit, Redact)
     }
