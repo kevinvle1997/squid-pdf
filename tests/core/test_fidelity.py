@@ -5,15 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pymupdf
+import pytest
 
 from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate, words
-from squidpdf.core.fonts import base14_for
-from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
+from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as
 from tests.helpers import assert_all, assert_between, assert_equal, assert_true
 
 _EM = 1000
 _SIZE = 12
 _ORIGIN_TOLERANCE_PT = 0.01
+_SERIF_FLAGS = 2 | 32  # a PDF font description's Serif and Nonsymbolic bits
 
 # The fixtures' /Widths and /W, by letter (see conftest.py).
 _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
@@ -53,9 +54,48 @@ def test_referenced_font_is_a_substitution(engine):
     referenced = [s for s in engine.index() if s.page == REFERENCED_PAGE]
     describe = _describe_report(reports)
     assert_all(referenced, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
-    assert_all(referenced, lambda s: reports[s.id].substitute == "Times", describe)  # drawn in
+    # Drawn in the look-alike we ship, in the span's own style, letters as wide as Times'.
+    look_alikes = {
+        "Times-Bold": "Liberation Serif Bold",
+        "Times-Roman": "Liberation Serif Regular",
+    }
+    assert_all(referenced, lambda s: reports[s.id].substitute == look_alikes[s.font], describe)
+    assert_all(referenced, lambda s: reports[s.id].same_widths, describe)
     not_stored = words.FONT_NOT_IN_FILE
     assert_all(referenced, lambda s: reports[s.id].why == not_stored, describe)
+
+
+@pytest.mark.parametrize(
+    ("base_font", "flags", "face", "same_widths"),
+    [
+        ("Calibri-Bold", None, "Carlito Bold", True),
+        ("Cambria,Italic", None, "Caladea Italic", True),
+        ("TimesNewRomanPS-BoldItalicMT", None, "Liberation Serif Bold Italic", True),
+        ("Calibri-Light", None, "Carlito Regular", False),  # a cut we don't ship
+        # A font we don't know: its kind comes from the PDF's description, not its name.
+        ("NimbusSomething", _SERIF_FLAGS, "Liberation Serif Regular", False),
+        ("NimbusSomething", None, "Liberation Sans Regular", False),
+    ],
+)
+def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
+    tmp_path, base_font, flags, face, same_widths
+):
+    """Calibri-Bold gets Carlito Bold, the face the report names, not Helvetica."""
+    path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
+    out = str(tmp_path / "redrawn.pdf")
+    # Drawn with nothing asked first: remove() must read the font before erasing it.
+    with MuPDFEngine(path) as eng:
+        span = next(iter(eng.index()))
+        eng.remove([span])
+        eng.draw(span, "Hello again")
+        eng.save(out)
+    with MuPDFEngine(path) as eng:
+        [report] = eng.assess(eng.index())
+
+    assert_equal((report.substitute, report.same_widths), (face, same_widths), "the report")
+    [drawn] = _drawn(out)
+    expected = ("Hello again", saved_as(face))
+    assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
 
 
 def test_embedded_font_is_exact(engine):
@@ -82,9 +122,10 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
     assert_equal(report.why, words.FONT_NO_LETTER_LIST, "why, as the user reads it")
+    # Nothing to go on but a plain description, so a plain sans draws it, and says so.
+    assert_equal(report.substitute, "Liberation Sans Regular", "the face it names")
     first_drawn = _drawn(str(out))[0]
-    substitute = pymupdf.Font(base14_for(span.font)).name
-    assert_equal(first_drawn["font"], substitute, "the font that redrew it")
+    assert_equal(first_drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
 
 
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
@@ -156,5 +197,5 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
 
     assert_equal(missing, ["C", "D"], "letters it can't draw")
     [drawn] = _drawn(out)
-    substitute = pymupdf.Font(base14_for(span.font)).name
-    assert_equal((_text(drawn), drawn["font"]), ("ABC", substitute), "what redrew, and in what")
+    expected = ("ABC", saved_as("Liberation Sans Regular"))
+    assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")

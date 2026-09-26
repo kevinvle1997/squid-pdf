@@ -21,9 +21,12 @@ def test_check_reports_overflow_with_options(engine):
     assert_true(not missing, f"options offered ({offered}) are missing {missing}")
 
     # A letter only the stand-in has, and one nothing has: both said, each its way.
-    fit = check(engine, span, longer + " é →")
-    assert_in("so the line is drawn in", fit.describe() or "", "the font switch")
-    assert_in(words.WILL_LEAVE_OUT.format(letters="→"), fit.describe() or "", "the letter lost")
+    fit = check(engine, span, longer + " é 中")
+    switch = words.MISSING.format(chars="é", font="Liberation Serif Regular")
+    assert_in(switch, fit.describe() or "", "the font switch, naming the face that draws")
+    assert_in(
+        words.WILL_LEAVE_OUT.format(letters="中"), fit.describe() or "", "the letter lost"
+    )
 
 
 def test_check_is_quiet_when_nothing_is_wrong(engine):

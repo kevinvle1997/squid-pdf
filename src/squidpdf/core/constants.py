@@ -20,5 +20,11 @@ TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
-# Half of `build`: bump it when the substitute fonts change, so browsers refetch.
-LIBRARY_VERSION = "1"
+# Half of `build`: bump it when the fonts we ship change, so browsers refetch.
+# 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
+LIBRARY_VERSION = "2"
+
+# The letters a face we ship lists widths for, so the browser can preview new text:
+# Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
+# Short to keep the font list small; letters past these still draw.
+GLYPH_LIST_RANGES = ((0x20, 0x250), (0x370, 0x530), (0x1E00, 0x1F00), (0x2000, 0x2200))

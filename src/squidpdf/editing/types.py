@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
+from squidpdf.core.types import Category, Style
+
 # How a too-long replacement is drawn; the names the user's options go by.
 type Strategy = Literal["as-is", "shrink", "condense"]
 
@@ -78,6 +80,35 @@ class InsertFitInfo(FitInfo):
     """An insert's fit, named by its place in the list the browser sent."""
 
     edit: int
+
+
+class FaceInfo(TypedDict):
+    """A face new text can be drawn in, and each letter it draws, by width.
+
+    `name` is what an insert's `font` asks for. Widths are in thousandths of the
+    font size, the same the server measures with, so a preview matches the draw.
+    """
+
+    name: str
+    style: Style
+    glyphs: dict[str, float]
+
+
+class FamilyInfo(TypedDict):
+    """A family of faces we ship, and what kind of font it is."""
+
+    family: str
+    category: Category
+    license: str
+    same_widths_as: list[str]  # document fonts it stands in for without moving anything
+    faces: list[FaceInfo]
+
+
+class FontList(TypedDict):
+    """Every face we ship, by family, under this build."""
+
+    build: str
+    families: list[FamilyInfo]
 
 
 class Rendered(TypedDict):

@@ -2,14 +2,49 @@
 
 from __future__ import annotations
 
+import io
+
 import pymupdf
 import pytest
+from fontTools.ttLib import TTFont
 
 from squidpdf.core import MuPDFEngine
+from squidpdf.core.fonts import FACES, face_bytes
+
+_POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 
 # The sample's two pages, counted from 0 as spans count them.
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a stand-in
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
+
+
+def saved_as(face: str) -> str:
+    """The name a saved PDF gives a face we ship, e.g. "Carlito-Bold" for "Carlito Bold".
+
+    Read from the shipped file itself: its PostScript name, which MuPDF writes.
+    """
+    font = TTFont(io.BytesIO(face_bytes(FACES[face])))
+    return str(font["name"].getDebugName(_POSTSCRIPT_NAME))
+
+
+def named_only(path: str, base_font: str, flags: int | None = None) -> str:
+    """One line in a font the file only names, never stores, as Word does with Calibri.
+
+    Written in MuPDF's Helvetica, then renamed: nothing here reads the letters'
+    shapes, only the font's name and, when `flags` is given, its description.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 96), "Hello there", fontname="helv", fontsize=12)
+    [(xref, *_rest)] = page.get_fonts()
+    doc.xref_set_key(xref, "BaseFont", f"/{base_font}")
+    if flags is not None:
+        descriptor = (
+            f"<</Type/FontDescriptor/FontName/{base_font}/Flags {flags}/ItalicAngle 0>>"
+        )
+        doc.xref_set_key(xref, "FontDescriptor", descriptor)
+    doc.save(path)
+    return path
 
 
 @pytest.fixture(scope="module")

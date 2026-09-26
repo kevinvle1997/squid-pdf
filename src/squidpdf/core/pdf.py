@@ -8,14 +8,18 @@ the engine decides what to do with it.
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import FontCode, GlyphId, Rect
+from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, Rect
 
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
+
+# The object the first entry of an array points at: "[15 0 R]" -> 15.
+_FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
@@ -91,6 +95,37 @@ class PdfFile:
         except (RuntimeError, ValueError):
             return None
         return buffer or None
+
+    def font_descriptor(self, xref: int) -> FontDescriptor | None:
+        """What the font's description says about how it looks; None when it has none.
+
+        A font only named by one of the 14 standard names often has none. A
+        two-byte (Type0) font keeps it on the font inside it.
+        """
+        owner = xref
+        kind, value = self._doc.xref_get_key(xref, "DescendantFonts")
+        if kind == "array":
+            inner = _FIRST_REFERENCE.match(value)
+            if inner is None:  # written out in place, not pointed at: rare, and not worth it
+                return None
+            owner = int(inner.group(1))
+        kind, _value = self._doc.xref_get_key(owner, "FontDescriptor")
+        if kind == "null":
+            return None
+        flags = self._number(owner, "FontDescriptor/Flags")
+        angle = self._number(owner, "FontDescriptor/ItalicAngle")
+        return FontDescriptor(
+            flags=0 if flags is None else int(flags),
+            weight=self._number(owner, "FontDescriptor/FontWeight"),
+            italic_angle=0.0 if angle is None else angle,
+        )
+
+    def _number(self, xref: int, key: str) -> float | None:
+        """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
+        kind, value = self._doc.xref_get_key(xref, key)
+        if kind not in ("int", "real"):
+            return None
+        return float(value)
 
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first.

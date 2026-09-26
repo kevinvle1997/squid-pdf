@@ -45,23 +45,14 @@ class SpanInfo(TypedDict):
 class FontInfo(TypedDict):
     """A font the spans use: what stands in for it, and each letter it really draws, by width.
 
-    Widths are in thousandths of the font size.
+    Widths are in thousandths of the font size, from the face that draws: the
+    file's own copy, or the substitute when that can't be used.
     """
 
     name: str
-    substitute: str | None
+    substitute: str | None  # the face we ship that draws it instead, e.g. "Carlito Bold"
     why: str | None  # why the file's own copy can't be used, in plain words
-    glyphs: dict[str, float]
-
-
-class InsertFontInfo(TypedDict):
-    """A face new text can always be drawn in, and each letter it draws, by width.
-
-    Widths are in thousandths of the font size, so the browser can preview
-    exactly what an insert will look like before it's drawn.
-    """
-
-    name: str
+    same_widths: bool  # the substitute's letters are as wide as the original's
     glyphs: dict[str, float]
 
 
@@ -71,9 +62,8 @@ class Analysis(TypedDict):
     build: str
     pages: list[PageInfo]
     spans: list[SpanInfo]
+    # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontInfo]
-    # The built-in faces an insert can use; the document's own are in `fonts`.
-    insert_fonts: list[InsertFontInfo]
 
 
 class FitRules(TypedDict):
@@ -89,7 +79,8 @@ class Copy(TypedDict):
 
     missing: str
     too_long: str
-    stand_in: str
+    stand_in: str  # when the substitute's letters may be another width
+    stand_in_same_widths: str  # when they are exactly as wide: `same_widths` on the font
     undo_redaction: str
     options: dict[str, dict[str, str]]
 

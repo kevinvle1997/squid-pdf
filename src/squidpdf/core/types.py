@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import NewType
+from typing import Literal, NewType
 
 # Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
 Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
@@ -125,6 +125,40 @@ class CodedFont:
     xref: int  # its PDF object
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
+
+
+type Style = Literal["regular", "bold", "italic", "bold-italic"]
+type Category = Literal["sans", "serif", "mono", "handwriting"]
+
+
+@dataclass(frozen=True, slots=True)
+class Face:
+    """A font file we ship: one family in one style."""
+
+    name: str  # what the user reads and an insert asks for, e.g. "Carlito Bold"
+    family: str  # e.g. "Carlito"
+    style: Style
+    category: Category
+    file: str  # its file in the package's `fonts` folder
+    license: str  # e.g. "OFL-1.1"; the text is in `fonts/licenses`
+    same_widths_as: tuple[str, ...]  # document fonts whose letters are exactly as wide
+
+
+@dataclass(frozen=True, slots=True)
+class LookAlike:
+    """The face that stands in for a document's font, and whether nothing on the page moves."""
+
+    face: Face
+    same_widths: bool  # False when it's only the same kind of font (a serif for a serif)
+
+
+@dataclass(frozen=True, slots=True)
+class FontDescriptor:
+    """What a font's description in the PDF says about its look, for picking a look-alike."""
+
+    flags: int  # its /Flags bits: serif, fixed width, italic, forced bold and so on
+    weight: float | None  # its /FontWeight, 100 to 900, when it gives one
+    italic_angle: float  # its /ItalicAngle: how far the letters lean, 0 when upright
 
 
 def new_text(

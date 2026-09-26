@@ -29,8 +29,9 @@ class FidelityReport:
     span_id: str
     state: Fidelity
     font: str
-    substitute: str | None = None
+    substitute: str | None = None  # the face we ship that draws it, e.g. "Carlito Bold"
     why: str | None = None  # why the file's own font can't be used, in plain words
+    same_widths: bool = False  # the substitute's letters are as wide, so nothing moves
 
 
 def green_rate(reports: list[FidelityReport]) -> float:
