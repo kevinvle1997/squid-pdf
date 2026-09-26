@@ -46,19 +46,24 @@ class Engine(Protocol):
         ...
 
     def measure(self, span: Span, text: str) -> float:
-        """Rendered width in points, in the face this span would actually use."""
+        """Rendered width in points, in the face `draw` would use for this text."""
         ...
 
     def missing(self, span: Span, text: str) -> list[str]:
-        """Characters this span's font cannot draw."""
+        """Characters this span's drawing font cannot draw, substitute or not."""
         ...
 
     def remove(self, spans: list[Span]) -> None:
         """Delete these glyph runs. Real deletion, not a covering rectangle."""
         ...
 
-    def draw(self, span: Span, text: str) -> None:
-        """Redraw at the span's baseline, in its own font where the file has it."""
+    def draw(
+        self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
+    ) -> None:
+        """Redraw at the span's baseline, in its own font where it draws every character.
+
+        `size` in points replaces the span's own; `scale_x` narrows it horizontally.
+        """
         ...
 
     def draw_at(

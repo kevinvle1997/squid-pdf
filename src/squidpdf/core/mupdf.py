@@ -59,14 +59,16 @@ class MuPDFEngine:
             raise Unreadable(path) from exc
         # Keyed by (page, font name); each fills in lazily, on first lookup.
         self._fonts: dict[tuple[int, str], pymupdf.Font | None] = {}  # embedded font
-        self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage
+        self._coverage: dict[tuple[int, str], Coverage] = {}  # its glyph coverage, if kept
         self._aliases: dict[tuple[int, str], str | None] = {}  # its page resource, once drawn
 
     def _embedded(self, page: int, name: str) -> pymupdf.Font | None:
         """The document's own font, or None when the file only references it.
 
         Not embedded is the common case for anything exported from Word, and it
-        is exactly what the substitute state warns about.
+        is exactly what the substitute state warns about. A font nothing can map
+        a character through, like one with only a symbol cmap, draws boxes, so
+        it counts as not embedded either.
         """
         key = (page, strip_subset(name))
         if key in self._fonts:
@@ -80,20 +82,17 @@ class MuPDFEngine:
                 try:
                     _basename, _ext, _type, buf = self.doc.extract_font(xref)
                     if buf:
-                        font = pymupdf.Font(fontbuffer=buf)
+                        candidate = pymupdf.Font(fontbuffer=buf)
+                        claimed = candidate.valid_codepoints()
+                        cov = Coverage(buf, claimed)
+                        if cov.usable or claimed:
+                            font, self._coverage[key] = candidate, cov
                 except (RuntimeError, ValueError):
                     pass
             break
 
         self._fonts[key] = font
         return font
-
-    def _drawing_font(self, span: Span) -> pymupdf.Font:
-        """The font to actually draw with: the real one, or its base-14 stand-in."""
-        embedded = self._embedded(span.page, span.font)
-        if embedded is not None:
-            return embedded
-        return pymupdf.Font(fontname=base14_for(span.font))
 
     def index(self) -> SpanIndex:
         """Built once, from the pristine document. Never rebuilt from a patched one.
@@ -168,10 +167,15 @@ class MuPDFEngine:
         return pix.tobytes("png")
 
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
-        """Judge every span in the index as exact or substitute."""
+        """Judge every span in the index as exact or substitute.
+
+        Exact only if the span's own font draws its own text: `draw` swaps the
+        run otherwise, so a redraw of it would be in the substitute.
+        """
         out = []
         for span in index:
-            if self._embedded(span.page, span.font) is not None:
+            own = self._embedded(span.page, span.font) is not None
+            if own and not self.missing(span, span.text):
                 out.append(FidelityReport(span.id, Fidelity.EXACT, span.font))
             else:
                 out.append(
@@ -187,56 +191,61 @@ class MuPDFEngine:
     def glyphs(self, span: Span) -> dict[str, float]:
         """Every character this span's drawing font really draws, to its advance per 1000 em.
 
-        The font `measure` uses, so widths agree. A subset's emptied glyphs don't
-        count; a font Coverage can't read falls back to MuPDF's list, a claim.
+        The font `measure` uses, so widths agree, and what `missing` checks
+        against. A subset's emptied glyphs don't count; a font Coverage can't
+        read falls back to MuPDF's list, a claim.
         """
         embedded = self._embedded(span.page, span.font)
         if embedded is None:
             font = pymupdf.Font(fontname=base14_for(span.font))
-            chars = [chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES]
+            chars = sorted(_simple_chars(font))
         else:
             font = embedded
-            key = (span.page, strip_subset(span.font))
-            cov = self._coverage.get(key)  # built on first use
-            if cov is None:
-                cov = self._coverage[key] = Coverage(embedded.buffer)
-            drawable = cov.drawable()
-            chars = (
-                drawable
-                if drawable is not None
-                else [chr(cp) for cp in font.valid_codepoints()]
-            )
+            chars = self._coverage[(span.page, strip_subset(span.font))].drawable()
         return {ch: round(font.glyph_advance(ord(ch)) * _EM, _ADVANCE_DP) for ch in chars}
 
     def measure(self, span: Span, text: str) -> float:
-        """How wide `text` would render, in this span's font and size."""
-        return self._drawing_font(span).text_length(text, fontsize=span.size)
+        """How wide `text` would render, in the face `draw` would pick and this span's size."""
+        font, text = self._run(span, text)
+        return font.text_length(text, fontsize=span.size)
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's font cannot actually draw.
 
         Asks the glyph to draw rather than trusting the charset: a subsetted
         font still lists glyphs whose outlines were emptied. See core.coverage.
+        A substitute is checked against what it draws, as `glyphs` lists it.
         """
         embedded = self._embedded(span.page, span.font)
         if embedded is None:
-            return []  # the substitute carries full Latin coverage
+            drawable = _simple_chars(pymupdf.Font(fontname=base14_for(span.font)))
+            return [ch for ch in dict.fromkeys(text) if ch not in drawable]
+        return self._coverage[(span.page, strip_subset(span.font))].missing(text)
 
-        key = (span.page, strip_subset(span.font))
-        cov = self._coverage.get(key)  # built on first use
-        if cov is None:
-            cov = self._coverage[key] = Coverage(embedded.buffer)
-        return cov.missing(text)
+    def _run(self, span: Span, text: str) -> tuple[pymupdf.Font, str]:
+        """The face `text` is drawn in, and the text as it can be drawn.
+
+        The span's own font if it draws every character; otherwise the whole run
+        in the substitute, less what even that can't draw.
+        """
+        embedded = self._embedded(span.page, span.font)
+        if embedded is not None and not self.missing(span, text):
+            return embedded, text
+        substitute = pymupdf.Font(fontname=base14_for(span.font))
+        drawable = _simple_chars(substitute)
+        return substitute, "".join(ch for ch in text if ch in drawable)
 
     def remove(self, spans: list[Span]) -> None:
         """Delete these spans' glyph runs. Real removal, not a covering rectangle.
 
-        Each fragment is redacted separately: the union box of a multi-fragment
-        span can overlap text belonging to something else. Each span's embedded
-        font is resolved and cached before its own redaction runs: apply_redactions
-        can drop a page's now-unused font resource, and if that font was only used
-        by the text just removed, it would otherwise be gone by the time draw()
-        goes looking for it.
+        One box per span, not per fragment: MuPDF's cost grows with the box
+        count, and a span's fragments only ever sit a kerning gap apart, so its
+        box covers nothing theirs don't. Line art is left alone, so underlines
+        and rules survive. Each span's embedded font is resolved and cached
+        before its own redaction runs: apply_redactions can drop a page's
+        now-unused font resource, and if that font was only used by the text
+        just removed, it would otherwise be gone by the time draw() goes
+        looking for it.
         """
         by_page: dict[int, list[Span]] = {}
         for s in spans:
@@ -246,18 +255,43 @@ class MuPDFEngine:
         for pno, group in by_page.items():
             page = self.doc[pno]
             for span in group:
-                for frag in span.fragments:
-                    r = frag.bbox
-                    page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
-            page.apply_redactions(images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE)
+                r = span.bbox
+                page.add_redact_annot(pymupdf.Rect(r.x0, r.y0, r.x1, r.y1))
+            page.apply_redactions(
+                images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
+                graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
+            )
 
-    def draw(self, span: Span, text: str) -> None:
+    def draw(
+        self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
+    ) -> None:
         """Redraw at the span's baseline, in its own font where the file has it.
 
-        The font goes onto the page once, not once per span: a resource per span
-        piled up on the page and made every redraw slower.
+        `size` replaces the span's own; `scale_x` narrows the run from its start.
+        A character the font can't draw sends the whole run to the substitute,
+        so the line never mixes two faces. The font goes onto the page once,
+        not once per span: a resource per span piled up on the page and made
+        every redraw slower.
         """
-        page = self.doc[span.page]
+        alias = None if self.missing(span, text) else self._alias(span)
+        if alias is None:  # the substitute draws the whole run
+            _font, text = self._run(span, text)
+        origin = pymupdf.Point(*span.origin)
+        self.doc[span.page].insert_text(
+            origin,
+            text,
+            fontname=alias or base14_for(span.font),
+            fontsize=span.size if size is None else size,
+            color=span.color,
+            overlay=True,
+            morph=(origin, pymupdf.Matrix(scale_x, 1)),
+        )
+
+    def _alias(self, span: Span) -> str | None:
+        """The page's resource name for this span's embedded font, put there on first use.
+
+        None when the file only references the font, or MuPDF won't embed it.
+        """
         key = (span.page, strip_subset(span.font))
         if key not in self._aliases:
             embedded = self._embedded(span.page, span.font)
@@ -267,23 +301,14 @@ class MuPDFEngine:
                 digest = hashlib.blake2s(key[1].encode(), digest_size=_ALIAS_DIGEST_SIZE)
                 alias = "F" + digest.hexdigest()
                 try:
-                    page.insert_font(fontname=alias, fontbuffer=embedded.buffer)
+                    self.doc[span.page].insert_font(fontname=alias, fontbuffer=embedded.buffer)
                 except (RuntimeError, ValueError):
                     # These bytes already parsed as a Font object in _embedded(), but
                     # embedding as a page resource is a different MuPDF code path;
                     # degrade to the substitute rather than fail the edit outright.
                     alias = None
             self._aliases[key] = alias
-        alias = self._aliases[key]
-
-        page.insert_text(
-            pymupdf.Point(*span.origin),
-            text,
-            fontname=alias or base14_for(span.font),
-            fontsize=span.size,
-            color=span.color,
-            overlay=True,
-        )
+        return self._aliases[key]
 
     def draw_at(
         self,
@@ -317,6 +342,11 @@ class MuPDFEngine:
     def __exit__(self, *_exc: object) -> None:
         """Close the document when the `with` block ends."""
         self.close()
+
+
+def _simple_chars(font: pymupdf.Font) -> set[str]:
+    """What a base-14 font draws through insert_text: its glyphs within Latin-1."""
+    return {chr(cp) for cp in font.valid_codepoints() if cp < _SIMPLE_FONT_CODES}
 
 
 def _merge(raw: list[dict]) -> list[list[dict]]:

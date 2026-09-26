@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from squidpdf.editing.types import Strategy
+
 
 @dataclass(frozen=True, slots=True)
 class Replace:
@@ -18,7 +20,7 @@ class Replace:
 
     span_id: str
     text: str
-    strategy: Literal["as-is", "shrink", "condense"] = "as-is"
+    strategy: Strategy = "as-is"
     kind: Literal["replace"] = "replace"
 
 

@@ -18,6 +18,7 @@ GAP_RATIO = 0.35
 # Fit. The server's check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
+SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
 # Half of `build`: bump it when the substitute fonts change, so browsers refetch.
 LIBRARY_VERSION = "1"

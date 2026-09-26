@@ -12,6 +12,10 @@ from __future__ import annotations
 MISSING = "no {chars} in this font"
 TOO_LONG = "{delta_pt} pt too long"
 
+# Why an edit was left out.
+NO_SPAN = "This edit points at text that isn't in this document."
+NO_PAGE = "This edit points at a page that isn't in this document."
+
 # The ways out of an overflow, keyed by the name an edit's `strategy` uses.
 OPTIONS = {
     "shrink": {
