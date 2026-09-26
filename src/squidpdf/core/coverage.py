@@ -38,8 +38,8 @@ class Coverage:
     Built from the raw bytes as extracted from the PDF, which may be a bare CFF,
     a TrueType, or an OpenType wrapper. Bytes it can't read (Type1, a symbol-only
     cmap) fall back to `claimed`, the font engine's own list: the best word left.
-    A TrueType with no Unicode cmap can be handed `glyphs`, letter to glyph id,
-    from whoever knows how the document reaches them; then only those letters count.
+    A TrueType with no Unicode cmap can be given `glyph_ids` (letter -> glyph id)
+    instead; then only those letters count.
     Results are cached per character because the check runs on every keystroke.
     """
 
@@ -47,19 +47,19 @@ class Coverage:
         self,
         buffer: bytes,
         claimed: Iterable[int] = (),
-        glyphs: Mapping[str, int] | None = None,
+        glyph_ids: Mapping[str, int] | None = None,
     ) -> None:
         """Parse a font's raw bytes; `claimed` is what it draws if they won't parse."""
         self._glyph_names: dict[int, str] = {}  # codepoint -> glyph name, once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
         self._claimed = frozenset(claimed)
-        # Given glyphs, the blanks are the whitespace it maps: a thin space draws nothing too.
-        self._blanks = _BLANK if glyphs is None else {ch for ch in glyphs if ch.isspace()}
+        # With glyph_ids, any space it maps is blank: a thin space draws nothing too.
+        self._blanks = _BLANK if glyph_ids is None else {ch for ch in glyph_ids if ch.isspace()}
         self.usable = False  # True once a parseable font has been loaded
-        self._load(buffer, glyphs)
+        self._load(buffer, glyph_ids)
 
-    def _load(self, buffer: bytes, glyphs: Mapping[str, int] | None) -> None:
+    def _load(self, buffer: bytes, glyph_ids: Mapping[str, int] | None) -> None:
         """Figure out the font's format and parse it, or give up quietly."""
         if not buffer:
             return
@@ -67,25 +67,25 @@ class Coverage:
             if buffer[:2] == _BARE_CFF_SIGNATURE:
                 self._load_bare_cff(buffer)
             else:
-                self._load_sfnt(buffer, glyphs)
+                self._load_sfnt(buffer, glyph_ids)
             self.usable = True
         except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
             self.usable = False
 
-    def _load_sfnt(self, buffer: bytes, glyphs: Mapping[str, int] | None) -> None:
-        """TrueType or OpenType, where a cmap table, or `glyphs`, maps characters.
+    def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, int] | None) -> None:
+        """TrueType or OpenType, mapped by its cmap table or by `glyph_ids`.
 
-        A font with no Unicode cmap (a symbol font, say) and no `glyphs` raises, so
-        it is marked unusable rather than reporting every character as missing.
+        With neither (a symbol font, say) it raises, so the font is marked
+        unusable rather than reporting every character as missing.
         """
         tt = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        if glyphs is None:
+        if glyph_ids is None:
             cmap = tt.getBestCmap()
             if cmap is None:
                 raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
         else:
             order = tt.getGlyphOrder()
-            cmap = {ord(ch): order[gid] for ch, gid in glyphs.items() if gid < len(order)}
+            cmap = {ord(ch): order[gid] for ch, gid in glyph_ids.items() if gid < len(order)}
         self._glyph_names = dict(cmap)
         self._glyphs = tt.getGlyphSet()
 

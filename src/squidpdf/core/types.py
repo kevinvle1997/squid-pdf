@@ -98,20 +98,18 @@ class Span:
 
 
 @dataclass(frozen=True, slots=True)
-class Codes:
-    """How the file writes each letter in a font it reaches only by code.
+class CodedFont:
+    """An embedded font the page draws with codes, not letters.
 
-    Some embedded fonts have no cmap a letter can be looked up in: the page
-    writes codes, and the font's ToUnicode says which letter each one is. `ref`
-    is the font's resource name on this page, `xref` its object.
+    It has no letter lookup of its own; its ToUnicode says which letter each code is.
     """
 
-    ref: str
-    xref: int
-    digits: int  # hex digits per code: 2 for a simple font, 4 for Identity-H
-    code: dict[str, int]  # letter -> the code that draws it
-    glyph: dict[str, int]  # letter -> the glyph id that code reaches
-    advance: dict[str, float]  # letter -> advance per 1000 em, from the font dict
+    resource: str  # its name in the page's font resources
+    xref: int  # its PDF object
+    code_bytes: int  # 1 for a simple font, 2 for Identity-H
+    codes: dict[str, int]  # letter -> code
+    glyphs: dict[str, int]  # letter -> glyph id
+    widths: dict[str, float]  # letter -> width per 1000 em
 
 
 class SpanIndex:
