@@ -54,11 +54,43 @@ def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
             Message("left_out", {"letters": ["中", "文"]}),
             "Left out 中 文: no font we have can draw them.",
         ),
+        (
+            Message("text_too_long", {"chars": 1000}),
+            "New text can be up to 1000 characters.",
+        ),
     ],
-    ids=["no facts", "a fraction", "a whole number", "characters", "letters"],
+    ids=[
+        "no facts",
+        "a fraction",
+        "a whole number",
+        "characters",
+        "letters",
+        "a count of characters",
+    ],
 )
 def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
     assert_equal(words.render(message), said, "the sentence")
+
+
+@pytest.mark.parametrize(
+    ("character", "said"),
+    [
+        ("\u202f", "narrow no-break space"),
+        (" ", "space"),
+        ("\u00ad", "soft hyphen"),
+        ("\u200b", "zero width space"),
+        ("\t", "U+0009"),
+        ("\u0301", "\u0301"),
+    ],
+    ids=["narrow no-break space", "space", "soft hyphen", "zero width", "tab", "an accent"],
+)
+def test_a_character_that_draws_nothing_is_named(character, said):
+    fit = Message("missing", {"chars": ["é", character], "font": "Noto Sans Regular"})
+    expected = f"no é or {said} in this font, so the line is drawn in Noto Sans Regular"
+    assert_equal(words.render(fit), expected, "the sentence naming it")
+    left_out = Message("left_out", {"letters": [character]})
+    expected = f"Left out {said}: no font we have can draw them."
+    assert_equal(words.render(left_out), expected, "the sentence naming it")
 
 
 def test_a_message_is_said_in_the_language_asked_for_joiners_and_all(pseudo):
