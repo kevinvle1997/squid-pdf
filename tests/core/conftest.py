@@ -185,6 +185,23 @@ def coded_type0(tmp_path_factory) -> str:
     )
 
 
+@pytest.fixture(scope="module")
+def corrupt(tmp_path_factory) -> str:
+    """ABBA in a stored TrueType whose font program is garbage: MuPDF can't open it."""
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("corrupt") / "corrupt.pdf"),
+        {
+            "file": b"\x00\x01\x00\x00" + b"not really a font " * 40,
+            "content": b"BT /F1 12 Tf 72 700 Td (ABBA) Tj ET",
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Broken"),
+            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Broken/FirstChar 65/LastChar 66"
+            "/Widths[600 600]/FontDescriptor {descriptor}>>",
+        },
+    )
+
+
 @pytest.fixture(params=["coded_symbol", "coded_type0"])
 def coded(request) -> str:
     """A font the file reaches only by code, in either shape."""
