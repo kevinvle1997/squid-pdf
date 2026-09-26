@@ -79,17 +79,6 @@ class Engine(Protocol):
         """
         ...
 
-    def draw_at(
-        self,
-        page: int,
-        origin: tuple[float, float],
-        text: str,
-        size: float,
-        color: tuple[float, float, float] = ...,
-    ) -> None:
-        """Draw where the document has no text."""
-        ...
-
     def save(self, path: str) -> None:
         """Write the document, edits and all, to `path`."""
         ...

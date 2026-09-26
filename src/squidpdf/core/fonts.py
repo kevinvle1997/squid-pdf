@@ -47,6 +47,9 @@ _BASE14_FALLBACK = "helv"
 # What each of those is called, for telling the user which face drew their edit.
 _BASE14_NAMES = {"helv": "Helvetica", "tiro": "Times", "cour": "Courier"}
 
+# The faces new text can always be drawn in, by the name the user picks.
+BUILT_IN = tuple(_BASE14_NAMES.values())
+
 
 def strip_subset(font: str) -> str:
     """`ABCDEE+Calibri-Bold` -> `Calibri-Bold`. Style is kept, only the prefix goes."""

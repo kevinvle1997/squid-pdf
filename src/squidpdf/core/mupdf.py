@@ -413,19 +413,6 @@ class MuPDFEngine:
             return _FontUnusable(words.FONT_NOT_ADDED)
         return alias
 
-    def draw_at(
-        self,
-        page: int,
-        origin: tuple[float, float],
-        text: str,
-        size: float,
-        color: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    ) -> None:
-        """Draw where the document has no text: a signature, an annotation."""
-        self.doc[page].insert_text(
-            pymupdf.Point(*origin), text, fontsize=size, color=color, overlay=True
-        )
-
     def save(self, path: str) -> None:
         """Write the (possibly edited) document to `path`."""
         self.doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True)

@@ -54,6 +54,17 @@ class FontInfo(TypedDict):
     glyphs: dict[str, float]
 
 
+class InsertFontInfo(TypedDict):
+    """A face new text can always be drawn in, and each letter it draws, by width.
+
+    Widths are in thousandths of the font size, so the browser can preview
+    exactly what an insert will look like before it's drawn.
+    """
+
+    name: str
+    glyphs: dict[str, float]
+
+
 class Analysis(TypedDict):
     """Everything worked out from the original under one build."""
 
@@ -61,6 +72,8 @@ class Analysis(TypedDict):
     pages: list[PageInfo]
     spans: list[SpanInfo]
     fonts: list[FontInfo]
+    # The built-in faces an insert can use; the document's own are in `fonts`.
+    insert_fonts: list[InsertFontInfo]
 
 
 class FitRules(TypedDict):

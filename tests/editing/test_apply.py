@@ -9,11 +9,14 @@ from squidpdf.core import MuPDFEngine, Span, words
 from squidpdf.core.fonts import base14_for
 from squidpdf.editing import (
     BadReference,
+    Edit,
+    Insert,
     Notice,
     Redact,
     Replace,
     Skipped,
     apply,
+    check_insert,
     verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
@@ -167,13 +170,28 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
     span = _substituted(engine)
     out = tmp_path / "skipped.pdf"
 
-    edits = [Replace("nosuchid", "x"), Replace(span.id, "Made on 2 April 2026.")]
-    skipped = apply(engine, edits, index).skipped
+    # New text in the face the user chose; the arrow no font of ours can draw.
+    signed = Insert(REFERENCED_PAGE, (72.0, 700.0), "Signed: Zoë →", 12.0, "Times")
+    edits: list[Edit] = [
+        Replace("nosuchid", "x"),
+        Replace(span.id, "Made on 2 April 2026."),
+        signed,
+    ]
+    fit = check_insert(engine, signed)
+    applied = apply(engine, edits, index)
     engine.save(str(out))
 
-    assert_equal(skipped, [Skipped(0, "bad_reference", words.NO_SPAN)], "skipped")
+    assert_equal(applied.skipped, [Skipped(0, "bad_reference", words.NO_SPAN)], "skipped")
     edited = pymupdf.open(out)[REFERENCED_PAGE].get_text()
     assert_in("2 April 2026", edited, "the edit that was good")
+    # What the fit promised is what was drawn: Times, the arrow left out and said so.
+    left_out = words.LEFT_OUT.format(letters="→")
+    assert_equal(applied.notices, [Notice(None, left_out, edit=2)], "what render says")
+    assert_equal(fit.left_out, ["→"], "what the fit said would be left out")
+    drawn = _drawn(out, REFERENCED_PAGE, "Signed")
+    assert_equal(
+        (drawn["text"].strip(), drawn["font"]), ("Signed: Zoë", "Times-Roman"), "drawn"
+    )
 
 
 def test_a_redaction_pointing_at_nothing_is_an_error(engine):

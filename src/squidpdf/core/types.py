@@ -127,6 +127,23 @@ class CodedFont:
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
 
 
+def new_text(
+    page: int,
+    origin: tuple[float, float],
+    text: str,
+    size: float,
+    font: str,
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> Span:
+    """A span for text that isn't in the document yet, so it's judged and drawn like any other.
+
+    Its box is only nominal: nothing reads it for new text.
+    """
+    x, y = origin
+    box = Rect(x, y - size, x, y)
+    return Span("", page, text, font, size, color, box, origin, ())
+
+
 class SpanIndex:
     """Every editable span in a document, built once and never rebuilt.
 

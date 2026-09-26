@@ -40,13 +40,17 @@ class Redact:
 
 @dataclass(frozen=True, slots=True)
 class Insert:
-    """Draw new text where the document has none: a signature, an annotation."""
+    """Draw new text where the document has none: a signature, an annotation.
+
+    `font` is one of the built-in faces (`core.fonts.BUILT_IN`) or a font the
+    document uses on this page. Its fit says what will really be drawn.
+    """
 
     page: int
     origin: tuple[float, float]
     text: str
     size: float
-    font: str = "Noto Sans"
+    font: str = "Helvetica"
     color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     kind: Literal["insert"] = "insert"
 

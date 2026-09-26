@@ -63,6 +63,8 @@ def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
     assert_equal(doc["fit"], rules, "fit")
     assert_equal(doc["copy"]["missing"], words.MISSING, "the missing-glyph sentence")
     assert_equal(doc["notices"], [], "notices")
+    faces = [face["name"] for face in doc["insert_fonts"]]
+    assert_equal(faces, ["Helvetica", "Times", "Courier"], "faces new text can use")
 
 
 def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):

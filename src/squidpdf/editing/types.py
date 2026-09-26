@@ -27,10 +27,15 @@ class Skipped:
 
 @dataclass(frozen=True, slots=True)
 class Notice:
-    """An edit that went in, but not quite as asked, and why in plain words."""
+    """An edit that went in, but not quite as asked, and why in plain words.
 
-    span_id: str
+    A replace is named by its span; an insert, which has none, by its place in
+    the list the browser sent, as Skipped does.
+    """
+
+    span_id: str | None
     detail: str
+    edit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +74,12 @@ class FitInfo(TypedDict):
     message: str | None
 
 
+class InsertFitInfo(FitInfo):
+    """An insert's fit, named by its place in the list the browser sent."""
+
+    edit: int
+
+
 class Rendered(TypedDict):
     """What render worked out: the strips, a fit per replaced span, and what it skipped.
 
@@ -77,6 +88,7 @@ class Rendered(TypedDict):
 
     images: list[ImageInfo]
     fits: dict[str, FitInfo]
+    insert_fits: list[InsertFitInfo]
     redactions: list[dict[str, str]]
     skipped: list[Skipped]
     notices: list[Notice]

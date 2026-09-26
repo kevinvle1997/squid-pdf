@@ -11,9 +11,10 @@ from pathlib import Path
 import orjson
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span
+from squidpdf.core import BUILD, FidelityReport, MuPDFEngine, Span, new_text
+from squidpdf.core.fonts import BUILT_IN
 from squidpdf.documents import store
-from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
+from squidpdf.documents.types import Analysis, FontInfo, InsertFontInfo, SpanInfo
 
 
 class TooManyPages(Exception):
@@ -40,6 +41,11 @@ def analyse(folder: str) -> Analysis:
         first_span_of_font: dict[str, Span] = {}
         for span in index:
             first_span_of_font.setdefault(span.font, span)
+        # Each built-in face's letters, measured as a first-page insert would be.
+        insert_fonts: list[InsertFontInfo] = [
+            {"name": name, "glyphs": eng.glyphs(new_text(0, (0.0, 0.0), "", 1.0, name))}
+            for name in BUILT_IN
+        ]
         fonts: list[FontInfo] = [
             {
                 "name": span.font,
@@ -58,6 +64,7 @@ def analyse(folder: str) -> Analysis:
         ],
         "spans": [_span_info(span, reports[span.id]) for span in index],
         "fonts": fonts,
+        "insert_fonts": insert_fonts,
     }
     store.save_analysis(path, BUILD, orjson.dumps(analysis))
     return analysis

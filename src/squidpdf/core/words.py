@@ -12,6 +12,7 @@ from __future__ import annotations
 # `{font}` is the face that draws the line instead.
 MISSING = "no {chars} in this font, so the line is drawn in {font}"
 WILL_LEAVE_OUT = "{letters} will be left out: no font we have can draw them"
+CHOSEN_UNAVAILABLE = "{chosen} can't be used here, so this is drawn in {font}"
 NOT_OFFERED = "too far to fit without looking different, so it's left long"
 TOO_LONG = "{delta_pt} pt too long"
 # A font the file doesn't let us use. `{font}` is the face that draws instead.

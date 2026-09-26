@@ -43,6 +43,7 @@ class FitCheck:
     left_out: list[str] = field(default_factory=list)  # no font we have draws these
     stand_in: str = ""  # the face that draws the line when its own font can't
     asked: Strategy = "as-is"  # the way out the user chose, offered or not
+    unavailable: str = ""  # new text's chosen font, when it can't be used here at all
 
     @property
     def ok(self) -> bool:
@@ -52,6 +53,12 @@ class FitCheck:
     def describe(self) -> str | None:
         """Everything that won't come out as typed, in plain words; None if nothing."""
         parts: list[str] = []
+        # New text in a font that can't be used here: all of it is in the stand-in.
+        if self.unavailable:
+            chosen = words.CHOSEN_UNAVAILABLE.format(
+                chosen=self.unavailable, font=self.stand_in
+            )
+            parts.append(chosen)
         # Letters its own font lacks but the stand-in has: the whole line switches.
         switched = [ch for ch in self.missing if ch not in self.left_out]
         if switched:

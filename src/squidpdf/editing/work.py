@@ -12,7 +12,7 @@ from pathlib import Path
 
 from squidpdf.core import Engine, MuPDFEngine, Page, Rect
 from squidpdf.documents import store
-from squidpdf.editing.apply import apply, fits
+from squidpdf.editing.apply import apply, fits, insert_fits
 from squidpdf.editing.edits import Edit
 from squidpdf.editing.fit import FitCheck
 from squidpdf.editing.types import FitInfo, ImageInfo, Region, Rendered
@@ -35,6 +35,7 @@ def render(
 
     with MuPDFEngine(str(path / store.ORIGINAL)) as engine:
         checked = fits(engine, edits, index)  # before apply: remove() can drop the fonts
+        inserts_checked = insert_fits(engine, edits, index)
         applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [
             _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
@@ -43,6 +44,9 @@ def render(
     return {
         "images": images,
         "fits": {span_id: _fit(fit) for span_id, fit in checked.items()},
+        "insert_fits": [
+            {**_fit(fit), "edit": position} for position, fit in inserts_checked.items()
+        ],
         "redactions": [],  # verdicts come with export and the redaction check
         "skipped": applied.skipped,
         "notices": applied.notices,
