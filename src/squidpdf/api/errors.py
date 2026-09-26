@@ -8,6 +8,7 @@ what it can: by the time the server says no, it's a backstop, never news.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -62,12 +63,8 @@ async def _handle(request: Request, exc: Exception) -> Response:
             error = ApiError(Problem.DAMAGED)  # from a worker, as the file opened
         case RequestValidationError():
             # One plain line, not FastAPI's jargon list: it's a browser bug report.
-            lines = []
-            for item in exc.errors():
-                loc = item["loc"]
-                where = ".".join(str(part) for part in loc[1:]) or loc[0]  # drop "body"
-                lines.append(f"{where}: {item['msg']}")
-            error = ApiError(Problem.INVALID_REQUEST, reason="; ".join(lines))
+            reason = "; ".join(_describe(item) for item in exc.errors())
+            error = ApiError(Problem.INVALID_REQUEST, reason=reason)
         case HTTPException(status_code=status.HTTP_404_NOT_FOUND):
             error = ApiError(Problem.NOT_FOUND)  # Starlette's own, for an unknown path
         case HTTPException():
@@ -79,6 +76,14 @@ async def _handle(request: Request, exc: Exception) -> Response:
         status_code=error.status,
         media_type="application/problem+json",
     )
+
+
+def _describe(item: dict[str, Any]) -> str:
+    """One validation failure as `field.path: message`."""
+    # The part of the request, e.g. "body", then the path to the field inside it.
+    part, *field_path = item["loc"]
+    where = ".".join(str(step) for step in field_path) or part
+    return f"{where}: {item['msg']}"
 
 
 def install(app: FastAPI) -> None:

@@ -88,20 +88,22 @@ def load_index(folder: Path) -> SpanIndex | None:
     return SpanIndex(
         [
             Span(
-                id=s["id"],
-                page=s["page"],
-                text=s["text"],
-                font=s["font"],
-                size=s["size"],
-                color=tuple(s["color"]),
-                bbox=Rect(**s["bbox"]),
-                origin=tuple(s["origin"]),
+                id=span["id"],
+                page=span["page"],
+                text=span["text"],
+                font=span["font"],
+                size=span["size"],
+                color=tuple(span["color"]),
+                bbox=Rect(**span["bbox"]),
+                origin=tuple(span["origin"]),
                 fragments=tuple(
-                    Fragment(f["text"], Rect(**f["bbox"]), tuple(f["origin"]))
-                    for f in s["fragments"]
+                    Fragment(
+                        fragment["text"], Rect(**fragment["bbox"]), tuple(fragment["origin"])
+                    )
+                    for fragment in span["fragments"]
                 ),
             )
-            for s in raw
+            for span in raw
         ]
     )
 
@@ -113,7 +115,7 @@ def save_pages(folder: Path, pages: list[Page]) -> None:
 
 def load_pages(folder: Path) -> list[Page]:
     """The saved page list."""
-    return [Page(**p) for p in orjson.loads((folder / _PAGES).read_bytes())]
+    return [Page(**page) for page in orjson.loads((folder / _PAGES).read_bytes())]
 
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:

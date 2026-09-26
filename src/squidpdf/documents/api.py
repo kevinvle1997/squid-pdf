@@ -61,23 +61,24 @@ async def upload(
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     declared = request.headers.get("content-length")  # absent when the body is chunked
-    if declared is not None and int(declared) > limits.MAX_FILE_BYTES:
+    declared_too_large = declared is not None and int(declared) > limits.MAX_FILE_BYTES
+    if declared_too_large:
         raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
     doc_id, folder = store.create(owner.digest(token))
     try:
         # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
-        size, head = 0, b""
+        size, first_kb = 0, b""
         with (folder / store.ORIGINAL).open("wb") as out:
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > limits.MAX_FILE_BYTES:
                     raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
-                if len(head) < _HEADER_WINDOW:
-                    head += chunk[: _HEADER_WINDOW - len(head)]
-                    if len(head) == _HEADER_WINDOW and _PDF_HEADER not in head:
-                        raise ApiError(Problem.NOT_A_PDF)
+                first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
+                header_missing = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
+                if header_missing:
+                    raise ApiError(Problem.NOT_A_PDF)
                 out.write(chunk)
-        if _PDF_HEADER not in head:
+        if _PDF_HEADER not in first_kb:
             raise ApiError(Problem.NOT_A_PDF)
         analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
     except BaseException:  # refused, damaged, or the browser left: keep nothing

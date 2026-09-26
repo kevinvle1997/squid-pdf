@@ -41,5 +41,6 @@ def digest(token: str) -> str:
 def check(request: Request, stored: str) -> None:
     """Raise not_found unless this browser's cookie is the one `stored` came from."""
     presented = request.cookies.get(_COOKIE)  # None if this browser never uploaded
-    if presented is None or not hmac.compare_digest(digest(presented), stored):
+    owns = presented is not None and hmac.compare_digest(digest(presented), stored)
+    if not owns:
         raise ApiError(Problem.NOT_FOUND)

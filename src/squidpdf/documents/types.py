@@ -43,7 +43,10 @@ class SpanInfo(TypedDict):
 
 
 class FontInfo(TypedDict):
-    """A font the spans use: what stands in for it, and every glyph it really draws."""
+    """A font the spans use: what stands in for it, and each letter it really draws, by width.
+
+    Widths are in thousandths of the font size.
+    """
 
     name: str
     substitute: str | None
