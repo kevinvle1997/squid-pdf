@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from squidpdf.core.message import Message
+
 
 class Fidelity(StrEnum):
     """The three ways an edit can turn out, in terms of the original font."""
@@ -24,13 +26,13 @@ class Fidelity(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class FidelityReport:
-    """What we can say about one span, in terms the interface can show directly."""
+    """What we can say about one span: facts, and a Message the interface puts into words."""
 
     span_id: str
     state: Fidelity
     font: str
     substitute: str | None = None  # the face we ship that draws it, e.g. "Carlito Bold"
-    why: str | None = None  # why the file's own font can't be used, in plain words
+    why: Message | None = None  # why the file's own font can't be used
     same_widths: bool = False  # the substitute's letters are as wide, so nothing moves
 
 

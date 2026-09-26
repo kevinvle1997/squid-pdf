@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import io
+import re
 
 import pymupdf
 import pytest
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import open_pdf
+from squidpdf.core import open_pdf, words
 from squidpdf.core.fonts import FACES, face_bytes
 
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
@@ -112,3 +113,21 @@ def engine(pdf):
     """The sample, open in the engine for one test."""
     with open_pdf(pdf) as eng:
         yield eng
+
+
+PSEUDO = "qps"  # a tag for local use: no real language will ever have it
+_PLACEHOLDER = re.compile(r"(\{\w+\})")
+
+
+def pseudo_sentence(english: str) -> str:
+    """`english` in the test-only language: shouted, placeholders left as they are."""
+    parts = _PLACEHOLDER.split(english)
+    return "".join(part if _PLACEHOLDER.fullmatch(part) else part.upper() for part in parts)
+
+
+@pytest.fixture
+def pseudo(monkeypatch) -> str:
+    """A second language to answer in, made from English, for this test only; its tag."""
+    catalog = {key: pseudo_sentence(said) for key, said in words.ENGLISH_SENTENCES.items()}
+    monkeypatch.setitem(words.CATALOGS, PSEUDO, catalog)
+    return PSEUDO
