@@ -13,9 +13,9 @@ from pathlib import Path
 from squidpdf.core import Engine, MuPDFEngine, Page, Rect
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone
-from squidpdf.editing.apply import apply, fits, insert_fits
+from squidpdf.editing.apply import apply, log_fits
 from squidpdf.editing.edits import Edit
-from squidpdf.editing.fit import FitCheck
+from squidpdf.editing.fit import FitReport
 from squidpdf.editing.types import FitInfo, ImageInfo, Region, Rendered
 
 
@@ -35,8 +35,7 @@ def render(
     pages = store.load_pages(path)
 
     with MuPDFEngine(str(path / store.ORIGINAL)) as engine:
-        checked = fits(engine, edits, index)  # before apply: remove() can drop the fonts
-        inserts_checked = insert_fits(engine, edits, index)
+        fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
         applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [
             _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
@@ -44,9 +43,9 @@ def render(
 
     return {
         "images": images,
-        "fits": {span_id: _fit(fit) for span_id, fit in checked.items()},
+        "fits": {span_id: _fit_info(fit) for span_id, fit in fits.replaces.items()},
         "insert_fits": [
-            {**_fit(fit), "edit": position} for position, fit in inserts_checked.items()
+            {**_fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
         ],
         "redactions": [],  # verdicts come with export and the redaction check
         "skipped": applied.skipped,
@@ -69,7 +68,7 @@ def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}
 
 
-def _fit(fit: FitCheck) -> FitInfo:
+def _fit_info(fit: FitReport) -> FitInfo:
     """A fit as the browser gets it: option names, since it has their sentences."""
     return {
         "delta_pt": fit.delta_pt,

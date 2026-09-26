@@ -274,7 +274,7 @@ class MuPDFEngine:
             same_widths=match.same_widths and stand_in.face == match.face,
         )
 
-    def glyphs(self, span: Span) -> dict[str, float]:
+    def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em.
 
         The same font `measure` uses, so widths agree. A trimmed (subset) font's
@@ -286,7 +286,7 @@ class MuPDFEngine:
 
         # Not in the file: the look-alike draws it.
         if embedded is None:
-            return face_glyphs(self._look_alike(span).face)
+            return face_widths(self._look_alike(span).face)
 
         letters = embedded.coverage.drawable()
 
@@ -611,7 +611,7 @@ def _is_control(ch: str) -> bool:
 
 
 @cache
-def face_glyphs(face: Face) -> dict[str, float]:
+def face_widths(face: Face) -> dict[str, float]:
     """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
 
     The list the browser previews new text with, so it is kept short; letters

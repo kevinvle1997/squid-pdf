@@ -15,7 +15,7 @@ from squidpdf.core.fonts import FACES
 from squidpdf.core.types import Span, SpanIndex, new_text
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
 from squidpdf.editing.errors import BadReference
-from squidpdf.editing.fit import FitCheck, options_for
+from squidpdf.editing.fit import FitReport, LogFits, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 _BAD_REFERENCE = "bad_reference"
@@ -142,7 +142,7 @@ def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, 
 
     A None size keeps the span's own. The edit's strategy counts only if it was offered.
     """
-    strategy = check(engine, span, edit.text, edit.strategy).strategy
+    strategy = replace_fit(engine, span, edit.text, edit.strategy).strategy
     # Drawn as typed: the span's size, no stretch.
     if strategy == "as-is":
         return None, 1.0
@@ -155,23 +155,23 @@ def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, 
     return None, ratio
 
 
-def fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> dict[str, FitCheck]:
-    """A fit for each span the log leaves replaced, drawn or not. Measurement only."""
-    span_edits, _inserts, _skipped = _resolve(engine, edits, index)
-    return {
-        span.id: check(engine, span, edit.text, edit.strategy)
-        for edit, span in span_edits
-        if isinstance(edit, Replace)
-    }
+def log_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> LogFits:
+    """A fit for each span the log leaves replaced and for each insert, drawn or not.
+
+    Measurement only.
+    """
+    span_edits, inserts, _skipped = _resolve(engine, edits, index)
+    return LogFits(
+        replaces={
+            span.id: replace_fit(engine, span, edit.text, edit.strategy)
+            for edit, span in span_edits
+            if isinstance(edit, Replace)
+        },
+        inserts={position: insert_fit(engine, insert) for position, insert in inserts},
+    )
 
 
-def insert_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> dict[int, FitCheck]:
-    """A fit for each insert, by its place in the log. Measurement only."""
-    _span_edits, inserts, _skipped = _resolve(engine, edits, index)
-    return {position: check_insert(engine, insert) for position, insert in inserts}
-
-
-def check_insert(engine: Engine, insert: Insert) -> FitCheck:
+def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     """What new text will really look like: in its chosen font, or what draws it instead.
 
     Nothing to fit against, so only the font and the letters are checked.
@@ -181,7 +181,7 @@ def check_insert(engine: Engine, insert: Insert) -> FitCheck:
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     unusable = not shipped and report.why not in (None, words.FONT_LACKS_LETTERS)
-    return FitCheck(
+    return FitReport(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),
         left_out=engine.left_out(span, insert.text),
@@ -190,7 +190,9 @@ def check_insert(engine: Engine, insert: Insert) -> FitCheck:
     )
 
 
-def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -> FitCheck:
+def replace_fit(
+    engine: Engine, span: Span, text: str, strategy: Strategy = "as-is"
+) -> FitReport:
     """What would happen if the user typed this, with the ways out if it will not fit.
 
     `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
@@ -200,7 +202,7 @@ def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -
     delta = engine.measure(span, text) - original
     options = options_for(delta, original)
     offered = strategy in {o.name for o in options}
-    return FitCheck(
+    return FitReport(
         delta_pt=round(delta, 2),
         missing=missing,
         options=options,
