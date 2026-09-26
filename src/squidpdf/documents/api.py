@@ -83,7 +83,9 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise NotAPdf()
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+        analysis = await workers.run(
+            limits.UPLOAD_TIMEOUT_S, analyse, str(folder), limits.MAX_PAGES
+        )
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -100,7 +102,9 @@ async def read(
     """The document. Worked out again only when `build` has changed since."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder))
+        analysis = await workers.run(
+            limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder), limits.MAX_PAGES
+        )
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
