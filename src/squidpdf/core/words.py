@@ -11,13 +11,15 @@ to `CATALOGS`; a key it lacks is said in English. None ships yet.
 Placeholders are bare `{name}`, never a format spec, so the browser can fill
 them too: `{chars}` is characters joined with " or ", `{letters}` characters
 joined with spaces, and a number with a fraction, like `{delta_pt}` in points,
-is written to one decimal place.
+is written to one decimal place. A character that draws nothing a person could
+see, such as a narrow no-break space, is written as its Unicode name.
 
 A key is never renamed: the browser can branch on it.
 """
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Mapping
 
 from squidpdf.core.message import Message, Param
@@ -220,7 +222,22 @@ def fill(template: str, params: Mapping[str, Param], language: str = ENGLISH) ->
 def _written(name: str, value: Param, language: str) -> str:
     """One fact as it reads in a sentence: a list joined, a fraction to one decimal place."""
     if isinstance(value, list):
-        return sentence(f"join_{name}", language).join(value)
+        return sentence(f"join_{name}", language).join(_visible(item) for item in value)
     if isinstance(value, float):
         return f"{value:.1f}"
     return str(value)
+
+
+def _visible(character: str) -> str:
+    """A character as a person can see it: itself, or its name when it draws nothing.
+
+    Names are Unicode's, lower case, e.g. "narrow no-break space"; one without a
+    name, such as a control character, is its code point, e.g. "U+0009".
+    """
+    shows = len(character) != 1 or (character.isprintable() and not character.isspace())
+    if shows:
+        return character
+    try:
+        return unicodedata.name(character).lower()
+    except ValueError:  # control characters and unassigned code points have no name
+        return f"U+{ord(character):04X}"

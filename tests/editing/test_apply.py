@@ -318,6 +318,8 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
     engine.save(str(out))
 
     assert_equal(fit.missing, ["\u202f"], "what the fit says the face lacks")
+    said = "no narrow no-break space in this font, so the line is drawn in Noto Sans Regular"
+    assert_equal(words.render_all(fit.describe()), said, "what the user reads of it")
     drawn = _drawn(out, REFERENCED_PAGE, "15")
     expected = (text, saved_as("Noto Sans Regular"))
     assert_equal((drawn["text"], drawn["font"]), expected, "what drew, and in what")
