@@ -10,10 +10,10 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.core import BUILD, FidelityReport, Span, open_pdf, words
+from squidpdf.core import BUILD, FidelityReport, MessageInfo, Span, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
+from squidpdf.documents.types import Analysis, FontFacts, SpanInfo
 
 __all__ = [
     "analyse",
@@ -23,6 +23,8 @@ __all__ = [
 
 def analyse(folder: str, max_pages: int) -> Analysis:
     """Judge every span and list each font's letters, under this build, and keep it.
+
+    Kept in no language: each sentence as its code and facts, said when it's sent.
 
     The index is built on the first run and reused after, so a new build judges
     the same spans and every id holds. Raises TooManyPages first, if it has
@@ -42,11 +44,11 @@ def analyse(folder: str, max_pages: int) -> Analysis:
         first_span_of_font: dict[str, Span] = {}
         for span in index:
             first_span_of_font.setdefault(span.font, span)
-        fonts: list[FontInfo] = [
+        fonts: list[FontFacts] = [
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": said(reports[span.id]),
+                "why": why_of(reports[span.id]),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": eng.widths(span),
             }
@@ -72,9 +74,9 @@ def page_image(folder: str, page: int, scale: float) -> bytes:
         return eng.page_image(page, scale)
 
 
-def said(report: FidelityReport) -> str | None:
-    """Why the span's own font can't be used, in English; None when it can."""
-    return None if report.why is None else words.render(report.why)
+def why_of(report: FidelityReport) -> MessageInfo | None:
+    """Why the span's own font can't be used, in no language yet; None when it can."""
+    return None if report.why is None else report.why.as_info()
 
 
 def span_info(span: Span, report: FidelityReport) -> SpanInfo:
