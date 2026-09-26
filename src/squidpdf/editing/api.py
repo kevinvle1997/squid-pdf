@@ -38,6 +38,7 @@ fonts_router = APIRouter(prefix="/api/fonts")
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
 
 # The font list, worked out once per server under this build: the same for everyone.
+# Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
 _font_lists: dict[str, bytes] = {}
 
 
@@ -49,7 +50,7 @@ async def fonts(build: str, workers: Annotated[Pool, Depends(pool.current)]) -> 
     """
     body = _font_lists.get(BUILD)  # None until the first ask since the server started
     if body is None:
-        listed = await workers.run(limits.UPLOAD_TIMEOUT_S, font_list)
+        listed = await workers.run(limits.FONT_LIST_TIMEOUT_S, font_list)
         body = _font_lists[BUILD] = orjson.dumps(listed)
     cache = FONT_LIST_CACHE if build == BUILD else "no-store"
     return Response(body, media_type="application/json", headers={"Cache-Control": cache})

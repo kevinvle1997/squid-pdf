@@ -83,12 +83,14 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     """Calibri-Bold gets Carlito Bold, the face the report names, not Helvetica."""
     path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
     out = str(tmp_path / "redrawn.pdf")
+    # Drawn with nothing asked first: remove() must read the font before erasing it.
     with MuPDFEngine(path) as eng:
         span = next(iter(eng.index()))
-        [report] = eng.assess(eng.index())
         eng.remove([span])
         eng.draw(span, "Hello again")
         eng.save(out)
+    with MuPDFEngine(path) as eng:
+        [report] = eng.assess(eng.index())
 
     assert_equal((report.substitute, report.same_widths), (face, same_widths), "the report")
     [drawn] = _drawn(out)

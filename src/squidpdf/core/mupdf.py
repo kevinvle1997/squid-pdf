@@ -344,13 +344,14 @@ class MuPDFEngine:
 
         One box per span, not per fragment: the cost grows with the box count,
         and a span's box covers its fragments. Lines and underlines stay. Each
-        span's font is read first: erasing can delete a font the page no longer
-        uses, and `draw` still needs it.
+        span's font and look-alike are read first: erasing can delete a font the
+        page no longer uses, and `draw` still needs both.
         """
         by_page: dict[int, list[Span]] = {}
         for span in spans:
             by_page.setdefault(span.page, []).append(span)
             self._embedded(span)
+            self._look_alike(span)
 
         for pno, page_spans in by_page.items():
             self._pdf.erase_text(pno, [span.bbox for span in page_spans])

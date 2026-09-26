@@ -17,18 +17,12 @@ _OFL = "OFL-1.1"  # every face we ship is under the SIL Open Font License
 
 _ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
 
-# How each style is written in a face's name and in its file's name.
+# How each style is written in a face's name; its file's name drops the spaces.
 _STYLE_NAMES: dict[Style, str] = {
     "regular": "Regular",
     "bold": "Bold",
     "italic": "Italic",
     "bold-italic": "Bold Italic",
-}
-_STYLE_FILES: dict[Style, str] = {
-    "regular": "Regular",
-    "bold": "Bold",
-    "italic": "Italic",
-    "bold-italic": "BoldItalic",
 }
 
 
@@ -46,7 +40,7 @@ def _family(
             family=family,
             style=style,
             category=category,
-            file=f"{file_stem}-{_STYLE_FILES[style]}.ttf",
+            file=f"{file_stem}-{_STYLE_NAMES[style].replace(' ', '')}.ttf",
             license=_OFL,
             same_widths_as=same_widths_as,
         )
@@ -288,8 +282,11 @@ def _category_of(descriptor: FontDescriptor | None) -> Category:
     # Nothing to go on: most document text is sans.
     if descriptor is None:
         return "sans"
+    # Every letter as wide as the next.
     if descriptor.flags & _FIXED_WIDTH:
         return "mono"
+    # Serif set, fixed width not.
     if descriptor.flags & _SERIF:
         return "serif"
+    # Described, and neither.
     return "sans"

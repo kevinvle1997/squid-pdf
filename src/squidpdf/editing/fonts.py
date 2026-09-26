@@ -6,6 +6,7 @@ few seconds, too long for the server's own thread.
 
 from __future__ import annotations
 
+# Not through `Engine`: these are our own files, with no document to open.
 from squidpdf.core import BUILD, face_glyphs
 from squidpdf.core.fonts import CATALOG
 from squidpdf.editing.types import FamilyInfo, FontList
