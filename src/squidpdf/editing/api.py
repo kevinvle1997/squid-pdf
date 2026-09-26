@@ -43,15 +43,23 @@ async def render(
 
     Keeps nothing. A redaction pointing at nothing fails the whole request.
     """
+    if len(edits) > limits.MAX_EDITS:
+        raise ApiError(Problem.TOO_MANY_EDITS, edits=limits.MAX_EDITS)
+    too_long = any(
+        isinstance(edit, Replace) and len(edit.text) > limits.MAX_REPLACE_CHARS
+        for edit in edits
+    )
+    if too_long:
+        raise ApiError(Problem.TEXT_TOO_LONG, chars=limits.MAX_REPLACE_CHARS)
     pages = store.load_pages(doc.folder)
     for region in regions:
         if not 0 <= region.page < len(pages):
-            raise ApiError(Problem.INVALID_REQUEST, reason=f"regions: no page {region.page}")
+            raise ApiError(Problem.NO_SUCH_PAGE, debug=f"regions: no page {region.page}")
         top = 0.0 if region.y0 is None else region.y0
         bottom = pages[region.page].height if region.y1 is None else region.y1
         if top >= bottom:
             reason = f"regions: y0 must be above y1 on page {region.page}"
-            raise ApiError(Problem.INVALID_REQUEST, reason=reason)
+            raise ApiError(Problem.INVALID_REQUEST, debug=reason)
     scales = {r.page: documents.page_scale(pages[r.page], scale) for r in regions}
     try:
         rendered = await workers.run(

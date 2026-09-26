@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from squidpdf.core import words
 from tests.api.conftest import BASE_URL, upload
 from tests.helpers import assert_equal, assert_not_in, assert_problem
 
@@ -18,11 +19,11 @@ def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
     params = {"scale": 9, "build": doc["build"]}
     response = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
     assert_problem(response, "invalid_request", 400)
+    assert_equal(response.json()["detail"], words.INVALID_REQUEST, "what the user reads")
     assert_equal(
-        response.json()["detail"],
-        "Something in the request isn't right "
-        "(scale: Input should be less than or equal to 4).",
-        "the invalid request sentence",
+        response.json()["debug"],
+        "scale: Input should be less than or equal to 4",
+        "what a developer reads",
     )
 
 

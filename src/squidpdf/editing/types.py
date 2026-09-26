@@ -26,6 +26,27 @@ class Skipped:
 
 
 @dataclass(frozen=True, slots=True)
+class Notice:
+    """An edit that went in, but not quite as asked, and why in plain words.
+
+    A replace is named by its span; an insert, which has none, by its place in
+    the list the browser sent, as Skipped does.
+    """
+
+    span_id: str | None
+    detail: str
+    edit: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Applied:
+    """What applying the log left out, and what it drew other than asked."""
+
+    skipped: list[Skipped]
+    notices: list[Notice]
+
+
+@dataclass(frozen=True, slots=True)
 class Region:
     """What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it."""
 
@@ -47,18 +68,30 @@ class FitInfo(TypedDict):
 
     delta_pt: float
     missing: list[str]
+    left_out: list[str]
     options: list[Strategy]
     strategy: Strategy
     message: str | None
 
 
+class InsertFitInfo(FitInfo):
+    """An insert's fit, named by its place in the list the browser sent."""
+
+    edit: int
+
+
 class Rendered(TypedDict):
-    """What render worked out: the strips, a fit per replaced span, and what it skipped."""
+    """What render worked out: the strips, a fit per replaced span, and what it skipped.
+
+    `notices` are edits drawn other than asked, such as in a stand-in font.
+    """
 
     images: list[ImageInfo]
     fits: dict[str, FitInfo]
+    insert_fits: list[InsertFitInfo]
     redactions: list[dict[str, str]]
     skipped: list[Skipped]
+    notices: list[Notice]
 
 
 class Render(Rendered):

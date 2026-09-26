@@ -43,10 +43,25 @@ class SpanInfo(TypedDict):
 
 
 class FontInfo(TypedDict):
-    """A font the spans use: what stands in for it, and every glyph it really draws."""
+    """A font the spans use: what stands in for it, and each letter it really draws, by width.
+
+    Widths are in thousandths of the font size.
+    """
 
     name: str
     substitute: str | None
+    why: str | None  # why the file's own copy can't be used, in plain words
+    glyphs: dict[str, float]
+
+
+class InsertFontInfo(TypedDict):
+    """A face new text can always be drawn in, and each letter it draws, by width.
+
+    Widths are in thousandths of the font size, so the browser can preview
+    exactly what an insert will look like before it's drawn.
+    """
+
+    name: str
     glyphs: dict[str, float]
 
 
@@ -57,6 +72,8 @@ class Analysis(TypedDict):
     pages: list[PageInfo]
     spans: list[SpanInfo]
     fonts: list[FontInfo]
+    # The built-in faces an insert can use; the document's own are in `fonts`.
+    insert_fonts: list[InsertFontInfo]
 
 
 class FitRules(TypedDict):
@@ -72,6 +89,8 @@ class Copy(TypedDict):
 
     missing: str
     too_long: str
+    stand_in: str
+    undo_redaction: str
     options: dict[str, dict[str, str]]
 
 

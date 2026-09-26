@@ -20,11 +20,13 @@ _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
 @pytest.fixture
 def mine(browser):
+    """The browser that uploads, and so owns, the document."""
     return browser()
 
 
 @pytest.fixture
 def doc(mine, pdf_bytes) -> dict:
+    """The sample PDF as uploaded by `mine`: what the upload answered."""
     return upload(mine, pdf_bytes).json()
 
 
@@ -61,6 +63,8 @@ def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
     assert_equal(doc["fit"], rules, "fit")
     assert_equal(doc["copy"]["missing"], words.MISSING, "the missing-glyph sentence")
     assert_equal(doc["notices"], [], "notices")
+    faces = [face["name"] for face in doc["insert_fonts"]]
+    assert_equal(faces, ["Helvetica", "Times", "Courier"], "faces new text can use")
 
 
 def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
@@ -73,6 +77,12 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     )
     pix = pymupdf.Pixmap(response.content)
     assert_equal((pix.width, pix.height), (595 * 2, 842 * 2), "pixels at scale 2")
+
+    # A page it doesn't have is its own problem: "not found" would make the browser re-upload.
+    params = {"scale": 2, "build": doc["build"]}
+    assert_problem(
+        mine.get(f"/api/documents/{doc['id']}/pages/9", params=params), "no_such_page", 422
+    )
 
 
 def test_a_page_asked_for_under_an_old_build_is_not_kept(mine, doc):
@@ -110,14 +120,27 @@ def test_deleting_it_leaves_nothing_behind(mine, doc):
     assert_equal(_kept(), before - 1, "documents on disk after a delete")
 
 
+_AES_256 = 5  # pymupdf.PDF_ENCRYPT_AES_256, which its type stubs leave out
+
+
+def _locked() -> bytes:
+    """A real one-page PDF that opens only with a password."""
+    doc = pymupdf.open()
+    doc.new_page()
+    return doc.tobytes(encryption=_AES_256, user_pw="user", owner_pw="owner")
+
+
 @pytest.mark.parametrize(
     ("body", "problem", "status"),
     [
         (b"Dear Sir, please find attached.", "not_a_pdf", 415),
+        # A PNG's opening bytes, then zeros.
         (b"\x89PNG\r\n\x1a\n" + bytes(4096), "not_a_pdf", 415),
+        # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
+        (_locked(), "encrypted", 422),
     ],
-    ids=["text", "png", "garbage after the header"],
+    ids=["text", "png", "garbage after the header", "password-protected"],
 )
 def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, status):
     before = _kept()

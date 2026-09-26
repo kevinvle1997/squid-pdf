@@ -14,6 +14,7 @@ import secrets
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 import orjson
 
@@ -85,25 +86,24 @@ def load_index(folder: Path) -> SpanIndex | None:
         raw = orjson.loads((folder / _INDEX).read_bytes())
     except FileNotFoundError:  # not analysed yet
         return None
-    return SpanIndex(
-        [
-            Span(
-                id=s["id"],
-                page=s["page"],
-                text=s["text"],
-                font=s["font"],
-                size=s["size"],
-                color=tuple(s["color"]),
-                bbox=Rect(**s["bbox"]),
-                origin=tuple(s["origin"]),
-                fragments=tuple(
-                    Fragment(f["text"], Rect(**f["bbox"]), tuple(f["origin"]))
-                    for f in s["fragments"]
-                ),
-            )
-            for s in raw
-        ]
-    )
+    return SpanIndex([_span(span) for span in raw])
+
+
+def _span(saved: dict[str, Any]) -> Span:
+    """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
+    rebuilt: dict[str, Any] = {
+        "color": tuple(saved["color"]),
+        "bbox": Rect(**saved["bbox"]),
+        "origin": tuple(saved["origin"]),
+        "fragments": tuple(_fragment(fragment) for fragment in saved["fragments"]),
+    }
+    return Span(**saved | rebuilt)
+
+
+def _fragment(saved: dict[str, Any]) -> Fragment:
+    """One saved fragment, the same way."""
+    rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
+    return Fragment(**saved | rebuilt)
 
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
@@ -111,9 +111,17 @@ def save_pages(folder: Path, pages: list[Page]) -> None:
     (folder / _PAGES).write_bytes(orjson.dumps(pages))
 
 
+class Gone(Exception):
+    """The document was deleted while a request was using it: it expired mid-way."""
+
+
 def load_pages(folder: Path) -> list[Page]:
-    """The saved page list."""
-    return [Page(**p) for p in orjson.loads((folder / _PAGES).read_bytes())]
+    """The saved page list. Raises Gone if the sweep deleted the document meanwhile."""
+    try:
+        saved = orjson.loads((folder / _PAGES).read_bytes())
+    except FileNotFoundError as exc:  # upload saves it first, so only a sweep removes it
+        raise Gone from exc
+    return [Page(**page) for page in saved]
 
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:

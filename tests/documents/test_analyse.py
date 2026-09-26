@@ -13,6 +13,7 @@ from tests.helpers import assert_equal, assert_true
 
 @pytest.fixture
 def folder(pdf):
+    """A stored document holding the sample as its original."""
     _, folder = store.create("owner")
     shutil.copy(pdf, folder / store.ORIGINAL)
     return folder
@@ -22,6 +23,7 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
     first = analyse.analyse(str(folder))
 
     def reindex(self):
+        """Stands in for the engine's index, to fail if anything builds one."""
         raise AssertionError("the index was rebuilt")
 
     monkeypatch.setattr(MuPDFEngine, "index", reindex)
@@ -29,7 +31,8 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
     later = analyse.analyse(str(folder))
 
     assert_equal(later["build"], "a-later-build", "build of the second analysis")
-    ids = [[s["id"] for s in a["spans"]] for a in (first, later)]
-    assert_equal(ids[1], ids[0], "span ids across builds")
+    first_ids = [s["id"] for s in first["spans"]]
+    later_ids = [s["id"] for s in later["spans"]]
+    assert_equal(later_ids, first_ids, "span ids across builds")
     kept = store.load_analysis(folder, "a-later-build")
     assert_true(kept is not None, "the later build's analysis wasn't kept")

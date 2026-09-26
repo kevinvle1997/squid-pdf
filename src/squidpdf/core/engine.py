@@ -13,12 +13,20 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from squidpdf.core import words
 from squidpdf.core.fidelity import FidelityReport
 from squidpdf.core.types import Page, Rect, Span, SpanIndex
 
 
 class Unreadable(Exception):
-    """The file isn't a PDF the engine can open: garbage, truncated or empty."""
+    """The file isn't a PDF the engine can open: garbage, truncated, empty, or locked."""
+
+    def __init__(self, path: str, encrypted: bool = False) -> None:
+        """`encrypted`: it opened, but only a password would let us read it."""
+        super().__init__(path, encrypted)  # as args, so it survives the trip from a worker
+        self.path = path
+        self.encrypted = encrypted
+        self.detail = words.ENCRYPTED if encrypted else words.DAMAGED  # for the user
 
 
 @runtime_checkable
@@ -42,11 +50,15 @@ class Engine(Protocol):
         ...
 
     def glyphs(self, span: Span) -> dict[str, float]:
-        """Every character this span's drawing font really draws, to its advance per 1000 em."""
+        """Each character this span's drawing font really draws, to its width per 1000 em."""
         ...
 
     def measure(self, span: Span, text: str) -> float:
         """Rendered width in points, in the face `draw` would use for this text."""
+        ...
+
+    def left_out(self, span: Span, text: str) -> list[str]:
+        """Characters no font we have can draw here, so a redraw leaves them out."""
         ...
 
     def missing(self, span: Span, text: str) -> list[str]:
@@ -59,22 +71,12 @@ class Engine(Protocol):
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
-    ) -> None:
+    ) -> list[str]:
         """Redraw at the span's baseline, in its own font where it draws every character.
 
         `size` in points replaces the span's own; `scale_x` narrows it horizontally.
+        Returns, in plain words, anything that came out other than asked.
         """
-        ...
-
-    def draw_at(
-        self,
-        page: int,
-        origin: tuple[float, float],
-        text: str,
-        size: float,
-        color: tuple[float, float, float] = ...,
-    ) -> None:
-        """Draw where the document has no text."""
         ...
 
     def save(self, path: str) -> None:

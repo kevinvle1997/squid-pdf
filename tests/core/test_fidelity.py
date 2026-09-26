@@ -6,8 +6,9 @@ from collections.abc import Callable
 
 import pymupdf
 
-from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate
+from squidpdf.core import Fidelity, FidelityReport, MuPDFEngine, Span, green_rate, words
 from squidpdf.core.fonts import base14_for
+from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_all, assert_between, assert_equal, assert_true
 
 _EM = 1000
@@ -21,7 +22,10 @@ _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
 def _drawn(path: str) -> list[dict]:
     """Every span of text on the saved file's first page, re-read."""
     blocks = pymupdf.open(path)[0].get_text("rawdict")["blocks"]
-    return [s for b in blocks for line in b.get("lines", []) for s in line["spans"]]
+    # .get: an image block has no lines.
+    return [
+        span for block in blocks for line in block.get("lines", []) for span in line["spans"]
+    ]
 
 
 def _text(span: dict) -> str:
@@ -34,27 +38,31 @@ def _font_objects(path: str) -> list[tuple[str, str, str]]:
 
     Not object numbers: saving renumbers them.
     """
-    return sorted((f[3], f[2], f[1]) for f in pymupdf.open(path)[0].get_fonts(full=True))
+    fonts = pymupdf.open(path)[0].get_fonts(full=True)
+    return sorted((name, kind, file_type) for _xref, file_type, kind, name, *_ in fonts)
 
 
 def _describe_report(reports: dict[str, FidelityReport]) -> Callable[[Span], str]:
+    """Names a span by its text and the state it was given, for a failure message."""
     return lambda s: f"{s.text!r} -> {reports[s.id].state}"
 
 
 def test_referenced_font_is_a_substitution(engine):
     """Page 1's fonts are named but not in the file, so edits cannot match."""
     reports = {r.span_id: r for r in engine.assess(engine.index())}
-    page1 = [s for s in engine.index() if s.page == 0]
+    referenced = [s for s in engine.index() if s.page == REFERENCED_PAGE]
     describe = _describe_report(reports)
-    assert_all(page1, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
-    assert_all(page1, lambda s: bool(reports[s.id].substitute), describe)
+    assert_all(referenced, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
+    assert_all(referenced, lambda s: reports[s.id].substitute == "Times", describe)  # drawn in
+    not_stored = words.FONT_NOT_IN_FILE
+    assert_all(referenced, lambda s: reports[s.id].why == not_stored, describe)
 
 
 def test_embedded_font_is_exact(engine):
     reports = {r.span_id: r for r in engine.assess(engine.index())}
-    page2 = [s for s in engine.index() if s.page == 1]
+    embedded = [s for s in engine.index() if s.page == EMBEDDED_PAGE]
     describe = _describe_report(reports)
-    assert_all(page2, lambda s: reports[s.id].state is Fidelity.EXACT, describe)
+    assert_all(embedded, lambda s: reports[s.id].state is Fidelity.EXACT, describe)
 
 
 def test_green_rate_is_the_share_that_keep_their_font(engine):
@@ -73,9 +81,10 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
         eng.save(str(out))
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
-    drawn = pymupdf.open(out)[0].get_text("dict")["blocks"][0]["lines"][0]["spans"][0]
+    assert_equal(report.why, words.FONT_NO_LETTER_LIST, "why, as the user reads it")
+    first_drawn = _drawn(str(out))[0]
     substitute = pymupdf.Font(base14_for(span.font)).name
-    assert_equal(drawn["font"], substitute, "the font that redrew it")
+    assert_equal(first_drawn["font"], substitute, "the font that redrew it")
 
 
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):

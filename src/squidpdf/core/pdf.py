@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import FontCode, Rect
+from squidpdf.core.types import FontCode, GlyphId, Rect
 
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
@@ -70,6 +70,7 @@ class PdfFile:
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
+        listed = self._doc[page].get_fonts(full=True)
         return [
             PageFont(
                 xref=xref,
@@ -80,9 +81,7 @@ class PdfFile:
                 encoding=encoding,
                 in_form=referencer != 0,
             )
-            for xref, file_type, kind, name, resource, encoding, referencer in self._doc[
-                page
-            ].get_fonts(full=True)
+            for xref, file_type, kind, name, resource, encoding, referencer in listed
         ]
 
     def font_bytes(self, xref: int) -> bytes | None:
@@ -97,9 +96,10 @@ class PdfFile:
         """Each code the font has a letter for, lowest first.
 
         None if the font has no letter list (its ToUnicode) or MuPDF can't
-        read it. `code_bytes` is 1 for a simple font, 2 for a Type0 font.
+        read it. `code_bytes` is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
-        if self._doc.xref_get_key(xref, "ToUnicode")[0] == "null":
+        value_type, _value = self._doc.xref_get_key(xref, "ToUnicode")
+        if value_type == "null":
             return None
 
         mu = pymupdf.mupdf
@@ -114,21 +114,8 @@ class PdfFile:
                 code_count = _ONE_BYTE_CODES
             else:  # Type0: one code per glyph, so stop after the last glyph
                 code_count = font.cid_to_gid_len or font.font.glyph_count
-            found = []
-            for value in range(code_count):
-                letter = mu.ll_pdf_lookup_cmap(font.to_unicode, value)
-                if not 0 <= letter <= sys.maxunicode:  # no letter, or several (like "fi")
-                    continue
-                cid = mu.ll_pdf_lookup_cmap(font.encoding, value)
-                found.append(
-                    FontCode(
-                        value=value,
-                        letter=chr(letter),
-                        glyph=mu.ll_pdf_font_cid_to_gid(font, cid),
-                        width=mu.ll_pdf_lookup_hmtx(font, cid).w,
-                    )
-                )
-            return found
+            codes = (_font_code(font, value) for value in range(code_count))
+            return [code for code in codes if code is not None]
         finally:
             mu.ll_pdf_drop_font(font)
 
@@ -152,6 +139,7 @@ class PdfFile:
         pdf = self._pdf()
         page_obj = mu.pdf_lookup_page_obj(pdf, page)
         resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
+        # An empty m_internal means the key isn't there yet, so make it.
         if not resources.m_internal:
             resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
         fonts = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Font)
@@ -192,6 +180,23 @@ class PdfFile:
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self._doc.this)
+
+
+def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
+    """What code `value` draws in a font MuPDF has loaded, or None if it isn't one letter."""
+    mu = pymupdf.mupdf
+    codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, value)
+    # No letter, or several (like "fi").
+    if not 0 <= codepoint <= sys.maxunicode:
+        return None
+    # The font's internal number for the code, which picks its shape and width.
+    cid = mu.ll_pdf_lookup_cmap(font.encoding, value)
+    return FontCode(
+        value=value,
+        letter=chr(codepoint),
+        glyph=GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid)),
+        width=mu.ll_pdf_lookup_hmtx(font, cid).w,
+    )
 
 
 def _text_piece(raw: dict) -> TextPiece:

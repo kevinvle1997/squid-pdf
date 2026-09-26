@@ -8,9 +8,9 @@ import pytest
 from squidpdf.core import MuPDFEngine, Page, Rect
 from tests.helpers import assert_equal, assert_true
 
-_A4 = (595.0, 842.0)  # points; pymupdf's default new_page()
+_A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
 _SCALE = 2
-_STRIP = Rect(0, 80, _A4[0], 100)  # one full-width row, as render will ask for
+_STRIP = Rect(0, 80, _A4_WIDTH, 100)  # one full-width row, as render will ask for
 _INK = 128  # a channel darker than this is text, not paper
 
 
@@ -28,7 +28,7 @@ def turned(tmp_path) -> str:
 
 def test_pages_are_sized_in_points(engine):
     """The browser lays pages out from these before any image arrives."""
-    assert_equal(engine.pages(), [Page(*_A4, 0), Page(*_A4, 0)], "pages of the fixture")
+    assert_equal(engine.pages(), [Page(_A4_WIDTH, _A4_HEIGHT, 0)] * 2, "pages of the fixture")
 
 
 def test_a_page_image_is_a_white_png_at_the_asked_scale(engine):
@@ -36,7 +36,7 @@ def test_a_page_image_is_a_white_png_at_the_asked_scale(engine):
     png = engine.page_image(0, _SCALE)
     assert_true(png.startswith(b"\x89PNG"), "page image is a PNG")
     pix = pymupdf.Pixmap(png)
-    expected = (_A4[0] * _SCALE, _A4[1] * _SCALE)
+    expected = (_A4_WIDTH * _SCALE, _A4_HEIGHT * _SCALE)
     assert_equal((pix.width, pix.height), expected, f"pixels at scale {_SCALE}")
     assert_equal(pix.alpha, 0, "alpha channel")
 
@@ -53,8 +53,8 @@ def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
     with MuPDFEngine(turned) as eng:
         pages = eng.pages()
         pix = pymupdf.Pixmap(eng.page_image(0, _SCALE))
-    assert_equal(pages, [Page(*_A4, 90)], "a quarter-turned page")
-    expected = (_A4[0] * _SCALE, _A4[1] * _SCALE)
+    assert_equal(pages, [Page(_A4_WIDTH, _A4_HEIGHT, 90)], "a quarter-turned page")
+    expected = (_A4_WIDTH * _SCALE, _A4_HEIGHT * _SCALE)
     assert_equal((pix.width, pix.height), expected, "pixels of a turned page, unrotated")
 
 

@@ -2,7 +2,7 @@
 
 pebble rather than the stdlib pool: it kills a hung worker, where
 concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF
-or eat memory; either way its worker dies and the request says damaged.
+or eat memory; either way its worker dies, and the request says which.
 """
 
 from __future__ import annotations
@@ -45,8 +45,11 @@ class Pool:
         future = self._pool.submit(fn, timeout, *args, **kwargs)
         try:
             return await asyncio.wrap_future(future)
-        # Out of time, a worker that died, or a task past the memory ceiling.
-        except (TimeoutError, ProcessExpired, MemoryError) as exc:
+        except TimeoutError as exc:  # out of time: slow, not necessarily broken
+            raise ApiError(Problem.TOO_SLOW) from exc
+        except MemoryError as exc:  # past the memory ceiling
+            raise ApiError(Problem.TOO_HEAVY) from exc
+        except ProcessExpired as exc:  # the worker died: MuPDF crashed on the file
             raise ApiError(Problem.DAMAGED) from exc
 
     def close(self) -> None:

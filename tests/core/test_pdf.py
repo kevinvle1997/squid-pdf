@@ -6,14 +6,18 @@ import pymupdf
 import pytest
 
 from squidpdf.core.pdf import PdfFile
-from squidpdf.core.types import FontCode, Rect
+from squidpdf.core.types import FontCode, GlyphId, Rect
 from tests.helpers import assert_between, assert_equal
 
 _TOLERANCE_PT = 0.01
-_CONTENT_ORIGIN = (172.0, 700.0)  # where the fixtures' content stream starts its text
+_CONTENT_X, _CONTENT_Y = 172.0, 700.0  # where the fixtures' content stream starts its text
+
+# The code that draws B in each fixture: one byte in the TrueType, two in the Type0.
+_CODE_FOR_B = {"TrueType": "21", "Type0": "0002"}
 
 
 def _open(path: str) -> PdfFile:
+    """The file at `path`, behind the wrapper under test."""
     return PdfFile(pymupdf.open(path))
 
 
@@ -45,8 +49,9 @@ def test_font_codes_list_what_each_code_draws(request, fixture, code_bytes, firs
     """Letter from ToUnicode, glyph through the font's encoding, width from /Widths or /W."""
     pdf = _open(request.getfixturevalue(fixture))
     [font] = pdf.fonts(0)
+    # As conftest.py builds them: glyphs 1 to 4 in this order, widths from _WIDTHS.
     expected = [
-        FontCode(first_code + i, letter, glyph=i + 1, width=width)
+        FontCode(first_code + i, letter, glyph=GlyphId(i + 1), width=width)
         for i, (letter, width) in enumerate([("A", 500), ("B", 550), (" ", 250), ("C", 600)])
     ]
     assert_equal(pdf.font_codes(font.xref, code_bytes), expected, "codes, lowest first")
@@ -63,7 +68,7 @@ def test_to_pdf_space_undoes_the_rotation_and_the_mediabox_offset(coded):
     pdf = _open(coded)
     [[piece]] = pdf.text_lines(0)
     x, y = pdf.to_pdf_space(0, piece.origin)
-    miss = abs(x - _CONTENT_ORIGIN[0]) + abs(y - _CONTENT_ORIGIN[1])
+    miss = abs(x - _CONTENT_X) + abs(y - _CONTENT_Y)
     assert_between(miss, -1, _TOLERANCE_PT, "distance from where the content drew it")
 
 
@@ -76,7 +81,8 @@ def test_erase_text_then_restore_and_add_content_redraws_in_the_same_font(coded)
 
     pdf.restore_font(0, font.resource, font.xref)
     x, y = pdf.to_pdf_space(0, piece.origin)
-    code = "21" if font.kind == "TrueType" else "0002"
+    # Begin text, pick the font at 12 pt, move to x y, draw the code for B, end text.
+    code = _CODE_FOR_B[font.kind]
     pdf.add_content(0, f"BT /{font.resource} 12 Tf 1 0 0 1 {x} {y} Tm <{code}> Tj ET".encode())
     [[drawn]] = pdf.text_lines(0)
     assert_equal((drawn.text, drawn.font), ("B", "Coded"), "what was drawn, and in what")
@@ -85,8 +91,8 @@ def test_erase_text_then_restore_and_add_content_redraws_in_the_same_font(coded)
 def test_erase_text_leaves_text_outside_the_boxes(pdf):
     """The shared sample: page 2 has two lines; erase only the first."""
     wrapped = _open(pdf)
-    first, second = wrapped.text_lines(1)
-    top = first[0].box
-    wrapped.erase_text(1, [Rect(top.x0, top.y0, first[-1].box.x1, top.y1)])
+    first_line, second_line = wrapped.text_lines(1)
+    start, end = first_line[0].box, first_line[-1].box
+    wrapped.erase_text(1, [Rect(start.x0, start.y0, end.x1, start.y1)])
     left = ["".join(p.text for p in line) for line in wrapped.text_lines(1)]
-    assert_equal(left, ["".join(p.text for p in second)], "lines left")
+    assert_equal(left, ["".join(p.text for p in second_line)], "lines left")

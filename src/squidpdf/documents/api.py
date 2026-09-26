@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 import orjson
@@ -22,7 +23,7 @@ from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, Page, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
-from squidpdf.documents.analyse import analyse, page_image
+from squidpdf.documents.analyse import TooManyPages, analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.types import Analysis, Document, Loaded
 
@@ -61,25 +62,26 @@ async def upload(
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     declared = request.headers.get("content-length")  # absent when the body is chunked
-    if declared is not None and int(declared) > limits.MAX_FILE_BYTES:
+    declared_too_large = declared is not None and int(declared) > limits.MAX_FILE_BYTES
+    if declared_too_large:
         raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
     doc_id, folder = store.create(owner.digest(token))
     try:
         # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
-        size, head = 0, b""
+        size, first_kb = 0, b""
         with (folder / store.ORIGINAL).open("wb") as out:
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > limits.MAX_FILE_BYTES:
                     raise ApiError(Problem.TOO_LARGE, mb=limits.MAX_FILE_MB)
-                if len(head) < _HEADER_WINDOW:
-                    head += chunk[: _HEADER_WINDOW - len(head)]
-                    if len(head) == _HEADER_WINDOW and _PDF_HEADER not in head:
-                        raise ApiError(Problem.NOT_A_PDF)
+                first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
+                header_missing = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
+                if header_missing:
+                    raise ApiError(Problem.NOT_A_PDF)
                 out.write(chunk)
-        if _PDF_HEADER not in head:
+        if _PDF_HEADER not in first_kb:
             raise ApiError(Problem.NOT_A_PDF)
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+        analysis = await _analyse(workers, folder)
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -96,7 +98,7 @@ async def read(
     """The document. Worked out again only when `build` has changed since."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder))
+        analysis = await _analyse(workers, doc.folder)
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -134,7 +136,7 @@ async def page(
     """
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
-        raise ApiError(Problem.NOT_FOUND)
+        raise ApiError(Problem.NO_SUCH_PAGE)
     png = await workers.run(
         limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
     )
@@ -147,6 +149,14 @@ async def sweep_forever() -> None:
     while True:
         await asyncio.sleep(SWEEP_EVERY_S)
         await asyncio.to_thread(store.sweep)
+
+
+async def _analyse(workers: Pool, folder: Path) -> Analysis:
+    """The document worked out in a worker, refused plainly if it has too many pages."""
+    try:
+        return await workers.run(limits.UPLOAD_TIMEOUT_S, analyse, str(folder))
+    except TooManyPages as exc:
+        raise ApiError(Problem.TOO_MANY_PAGES, pages=limits.MAX_PAGES) from exc
 
 
 def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
@@ -163,7 +173,10 @@ def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
         "copy": {
             "missing": words.MISSING,
             "too_long": words.TOO_LONG,
+            "stand_in": words.STAND_IN,
+            "undo_redaction": words.UNDO_REDACTION,
             "options": words.OPTIONS,
         },
-        "notices": [],  # signed, scanned: once upload checks for them
+        # A scan has no text layer: say so, rather than show a page nothing on can be edited.
+        "notices": [] if analysis["spans"] else [{"type": "no_text", "detail": words.NO_TEXT}],
     }

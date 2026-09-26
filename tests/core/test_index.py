@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pymupdf
 
 from squidpdf.core import MuPDFEngine
 from tests.helpers import assert_any, assert_equal, assert_true
+
+_GREY = 128  # any picture will do; this one is a plain grey square
+
+
+def _one_line_page(path: Path, with_image: bool) -> str:
+    """A page with one line of text, and a picture beside it if asked."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    if with_image:
+        pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 40), False)
+        pix.clear_with(_GREY)
+        page.insert_image(pymupdf.Rect(72, 150, 272, 350), pixmap=pix)
+    page.insert_text((72, 96), "Figure 1 shows the site plan.", fontname="tiro", fontsize=11)
+    doc.save(path)
+    return str(path)
 
 
 def test_index_finds_text(engine):
@@ -26,21 +43,10 @@ def test_span_ids_are_stable_across_reindexing(pdf):
 
 def test_an_image_on_the_page_changes_no_span(tmp_path):
     """The index skips images rather than decoding them. The spans must not notice."""
-    paths = []
-    for with_image in (False, True):
-        doc = pymupdf.open()
-        page = doc.new_page()
-        if with_image:
-            pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 40), False)
-            pix.clear_with(128)
-            page.insert_image(pymupdf.Rect(72, 150, 272, 350), pixmap=pix)
-        page.insert_text(
-            (72, 96), "Figure 1 shows the site plan.", fontname="tiro", fontsize=11
-        )
-        paths.append(tmp_path / f"image-{with_image}.pdf")
-        doc.save(paths[-1])
+    plain_path = _one_line_page(tmp_path / "plain.pdf", with_image=False)
+    pictured_path = _one_line_page(tmp_path / "pictured.pdf", with_image=True)
 
-    with MuPDFEngine(str(paths[0])) as plain, MuPDFEngine(str(paths[1])) as pictured:
+    with MuPDFEngine(plain_path) as plain, MuPDFEngine(pictured_path) as pictured:
         assert_equal(
             list(pictured.index()),
             list(plain.index()),

@@ -7,7 +7,7 @@ question this module answers.
 
 from __future__ import annotations
 
-# Metric-compatible stand-ins: identical advance widths, so a substitution shifts
+# Metric-compatible stand-ins: identical letter widths, so a substitution shifts
 # nothing on the page and only the letterforms differ. All OFL or Apache, all
 # free to embed. Keyed on the bare family name.
 SUBSTITUTES: dict[str, str] = {
@@ -42,6 +42,13 @@ _BASE14 = {
     "couriernew": "cour",
     "courier": "cour",
 }
+_BASE14_FALLBACK = "helv"
+
+# What each of those is called, for telling the user which face drew their edit.
+_BASE14_NAMES = {"helv": "Helvetica", "tiro": "Times", "cour": "Courier"}
+
+# The faces new text can always be drawn in, by the name the user picks.
+BUILT_IN = tuple(_BASE14_NAMES.values())
 
 
 def strip_subset(font: str) -> str:
@@ -58,12 +65,16 @@ def bare_name(font: str) -> str:
     containing no "roman". Do not use this to identify one font resource on a
     page, where two different weights share a bare name; use `strip_subset` there.
     """
-    name = strip_subset(font).split("-", 1)[0].split(",", 1)[0]
-    return name.replace(" ", "").lower()
+    family = strip_subset(font).split("-", 1)[0]  # Calibri-Bold -> Calibri
+    family = family.split(",", 1)[0]  # Arial,Bold -> Arial
+    return family.replace(" ", "").lower()
 
 
 def substitute_for(font: str) -> str:
-    """The closest face that will not move anything on the page."""
+    """The closest face that will not move anything on the page, once it's bundled.
+
+    Not what draws today: tell the user `drawn_in`'s answer until it is.
+    """
     return SUBSTITUTES.get(bare_name(font), FALLBACK)
 
 
@@ -71,8 +82,15 @@ def base14_for(font: str) -> str:
     """The built-in PDF font actually used to draw a substitute, today.
 
     Only a stand-in for `substitute_for`'s answer until the real files in
-    SUBSTITUTES are bundled (see HANDOFF gap #1). Kept separate so the name
-    shown to the user (`substitute_for`) does not silently change to match
-    whatever we can currently render with.
+    SUBSTITUTES are bundled (see HANDOFF gap #1).
     """
-    return _BASE14.get(bare_name(font), "helv")
+    return _BASE14.get(bare_name(font), _BASE14_FALLBACK)
+
+
+def drawn_in(font: str) -> str:
+    """The name of the face that really draws an edit in this font today, e.g. "Helvetica".
+
+    The one to tell the user: naming a look-alike we don't ship would promise
+    a width we can't keep.
+    """
+    return _BASE14_NAMES[base14_for(font)]

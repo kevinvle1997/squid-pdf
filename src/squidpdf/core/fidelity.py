@@ -18,7 +18,7 @@ class Fidelity(StrEnum):
     """The three ways an edit can turn out, in terms of the original font."""
 
     EXACT = "exact"  # the document's own font is in the file and covers it
-    SUBSTITUTE = "substitute"  # not embedded; a metric-compatible stand-in is used
+    SUBSTITUTE = "substitute"  # the file's own copy can't be used; another face draws
     IMAGE = "image"  # no text layer here at all
 
 
@@ -30,6 +30,7 @@ class FidelityReport:
     state: Fidelity
     font: str
     substitute: str | None = None
+    why: str | None = None  # why the file's own font can't be used, in plain words
 
 
 def green_rate(reports: list[FidelityReport]) -> float:
@@ -41,4 +42,5 @@ def green_rate(reports: list[FidelityReport]) -> float:
     """
     if not reports:
         return 0.0
-    return sum(1 for r in reports if r.state is Fidelity.EXACT) / len(reports)
+    exact = sum(1 for report in reports if report.state is Fidelity.EXACT)
+    return exact / len(reports)
