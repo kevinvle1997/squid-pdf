@@ -9,7 +9,10 @@ characters joined with " or ", `{delta_pt}` is points to one decimal place.
 from __future__ import annotations
 
 # What's wrong with a replacement.
-MISSING = "no {chars} in this font"
+# `{font}` is the face that draws the line instead.
+MISSING = "no {chars} in this font, so the line is drawn in {font}"
+WILL_LEAVE_OUT = "{letters} will be left out: no font we have can draw them"
+NOT_OFFERED = "too far to fit without looking different, so it's left long"
 TOO_LONG = "{delta_pt} pt too long"
 # A font the file doesn't let us use. `{font}` is the face that draws instead.
 STAND_IN = "Edits here use {font}, which may be a different width from the original."

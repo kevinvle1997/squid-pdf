@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from squidpdf.core import words
 from squidpdf.editing import check
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
@@ -19,6 +20,11 @@ def test_check_reports_overflow_with_options(engine):
     missing = {"shrink", "as-is"} - offered
     assert_true(not missing, f"options offered ({offered}) are missing {missing}")
 
+    # A letter only the stand-in has, and one nothing has: both said, each its way.
+    fit = check(engine, span, longer + " é →")
+    assert_in("so the line is drawn in", fit.describe() or "", "the font switch")
+    assert_in(words.WILL_LEAVE_OUT.format(letters="→"), fit.describe() or "", "the letter lost")
+
 
 def test_check_is_quiet_when_nothing_is_wrong(engine):
     index = engine.index()
@@ -35,3 +41,4 @@ def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
     fit = check(engine, span, span.text * 2, "shrink")
     assert_equal([o.name for o in fit.options], ["as-is"], "options for twice the length")
     assert_equal(fit.strategy, "as-is", "the strategy drawn when shrink isn't offered")
+    assert_in(words.NOT_OFFERED, fit.describe() or "", "why the choice wasn't used")

@@ -268,6 +268,12 @@ class MuPDFEngine:
             return [ch for ch in dict.fromkeys(text) if ch not in drawable]
         return embedded.coverage.missing(text)
 
+    def left_out(self, span: Span, text: str) -> list[str]:
+        """Characters no font we have can draw here, so a redraw leaves them out."""
+        if not self.missing(span, text):
+            return []
+        return _left_out_by(base14_for(span.font), text)
+
     def _run(self, span: Span, text: str) -> tuple[pymupdf.Font, str]:
         """The face `text` is drawn in, and the text as it can be drawn.
 
@@ -329,11 +335,10 @@ class MuPDFEngine:
 
         # Otherwise the substitute draws the whole run, less what even it can't draw.
         substitute = base14_for(span.font)
-        drawable = _simple_chars(pymupdf.Font(fontname=substitute))
-        left_out = [ch for ch in dict.fromkeys(text) if ch not in drawable]
+        left_out = _left_out_by(substitute, text)
         if left_out:
             notices.append(words.LEFT_OUT.format(letters=" ".join(left_out)))
-        kept = "".join(ch for ch in text if ch in drawable)
+        kept = "".join(ch for ch in text if ch not in left_out)
         self._insert(span, kept, substitute, font_size, scale_x)
         return notices
 
@@ -521,6 +526,12 @@ def _code_bytes(font: PageFont) -> int | None:
 def _is_control(ch: str) -> bool:
     """A control, format, private-use or unassigned character: nothing to type."""
     return unicodedata.category(ch).startswith("C")
+
+
+def _left_out_by(base14: str, text: str) -> list[str]:
+    """The characters of `text` a base-14 font can't draw, each once, in order."""
+    drawable = _simple_chars(pymupdf.Font(fontname=base14))
+    return [ch for ch in dict.fromkeys(text) if ch not in drawable]
 
 
 def _simple_chars(font: pymupdf.Font) -> set[str]:

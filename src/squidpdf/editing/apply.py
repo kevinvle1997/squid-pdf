@@ -11,6 +11,7 @@ from collections.abc import Collection, Sequence
 
 from squidpdf.core import words
 from squidpdf.core.engine import Engine
+from squidpdf.core.fonts import drawn_in
 from squidpdf.core.types import Span, SpanIndex
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
 from squidpdf.editing.fit import FitCheck, options_for
@@ -181,6 +182,9 @@ def check(engine: Engine, span: Span, text: str, strategy: Strategy = "as-is") -
         missing=missing,
         options=options,
         strategy=strategy if offered else "as-is",
+        left_out=engine.left_out(span, text),
+        stand_in=drawn_in(span.font),
+        asked=strategy,
     )
 
 

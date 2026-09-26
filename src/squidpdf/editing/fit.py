@@ -31,12 +31,18 @@ class FitCheck:
     in `describe()` rather than baked into the data, so the API layer can
     localise it later without the engine knowing about language. `strategy` is
     the one drawn: the one asked for if it was offered, else as-is.
+
+    It describes what will really be drawn: `delta_pt` is measured without the
+    `left_out` letters, since they won't be there.
     """
 
     delta_pt: float
-    missing: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)  # the span's own font lacks these
     options: list[Option] = field(default_factory=list)
     strategy: Strategy = "as-is"
+    left_out: list[str] = field(default_factory=list)  # no font we have draws these
+    stand_in: str = ""  # the face that draws the line when its own font can't
+    asked: Strategy = "as-is"  # the way out the user chose, offered or not
 
     @property
     def ok(self) -> bool:
@@ -44,12 +50,22 @@ class FitCheck:
         return not self.missing and self.delta_pt <= TOLERANCE_PT
 
     def describe(self) -> str | None:
-        """Plain language, or None when nothing is wrong. Never jargon."""
-        if self.missing:
-            return words.MISSING.format(chars=" or ".join(self.missing))
+        """Everything that won't come out as typed, in plain words; None if nothing."""
+        parts: list[str] = []
+        # Letters its own font lacks but the stand-in has: the whole line switches.
+        switched = [ch for ch in self.missing if ch not in self.left_out]
+        if switched:
+            parts.append(words.MISSING.format(chars=" or ".join(switched), font=self.stand_in))
+        # Letters nothing can draw.
+        if self.left_out:
+            parts.append(words.WILL_LEAVE_OUT.format(letters=" ".join(self.left_out)))
         if self.delta_pt > TOLERANCE_PT:
-            return words.TOO_LONG.format(delta_pt=f"{self.delta_pt:.1f}")
-        return None
+            parts.append(words.TOO_LONG.format(delta_pt=f"{self.delta_pt:.1f}"))
+        # The user's choice of way out wasn't one on offer.
+        passed_over = self.asked != "as-is" and self.strategy != self.asked
+        if passed_over and self.delta_pt > TOLERANCE_PT:
+            parts.append(words.NOT_OFFERED)
+        return "; ".join(parts) or None
 
 
 def options_for(delta_pt: float, original_width: float) -> list[Option]:

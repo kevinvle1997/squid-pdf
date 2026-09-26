@@ -63,6 +63,7 @@ class FitInfo(TypedDict):
 
     delta_pt: float
     missing: list[str]
+    left_out: list[str]
     options: list[Strategy]
     strategy: Strategy
     message: str | None

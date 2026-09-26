@@ -57,6 +57,10 @@ class Engine(Protocol):
         """Rendered width in points, in the face `draw` would use for this text."""
         ...
 
+    def left_out(self, span: Span, text: str) -> list[str]:
+        """Characters no font we have can draw here, so a redraw leaves them out."""
+        ...
+
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's drawing font cannot draw, substitute or not."""
         ...

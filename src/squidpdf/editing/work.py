@@ -69,6 +69,7 @@ def _fit(fit: FitCheck) -> FitInfo:
     return {
         "delta_pt": fit.delta_pt,
         "missing": fit.missing,
+        "left_out": fit.left_out,
         "options": [o.name for o in fit.options],
         "strategy": fit.strategy,
         "message": fit.describe(),
