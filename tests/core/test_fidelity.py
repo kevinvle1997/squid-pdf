@@ -128,6 +128,22 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
     assert_equal(first_drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
 
 
+def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path):
+    """Its program is garbage. Judging the page crashed, and took the whole upload with it."""
+    out = str(tmp_path / "redrawn.pdf")
+    with MuPDFEngine(corrupt) as eng:
+        span = next(iter(eng.index()))
+        [report] = eng.assess(eng.index())
+        eng.remove([span])
+        eng.draw(span, "ABBA")
+        eng.save(out)
+
+    expected = (Fidelity.SUBSTITUTE, words.FONT_UNREADABLE)
+    assert_equal((report.state, report.why), expected, "fidelity, and why")
+    [drawn] = _drawn(out)
+    assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
+
+
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
     """No letter can be looked up in it, but its ToUnicode says which code writes each."""
     out = str(tmp_path / "redrawn.pdf")

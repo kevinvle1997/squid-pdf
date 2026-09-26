@@ -26,7 +26,7 @@ from squidpdf.core.coverage import Coverage
 from squidpdf.core.errors import Damaged, Encrypted
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import broadest, face_bytes, look_alike, strip_subset, trimmed
-from squidpdf.core.pdf import PageFont, PdfFile, TextPiece
+from squidpdf.core.pdf import MUPDF_ERRORS, PageFont, PdfFile, TextPiece
 from squidpdf.core.types import (
     CodedFont,
     Face,
@@ -143,7 +143,7 @@ class MuPDFEngine:
             raise _FontUnusable(words.FONT_NOT_IN_FILE)
         try:
             return _open_font(self._pdf, page_font)
-        except (RuntimeError, ValueError) as exc:  # MuPDF can't open it
+        except MUPDF_ERRORS as exc:  # MuPDF can't open it
             raise _FontUnusable(words.FONT_UNREADABLE) from exc
 
     def _page_font(self, page: int, font_name: str) -> PageFont | None:
@@ -462,7 +462,7 @@ class MuPDFEngine:
         alias = "F" + digest.hexdigest()
         try:
             self.doc[page].insert_font(fontname=alias, fontbuffer=embedded.font.buffer)
-        except (RuntimeError, ValueError):
+        except MUPDF_ERRORS:
             # The bytes opened as a Font, but adding them to a page is another MuPDF
             # path that can still fail; the stand-in draws instead.
             return _FontUnusable(words.FONT_NOT_ADDED)

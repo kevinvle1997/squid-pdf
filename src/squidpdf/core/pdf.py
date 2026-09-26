@@ -26,6 +26,10 @@ _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 
+# What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
+# which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
+MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
+
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
@@ -108,7 +112,7 @@ class PdfFile:
         """The font file stored in the PDF, or None if MuPDF can't read it."""
         try:
             _name, _ext, _kind, buffer = self._doc.extract_font(xref)
-        except (RuntimeError, ValueError):
+        except MUPDF_ERRORS:
             return None
         return buffer or None
 
