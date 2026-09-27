@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from squidpdf.core import Problem, words
+from squidpdf.core import Problem
 
 
 class BadReference(Problem):
@@ -10,7 +10,6 @@ class BadReference(Problem):
 
     type = "bad_reference"
     status = 422
-    sentence = words.BAD_REFERENCE
 
     def __init__(self, span_id: str) -> None:
         """Name the span the redaction asked for."""
@@ -27,7 +26,6 @@ class TooManyEdits(Problem):
 
     type = "too_many_edits"
     status = 422
-    sentence = words.TOO_MANY_EDITS
 
     def __init__(self, edits: int) -> None:
         """Name the limit it went over."""
@@ -39,7 +37,6 @@ class TextTooLong(Problem):
 
     type = "text_too_long"
     status = 422
-    sentence = words.TEXT_TOO_LONG
 
     def __init__(self, chars: int) -> None:
         """Name the limit it went over."""
@@ -52,7 +49,6 @@ class RedactionConflict(Problem):
 
     type = "redaction_conflict"
     status = 422
-    sentence = words.REDACTION_CONFLICT
 
 
 class FontMismatch(Problem):
@@ -60,4 +56,3 @@ class FontMismatch(Problem):
 
     type = "font_mismatch"
     status = 422
-    sentence = words.FONT_MISMATCH

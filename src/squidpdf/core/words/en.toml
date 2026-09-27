@@ -1,0 +1,77 @@
+# Every sentence the app says, in English, under the key a Message names it by.
+#
+# Another language is another file like this one, named by its tag (fr.toml,
+# pt-br.toml), with the same keys and the same {placeholders}. A key it leaves
+# out is said in English. Keys are never renamed: the browser branches on them.
+
+# What's wrong with a replacement.
+# `{font}` is the face that draws the line instead.
+missing = "no {chars} in this font, so the line is drawn in {font}"
+will_leave_out = "{letters} will be left out: no font we have can draw them"
+chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
+not_offered = "too far to fit without looking different, so it's left long"
+too_long = "{delta_pt} pt too long"
+# A font the file doesn't let us use. `{font}` is the face that draws instead.
+stand_in = "Edits here use {font}, which may be a different width from the original."
+# The same, when that face's letters are exactly as wide as the original's.
+stand_in_same_widths = "Edits here use {font}, whose letters are the same width as the original's."
+
+# Why an edit was left out.
+no_span = "This edit points at text that isn't in this document."
+no_page = "This edit points at a page that isn't in this document."
+
+# Why a font's own copy can't be used, so a similar font stands in. One per font.
+font_not_in_file = "This font isn't stored in the file, so a similar font stands in for it."
+font_unreadable = "This font is stored in the file but can't be read, so a similar font stands in for it."
+font_no_letter_list = "This font is stored in the file without saying which shape is which letter, so a similar font stands in for it."
+font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
+font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
+
+# An edit that went in, but not quite as asked. `{letters}` is space-separated.
+font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
+left_out = "Left out {letters}: no font we have can draw them."
+# `{font}` is a face we ship.
+face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
+redaction_undone = "Editing this text undid its redaction."
+
+# Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
+undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
+
+# The ways out of an overflow: what each is called, and what it does.
+shrink_label = "Make it slightly smaller"
+shrink_detail = "Reduces the type size just enough to fit."
+condense_label = "Tighten the letters"
+condense_detail = "Squeezes the spacing by a few percent, which isn't noticeable at this size."
+as_is_label = "Leave it long"
+as_is_detail = "Runs {delta_pt} pt past where the original ended."
+
+# A Problem's `detail`, shown to the user verbatim. Limits are placeholders so
+# the sentence can't drift from the number the server enforces.
+not_a_pdf = "This isn't a PDF."
+too_large = "This file is over {mb} MB."
+too_many_pages = "This PDF has more than {pages} pages."
+encrypted = "This PDF is password-protected. Open it with the password and save a copy first."
+damaged = "This PDF is damaged and can't be opened."
+not_found = "Nothing here. It may have expired."  # never shown: the browser re-uploads
+no_such_page = "This document doesn't have that page."
+redaction_conflict = "This text has a redaction. Undo it to edit."
+bad_reference = "A redaction points at text that isn't in this document: {span_id}."
+redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
+font_mismatch = "This isn't the font the document uses. Its letters are a different width."
+invalid_request = "Something went wrong sending your changes. Reload the page and try again."
+rate_limited = "Too many files at once. Try again in a minute."
+# support@example.com is a placeholder until there's a real inbox: the same in every language.
+too_slow = "This took too long, so we stopped. Try again, and if it keeps happening, email support@example.com."
+too_heavy = "This PDF needs more memory than we can give it. If it keeps happening, email support@example.com."
+too_many_edits = "That's more than {edits} changes at once. Download what you have and go on from there."
+text_too_long = "New text can be up to {chars} characters."
+request_too_large = "That's too much to send at once. Download what you have and go on from there."
+server_error = "Something went wrong on our side. Try again."
+
+# A notice on an upload that worked, but may not be what the user expected.
+no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
+
+# Not sentences: what joins a list's items, and what joins several messages in one line.
+join_chars = " or "
+join_letters = " "
+join_parts = "; "

@@ -22,14 +22,14 @@ def test_check_reports_overflow_with_options(engine):
 
     # A letter only the stand-in has, and one nothing has: both said, each its way.
     fit = replace_fit(engine, span, longer + " é 中")
-    switch = words.MISSING.format(chars="é", font="Liberation Serif Regular")
+    switch = words.sentence("missing").format(chars="é", font="Liberation Serif Regular")
     assert_in(
         switch,
         words.render_all(fit.describe()) or "",
         "the font switch, naming the face that draws",
     )
     assert_in(
-        words.WILL_LEAVE_OUT.format(letters="中"),
+        words.sentence("will_leave_out").format(letters="中"),
         words.render_all(fit.describe()) or "",
         "the letter lost",
     )
@@ -51,5 +51,7 @@ def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
     assert_equal([o.name for o in fit.options], ["as-is"], "options for twice the length")
     assert_equal(fit.strategy, "as-is", "the strategy drawn when shrink isn't offered")
     assert_in(
-        words.NOT_OFFERED, words.render_all(fit.describe()) or "", "why the choice wasn't used"
+        words.sentence("not_offered"),
+        words.render_all(fit.describe()) or "",
+        "why the choice wasn't used",
     )

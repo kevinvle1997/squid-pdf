@@ -22,7 +22,7 @@ __all__ = [
 
 
 class Problem(Exception):
-    """Subclass it and set the three class attributes; `fill` fills the sentence.
+    """Subclass it and set `type` and `status`; `fill` fills the sentence.
 
     A Message like any other: `type` is its sentence's key in `core.words`, and
     `fill` holds the facts. `debug` is the technical why, for a developer: sent
@@ -31,8 +31,8 @@ class Problem(Exception):
 
     type: ClassVar[str] = "server_error"  # what the browser branches on: never renamed
     status: ClassVar[int] = 500
-    # In English: the catalog's sentence under `type`, and said when no catalog has one.
-    sentence: ClassVar[str] = words.SERVER_ERROR
+    # Its own sentence, only for a type no catalog has: the catalogs say the rest.
+    sentence: ClassVar[str | None] = None
 
     def __init__(self, debug: str | None = None, **fill: Param) -> None:
         """Keep what the sentence needs, and the developer's why."""
@@ -72,7 +72,6 @@ class NotFound(Problem):
 
     type = "not_found"
     status = 404
-    sentence = words.NOT_FOUND
 
 
 class Unreadable(Problem):
@@ -80,14 +79,12 @@ class Unreadable(Problem):
 
     type = "damaged"
     status = 422
-    sentence = words.DAMAGED
 
 
 class Encrypted(Unreadable):
     """It opened, but only a password would let us read it."""
 
     type = "encrypted"
-    sentence = words.ENCRYPTED
 
 
 class Damaged(Unreadable):

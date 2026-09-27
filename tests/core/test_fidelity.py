@@ -71,7 +71,7 @@ def test_referenced_font_is_a_substitution(engine):
     }
     assert_all(referenced, lambda s: reports[s.id].substitute == look_alikes[s.font], describe)
     assert_all(referenced, lambda s: reports[s.id].same_widths, describe)
-    not_stored = words.FONT_NOT_IN_FILE
+    not_stored = words.sentence("font_not_in_file")
     assert_all(referenced, lambda s: _said(reports[s.id]) == not_stored, describe)
 
 
@@ -131,7 +131,9 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
         eng.save(str(out))
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
-    assert_equal(_said(report), words.FONT_NO_LETTER_LIST, "why, as the user reads it")
+    assert_equal(
+        _said(report), words.sentence("font_no_letter_list"), "why, as the user reads it"
+    )
     # Nothing to go on but a plain description, so a plain sans draws it, and says so.
     assert_equal(report.substitute, "Liberation Sans Regular", "the face it names")
     first_drawn = _drawn(str(out))[0]
@@ -148,7 +150,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
         eng.draw(span, "ABBA")
         eng.save(out)
 
-    expected = (Fidelity.SUBSTITUTE, words.FONT_UNREADABLE)
+    expected = (Fidelity.SUBSTITUTE, words.sentence("font_unreadable"))
     assert_equal((report.state, _said(report)), expected, "fidelity, and why")
     [drawn] = _drawn(out)
     assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
