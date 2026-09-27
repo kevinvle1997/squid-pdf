@@ -5,7 +5,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.api.language import negotiate
+from squidpdf.api.language import best_language
 from squidpdf.core import words
 from tests.api.conftest import upload
 from tests.conftest import PSEUDO, pseudo_sentence
@@ -61,7 +61,9 @@ def _in(language: str) -> dict[str, str]:
 def test_the_language_answered_in_is_the_most_wanted_one_we_have(
     pseudo, accept_language, chosen
 ):
-    assert_equal(negotiate(accept_language), chosen, f"the language for {accept_language!r}")
+    assert_equal(
+        best_language(accept_language), chosen, f"the language for {accept_language!r}"
+    )
 
 
 def test_a_document_is_answered_in_english_by_default_and_says_so(mine, pdf_bytes):

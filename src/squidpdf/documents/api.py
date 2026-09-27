@@ -17,8 +17,8 @@ import xxhash
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
-from squidpdf.api import language, owner, pool
-from squidpdf.api.language import Language
+from squidpdf.api import owner, pool
+from squidpdf.api.language import ReaderLanguage, language_headers
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, Message, NotFound, Page, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
@@ -81,7 +81,7 @@ async def upload(
     request: Request,
     token: Annotated[str, Depends(owner.token)],
     workers: Annotated[Pool, Depends(pool.current)],
-    said_in: Language,
+    said_in: ReaderLanguage,
     response: Response,
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
@@ -111,7 +111,7 @@ async def upload(
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
-    response.headers.update(language.headers(said_in))
+    response.headers.update(language_headers(said_in))
     return document_response(doc_id, store.touch(folder), analysis, said_in)
 
 
@@ -121,7 +121,7 @@ async def read(
     request: Request,
     response: Response,
     workers: Annotated[Pool, Depends(pool.current)],
-    said_in: Language,
+    said_in: ReaderLanguage,
 ) -> Document | Response:
     """The document, in the reader's language. Worked out again only for a new `build`."""
     raw = store.load_analysis(doc.folder, BUILD)
@@ -137,7 +137,7 @@ async def read(
     # too: another language, or a sentence reworded since, is another body.
     said = orjson.dumps([said_in, words.catalog(said_in)])
     etag = f'"{xxhash.xxh3_64_hexdigest(raw + said)}"'
-    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **language.headers(said_in)}
+    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **language_headers(said_in)}
     if request.headers.get("if-none-match") == etag:  # absent on a first read
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)

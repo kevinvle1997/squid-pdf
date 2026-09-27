@@ -13,16 +13,16 @@ from fastapi import Depends, Request
 from squidpdf.core import words
 
 __all__ = [
-    "negotiate",
-    "of",
-    "headers",
-    "Language",
+    "best_language",
+    "language_of",
+    "language_headers",
+    "ReaderLanguage",
 ]
 
 _WILDCARD = "*"  # "any language": ours first
 
 
-def negotiate(accept_language: str | None) -> str:
+def best_language(accept_language: str | None) -> str:
     """The tag of the catalog to answer in: the most wanted one we have, else English.
 
     A tag we lack falls back to its shorter forms, so "en-GB" is answered in "en".
@@ -59,12 +59,12 @@ def quality_of(weight: str) -> float:
     return 1.0
 
 
-def of(request: Request) -> str:
+def language_of(request: Request) -> str:
     """The language this request is answered in."""
-    return negotiate(request.headers.get("accept-language"))
+    return best_language(request.headers.get("accept-language"))
 
 
-def headers(language: str) -> dict[str, str]:
+def language_headers(language: str) -> dict[str, str]:
     """The headers a reply in words carries: its language, and that it depends on it.
 
     `Vary`, so no cache hands one reader's language to another.
@@ -72,5 +72,5 @@ def headers(language: str) -> dict[str, str]:
     return {"Content-Language": language, "Vary": "Accept-Language"}
 
 
-# A route's reader's language, as a parameter: `said_in: Language`.
-Language = Annotated[str, Depends(of)]
+# A route's reader's language, as a parameter: `said_in: ReaderLanguage`.
+ReaderLanguage = Annotated[str, Depends(language_of)]
