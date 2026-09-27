@@ -17,9 +17,9 @@ from fastapi import APIRouter, Body, Depends, Response
 from pydantic import Field
 
 from squidpdf.api import constants as limits
-from squidpdf.api import language, pool
+from squidpdf.api import pool
 from squidpdf.api.errors import InvalidRequest
-from squidpdf.api.language import Language
+from squidpdf.api.language import ReaderLanguage, language_headers
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, words
 from squidpdf.documents import api as documents
@@ -83,7 +83,7 @@ async def render(
     scale: Annotated[int, Body(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     regions: Annotated[list[Region], Body()],
     workers: Annotated[Pool, Depends(pool.current)],
-    said_in: Language,
+    said_in: ReaderLanguage,
     response: Response,
 ) -> Render:
     """Each region drawn with the edits on its page, a fit per replace, and what was skipped.
@@ -113,7 +113,7 @@ async def render(
     rendered = await workers.run(
         limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
     )
-    response.headers.update(language.headers(said_in))
+    response.headers.update(language_headers(said_in))
     fits = rendered.fits
     return {
         "images": rendered.images,

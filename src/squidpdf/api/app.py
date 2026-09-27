@@ -14,7 +14,8 @@ from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
 
 from squidpdf.api import constants as limits
-from squidpdf.api import errors, language
+from squidpdf.api import errors
+from squidpdf.api.language import language_of
 from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
@@ -47,7 +48,7 @@ async def limit_body(request: Request, call_next: RequestResponseEndpoint) -> Re
     is_upload = request.method == "POST" and request.url.path == upload_path
     too_large = declared is not None and not is_upload and int(declared) > limits.MAX_BODY_BYTES
     if too_large:
-        return errors.response(errors.RequestTooLarge(), language.of(request))
+        return errors.response(errors.RequestTooLarge(), language_of(request))
     return await call_next(request)
 
 

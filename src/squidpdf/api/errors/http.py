@@ -12,7 +12,7 @@ from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.api.errors.generic import InvalidRequest, NotFound, ServerError
-from squidpdf.api.language import headers, of
+from squidpdf.api.language import language_headers, language_of
 from squidpdf.core import Problem
 
 __all__ = [
@@ -72,13 +72,13 @@ def response(problem: Problem, language: str) -> JSONResponse:
         body,
         status_code=problem.status,
         media_type="application/problem+json",
-        headers=headers(language),
+        headers=language_headers(language),
     )
 
 
 async def handle(request: Request, exc: Exception) -> Response:
     """Whatever was raised, answered as the Problem Details the browser gets."""
-    return response(adopt(exc), of(request))
+    return response(adopt(exc), language_of(request))
 
 
 def describe(item: dict[str, Any]) -> str:
