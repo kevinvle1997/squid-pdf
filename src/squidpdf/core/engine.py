@@ -30,6 +30,13 @@ from squidpdf.core.types import (
     SpanIndex,
 )
 
+__all__ = [
+    "letter_widths",
+    "FontCache",
+    "AddedFaces",
+    "Engine",
+]
+
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
@@ -262,7 +269,7 @@ class Engine:
         ignored, so a leftover can't pass for gone by being spaced differently.
         """
         left = self._driver.text_in(span.page, span.bbox)
-        return _unspaced(span.text) not in _unspaced(left)
+        return unspaced(span.text) not in unspaced(left)
 
     def close(self) -> None:
         """Release the open document."""
@@ -431,6 +438,6 @@ class Engine:
         return self._cache.face_aliases[key]
 
 
-def _unspaced(text: str) -> str:
+def unspaced(text: str) -> str:
     """`text` with every space, tab and line break taken out."""
     return "".join(text.split())

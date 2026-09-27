@@ -13,6 +13,11 @@ from collections.abc import Iterable
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
 from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, TextPiece, span_id
 
+__all__ = [
+    "build_index",
+    "merge",
+]
+
 _POSITION_DP = 2  # boxes, origins and sizes, as span ids and the client see them
 _KERNING_PT = -1.0  # a gap down to this far below 0 is kerning pulling letters together
 
@@ -28,7 +33,7 @@ def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
     for page, lines in enumerate(pages):
         for line in lines:
             for group in merge(line):
-                span = _span(page, group, ordinal=len(spans))
+                span = span_from(page, group, ordinal=len(spans))
                 if span is not None:
                     spans.append(span)
     return SpanIndex(spans)
@@ -42,14 +47,14 @@ def merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
     for piece in pieces[1:]:
         current_group = groups[-1]  # the newest group, the one still being built
         last_piece = current_group[-1]  # the piece just before this one on the line
-        if _continues(last_piece, piece):
+        if continues(last_piece, piece):
             current_group.append(piece)
         else:
             groups.append([piece])
     return groups
 
 
-def _continues(previous: TextPiece, piece: TextPiece) -> bool:
+def continues(previous: TextPiece, piece: TextPiece) -> bool:
     """Whether `piece` carries on the span that `previous` ends."""
     # Another font or size.
     if previous.font != piece.font:
@@ -66,14 +71,14 @@ def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     return _KERNING_PT <= gap <= piece.size * GAP_RATIO
 
 
-def _span(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
+def span_from(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
     """Turn one merged group of pieces into a Span, or None if blank."""
     text = "".join(piece.text for piece in group)
     if not text.strip():
         return None
 
     fragments = tuple(
-        Fragment(text=piece.text, bbox=_round_box(piece.box), origin=_round_point(piece.origin))
+        Fragment(text=piece.text, bbox=round_box(piece.box), origin=round_point(piece.origin))
         for piece in group
     )
     bbox = fragments[0].bbox
@@ -94,13 +99,13 @@ def _span(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
     )
 
 
-def _round_box(box: Rect) -> Rect:
+def round_box(box: Rect) -> Rect:
     """The box to 2 decimals, as span ids and the client see it."""
     dp = _POSITION_DP
     return Rect(round(box.x0, dp), round(box.y0, dp), round(box.x1, dp), round(box.y1, dp))
 
 
-def _round_point(point: tuple[float, float]) -> tuple[float, float]:
+def round_point(point: tuple[float, float]) -> tuple[float, float]:
     """The point to 2 decimals, like its box."""
     x, y = point
     return (round(x, _POSITION_DP), round(y, _POSITION_DP))

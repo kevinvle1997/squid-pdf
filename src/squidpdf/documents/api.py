@@ -27,6 +27,17 @@ from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
 from squidpdf.documents.types import Analysis, Document, Loaded
 
+__all__ = [
+    "router",
+    "load",
+    "page_scale",
+    "upload",
+    "read",
+    "delete",
+    "page",
+    "sweep_forever",
+]
+
 router = APIRouter(prefix="/api/documents")
 
 _logger = logging.getLogger(__name__)
@@ -89,7 +100,7 @@ async def upload(
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
-    return _document(doc_id, store.touch(folder), analysis)
+    return document_response(doc_id, store.touch(folder), analysis)
 
 
 @router.get("/{doc_id}", response_model=Document)
@@ -114,7 +125,7 @@ async def read(
     if request.headers.get("if-none-match") == etag:  # absent on a first read
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)
-    return _document(doc.id, doc.expires_at, analysis)
+    return document_response(doc.id, doc.expires_at, analysis)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -164,7 +175,7 @@ async def sweep_forever() -> None:
             _logger.exception("A sweep failed; the next runs in %s s", SWEEP_EVERY_S)
 
 
-def _document(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
+def document_response(doc_id: str, expires_at: float, analysis: Analysis) -> Document:
     """The analysis, plus what belongs to this document and this moment."""
     return {
         **analysis,

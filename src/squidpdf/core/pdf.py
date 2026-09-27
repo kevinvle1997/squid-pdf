@@ -17,6 +17,11 @@ import pymupdf
 
 from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, PageFont, Rect, TextPiece
 
+__all__ = [
+    "MUPDF_ERRORS",
+    "PdfFile",
+]
+
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
 # The object the first entry of an array points at: "[15 0 R]" -> 15.
@@ -42,7 +47,7 @@ class PdfFile:
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
         blocks = self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
-        return [[_text_piece(raw) for raw in line["spans"]] for line in _each_line(blocks)]
+        return [[text_piece(raw) for raw in line["spans"]] for line in each_line(blocks)]
 
     def text_in(self, page: int, box: Rect) -> str:
         """The letters drawn inside `box` on the page, in reading order.
@@ -51,7 +56,7 @@ class PdfFile:
         only grazes the box's edge doesn't.
         """
         blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        inside = (char for char in _each_letter(blocks) if _middle_inside(char["bbox"], box))
+        inside = (char for char in each_letter(blocks) if middle_inside(char["bbox"], box))
         return "".join(char["c"] for char in inside)
 
     def fonts(self, page: int) -> list[PageFont]:
@@ -144,7 +149,7 @@ class PdfFile:
                 code_count = _ONE_BYTE_CODES
             else:  # Type0: one code per glyph, so stop after the last glyph
                 code_count = font.cid_to_gid_len or font.font.glyph_count
-            codes = (_font_code(font, value) for value in range(code_count))
+            codes = (font_code(font, value) for value in range(code_count))
             return [code for code in codes if code is not None]
 
     @contextmanager
@@ -231,7 +236,7 @@ class PdfFile:
         return pymupdf.mupdf.pdf_document_from_fz_document(self._doc.this)
 
 
-def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
+def font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
     """What code `value` draws in a font MuPDF has loaded, or None if it isn't one letter."""
     mu = pymupdf.mupdf
     codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, value)
@@ -248,38 +253,38 @@ def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None
     )
 
 
-def _each_line(blocks: list[dict]) -> Iterator[dict]:
+def each_line(blocks: list[dict]) -> Iterator[dict]:
     """Every line of text get_text read, in reading order."""
     for block in blocks:
         yield from block["lines"]
 
 
-def _each_letter(blocks: list[dict]) -> Iterator[dict]:
+def each_letter(blocks: list[dict]) -> Iterator[dict]:
     """Every letter get_text("rawdict") read, in reading order."""
-    for line in _each_line(blocks):
+    for line in each_line(blocks):
         for piece in line["spans"]:
             yield from piece["chars"]
 
 
-def _text_piece(raw: dict) -> TextPiece:
+def text_piece(raw: dict) -> TextPiece:
     """One piece of text from get_text("dict"), with named fields."""
     return TextPiece(
         text=raw["text"],
         font=raw["font"],
         size=raw["size"],
-        color=_rgb(raw["color"]),
+        color=rgb(raw["color"]),
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )
 
 
-def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
+def middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
     """Whether the middle of `bbox` lies inside `box`."""
     x0, y0, x1, y1 = bbox
     return box.x0 <= (x0 + x1) / 2 <= box.x1 and box.y0 <= (y0 + y1) / 2 <= box.y1
 
 
-def _rgb(packed: int) -> tuple[float, float, float]:
+def rgb(packed: int) -> tuple[float, float, float]:
     """A 0xRRGGBB color as r, g, b, each 0-1."""
     return (
         ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,

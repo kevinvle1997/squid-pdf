@@ -14,14 +14,20 @@ from starlette.exceptions import HTTPException
 from squidpdf.api.errors.generic import InvalidRequest, NotFound, ServerError
 from squidpdf.core import Problem
 
+__all__ = [
+    "adopt",
+    "response",
+    "install",
+]
 
-def _from_validation(exc: Exception) -> Problem:
+
+def from_validation(exc: Exception) -> Problem:
     """FastAPI's list of what was wrong, kept for a developer."""
     assert isinstance(exc, RequestValidationError)
-    return InvalidRequest(debug="; ".join(_describe(item) for item in exc.errors()))
+    return InvalidRequest(debug="; ".join(describe(item) for item in exc.errors()))
 
 
-def _from_http(exc: Exception) -> Problem:
+def from_http(exc: Exception) -> Problem:
     """Starlette's own: a 404 for an unknown path, anything else a bad request."""
     assert isinstance(exc, HTTPException)
     if exc.status_code == status.HTTP_404_NOT_FOUND:
@@ -31,8 +37,8 @@ def _from_http(exc: Exception) -> Problem:
 
 # Exceptions from outside our code, and the Problem each one means.
 _ADOPT: list[tuple[type[Exception], Callable[[Exception], Problem]]] = [
-    (RequestValidationError, _from_validation),
-    (HTTPException, _from_http),
+    (RequestValidationError, from_validation),
+    (HTTPException, from_http),
 ]
 
 
@@ -58,12 +64,12 @@ def response(problem: Problem) -> JSONResponse:
     return JSONResponse(body, status_code=problem.status, media_type="application/problem+json")
 
 
-async def _handle(request: Request, exc: Exception) -> Response:
+async def handle(request: Request, exc: Exception) -> Response:
     """Whatever was raised, answered as the Problem Details the browser gets."""
     return response(adopt(exc))
 
 
-def _describe(item: dict[str, Any]) -> str:
+def describe(item: dict[str, Any]) -> str:
     """One validation failure as `field.path: message`."""
     # The part of the request, e.g. "body", then the path to the field inside it.
     part, *field_path = item["loc"]
@@ -75,4 +81,4 @@ def install(app: FastAPI) -> None:
     """Make every error the app can raise leave as Problem Details."""
     # FastAPI has its own handlers for validation and HTTP errors; Exception is the rest.
     for raised in (Problem, RequestValidationError, HTTPException, Exception):
-        app.add_exception_handler(raised, _handle)
+        app.add_exception_handler(raised, handle)

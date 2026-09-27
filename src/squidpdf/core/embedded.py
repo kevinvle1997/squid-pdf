@@ -13,6 +13,12 @@ from squidpdf.core.coverage import Coverage
 from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.types import CodedFont, FontCode, PageFont
 
+__all__ = [
+    "EmbeddedFont",
+    "FontUnusable",
+    "open_embedded",
+]
+
 # Bytes per code, for the font kinds we can write by code.
 _CODE_BYTES = {"TrueType": 1, "Type0": 2}
 
@@ -51,12 +57,12 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
     if not font_file:
         raise FontUnusable(words.FONT_UNREADABLE)
     try:
-        return _open(driver, page_font, font_file)
+        return open_font_file(driver, page_font, font_file)
     except ValueError as exc:  # the library can't read the font
         raise FontUnusable(words.FONT_UNREADABLE) from exc
 
 
-def _open(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
+def open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
     """The font opened, by letter when it looks letters up itself, else by code."""
     program = driver.open_font(font_file)
     listed_letters = program.listed_letters()
@@ -68,7 +74,7 @@ def _open(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedF
 
     # Written by code, as its letter list says.
     try:
-        coded, coded_coverage = _read_by_code(driver, page_font, font_file)
+        coded, coded_coverage = read_by_code(driver, page_font, font_file)
     except FontUnusable:
         # Unreadable either way: keep it only if the library says it has letters.
         if listed_letters:
@@ -77,7 +83,7 @@ def _open(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedF
     return EmbeddedFont(program, font_file, coded_coverage, coded)
 
 
-def _read_by_code(
+def read_by_code(
     driver: PdfDriver, page_font: PageFont, font_file: bytes
 ) -> tuple[CodedFont, Coverage]:
     """The font's codes and which letters they really draw. Raises FontUnusable if we can't."""
@@ -85,7 +91,7 @@ def _read_by_code(
     writable = page_font.file_type == "ttf" and not page_font.in_form
     if not writable:
         raise FontUnusable(words.FONT_CANT_WRITE)
-    coded = _read_coded_font(driver, page_font)
+    coded = read_coded_font(driver, page_font)
     glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
     coverage = Coverage(font_file, glyph_ids=glyph_ids)
     if not coverage.usable:
@@ -93,12 +99,12 @@ def _read_by_code(
     return coded, coverage
 
 
-def _read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
+def read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
     """Which code draws each letter, from the font's letter list (ToUnicode).
 
     Raises FontUnusable without one: guessing would draw the wrong letters.
     """
-    code_bytes = _code_bytes(font)
+    code_bytes = bytes_per_code(font)
     if code_bytes is None:
         raise FontUnusable(words.FONT_CANT_WRITE)
     font_codes = driver.font_codes(font.xref, code_bytes)
@@ -108,7 +114,7 @@ def _read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
     letters: dict[str, FontCode] = {}
     for code in font_codes:  # lowest code first
         # Only codes that draw a shape, for a letter someone could type.
-        typeable = code.glyph != 0 and not _is_control(code.letter)
+        typeable = code.glyph != 0 and not is_control(code.letter)
         if typeable:
             letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
@@ -116,13 +122,13 @@ def _read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
     return CodedFont(font.resource, font.xref, code_bytes, letters)
 
 
-def _code_bytes(font: PageFont) -> int | None:
+def bytes_per_code(font: PageFont) -> int | None:
     """How many bytes each code takes in this font, or None if we can't write it."""
     if font.kind == "Type0" and font.encoding != "Identity-H":
         return None  # its codes aren't glyph numbers, so we can't work them out
     return _CODE_BYTES.get(font.kind)
 
 
-def _is_control(ch: str) -> bool:
+def is_control(ch: str) -> bool:
     """A control, format, private-use or unassigned character: nothing to type."""
     return unicodedata.category(ch).startswith("C")
