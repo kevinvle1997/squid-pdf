@@ -79,7 +79,7 @@ class PdfFile:
         """The font file stored in the PDF, or None if MuPDF can't read it."""
         try:
             _name, _ext, _kind, buffer = self._doc.extract_font(xref)
-        except MUPDF_ERRORS:
+        except MUPDF_ERRORS:  # MuPDF can't read the font's stream out
             return None
         return buffer or None
 
@@ -166,7 +166,7 @@ class PdfFile:
             font = mu.ll_pdf_load_font(
                 pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
             )
-        except MUPDF_ERRORS as exc:
+        except MUPDF_ERRORS as exc:  # MuPDF can't make sense of the font object
             raise ValueError(f"MuPDF can't load font {xref}") from exc
         try:
             yield font
