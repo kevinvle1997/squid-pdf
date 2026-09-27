@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from squidpdf.core import NotFound, Problem, words
+from squidpdf.core import NotFound, Problem
 
 __all__ = [
     "InvalidRequest",
@@ -20,7 +20,6 @@ class InvalidRequest(Problem):
 
     type = "invalid_request"
     status = 400
-    sentence = words.INVALID_REQUEST
 
 
 class RequestTooLarge(Problem):
@@ -28,7 +27,6 @@ class RequestTooLarge(Problem):
 
     type = "request_too_large"
     status = 413
-    sentence = words.REQUEST_TOO_LARGE
 
 
 class TooSlow(Problem):
@@ -36,7 +34,6 @@ class TooSlow(Problem):
 
     type = "too_slow"
     status = 503
-    sentence = words.TOO_SLOW
 
 
 class TooHeavy(Problem):
@@ -44,7 +41,6 @@ class TooHeavy(Problem):
 
     type = "too_heavy"
     status = 422
-    sentence = words.TOO_HEAVY
 
 
 class ServerError(Problem):
@@ -57,4 +53,3 @@ class RateLimited(Problem):
 
     type = "rate_limited"
     status = 429
-    sentence = words.RATE_LIMITED

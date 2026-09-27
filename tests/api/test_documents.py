@@ -63,11 +63,15 @@ def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
         "shrink_floor": SHRINK_FLOOR,
     }
     assert_equal(doc["fit"], rules, "fit")
-    assert_equal(doc["copy"]["missing"], words.MISSING, "the missing-glyph sentence")
+    assert_equal(
+        doc["copy"]["missing"], words.sentence("missing"), "the missing-glyph sentence"
+    )
     assert_equal(doc["notices"], [], "notices")
     copy = doc["copy"]
     assert_equal(
-        copy["stand_in_same_widths"], words.STAND_IN_SAME_WIDTHS, "same-width sentence"
+        copy["stand_in_same_widths"],
+        words.sentence("stand_in_same_widths"),
+        "same-width sentence",
     )
     # A font only named here: the face that really draws it, whose letters are as wide.
     times = next(f for f in doc["fonts"] if f["name"] == "Times-Roman")

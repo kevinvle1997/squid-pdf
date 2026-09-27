@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from squidpdf.core import NotFound, Problem, words
+from squidpdf.core import NotFound, Problem
 
 
 class NotAPdf(Problem):
@@ -10,7 +10,6 @@ class NotAPdf(Problem):
 
     type = "not_a_pdf"
     status = 415
-    sentence = words.NOT_A_PDF
 
 
 class TooLarge(Problem):
@@ -18,7 +17,6 @@ class TooLarge(Problem):
 
     type = "too_large"
     status = 413
-    sentence = words.TOO_LARGE
 
     def __init__(self, mb: int) -> None:
         """Name the limit it went over."""
@@ -30,7 +28,6 @@ class TooManyPages(Problem):
 
     type = "too_many_pages"
     status = 422
-    sentence = words.TOO_MANY_PAGES
 
     def __init__(self, pages: int) -> None:
         """Name the limit it went over."""
@@ -42,7 +39,6 @@ class NoSuchPage(Problem):
 
     type = "no_such_page"
     status = 422
-    sentence = words.NO_SUCH_PAGE
 
 
 class Gone(NotFound):

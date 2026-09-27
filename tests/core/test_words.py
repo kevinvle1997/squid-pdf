@@ -47,7 +47,7 @@ def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
 @pytest.mark.parametrize(
     ("message", "said"),
     [
-        (Message("no_span"), words.NO_SPAN),
+        (Message("no_span"), words.sentence("no_span")),
         (Message("too_long", {"delta_pt": 3.14159}), "3.1 pt too long"),
         (Message("too_large", {"mb": 100}), "This file is over 100 MB."),
         (
@@ -102,23 +102,42 @@ def test_a_message_is_said_in_the_language_asked_for_joiners_and_all(pseudo):
     expected = "NO é OR ß IN THIS FONT, SO THE LINE IS DRAWN IN Carlito Bold"
     assert_equal(words.render(message, pseudo), expected, "the sentence in the pseudo-language")
     parts = [Message("no_span"), Message("no_page")]
-    joined = f"{pseudo_sentence(words.NO_SPAN)}; {pseudo_sentence(words.NO_PAGE)}"
+    no_span, no_page = (pseudo_sentence(words.sentence(key)) for key in ("no_span", "no_page"))
+    joined = f"{no_span}; {no_page}"
     assert_equal(words.render_all(parts, pseudo), joined, "two messages in one line")
 
 
 def test_a_sentence_a_language_lacks_is_said_in_english(pseudo, monkeypatch):
     lacking = {key: said for key, said in words.CATALOGS[pseudo].items() if key != "no_span"}
     monkeypatch.setitem(words.CATALOGS, pseudo, lacking)
-    assert_equal(words.render(Message("no_span"), pseudo), words.NO_SPAN, "the fallback")
+    assert_equal(
+        words.render(Message("no_span"), pseudo), words.sentence("no_span"), "the fallback"
+    )
 
 
 def test_a_language_we_have_no_catalog_for_is_answered_in_english():
-    assert_equal(words.render(Message("no_span"), "fr"), words.NO_SPAN, "the fallback")
+    assert_equal(
+        words.render(Message("no_span"), "fr"), words.sentence("no_span"), "the fallback"
+    )
 
 
 def test_a_key_no_catalog_has_is_a_bug():
     with pytest.raises(KeyError):
         words.render(Message("no_such_sentence"))
+
+
+def test_a_language_is_one_file_named_by_its_tag(tmp_path):
+    files = {
+        "fr.toml": 'no_span = "Cette modification vise un texte absent."',
+        "pt-BR.toml": 'no_span = "Esta edição aponta para um texto ausente."',
+        "README.md": "not a language",
+    }
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    catalogs = words.load_catalogs(tmp_path)
+    assert_equal(sorted(catalogs), ["fr", "pt-br"], "the tags, lower case, and nothing else")
+    said = catalogs["fr"]["no_span"]
+    assert_equal(said, "Cette modification vise un texte absent.", "a sentence, as written")
 
 
 def test_every_key_the_code_names_is_in_the_catalog():

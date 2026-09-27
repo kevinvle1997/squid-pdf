@@ -8,7 +8,7 @@ squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
 """
 
-# Speaks English only: everything it tells a person goes through core/words.py.
+# Speaks English only: everything it tells a person goes through core/words/.
 
 from __future__ import annotations
 
@@ -214,9 +214,8 @@ def cmd_fixture(args: argparse.Namespace) -> int:
 
 def no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
-    print(
-        f"  {RED}{words.NO_SPAN}{OFF} {DIM}({span_id}: run `squidpdf spans` to list them){OFF}"
-    )
+    said = words.sentence("no_span")
+    print(f"  {RED}{said}{OFF} {DIM}({span_id}: run `squidpdf spans` to list them){OFF}")
     return 1
 
 

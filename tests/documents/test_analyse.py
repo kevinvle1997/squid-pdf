@@ -48,7 +48,8 @@ def test_what_is_kept_is_in_no_language_so_any_can_say_it(folder):
     why = {"code": "font_not_in_file", "params": {}}
     assert_equal(fonts["Times-Roman"]["why"], why, "why Times' own copy can't be used")
     assert_true(
-        words.FONT_NOT_IN_FILE.encode() not in (kept or b""), "an English sentence kept"
+        words.sentence("font_not_in_file").encode() not in (kept or b""),
+        "an English sentence kept",
     )
 
 

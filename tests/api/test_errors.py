@@ -11,7 +11,7 @@ from squidpdf.core import Damaged, Encrypted, NotFound, Problem, Unreadable, wor
 from squidpdf.documents.errors import Gone, TooManyPages
 from squidpdf.editing.errors import BadReference
 from tests.api.conftest import BASE_URL, upload
-from tests.helpers import assert_equal, assert_not_in, assert_problem
+from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
 
 
 def test_an_unknown_path_is_not_found(browser):
@@ -24,7 +24,9 @@ def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
     params = {"scale": 9, "build": doc["build"]}
     response = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
     assert_problem(response, "invalid_request", 400)
-    assert_equal(response.json()["detail"], words.INVALID_REQUEST, "what the user reads")
+    assert_equal(
+        response.json()["detail"], words.sentence("invalid_request"), "what the user reads"
+    )
     assert_equal(
         response.json()["debug"],
         "scale: Input should be less than or equal to 4",
@@ -58,13 +60,14 @@ def test_every_problem_has_its_own_wire_type(app):
             assert_equal(shared.get(cls), owner, f"{cls.__name__} reuses {cls.type!r}")
 
 
-def test_every_problem_says_the_english_catalog_s_sentence_under_its_type(app):
+def test_every_problem_has_an_english_sentence_under_its_type(app):
     # `app` imports every feature, so every Problem subclass is defined by now.
     for cls in _every(Problem):
         if cls.__module__.startswith("tests."):
             continue
-        in_catalog = words.ENGLISH_SENTENCES.get(cls.type)
-        assert_equal(in_catalog, cls.sentence, f"the catalog's sentence for {cls.__name__}")
+        assert_in(
+            cls.type, words.ENGLISH_SENTENCES, f"the catalog's sentence for {cls.__name__}"
+        )
 
 
 def test_a_worker_s_problem_arrives_saying_the_same_thing():

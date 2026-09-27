@@ -143,7 +143,7 @@ def test_an_unknown_span_id_fails_and_points_at_spans(pdf, argv, capsys):
 
     out = capsys.readouterr().out
     assert_equal(code, 1, f"exit code of `squidpdf {argv[0]}` with an unknown span id")
-    assert_in(words.NO_SPAN, out, "the unknown-span error")
+    assert_in(words.sentence("no_span"), out, "the unknown-span error")
     assert_in("nope", out, "the unknown-span error names the id")
     assert_in("squidpdf spans", out, "the unknown-span error names the command to run")
 

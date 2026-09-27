@@ -36,7 +36,10 @@ def test_debug_survives_the_trip_too():
 
 
 def test_both_unreadable_kinds_are_unreadable_and_say_which():
-    for kind, sentence in ((Encrypted, words.ENCRYPTED), (Damaged, words.DAMAGED)):
+    for kind, sentence in (
+        (Encrypted, words.sentence("encrypted")),
+        (Damaged, words.sentence("damaged")),
+    ):
         assert_true(issubclass(kind, Unreadable), f"{kind.__name__} is Unreadable")
         assert_equal(kind().detail, sentence, f"what {kind.__name__} says")
 
@@ -46,7 +49,7 @@ def test_a_problem_is_a_message_its_type_the_key():
 
 
 def test_a_problem_is_said_in_the_language_asked_for(pseudo):
-    expected = pseudo_sentence(words.TOO_LARGE).format(mb=100)
+    expected = pseudo_sentence(words.sentence("too_large")).format(mb=100)
     assert_equal(TooLarge(100).said_in(pseudo), expected, "the sentence in the pseudo-language")
     assert_equal(TooLarge(100).detail, "This file is over 100 MB.", "the sentence in English")
 

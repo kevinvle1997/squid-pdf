@@ -70,7 +70,9 @@ def test_a_document_is_answered_in_english_by_default_and_says_so(mine, pdf_byte
     response = upload(mine, pdf_bytes)
     assert_equal(response.headers["content-language"], "en", "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
-    assert_equal(response.json()["copy"]["missing"], words.MISSING, "the English sentence")
+    assert_equal(
+        response.json()["copy"]["missing"], words.sentence("missing"), "the English sentence"
+    )
 
 
 def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc):
@@ -78,9 +80,11 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
     copy = response.json()["copy"]
-    assert_equal(copy["missing"], pseudo_sentence(words.MISSING), "a sentence to fill")
+    assert_equal(
+        copy["missing"], pseudo_sentence(words.sentence("missing")), "a sentence to fill"
+    )
     shrink = copy["options"]["shrink"]["label"]
-    assert_equal(shrink, pseudo_sentence(words.SHRINK_LABEL), "a way out's name")
+    assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
 
 
 def test_why_a_font_stands_in_is_said_in_the_language_asked_for(pseudo, mine, doc):
@@ -89,11 +93,17 @@ def test_why_a_font_stands_in_is_said_in_the_language_asked_for(pseudo, mine, do
         return next(font for font in document["fonts"] if font["name"] == "Times-Roman")
 
     english = times(doc)
-    expected: tuple[str, str, dict] = (words.FONT_NOT_IN_FILE, "font_not_in_file", {})
+    expected: tuple[str, str, dict] = (
+        words.sentence("font_not_in_file"),
+        "font_not_in_file",
+        {},
+    )
     said = (english["why"], english["why_code"], english["why_params"])
     assert_equal(said, expected, "why, in English and unsaid")
     other = times(mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO)).json())
-    assert_equal(other["why"], pseudo_sentence(words.FONT_NOT_IN_FILE), "why, in pseudo")
+    assert_equal(
+        other["why"], pseudo_sentence(words.sentence("font_not_in_file")), "why, in pseudo"
+    )
     exact = next(font for font in doc["fonts"] if font["why"] is None)
     assert_equal((exact["why_code"], exact["why_params"]), (None, {}), "a font that's used")
 
@@ -108,14 +118,21 @@ def test_one_language_s_etag_never_answers_for_another(pseudo, mine, doc):
     other = mine.get(url, headers={**asked_again, **_in(PSEUDO)})
     assert_equal(other.status_code, 200, "another language, with English's ETag")
     missing = other.json()["copy"]["missing"]
-    assert_equal(missing, pseudo_sentence(words.MISSING), "the body it answered with")
+    assert_equal(
+        missing, pseudo_sentence(words.sentence("missing")), "the body it answered with"
+    )
 
 
 def test_a_document_with_no_text_says_so_with_its_code(pseudo, mine):
     blank = pymupdf.open()
     blank.new_page()
     notices = upload(mine, blank.tobytes()).json()["notices"]
-    no_text = {"type": "no_text", "code": "no_text", "params": {}, "detail": words.NO_TEXT}
+    no_text = {
+        "type": "no_text",
+        "code": "no_text",
+        "params": {},
+        "detail": words.sentence("no_text"),
+    }
     assert_equal(notices, [no_text], "the notice in English")
     response = mine.post(
         "/api/documents",
@@ -123,7 +140,9 @@ def test_a_document_with_no_text_says_so_with_its_code(pseudo, mine):
         headers={"content-type": "application/pdf", **_in(PSEUDO)},
     )
     detail = response.json()["notices"][0]["detail"]
-    assert_equal(detail, pseudo_sentence(words.NO_TEXT), "the notice in the pseudo-language")
+    assert_equal(
+        detail, pseudo_sentence(words.sentence("no_text")), "the notice in the pseudo-language"
+    )
 
 
 def test_a_problem_is_said_in_the_language_asked_for_with_its_code(pseudo, mine):
@@ -132,7 +151,11 @@ def test_a_problem_is_said_in_the_language_asked_for_with_its_code(pseudo, mine)
     )
     assert_problem(response, "not_a_pdf", 415)
     body = response.json()
-    expected: tuple[str, str, dict] = (pseudo_sentence(words.NOT_A_PDF), "not_a_pdf", {})
+    expected: tuple[str, str, dict] = (
+        pseudo_sentence(words.sentence("not_a_pdf")),
+        "not_a_pdf",
+        {},
+    )
     assert_equal((body["detail"], body["code"], body["params"]), expected, "what it says")
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
@@ -161,10 +184,16 @@ def test_render_says_what_went_wrong_in_the_language_asked_for(pseudo, mine, doc
     rendered = response.json()
 
     [skipped] = rendered["skipped"]
-    expected: tuple[str, str, dict] = (pseudo_sentence(words.NO_SPAN), "no_span", {})
+    expected: tuple[str, str, dict] = (
+        pseudo_sentence(words.sentence("no_span")),
+        "no_span",
+        {},
+    )
     assert_equal((skipped["detail"], skipped["code"], skipped["params"]), expected, "the skip")
     fit = rendered["fits"][span["id"]]
-    too_long = pseudo_sentence(words.TOO_LONG).format(delta_pt=f"{fit['delta_pt']:.1f}")
+    too_long = pseudo_sentence(words.sentence("too_long")).format(
+        delta_pt=f"{fit['delta_pt']:.1f}"
+    )
     assert_equal(fit["message"], too_long, "the fit's message")
     parts = [{"code": "too_long", "params": {"delta_pt": fit["delta_pt"]}}]
     assert_equal(fit["message_parts"], parts, "the fit's message, unsaid")

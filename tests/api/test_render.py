@@ -77,7 +77,7 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
 
     assert_true(fit["delta_pt"] > TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
-    too_long = words.TOO_LONG.format(delta_pt=f"{fit['delta_pt']:.1f}")
+    too_long = words.sentence("too_long").format(delta_pt=f"{fit['delta_pt']:.1f}")
     assert_equal(fit["message"], too_long, "the message")
 
 
@@ -115,7 +115,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named(mine, doc):
         {
             "edit": 0,
             "type": "bad_reference",
-            "detail": words.NO_SPAN,
+            "detail": words.sentence("no_span"),
             "code": "no_span",
             "params": {},
         }
