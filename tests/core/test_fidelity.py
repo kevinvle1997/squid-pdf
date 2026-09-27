@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import pymupdf
 import pytest
@@ -20,13 +20,18 @@ _SERIF_FLAGS = 2 | 32  # a PDF font description's Serif and Nonsymbolic bits
 _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
 
 
+def _each_span(blocks: list[dict]) -> Iterator[dict]:
+    """Every span of text in get_text's blocks, in reading order."""
+    for block in blocks:
+        # .get: an image block has no lines.
+        for line in block.get("lines", []):
+            yield from line["spans"]
+
+
 def _drawn(path: str) -> list[dict]:
     """Every span of text on the saved file's first page, re-read."""
     blocks = pymupdf.open(path)[0].get_text("rawdict")["blocks"]
-    # .get: an image block has no lines.
-    return [
-        span for block in blocks for line in block.get("lines", []) for span in line["spans"]
-    ]
+    return list(_each_span(blocks))
 
 
 def _text(span: dict) -> str:

@@ -292,7 +292,7 @@ class Engine:
         if key not in self._cache.embedded:
             try:
                 self._cache.embedded[key] = self._load_font(span.page, font_name)
-            except FontUnusable as problem:
+            except FontUnusable as problem:  # no copy of the font we can use, and why
                 self._cache.embedded[key] = problem
         return self._cache.embedded[key]
 
