@@ -15,7 +15,7 @@ from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 
-_A_MOMENT_S = 0.2  # many passes, when they're zero seconds apart
+_PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
 
 
 def test_a_saved_index_comes_back_span_for_span(engine):
@@ -85,11 +85,15 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
     monkeypatch.setattr(documents, "SWEEP_EVERY_S", 0)
     monkeypatch.setattr(store, "sweep", fails_the_first_time)
 
-    async def sweep_for_a_moment() -> None:
+    async def sweep_until_a_second_pass() -> None:
+        """Sweep until a pass runs after the failed one, or patience runs out."""
         sweeping = asyncio.create_task(documents.sweep_forever())
-        await asyncio.sleep(_A_MOMENT_S)
+        deadline = time.monotonic() + _PATIENCE_S
+        # Waits on the passes themselves, not a fixed moment a slow runner can miss.
+        while passes < 2 and not sweeping.done() and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
         sweeping.cancel()
 
-    asyncio.run(sweep_for_a_moment())
+    asyncio.run(sweep_until_a_second_pass())
     assert_true(passes > 1, f"sweeps after the one that failed: {passes - 1}")
     assert_in("the disk said no", caplog.text, "what the log says about the failed sweep")
