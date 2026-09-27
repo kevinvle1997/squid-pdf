@@ -48,8 +48,8 @@ class _MuPDFFont:
         """Wrap a font MuPDF has opened."""
         self._font = font
 
-    def claimed(self) -> list[int]:
-        """Every code point MuPDF says the font maps; a trimmed font claims more."""
+    def listed_letters(self) -> list[int]:
+        """Every code point MuPDF says the font maps; a trimmed font lists more."""
         return list(self._font.valid_codepoints())
 
     def advance(self, ch: str) -> float:

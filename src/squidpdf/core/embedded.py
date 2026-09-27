@@ -59,8 +59,8 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
 def _open(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
     """The font opened, by letter when it looks letters up itself, else by code."""
     program = driver.open_font(font_file)
-    claimed = program.claimed()
-    coverage = Coverage(font_file, claimed)
+    listed_letters = program.listed_letters()
+    coverage = Coverage(font_file, listed_letters)
 
     # Looks letters up itself: the usual case.
     if coverage.usable:
@@ -71,7 +71,7 @@ def _open(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedF
         coded, coded_coverage = _read_by_code(driver, page_font, font_file)
     except FontUnusable:
         # Unreadable either way: keep it only if the library says it has letters.
-        if claimed:
+        if listed_letters:
             return EmbeddedFont(program, font_file, coverage, None)
         raise
     return EmbeddedFont(program, font_file, coded_coverage, coded)

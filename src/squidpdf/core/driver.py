@@ -24,8 +24,8 @@ from squidpdf.core.types import (
 class FontProgram(Protocol):
     """A font file the library has opened, to measure with."""
 
-    def claimed(self) -> list[int]:
-        """Every code point the library says the font maps; a trimmed font claims more."""
+    def listed_letters(self) -> list[int]:
+        """Every code point the library says the font maps; a trimmed font lists more."""
         ...
 
     def advance(self, ch: str) -> float:
