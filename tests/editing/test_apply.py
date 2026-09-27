@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterator
 
 import pymupdf
 import pytest
@@ -38,14 +39,18 @@ _ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to 
 _HINTING = ("fpgm", "prep", "cvt ")
 
 
+def _each_span(blocks: list[dict]) -> Iterator[dict]:
+    """Every span of text in get_text's blocks, in reading order."""
+    for block in blocks:
+        # .get: an image block has no lines.
+        for line in block.get("lines", []):
+            yield from line["spans"]
+
+
 def _drawn(path, page: int, needle: str) -> dict:
     """The span on a saved page whose text contains `needle`, as MuPDF reads it back."""
     blocks = pymupdf.open(path)[page].get_text("dict")["blocks"]
-    # .get: an image block has no lines.
-    spans = [
-        span for block in blocks for line in block.get("lines", []) for span in line["spans"]
-    ]
-    for span in spans:
+    for span in _each_span(blocks):
         if needle in span["text"]:
             return span
     raise LookupError(f"nothing drawn on page {page} contains {needle!r}")
