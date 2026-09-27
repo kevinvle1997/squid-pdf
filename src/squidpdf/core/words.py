@@ -1,20 +1,11 @@
-"""Every sentence the app says about a document, in one place, each under a key.
+"""Every sentence the app says, in English, each under a key.
 
-The sentences are English, and `ENGLISH_SENTENCES` files each under the key a
-`core.message.Message` names it by. Below the API nothing says a sentence
-outright: it names one by its key, with the facts that fill it, and the edge
-calls `render` in the reader's language. The CLI renders in English.
+Code below the API names a sentence by its key in a Message; the edge says it
+in the reader's language with `render`. Another language is a dict with the
+same keys and placeholders, added to `CATALOGS`.
 
-Another language is a dict with the same keys and the same placeholders, added
-to `CATALOGS`; a key it lacks is said in English. None ships yet.
-
-Placeholders are bare `{name}`, never a format spec, so the browser can fill
-them too: `{chars}` is characters joined with " or ", `{letters}` characters
-joined with spaces, and a number with a fraction, like `{delta_pt}` in points,
-is written to one decimal place. A character that draws nothing a person could
-see, such as a narrow no-break space, is written as its Unicode name.
-
-A key is never renamed: the browser can branch on it.
+Placeholders are bare `{name}`, so the browser can fill them too. A key is
+never renamed: the browser can branch on it.
 """
 
 from __future__ import annotations
