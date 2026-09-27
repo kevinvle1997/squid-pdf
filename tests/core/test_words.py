@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import pickle
 import re
+from collections.abc import Iterator
+from pathlib import Path
 from string import Formatter
 
 import pytest
@@ -13,6 +16,7 @@ from tests.conftest import pseudo_sentence
 from tests.helpers import assert_equal, assert_true
 
 _SNAKE_CASE = re.compile(r"[a-z]+(_[a-z]+)*")
+_SRC = Path(__file__).parents[2] / "src"
 
 
 def _placeholders(sentence: str) -> set[str]:
@@ -115,6 +119,30 @@ def test_a_language_we_have_no_catalog_for_is_answered_in_english():
 def test_a_key_no_catalog_has_is_a_bug():
     with pytest.raises(KeyError):
         words.render(Message("no_such_sentence"))
+
+
+def test_every_key_the_code_names_is_in_the_catalog():
+    """A mistyped key would pass every check and fail only when it's said."""
+    named = {
+        (key, str(path.relative_to(_SRC)))
+        for path in sorted(_SRC.rglob("*.py"))
+        for key in _sentence_keys(path)
+    }
+    unknown = sorted((key, path) for key, path in named if key not in words.ENGLISH_SENTENCES)
+    assert_equal(unknown, [], "keys named in the code with no English sentence")
+
+
+def _sentence_keys(path: Path) -> Iterator[str]:
+    """Every key a file writes out as `Message("key", ...)`."""
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        # A call to Message whose first argument is a string written out.
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id != "Message" or not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            yield first.value
 
 
 def test_nothing_is_said_when_there_is_nothing_to_say():
