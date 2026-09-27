@@ -52,7 +52,7 @@ def quality_of(weight: str) -> float:
         if name.strip().lower() == "q":
             try:
                 quality = float(value)
-            except ValueError:
+            except ValueError:  # not a number, like "q=high"
                 return 0.0
             # Past the range the header allows, or NaN, which fails both comparisons.
             return quality if 0 <= quality <= 1 else 0.0
