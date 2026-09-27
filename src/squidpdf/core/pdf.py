@@ -1,7 +1,7 @@
 """The only file that uses MuPDF's low-level API.
 
 Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
-they stay in `core.mupdf`, whose backend extends this. The hard-to-read calls
+they stay in `core.mupdf`, whose driver extends this. The hard-to-read calls
 live here, and their results come back as named dataclasses. This file only
 reports what the PDF says; the engine decides what to do with it.
 """

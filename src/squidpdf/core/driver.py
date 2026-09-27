@@ -2,7 +2,7 @@
 
 Primitives only: read what the file says, change it, draw on it, save it. What
 to make of it (spans, fidelity, stand-ins, fits) is `core.engine`'s, the same
-over any backend. PyMuPDF is AGPL; a permissive rewrite would implement these
+over any driver. PyMuPDF is AGPL; a permissive rewrite would implement these
 two protocols over pypdfium2 and pikepdf, and nothing else.
 """
 
@@ -37,8 +37,8 @@ class FontProgram(Protocol):
         ...
 
 
-class Backend(Protocol):
-    """A PDF open in a library. `core.mupdf.MuPDFBackend` is the one there is.
+class PdfDriver(Protocol):
+    """A PDF open in a library. `core.mupdf.MuPDFDriver` is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the
     page unrotated. Where a method says it raises ValueError, that is how it

@@ -63,7 +63,7 @@ class Page:
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
-    """A bit of text the page draws in one go, as the backend reads it: often part of a word."""
+    """A bit of text the page draws in one go, as the driver reads it: often part of a word."""
 
     text: str
     font: str

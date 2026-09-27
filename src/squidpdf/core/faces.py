@@ -1,6 +1,6 @@
 """The faces we ship, read: which letters each draws, and which one draws a line instead.
 
-No PDF is opened here, and nothing is measured: widths come from the backend,
+No PDF is opened here, and nothing is measured: widths come from the driver,
 so a preview matches what it draws.
 """
 

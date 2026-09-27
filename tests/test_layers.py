@@ -61,7 +61,7 @@ def _within(name: str, package: str) -> bool:
     ],
     ids=[
         "only core/pdf.py and core/mupdf.py talk to MuPDF",
-        "outside core, nothing names the backend: open_pdf is the way in",
+        "outside core, nothing names the driver: open_pdf is the way in",
         "outside core, nothing reads MuPDF's low-level wrapper",
         "core imports no feature: editing",
         "core imports no feature: documents",

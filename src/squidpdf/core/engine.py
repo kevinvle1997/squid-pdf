@@ -1,6 +1,6 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The product's own logic, written against a `core.backend.Backend`'s primitives,
+The product's own logic, written against a `core.driver.PdfDriver`'s primitives,
 so it's the same over any PDF library. Open one with `core.open_pdf`.
 
 The engine speaks only in primitives (remove, draw), so it never learns what a
@@ -13,7 +13,7 @@ import hashlib
 from collections.abc import Iterable
 
 from squidpdf.core import faces, words
-from squidpdf.core.backend import Backend, FontProgram
+from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.embedded import EmbeddedFont, FontUnusable, open_embedded
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import face_bytes, look_alike, strip_subset, trimmed
@@ -43,9 +43,9 @@ def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]
 class Engine:
     """A PDF open for editing. Use it in a `with`, or close it."""
 
-    def __init__(self, backend: Backend) -> None:
+    def __init__(self, driver: PdfDriver) -> None:
         """Take over an open document, with empty per-font caches."""
-        self._backend = backend
+        self._driver = driver
         # Keyed by (page, font name); each fills in on first lookup.
         self._fonts: dict[tuple[int, str], EmbeddedFont | FontUnusable] = {}
         self._aliases: dict[tuple[int, str], str | FontUnusable] = {}  # once drawn
@@ -58,12 +58,12 @@ class Engine:
 
     def index(self) -> SpanIndex:
         """Every editable span, extracted once from the pristine document."""
-        page_count = len(self._backend.pages())
-        return build_index(self._backend.text_lines(page) for page in range(page_count))
+        page_count = len(self._driver.pages())
+        return build_index(self._driver.text_lines(page) for page in range(page_count))
 
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
-        return self._backend.pages()
+        return self._driver.pages()
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
         """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box.
@@ -71,7 +71,7 @@ class Engine:
         No alpha channel: the page is white whatever the app's theme (Rule 2).
         Unrotated, so the image lines up with the span boxes; the browser turns it.
         """
-        return self._backend.page_image(page, scale, clip)
+        return self._driver.page_image(page, scale, clip)
 
     # What we can promise about it.
 
@@ -113,7 +113,7 @@ class Engine:
         # Not in the file: the look-alike draws it.
         if embedded is None:
             face = self._look_alike(span).face
-            return letter_widths(self._backend.face_font(face), faces.face_letters(face))
+            return letter_widths(self._driver.face_font(face), faces.face_letters(face))
 
         letters = embedded.coverage.drawable()
 
@@ -173,7 +173,7 @@ class Engine:
             self._look_alike(span)
 
         for page, page_spans in by_page.items():
-            self._backend.erase_text(page, [span.bbox for span in page_spans])
+            self._driver.erase_text(page, [span.bbox for span in page_spans])
 
     def draw(
         self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
@@ -228,8 +228,8 @@ class Engine:
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = face_bytes(face)
                 notices.append(words.FACE_NOT_TRIMMED.format(font=face.name))
-            self._backend.replace_font_file(xref, font_file)
-        self._backend.save(path)
+            self._driver.replace_font_file(xref, font_file)
+        self._driver.save(path)
         return notices
 
     def absent(self, span: Span) -> bool:
@@ -239,12 +239,12 @@ class Engine:
         elsewhere in the document are other text, not a leak. Spaces are
         ignored, so a leftover can't pass for gone by being spaced differently.
         """
-        left = self._backend.text_in(span.page, span.bbox)
+        left = self._driver.text_in(span.page, span.bbox)
         return _unspaced(span.text) not in _unspaced(left)
 
     def close(self) -> None:
         """Release the open document."""
-        self._backend.close()
+        self._driver.close()
 
     def __enter__(self) -> Engine:
         """Lets the engine be used as `with open_pdf(path) as engine:`."""
@@ -290,7 +290,7 @@ class Engine:
         # Not on the page: new text in a font it doesn't have.
         if page_font is None:
             raise FontUnusable(words.FONT_NOT_IN_FILE)
-        return open_embedded(self._backend, page_font)
+        return open_embedded(self._driver, page_font)
 
     def _page_font(self, page: int, font_name: str) -> PageFont | None:
         """The page's font by this name, subset prefix aside; None when the page has none.
@@ -298,11 +298,7 @@ class Engine:
         The first by this name, in the library's order; a later one is never tried.
         """
         return next(
-            (
-                font
-                for font in self._backend.fonts(page)
-                if strip_subset(font.name) == font_name
-            ),
+            (font for font in self._driver.fonts(page) if strip_subset(font.name) == font_name),
             None,
         )
 
@@ -314,7 +310,7 @@ class Engine:
             page_font = self._page_font(span.page, font_name)
             # New text, or a font the page doesn't list: go by the name alone.
             descriptor = (
-                None if page_font is None else self._backend.font_descriptor(page_font.xref)
+                None if page_font is None else self._driver.font_descriptor(page_font.xref)
             )
             self._look_alikes[key] = look_alike(span.font, descriptor)
         return self._look_alikes[key]
@@ -333,13 +329,13 @@ class Engine:
         if embedded is not None and not self.missing(span, text):
             return embedded.program, text
         drawn_in = self._stand_in(span, text)
-        return self._backend.face_font(drawn_in.face), drawn_in.text
+        return self._driver.face_font(drawn_in.face), drawn_in.text
 
     # Drawing.
 
     def _write(self, span: Span, text: str, font: str, size: float, scale_x: float) -> None:
         """Write `text` at the span's baseline in the font the page calls `font`."""
-        self._backend.write_text(span.page, span.origin, text, font, size, span.color, scale_x)
+        self._driver.write_text(span.page, span.origin, text, font, size, span.color, scale_x)
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
         """The span's font drawn by code, if it has one and it can draw all of `text`."""
@@ -352,8 +348,8 @@ class Engine:
         self, span: Span, coded: CodedFont, text: str, size: float, scale_x: float
     ) -> None:
         """Write `text` as codes in the file's own font, on top of the page."""
-        self._backend.restore_font(span.page, coded.resource, coded.xref)
-        x, y = self._backend.to_pdf_space(span.page, span.origin)
+        self._driver.restore_font(span.page, coded.resource, coded.xref)
+        x, y = self._driver.to_pdf_space(span.page, span.origin)
         r, g, b = span.color
         hex_digits = coded.code_bytes * 2
         hex_codes = "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
@@ -365,7 +361,7 @@ class Engine:
             f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
             f" <{hex_codes}> Tj ET Q"
         )
-        self._backend.add_content(span.page, stream.encode())
+        self._driver.add_content(span.page, stream.encode())
 
     def _alias(self, span: Span, embedded: EmbeddedFont) -> str:
         """The page's name for this span's font, added to the page on first use.
@@ -390,7 +386,7 @@ class Engine:
         digest = hashlib.blake2s(font_name.encode(), digest_size=_ALIAS_DIGEST_SIZE)
         alias = "F" + digest.hexdigest()
         try:
-            self._backend.add_font(page, alias, embedded.file)
+            self._driver.add_font(page, alias, embedded.file)
         except ValueError:
             # The bytes opened as a font, but adding them to a page is another path
             # that can still fail; the stand-in draws instead.
@@ -407,7 +403,7 @@ class Engine:
             # From the file's name, so it can't clash with the page's own names.
             digest = hashlib.blake2s(face.file.encode(), digest_size=_ALIAS_DIGEST_SIZE)
             alias = "S" + digest.hexdigest()
-            xref = self._backend.add_font(page, alias, face_bytes(face))
+            xref = self._driver.add_font(page, alias, face_bytes(face))
             self._face_aliases[key] = alias
             self._faces_added[xref] = face
         return self._face_aliases[key]

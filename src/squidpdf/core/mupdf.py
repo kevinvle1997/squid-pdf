@@ -1,7 +1,7 @@
-"""The one backend there is: PyMuPDF.
+"""The one driver there is: PyMuPDF.
 
-Only primitives here (see `core.backend`): the hard-to-read MuPDF calls come
-from `core.pdf`, which the backend extends, and the everyday ones are below.
+Only primitives here (see `core.driver`): the hard-to-read MuPDF calls come
+from `core.pdf`, which the driver extends, and the everyday ones are below.
 What to make of them is `core.engine`'s. `open_pdf` is the one way in:
 nothing outside `core` learns that MuPDF is underneath.
 """
@@ -28,7 +28,7 @@ BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
 
 def open_pdf(path: str) -> Engine:
     """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
-    return Engine(MuPDFBackend(path))
+    return Engine(MuPDFDriver(path))
 
 
 @cache
@@ -42,7 +42,7 @@ def face_widths(face: Face) -> dict[str, float]:
 
 
 class _MuPDFFont:
-    """A font file MuPDF has opened. Implements `core.backend.FontProgram`."""
+    """A font file MuPDF has opened. Implements `core.driver.FontProgram`."""
 
     def __init__(self, font: pymupdf.Font) -> None:
         """Wrap a font MuPDF has opened."""
@@ -67,8 +67,8 @@ def _face_font(face: Face) -> _MuPDFFont:
     return _MuPDFFont(pymupdf.Font(fontbuffer=face_bytes(face)))
 
 
-class MuPDFBackend(PdfFile):
-    """A PDF open in MuPDF. Implements `core.backend.Backend`."""
+class MuPDFDriver(PdfFile):
+    """A PDF open in MuPDF. Implements `core.driver.PdfDriver`."""
 
     def __init__(self, path: str) -> None:
         """Open the PDF at `path`, only ever as a PDF."""
