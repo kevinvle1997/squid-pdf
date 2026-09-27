@@ -43,7 +43,7 @@ class Coverage:
     Built from the raw bytes as extracted from the PDF, which may be a bare CFF
     (Adobe's compact outline format), a TrueType, or an OpenType wrapper. Bytes
     it can't read (Type1, a font whose letter table has no Unicode) fall back to
-    `claimed`, the font engine's own list: the best word left. A TrueType with no
+    `listed_letters`, the font engine's own list: the best word left. A TrueType with no
     Unicode letter table can be given `glyph_ids` (letter -> glyph id) instead;
     then only those letters count.
     Results are cached per character because the check runs on every keystroke.
@@ -52,14 +52,14 @@ class Coverage:
     def __init__(
         self,
         buffer: bytes,
-        claimed: Iterable[int] = (),
+        listed_letters: Iterable[int] = (),
         glyph_ids: Mapping[str, GlyphId] | None = None,
     ) -> None:
-        """Parse a font's raw bytes; `claimed` is what it draws if they won't parse."""
+        """Parse a font's raw bytes; `listed_letters` is what it draws if they won't parse."""
         self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
-        self._claimed = frozenset(claimed)
+        self._listed_letters = frozenset(listed_letters)
         # With glyph_ids the font is written by code, and a space with no code can't be.
         self._always = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
         self.usable = False  # True once a parseable font has been loaded
@@ -111,7 +111,7 @@ class Coverage:
         if ch in self._always:
             return True
         if not self.usable:
-            return ord(ch) in self._claimed
+            return ord(ch) in self._listed_letters
         # A space draws no ink, so being mapped is all it takes.
         if ch.isspace():
             return Codepoint(ord(ch)) in self._glyph_names
@@ -134,7 +134,7 @@ class Coverage:
 
     def drawable(self) -> list[str]:
         """Every character `covers` says draws, spaces included, in code point order."""
-        codes = self._glyph_names if self.usable else self._claimed
+        codes = self._glyph_names if self.usable else self._listed_letters
         chars = (chr(codepoint) for codepoint in codes)
         return sorted(self._always.union(ch for ch in chars if self.covers(ch)))
 

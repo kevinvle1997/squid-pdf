@@ -33,12 +33,12 @@ def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
     assert_equal(engine.missing(span, "March"), [], "an all-covered word")
 
 
-def test_a_font_coverage_cant_read_draws_what_mupdf_claims():
-    """It used to claim everything, and a symbol-only cmap redrew as boxes."""
-    cov = Coverage(b"", claimed=[ord("x")])  # no bytes: a font program it can't read
+def test_a_font_coverage_cant_read_draws_what_mupdf_lists():
+    """It used to say every letter drew, and a symbol-only cmap redrew as boxes."""
+    cov = Coverage(b"", listed_letters=[ord("x")])  # no bytes: a font program it can't read
     assert_true(cov.covers(" "), "whitespace is always drawable")
-    assert_true(cov.covers("x"), "a character MuPDF claims")
-    assert_false(cov.covers("y"), "a character nothing claims")
+    assert_true(cov.covers("x"), "a character MuPDF lists")
+    assert_false(cov.covers("y"), "a character nothing lists")
 
 
 def test_a_space_counts_only_if_the_font_maps_it_the_plain_one_always():
