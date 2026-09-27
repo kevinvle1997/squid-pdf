@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 import pymupdf
 
@@ -136,6 +137,24 @@ class PdfFile:
         if value_type == "null":
             return None
 
+        with self._mupdf_font_record(xref) as font:
+            if font.to_unicode is None:  # MuPDF couldn't read it
+                return None
+            if code_bytes == 1:
+                code_count = _ONE_BYTE_CODES
+            else:  # Type0: one code per glyph, so stop after the last glyph
+                code_count = font.cid_to_gid_len or font.font.glyph_count
+            codes = (_font_code(font, value) for value in range(code_count))
+            return [code for code in codes if code is not None]
+
+    @contextmanager
+    def _mupdf_font_record(self, xref: int) -> Iterator[pymupdf.mupdf.pdf_font_desc]:
+        """MuPDF's own record of font `xref`: its letter list, codes and glyph widths.
+
+        MuPDF's C function pdf_load_font builds the record and pdf_drop_font
+        frees it; Python never frees it, so it is only lent out inside a `with`.
+        ValueError if MuPDF can't load the font.
+        """
         mu = pymupdf.mupdf
         pdf = self._pdf()
         try:
@@ -145,14 +164,7 @@ class PdfFile:
         except MUPDF_ERRORS as exc:
             raise ValueError(f"MuPDF can't load font {xref}") from exc
         try:
-            if font.to_unicode is None:  # MuPDF couldn't read it
-                return None
-            if code_bytes == 1:
-                code_count = _ONE_BYTE_CODES
-            else:  # Type0: one code per glyph, so stop after the last glyph
-                code_count = font.cid_to_gid_len or font.font.glyph_count
-            codes = (_font_code(font, value) for value in range(code_count))
-            return [code for code in codes if code is not None]
+            yield font
         finally:
             mu.ll_pdf_drop_font(font)
 
