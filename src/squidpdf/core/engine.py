@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from squidpdf.core import faces, words
 from squidpdf.core.driver import FontProgram, PdfDriver
@@ -40,19 +41,40 @@ def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]
     return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
 
 
+@dataclass(slots=True)
+class FontCache:
+    """What the engine has looked up about the fonts on each page.
+
+    Keyed by (page, font name, subset prefix aside); each entry fills in on
+    first lookup and is never recomputed.
+    """
+
+    embedded: dict[tuple[int, str], EmbeddedFont | FontUnusable] = field(default_factory=dict)
+    look_alikes: dict[tuple[int, str], LookAlike] = field(default_factory=dict)
+    # The page's name for each font, once drawn.
+    aliases: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
+    # The page's name for each face we ship, by (page, face file), once drawn.
+    face_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AddedFaces:
+    """The faces we ship that were added to the document, for `save` to trim."""
+
+    # By font object: pages share one per face.
+    by_xref: dict[int, Face] = field(default_factory=dict)
+    # Every letter drawn in each face, over all pages.
+    drawn: dict[Face, set[str]] = field(default_factory=dict)
+
+
 class Engine:
     """A PDF open for editing. Use it in a `with`, or close it."""
 
     def __init__(self, driver: PdfDriver) -> None:
         """Take over an open document, with empty per-font caches."""
         self._driver = driver
-        # Keyed by (page, font name); each fills in on first lookup.
-        self._fonts: dict[tuple[int, str], EmbeddedFont | FontUnusable] = {}
-        self._aliases: dict[tuple[int, str], str | FontUnusable] = {}  # once drawn
-        self._look_alikes: dict[tuple[int, str], LookAlike] = {}
-        self._face_aliases: dict[tuple[int, str], str] = {}  # by (page, file), once drawn
-        self._faces_added: dict[int, Face] = {}  # by font object; pages share one per face
-        self._drawn: dict[Face, set[str]] = {}  # every letter drawn in each face, all pages
+        self._cache = FontCache()
+        self._added = AddedFaces()
 
     # What the document says.
 
@@ -210,7 +232,7 @@ class Engine:
         if drawn_in.left_out:
             notices.append(words.LEFT_OUT.format(letters=" ".join(drawn_in.left_out)))
         alias = self._face_alias(span.page, drawn_in.face)
-        self._drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
+        self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
         self._write(span, drawn_in.text, alias, font_size, scale_x)
         return notices
 
@@ -221,9 +243,9 @@ class Engine:
         anything that came out other than asked.
         """
         notices: list[str] = []
-        for xref, face in self._faces_added.items():
+        for xref, face in self._added.by_xref.items():
             try:
-                font_file = trimmed(face, self._drawn[face])
+                font_file = trimmed(face, self._added.drawn[face])
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = face_bytes(face)
@@ -260,12 +282,12 @@ class Engine:
         """The file's own copy of the span's font, or why we can't use it."""
         font_name = strip_subset(span.font)
         key = (span.page, font_name)
-        if key not in self._fonts:
+        if key not in self._cache.embedded:
             try:
-                self._fonts[key] = self._load_font(span.page, font_name)
+                self._cache.embedded[key] = self._load_font(span.page, font_name)
             except FontUnusable as problem:
-                self._fonts[key] = problem
-        return self._fonts[key]
+                self._cache.embedded[key] = problem
+        return self._cache.embedded[key]
 
     def _embedded(self, span: Span) -> EmbeddedFont | None:
         """The file's own copy of the span's font, or None when we can't use it.
@@ -306,14 +328,14 @@ class Engine:
         """The face we ship that stands in for the span's font, in its style."""
         font_name = strip_subset(span.font)
         key = (span.page, font_name)
-        if key not in self._look_alikes:
+        if key not in self._cache.look_alikes:
             page_font = self._page_font(span.page, font_name)
             # New text, or a font the page doesn't list: go by the name alone.
             descriptor = (
                 None if page_font is None else self._driver.font_descriptor(page_font.xref)
             )
-            self._look_alikes[key] = look_alike(span.font, descriptor)
-        return self._look_alikes[key]
+            self._cache.look_alikes[key] = look_alike(span.font, descriptor)
+        return self._cache.look_alikes[key]
 
     def _stand_in(self, span: Span, text: str) -> faces.StandIn:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
@@ -371,9 +393,9 @@ class Engine:
         """
         font_name = strip_subset(span.font)
         key = (span.page, font_name)
-        if key not in self._aliases:
-            self._aliases[key] = self._add_font(span.page, font_name, embedded)
-        found = self._aliases[key]
+        if key not in self._cache.aliases:
+            self._cache.aliases[key] = self._add_font(span.page, font_name, embedded)
+        found = self._cache.aliases[key]
         if isinstance(found, FontUnusable):
             raise FontUnusable(found.reason)
         return found
@@ -399,14 +421,14 @@ class Engine:
         Once per page, as `_alias` does for the file's own fonts.
         """
         key = (page, face.file)
-        if key not in self._face_aliases:
+        if key not in self._cache.face_aliases:
             # From the file's name, so it can't clash with the page's own names.
             digest = hashlib.blake2s(face.file.encode(), digest_size=_ALIAS_DIGEST_SIZE)
             alias = "S" + digest.hexdigest()
             xref = self._driver.add_font(page, alias, face_bytes(face))
-            self._face_aliases[key] = alias
-            self._faces_added[xref] = face
-        return self._face_aliases[key]
+            self._cache.face_aliases[key] = alias
+            self._added.by_xref[xref] = face
+        return self._cache.face_aliases[key]
 
 
 def _unspaced(text: str) -> str:
