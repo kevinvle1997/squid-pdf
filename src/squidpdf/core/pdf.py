@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Iterator
 
 import pymupdf
 
@@ -39,11 +40,8 @@ class PdfFile:
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
-        lines = []
-        for block in self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]:
-            for line in block["lines"]:
-                lines.append([_text_piece(raw) for raw in line["spans"]])
-        return lines
+        blocks = self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
+        return [[_text_piece(raw) for raw in line["spans"]] for line in _each_line(blocks)]
 
     def text_in(self, page: int, box: Rect) -> str:
         """The letters drawn inside `box` on the page, in reading order.
@@ -52,14 +50,8 @@ class PdfFile:
         only grazes the box's edge doesn't.
         """
         blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        letters = (
-            char
-            for block in blocks
-            for line in block["lines"]
-            for piece in line["spans"]
-            for char in piece["chars"]
-        )
-        return "".join(char["c"] for char in letters if _middle_inside(char["bbox"], box))
+        inside = (char for char in _each_letter(blocks) if _middle_inside(char["bbox"], box))
+        return "".join(char["c"] for char in inside)
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -242,6 +234,19 @@ def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None
         glyph=GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid)),
         width=mu.ll_pdf_lookup_hmtx(font, cid).w,
     )
+
+
+def _each_line(blocks: list[dict]) -> Iterator[dict]:
+    """Every line of text get_text read, in reading order."""
+    for block in blocks:
+        yield from block["lines"]
+
+
+def _each_letter(blocks: list[dict]) -> Iterator[dict]:
+    """Every letter get_text("rawdict") read, in reading order."""
+    for line in _each_line(blocks):
+        for piece in line["spans"]:
+            yield from piece["chars"]
 
 
 def _text_piece(raw: dict) -> TextPiece:
