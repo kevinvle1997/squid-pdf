@@ -22,6 +22,22 @@ from squidpdf.core import Fragment, Page, Rect, Span, SpanIndex
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 
+__all__ = [
+    "ORIGINAL",
+    "root",
+    "create",
+    "find",
+    "touch",
+    "delete",
+    "sweep",
+    "save_index",
+    "load_index",
+    "save_pages",
+    "load_pages",
+    "save_analysis",
+    "load_analysis",
+]
+
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
@@ -97,21 +113,21 @@ def load_index(folder: Path) -> SpanIndex | None:
         raw = orjson.loads((folder / _INDEX).read_bytes())
     except FileNotFoundError:  # not analysed yet
         return None
-    return SpanIndex([_span(span) for span in raw])
+    return SpanIndex([load_span(span) for span in raw])
 
 
-def _span(saved: dict[str, Any]) -> Span:
+def load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
-        "fragments": tuple(_fragment(fragment) for fragment in saved["fragments"]),
+        "fragments": tuple(load_fragment(fragment) for fragment in saved["fragments"]),
     }
     return Span(**saved | rebuilt)
 
 
-def _fragment(saved: dict[str, Any]) -> Fragment:
+def load_fragment(saved: dict[str, Any]) -> Fragment:
     """One saved fragment, the same way."""
     rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
     return Fragment(**saved | rebuilt)

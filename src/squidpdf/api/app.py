@@ -19,9 +19,13 @@ from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
+__all__ = [
+    "create_app",
+]
+
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
     app.state.pool = Pool()
     sweeper = asyncio.create_task(documents.sweep_forever())
@@ -32,7 +36,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.pool.close()
 
 
-async def _limit_body(request: Request, call_next: RequestResponseEndpoint) -> Response:
+async def limit_body(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """Refuse a too-large edit list before it's read. Uploads check their own, larger limit.
 
     Only a body that says its size up front; a chunked one is read regardless.
@@ -51,14 +55,14 @@ def create_app() -> FastAPI:
     """A fresh app, so each test gets its own."""
     app = FastAPI(
         title="squid-pdf",
-        lifespan=_lifespan,
+        lifespan=lifespan,
         # Everything lives under /api; the rest of the host is the frontend's.
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",
         redoc_url=None,
     )
     errors.install(app)
-    app.middleware("http")(_limit_body)
+    app.middleware("http")(limit_body)
     app.include_router(documents.router)
     app.include_router(editing.router)
     app.include_router(editing.fonts_router)

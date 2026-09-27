@@ -8,7 +8,7 @@ from importlib import resources
 import pytest
 from fontTools.ttLib import TTFont
 
-from squidpdf.core.coverage import Coverage, _glyph_name_for_each_letter
+from squidpdf.core.coverage import Coverage, glyph_name_for_each_letter
 from squidpdf.core.fonts import CATALOG, FACES, face_bytes
 from squidpdf.core.types import Codepoint, GlyphId
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
@@ -114,7 +114,7 @@ def test_glyph_names_come_from_the_ids_given_when_the_font_has_no_letter_table()
         Codepoint(ord(" ")): "space",
     }
     assert_equal(
-        _glyph_name_for_each_letter(font, glyph_ids),
+        glyph_name_for_each_letter(font, glyph_ids),
         expected,
         "each letter's shape, Z past the end",
     )

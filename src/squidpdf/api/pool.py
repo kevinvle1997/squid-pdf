@@ -21,6 +21,11 @@ from squidpdf.api import constants
 from squidpdf.api.errors import TooHeavy, TooSlow
 from squidpdf.core import Damaged
 
+__all__ = [
+    "Pool",
+    "current",
+]
+
 
 class Pool:
     """Workers for PDF work. Tasks take file paths: an open document doesn't pickle."""
@@ -29,7 +34,7 @@ class Pool:
         """Set the pool up; pebble starts the workers on the first task."""
         self._pool = ProcessPool(
             max_tasks=constants.TASKS_PER_WORKER,
-            initializer=_limit_memory,
+            initializer=limit_memory,
             # Spawn: a fork of a threaded server can inherit a held lock and hang.
             # The cast because pebble types `context` as a module; it takes any.
             context=cast(ModuleType, multiprocessing.get_context("spawn")),
@@ -64,7 +69,7 @@ def current(request: Request) -> Pool:
     return request.app.state.pool
 
 
-def _limit_memory() -> None:
+def limit_memory() -> None:
     """Cap a worker's memory, so a hostile PDF kills its worker, not the server.
 
     Linux only. macOS doesn't enforce RLIMIT_AS, so development runs uncapped.

@@ -28,6 +28,16 @@ from squidpdf.core import (
 )
 from squidpdf.editing import Redact, Replace, apply, replace_fit
 
+__all__ = [
+    "cmd_spans",
+    "cmd_check",
+    "cmd_edit",
+    "cmd_redact",
+    "cmd_report",
+    "cmd_fixture",
+    "main",
+]
+
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
@@ -57,11 +67,11 @@ def cmd_spans(args: argparse.Namespace) -> int:
                 f"{DIM}{span.font}{note} {span.size}pt{OFF}{fragments}\n"
                 f"           {preview}"
             )
-        _summary(list(reports.values()))
+        summary(list(reports.values()))
     return 0
 
 
-def _summary(reports: list[FidelityReport]) -> None:
+def summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     substituted = sum(1 for report in reports if report.state is not Fidelity.EXACT)
@@ -79,7 +89,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
-            return _no_span(args.span_id)
+            return no_span(args.span_id)
 
         fit = replace_fit(engine, span, args.text)
         print(f"\n  {span.text!r} -> {args.text!r}")
@@ -105,7 +115,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
-            return _no_span(args.span_id)
+            return no_span(args.span_id)
 
         fit = replace_fit(engine, span, args.text)
         refused = not fit.ok and not args.force
@@ -128,7 +138,7 @@ def cmd_redact(args: argparse.Namespace) -> int:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
-            return _no_span(args.span_id)
+            return no_span(args.span_id)
 
         apply(engine, [Redact(span.id)], index)
         engine.save(args.out)
@@ -172,7 +182,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         if rate is None:
             print(f"  {RED}failed{OFF}   {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
             continue
-        colour = _rate_colour(rate)
+        colour = rate_colour(rate)
         print(f"  {colour}{rate:>5.0%}{OFF}    {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
     if total:
         overall = exact / total
@@ -181,7 +191,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rate_colour(rate: float) -> str:
+def rate_colour(rate: float) -> str:
     """Green at the target, yellow down to the warning line, red below it."""
     if rate >= GREEN_RATE_TARGET:
         return GREEN
@@ -197,7 +207,7 @@ def cmd_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
-def _no_span(span_id: str) -> int:
+def no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
     print(
         f"  {RED}{words.NO_SPAN}{OFF} {DIM}({span_id}: run `squidpdf spans` to list them){OFF}"
@@ -205,14 +215,14 @@ def _no_span(span_id: str) -> int:
     return 1
 
 
-def _existing_file(path: str) -> str:
+def existing_file(path: str) -> str:
     """A path to a file that's there; otherwise a usage error that names it."""
     if not Path(path).is_file():
         raise argparse.ArgumentTypeError(f"there's no file at {path}")
     return path
 
 
-def _new_file(path: str) -> str:
+def new_file(path: str) -> str:
     """A path to save to: in a folder that's there, and not a folder itself."""
     target = Path(path)
     if target.is_dir():
@@ -223,7 +233,7 @@ def _new_file(path: str) -> str:
     return path
 
 
-def _same_file(pdf: str, out: str) -> bool:
+def same_file(pdf: str, out: str) -> bool:
     """Whether `out` is `pdf` itself, under this name or another."""
     return Path(out).exists() and Path(out).samefile(pdf)
 
@@ -238,28 +248,28 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="cmd", required=True)
 
     command = commands.add_parser("spans", help="list editable text and how it would edit")
-    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("pdf", type=existing_file)
     command.add_argument("-p", "--page", type=int, default=None)
     command.set_defaults(fn=cmd_spans)
 
     command = commands.add_parser("check", help="what would happen if you typed this")
-    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("pdf", type=existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
     command.set_defaults(fn=cmd_check)
 
     command = commands.add_parser("edit", help="replace a span and save")
-    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("pdf", type=existing_file)
     command.add_argument("span_id")
     command.add_argument("text")
-    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
+    command.add_argument("-o", "--out", default="out.pdf", type=new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
     command.set_defaults(fn=cmd_edit)
 
     command = commands.add_parser("redact", help="remove a span and verify it is gone")
-    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("pdf", type=existing_file)
     command.add_argument("span_id")
-    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
+    command.add_argument("-o", "--out", default="out.pdf", type=new_file)
     command.set_defaults(fn=cmd_redact)
 
     # No check here: one file that won't open is a row in the report, not the end of it.
@@ -268,12 +278,12 @@ def main(argv: list[str] | None = None) -> int:
     command.set_defaults(fn=cmd_report)
 
     command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default="fixtures/sample.pdf", type=_new_file)
+    command.add_argument("out", nargs="?", default="fixtures/sample.pdf", type=new_file)
     command.set_defaults(fn=cmd_fixture)
 
     args = parser.parse_args(argv)
     # Saving over the PDF being read would lose the original if anything went wrong.
-    overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
+    overwrites = args.cmd in ("edit", "redact") and same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
     try:

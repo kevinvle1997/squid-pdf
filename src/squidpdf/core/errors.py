@@ -11,6 +11,14 @@ from typing import Any, ClassVar
 
 from squidpdf.core import words
 
+__all__ = [
+    "Problem",
+    "NotFound",
+    "Unreadable",
+    "Encrypted",
+    "Damaged",
+]
+
 
 class Problem(Exception):
     """Subclass it and set the three class attributes; `fill` fills the sentence.
@@ -35,10 +43,10 @@ class Problem(Exception):
 
     def __reduce__(self) -> tuple[Any, ...]:
         """Raised in a worker, it reaches the server whole: `fill` isn't in `args`."""
-        return _rebuild, (type(self), self.debug, self.fill)
+        return rebuild, (type(self), self.debug, self.fill)
 
 
-def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, object]) -> Problem:
+def rebuild(cls: type[Problem], debug: str | None, fill: dict[str, object]) -> Problem:
     """A pickled Problem as it was raised, bypassing the subclass's own arguments."""
     problem = cls.__new__(cls)
     Problem.__init__(problem, debug, **fill)

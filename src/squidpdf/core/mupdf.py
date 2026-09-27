@@ -20,6 +20,14 @@ from squidpdf.core.fonts import face_bytes
 from squidpdf.core.pdf import MUPDF_ERRORS, PdfFile
 from squidpdf.core.types import Face, Page, Rect
 
+__all__ = [
+    "BUILD",
+    "open_pdf",
+    "face_widths",
+    "MuPDFDriver",
+    "write_sample",
+]
+
 _GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
@@ -38,10 +46,10 @@ def face_widths(face: Face) -> dict[str, float]:
     For the font list, where there's no document to open: the same widths the
     engine gives a span drawn in the face.
     """
-    return letter_widths(_face_font(face), faces.face_letters(face))
+    return letter_widths(open_face(face), faces.face_letters(face))
 
 
-class _MuPDFFont:
+class MuPDFFont:
     """A font file MuPDF has opened. Implements `core.driver.FontProgram`."""
 
     def __init__(self, font: pymupdf.Font) -> None:
@@ -62,9 +70,9 @@ class _MuPDFFont:
 
 
 @cache
-def _face_font(face: Face) -> _MuPDFFont:
+def open_face(face: Face) -> MuPDFFont:
     """A face we ship, opened once per process: it measures what `add_font` draws."""
-    return _MuPDFFont(pymupdf.Font(fontbuffer=face_bytes(face)))
+    return MuPDFFont(pymupdf.Font(fontbuffer=face_bytes(face)))
 
 
 class MuPDFDriver(PdfFile):
@@ -101,16 +109,16 @@ class MuPDFDriver(PdfFile):
         )
         return pix.tobytes("png")
 
-    def open_font(self, font_file: bytes) -> _MuPDFFont:
+    def open_font(self, font_file: bytes) -> MuPDFFont:
         """Open a font file to measure with. Raises ValueError when MuPDF can't."""
         try:
-            return _MuPDFFont(pymupdf.Font(fontbuffer=font_file))
+            return MuPDFFont(pymupdf.Font(fontbuffer=font_file))
         except MUPDF_ERRORS as exc:
             raise ValueError("MuPDF can't open this font file") from exc
 
-    def face_font(self, face: Face) -> _MuPDFFont:
+    def face_font(self, face: Face) -> MuPDFFont:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
-        return _face_font(face)
+        return open_face(face)
 
     def add_font(self, page: int, name: str, font_file: bytes) -> int:
         """Add a font to the page under `name`; returns its object number.

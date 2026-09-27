@@ -15,6 +15,11 @@ from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontInfo, SpanInfo
 
+__all__ = [
+    "analyse",
+    "page_image",
+]
+
 
 def analyse(folder: str, max_pages: int) -> Analysis:
     """Judge every span and list each font's letters, under this build, and keep it.
@@ -54,7 +59,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {"width": page.width, "height": page.height, "rotation": page.rotation}
             for page in store.load_pages(path)
         ],
-        "spans": [_span_info(span, reports[span.id]) for span in index],
+        "spans": [span_info(span, reports[span.id]) for span in index],
         "fonts": fonts,
     }
     store.save_analysis(path, BUILD, orjson.dumps(analysis))
@@ -67,7 +72,7 @@ def page_image(folder: str, page: int, scale: float) -> bytes:
         return eng.page_image(page, scale)
 
 
-def _span_info(span: Span, report: FidelityReport) -> SpanInfo:
+def span_info(span: Span, report: FidelityReport) -> SpanInfo:
     """One span as the browser gets it, with how well it keeps its own font."""
     box = span.bbox
     return {

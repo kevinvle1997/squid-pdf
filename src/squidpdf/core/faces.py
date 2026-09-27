@@ -14,6 +14,13 @@ from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import broadest, face_bytes
 from squidpdf.core.types import Face
 
+__all__ = [
+    "StandIn",
+    "face_coverage",
+    "face_letters",
+    "stand_in",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class StandIn:
@@ -53,11 +60,11 @@ def stand_in(look_alike: Face, text: str) -> StandIn:
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    runs = [_run(face, text) for face in (look_alike, broadest(look_alike))]
+    runs = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
     return min(runs, key=lambda run: len(run.left_out))  # min keeps the first of a tie
 
 
-def _run(face: Face, text: str) -> StandIn:
+def try_face(face: Face, text: str) -> StandIn:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
     kept = "".join(ch for ch in text if ch not in left_out)

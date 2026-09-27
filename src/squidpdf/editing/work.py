@@ -18,6 +18,10 @@ from squidpdf.editing.edits import Edit
 from squidpdf.editing.fit import FitReport
 from squidpdf.editing.types import FitInfo, ImageInfo, Region, Rendered
 
+__all__ = [
+    "render",
+]
+
 
 def render(
     folder: str, edits: list[Edit], regions: list[Region], scales: dict[int, float]
@@ -38,14 +42,14 @@ def render(
         fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
         applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [
-            _draw(engine, region, pages[region.page], scales[region.page]) for region in regions
+            draw(engine, region, pages[region.page], scales[region.page]) for region in regions
         ]
 
     return {
         "images": images,
-        "fits": {span_id: _fit_info(fit) for span_id, fit in fits.replaces.items()},
+        "fits": {span_id: fit_info(fit) for span_id, fit in fits.replaces.items()},
         "insert_fits": [
-            {**_fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
+            {**fit_info(fit), "edit": position} for position, fit in fits.inserts.items()
         ],
         "redactions": [],  # verdicts come with export and the redaction check
         "skipped": applied.skipped,
@@ -53,7 +57,7 @@ def render(
     }
 
 
-def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
+def draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
     """One region as a base64 PNG: the whole page, or a full-width strip of it."""
     whole_page = region.y0 is None and region.y1 is None
     if whole_page:
@@ -68,7 +72,7 @@ def _draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}
 
 
-def _fit_info(fit: FitReport) -> FitInfo:
+def fit_info(fit: FitReport) -> FitInfo:
     """A fit as the browser gets it: option names, since it has their sentences."""
     return {
         "delta_pt": fit.delta_pt,

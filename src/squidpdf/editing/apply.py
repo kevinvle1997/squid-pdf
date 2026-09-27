@@ -18,10 +18,18 @@ from squidpdf.editing.errors import BadReference
 from squidpdf.editing.fit import FitReport, LogFits, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
+__all__ = [
+    "apply",
+    "log_fits",
+    "insert_fit",
+    "replace_fit",
+    "verify_redactions",
+]
+
 _BAD_REFERENCE = "bad_reference"
 
 
-def _collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
+def collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
     """Reduce a log's span edits to the last edit per span, order preserved.
 
     A span edited twice must only ever be drawn once, in its final state:
@@ -36,7 +44,7 @@ def _collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
     return list(latest.values())
 
 
-def _undone_redactions(edits: Sequence[Edit]) -> list[str]:
+def undone_redactions(edits: Sequence[Edit]) -> list[str]:
     """The spans a Replace brought back after they were redacted: the last edit wins."""
     redacted: set[str] = set()
     undone: dict[str, None] = {}  # a dict, to keep the order and drop repeats
@@ -49,7 +57,7 @@ def _undone_redactions(edits: Sequence[Edit]) -> list[str]:
     return list(undone)
 
 
-def _resolve(
+def resolve(
     engine: Engine, edits: Sequence[Edit], index: SpanIndex
 ) -> tuple[list[tuple[Replace | Redact, Span]], list[tuple[int, Insert]], list[Skipped]]:
     """The log collapsed, each span edit with its span, each insert with its place, and what
@@ -84,7 +92,7 @@ def _resolve(
             continue
         spans[span.id] = span
         kept.append(edit)
-    span_edits = _collapse(kept)
+    span_edits = collapse(kept)
     return [(e, spans[e.span_id]) for e in span_edits], inserts, skipped
 
 
@@ -102,7 +110,7 @@ def apply(
     redactions per page, and a redaction applied after a redraw would erase the
     new text.
     """
-    span_edits, inserts, skipped = _resolve(engine, edits, index)
+    span_edits, inserts, skipped = resolve(engine, edits, index)
 
     to_remove: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
@@ -113,31 +121,31 @@ def apply(
         to_remove.append(span)
         if isinstance(edit, Replace):
             # Worked out before remove(), which can drop the fonts it measures with.
-            size, scale_x = _drawn_at(engine, span, edit)
+            size, scale_x = drawn_at(engine, span, edit)
             to_draw.append((span, edit.text, size, scale_x))
 
     if to_remove:
         engine.remove(to_remove)
-    notices = [Notice(span_id, words.REDACTION_UNDONE) for span_id in _undone_redactions(edits)]
+    notices = [Notice(span_id, words.REDACTION_UNDONE) for span_id in undone_redactions(edits)]
     for span, text, size, scale_x in to_draw:
         for detail in engine.draw(span, text, size, scale_x):
             notices.append(Notice(span.id, detail))
     for position, insert in inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
-            for detail in engine.draw(_insert_span(insert), insert.text):
+            for detail in engine.draw(insert_span(insert), insert.text):
                 notices.append(Notice(None, detail, edit=position))
     return Applied(skipped, notices)
 
 
-def _insert_span(insert: Insert) -> Span:
+def insert_span(insert: Insert) -> Span:
     """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
     return new_text(
         insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
     )
 
 
-def _drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, float]:
+def drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, float]:
     """The font size and horizontal stretch to draw a replacement at.
 
     A None size keeps the span's own. The edit's strategy counts only if it was offered.
@@ -160,7 +168,7 @@ def log_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> LogFits
 
     Measurement only.
     """
-    span_edits, inserts, _skipped = _resolve(engine, edits, index)
+    span_edits, inserts, _skipped = resolve(engine, edits, index)
     return LogFits(
         replaces={
             span.id: replace_fit(engine, span, edit.text, edit.strategy)
@@ -176,7 +184,7 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
 
     Nothing to fit against, so only the font and the letters are checked.
     """
-    span = _insert_span(insert)
+    span = insert_span(insert)
     [report] = engine.assess(SpanIndex([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
@@ -225,7 +233,7 @@ def verify_redactions(
     means it was not redacted after all. A redaction of an unknown span raises,
     as in apply().
     """
-    span_edits, _inserts, _skipped = _resolve(engine, edits, index)
+    span_edits, _inserts, _skipped = resolve(engine, edits, index)
     return {
         span.id: engine.absent(span) for edit, span in span_edits if isinstance(edit, Redact)
     }

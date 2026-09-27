@@ -18,6 +18,17 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
+__all__ = [
+    "CATALOG",
+    "FACES",
+    "strip_subset",
+    "bare_name",
+    "look_alike",
+    "broadest",
+    "face_bytes",
+    "trimmed",
+]
+
 _OFL = "OFL-1.1"  # every face we ship is under the SIL Open Font License
 
 _ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
@@ -31,7 +42,7 @@ _STYLE_NAMES: dict[Style, str] = {
 }
 
 
-def _family(
+def family_faces(
     family: str,
     category: Category,
     same_widths_as: tuple[str, ...] = (),
@@ -56,12 +67,12 @@ def _family(
 # Every face we ship. Where it came from and its version: `fonts/README.md`.
 CATALOG: tuple[Face, ...] = (
     # Same letter widths as the fonts documents most often name but don't embed.
-    *_family(
+    *family_faces(
         "Liberation Sans",
         "sans",
         ("Arial", "ArialMT", "Helvetica", "Arimo", "Nimbus Sans", "NimbusSanL"),
     ),
-    *_family(
+    *family_faces(
         "Liberation Serif",
         "serif",
         (
@@ -75,25 +86,25 @@ CATALOG: tuple[Face, ...] = (
             "NimbusRomNo9L",
         ),
     ),
-    *_family(
+    *family_faces(
         "Liberation Mono",
         "mono",
         ("Courier New", "CourierNewPSMT", "CourierNewPS", "Courier", "Cousine", "NimbusMonL"),
     ),
-    *_family("Carlito", "sans", ("Calibri",)),
-    *_family("Caladea", "serif", ("Cambria",)),
+    *family_faces("Carlito", "sans", ("Calibri",)),
+    *family_faces("Caladea", "serif", ("Cambria",)),
     # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
-    *_family("Noto Sans", "sans"),
-    *_family("Noto Serif", "serif"),
+    *family_faces("Noto Sans", "sans"),
+    *family_faces("Noto Serif", "serif"),
     # More choice for new text.
-    *_family("Inter", "sans"),
-    *_family("Roboto", "sans"),
-    *_family("Lato", "sans"),
-    *_family("EB Garamond", "serif"),
-    *_family("IBM Plex Serif", "serif"),
-    *_family("IBM Plex Mono", "mono"),
-    *_family("Caveat", "handwriting", styles=("regular", "bold")),
-    *_family("Great Vibes", "handwriting", styles=("regular",)),
+    *family_faces("Inter", "sans"),
+    *family_faces("Roboto", "sans"),
+    *family_faces("Lato", "sans"),
+    *family_faces("EB Garamond", "serif"),
+    *family_faces("IBM Plex Serif", "serif"),
+    *family_faces("IBM Plex Mono", "mono"),
+    *family_faces("Caveat", "handwriting", styles=("regular", "bold")),
+    *family_faces("Great Vibes", "handwriting", styles=("regular",)),
 )
 
 # Each face by the name an insert asks for it by.
@@ -175,7 +186,7 @@ def strip_subset(font: str) -> str:
     return font.split("+", 1)[-1]
 
 
-def _split(font: str) -> tuple[str, str]:
+def family_and_style(font: str) -> tuple[str, str]:
     """A font's name as its family and the style words after it.
 
     `ABCDEE+Calibri-Bold` -> (`Calibri`, `Bold`); `Arial,BoldItalic` and
@@ -204,11 +215,11 @@ def bare_name(font: str) -> str:
     containing no "roman". Do not use this to identify one font resource on a
     page, where two different weights share a bare name; use `strip_subset` there.
     """
-    family, _style = _split(font)
+    family, _style = family_and_style(font)
     return family.replace(" ", "").lower()
 
 
-def _by_family() -> dict[str, dict[Style, Face]]:
+def by_family() -> dict[str, dict[Style, Face]]:
     """Each family's faces by style, under its bare name and those of the fonts it matches."""
     families: dict[str, dict[Style, Face]] = {}
     for face in CATALOG:
@@ -217,7 +228,7 @@ def _by_family() -> dict[str, dict[Style, Face]]:
     return families
 
 
-_BY_FAMILY = _by_family()
+_BY_FAMILY = by_family()
 
 
 def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike:
@@ -232,23 +243,23 @@ def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike
     if font in FACES:
         return LookAlike(FACES[font], same_widths=True)
 
-    style, usual_cut = _style_of(font, descriptor)
+    style, usual_cut = style_of(font, descriptor)
     family = _BY_FAMILY.get(bare_name(font))  # None: a family we don't ship
     # A family we know: the same letter widths, if it's a cut we have.
     if family is not None:
-        face = _nearest(family, style)
+        face = nearest_face(family, style)
         return LookAlike(face, same_widths=usual_cut and face.style == style)
 
     # Unknown: a plain face of its kind.
-    category = _category_of(descriptor)
-    face = _nearest(_BY_FAMILY[bare_name(_PLAIN[category])], style)
+    category = category_of(descriptor)
+    face = nearest_face(_BY_FAMILY[bare_name(_PLAIN[category])], style)
     return LookAlike(face, same_widths=False)
 
 
 def broadest(face: Face) -> Face:
     """The face with the most letters, of the same kind and style as `face`."""
     family = _BY_FAMILY[bare_name(_BROADEST[face.category])]
-    return _nearest(family, face.style)
+    return nearest_face(family, face.style)
 
 
 @cache
@@ -275,20 +286,20 @@ def trimmed(face: Face, letters: Iterable[str]) -> bytes:
     return cut.getvalue()
 
 
-def _nearest(family: dict[Style, Face], style: Style) -> Face:
+def nearest_face(family: dict[Style, Face], style: Style) -> Face:
     """The family's face in `style`, or the nearest style it has."""
     while style not in family:
         style = _NEAREST_STYLE[style]
     return family[style]
 
 
-def _style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]:
+def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]:
     """The style a font's name and description say it is, and whether it's a usual cut.
 
     A usual cut is plain regular, bold or italic: a light or narrow cut of a
     family we know still has other letter widths than the face we ship.
     """
-    _family_name, style_words = _split(font)
+    _family_name, style_words = family_and_style(font)
     words = style_words.lower()
     bold = any(word in words for word in _BOLD_WORDS)
     italic = any(word in words for word in _ITALIC_WORDS)
@@ -300,7 +311,7 @@ def _style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool
     return _STYLES[(bold, italic)], usual_cut
 
 
-def _category_of(descriptor: FontDescriptor | None) -> Category:
+def category_of(descriptor: FontDescriptor | None) -> Category:
     """Serif, fixed width or sans, as the PDF describes the font; sans when it doesn't."""
     # Nothing to go on: most document text is sans.
     if descriptor is None:

@@ -17,6 +17,10 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
+__all__ = [
+    "Coverage",
+]
+
 # Counted as drawable whether the font maps them or not: tabs and line breaks
 # aren't drawn, and the plain space is one text extraction adds between words a
 # font never drew a space for. Any other space (no-break, figure, thin...) draws
@@ -81,7 +85,7 @@ class Coverage:
     def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, GlyphId] | None) -> None:
         """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
         font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        self._glyph_names = _glyph_name_for_each_letter(font, glyph_ids)
+        self._glyph_names = glyph_name_for_each_letter(font, glyph_ids)
         self._glyphs = font.getGlyphSet()
 
     def _load_bare_cff(self, buffer: bytes) -> None:
@@ -102,7 +106,7 @@ class Coverage:
         self._glyphs = font.CharStrings
         names = set(font.getGlyphOrder())
         for codepoint in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
-            name = _adobe_name(codepoint)
+            name = adobe_name(codepoint)
             if name in names:
                 self._glyph_names[Codepoint(codepoint)] = name
 
@@ -144,7 +148,7 @@ class Coverage:
         return [ch for ch in unique if not self.covers(ch)]
 
 
-def _glyph_name_for_each_letter(
+def glyph_name_for_each_letter(
     font: TTFont, glyph_ids: Mapping[str, GlyphId] | None
 ) -> dict[Codepoint, GlyphName]:
     """Which shape draws each letter: from `glyph_ids` when given, else the font's letter table.
@@ -166,6 +170,6 @@ def _glyph_name_for_each_letter(
     return {Codepoint(codepoint): name for codepoint, name in cmap.items()}
 
 
-def _adobe_name(codepoint: int) -> str:
+def adobe_name(codepoint: int) -> str:
     """Standard Adobe glyph name for a code point, for fonts with no letter table."""
     return UV2AGL.get(codepoint, f"uni{codepoint:04X}")
