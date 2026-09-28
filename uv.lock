@@ -715,7 +715,7 @@ requires-dist = [
     { name = "fonttools", specifier = ">=4.53" },
     { name = "orjson", marker = "extra == 'api'", specifier = ">=3.10" },
     { name = "pebble", marker = "extra == 'api'", specifier = ">=5.2" },
-    { name = "pymupdf", specifier = ">=1.24" },
+    { name = "pymupdf", specifier = ">=1.25.3" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.32" },
     { name = "xxhash", marker = "extra == 'api'", specifier = ">=3.5" },
 ]
