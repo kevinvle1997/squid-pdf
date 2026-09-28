@@ -11,6 +11,7 @@ direction; documents never imports editing.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -57,8 +58,9 @@ fonts_router = APIRouter(prefix="/api/fonts")
 # Read by `kind` first: one bad kind is one error, not one per edit type.
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
 
-# Export's body is the file, so the edits it left out are named here, by place in the list.
+# Export's body is the file, so these carry the rest: skipped edits, and the file's notices.
 _SKIPPED_HEADER = "Squid-Skipped-Edits"
+_NOTICES_HEADER = "Squid-Notices"
 
 # The font list, worked out once per server under this build: the same for everyone.
 # Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
@@ -120,18 +122,25 @@ async def export(
     doc: Annotated[Loaded, Depends(documents.load)],
     edits: Annotated[list[AnyEdit], Body()],
     workers: Annotated[Pool, Depends(pool.current)],
+    said_in: ReaderLanguage,
     pages: Annotated[list[int] | None, Body()] = None,
 ) -> Response:
     """The document with the edits applied, as a PDF: every page, or `pages` in that order.
 
     ExportController checks the request, makes the file and checks its
-    redactions; this sends it, the edits left out in a header.
+    redactions; this sends it, with the edits left out and what saving did
+    other than asked in headers, in the reader's words.
     """
     exported = await ExportController(workers).export(doc.folder, edits, pages)
     skipped = ", ".join(str(position) for position in exported.skipped)
-    return Response(
-        exported.pdf, media_type="application/pdf", headers={_SKIPPED_HEADER: skipped}
-    )
+    said = [notice_info(Notice(None, message), said_in) for message in exported.notices]
+    headers = {
+        _SKIPPED_HEADER: skipped,
+        # ASCII, every other letter as \uXXXX: a header in any language stays a valid one.
+        _NOTICES_HEADER: json.dumps(said, ensure_ascii=True),
+        **language_headers(said_in),
+    }
+    return Response(exported.pdf, media_type="application/pdf", headers=headers)
 
 
 def fit_info(fit: FitReport, said_in: str) -> FitInfo:

@@ -1,9 +1,9 @@
 """Export, end to end: the edits applied to the whole document, and the file handed back.
 
 ExportController checks the request, sends the work to the workers and hands
-back the file and the edits it left out, in no one's words yet: `editing/api.py`
-puts them into the reader's. Nothing here imports the web framework, so a
-worker can import it to run the work.
+back the file, the edits it left out and what saving it did other than asked,
+in no one's words yet: `editing/api.py` puts them into the reader's. Nothing
+here imports the web framework, so a worker can import it to run the work.
 """
 
 from __future__ import annotations
@@ -82,9 +82,11 @@ class ExportController:
                 if pages is not None:
                     engine.keep_pages(pages)
                     redactions.pages_kept(pages)
-                engine.save(saved)
+                said = engine.save(saved)
             redactions.check_saved(saved)
-            return Exported(Path(saved).read_bytes(), [skip.edit for skip in applied.skipped])
+            skipped = [skip.edit for skip in applied.skipped]
+            # Only the file's own: apply's are render's, said there for the same edits.
+            return Exported(Path(saved).read_bytes(), skipped, said)
 
 
 def check_pages(pages: list[int], page_count: int) -> None:

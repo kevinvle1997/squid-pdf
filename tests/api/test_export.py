@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pymupdf
 import pytest
+from fontTools.subset import Subsetter
+from fontTools.ttLib import TTFont
 
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
@@ -14,6 +17,7 @@ from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
+_NOTICES = "Squid-Notices"
 _HEADER = "CONFIDENTIAL"
 _LINES = ["First page", "Second page", "Third page"]
 
@@ -23,6 +27,11 @@ class _InProcess:
 
     async def run(self, _timeout, fn, /, *args, **kwargs):
         return fn(*args, **kwargs)
+
+
+def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
+    """Fails, as fontTools can on an odd font."""
+    raise ValueError("fontTools can't cut this font")
 
 
 @pytest.fixture(scope="module")
@@ -68,10 +77,13 @@ def _redact(span: dict) -> dict:
     return {"kind": "redact", "span_id": span["id"]}
 
 
-def _export(client, doc: dict, edits: list[dict], pages: list[int] | None = None):
-    """Ask for the file with `edits` applied, as the browser does."""
+def _export(
+    client, doc: dict, edits: list[dict], pages: list[int] | None = None, language: str = "en"
+):
+    """Ask for the file with `edits` applied, as the browser does, reading `language`."""
     body = {"edits": edits} if pages is None else {"edits": edits, "pages": pages}
-    return client.post(f"/api/documents/{doc['id']}/export", json=body)
+    headers = {"Accept-Language": language}
+    return client.post(f"/api/documents/{doc['id']}/export", json=body, headers=headers)
 
 
 def _opened(response) -> pymupdf.Document:
@@ -103,6 +115,36 @@ def test_an_export_opens_and_a_replaced_span_reads_back_as_the_new_text(mine, do
     assert_in(text, _lines(pdf)[1], "the edited page's lines")
     assert_not_in("14 March", pdf[1].get_text(), "the edited page")
     assert_equal(response.headers[_SKIPPED], "", "edits left out")
+    assert_equal(response.headers[_NOTICES], "[]", "what came out other than asked")
+
+
+def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_still_comes(
+    app, mine, doc, monkeypatch, pseudo
+):
+    """Never silent: the file draws right, only larger. Said in the reader's words, in ASCII."""
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
+    monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
+    span = _span(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
+    edit = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
+
+    response = _export(mine, doc, [edit], language=pseudo)
+
+    assert_in(span["text"], _lines(_opened(response))[0], "the redrawn page's lines")
+    said = response.headers[_NOTICES]
+    assert_true(said.isascii(), f"the header is ASCII: {said!r}")
+    font = "Liberation Serif Regular"
+    expected = [
+        {
+            "span_id": None,
+            "detail": f"{font} ENTIÈRE",
+            "edit": None,
+            "code": "face_not_trimmed",
+            "params": {"font": font},
+        }
+    ]
+    assert_equal(json.loads(said), expected, "what came out other than asked")
+    assert_equal(response.headers["Content-Language"], pseudo, "the language it's said in")
 
 
 def test_a_redacted_span_is_gone_from_the_downloaded_file(mine, doc):
