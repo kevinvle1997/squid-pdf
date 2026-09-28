@@ -1,8 +1,6 @@
-"""What runs PDF work away from the server's own thread.
+"""What runs PDF work off the server's own thread.
 
-A Protocol, so a feature's controllers can send work there without importing
-the web framework. `api/pool.py`'s Pool is the one there is; a test can hand
-in its own.
+A Protocol, so controllers can use it without the web framework. `api/pool.py`'s Pool fits it.
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ class Workers(Protocol):
     ) -> T:
         """`fn(*args, **kwargs)` in a worker, stopped after `timeout` seconds.
 
-        `fn` and its arguments cross to another process: a function the worker
-        imports by name (a module's, or a class's staticmethod), and plain data.
+        `fn` must be importable by name, and its arguments plain data: they cross processes.
         """
         ...

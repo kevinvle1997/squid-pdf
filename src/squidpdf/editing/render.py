@@ -28,10 +28,10 @@ __all__ = [
 
 
 class RenderController:
-    """Render, from the request to the reply, with the drawing done on the workers."""
+    """Render, from request to reply."""
 
     def __init__(self, workers: Workers) -> None:
-        """Draw on `workers`, never on the server's own thread."""
+        """Draw on `workers`, off the server's own thread."""
         self._workers = workers
 
     async def render(
@@ -98,8 +98,7 @@ class RenderController:
         """Apply the edits on the drawn pages, then draw each region.
 
         Runs in a worker, so it's a staticmethod the worker can import by name.
-        `scales` is each page's pixels per point, as its page image has it, so
-        a strip lines up with it.
+        `scales` is each page's pixels per point, the same as its page image.
         """
         path = Path(folder)
         index = store.load_index(path)

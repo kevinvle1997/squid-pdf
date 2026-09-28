@@ -76,12 +76,10 @@ class Rendered:
 
 @dataclass(frozen=True, slots=True)
 class Exported:
-    """What export made: the file, its redactions checked, and the edits it left out.
+    """What export made: the file, the edits it left out, and what else saving did.
 
-    `skipped` names each edit left out by its place in the list the browser sent.
-    `notices` are what keeping its pages and saving it did other than asked, in
-    no one's words yet. They're about the file as a whole, so they name no span
-    and no edit.
+    `skipped` are places in the browser's edit list. `notices` are about the
+    whole file, so they name no span.
     """
 
     pdf: bytes

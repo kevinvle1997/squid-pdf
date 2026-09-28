@@ -156,10 +156,10 @@ def cmd_redact(args: argparse.Namespace) -> int:
         applied = apply(engine, edits, index)
         saved = engine.save(args.out)
 
-    # Re-read the saved file with the check the app runs before a download.
+    # The same check a download gets.
     try:
         redactions.check_saved(args.out)
-    except RedactionFailed as failed:  # the saved file still has the text: keep none of it
+    except RedactionFailed as failed:  # the text is still in the file, so delete it
         Path(args.out).unlink()
         print(f"  {RED}{failed.detail}{OFF}")
         return 1

@@ -58,7 +58,7 @@ class PdfDriver(Protocol):
         ...
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
-        """The letters drawn inside each box on the page, in reading order; one read of it."""
+        """The letters inside each box on the page, in reading order."""
         ...
 
     def fonts(self, page: int) -> list[PageFont]:

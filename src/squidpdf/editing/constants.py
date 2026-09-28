@@ -1,7 +1,6 @@
-"""What editing accepts, how long its work may take, and how browsers keep what it sends.
+"""Editing's limits and timeouts, and how browsers keep what it sends.
 
-Limits are starting values, not findings (decisions/api.md, Limits). They
-protect the server, not the business, so no plan or account lifts them.
+Limits protect the server, so no plan or account lifts them.
 """
 
 from __future__ import annotations

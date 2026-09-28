@@ -146,7 +146,7 @@ def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tm
 
 
 def test_a_redaction_is_followed_to_the_page_it_moved_to(repeated):
-    """Read where its page was, the same header on the page now there would fail it."""
+    """Each span is read on the page it moved to, not where it was."""
     with open_pdf(repeated) as eng:
         index = eng.index()
         first = next(iter(index))
@@ -176,7 +176,7 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
 
 
 def test_checking_a_saved_file_reads_each_page_once(engine, tmp_path, monkeypatch):
-    """Read again for every redaction, a busy page made thousands of redactions time out."""
+    """Each page is read once: read per redaction, a busy page timed out."""
     index = engine.index()
     spans = [s for s in index if s.page == EMBEDDED_PAGE]
     out = str(tmp_path / "redacted.pdf")

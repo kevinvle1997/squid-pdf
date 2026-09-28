@@ -257,10 +257,9 @@ class Engine:
         return said
 
     def _drop_tags(self) -> list[Message]:
-        """Drop the file's tags, saying so if it had any.
+        """Drop the file's tags, and say so if it had any.
 
-        The tags point at every page, so kept, they would keep a left-out page
-        in the saved file, text and all.
+        They point at every page, so they would keep left-out pages in the file.
         """
         if not self._driver.has_tags():
             return []
@@ -286,12 +285,10 @@ class Engine:
         return notices
 
     def still_there(self, spans: Iterable[Span]) -> list[Span]:
-        """The spans whose text is still where it was, page by page. A black box leaves it.
+        """The spans whose text is still in their box. A black box over it doesn't hide it.
 
-        Only each span's own box on its own page is read: the same words
-        elsewhere in the document are other text, not a leak. Spaces are
-        ignored, so a leftover can't pass for gone by being spaced differently.
-        Each page is read once, however many spans are on it.
+        Only each span's own box is read, so the same words elsewhere aren't a
+        leak. Spaces are ignored, so respacing can't hide a leftover.
         """
         by_page: dict[int, list[Span]] = {}
         for span in spans:

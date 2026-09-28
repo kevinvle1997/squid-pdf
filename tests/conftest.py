@@ -113,10 +113,8 @@ def repeated(tmp_path_factory) -> str:
 def tagged(tmp_path) -> str:
     """Two pages tagged for screen readers, as Word and browsers save them.
 
-    Each page's line is marked as one paragraph (MCID 0), and the tags (the
-    structure tree) hold one paragraph per page, each pointing at its page.
-    The parent tree maps each page back to its paragraph, as a real file's
-    does. That is all it takes for MuPDF to keep a page it was told to drop.
+    Each page's line is one paragraph, and the tags point at it and back, as
+    a real file's do. That is enough for MuPDF to keep a page it was told to drop.
     """
     doc = pymupdf.open()
     for number, line in enumerate(TAGGED_LINES):

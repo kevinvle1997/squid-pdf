@@ -54,10 +54,9 @@ class PdfFile:
         return [[text_piece(raw) for raw in line["spans"]] for line in each_line(blocks)]
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
-        """The letters drawn inside each box on the page, in reading order; one read of it.
+        """The letters inside each box on the page, in reading order.
 
-        A letter counts when its middle is inside, so one on the next line that
-        only grazes the box's edge doesn't.
+        A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
         blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
         letters = list(each_letter(blocks))

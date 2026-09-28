@@ -5,7 +5,7 @@ from __future__ import annotations
 from squidpdf.core import InvalidRequest, NotFound, Problem
 
 __all__ = [
-    "InvalidRequest",  # core's, so a controller can raise it without the web framework
+    "InvalidRequest",  # core's, so controllers can raise it too
     "NotFound",  # core's, so a feature's own errors can build on it
     "RateLimited",
     "RequestTooLarge",

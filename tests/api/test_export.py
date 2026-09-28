@@ -38,8 +38,7 @@ def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
 def three_pages() -> bytes:
     """Three pages under the same header, each with its own line below it.
 
-    The header is in the same place on every page, so a redaction read on the
-    wrong page finds its text there, and the export fails.
+    The header repeats, so a redaction read on the wrong page finds it and fails.
     """
     doc = pymupdf.open()
     for line in _LINES:
@@ -121,7 +120,7 @@ def test_an_export_opens_and_a_replaced_span_reads_back_as_the_new_text(mine, do
 def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_still_comes(
     app, mine, doc, monkeypatch, pseudo
 ):
-    """Never silent: the file draws right, only larger. Said in the reader's words, in ASCII."""
+    """The file is only larger, but it's said, in the reader's words and in ASCII."""
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
     monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
@@ -158,7 +157,7 @@ def test_a_redacted_span_is_gone_from_the_downloaded_file(mine, doc):
 
 
 def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
-    """Rule 4: text still in the saved file means no file, and the user is told which."""
+    """Text still in the saved file means no file, and the user is told which span."""
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
     span = _span(doc, 1, "Invoices")

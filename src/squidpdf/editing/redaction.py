@@ -1,10 +1,6 @@
-"""A redaction's life, from the edit list to the saved file.
+"""A redaction's life: which spans it covers, then whether their text is really gone.
 
-Rule 4: a redaction is checked by re-reading what was saved. This follows one
-edit list's redactions all the way: which spans they are, worked out before
-anything is drawn; whether their text is gone from the document in memory;
-and whether it is gone from the file as saved. The CLI's `redact` goes through
-it, and so does every download.
+Checked by re-reading the saved file. Export and the CLI's `redact` both use it.
 """
 
 from __future__ import annotations
@@ -19,24 +15,22 @@ from squidpdf.editing.errors import RedactionFailed
 
 
 class RedactionController:
-    """One edit list's redactions, followed from the edit list to the saved file."""
+    """One edit list's redactions, from the edits to the saved file."""
 
     def __init__(self, redacted: Sequence[Span]) -> None:
-        """Follow these redacted spans, as the original has them."""
+        """Follow these redacted spans, numbered as in the original."""
         self._redacted = list(redacted)
-        # The pages kept, as original numbers in the file's order; None when all stay put.
+        # The pages kept, in their new order; None when every page stays put.
         self._kept: list[int] | None = None
 
     @classmethod
     def from_edits(
         cls, engine: Engine, edits: Sequence[Edit], index: SpanIndex
     ) -> RedactionController:
-        """The redactions an edit list leaves: every span whose last edit is a Redact.
+        """Every span whose last edit is a Redact, worked out before anything is drawn.
 
-        Worked out before anything is drawn. A Replace after a Redact means it
-        was not redacted after all. A redaction pointing at text the index
-        doesn't have raises BadReference, as apply() does: skipping it would
-        be a leak.
+        A Replace after a Redact undoes it. A redaction pointing at nothing
+        raises BadReference: skipping it would leak.
         """
         span_edits, _inserts, _skipped = resolve(engine, edits, index)
         return cls([span for edit, span in span_edits if isinstance(edit, Redact)])
@@ -44,20 +38,15 @@ class RedactionController:
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's text is gone from the document in memory, by span id.
 
-        Render's early verdict, before anything is saved. A covering rectangle
-        would pass a visual check and fail this one. The same words elsewhere,
-        such as a header repeated on other pages, don't count against it. Each
-        span is read on the page it went to; one on a page left out is gone.
+        Render's early check, before anything is saved.
         """
         left = {span.id for span in engine.still_there(self._as_saved())}
         return {span.id: span.id not in left for span in self._redacted}
 
     def keep_pages(self, engine: Engine, pages: Sequence[int]) -> list[Message]:
-        """Keep only `pages` in the document, original numbers in its order, and follow them.
+        """Keep only `pages`, in that order. Returns what keeping them said.
 
-        Done here, not on the engine alone, so the checks after it can't lose
-        track: each redaction is read on the page it went to, and one on a
-        page left out goes with it. Returns what keeping them came out with.
+        Here, not on the engine, so each check reads a span on the page it moved to.
         """
         self._kept = list(pages)
         return engine.keep_pages(self._kept)
@@ -65,10 +54,7 @@ class RedactionController:
     def check_saved(self, path: str) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
-        Read from the saved bytes, so a covering box or a save that lost the
-        removal can't pass. Each span is read in its own box, on the page it
-        went to, and each page once. Raises RedactionFailed, naming a span
-        whose text is still there by its original page.
+        Raises RedactionFailed naming the first span still there, by its original page.
         """
         with open_pdf(path) as saved:
             left = saved.still_there(self._as_saved())

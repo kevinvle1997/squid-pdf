@@ -33,10 +33,10 @@ _NOTICES_HEADER = "Squid-Notices"
 
 
 class ExportController:
-    """Export, from the request to the reply, with the file made on the workers."""
+    """Export, from request to reply."""
 
     def __init__(self, workers: Workers) -> None:
-        """Make the file on `workers`, never on the server's own thread."""
+        """Make files on `workers`, off the server's own thread."""
         self._workers = workers
 
     async def export(
@@ -96,7 +96,7 @@ class ExportController:
                 said += engine.save(saved)
             redactions.check_saved(saved)
             skipped = [skip.edit for skip in applied.skipped]
-            # Only the file's notices: render already reported apply's for the same edits.
+            # Only the file's own notices: render already said apply's.
             return Exported(Path(saved).read_bytes(), skipped, said)
 
 
