@@ -12,6 +12,7 @@ from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.core.fonts import FACES
 from squidpdf.documents import store
+from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
@@ -131,7 +132,7 @@ def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
     png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
     pix = pymupdf.Pixmap(png)
     assert_true(
-        pix.width * pix.height <= limits.MAX_IMAGE_PIXELS,
+        pix.width * pix.height <= MAX_IMAGE_PIXELS,
         f"{pix.width}x{pix.height} is past the pixel limit",
     )
 

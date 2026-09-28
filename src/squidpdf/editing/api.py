@@ -2,9 +2,10 @@
 
 Also the font list: every face we ship that new text can be drawn in.
 
-Routes stay thin: load, validate, pool, reply. The reply is where what went
-wrong is put into the reader's words: the pool hands back Messages. Imports `documents.api`
-for `load`, the one allowed direction; documents never imports editing.
+Routes are HTTP only: read the request, call the action's controller, shape
+the reply. The reply is where what the controller hands back, Messages, is put
+into the reader's words. Imports `documents.api` for `load`, the one allowed
+direction; documents never imports editing.
 """
 
 from __future__ import annotations
@@ -18,20 +19,16 @@ from pydantic import Field
 
 from squidpdf.api import constants as limits
 from squidpdf.api import pool
-from squidpdf.api.errors import InvalidRequest
 from squidpdf.api.language import ReaderLanguage, language_headers
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, words
 from squidpdf.documents import api as documents
-from squidpdf.documents import store
-from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.types import Loaded
-from squidpdf.editing import work
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from squidpdf.editing.edits import Insert, Redact, Replace
-from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.fit import FitReport
 from squidpdf.editing.fonts import font_list
+from squidpdf.editing.render import RenderController
 from squidpdf.editing.types import (
     FitInfo,
     FontList,
@@ -88,31 +85,9 @@ async def render(
 ) -> Render:
     """Each region drawn with the edits on its page, a fit per replace, and what was skipped.
 
-    Keeps nothing. A redaction pointing at nothing fails the whole request.
+    RenderController checks the request and draws; this says it in the reader's words.
     """
-    if len(edits) > limits.MAX_EDITS:
-        raise TooManyEdits(limits.MAX_EDITS)
-    too_long = any(
-        isinstance(edit, Replace | Insert) and len(edit.text) > limits.MAX_TEXT_CHARS
-        for edit in edits
-    )
-    if too_long:
-        raise TextTooLong(limits.MAX_TEXT_CHARS)
-    pages = store.load_pages(doc.folder)
-    for region in regions:
-        if not 0 <= region.page < len(pages):
-            raise NoSuchPage(debug=f"regions: no page {region.page}")
-        top = 0.0 if region.y0 is None else region.y0
-        bottom = pages[region.page].height if region.y1 is None else region.y1
-        # `not <` rather than `>=`: every comparison with NaN is false, so this refuses it too.
-        if not top < bottom:
-            reason = f"regions: y0 must be a number above y1 on page {region.page}"
-            raise InvalidRequest(debug=reason)
-    scales = {r.page: documents.page_scale(pages[r.page], scale) for r in regions}
-    # A redaction pointing at nothing raises BadReference in the worker.
-    rendered = await workers.run(
-        limits.RENDER_TIMEOUT_S, work.render, str(doc.folder), edits, regions, scales
-    )
+    rendered = await RenderController(workers).render(doc.folder, edits, regions, scale)
     response.headers.update(language_headers(said_in))
     fits = rendered.fits
     return {

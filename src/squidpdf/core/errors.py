@@ -15,6 +15,7 @@ from squidpdf.core.message import Message, Param
 __all__ = [
     "Problem",
     "NotFound",
+    "InvalidRequest",
     "Unreadable",
     "Encrypted",
     "Damaged",
@@ -72,6 +73,13 @@ class NotFound(Problem):
 
     type = "not_found"
     status = 404
+
+
+class InvalidRequest(Problem):
+    """A browser bug: a plain sentence for the user, the particulars in `debug`."""
+
+    type = "invalid_request"
+    status = 400
 
 
 class Unreadable(Problem):

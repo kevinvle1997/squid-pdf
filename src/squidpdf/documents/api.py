@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -20,12 +19,13 @@ from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
 from squidpdf.api.language import ReaderLanguage, language_headers
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, Message, NotFound, Page, words
+from squidpdf.core import BUILD, Message, NotFound, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
+from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import (
     Analysis,
     Copy,
@@ -39,7 +39,6 @@ from squidpdf.documents.types import (
 __all__ = [
     "router",
     "load",
-    "page_scale",
     "upload",
     "read",
     "delete",
@@ -63,17 +62,6 @@ def load(doc_id: str, request: Request) -> Loaded:
     folder, digest = found
     owner.check(request, digest)
     return Loaded(doc_id, folder, store.touch(folder))
-
-
-def page_scale(page: Page, scale: int) -> float:
-    """`scale`, or the largest that keeps this page under the pixel limit.
-
-    Render's strips use it too, so they line up with the page image.
-    """
-    width, height = page.width, page.height
-    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
-    largest = math.sqrt(limits.MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
-    return min(scale, largest)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
