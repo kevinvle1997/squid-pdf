@@ -89,6 +89,22 @@ class Exported:
     notices: list[Message]
 
 
+@dataclass(frozen=True, slots=True)
+class RenderReply:
+    """Render's reply, ready to send: the JSON body and its headers."""
+
+    body: Render
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportReply:
+    """Export's reply, ready to send: the PDF and its headers."""
+
+    pdf: bytes
+    headers: dict[str, str]
+
+
 class ImageInfo(TypedDict):
     """A drawn strip, its top `y` in points on the page, as a base64 PNG."""
 

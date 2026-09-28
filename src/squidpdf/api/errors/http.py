@@ -12,8 +12,8 @@ from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.api.errors.generic import InvalidRequest, NotFound, ServerError
-from squidpdf.api.language import language_headers, language_of
-from squidpdf.core import Problem
+from squidpdf.api.language import language_of
+from squidpdf.core import Problem, words
 
 __all__ = [
     "adopt",
@@ -72,7 +72,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
         body,
         status_code=problem.status,
         media_type="application/problem+json",
-        headers=language_headers(language),
+        headers=words.language_headers(language),
     )
 
 

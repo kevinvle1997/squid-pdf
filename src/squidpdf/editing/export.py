@@ -1,25 +1,25 @@
-"""Export, end to end: the edits applied to the whole document, and the file handed back.
+"""Export: the edits applied to the whole document, and the file sent back.
 
-ExportController checks the request, sends the work to the workers and hands
-back the file, the edits it left out and what making it did other than asked,
-in no one's words yet: `editing/api.py` puts them into the reader's. Nothing
-here imports the web framework, so a worker can import it to run the work.
+No web framework here, so a worker can import it.
 """
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
-from squidpdf.core import InvalidRequest, Message, Workers, open_pdf
+from squidpdf.core import InvalidRequest, Message, Workers, open_pdf, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
+from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, MAX_EDITS, MAX_TEXT_CHARS
 from squidpdf.editing.edits import Edit, Insert, Replace
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
+from squidpdf.editing.info import notice_info
 from squidpdf.editing.redaction import RedactionController
-from squidpdf.editing.types import Exported
+from squidpdf.editing.types import Exported, ExportReply, Notice
 
 __all__ = [
     "ExportController",
@@ -27,23 +27,25 @@ __all__ = [
 
 _EXPORTED = "export.pdf"  # the file saved, then checked, before its bytes go back
 
+# The body is the file, so these headers carry the rest.
+_SKIPPED_HEADER = "Squid-Skipped-Edits"
+_NOTICES_HEADER = "Squid-Notices"
+
 
 class ExportController:
-    """Export, from the request to the checked file, over the app's workers."""
+    """Export, from the request to the reply, with the file made on the workers."""
 
     def __init__(self, workers: Workers) -> None:
-        """Do the work on `workers`, never on the server's own thread."""
+        """Make the file on `workers`, never on the server's own thread."""
         self._workers = workers
 
     async def export(
-        self, folder: Path, edits: list[Edit], pages: list[int] | None
-    ) -> Exported:
-        """The document with the edits applied, as a PDF: every page, or `pages` in that order.
+        self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, said_in: str
+    ) -> ExportReply:
+        """The edited PDF, every page or `pages` in that order, and headers for the rest.
 
-        `pages` are original numbers. Refuses an edit list over the limits and a
-        page list the document can't give. Each redaction is checked on the
-        saved file: one still there fails the whole request, and no file comes
-        back. Keeps nothing.
+        Refuses edits over the limits and pages the document lacks. A
+        redaction still in the saved file fails the whole request.
         """
         if len(edits) > MAX_EDITS:
             raise TooManyEdits(MAX_EDITS)
@@ -54,26 +56,35 @@ class ExportController:
         if too_long:
             raise TextTooLong(MAX_TEXT_CHARS)
         if pages is not None:
-            check_pages(pages, len(store.load_pages(folder)))
-        # A redaction pointing at nothing, or not gone from the file, raises in the worker.
-        return await self._workers.run(
-            EXPORT_TIMEOUT_S, ExportController.work, str(folder), edits, pages
+            check_pages(pages, len(store.load_pages(doc.folder)))
+        exported = await self._workers.run(
+            EXPORT_TIMEOUT_S,
+            ExportController.make_pdf,
+            folder=str(doc.folder),
+            edits=edits,
+            pages=pages,
         )
+        said = [notice_info(Notice(None, message), said_in) for message in exported.notices]
+        headers = {
+            _SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped),
+            # ASCII only, so a header in any language stays valid.
+            _NOTICES_HEADER: json.dumps(said, ensure_ascii=True),
+            **words.language_headers(said_in),
+        }
+        return ExportReply(exported.pdf, headers)
 
     @staticmethod
-    def work(folder: str, edits: list[Edit], pages: list[int] | None) -> Exported:
-        """The workers' part: every edit applied, the pages kept, saved, the redactions checked.
+    def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Exported:
+        """Apply every edit, keep the pages, save, and check the redactions in the saved file.
 
-        A staticmethod, so a worker can import it by name. Render applies only
-        the edits on the pages it draws; this applies them all. The index is
-        the saved one: rebuilt, every id would change.
+        Runs in a worker, so it's a staticmethod the worker can import by name.
         """
         path = Path(folder)
         index = store.load_index(path)
-        if index is None:  # upload saves it before it answers, so only a sweep removes it
+        if index is None:  # only a sweep removes it
             raise Gone
 
-        # In the document's folder, so a killed worker's file is swept with the document.
+        # In the document's folder, so a killed worker's file is swept with it.
         with tempfile.TemporaryDirectory(dir=path) as scratch:
             saved = str(Path(scratch) / _EXPORTED)
             with open_pdf(str(path / store.ORIGINAL)) as engine:
@@ -85,7 +96,7 @@ class ExportController:
                 said += engine.save(saved)
             redactions.check_saved(saved)
             skipped = [skip.edit for skip in applied.skipped]
-            # Only the file's own: apply's are render's, said there for the same edits.
+            # Only the file's notices: render already reported apply's for the same edits.
             return Exported(Path(saved).read_bytes(), skipped, said)
 
 

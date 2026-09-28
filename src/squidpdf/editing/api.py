@@ -1,52 +1,41 @@
-"""Render: the browser's edits drawn on the rows it's showing, with a fit for each.
+"""Render, export and the font list, over HTTP.
 
-Export: the same edits applied to the whole document, and the file sent back.
-Also the font list: every face we ship that new text can be drawn in.
-
-Routes are HTTP only: read the request, call the action's controller, shape
-the reply. The reply is where what the controller hands back, Messages, is put
-into the reader's words. Imports `documents.api` for `load`, the one allowed
+Routes are HTTP only: read the request, call the action's controller, send
+what it hands back. Imports `documents.api` for `load`, the one allowed
 direction; documents never imports editing.
 """
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
 from typing import Annotated
 
 import orjson
-from fastapi import APIRouter, Body, Depends, Response
-from pydantic import Field
+from fastapi import APIRouter, Depends, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from squidpdf.api import constants as limits
 from squidpdf.api import pool
-from squidpdf.api.language import ReaderLanguage, language_headers
+from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, words
+from squidpdf.core import BUILD
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from squidpdf.editing.edits import Insert, Redact, Replace
 from squidpdf.editing.export import ExportController
-from squidpdf.editing.fit import FitReport
 from squidpdf.editing.fonts import font_list
 from squidpdf.editing.render import RenderController
-from squidpdf.editing.types import (
-    FitInfo,
-    FontList,
-    Notice,
-    NoticeInfo,
-    Region,
-    Render,
-    Skipped,
-    SkippedInfo,
-)
+from squidpdf.editing.types import FontList, Region, Render
 
 __all__ = [
     "router",
     "fonts_router",
     "AnyEdit",
+    "RenderBody",
+    "ExportBody",
+    "render_controller",
+    "export_controller",
     "fonts",
     "render",
     "export",
@@ -58,13 +47,34 @@ fonts_router = APIRouter(prefix="/api/fonts")
 # Read by `kind` first: one bad kind is one error, not one per edit type.
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
 
-# Export's body is the file, so these carry the rest: skipped edits, and the file's notices.
-_SKIPPED_HEADER = "Squid-Skipped-Edits"
-_NOTICES_HEADER = "Squid-Notices"
-
 # The font list, worked out once per server under this build: the same for everyone.
 # Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
 _font_lists: dict[str, bytes] = {}
+
+
+class RenderBody(BaseModel):
+    """What render reads from the request body."""
+
+    edits: list[AnyEdit]
+    scale: Annotated[int, Field(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))]
+    regions: list[Region]
+
+
+class ExportBody(BaseModel):
+    """What export reads from the request body. No `pages` means every page."""
+
+    edits: list[AnyEdit]
+    pages: list[int] | None = None
+
+
+def render_controller(workers: Annotated[Pool, Depends(pool.current)]) -> RenderController:
+    """Render's controller, on the app's workers."""
+    return RenderController(workers)
+
+
+def export_controller(workers: Annotated[Pool, Depends(pool.current)]) -> ExportController:
+    """Export's controller, on the app's workers."""
+    return ExportController(workers)
 
 
 @fonts_router.get("", response_model=FontList)
@@ -84,33 +94,16 @@ async def fonts(build: str, workers: Annotated[Pool, Depends(pool.current)]) -> 
 @router.post("/{doc_id}/render", response_model=Render)
 async def render(
     doc: Annotated[Loaded, Depends(documents.load)],
-    edits: Annotated[list[AnyEdit], Body()],
-    scale: Annotated[int, Body(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
-    regions: Annotated[list[Region], Body()],
-    workers: Annotated[Pool, Depends(pool.current)],
+    *,
+    body: RenderBody,
+    controller: Annotated[RenderController, Depends(render_controller)],
     said_in: ReaderLanguage,
-    response: Response,
-) -> Render:
-    """Each region drawn with the edits on its page, a fit per replace, and what was skipped.
-
-    RenderController checks the request and draws; this says it in the reader's words.
-    """
-    rendered = await RenderController(workers).render(doc.folder, edits, regions, scale)
-    response.headers.update(language_headers(said_in))
-    fits = rendered.fits
-    return {
-        "images": rendered.images,
-        "fits": {span_id: fit_info(fit, said_in) for span_id, fit in fits.replaces.items()},
-        "insert_fits": [
-            {**fit_info(fit, said_in), "edit": position}
-            for position, fit in fits.inserts.items()
-        ],
-        "redactions": [],  # verdicts come with export and the redaction check
-        "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
-        "notices": [notice_info(notice, said_in) for notice in rendered.notices],
-        "build": BUILD,
-        "expires_at": datetime.fromtimestamp(doc.expires_at, UTC).isoformat(),
-    }
+) -> Response:
+    """Each region drawn with the edits on its page, a fit per edit, and what was skipped."""
+    reply = await controller.render(
+        doc, edits=body.edits, regions=body.regions, scale=body.scale, said_in=said_in
+    )
+    return JSONResponse(reply.body, headers=reply.headers)
 
 
 @router.post(
@@ -120,58 +113,11 @@ async def render(
 )
 async def export(
     doc: Annotated[Loaded, Depends(documents.load)],
-    edits: Annotated[list[AnyEdit], Body()],
-    workers: Annotated[Pool, Depends(pool.current)],
+    *,
+    body: ExportBody,
+    controller: Annotated[ExportController, Depends(export_controller)],
     said_in: ReaderLanguage,
-    pages: Annotated[list[int] | None, Body()] = None,
 ) -> Response:
-    """The document with the edits applied, as a PDF: every page, or `pages` in that order.
-
-    ExportController checks the request, makes the file and checks its
-    redactions; this sends it, with the edits left out and what making it did
-    other than asked in headers, in the reader's words.
-    """
-    exported = await ExportController(workers).export(doc.folder, edits, pages)
-    skipped = ", ".join(str(position) for position in exported.skipped)
-    said = [notice_info(Notice(None, message), said_in) for message in exported.notices]
-    headers = {
-        _SKIPPED_HEADER: skipped,
-        # ASCII, every other letter as \uXXXX: a header in any language stays a valid one.
-        _NOTICES_HEADER: json.dumps(said, ensure_ascii=True),
-        **language_headers(said_in),
-    }
-    return Response(exported.pdf, media_type="application/pdf", headers=headers)
-
-
-def fit_info(fit: FitReport, said_in: str) -> FitInfo:
-    """A fit as the browser gets it: option names, since it has their sentences."""
-    parts = fit.describe()
-    return {
-        "delta_pt": fit.delta_pt,
-        "missing": fit.missing,
-        "left_out": fit.left_out,
-        "options": [option.name for option in fit.options],
-        "strategy": fit.strategy,
-        "message": words.render_all(parts, said_in),
-        "message_parts": [part.as_info() for part in parts],
-    }
-
-
-def skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:
-    """An edit left out, as the browser gets it: why, in words and unsaid."""
-    return {
-        "edit": skipped.edit,
-        "type": skipped.type,
-        "detail": words.render(skipped.detail, said_in),
-        **skipped.detail.as_info(),
-    }
-
-
-def notice_info(notice: Notice, said_in: str) -> NoticeInfo:
-    """An edit drawn other than asked, as the browser gets it: why, in words and unsaid."""
-    return {
-        "span_id": notice.span_id,
-        "detail": words.render(notice.detail, said_in),
-        "edit": notice.edit,
-        **notice.detail.as_info(),
-    }
+    """The edited document as a PDF: every page, or `pages` in that order."""
+    reply = await controller.export(doc, edits=body.edits, pages=body.pages, said_in=said_in)
+    return Response(reply.pdf, media_type="application/pdf", headers=reply.headers)
