@@ -118,7 +118,7 @@ def test_a_redacted_span_is_gone_from_the_downloaded_file(mine, doc):
 def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
     """Rule 4: text still in the saved file means no file, and the user is told which."""
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "absent", lambda _engine, _span: False)
+    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
     span = _span(doc, 1, "Invoices")
     kept = _files(doc)
 

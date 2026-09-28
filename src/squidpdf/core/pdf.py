@@ -53,15 +53,15 @@ class PdfFile:
         blocks = self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
         return [[text_piece(raw) for raw in line["spans"]] for line in each_line(blocks)]
 
-    def text_in(self, page: int, box: Rect) -> str:
-        """The letters drawn inside `box` on the page, in reading order.
+    def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
+        """The letters drawn inside each box on the page, in reading order; one read of it.
 
         A letter counts when its middle is inside, so one on the next line that
         only grazes the box's edge doesn't.
         """
         blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        inside = (char for char in each_letter(blocks) if middle_inside(char["bbox"], box))
-        return "".join(char["c"] for char in inside)
+        letters = list(each_letter(blocks))
+        return [letters_inside(letters, box) for box in boxes]
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -290,6 +290,11 @@ def text_piece(raw: dict) -> TextPiece:
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )
+
+
+def letters_inside(letters: list[dict], box: Rect) -> str:
+    """The letters, from get_text("rawdict"), whose middle is inside `box`, in order."""
+    return "".join(char["c"] for char in letters if middle_inside(char["bbox"], box))
 
 
 def middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:

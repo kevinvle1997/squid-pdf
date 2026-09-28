@@ -133,7 +133,7 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
     pdf, tmp_path, monkeypatch, capsys
 ):
     """Rule 4: text still in the saved file means no file, as the app downloads nothing."""
-    monkeypatch.setattr(Engine, "absent", lambda _engine, _span: False)
+    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
     out_pdf = tmp_path / "redacted.pdf"
 
     code = main(["redact", pdf, _span_id(pdf, "Invoices"), "-o", str(out_pdf)])

@@ -275,15 +275,25 @@ class Engine:
         self._driver.save(path)
         return notices
 
-    def absent(self, span: Span) -> bool:
-        """Whether the span's text is gone from where it was. A black box would fail this.
+    def still_there(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans whose text is still where it was, page by page. A black box leaves it.
 
-        Only the span's own box on its own page is read: the same words
+        Only each span's own box on its own page is read: the same words
         elsewhere in the document are other text, not a leak. Spaces are
         ignored, so a leftover can't pass for gone by being spaced differently.
+        Each page is read once, however many spans are on it.
         """
-        left = self._driver.text_in(span.page, span.bbox)
-        return unspaced(span.text) not in unspaced(left)
+        by_page: dict[int, list[Span]] = {}
+        for span in spans:
+            by_page.setdefault(span.page, []).append(span)
+        left = (self._left_on(page, on_page) for page, on_page in by_page.items())
+        return [span for on_page in left for span in on_page]
+
+    def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
+        """Those of `spans`, all on `page`, whose text is still in their box."""
+        texts = self._driver.text_in(page, [span.bbox for span in spans])
+        pairs = zip(spans, texts, strict=True)
+        return [span for span, left in pairs if unspaced(span.text) in unspaced(left)]
 
     def close(self) -> None:
         """Release the open document."""

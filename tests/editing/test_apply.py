@@ -13,6 +13,7 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Span, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
+from squidpdf.core.pdf import PdfFile
 from squidpdf.editing import (
     BadReference,
     Edit,
@@ -26,7 +27,7 @@ from squidpdf.editing import (
     replace_fit,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
-from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
 _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
@@ -150,9 +151,29 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     doc.save(covered)
 
     with open_pdf(str(covered)) as eng:
-        assert_false(eng.absent(span), "text under a black box, counted as gone")
+        assert_equal(eng.still_there([span]), [span], "text under a black box, still there")
         eng.remove([span])
-        assert_true(eng.absent(span), "the same text really removed, counted as gone")
+        assert_equal(eng.still_there([span]), [], "the same text really removed, still there")
+
+
+def test_checking_a_saved_file_reads_each_page_once(engine, tmp_path, monkeypatch):
+    """Read again for every redaction, a busy page made thousands of redactions time out."""
+    index = engine.index()
+    spans = [s for s in index if s.page == EMBEDDED_PAGE]
+    out = str(tmp_path / "redacted.pdf")
+    apply(engine, [Redact(s.id) for s in spans], index)
+    engine.save(out)
+    pages_read: list[int] = []
+    text_in = PdfFile.text_in
+
+    def counted(pdf: PdfFile, page: int, boxes: list) -> list:
+        pages_read.append(page)
+        return text_in(pdf, page, boxes)
+
+    monkeypatch.setattr(PdfFile, "text_in", counted)
+    RedactionController(spans).check_saved(out)
+
+    assert_equal(pages_read, [EMBEDDED_PAGE], f"pages read to check {len(spans)} redactions")
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):

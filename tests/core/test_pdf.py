@@ -96,8 +96,9 @@ def test_text_in_reads_only_the_letters_inside_the_box(pdf):
     for line in wrapped.text_lines(1):
         box = functools.reduce(Rect.union, [piece.box for piece in line])
         expected = "".join(piece.text for piece in line)
-        assert_equal(wrapped.text_in(1, box), expected, "the letters inside one line's box")
-    assert_equal(wrapped.text_in(1, Rect(0, 0, 10, 10)), "", "the letters in an empty corner")
+        assert_equal(wrapped.text_in(1, [box]), [expected], "the letters inside one line's box")
+    corner = Rect(0, 0, 10, 10)
+    assert_equal(wrapped.text_in(1, [corner]), [""], "the letters in an empty corner")
 
 
 def test_erase_text_leaves_text_outside_the_boxes(pdf):

@@ -48,7 +48,8 @@ class RedactionController:
         would pass a visual check and fail this one. The same words elsewhere,
         such as a header repeated on other pages, don't count against it.
         """
-        return {span.id: engine.absent(span) for span in self._redacted}
+        left = {span.id for span in engine.still_there(self._redacted)}
+        return {span.id: span.id not in left for span in self._redacted}
 
     def pages_kept(self, pages: Sequence[int]) -> None:
         """The saved file keeps only `pages`, original numbers in its order.
@@ -62,11 +63,11 @@ class RedactionController:
 
         Read from the saved bytes, so a covering box or a save that lost the
         removal can't pass. Each span is read in its own box, on the page it
-        went to. Raises RedactionFailed, naming a span whose text is still
-        there by its original page.
+        went to, and each page once. Raises RedactionFailed, naming a span
+        whose text is still there by its original page.
         """
         with open_pdf(path) as saved:
-            left = [span for span in self._as_saved() if not saved.absent(span)]
+            left = saved.still_there(self._as_saved())
         if left:
             first = next(span for span in self._redacted if span.id == left[0].id)
             raise RedactionFailed(first.id, first.text, first.page + 1)
