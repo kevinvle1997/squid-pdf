@@ -1,0 +1,45 @@
+# The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
+# this file (copy env.example). .env holds the domain and the password hash,
+# and is never committed.
+name: squidpdf
+
+services:
+  app:
+    build: .
+    image: squidpdf
+    restart: unless-stopped
+    # Reaps the pool's exited helper processes and passes stop signals on.
+    init: true
+    environment:
+      # Only Caddy reaches the app here, so its X-Forwarded-For is the client's real address.
+      # Not in the image: run alone with its port open, anyone could fake the header.
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - documents:/data
+    # No ports: only Caddy, on this network, reaches the app.
+
+  proxy:
+    image: caddy:2.11.4
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80" # the certificate challenge, and the redirect to https
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      SQUIDPDF_DOMAIN: ${SQUIDPDF_DOMAIN:?set it in .env}
+      SQUIDPDF_USER: ${SQUIDPDF_USER:?set it in .env}
+      SQUIDPDF_PASSWORD_HASH: ${SQUIDPDF_PASSWORD_HASH:?set it in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Its certificates. Kept, so a restart doesn't ask the CA for new ones.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  # Uploaded documents, each deleted after an hour untouched.
+  documents:
+  caddy-data:
+  caddy-config:
