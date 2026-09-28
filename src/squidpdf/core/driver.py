@@ -136,11 +136,7 @@ class PdfDriver(Protocol):
         ...
 
     def drop_tags(self) -> None:
-        """Remove the file's tags: the reading order a screen reader follows.
-
-        They point at every page, so a page left out would stay in the saved
-        file through them.
-        """
+        """Remove the file's tags. Saving then drops every page only they pointed at."""
         ...
 
     def keep_pages(self, pages: list[int]) -> None:

@@ -247,18 +247,25 @@ class Engine:
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.
 
-        Call it after the last draw: from here on, page numbers are the new
-        ones. When a page is left out, the file's tags go first. Returns what
-        came out other than asked, for the edge to put into words.
+        Call it after the last draw: page numbers change here. Returns what
+        came out other than asked.
         """
-        left_out = set(range(len(self._driver.pages()))) - set(pages)
-        tags_go = bool(left_out) and self._driver.has_tags()
-        # The tags point at every page: kept, they'd keep a left-out page in the file.
-        if left_out:
-            self._driver.drop_tags()
+        every_page_kept = set(pages) == set(range(len(self._driver.pages())))
+        said = [] if every_page_kept else self._drop_tags()
         self._driver.keep_pages(pages)
         self._cache = FontCache()  # looked up by page number, and those just changed
-        return [Message("tags_dropped")] if tags_go else []
+        return said
+
+    def _drop_tags(self) -> list[Message]:
+        """Drop the file's tags, saying so if it had any.
+
+        The tags point at every page, so kept, they would keep a left-out page
+        in the saved file, text and all.
+        """
+        if not self._driver.has_tags():
+            return []
+        self._driver.drop_tags()
+        return [Message("tags_dropped")]
 
     def save(self, path: str) -> list[Message]:
         """Write the document to `path`, our faces cut to the letters drawn in them.
