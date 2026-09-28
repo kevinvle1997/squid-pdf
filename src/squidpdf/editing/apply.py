@@ -23,7 +23,7 @@ __all__ = [
     "log_fits",
     "insert_fit",
     "replace_fit",
-    "verify_redactions",
+    "resolve",
 ]
 
 _BAD_REFERENCE = "bad_reference"
@@ -222,21 +222,3 @@ def replace_fit(
         stand_in=engine.stand_in(span, text),
         asked=strategy,
     )
-
-
-def verify_redactions(
-    engine: Engine, edits: Sequence[Edit], index: SpanIndex
-) -> dict[str, bool]:
-    """Confirm each redacted span's text is really gone from where it was.
-
-    A covering rectangle would pass a visual check and fail this one, which is
-    the entire point of running it. The same words elsewhere, such as a header
-    repeated on other pages, don't count against it. Only the last edit per
-    span counts, matching what apply() actually drew. A Replace after a Redact
-    means it was not redacted after all. A redaction of an unknown span raises,
-    as in apply().
-    """
-    span_edits, _inserts, _skipped = resolve(engine, edits, index)
-    return {
-        span.id: engine.absent(span) for edit, span in span_edits if isinstance(edit, Redact)
-    }

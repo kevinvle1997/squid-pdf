@@ -21,6 +21,17 @@ class BadReference(Problem):
         return str(self.fill["span_id"])
 
 
+class RedactionFailed(Problem):
+    """A redacted span's text is still in the saved file, so none of the file is sent."""
+
+    type = "redaction_failed"
+    status = 422
+
+    def __init__(self, span_id: str, text: str, page: int) -> None:
+        """Name the span, the text still there, and its page, counted from 1 as people do."""
+        super().__init__(span_id=span_id, text=text, page=page)
+
+
 class TooManyEdits(Problem):
     """More edits in one request than the server applies."""
 

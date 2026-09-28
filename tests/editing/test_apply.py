@@ -19,11 +19,11 @@ from squidpdf.editing import (
     Insert,
     Notice,
     Redact,
+    RedactionController,
     Replace,
     apply,
     insert_fit,
     replace_fit,
-    verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
@@ -112,8 +112,8 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    verified = verify_redactions(engine, edits, index)[span.id]
-    assert_true(verified is True, "verify_redactions() result for the redacted span")
+    verified = RedactionController.from_edits(engine, edits, index).verdicts(engine)
+    assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
     text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
     assert_not_in(span.text, text, "the saved page after a redact")
 
@@ -132,7 +132,7 @@ def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tm
         edits = [Redact(first.id)]
         apply(eng, edits, index)
         eng.save(str(out))
-        verified = verify_redactions(eng, edits, index)
+        verified = RedactionController.from_edits(eng, edits, index).verdicts(eng)
 
     assert_equal(verified, {first.id: True}, "the redaction's verdict")
     pages = [page.get_text().strip() for page in pymupdf.open(out).pages()]

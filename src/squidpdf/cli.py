@@ -22,14 +22,20 @@ from squidpdf.core import (
     GREEN_RATE_WARN,
     Fidelity,
     FidelityReport,
-    Message,
     Problem,
     green_rate,
     open_pdf,
     words,
     write_sample,
 )
-from squidpdf.editing import Redact, Replace, apply, replace_fit
+from squidpdf.editing import (
+    Redact,
+    RedactionController,
+    RedactionFailed,
+    Replace,
+    apply,
+    replace_fit,
+)
 
 __all__ = [
     "cmd_spans",
@@ -145,17 +151,17 @@ def cmd_redact(args: argparse.Namespace) -> int:
         if span is None:
             return no_span(args.span_id)
 
-        apply(engine, [Redact(span.id)], index)
+        edits = [Redact(span.id)]
+        redactions = RedactionController.from_edits(engine, edits, index)
+        apply(engine, edits, index)
         engine.save(args.out)
 
-    # Re-read the saved file, as the app does before a download.
-    with open_pdf(args.out) as saved:
-        gone = saved.absent(span)
-    # Still there: keep nothing, as the app downloads nothing.
-    if not gone:
+    # Re-read the saved file with the check the app runs before a download.
+    try:
+        redactions.check_saved(args.out)
+    except RedactionFailed as failed:  # the saved file still has the text: keep none of it
         Path(args.out).unlink()
-        failed = Message("redaction_failed", {"text": span.text, "page": span.page + 1})
-        print(f"  {RED}{words.render(failed)}{OFF}")
+        print(f"  {RED}{failed.detail}{OFF}")
         return 1
     print(f"\n  removed {span.text!r}")
     print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
