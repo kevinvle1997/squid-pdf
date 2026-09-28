@@ -153,8 +153,8 @@ def cmd_redact(args: argparse.Namespace) -> int:
 
         edits = [Redact(span.id)]
         redactions = RedactionController.from_edits(engine, edits, index)
-        apply(engine, edits, index)
-        engine.save(args.out)
+        applied = apply(engine, edits, index)
+        saved = engine.save(args.out)
 
     # Re-read the saved file with the check the app runs before a download.
     try:
@@ -164,6 +164,8 @@ def cmd_redact(args: argparse.Namespace) -> int:
         print(f"  {RED}{failed.detail}{OFF}")
         return 1
     print(f"\n  removed {span.text!r}")
+    for said in [notice.detail for notice in applied.notices] + saved:
+        print(f"  {YELLOW}{words.render(said)}{OFF}")
     print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
     return 0
 
