@@ -73,8 +73,8 @@ class ExportController:
         if index is None:  # upload saves it before it answers, so only a sweep removes it
             raise Gone
 
-        # Deleted on the way out, whatever happens: nothing is kept.
-        with tempfile.TemporaryDirectory() as scratch:
+        # In the document's folder, so a killed worker's file is swept with the document.
+        with tempfile.TemporaryDirectory(dir=path) as scratch:
             saved = str(Path(scratch) / _EXPORTED)
             with open_pdf(str(path / store.ORIGINAL)) as engine:
                 redactions = RedactionController.from_edits(engine, edits, index)

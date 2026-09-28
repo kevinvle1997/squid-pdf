@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import tempfile
+from pathlib import Path
 
 import pymupdf
 import pytest
 
 from squidpdf.core import Engine, words
+from squidpdf.documents import store
 from squidpdf.editing.constants import MAX_TEXT_CHARS
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
+from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
 _HEADER = "CONFIDENTIAL"
@@ -80,6 +81,12 @@ def _opened(response) -> pymupdf.Document:
     return pymupdf.open(stream=response.content, filetype="pdf")
 
 
+def _files(doc: dict) -> list[str]:
+    """Everything in the document's folder, however deep."""
+    folder = store.root() / doc["id"]
+    return sorted(str(path.relative_to(folder)) for path in folder.rglob("*"))
+
+
 def _lines(pdf: pymupdf.Document) -> list[list[str]]:
     """Each page's lines of text, in page order."""
     return [page.get_text().splitlines() for page in pdf.pages()]
@@ -108,21 +115,42 @@ def test_a_redacted_span_is_gone_from_the_downloaded_file(mine, doc):
     assert_in("Delivery begins 14 March", text, "the file's text")
 
 
-def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
-    app, mine, doc, monkeypatch, tmp_path
-):
+def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
     """Rule 4: text still in the saved file means no file, and the user is told which."""
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patches below reach it
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "absent", lambda _engine, _span: False)
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     span = _span(doc, 1, "Invoices")
+    kept = _files(doc)
 
     response = _export(mine, doc, [_redact(span)])
 
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=span["text"], page=2)
     assert_equal(response.json()["detail"], said, "what the user reads")
-    assert_equal(list(tmp_path.iterdir()), [], "files the export left behind")
+    assert_equal(_files(doc), kept, "the document's files after the export")
+
+
+def test_what_an_export_saves_is_in_its_document_so_the_sweep_takes_it(
+    app, mine, doc, monkeypatch
+):
+    """A worker killed mid-export can't clean up; what it saved must go with the document."""
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    saved: list[Path] = []
+    save = Engine.save
+
+    def noting_where(engine: Engine, path: str) -> list:
+        saved.append(Path(path))
+        return save(engine, path)
+
+    monkeypatch.setattr(Engine, "save", noting_where)
+    kept = _files(doc)
+
+    _opened(_export(mine, doc, []))
+
+    folder = store.root() / doc["id"]
+    assert_equal(len(saved), 1, "files the export saved")
+    assert_true(saved[0].is_relative_to(folder), f"{saved[0]} is in {folder}")
+    assert_equal(_files(doc), kept, "the document's files after the export")
 
 
 def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(mine, three):
