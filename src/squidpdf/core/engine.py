@@ -134,6 +134,8 @@ class FontCache:
     face_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
     # How far the page moves the pen for a space in a font with none, in ems.
     usual_spaces: dict[tuple[int, str], float] = field(default_factory=dict)
+    # Each page's text as it was, read once.
+    lines: dict[int, list[list[TextPiece]]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -503,10 +505,9 @@ class Engine:
         """
         key = (span.page, span.font)
         if key not in self._cache.usual_spaces:
-            lines = self._driver.text_lines(span.page)
             gaps = [
                 gap
-                for piece in pieces_in(lines, span.font)
+                for piece in pieces_in(self._page_lines(span.page), span.font)
                 for gap in spaces_in(
                     piece.text, width=piece.box.width, font=font, size=piece.size
                 )
@@ -515,6 +516,12 @@ class Engine:
                 statistics.median(gaps) if gaps else font.advance(" ")
             )
         return self._cache.usual_spaces[key]
+
+    def _page_lines(self, page: int) -> list[list[TextPiece]]:
+        """The page's text as it was when first asked for, line by line."""
+        if page not in self._cache.lines:
+            self._cache.lines[page] = self._driver.text_lines(page)
+        return self._cache.lines[page]
 
     def _write(
         self,
