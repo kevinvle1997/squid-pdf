@@ -131,6 +131,18 @@ class PdfDriver(Protocol):
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         ...
 
+    def drop_tags(self) -> None:
+        """Remove the file's tags: the reading order a screen reader follows.
+
+        They point at every page, so a page left out would stay in the saved
+        file through them.
+        """
+        ...
+
+    def keep_pages(self, pages: list[int]) -> None:
+        """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
+        ...
+
     def save(self, path: str) -> None:
         """Write the document to `path`."""
         ...

@@ -32,6 +32,10 @@ _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 
+# The file's catalog names its tags, the reading order a screen reader follows, here.
+_TAGS_KEY = "StructTreeRoot"
+_PDF_NULL = "null"  # an entry set to this is taken out
+
 # What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
 # which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
 MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
@@ -182,6 +186,16 @@ class PdfFile:
             images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
             graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
         )
+
+    def drop_tags(self) -> None:
+        """Remove the file's tags: the reading order a screen reader follows.
+
+        The tags point at every page. A page left out of the file would stay in
+        it through them, text and all: not shown, but there for anyone who
+        looks. This unhooks them from the file's catalog, and at save they go,
+        with every page only they held on to.
+        """
+        self._doc.xref_set_key(xref=self._doc.pdf_catalog(), key=_TAGS_KEY, value=_PDF_NULL)
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
         """Point the page's font name `resource` back at font `xref`.

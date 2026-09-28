@@ -6,6 +6,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core import Page, Rect, open_pdf
+from tests.conftest import TAGGED_LINES
 from tests.helpers import assert_equal, assert_true
 
 _A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
@@ -24,6 +25,41 @@ def turned(tmp_path) -> str:
     path = tmp_path / "turned.pdf"
     doc.save(path)
     return str(path)
+
+
+def _page_objects(path: str) -> int:
+    """How many page objects the saved file holds, whether its page list names them or not."""
+    doc = pymupdf.open(path)
+    types = [doc.xref_get_key(xref, "Type")[1] for xref in range(1, doc.xref_length())]
+    return types.count("/Page")
+
+
+def _page_lines(path: str) -> list[str]:
+    """Each page's text in the saved file, in page order."""
+    return [page.get_text().strip() for page in pymupdf.open(path).pages()]
+
+
+def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_path):
+    """A reorder leaves nothing out, so a screen reader's tags stay."""
+    out = str(tmp_path / "reordered.pdf")
+    with open_pdf(tagged) as eng:
+        eng.keep_pages([1, 0])
+        eng.save(out)
+
+    assert_equal(_page_lines(out), TAGGED_LINES[::-1], "each page's text, in order")
+    doc = pymupdf.open(out)
+    assert_equal(doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[0], "xref", "the tags")
+
+
+def test_a_page_left_out_is_gone_from_the_file_even_when_tags_point_at_it(tagged, tmp_path):
+    """Kept by its tags, the page's text would still be in the file, unseen but readable."""
+    out = str(tmp_path / "first.pdf")
+    with open_pdf(tagged) as eng:
+        eng.keep_pages([0])
+        eng.save(out)
+
+    assert_equal(_page_lines(out), TAGGED_LINES[:1], "each page's text")
+    assert_equal(_page_objects(out), 1, "page objects in the file")
 
 
 def test_pages_are_sized_in_points(engine):
