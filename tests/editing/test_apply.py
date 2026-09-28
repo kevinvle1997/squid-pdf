@@ -140,6 +140,20 @@ def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tm
     assert_equal(pages, ["", "CONFIDENTIAL"], "each page's text after redacting the first")
 
 
+def test_a_redaction_is_followed_to_the_page_it_moved_to(repeated):
+    """Read where its page was, the same header on the page now there would fail it."""
+    with open_pdf(repeated) as eng:
+        index = eng.index()
+        first = next(iter(index))
+        edits = [Redact(first.id)]
+        redactions = RedactionController.from_edits(eng, edits, index)
+        apply(eng, edits, index)
+        redactions.keep_pages(eng, [1, 0])
+        verified = redactions.verdicts(eng)
+
+    assert_equal(verified, {first.id: True}, "the verdict on the page it moved to")
+
+
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     """What verified redaction is for: covered text is still in the file."""
     with open_pdf(pdf) as eng:

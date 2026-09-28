@@ -81,8 +81,7 @@ class ExportController:
                 applied = apply(engine, edits, index)
                 said: list[Message] = []
                 if pages is not None:
-                    said += engine.keep_pages(pages)
-                    redactions.pages_kept(pages)
+                    said += redactions.keep_pages(engine, pages)
                 said += engine.save(saved)
             redactions.check_saved(saved)
             skipped = [skip.edit for skip in applied.skipped]

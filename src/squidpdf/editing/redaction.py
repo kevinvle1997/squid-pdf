@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Iterator, Sequence
 
-from squidpdf.core import Engine, Span, SpanIndex, open_pdf
+from squidpdf.core import Engine, Message, Span, SpanIndex, open_pdf
 from squidpdf.editing.apply import resolve
 from squidpdf.editing.edits import Edit, Redact
 from squidpdf.editing.errors import RedactionFailed
@@ -24,7 +24,7 @@ class RedactionController:
     def __init__(self, redacted: Sequence[Span]) -> None:
         """Follow these redacted spans, as the original has them."""
         self._redacted = list(redacted)
-        # The saved file's pages as original numbers, in its order; None when all stay put.
+        # The pages kept, as original numbers in the file's order; None when all stay put.
         self._kept: list[int] | None = None
 
     @classmethod
@@ -46,17 +46,21 @@ class RedactionController:
 
         Render's early verdict, before anything is saved. A covering rectangle
         would pass a visual check and fail this one. The same words elsewhere,
-        such as a header repeated on other pages, don't count against it.
+        such as a header repeated on other pages, don't count against it. Each
+        span is read on the page it went to; one on a page left out is gone.
         """
-        left = {span.id for span in engine.still_there(self._redacted)}
+        left = {span.id for span in engine.still_there(self._as_saved())}
         return {span.id: span.id not in left for span in self._redacted}
 
-    def pages_kept(self, pages: Sequence[int]) -> None:
-        """The saved file keeps only `pages`, original numbers in its order.
+    def keep_pages(self, engine: Engine, pages: Sequence[int]) -> list[Message]:
+        """Keep only `pages` in the document, original numbers in its order, and follow them.
 
-        Each redaction moves with its page; one on a page left out goes with it.
+        Done here, not on the engine alone, so the checks after it can't lose
+        track: each redaction is read on the page it went to, and one on a
+        page left out goes with it. Returns what keeping them came out with.
         """
         self._kept = list(pages)
+        return engine.keep_pages(self._kept)
 
     def check_saved(self, path: str) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
@@ -73,7 +77,7 @@ class RedactionController:
             raise RedactionFailed(first.id, first.text, first.page + 1)
 
     def _as_saved(self) -> Iterator[Span]:
-        """Each redacted span on the page it went to in the saved file; none left out."""
+        """Each redacted span on the page it went to; none on a page left out."""
         # Every page stayed where it was.
         if self._kept is None:
             yield from self._redacted
