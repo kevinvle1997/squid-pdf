@@ -111,14 +111,14 @@ class RenderController:
             fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
             applied = apply(engine, edits, index, pages={region.page for region in regions})
             images = [
-                draw(engine, region, pages[region.page], scales[region.page])
+                draw(engine, region, page=pages[region.page], scale=scales[region.page])
                 for region in regions
             ]
 
         return Rendered(images, fits, applied.skipped, applied.notices)
 
 
-def draw(engine: Engine, region: Region, page: Page, scale: float) -> ImageInfo:
+def draw(engine: Engine, region: Region, *, page: Page, scale: float) -> ImageInfo:
     """One region as a base64 PNG: the whole page, or a full-width strip of it."""
     whole_page = region.y0 is None and region.y1 is None
     if whole_page:

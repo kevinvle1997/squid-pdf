@@ -47,7 +47,7 @@ def test_check_is_quiet_when_nothing_is_wrong(engine):
 def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
     index = engine.index()
     span = next(s for s in index if s.page == REFERENCED_PAGE and s.text.startswith("Made"))
-    fit = replace_fit(engine, span, span.text * 2, "shrink")
+    fit = replace_fit(engine, span, span.text * 2, strategy="shrink")
     assert_equal([o.name for o in fit.options], ["as-is"], "options for twice the length")
     assert_equal(fit.strategy, "as-is", "the strategy drawn when shrink isn't offered")
     assert_in(

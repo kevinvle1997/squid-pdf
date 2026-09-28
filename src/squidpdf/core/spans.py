@@ -87,7 +87,7 @@ def span_from(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
 
     first = group[0]  # the span takes its style from its first piece
     return Span(
-        id=span_id(page, bbox, first.font, text, ordinal),
+        id=span_id(page, bbox, font=first.font, text=text, ordinal=ordinal),
         page=page,
         text=text,
         font=first.font,

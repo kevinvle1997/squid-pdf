@@ -206,7 +206,7 @@ class Engine:
             self._driver.erase_text(page, [span.bbox for span in page_spans])
 
     def draw(
-        self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
+        self, span: Span, text: str, *, size: float | None = None, scale_x: float = 1.0
     ) -> list[Message]:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
@@ -220,7 +220,7 @@ class Engine:
         # A font written by code gets codes, as the original did.
         coded = self._coded_for(span, text)
         if coded is not None:
-            self._draw_codes(span, coded, text, font_size, scale_x)
+            self._draw_codes(span, coded, text=text, size=font_size, scale_x=scale_x)
             return []
 
         # Written by letter, in the file's own font when it has every letter.
@@ -232,7 +232,7 @@ class Engine:
             except FontUnusable as problem:  # the page wouldn't take the font
                 notices.append(problem.reason)
             else:
-                self._write(span, text, alias, font_size, scale_x)
+                self._write(span, text, font=alias, size=font_size, scale_x=scale_x)
                 return notices
 
         # Otherwise the stand-in draws the whole run, less what even it can't draw.
@@ -241,7 +241,7 @@ class Engine:
             notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
         alias = self._face_alias(span.page, drawn_in.face)
         self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
-        self._write(span, drawn_in.text, alias, font_size, scale_x)
+        self._write(span, drawn_in.text, font=alias, size=font_size, scale_x=scale_x)
         return notices
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
@@ -396,9 +396,17 @@ class Engine:
 
     # Drawing.
 
-    def _write(self, span: Span, text: str, font: str, size: float, scale_x: float) -> None:
+    def _write(self, span: Span, text: str, *, font: str, size: float, scale_x: float) -> None:
         """Write `text` at the span's baseline in the font the page calls `font`."""
-        self._driver.write_text(span.page, span.origin, text, font, size, span.color, scale_x)
+        self._driver.write_text(
+            span.page,
+            origin=span.origin,
+            text=text,
+            font=font,
+            size=size,
+            color=span.color,
+            scale_x=scale_x,
+        )
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
         """The span's font drawn by code, if it has one and it can draw all of `text`."""
@@ -408,7 +416,7 @@ class Engine:
         return embedded.coded
 
     def _draw_codes(
-        self, span: Span, coded: CodedFont, text: str, size: float, scale_x: float
+        self, span: Span, coded: CodedFont, *, text: str, size: float, scale_x: float
     ) -> None:
         """Write `text` as codes in the file's own font, on top of the page."""
         self._driver.restore_font(span.page, coded.resource, coded.xref)

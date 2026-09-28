@@ -133,6 +133,7 @@ class MuPDFDriver(PdfFile):
     def write_text(
         self,
         page: int,
+        *,
         origin: tuple[float, float],
         text: str,
         font: str,

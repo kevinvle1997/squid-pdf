@@ -80,7 +80,12 @@ def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
 def _insert_as_span(insert: Insert) -> Span:
     """An insert as the span it's measured and drawn as."""
     return new_text(
-        insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
+        insert.page,
+        origin=insert.origin,
+        text=insert.text,
+        size=insert.size,
+        font=insert.font,
+        color=insert.color,
     )
 
 

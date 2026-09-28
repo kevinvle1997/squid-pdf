@@ -102,6 +102,7 @@ class PdfDriver(Protocol):
     def write_text(
         self,
         page: int,
+        *,
         origin: tuple[float, float],
         text: str,
         font: str,

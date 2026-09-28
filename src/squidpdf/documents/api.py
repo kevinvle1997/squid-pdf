@@ -67,6 +67,7 @@ def load(doc_id: str, request: Request) -> Loaded:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
 async def upload(
     request: Request,
+    *,
     token: Annotated[str, Depends(owner.token)],
     workers: Annotated[Pool, Depends(pool.current)],
     said_in: ReaderLanguage,
@@ -100,12 +101,15 @@ async def upload(
         store.delete(folder)
         raise
     response.headers.update(words.language_headers(said_in))
-    return document_response(doc_id, store.touch(folder), analysis, said_in)
+    return document_response(
+        doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
+    )
 
 
 @router.get("/{doc_id}", response_model=Document)
 async def read(
     doc: Annotated[Loaded, Depends(load)],
+    *,
     request: Request,
     response: Response,
     workers: Annotated[Pool, Depends(pool.current)],
@@ -129,7 +133,9 @@ async def read(
     if request.headers.get("if-none-match") == etag:  # absent on a first read
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)
-    return document_response(doc.id, doc.expires_at, analysis, said_in)
+    return document_response(
+        doc.id, expires_at=doc.expires_at, analysis=analysis, said_in=said_in
+    )
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -145,6 +151,7 @@ def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
 )
 async def page(
     doc: Annotated[Loaded, Depends(load)],
+    *,
     n: int,
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
@@ -180,7 +187,7 @@ async def sweep_forever() -> None:
 
 
 def document_response(
-    doc_id: str, expires_at: float, analysis: Analysis, said_in: str
+    doc_id: str, *, expires_at: float, analysis: Analysis, said_in: str
 ) -> Document:
     """The analysis, plus what belongs to this document and this moment, in `said_in`."""
     return {

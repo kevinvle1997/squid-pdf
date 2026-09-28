@@ -51,12 +51,20 @@ src = ["src", "tests"]
 # BLE: a broad except says why. D1: docstrings everywhere. RUF100: no stale noqa.
 # TID: only core/pdf.py talks to MuPDF's low-level API.
 # RUF001-3: no invisible or look-alike characters in strings, docstrings or comments.
-select = ["E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID"]
+# PLR0917: past three parameters, the rest are keyword-only, so every call names them.
+select = [
+    "E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID",
+    "PLR0917",
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Test names are sentences already; a docstring there is welcome, not required.
-"tests/**" = ["D1"]
+# A test's parameters are fixtures, which pytest passes by name anyway.
+"tests/**" = ["D1", "PLR0917"]
 "src/squidpdf/core/pdf.py" = ["TID251"]
+
+[tool.ruff.lint.pylint]
+max-positional-args = 3
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pymupdf.mupdf".msg = "MuPDF's low-level API lives in core/pdf.py; add a PdfFile method there."
