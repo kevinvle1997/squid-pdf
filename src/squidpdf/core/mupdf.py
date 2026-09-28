@@ -8,6 +8,7 @@ nothing outside `core` learns that MuPDF is underneath.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import cache
 
 import pymupdf
@@ -18,7 +19,7 @@ from squidpdf.core.engine import Engine, letter_widths
 from squidpdf.core.errors import Damaged, Encrypted
 from squidpdf.core.fonts import face_bytes
 from squidpdf.core.pdf import MUPDF_ERRORS, PdfFile
-from squidpdf.core.types import Face, Page, Rect
+from squidpdf.core.types import Face, Page, Rect, TextRun
 
 __all__ = [
     "BUILD",
@@ -63,6 +64,10 @@ class MuPDFFont:
     def advance(self, ch: str) -> float:
         """How far `ch` moves the pen, in ems."""
         return self._font.glyph_advance(ord(ch))
+
+    def maps(self, ch: str) -> bool:
+        """Whether the font has a glyph of its own for `ch`, even an empty one."""
+        return self._font.has_glyph(ord(ch)) != 0  # 0 is .notdef: MuPDF found none
 
     def width(self, text: str, size: float) -> float:
         """How wide `text` is at `size` points."""
@@ -134,27 +139,28 @@ class MuPDFDriver(PdfFile):
         self,
         page: int,
         *,
-        origin: tuple[float, float],
-        text: str,
+        runs: Sequence[TextRun],
         font: str,
         size: float,
         color: tuple[float, float, float],
         scale_x: float,
     ) -> None:
-        """Write `text` from `origin` on its baseline, in the font the page calls `font`.
+        """Write each run from its origin, on top of the page, in the font it calls `font`.
 
-        On top of everything on the page; `scale_x` narrows it from its start.
+        `scale_x` narrows each run from its own start.
         """
-        at = pymupdf.Point(*origin)
-        self._doc[page].insert_text(
-            at,
-            text,
-            fontname=font,
-            fontsize=size,
-            color=color,
-            overlay=True,
-            morph=(at, pymupdf.Matrix(scale_x, 1)),
-        )
+        shape = self._doc[page].new_shape()
+        for run in runs:
+            at = pymupdf.Point(*run.origin)
+            shape.insert_text(
+                at,
+                run.text,
+                fontname=font,
+                fontsize=size,
+                color=color,
+                morph=(at, pymupdf.Matrix(scale_x, 1)),
+            )
+        shape.commit(overlay=True)
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""

@@ -1,4 +1,4 @@
-"""Hand-built PDFs whose fonts can only be reached by code, shared by the core tests."""
+"""Hand-built PDFs with the odd fonts real files carry, shared by the core tests."""
 
 from __future__ import annotations
 
@@ -24,6 +24,12 @@ _BY_FIRST_USE = {0x20: "A", 0x21: "B", 0x22: "space", 0x23: "C"}
 # test_fidelity.py's _ADVANCES are these, by letter.
 _WIDTHS = "500 550 250 600"
 
+# The gapped fixture: its words, their size, and the gap between them, in ems.
+GAPPED_TEXT = "AB BA AB"
+GAPPED_SIZE = 12.0
+GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
+_ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
+
 _DESCRIPTOR = (
     "<</Type/FontDescriptor/FontName/{name}/Flags 4/FontBBox[0 -200 600 800]"
     "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80/FontFile2 {file}>>"
@@ -45,21 +51,24 @@ def _square() -> Glyph:
     return pen.glyph()
 
 
-def _truetype(cmap: dict[int, str] | None, symbol: bool = True) -> bytes:
+def _truetype(
+    cmap: dict[int, str] | None, symbol: bool = True, family: str = "Symbolic"
+) -> bytes:
     """A tiny made-up TrueType font, built fresh for the tests.
 
     A and B are squares; space, C and .notdef have no shape. C is empty on
     purpose, the way a trimmed-down font leaves out letters it didn't need.
-    `cmap` is its own letter lookup: a (3,0) symbol one, or none at all.
+    `cmap` is its own letter lookup: a (3,0) symbol one, a Unicode one when
+    `symbol` is False, or none at all.
     """
     fb = FontBuilder(_EM, isTTF=True)
     fb.setupGlyphOrder(_GLYPHS)
     fb.setupCharacterMap(cmap or {})
     square, empty = _square(), TTGlyphPen(None).glyph()
     fb.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
-    fb.setupHorizontalMetrics({n: (600, 50) for n in _GLYPHS})
+    fb.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
     fb.setupHorizontalHeader(ascent=800, descent=-200)
-    fb.setupNameTable({"familyName": "Symbolic", "styleName": "Regular"})
+    fb.setupNameTable({"familyName": family, "styleName": "Regular"})
     fb.setupOS2()
     fb.setupPost()
     if cmap is None:
@@ -200,6 +209,28 @@ def corrupt(tmp_path_factory) -> str:
             "/Widths[600 600]/FontDescriptor {descriptor}>>",
         },
     )
+
+
+@pytest.fixture(scope="module")
+def gapped(tmp_path_factory) -> str:
+    """Words in a stored font with no space, set apart by gaps, as pdfTeX writes them.
+
+    The font looks A and B up itself, but maps no space: TeX never draws one,
+    it moves the pen. Each word is written on its own, GAP_EM apart, and MuPDF
+    reads each gap back as a space.
+    """
+    path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    font = _truetype({ord("A"): "A", ord("B"): "B"}, symbol=False, family="Gapped")
+    # "gap" is only the name the page files the font under.
+    page.insert_font(fontname="gap", fontbuffer=font)
+    x = 72.0
+    for word in GAPPED_TEXT.split():
+        page.insert_text((x, 700), word, fontname="gap", fontsize=GAPPED_SIZE)
+        x += len(word) * _ADVANCE / _EM * GAPPED_SIZE + GAP_EM * GAPPED_SIZE
+    doc.save(path)
+    return path
 
 
 @pytest.fixture(params=["coded_symbol", "coded_type0"])

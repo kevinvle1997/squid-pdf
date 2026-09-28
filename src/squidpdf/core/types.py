@@ -74,6 +74,14 @@ class TextPiece:
 
 
 @dataclass(frozen=True, slots=True)
+class TextRun:
+    """Text written in one go from a point on its baseline."""
+
+    text: str
+    origin: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
 class PageFont:
     """A font a page uses."""
 

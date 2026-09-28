@@ -8,6 +8,7 @@ two protocols over pypdfium2 and pikepdf, and nothing else.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from squidpdf.core.types import (
@@ -18,6 +19,7 @@ from squidpdf.core.types import (
     PageFont,
     Rect,
     TextPiece,
+    TextRun,
 )
 
 
@@ -30,6 +32,10 @@ class FontProgram(Protocol):
 
     def advance(self, ch: str) -> float:
         """How far `ch` moves the pen, in ems."""
+        ...
+
+    def maps(self, ch: str) -> bool:
+        """Whether the font has a glyph of its own for `ch`, even an empty one."""
         ...
 
     def width(self, text: str, size: float) -> float:
@@ -103,16 +109,15 @@ class PdfDriver(Protocol):
         self,
         page: int,
         *,
-        origin: tuple[float, float],
-        text: str,
+        runs: Sequence[TextRun],
         font: str,
         size: float,
         color: tuple[float, float, float],
         scale_x: float,
     ) -> None:
-        """Write `text` from `origin` on its baseline, in the font the page calls `font`.
+        """Write each run from its origin, on top of the page, in the font it calls `font`.
 
-        On top of everything on the page; `scale_x` narrows it from its start.
+        `scale_x` narrows each run from its own start.
         """
         ...
 

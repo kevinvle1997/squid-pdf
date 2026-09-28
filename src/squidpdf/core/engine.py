@@ -10,7 +10,9 @@ Replace or a Redact is, which is what keeps `core` free of feature imports.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable
+import re
+import statistics
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from squidpdf.core import faces
@@ -29,6 +31,7 @@ from squidpdf.core.types import (
     Rect,
     Span,
     SpanIndex,
+    TextRun,
 )
 
 __all__ = [
@@ -42,11 +45,64 @@ _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
+_WORDS_AND_SPACES = re.compile(r" +|[^ ]+")  # a line cut into its words and the spaces between
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
     """Each letter's width in `font`, per 1000 em, as the browser gets it."""
     return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
+
+
+@dataclass(frozen=True, slots=True)
+class Word:
+    """One word of a line, and how far from the line's start it begins, in points."""
+
+    offset: float
+    text: str
+
+
+def space_widths(span: Span) -> list[float]:
+    """How far the file moved the pen for each space in the span's text, in ems.
+
+    MuPDF reads each gap back as a piece of spaces, whose box is the gap.
+    """
+    widths: list[float] = []
+    for fragment in span.fragments:
+        spaces = len(fragment.text)
+        # A piece of letters, not a gap.
+        if not spaces or fragment.text.strip(" "):
+            continue
+        widths += [fragment.bbox.width / spaces / span.size] * spaces
+    return widths
+
+
+def usual_space(span: Span, font: FontProgram) -> float:
+    """A space the span didn't have, in ems: its median gap, else the library's figure."""
+    drawn = space_widths(span)
+    return statistics.median(drawn) if drawn else font.advance(" ")
+
+
+def placed_words(
+    text: str, *, font: FontProgram, size: float, spaces: Sequence[float], usual: float
+) -> tuple[list[Word], float]:
+    """Each word of `text` where the pen reaches it, and where the pen ends.
+
+    A space draws nothing: the k-th moves the pen `spaces[k]` ems, any past those `usual`.
+    """
+    words: list[Word] = []
+    pen = 0.0
+    spaces_passed = 0
+    for piece in _WORDS_AND_SPACES.findall(text):
+        # A word goes where the pen is.
+        if not piece.startswith(" "):
+            words.append(Word(pen, piece))
+            pen += font.width(piece, size)
+            continue
+        # Spaces move the pen.
+        for k in range(spaces_passed, spaces_passed + len(piece)):
+            pen += (spaces[k] if k < len(spaces) else usual) * size
+        spaces_passed += len(piece)
+    return words, pen
 
 
 @dataclass(slots=True)
@@ -153,15 +209,20 @@ class Engine:
             return {ch: round(codes[ch].width, _WIDTH_DP) for ch in letters}
 
         # Written by letter: widths come from the font itself.
-        return letter_widths(embedded.program, letters)
+        widths = letter_widths(embedded.program, letters)
+        # No space glyph: a space is the span's usual gap, as in `measure`.
+        if not embedded.program.maps(" "):
+            widths[" "] = round(usual_space(span, embedded.program) * _EM, _WIDTH_DP)
+        return widths
 
     def measure(self, span: Span, text: str) -> float:
-        """How wide `text` would render, in the face `draw` would pick and this span's size."""
+        """How wide `text` would render, placed as `draw` places it, at this span's size."""
         coded = self._coded_for(span, text)
         if coded is not None:
             return sum(coded.letters[ch].width for ch in text) * span.size / _EM
         font, text = self._run(span, text)
-        return font.width(text, span.size)
+        _words, width = self._words(span, text, font=font, size=span.size)
+        return width
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's font cannot actually draw.
@@ -212,8 +273,9 @@ class Engine:
 
         `size` in points replaces the span's own; `scale_x` narrows the run from
         its start. A character the font can't draw sends the whole run to the
-        stand-in, so a line never mixes two faces. Returns anything that came
-        out other than asked, for the edge to put into words; empty when nothing did.
+        stand-in, so a line never mixes two faces. A font with no space is drawn
+        word by word. Returns anything that came out other than asked, for the
+        edge to put into words; empty when nothing did.
         """
         font_size = span.size if size is None else size
 
@@ -232,7 +294,14 @@ class Engine:
             except FontUnusable as problem:  # the page wouldn't take the font
                 notices.append(problem.reason)
             else:
-                self._write(span, text, font=alias, size=font_size, scale_x=scale_x)
+                self._write(
+                    span,
+                    text,
+                    font=embedded.program,
+                    alias=alias,
+                    size=font_size,
+                    scale_x=scale_x,
+                )
                 return notices
 
         # Otherwise the stand-in draws the whole run, less what even it can't draw.
@@ -241,7 +310,10 @@ class Engine:
             notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
         alias = self._face_alias(span.page, drawn_in.face)
         self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
-        self._write(span, drawn_in.text, font=alias, size=font_size, scale_x=scale_x)
+        face = self._driver.face_font(drawn_in.face)
+        self._write(
+            span, drawn_in.text, font=face, alias=alias, size=font_size, scale_x=scale_x
+        )
         return notices
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
@@ -393,16 +465,35 @@ class Engine:
 
     # Drawing.
 
-    def _write(self, span: Span, text: str, *, font: str, size: float, scale_x: float) -> None:
-        """Write `text` at the span's baseline in the font the page calls `font`."""
+    def _words(
+        self, span: Span, text: str, *, font: FontProgram, size: float
+    ) -> tuple[list[Word], float]:
+        """`text` as `draw` places it in `font`, and its width.
+
+        A font with no space would draw its empty glyph for one, so its words go one by one.
+        """
+        # It has a space, or needs none: one run.
+        if font.maps(" ") or " " not in text:
+            return [Word(0.0, text)], font.width(text, size)
+        spaces, usual = space_widths(span), usual_space(span, font)
+        return placed_words(text, font=font, size=size, spaces=spaces, usual=usual)
+
+    def _write(
+        self,
+        span: Span,
+        text: str,
+        *,
+        font: FontProgram,
+        alias: str,
+        size: float,
+        scale_x: float,
+    ) -> None:
+        """Write `text` at the span's baseline in `font`, which the page calls `alias`."""
+        x, y = span.origin
+        words, _width = self._words(span, text, font=font, size=size)
+        runs = [TextRun(word.text, (x + word.offset * scale_x, y)) for word in words]
         self._driver.write_text(
-            span.page,
-            origin=span.origin,
-            text=text,
-            font=font,
-            size=size,
-            color=span.color,
-            scale_x=scale_x,
+            span.page, runs=runs, font=alias, size=size, color=span.color, scale_x=scale_x
         )
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
