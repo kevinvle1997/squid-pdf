@@ -33,6 +33,8 @@ left_out = "Left out {letters}: no font we have can draw them."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
 redaction_undone = "Editing this text undid its redaction."
+# A split of a tagged file: the tags pointed at every page, so they went with those left out.
+tags_dropped = "The tags that tell screen readers how to read this file went with the pages left out, so this file has none."
 
 # Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"

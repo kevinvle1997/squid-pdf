@@ -211,6 +211,19 @@ def test_a_redaction_on_a_page_left_out_does_not_fail_the_export(mine, three):
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
 
 
+def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(mine, tagged):
+    """The tags point at every page, so leaving one out drops them: never silently."""
+    doc = upload(mine, Path(tagged).read_bytes()).json()
+
+    response = _export(mine, doc, [], pages=[0])
+
+    said = json.loads(response.headers[_NOTICES])
+    expected = [(None, "tags_dropped", words.sentence("tags_dropped"), None)]
+    got = [(n["span_id"], n["code"], n["detail"], n["edit"]) for n in said]
+    assert_equal(got, expected, "what came out other than asked")
+    assert_equal(_opened(response).page_count, 1, "pages in the file")
+
+
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
     """The body is the file, so what was left out travels beside it, by place in the list."""
     span = _span(doc, 1, "Invoices")

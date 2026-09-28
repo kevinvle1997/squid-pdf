@@ -1,7 +1,7 @@
 """Export, end to end: the edits applied to the whole document, and the file handed back.
 
 ExportController checks the request, sends the work to the workers and hands
-back the file, the edits it left out and what saving it did other than asked,
+back the file, the edits it left out and what making it did other than asked,
 in no one's words yet: `editing/api.py` puts them into the reader's. Nothing
 here imports the web framework, so a worker can import it to run the work.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from squidpdf.core import InvalidRequest, Workers, open_pdf
+from squidpdf.core import InvalidRequest, Message, Workers, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.editing.apply import apply
@@ -79,10 +79,11 @@ class ExportController:
             with open_pdf(str(path / store.ORIGINAL)) as engine:
                 redactions = RedactionController.from_edits(engine, edits, index)
                 applied = apply(engine, edits, index)
+                said: list[Message] = []
                 if pages is not None:
-                    engine.keep_pages(pages)
+                    said += engine.keep_pages(pages)
                     redactions.pages_kept(pages)
-                said = engine.save(saved)
+                said += engine.save(saved)
             redactions.check_saved(saved)
             skipped = [skip.edit for skip in applied.skipped]
             # Only the file's own: apply's are render's, said there for the same edits.

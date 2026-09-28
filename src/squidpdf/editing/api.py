@@ -128,7 +128,7 @@ async def export(
     """The document with the edits applied, as a PDF: every page, or `pages` in that order.
 
     ExportController checks the request, makes the file and checks its
-    redactions; this sends it, with the edits left out and what saving did
+    redactions; this sends it, with the edits left out and what making it did
     other than asked in headers, in the reader's words.
     """
     exported = await ExportController(workers).export(doc.folder, edits, pages)

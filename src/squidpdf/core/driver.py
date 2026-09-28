@@ -131,6 +131,10 @@ class PdfDriver(Protocol):
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         ...
 
+    def has_tags(self) -> bool:
+        """Whether the file is tagged: it has the reading order a screen reader follows."""
+        ...
+
     def drop_tags(self) -> None:
         """Remove the file's tags: the reading order a screen reader follows.
 

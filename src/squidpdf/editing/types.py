@@ -79,8 +79,9 @@ class Exported:
     """What export made: the file, its redactions checked, and the edits it left out.
 
     `skipped` names each edit left out by its place in the list the browser sent.
-    `notices` are what saving the file did other than asked, in no one's words
-    yet. They're about the file as a whole, so they name no span and no edit.
+    `notices` are what keeping its pages and saving it did other than asked, in
+    no one's words yet. They're about the file as a whole, so they name no span
+    and no edit.
     """
 
     pdf: bytes

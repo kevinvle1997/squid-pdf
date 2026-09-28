@@ -5,7 +5,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.core import Page, Rect, open_pdf
+from squidpdf.core import Message, Page, Rect, open_pdf
 from tests.conftest import TAGGED_LINES
 from tests.helpers import assert_equal, assert_true
 
@@ -43,9 +43,10 @@ def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_pat
     """A reorder leaves nothing out, so a screen reader's tags stay."""
     out = str(tmp_path / "reordered.pdf")
     with open_pdf(tagged) as eng:
-        eng.keep_pages([1, 0])
+        said = eng.keep_pages([1, 0])
         eng.save(out)
 
+    assert_equal(said, [], "what keeping every page came out with")
     assert_equal(_page_lines(out), TAGGED_LINES[::-1], "each page's text, in order")
     doc = pymupdf.open(out)
     assert_equal(doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[0], "xref", "the tags")
@@ -55,9 +56,10 @@ def test_a_page_left_out_is_gone_from_the_file_even_when_tags_point_at_it(tagged
     """Kept by its tags, the page's text would still be in the file, unseen but readable."""
     out = str(tmp_path / "first.pdf")
     with open_pdf(tagged) as eng:
-        eng.keep_pages([0])
+        said = eng.keep_pages([0])
         eng.save(out)
 
+    assert_equal(said, [Message("tags_dropped")], "what leaving a page out came out with")
     assert_equal(_page_lines(out), TAGGED_LINES[:1], "each page's text")
     assert_equal(_page_objects(out), 1, "page objects in the file")
 

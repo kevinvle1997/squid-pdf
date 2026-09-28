@@ -187,6 +187,11 @@ class PdfFile:
             graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
         )
 
+    def has_tags(self) -> bool:
+        """Whether the file is tagged: it has the reading order a screen reader follows."""
+        kind, _value = self._doc.xref_get_key(xref=self._doc.pdf_catalog(), key=_TAGS_KEY)
+        return kind != _PDF_NULL
+
     def drop_tags(self) -> None:
         """Remove the file's tags: the reading order a screen reader follows.
 
