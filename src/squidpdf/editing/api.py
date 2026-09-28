@@ -1,5 +1,6 @@
 """Render: the browser's edits drawn on the rows it's showing, with a fit for each.
 
+Export: the same edits applied to the whole document, and the file sent back.
 Also the font list: every face we ship that new text can be drawn in.
 
 Routes are HTTP only: read the request, call the action's controller, shape
@@ -26,6 +27,7 @@ from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from squidpdf.editing.edits import Insert, Redact, Replace
+from squidpdf.editing.export import ExportController
 from squidpdf.editing.fit import FitReport
 from squidpdf.editing.fonts import font_list
 from squidpdf.editing.render import RenderController
@@ -46,6 +48,7 @@ __all__ = [
     "AnyEdit",
     "fonts",
     "render",
+    "export",
 ]
 
 router = APIRouter(prefix="/api/documents")
@@ -53,6 +56,9 @@ fonts_router = APIRouter(prefix="/api/fonts")
 
 # Read by `kind` first: one bad kind is one error, not one per edit type.
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
+
+# Export's body is the file, so the edits it left out are named here, by place in the list.
+_SKIPPED_HEADER = "Squid-Skipped-Edits"
 
 # The font list, worked out once per server under this build: the same for everyone.
 # Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
@@ -103,6 +109,29 @@ async def render(
         "build": BUILD,
         "expires_at": datetime.fromtimestamp(doc.expires_at, UTC).isoformat(),
     }
+
+
+@router.post(
+    "/{doc_id}/export",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def export(
+    doc: Annotated[Loaded, Depends(documents.load)],
+    edits: Annotated[list[AnyEdit], Body()],
+    workers: Annotated[Pool, Depends(pool.current)],
+    pages: Annotated[list[int] | None, Body()] = None,
+) -> Response:
+    """The document with the edits applied, as a PDF: every page, or `pages` in that order.
+
+    ExportController checks the request, makes the file and checks its
+    redactions; this sends it, the edits left out in a header.
+    """
+    exported = await ExportController(workers).export(doc.folder, edits, pages)
+    skipped = ", ".join(str(position) for position in exported.skipped)
+    return Response(
+        exported.pdf, media_type="application/pdf", headers={_SKIPPED_HEADER: skipped}
+    )
 
 
 def fit_info(fit: FitReport, said_in: str) -> FitInfo:

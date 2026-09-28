@@ -74,6 +74,17 @@ class Rendered:
     notices: list[Notice]
 
 
+@dataclass(frozen=True, slots=True)
+class Exported:
+    """What export made: the file, its redactions checked, and the edits it left out.
+
+    `skipped` names each edit left out by its place in the list the browser sent.
+    """
+
+    pdf: bytes
+    skipped: list[int]
+
+
 class ImageInfo(TypedDict):
     """A drawn strip, its top `y` in points on the page, as a base64 PNG."""
 

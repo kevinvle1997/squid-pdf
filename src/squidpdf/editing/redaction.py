@@ -9,7 +9,8 @@ it, and so does every download.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import dataclasses
+from collections.abc import Iterator, Sequence
 
 from squidpdf.core import Engine, Span, SpanIndex, open_pdf
 from squidpdf.editing.apply import resolve
@@ -23,6 +24,8 @@ class RedactionController:
     def __init__(self, redacted: Sequence[Span]) -> None:
         """Follow these redacted spans, as the original has them."""
         self._redacted = list(redacted)
+        # The saved file's pages as original numbers, in its order; None when all stay put.
+        self._kept: list[int] | None = None
 
     @classmethod
     def from_edits(
@@ -47,14 +50,37 @@ class RedactionController:
         """
         return {span.id: engine.absent(span) for span in self._redacted}
 
+    def pages_kept(self, pages: Sequence[int]) -> None:
+        """The saved file keeps only `pages`, original numbers in its order.
+
+        Each redaction moves with its page; one on a page left out goes with it.
+        """
+        self._kept = list(pages)
+
     def check_saved(self, path: str) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
         Read from the saved bytes, so a covering box or a save that lost the
-        removal can't pass. Raises RedactionFailed, naming the first span
-        whose text is still there.
+        removal can't pass. Each span is read in its own box, on the page it
+        went to. Raises RedactionFailed, naming a span whose text is still
+        there by its original page.
         """
         with open_pdf(path) as saved:
-            for span in self._redacted:
-                if not saved.absent(span):
-                    raise RedactionFailed(span.id, span.text, span.page + 1)
+            left = [span for span in self._as_saved() if not saved.absent(span)]
+        if left:
+            first = next(span for span in self._redacted if span.id == left[0].id)
+            raise RedactionFailed(first.id, first.text, first.page + 1)
+
+    def _as_saved(self) -> Iterator[Span]:
+        """Each redacted span on the page it went to in the saved file; none left out."""
+        # Every page stayed where it was.
+        if self._kept is None:
+            yield from self._redacted
+            return
+        by_page: dict[int, list[Span]] = {}
+        for span in self._redacted:
+            by_page.setdefault(span.page, []).append(span)
+        for place, original in enumerate(self._kept):
+            # .get: most pages have no redaction on them.
+            for span in by_page.get(original, []):
+                yield dataclasses.replace(span, page=place)
