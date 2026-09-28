@@ -4,6 +4,8 @@ Replace is remove-then-redraw; Redact is remove-and-stop. Same machinery, so one
 module owns both.
 """
 
+from __future__ import annotations
+
 from squidpdf.editing.apply import (
     apply,
     insert_fit,

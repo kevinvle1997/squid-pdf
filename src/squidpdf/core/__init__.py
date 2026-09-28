@@ -5,6 +5,8 @@ outside `core` names the PDF library: open a PDF with `open_pdf`.
 tests/test_layers.py checks both.
 """
 
+from __future__ import annotations
+
 from squidpdf.core.constants import GREEN_RATE_TARGET, GREEN_RATE_WARN
 from squidpdf.core.engine import Engine
 from squidpdf.core.errors import (
