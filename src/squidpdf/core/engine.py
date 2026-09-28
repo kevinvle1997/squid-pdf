@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import re
 import statistics
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 
 from squidpdf.core import faces
@@ -32,6 +32,7 @@ from squidpdf.core.types import (
     Rect,
     Span,
     SpanIndex,
+    TextPiece,
     TextRun,
 )
 
@@ -62,25 +63,36 @@ class Word:
     text: str
 
 
-def space_widths(span: Span) -> list[float]:
-    """How far the file moved the pen for each space in the span's text, in ems.
+def spaces_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
+    """How far the pen moved for each space in a piece of text `width` wide, in ems.
 
-    MuPDF reads each gap back as a piece of spaces, whose box is the gap.
+    What its letters don't fill is gap, shared by its spaces. Kerning goes in too,
+    so a redraw without it ends where the piece did.
     """
-    widths: list[float] = []
-    for fragment in span.fragments:
-        spaces = len(fragment.text)
-        # A piece of letters, not a gap.
-        if not spaces or fragment.text.strip(" "):
-            continue
-        widths += [fragment.bbox.width / spaces / span.size] * spaces
-    return widths
+    spaces = text.count(" ")
+    if not spaces:
+        return []
+    letters = font.width(text.replace(" ", ""), size)
+    return [(width - letters) / spaces / size] * spaces
 
 
-def usual_space(span: Span, font: FontProgram) -> float:
-    """A space the span didn't have, in ems: its median gap, else the library's figure."""
-    drawn = space_widths(span)
-    return statistics.median(drawn) if drawn else font.advance(" ")
+def space_widths(span: Span, font: FontProgram) -> list[float]:
+    """How far the file moved the pen for each space in the span's text, in ems."""
+    return [
+        gap
+        for fragment in span.fragments
+        for gap in spaces_in(
+            fragment.text, width=fragment.bbox.width, font=font, size=span.size
+        )
+    ]
+
+
+def pieces_in(lines: list[list[TextPiece]], font: str) -> Iterator[TextPiece]:
+    """Every piece of a page's text drawn in `font`."""
+    for line in lines:
+        for piece in line:
+            if piece.font == font:
+                yield piece
 
 
 def placed_words(
@@ -120,6 +132,8 @@ class FontCache:
     aliases: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
     # The page's name for each face we ship, by (page, face file), once drawn.
     face_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
+    # How far the page moves the pen for a space in a font with none, in ems.
+    usual_spaces: dict[tuple[int, str], float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -211,9 +225,9 @@ class Engine:
 
         # Written by letter: widths come from the font itself.
         widths = letter_widths(embedded.program, letters)
-        # No space glyph: a space is the span's usual gap, as in `measure`.
+        # No space glyph: a space is the page's usual gap, as in `measure`.
         if not embedded.program.maps(" "):
-            widths[" "] = round(usual_space(span, embedded.program) * _EM, _WIDTH_DP)
+            widths[" "] = round(self._usual_space(span, embedded.program) * _EM, _WIDTH_DP)
         return widths
 
     def measure(self, span: Span, text: str) -> float:
@@ -256,13 +270,16 @@ class Engine:
         One box per span, not per fragment: the cost grows with the box count,
         and a span's box covers its fragments. Lines and underlines stay. Each
         span's font and look-alike are read first: erasing can delete a font the
-        page no longer uses, and `draw` still needs both.
+        page no longer uses, and `draw` still needs both. So are the page's gaps.
         """
         by_page: dict[int, list[Span]] = {}
         for span in spans:
             by_page.setdefault(span.page, []).append(span)
-            self._embedded(span)
+            embedded = self._embedded(span)
             self._look_alike(span)
+            # Erasing takes the gaps a new space is measured against.
+            if embedded is not None and not embedded.program.maps(" "):
+                self._usual_space(span, embedded.program)
 
         for page, page_spans in by_page.items():
             self._driver.erase_text(page, [span.bbox for span in page_spans])
@@ -476,8 +493,28 @@ class Engine:
         # It has a space, or needs none: one run.
         if font.maps(" ") or " " not in text:
             return [Word(0.0, text)], font.width(text, size)
-        spaces, usual = space_widths(span), usual_space(span, font)
+        spaces, usual = space_widths(span, font), self._usual_space(span, font)
         return placed_words(text, font=font, size=size, spaces=spaces, usual=usual)
+
+    def _usual_space(self, span: Span, font: FontProgram) -> float:
+        """The median gap the page leaves for a space in the span's font, in ems.
+
+        Read once, before any edit; with no gap to go by, the library's own figure.
+        """
+        key = (span.page, span.font)
+        if key not in self._cache.usual_spaces:
+            lines = self._driver.text_lines(span.page)
+            gaps = [
+                gap
+                for piece in pieces_in(lines, span.font)
+                for gap in spaces_in(
+                    piece.text, width=piece.box.width, font=font, size=piece.size
+                )
+            ]
+            self._cache.usual_spaces[key] = (
+                statistics.median(gaps) if gaps else font.advance(" ")
+            )
+        return self._cache.usual_spaces[key]
 
     def _write(
         self,

@@ -26,7 +26,9 @@ _WIDTHS = "500 550 250 600"
 
 # The gapped fixture: its words, their size, and the gap between them, in ems.
 GAPPED_TEXT = "AB BA AB"
+LONE_WORD = "BA"
 GAPPED_SIZE = 12.0
+GAPPED_LINES = (700, 650, 600)  # each line's baseline, in PDF space
 GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
 _ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
 
@@ -259,24 +261,46 @@ def corrupt(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def gapped(tmp_path_factory) -> str:
-    """Words in a stored font with no space, set apart by gaps, as pdfTeX writes them.
+    """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
 
-    The font looks A and B up itself, but maps no space: TeX never draws one,
-    it moves the pen. Each word is written on its own, GAP_EM apart, and MuPDF
-    reads each gap back as a space.
+    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps:
+    - GAPPED_TEXT, word by word: each gap is a piece of its own.
+    - GAPPED_TEXT in one run (TJ): the gaps are spaces inside one piece.
+    - LONE_WORD: no gap but the page's.
     """
     path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
     doc = pymupdf.open()
     page = doc.new_page()
     font = _truetype({ord("A"): "A", ord("B"): "B"}, symbol=False, family="Gapped")
-    # "gap" is only the name the page files the font under.
+    # "gap" is only the name the page files the font under; MuPDF writes it by glyph id.
     page.insert_font(fontname="gap", fontbuffer=font)
-    x = 72.0
-    for word in GAPPED_TEXT.split():
-        page.insert_text((x, 700), word, fontname="gap", fontsize=GAPPED_SIZE)
-        x += len(word) * _ADVANCE / _EM * GAPPED_SIZE + GAP_EM * GAPPED_SIZE
+    [(_xref, _ext, _kind, _name, resource, _encoding)] = page.get_fonts()
+    words = GAPPED_TEXT.split()
+    step = (len(words[0]) * _ADVANCE / _EM + GAP_EM) * GAPPED_SIZE
+    start = f"BT /{resource} {GAPPED_SIZE} Tf"
+    # PDF space: y counts up from the bottom of the page.
+    one_by_one = [
+        f"{start} {72 + i * step} {GAPPED_LINES[0]} Td <{_ids(word)}> Tj ET"
+        for i, word in enumerate(words)
+    ]
+    gap = -round(GAP_EM * _EM)  # a TJ number moves the pen back, in thousandths of an em
+    one_run = f" {gap} ".join(f"<{_ids(word)}>" for word in words)
+    content = [
+        *one_by_one,
+        f"{start} 72 {GAPPED_LINES[1]} Td [{one_run}] TJ ET",
+        f"{start} 72 {GAPPED_LINES[2]} Td <{_ids(LONE_WORD)}> Tj ET",
+    ]
+    xref = doc.get_new_xref()
+    doc.update_object(xref, "<<>>")
+    doc.update_stream(xref, "\n".join(content).encode())
+    doc.xref_set_key(page.xref, "Contents", f"{xref} 0 R")
     doc.save(path)
     return path
+
+
+def _ids(word: str) -> str:
+    """A word as the glyph ids the gapped fixture writes: A is 1, B is 2 (see _GLYPHS)."""
+    return "".join(f"{_GLYPHS.index(letter):04x}" for letter in word)
 
 
 @pytest.fixture(params=["coded_symbol", "coded_type0"])
