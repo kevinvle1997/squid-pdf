@@ -113,11 +113,12 @@ class PdfDriver(Protocol):
         font: str,
         size: float,
         color: tuple[float, float, float],
+        opacity: float,
         scale_x: float,
     ) -> None:
         """Write each run from its origin, on top of the page, in the font it calls `font`.
 
-        `scale_x` narrows each run from its own start.
+        `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
         """
         ...
 
@@ -127,6 +128,10 @@ class PdfDriver(Protocol):
 
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
         """Turn a point on the page as you see it into the PDF's own coordinates."""
+        ...
+
+    def add_opacity(self, page: int, opacity: float) -> str:
+        """The page's name for painting at `opacity`, added to the page on first use."""
         ...
 
     def add_content(self, page: int, stream: bytes) -> None:

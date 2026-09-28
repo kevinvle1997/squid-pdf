@@ -23,6 +23,7 @@ from squidpdf.core.fonts import face_bytes, look_alike, strip_subset, trimmed
 from squidpdf.core.message import Message
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
+    SOLID,
     CodedFont,
     Face,
     LookAlike,
@@ -493,7 +494,13 @@ class Engine:
         words, _width = self._words(span, text, font=font, size=size)
         runs = [TextRun(word.text, (x + word.offset * scale_x, y)) for word in words]
         self._driver.write_text(
-            span.page, runs=runs, font=alias, size=size, color=span.color, scale_x=scale_x
+            span.page,
+            runs=runs,
+            font=alias,
+            size=size,
+            color=span.color,
+            opacity=span.opacity,
+            scale_x=scale_x,
         )
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
@@ -512,10 +519,14 @@ class Engine:
         r, g, b = span.color
         hex_digits = coded.code_bytes * 2
         hex_codes = "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
+        # See-through, as the original was.
+        paint = ""
+        if span.opacity < SOLID:
+            paint = f" /{self._driver.add_opacity(span.page, span.opacity)} gs"
         # Save the page's settings, set color, font and size, place the text,
         # write the codes, then put the settings back.
         stream = (
-            f"q BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
+            f"q{paint} BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
             f" /{coded.resource} {size:.{_PDF_DP}f} Tf"
             f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
             f" <{hex_codes}> Tj ET Q"

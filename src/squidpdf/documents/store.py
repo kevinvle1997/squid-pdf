@@ -18,7 +18,7 @@ from typing import Any
 
 import orjson
 
-from squidpdf.core import Fragment, Page, Rect, Span, SpanIndex
+from squidpdf.core import SOLID, Fragment, Page, Rect, Span, SpanIndex
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 
@@ -121,6 +121,8 @@ def load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
+        # .get: an index saved before spans kept opacity; they were drawn solid then.
+        "opacity": saved.get("opacity", SOLID),
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
         "fragments": tuple(load_fragment(fragment) for fragment in saved["fragments"]),

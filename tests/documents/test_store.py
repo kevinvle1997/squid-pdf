@@ -7,6 +7,7 @@ import os
 import time
 from pathlib import Path
 
+import orjson
 import pytest
 
 from squidpdf.documents import api as documents
@@ -24,6 +25,18 @@ def test_a_saved_index_comes_back_span_for_span(engine):
     store.save_index(folder, index)
     loaded = store.load_index(folder)
     assert_equal(list(loaded or []), list(index), "spans after a save and a load")
+
+
+def test_an_index_saved_before_spans_kept_their_opacity_loads_them_solid(engine):
+    """A document made within the hour before the build that added it: drawn solid, as then."""
+    _, folder = store.create("owner")
+    store.save_index(folder, engine.index())
+    saved = orjson.loads((folder / "index.json").read_bytes())
+    older = [{key: value for key, value in span.items() if key != "opacity"} for span in saved]
+    (folder / "index.json").write_bytes(orjson.dumps(older))
+    loaded = list(store.load_index(folder) or [])
+    assert_equal(len(loaded), len(saved), "spans loaded")
+    assert_equal({span.opacity for span in loaded}, {1.0}, "their opacity")
 
 
 def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):

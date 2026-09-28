@@ -143,11 +143,12 @@ class MuPDFDriver(PdfFile):
         font: str,
         size: float,
         color: tuple[float, float, float],
+        opacity: float,
         scale_x: float,
     ) -> None:
         """Write each run from its origin, on top of the page, in the font it calls `font`.
 
-        `scale_x` narrows each run from its own start.
+        `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
         """
         shape = self._doc[page].new_shape()
         for run in runs:
@@ -158,6 +159,7 @@ class MuPDFDriver(PdfFile):
                 fontname=font,
                 fontsize=size,
                 color=color,
+                fill_opacity=opacity,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
         shape.commit(overlay=True)

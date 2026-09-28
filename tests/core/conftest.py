@@ -30,6 +30,8 @@ GAPPED_SIZE = 12.0
 GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
 _ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
 
+TRANSLUCENT = 0.6  # the translucent fixtures' opacity: 153 of 255, as MuPDF reads it back
+
 _DESCRIPTOR = (
     "<</Type/FontDescriptor/FontName/{name}/Flags 4/FontBBox[0 -200 600 800]"
     "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80/FontFile2 {file}>>"
@@ -102,10 +104,12 @@ def _embed_by_hand(
     dicts: dict[str, str],
     box: str | None = None,
     rotate: int = 0,
+    resources: str = "",
 ) -> str:
     """One page drawing streams["content"] with /F1 as dicts["font"].
 
     Each dict names another object as {its key}; the font program is {file}.
+    `resources` goes into the page's resources beside the font.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -117,7 +121,7 @@ def _embed_by_hand(
         doc.update_object(xref[name], obj.format(**refs))
     for name, data in streams.items():
         doc.update_stream(xref[name], data)
-    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>>>")
+    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>{resources}>>")
     doc.xref_set_key(page.xref, "Contents", refs["content"])
     if box is not None:
         doc.xref_set_key(page.xref, "MediaBox", box)
@@ -165,6 +169,48 @@ def coded_symbol(tmp_path_factory) -> str:
         },
         box=_OFFSET_BOX,
     )
+
+
+@pytest.fixture(scope="module")
+def coded_translucent(tmp_path_factory) -> str:
+    """The symbol fixture's ABBA, painted at TRANSLUCENT opacity by a graphics state (/GS1)."""
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("coded") / "translucent.pdf"),
+        {
+            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
+            "to_unicode": _to_unicode(
+                "<00> <FF>",
+                "1 beginbfrange <20> <21> <0041> endbfrange"
+                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
+            ),
+            "content": b"q /GS1 gs BT /F1 12 Tf 172 700 Td <20212120> Tj ET Q",
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
+            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
+            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
+        },
+        resources=f"/ExtGState<</GS1<</ca {TRANSLUCENT}>>>>",
+    )
+
+
+@pytest.fixture(scope="module")
+def translucent(tmp_path_factory) -> str:
+    """One line in a stored Times Roman, trimmed and painted at TRANSLUCENT opacity.
+
+    Trimmed, so a letter it didn't use sends a redraw to the stand-in.
+    """
+    path = str(tmp_path_factory.mktemp("translucent") / "translucent.pdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # "emb" is only the name the page files the font under; "tiro" is MuPDF's Times Roman.
+    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
+    page.insert_text(
+        (72, 700), "Valid until March", fontname="emb", fontsize=12, fill_opacity=TRANSLUCENT
+    )
+    doc.subset_fonts(verbose=False)
+    doc.save(path)
+    return path
 
 
 @pytest.fixture(scope="module")
