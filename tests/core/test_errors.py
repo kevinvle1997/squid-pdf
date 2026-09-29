@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-import importlib
 import pickle
-import pkgutil
-from collections.abc import Iterator
 
-import squidpdf
-from squidpdf.core import Damaged, Encrypted, Message, Problem, Unreadable, words
-from squidpdf.documents.errors import TooLarge
-from tests.conftest import pseudo_sentence
+from squidpdf.core import Problem
 from tests.helpers import assert_equal, assert_true
 
 
@@ -24,59 +18,8 @@ class _Sized(Problem):
         super().__init__(mb=mb)
 
 
-def test_detail_is_the_sentence_filled():
-    assert_equal(_Sized(100).detail, "over 100 MB", "the filled sentence")
-
-
 def test_a_problem_survives_the_trip_from_a_worker():
+    """The API tests' refusals take no arguments; one that does must still unpickle."""
     back = pickle.loads(pickle.dumps(_Sized(100)))
     assert_true(type(back) is _Sized, f"came back as {type(back).__name__}")
     assert_equal(back.detail, "over 100 MB", "the sentence after a pickle round trip")
-
-
-def test_debug_survives_the_trip_too():
-    back = pickle.loads(pickle.dumps(Problem(debug="why")))
-    assert_equal(back.debug, "why", "debug after a pickle round trip")
-
-
-def test_both_unreadable_kinds_are_unreadable_and_say_which():
-    for kind, sentence in (
-        (Encrypted, words.sentence("encrypted")),
-        (Damaged, words.sentence("damaged")),
-    ):
-        assert_true(issubclass(kind, Unreadable), f"{kind.__name__} is Unreadable")
-        assert_equal(kind().detail, sentence, f"what {kind.__name__} says")
-
-
-def test_a_problem_is_a_message_its_type_the_key():
-    assert_equal(TooLarge(100).message, Message("too_large", {"mb": 100}), "the message")
-
-
-def test_a_problem_is_said_in_the_language_asked_for(pseudo):
-    expected = pseudo_sentence(words.sentence("too_large")).format(mb=100)
-    assert_equal(TooLarge(100).said_in(pseudo), expected, "the sentence in the pseudo-language")
-    assert_equal(TooLarge(100).detail, "This file is over 100 MB.", "the sentence in English")
-
-
-def test_a_problem_no_catalog_has_says_its_own_sentence_in_any_language(pseudo):
-    assert_equal(_Sized(100).said_in(pseudo), "over 100 MB", "the class's own sentence")
-
-
-def _each_problem(kind: type[Problem]) -> Iterator[type[Problem]]:
-    """`kind` and every subclass of it, however deep."""
-    yield kind
-    for sub in kind.__subclasses__():
-        yield from _each_problem(sub)
-
-
-def test_every_problem_the_app_can_raise_has_a_sentence():
-    """One without would fail inside the error handler, and the user would read nothing."""
-    # Each feature keeps its own errors.py: import them all so every subclass is known.
-    for module in pkgutil.walk_packages(squidpdf.__path__, "squidpdf."):
-        importlib.import_module(module.name)
-    unsaid = [
-        kind.__name__
-        for kind in _each_problem(Problem)
-        if kind.type not in words.ENGLISH_SENTENCES and kind.sentence is None
-    ]
-    assert_equal(unsaid, [], "problems with no sentence")

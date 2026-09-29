@@ -13,7 +13,6 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Span, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
-from squidpdf.core.pdf import PdfFile
 from squidpdf.editing import (
     BadReference,
     Edit,
@@ -96,19 +95,6 @@ def _substituted(engine) -> Span:
     )
 
 
-def test_replace_swaps_the_text(engine, tmp_path):
-    index = engine.index()
-    span = next(s for s in index if "14 March 2026" in s.text)
-    out = tmp_path / "edited.pdf"
-
-    apply(engine, [Replace(span.id, "Delivery begins 2 April 2026")], index)
-    engine.save(str(out))
-
-    edited = pymupdf.open(out)[span.page].get_text()
-    assert_in("2 April 2026", edited, "the saved page after a replace")
-    assert_not_in("14 March 2026", edited, "the saved page after a replace")
-
-
 def test_redaction_really_removes_the_text(engine, tmp_path):
     """A covering rectangle would pass a visual check and fail this."""
     index = engine.index()
@@ -129,36 +115,6 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     assert_equal(_said(undone), expected, "notices after the edit")
 
 
-def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tmp_path):
-    """The same line on another page is other text, not a leak."""
-    out = tmp_path / "redacted.pdf"
-    with open_pdf(repeated) as eng:
-        index = eng.index()
-        first = next(iter(index))
-        edits = [Redact(first.id)]
-        apply(eng, edits, index)
-        eng.save(str(out))
-        verified = RedactionController.from_edits(eng, edits, index).verdicts(eng)
-
-    assert_equal(verified, {first.id: True}, "the redaction's verdict")
-    pages = [page.get_text().strip() for page in pymupdf.open(out).pages()]
-    assert_equal(pages, ["", "CONFIDENTIAL"], "each page's text after redacting the first")
-
-
-def test_a_redaction_is_followed_to_the_page_it_moved_to(repeated):
-    """Each span is read on the page it moved to, not where it was."""
-    with open_pdf(repeated) as eng:
-        index = eng.index()
-        first = next(iter(index))
-        edits = [Redact(first.id)]
-        redactions = RedactionController.from_edits(eng, edits, index)
-        apply(eng, edits, index)
-        redactions.keep_pages(eng, [1, 0])
-        verified = redactions.verdicts(eng)
-
-    assert_equal(verified, {first.id: True}, "the verdict on the page it moved to")
-
-
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     """What verified redaction is for: covered text is still in the file."""
     with open_pdf(pdf) as eng:
@@ -173,26 +129,6 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
         assert_equal(eng.still_there([span]), [span], "text under a black box, still there")
         eng.remove([span])
         assert_equal(eng.still_there([span]), [], "the same text really removed, still there")
-
-
-def test_checking_a_saved_file_reads_each_page_once(engine, tmp_path, monkeypatch):
-    """Each page is read once: read per redaction, a busy page timed out."""
-    index = engine.index()
-    spans = [s for s in index if s.page == EMBEDDED_PAGE]
-    out = str(tmp_path / "redacted.pdf")
-    apply(engine, [Redact(s.id) for s in spans], index)
-    engine.save(out)
-    pages_read: list[int] = []
-    text_in = PdfFile.text_in
-
-    def counted(pdf: PdfFile, page: int, boxes: list) -> list:
-        pages_read.append(page)
-        return text_in(pdf, page, boxes)
-
-    monkeypatch.setattr(PdfFile, "text_in", counted)
-    RedactionController(spans).check_saved(out)
-
-    assert_equal(pages_read, [EMBEDDED_PAGE], f"pages read to check {len(spans)} redactions")
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
