@@ -72,9 +72,9 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     app.middleware("http")(limit_body)
-    app.include_router(documents.router)
-    app.include_router(editing.router)
-    app.include_router(editing.fonts_router)
+    app.include_router(documents.router, responses=errors.PROBLEM_RESPONSES)
+    app.include_router(editing.router, responses=errors.PROBLEM_RESPONSES)
+    app.include_router(editing.fonts_router, responses=errors.PROBLEM_RESPONSES)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

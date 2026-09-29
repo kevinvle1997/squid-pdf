@@ -6,6 +6,7 @@ import pickle
 
 from fastapi.testclient import TestClient
 
+from squidpdf.api.app import create_app
 from squidpdf.api.errors import ServerError
 from squidpdf.core import Damaged, Encrypted, NotFound, Problem, Unreadable, words
 from squidpdf.documents.errors import Gone, TooManyPages
@@ -75,3 +76,27 @@ def test_a_worker_s_problem_arrives_saying_the_same_thing():
         back = pickle.loads(pickle.dumps(raised))
         assert_equal(type(back), type(raised), "the class after a pickle round trip")
         assert_equal(back.detail, raised.detail, f"what {type(raised).__name__} says")
+
+
+def test_every_route_says_it_can_answer_with_a_problem():
+    # The browser's types come from the OpenAPI, so a Problem must be in it.
+    # A fresh app, not the fixture's: that one has a test-only route.
+    spec = TestClient(create_app(), base_url=BASE_URL).get("/api/openapi.json").json()
+    problem = spec["components"]["schemas"]["ProblemInfo"]
+    assert_equal(
+        sorted(problem["required"]),
+        ["code", "detail", "params", "status", "type"],
+        "what every Problem carries",
+    )
+    for path, methods in spec["paths"].items():
+        if path == "/api/health":
+            continue
+        for method, operation in methods.items():
+            listed = operation["responses"].get("default", {})
+            schema = listed.get("content", {}).get("application/problem+json", {}).get("schema")
+            assert_equal(
+                schema,
+                {"$ref": "#/components/schemas/ProblemInfo"},
+                f"{method.upper()} {path} answers a Problem",
+            )
+            assert_not_in("422", operation["responses"], f"{method.upper()} {path}'s 422")
