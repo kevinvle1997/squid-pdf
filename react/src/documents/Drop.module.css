@@ -1,0 +1,34 @@
+.zone {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  outline: none;
+}
+/* The whole window is the target; while a file hovers, the ground says so. */
+.zone[data-drop-target] { box-shadow: inset 0 0 0 2px var(--change); }
+.zone[data-focus-visible] { box-shadow: inset 0 0 0 2px var(--change); }
+.top { padding: var(--s4); }
+.middle {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s4);
+  padding: var(--s8) var(--s4);
+  text-align: center;
+}
+.title { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+.choose {
+  font: inherit; font-size: var(--fs-sm); color: var(--ink);
+  background: none; border: 1px solid var(--ink); border-radius: 1px;
+  padding: var(--s2) var(--s4); min-height: var(--hit); cursor: pointer;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.choose[data-hovered] { background: var(--ink); color: var(--strip); }
+.choose[data-pressed] { transform: scale(.97); }
+.choose[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
+.choose[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+.status { margin: 0; min-height: 1.5em; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
+.failed { color: var(--warn); font-weight: 600; }
+.num { font-family: var(--mono); font-size: var(--fs-micro); }
+.fine { margin: 0; font-size: var(--fs-sm); color: var(--ink-lo); }
+@media (prefers-reduced-motion: reduce) {
+  .choose[data-pressed] { transform: none; }
+}

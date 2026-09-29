@@ -1,0 +1,54 @@
+/* A transparent button over the span's own pixels: the page image shows the text. */
+.span {
+  position: absolute;
+  padding: 0; margin: 0; border: 0;
+  background: transparent;
+  cursor: text;
+  touch-action: manipulation;
+  outline: none;
+}
+/* The hint is the page's own grey: it says "text", not "change". */
+.span::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 1px; background: var(--ink-lo); opacity: 0;
+  transition: opacity var(--dur-press) var(--ease-out);
+}
+.span[data-hovered]::after, .span[data-focus-visible]::after { opacity: .6; transition-duration: var(--dur-quick); }
+/* The tint is solid; multiplied over the page image, the text beneath still shows. */
+.span[data-hovered] { background: var(--mark-change-soft); mix-blend-mode: multiply; }
+/* On the page the ring is the page's own indigo: the dark theme's would wash out on white. */
+.span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
+/* A similar font stands in here: a dashed warning line, always. */
+.similar::after {
+  opacity: .55; height: 1.5px;
+  background: repeating-linear-gradient(90deg, var(--mark-warn) 0 2px, transparent 2px 4px);
+}
+.similar[data-hovered] { background: var(--mark-warn-soft); }
+.similar[data-hovered]::after, .similar[data-focus-visible]::after { opacity: 1; }
+/* You changed this. */
+.changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
+/* It went in, but not quite as typed: the server said why. */
+.trouble::after { opacity: 1; height: 2px; background: var(--mark-warn); }
+@media (forced-colors: active) {
+  .span::after { background: CanvasText; }
+  .changed::after, .trouble::after { background: Highlight; }
+}
+
+/* Shadow only, no hairline, no side stripe. Warning shows in the heading's colour and mark. */
+.note {
+  max-width: 292px;
+  padding: var(--s3);
+  background: var(--strip);
+  box-shadow: var(--lift-2);
+  font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-lo);
+  display: flex; flex-direction: column; gap: var(--s1);
+}
+.note[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
+.note[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
+.head, .warnHead { display: flex; align-items: baseline; gap: var(--s1); font-weight: 600; color: var(--ink); }
+.warnHead { color: var(--warn); }
+.mark { flex: none; width: 1em; height: 1em; align-self: center; }
+.why { display: block; }
+@media (prefers-reduced-motion: reduce) {
+  .note[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
+}

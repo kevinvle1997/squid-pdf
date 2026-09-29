@@ -2,6 +2,27 @@
 
 A web PDF editor that edits text in place
 
+## Develop
+
+The API, from the repository's root (needs [uv](https://docs.astral.sh/uv/)):
+
+```
+uv sync --all-extras
+uv run uvicorn squidpdf.api.app:create_app --factory --port 8000
+```
+
+The browser app, in `react/` (needs Node 22). It sends `/api` on to the API:
+
+```
+cd react
+npm ci
+npm run dev          # http://localhost:5173
+```
+
+`npm test` runs the unit tests, `npm run e2e` the core loop in Chromium against a
+real API it starts itself, and `npm run types` rewrites `src/api/schema.d.ts`
+from the API's OpenAPI after the API changes.
+
 ## Deploy
 
 The app runs behind [Caddy](https://caddyserver.com), which gets the HTTPS

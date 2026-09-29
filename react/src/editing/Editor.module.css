@@ -1,0 +1,60 @@
+.skip {
+  position: absolute; left: var(--s2); top: -100px; z-index: 100;
+  background: var(--strip); color: var(--ink);
+  padding: var(--s2) var(--s3); font-size: var(--fs-sm);
+  box-shadow: var(--lift-1);
+}
+.skip:focus { top: var(--s2); }
+.bar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: var(--s4);
+  min-height: 44px; padding: var(--s1) var(--s4);
+  background: var(--strip);
+  border-bottom: 1px solid var(--rule);
+}
+.file {
+  display: flex; align-items: baseline; gap: var(--s2);
+  padding-left: var(--s4); border-left: 1px solid var(--rule);
+  min-width: 0;
+}
+.name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grow { flex: 1; }
+.status { font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.warn { color: var(--warn); font-weight: 600; }
+/* Ink, not indigo: indigo means a change, and exporting isn't one. */
+.export {
+  position: relative;
+  font: inherit; font-size: var(--fs-sm); color: var(--ink);
+  background: none; border: 1px solid var(--ink); border-radius: 1px;
+  padding: var(--s1) var(--s3); cursor: pointer;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+/* The hit area grows past the button without moving what you see. */
+.export::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: max(100%, var(--hit)); height: max(100%, var(--hit));
+  transform: translate(-50%, -50%);
+}
+.export kbd { color: var(--ink-lo); margin-left: var(--s1); }
+.export[data-hovered] { background: var(--ink); color: var(--strip); }
+.export[data-hovered] kbd { color: var(--strip); }
+.export[data-pressed] { transform: scale(.97); }
+.export[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
+.export[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+.notice, .noticeWarn {
+  margin: 0; padding: var(--s2) var(--s4);
+  background: var(--strip); border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-sm); color: var(--ink-lo);
+  animation: fade var(--dur-move) var(--ease-out);
+}
+.noticeWarn { color: var(--warn); font-weight: 600; }
+.pages { padding: var(--s7) var(--s5) var(--s8); outline: none; }
+@media (max-width: 820px) {
+  .bar { flex-wrap: wrap; gap: var(--s2) var(--s3); }
+  .file { border-left: 0; padding-left: 0; }
+  .pages { padding: var(--s4) var(--s4) var(--s7); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .export[data-pressed] { transform: none; }
+}
