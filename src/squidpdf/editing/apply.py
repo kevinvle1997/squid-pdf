@@ -23,7 +23,7 @@ __all__ = [
     "log_fits",
     "insert_fit",
     "replace_fit",
-    "verify_redactions",
+    "resolve",
 ]
 
 _BAD_REFERENCE = "bad_reference"
@@ -100,6 +100,7 @@ def apply(
     engine: Engine,
     edits: Sequence[Edit],
     index: SpanIndex,
+    *,
     pages: Collection[int] | None = None,
 ) -> Applied:
     """Apply the log in memory, one span in its final state. Nothing is written.
@@ -129,7 +130,7 @@ def apply(
     undone = Message("redaction_undone")
     notices = [Notice(span_id, undone) for span_id in undone_redactions(edits)]
     for span, text, size, scale_x in to_draw:
-        for said in engine.draw(span, text, size, scale_x):
+        for said in engine.draw(span, text, size=size, scale_x=scale_x):
             notices.append(Notice(span.id, said))
     for position, insert in inserts:
         on_screen = pages is None or insert.page in pages
@@ -142,7 +143,12 @@ def apply(
 def insert_span(insert: Insert) -> Span:
     """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
     return new_text(
-        insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
+        insert.page,
+        origin=insert.origin,
+        text=insert.text,
+        size=insert.size,
+        font=insert.font,
+        color=insert.color,
     )
 
 
@@ -151,7 +157,7 @@ def drawn_at(engine: Engine, span: Span, edit: Replace) -> tuple[float | None, f
 
     A None size keeps the span's own. The edit's strategy counts only if it was offered.
     """
-    strategy = replace_fit(engine, span, edit.text, edit.strategy).strategy
+    strategy = replace_fit(engine, span, edit.text, strategy=edit.strategy).strategy
     # Drawn as typed: the span's size, no stretch.
     if strategy == "as-is":
         return None, 1.0
@@ -172,7 +178,7 @@ def log_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> LogFits
     span_edits, inserts, _skipped = resolve(engine, edits, index)
     return LogFits(
         replaces={
-            span.id: replace_fit(engine, span, edit.text, edit.strategy)
+            span.id: replace_fit(engine, span, edit.text, strategy=edit.strategy)
             for edit, span in span_edits
             if isinstance(edit, Replace)
         },
@@ -202,7 +208,7 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
 
 
 def replace_fit(
-    engine: Engine, span: Span, text: str, strategy: Strategy = "as-is"
+    engine: Engine, span: Span, text: str, *, strategy: Strategy = "as-is"
 ) -> FitReport:
     """What would happen if the user typed this, with the ways out if it will not fit.
 
@@ -222,21 +228,3 @@ def replace_fit(
         stand_in=engine.stand_in(span, text),
         asked=strategy,
     )
-
-
-def verify_redactions(
-    engine: Engine, edits: Sequence[Edit], index: SpanIndex
-) -> dict[str, bool]:
-    """Confirm each redacted span's text is really gone from where it was.
-
-    A covering rectangle would pass a visual check and fail this one, which is
-    the entire point of running it. The same words elsewhere, such as a header
-    repeated on other pages, don't count against it. Only the last edit per
-    span counts, matching what apply() actually drew. A Replace after a Redact
-    means it was not redacted after all. A redaction of an unknown span raises,
-    as in apply().
-    """
-    span_edits, _inserts, _skipped = resolve(engine, edits, index)
-    return {
-        span.id: engine.absent(span) for edit, span in span_edits if isinstance(edit, Redact)
-    }

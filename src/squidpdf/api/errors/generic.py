@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from squidpdf.core import NotFound, Problem
+from squidpdf.core import InvalidRequest, NotFound, Problem
 
 __all__ = [
-    "InvalidRequest",
+    "InvalidRequest",  # core's, so controllers can raise it too
     "NotFound",  # core's, so a feature's own errors can build on it
     "RateLimited",
     "RequestTooLarge",
@@ -13,13 +13,6 @@ __all__ = [
     "TooHeavy",
     "TooSlow",
 ]
-
-
-class InvalidRequest(Problem):
-    """A browser bug: a plain sentence for the user, the particulars in `debug`."""
-
-    type = "invalid_request"
-    status = 400
 
 
 class RequestTooLarge(Problem):

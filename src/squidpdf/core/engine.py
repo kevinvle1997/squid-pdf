@@ -206,7 +206,7 @@ class Engine:
             self._driver.erase_text(page, [span.bbox for span in page_spans])
 
     def draw(
-        self, span: Span, text: str, size: float | None = None, scale_x: float = 1.0
+        self, span: Span, text: str, *, size: float | None = None, scale_x: float = 1.0
     ) -> list[Message]:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
@@ -220,7 +220,7 @@ class Engine:
         # A font written by code gets codes, as the original did.
         coded = self._coded_for(span, text)
         if coded is not None:
-            self._draw_codes(span, coded, text, font_size, scale_x)
+            self._draw_codes(span, coded, text=text, size=font_size, scale_x=scale_x)
             return []
 
         # Written by letter, in the file's own font when it has every letter.
@@ -232,7 +232,7 @@ class Engine:
             except FontUnusable as problem:  # the page wouldn't take the font
                 notices.append(problem.reason)
             else:
-                self._write(span, text, alias, font_size, scale_x)
+                self._write(span, text, font=alias, size=font_size, scale_x=scale_x)
                 return notices
 
         # Otherwise the stand-in draws the whole run, less what even it can't draw.
@@ -241,8 +241,30 @@ class Engine:
             notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
         alias = self._face_alias(span.page, drawn_in.face)
         self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
-        self._write(span, drawn_in.text, alias, font_size, scale_x)
+        self._write(span, drawn_in.text, font=alias, size=font_size, scale_x=scale_x)
         return notices
+
+    def keep_pages(self, pages: list[int]) -> list[Message]:
+        """Keep only `pages`, in that order: page `pages[0]` becomes the first.
+
+        Call it after the last draw: page numbers change here. Returns what
+        came out other than asked.
+        """
+        every_page_kept = set(pages) == set(range(len(self._driver.pages())))
+        said = [] if every_page_kept else self._drop_tags()
+        self._driver.keep_pages(pages)
+        self._cache = FontCache()  # looked up by page number, and those just changed
+        return said
+
+    def _drop_tags(self) -> list[Message]:
+        """Drop the file's tags, and say so if it had any.
+
+        They point at every page, so they would keep left-out pages in the file.
+        """
+        if not self._driver.has_tags():
+            return []
+        self._driver.drop_tags()
+        return [Message("tags_dropped")]
 
     def save(self, path: str) -> list[Message]:
         """Write the document to `path`, our faces cut to the letters drawn in them.
@@ -262,15 +284,23 @@ class Engine:
         self._driver.save(path)
         return notices
 
-    def absent(self, span: Span) -> bool:
-        """Whether the span's text is gone from where it was. A black box would fail this.
+    def still_there(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans whose text is still in their box. A black box over it doesn't hide it.
 
-        Only the span's own box on its own page is read: the same words
-        elsewhere in the document are other text, not a leak. Spaces are
-        ignored, so a leftover can't pass for gone by being spaced differently.
+        Only each span's own box is read, so the same words elsewhere aren't a
+        leak. Spaces are ignored, so respacing can't hide a leftover.
         """
-        left = self._driver.text_in(span.page, span.bbox)
-        return unspaced(span.text) not in unspaced(left)
+        by_page: dict[int, list[Span]] = {}
+        for span in spans:
+            by_page.setdefault(span.page, []).append(span)
+        left = (self._left_on(page, on_page) for page, on_page in by_page.items())
+        return [span for on_page in left for span in on_page]
+
+    def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
+        """Those of `spans`, all on `page`, whose text is still in their box."""
+        texts = self._driver.text_in(page, [span.bbox for span in spans])
+        pairs = zip(spans, texts, strict=True)
+        return [span for span, left in pairs if unspaced(span.text) in unspaced(left)]
 
     def close(self) -> None:
         """Release the open document."""
@@ -363,9 +393,17 @@ class Engine:
 
     # Drawing.
 
-    def _write(self, span: Span, text: str, font: str, size: float, scale_x: float) -> None:
+    def _write(self, span: Span, text: str, *, font: str, size: float, scale_x: float) -> None:
         """Write `text` at the span's baseline in the font the page calls `font`."""
-        self._driver.write_text(span.page, span.origin, text, font, size, span.color, scale_x)
+        self._driver.write_text(
+            span.page,
+            origin=span.origin,
+            text=text,
+            font=font,
+            size=size,
+            color=span.color,
+            scale_x=scale_x,
+        )
 
     def _coded_for(self, span: Span, text: str) -> CodedFont | None:
         """The span's font drawn by code, if it has one and it can draw all of `text`."""
@@ -375,7 +413,7 @@ class Engine:
         return embedded.coded
 
     def _draw_codes(
-        self, span: Span, coded: CodedFont, text: str, size: float, scale_x: float
+        self, span: Span, coded: CodedFont, *, text: str, size: float, scale_x: float
     ) -> None:
         """Write `text` as codes in the file's own font, on top of the page."""
         self._driver.restore_font(span.page, coded.resource, coded.xref)

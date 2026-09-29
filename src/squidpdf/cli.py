@@ -22,14 +22,20 @@ from squidpdf.core import (
     GREEN_RATE_WARN,
     Fidelity,
     FidelityReport,
-    Message,
     Problem,
     green_rate,
     open_pdf,
     words,
     write_sample,
 )
-from squidpdf.editing import Redact, Replace, apply, replace_fit
+from squidpdf.editing import (
+    ExportController,
+    Redact,
+    RedactionFailed,
+    Replace,
+    apply,
+    replace_fit,
+)
 
 __all__ = [
     "cmd_spans",
@@ -145,19 +151,17 @@ def cmd_redact(args: argparse.Namespace) -> int:
         if span is None:
             return no_span(args.span_id)
 
-        apply(engine, [Redact(span.id)], index)
-        engine.save(args.out)
-
-    # Re-read the saved file, as the app does before a download.
-    with open_pdf(args.out) as saved:
-        gone = saved.absent(span)
-    # Still there: keep nothing, as the app downloads nothing.
-    if not gone:
-        Path(args.out).unlink()
-        failed = Message("redaction_failed", {"text": span.text, "page": span.page + 1})
-        print(f"  {RED}{words.render(failed)}{OFF}")
-        return 1
+        # The same save and check a download gets.
+        try:
+            saved = ExportController.save_edited(
+                engine, index, edits=[Redact(span.id)], to=args.out
+            )
+        except RedactionFailed as failed:  # the text was still in the file, so none was kept
+            print(f"  {RED}{failed.detail}{OFF}")
+            return 1
     print(f"\n  removed {span.text!r}")
+    for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
+        print(f"  {YELLOW}{words.render(said)}{OFF}")
     print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
     return 0
 

@@ -13,20 +13,21 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Span, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
+from squidpdf.core.pdf import PdfFile
 from squidpdf.editing import (
     BadReference,
     Edit,
     Insert,
     Notice,
     Redact,
+    RedactionController,
     Replace,
     apply,
     insert_fit,
     replace_fit,
-    verify_redactions,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
-from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
 _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
@@ -79,7 +80,12 @@ def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
 def _insert_as_span(insert: Insert) -> Span:
     """An insert as the span it's measured and drawn as."""
     return new_text(
-        insert.page, insert.origin, insert.text, insert.size, insert.font, insert.color
+        insert.page,
+        origin=insert.origin,
+        text=insert.text,
+        size=insert.size,
+        font=insert.font,
+        color=insert.color,
     )
 
 
@@ -112,8 +118,8 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    verified = verify_redactions(engine, edits, index)[span.id]
-    assert_true(verified is True, "verify_redactions() result for the redacted span")
+    verified = RedactionController.from_edits(engine, edits, index).verdicts(engine)
+    assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
     text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
     assert_not_in(span.text, text, "the saved page after a redact")
 
@@ -132,11 +138,25 @@ def test_redacting_words_the_document_repeats_elsewhere_is_verified(repeated, tm
         edits = [Redact(first.id)]
         apply(eng, edits, index)
         eng.save(str(out))
-        verified = verify_redactions(eng, edits, index)
+        verified = RedactionController.from_edits(eng, edits, index).verdicts(eng)
 
     assert_equal(verified, {first.id: True}, "the redaction's verdict")
     pages = [page.get_text().strip() for page in pymupdf.open(out).pages()]
     assert_equal(pages, ["", "CONFIDENTIAL"], "each page's text after redacting the first")
+
+
+def test_a_redaction_is_followed_to_the_page_it_moved_to(repeated):
+    """Each span is read on the page it moved to, not where it was."""
+    with open_pdf(repeated) as eng:
+        index = eng.index()
+        first = next(iter(index))
+        edits = [Redact(first.id)]
+        redactions = RedactionController.from_edits(eng, edits, index)
+        apply(eng, edits, index)
+        redactions.keep_pages(eng, [1, 0])
+        verified = redactions.verdicts(eng)
+
+    assert_equal(verified, {first.id: True}, "the verdict on the page it moved to")
 
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
@@ -150,9 +170,29 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     doc.save(covered)
 
     with open_pdf(str(covered)) as eng:
-        assert_false(eng.absent(span), "text under a black box, counted as gone")
+        assert_equal(eng.still_there([span]), [span], "text under a black box, still there")
         eng.remove([span])
-        assert_true(eng.absent(span), "the same text really removed, counted as gone")
+        assert_equal(eng.still_there([span]), [], "the same text really removed, still there")
+
+
+def test_checking_a_saved_file_reads_each_page_once(engine, tmp_path, monkeypatch):
+    """Each page is read once: read per redaction, a busy page timed out."""
+    index = engine.index()
+    spans = [s for s in index if s.page == EMBEDDED_PAGE]
+    out = str(tmp_path / "redacted.pdf")
+    apply(engine, [Redact(s.id) for s in spans], index)
+    engine.save(out)
+    pages_read: list[int] = []
+    text_in = PdfFile.text_in
+
+    def counted(pdf: PdfFile, page: int, boxes: list) -> list:
+        pages_read.append(page)
+        return text_in(pdf, page, boxes)
+
+    monkeypatch.setattr(PdfFile, "text_in", counted)
+    RedactionController(spans).check_saved(out)
+
+    assert_equal(pages_read, [EMBEDDED_PAGE], f"pages read to check {len(spans)} redactions")
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):

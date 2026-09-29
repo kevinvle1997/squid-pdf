@@ -74,6 +74,46 @@ class Rendered:
     notices: list[Notice]
 
 
+@dataclass(frozen=True, slots=True)
+class Exported:
+    """What export made: the file, the edits it left out, and what else saving did.
+
+    `skipped` are places in the browser's edit list. `notices` are about the
+    whole file, so they name no span.
+    """
+
+    pdf: bytes
+    skipped: list[int]
+    notices: list[Message]
+
+
+@dataclass(frozen=True, slots=True)
+class Saved:
+    """What saving an edited file came out with.
+
+    `applied` is about the edits; `notices` about the file as a whole, such as dropped tags.
+    """
+
+    applied: Applied
+    notices: list[Message]
+
+
+@dataclass(frozen=True, slots=True)
+class RenderReply:
+    """Render's reply, ready to send: the JSON body and its headers."""
+
+    body: Render
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportReply:
+    """Export's reply, ready to send: the PDF and its headers."""
+
+    pdf: bytes
+    headers: dict[str, str]
+
+
 class ImageInfo(TypedDict):
     """A drawn strip, its top `y` in points on the page, as a base64 PNG."""
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pymupdf
 
 import squidpdf
-from squidpdf.editing import apply, verify_redactions
+from squidpdf.editing import RedactionController, apply
 from tests.helpers import assert_between, assert_in, assert_true
 
 
@@ -30,8 +30,8 @@ def test_public_api_indexes_assesses_edits_and_verifies(pdf, tmp_path):
 
         out = tmp_path / "edited.pdf"
         eng.save(str(out))
-        verified = verify_redactions(eng, redactions, index)[redact_span.id]
-        assert_true(verified is True, "verify_redactions() result for the redacted span")
+        verdicts = RedactionController.from_edits(eng, redactions, index).verdicts(eng)
+        assert_true(verdicts[redact_span.id], "the in-memory verdict on the redacted span")
 
     edited = pymupdf.open(out)[span.page].get_text()
     assert_in("2 April 2026", edited, "the saved page after a replace")

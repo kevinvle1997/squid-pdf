@@ -133,6 +133,7 @@ class MuPDFDriver(PdfFile):
     def write_text(
         self,
         page: int,
+        *,
         origin: tuple[float, float],
         text: str,
         font: str,
@@ -154,6 +155,10 @@ class MuPDFDriver(PdfFile):
             overlay=True,
             morph=(at, pymupdf.Matrix(scale_x, 1)),
         )
+
+    def keep_pages(self, pages: list[int]) -> None:
+        """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
+        self._doc.select(pages)
 
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""

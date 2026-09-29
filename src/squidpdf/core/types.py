@@ -193,6 +193,7 @@ class FontDescriptor:
 
 def new_text(
     page: int,
+    *,
     origin: tuple[float, float],
     text: str,
     size: float,
@@ -240,7 +241,7 @@ class SpanIndex:
 _SPAN_ID_DIGEST_SIZE = 6
 
 
-def span_id(page: int, bbox: Rect, font: str, text: str, ordinal: int) -> str:
+def span_id(page: int, bbox: Rect, *, font: str, text: str, ordinal: int) -> str:
     """A span's id: stable within a document, distinct between near-identical cells.
 
     The ordinal separates spans that share text, font and a rounded box (two

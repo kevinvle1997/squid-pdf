@@ -12,6 +12,8 @@ import math
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS
+from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
 
 
@@ -70,6 +72,17 @@ class Insert:
 
 
 type Edit = Replace | Redact | Insert
+
+
+def check_edits(edits: list[Edit]) -> None:
+    """Refuse an edit list over the limits: too many edits, or too much text in one."""
+    if len(edits) > MAX_EDITS:
+        raise TooManyEdits(MAX_EDITS)
+    too_long = any(
+        isinstance(edit, Replace | Insert) and len(edit.text) > MAX_TEXT_CHARS for edit in edits
+    )
+    if too_long:
+        raise TextTooLong(MAX_TEXT_CHARS)
 
 
 class EditLog:

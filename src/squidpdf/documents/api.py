@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from datetime import UTC, datetime
+from functools import partial
 from typing import Annotated
 
 import orjson
@@ -18,14 +18,15 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
-from squidpdf.api.language import ReaderLanguage, language_headers
+from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, Message, NotFound, Page, words
+from squidpdf.core import BUILD, Message, NotFound, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
+from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import (
     Analysis,
     Copy,
@@ -39,7 +40,6 @@ from squidpdf.documents.types import (
 __all__ = [
     "router",
     "load",
-    "page_scale",
     "upload",
     "read",
     "delete",
@@ -65,20 +65,10 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
-def page_scale(page: Page, scale: int) -> float:
-    """`scale`, or the largest that keeps this page under the pixel limit.
-
-    Render's strips use it too, so they line up with the page image.
-    """
-    width, height = page.width, page.height
-    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
-    largest = math.sqrt(limits.MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
-    return min(scale, largest)
-
-
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
 async def upload(
     request: Request,
+    *,
     token: Annotated[str, Depends(owner.token)],
     workers: Annotated[Pool, Depends(pool.current)],
     said_in: ReaderLanguage,
@@ -105,19 +95,21 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise NotAPdf()
-        analysis = await workers.run(
-            limits.UPLOAD_TIMEOUT_S, analyse, str(folder), limits.MAX_PAGES
-        )
+        task = partial(analyse, str(folder), limits.MAX_PAGES)
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
-    response.headers.update(language_headers(said_in))
-    return document_response(doc_id, store.touch(folder), analysis, said_in)
+    response.headers.update(words.language_headers(said_in))
+    return document_response(
+        doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
+    )
 
 
 @router.get("/{doc_id}", response_model=Document)
 async def read(
     doc: Annotated[Loaded, Depends(load)],
+    *,
     request: Request,
     response: Response,
     workers: Annotated[Pool, Depends(pool.current)],
@@ -126,9 +118,8 @@ async def read(
     """The document, in the reader's language. Worked out again only for a new `build`."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(
-            limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder), limits.MAX_PAGES
-        )
+        task = partial(analyse, str(doc.folder), limits.MAX_PAGES)
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -137,11 +128,13 @@ async def read(
     # too: another language, or a sentence reworded since, is another body.
     said = orjson.dumps([said_in, words.catalog(said_in)])
     etag = f'"{xxhash.xxh3_64_hexdigest(raw + said)}"'
-    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **language_headers(said_in)}
+    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **words.language_headers(said_in)}
     if request.headers.get("if-none-match") == etag:  # absent on a first read
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     response.headers.update(headers)
-    return document_response(doc.id, doc.expires_at, analysis, said_in)
+    return document_response(
+        doc.id, expires_at=doc.expires_at, analysis=analysis, said_in=said_in
+    )
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -157,6 +150,7 @@ def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
 )
 async def page(
     doc: Annotated[Loaded, Depends(load)],
+    *,
     n: int,
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
@@ -170,9 +164,8 @@ async def page(
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
         raise NoSuchPage()
-    png = await workers.run(
-        limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
-    )
+    task = partial(page_image, str(doc.folder), n, page_scale(pages[n], scale))
+    png = await workers.run(limits.RENDER_TIMEOUT_S, task)
     cache = PAGE_CACHE if build == BUILD else "no-store"
     return Response(png, media_type="image/png", headers={"Cache-Control": cache})
 
@@ -192,7 +185,7 @@ async def sweep_forever() -> None:
 
 
 def document_response(
-    doc_id: str, expires_at: float, analysis: Analysis, said_in: str
+    doc_id: str, *, expires_at: float, analysis: Analysis, said_in: str
 ) -> Document:
     """The analysis, plus what belongs to this document and this moment, in `said_in`."""
     return {

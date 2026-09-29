@@ -7,6 +7,8 @@ prevents what it can: by the time the server says no, it's a backstop, never
 news.
 """
 
+from __future__ import annotations
+
 from squidpdf.api.errors.generic import (
     InvalidRequest,
     NotFound,

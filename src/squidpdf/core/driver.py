@@ -57,8 +57,8 @@ class PdfDriver(Protocol):
         """Each line of text on the page, split into the pieces it is drawn in."""
         ...
 
-    def text_in(self, page: int, box: Rect) -> str:
-        """The letters drawn inside `box` on the page, in reading order."""
+    def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
+        """The letters inside each box on the page, in reading order."""
         ...
 
     def fonts(self, page: int) -> list[PageFont]:
@@ -102,6 +102,7 @@ class PdfDriver(Protocol):
     def write_text(
         self,
         page: int,
+        *,
         origin: tuple[float, float],
         text: str,
         font: str,
@@ -129,6 +130,18 @@ class PdfDriver(Protocol):
 
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
+        ...
+
+    def has_tags(self) -> bool:
+        """Whether the file is tagged: it has the reading order a screen reader follows."""
+        ...
+
+    def drop_tags(self) -> None:
+        """Remove the file's tags. Saving then drops every page only they pointed at."""
+        ...
+
+    def keep_pages(self, pages: list[int]) -> None:
+        """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
         ...
 
     def save(self, path: str) -> None:

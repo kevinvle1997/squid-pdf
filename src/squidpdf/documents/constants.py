@@ -1,4 +1,4 @@
-"""How long a document lives, how often the dead ones go, and how browsers keep it."""
+"""How long a document lives, how big its page images get, and how browsers keep it."""
 
 from __future__ import annotations
 
@@ -8,3 +8,5 @@ SWEEP_EVERY_S = 60
 # A page URL carries `build`, so its bytes never change; kept as long as the document.
 PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unchanged
+
+MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

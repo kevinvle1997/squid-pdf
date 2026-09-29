@@ -17,6 +17,7 @@ _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 # The sample's two pages, counted from 0 as spans count them.
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a stand-in
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
+TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
 
 
 def saved_as(face: str) -> str:
@@ -106,6 +107,45 @@ def repeated(tmp_path_factory) -> str:
     doc.save(path)
     doc.close()
     return str(path)
+
+
+@pytest.fixture
+def tagged(tmp_path) -> str:
+    """Two pages tagged for screen readers, as Word and browsers save them.
+
+    Each page's line is one paragraph, and the tags point at it and back, as
+    a real file's do. That is enough for MuPDF to keep a page it was told to drop.
+    """
+    doc = pymupdf.open()
+    for number, line in enumerate(TAGGED_LINES):
+        page = doc.new_page()
+        page.insert_text((72, 96), line, fontname="helv", fontsize=12)
+        [contents] = page.get_contents()
+        marked = b"/P <</MCID 0>> BDC\n" + doc.xref_stream(contents) + b"\nEMC"
+        doc.update_stream(contents, marked)
+        doc.xref_set_key(page.xref, "StructParents", str(number))
+    tree, document = _new_object(doc), _new_object(doc)
+    paragraphs = [
+        _new_object(doc, f"<</Type/StructElem/S/P/P {document} 0 R/Pg {page.xref} 0 R/K 0>>")
+        for page in doc.pages()
+    ]
+    kids = " ".join(f"{paragraph} 0 R" for paragraph in paragraphs)
+    doc.update_object(document, f"<</Type/StructElem/S/Document/P {tree} 0 R/K [{kids}]>>")
+    by_page = " ".join(f"{n} [{paragraph} 0 R]" for n, paragraph in enumerate(paragraphs))
+    parents = _new_object(doc, f"<</Nums [{by_page}]>>")
+    root = f"<</Type/StructTreeRoot/K {document} 0 R/ParentTree {parents} 0 R>>"
+    doc.update_object(tree, root)
+    doc.xref_set_key(doc.pdf_catalog(), "StructTreeRoot", f"{tree} 0 R")
+    path = tmp_path / "tagged.pdf"
+    doc.save(path)
+    return str(path)
+
+
+def _new_object(doc: pymupdf.Document, source: str = "<<>>") -> int:
+    """A new object in `doc` holding `source`; its number."""
+    xref = doc.get_new_xref()
+    doc.update_object(xref, source)
+    return xref
 
 
 @pytest.fixture

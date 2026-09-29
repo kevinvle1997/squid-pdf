@@ -9,7 +9,7 @@ import pytest
 
 from squidpdf.core import Fidelity, FidelityReport, Span, green_rate, open_pdf, words
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as
-from tests.helpers import assert_all, assert_between, assert_equal, assert_true
+from tests.helpers import assert_all, assert_between, assert_equal
 
 _EM = 1000
 _SIZE = 12
@@ -184,7 +184,7 @@ def test_a_redraw_by_code_really_removes_the_old_text(coded, tmp_path):
     [drawn] = _drawn(out)
     assert_equal(drawn["font"], "Coded", "the font that redrew it")
     with open_pdf(out) as saved:
-        assert_true(saved.absent(span), "the old text is gone from the saved file")
+        assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
 
 
 def test_a_redraw_by_code_lands_where_the_original_was(coded, tmp_path):

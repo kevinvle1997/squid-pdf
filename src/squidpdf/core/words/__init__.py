@@ -29,6 +29,7 @@ __all__ = [
     "render",
     "render_all",
     "fill",
+    "language_headers",
 ]
 
 ENGLISH = "en"
@@ -89,6 +90,11 @@ def fill(template: str, params: Mapping[str, Param], language: str = ENGLISH) ->
     """`template` with each placeholder's fact written out as a person reads it."""
     written = {name: written_out(name, value, language) for name, value in params.items()}
     return template.format_map(written)
+
+
+def language_headers(language: str) -> dict[str, str]:
+    """The headers a reply in words carries: its language, and `Vary` so no cache mixes them."""
+    return {"Content-Language": language, "Vary": "Accept-Language"}
 
 
 def written_out(name: str, value: Param, language: str) -> str:

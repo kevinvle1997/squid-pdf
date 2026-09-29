@@ -3,3 +3,5 @@
 Nothing here imports `api.py`, so the worker pool can import the rest without
 loading the web framework.
 """
+
+from __future__ import annotations

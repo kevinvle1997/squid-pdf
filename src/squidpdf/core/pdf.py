@@ -32,6 +32,10 @@ _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 
+# The catalog entry for the file's tags: the reading order a screen reader follows.
+_TAGS_KEY = "StructTreeRoot"
+_PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
+
 # What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
 # which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
 MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
@@ -49,15 +53,14 @@ class PdfFile:
         blocks = self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
         return [[text_piece(raw) for raw in line["spans"]] for line in each_line(blocks)]
 
-    def text_in(self, page: int, box: Rect) -> str:
-        """The letters drawn inside `box` on the page, in reading order.
+    def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
+        """The letters inside each box on the page, in reading order.
 
-        A letter counts when its middle is inside, so one on the next line that
-        only grazes the box's edge doesn't.
+        A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
         blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        inside = (char for char in each_letter(blocks) if middle_inside(char["bbox"], box))
-        return "".join(char["c"] for char in inside)
+        letters = list(each_letter(blocks))
+        return [letters_inside(letters, box) for box in boxes]
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -183,6 +186,17 @@ class PdfFile:
             graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
         )
 
+    def has_tags(self) -> bool:
+        """Whether the file is tagged: it has the reading order a screen reader follows."""
+        catalog = self._doc.pdf_catalog()  # the file's root entry, where the tags are listed
+        kind, _value = self._doc.xref_get_key(xref=catalog, key=_TAGS_KEY)
+        return kind != _PDF_NULL
+
+    def drop_tags(self) -> None:
+        """Remove the file's tags. Saving then drops every page only they pointed at."""
+        catalog = self._doc.pdf_catalog()  # the file's root entry, where the tags are listed
+        self._doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=_PDF_NULL)
+
     def restore_font(self, page: int, resource: str, xref: int) -> None:
         """Point the page's font name `resource` back at font `xref`.
 
@@ -276,6 +290,11 @@ def text_piece(raw: dict) -> TextPiece:
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )
+
+
+def letters_inside(letters: list[dict], box: Rect) -> str:
+    """The letters, from get_text("rawdict"), whose middle is inside `box`, in order."""
+    return "".join(char["c"] for char in letters if middle_inside(char["bbox"], box))
 
 
 def middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:

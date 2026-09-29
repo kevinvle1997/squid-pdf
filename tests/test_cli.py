@@ -14,8 +14,8 @@ import pymupdf
 import pytest
 
 from squidpdf.cli import main
-from squidpdf.core import open_pdf, words
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from squidpdf.core import Engine, open_pdf, words
+from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 
 def _span_id(pdf: str, needle: str) -> str:
@@ -127,6 +127,23 @@ def test_redact_verifies_words_the_document_repeats_elsewhere(repeated, tmp_path
     assert_equal(code, 0, "exit code of `squidpdf redact` on a line the document repeats")
     assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
     assert_true(out_pdf.exists(), "the redacted file is kept")
+
+
+def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
+    pdf, tmp_path, monkeypatch, capsys
+):
+    """Text still in the saved file means no file is kept."""
+    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
+    out_pdf = tmp_path / "redacted.pdf"
+
+    code = main(["redact", pdf, _span_id(pdf, "Invoices"), "-o", str(out_pdf)])
+
+    said = words.sentence("redaction_failed").format(
+        text="Invoices are due within thirty days.", page=2
+    )
+    assert_equal(code, 1, "exit code of `squidpdf redact` when the text is still there")
+    assert_in(said, capsys.readouterr().out, "the redact output")
+    assert_false(out_pdf.exists(), "a file kept with the text still in it")
 
 
 @pytest.mark.parametrize(

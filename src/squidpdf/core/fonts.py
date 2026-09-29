@@ -45,6 +45,7 @@ _STYLE_NAMES: dict[Style, str] = {
 def family_faces(
     family: str,
     category: Category,
+    *,
     same_widths_as: tuple[str, ...] = (),
     styles: tuple[Style, ...] = _ALL_STYLES,
 ) -> tuple[Face, ...]:
@@ -70,12 +71,12 @@ CATALOG: tuple[Face, ...] = (
     *family_faces(
         "Liberation Sans",
         "sans",
-        ("Arial", "ArialMT", "Helvetica", "Arimo", "Nimbus Sans", "NimbusSanL"),
+        same_widths_as=("Arial", "ArialMT", "Helvetica", "Arimo", "Nimbus Sans", "NimbusSanL"),
     ),
     *family_faces(
         "Liberation Serif",
         "serif",
-        (
+        same_widths_as=(
             "Times New Roman",
             "TimesNewRomanPSMT",
             "TimesNewRomanPS",
@@ -89,10 +90,17 @@ CATALOG: tuple[Face, ...] = (
     *family_faces(
         "Liberation Mono",
         "mono",
-        ("Courier New", "CourierNewPSMT", "CourierNewPS", "Courier", "Cousine", "NimbusMonL"),
+        same_widths_as=(
+            "Courier New",
+            "CourierNewPSMT",
+            "CourierNewPS",
+            "Courier",
+            "Cousine",
+            "NimbusMonL",
+        ),
     ),
-    *family_faces("Carlito", "sans", ("Calibri",)),
-    *family_faces("Caladea", "serif", ("Cambria",)),
+    *family_faces("Carlito", "sans", same_widths_as=("Calibri",)),
+    *family_faces("Caladea", "serif", same_widths_as=("Cambria",)),
     # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
     *family_faces("Noto Sans", "sans"),
     *family_faces("Noto Serif", "serif"),

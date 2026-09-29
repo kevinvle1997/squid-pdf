@@ -15,7 +15,6 @@ from squidpdf.core import words
 __all__ = [
     "best_language",
     "language_of",
-    "language_headers",
     "ReaderLanguage",
 ]
 
@@ -62,14 +61,6 @@ def quality_of(weight: str) -> float:
 def language_of(request: Request) -> str:
     """The language this request is answered in."""
     return best_language(request.headers.get("accept-language"))
-
-
-def language_headers(language: str) -> dict[str, str]:
-    """The headers a reply in words carries: its language, and that it depends on it.
-
-    `Vary`, so no cache hands one reader's language to another.
-    """
-    return {"Content-Language": language, "Vary": "Accept-Language"}
 
 
 # A route's reader's language, as a parameter: `said_in: ReaderLanguage`.

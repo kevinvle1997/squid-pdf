@@ -7,9 +7,9 @@ import base64
 import pymupdf
 import pytest
 
-from squidpdf.api import constants as limits
 from squidpdf.core import words
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.editing.constants import MAX_TEXT_CHARS
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
 
@@ -162,7 +162,7 @@ def test_a_region_edge_that_is_not_a_number_is_a_bad_request(mine, doc):
 
 @pytest.mark.parametrize("kind", ["replace", "insert"])
 def test_new_text_past_the_limit_is_refused_for_either_kind(mine, doc, kind):
-    text = "x" * (limits.MAX_TEXT_CHARS + 1)
+    text = "x" * (MAX_TEXT_CHARS + 1)
     edits = {
         "replace": {"kind": "replace", "span_id": doc["spans"][0]["id"], "text": text},
         "insert": {**_INSERT, "text": text},
