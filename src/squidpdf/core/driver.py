@@ -131,7 +131,7 @@ class PdfDriver(Protocol):
         ...
 
     def add_opacity(self, page: int, opacity: float) -> str:
-        """The page's name for painting at `opacity`, added to the page on first use."""
+        """The page's name for painting at `opacity`; writing it again changes nothing."""
         ...
 
     def add_content(self, page: int, stream: bytes) -> None:

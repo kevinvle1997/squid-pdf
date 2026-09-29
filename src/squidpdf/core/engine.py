@@ -10,9 +10,7 @@ Replace or a Redact is, which is what keeps `core` free of feature imports.
 from __future__ import annotations
 
 import hashlib
-import re
-import statistics
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from squidpdf.core import faces
@@ -21,6 +19,7 @@ from squidpdf.core.embedded import EmbeddedFont, FontUnusable, open_embedded
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import face_bytes, look_alike, strip_subset, trimmed
 from squidpdf.core.message import Message
+from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps, usual_gap
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
     SOLID,
@@ -47,7 +46,6 @@ _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
-_WORDS_AND_SPACES = re.compile(r" +|[^ ]+")  # a line cut into its words and the spaces between
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
@@ -55,75 +53,12 @@ def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]
     return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
 
 
-@dataclass(frozen=True, slots=True)
-class Word:
-    """One word of a line, and how far from the line's start it begins, in points."""
-
-    offset: float
-    text: str
-
-
-def spaces_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
-    """How far the pen moved for each space in a piece of text `width` wide, in ems.
-
-    What its letters don't fill is gap, shared by its spaces. Kerning goes in too,
-    so a redraw without it ends where the piece did.
-    """
-    spaces = text.count(" ")
-    if not spaces:
-        return []
-    letters = font.width(text.replace(" ", ""), size)
-    return [(width - letters) / spaces / size] * spaces
-
-
-def space_widths(span: Span, font: FontProgram) -> list[float]:
-    """How far the file moved the pen for each space in the span's text, in ems."""
-    return [
-        gap
-        for fragment in span.fragments
-        for gap in spaces_in(
-            fragment.text, width=fragment.bbox.width, font=font, size=span.size
-        )
-    ]
-
-
-def pieces_in(lines: list[list[TextPiece]], font: str) -> Iterator[TextPiece]:
-    """Every piece of a page's text drawn in `font`."""
-    for line in lines:
-        for piece in line:
-            if piece.font == font:
-                yield piece
-
-
-def placed_words(
-    text: str, *, font: FontProgram, size: float, spaces: Sequence[float], usual: float
-) -> tuple[list[Word], float]:
-    """Each word of `text` where the pen reaches it, and where the pen ends.
-
-    A space draws nothing: the k-th moves the pen `spaces[k]` ems, any past those `usual`.
-    """
-    words: list[Word] = []
-    pen = 0.0
-    spaces_passed = 0
-    for piece in _WORDS_AND_SPACES.findall(text):
-        # A word goes where the pen is.
-        if not piece.startswith(" "):
-            words.append(Word(pen, piece))
-            pen += font.width(piece, size)
-            continue
-        # Spaces move the pen.
-        for k in range(spaces_passed, spaces_passed + len(piece)):
-            pen += (spaces[k] if k < len(spaces) else usual) * size
-        spaces_passed += len(piece)
-    return words, pen
-
-
 @dataclass(slots=True)
 class FontCache:
-    """What the engine has looked up about the fonts on each page.
+    """What the engine has looked up about each page: its fonts, and its text as it was.
 
-    Keyed by (page, font name, subset prefix aside); each entry fills in on
-    first lookup and is never recomputed.
+    Keyed by (page, font name, subset prefix aside), or by page alone for its
+    text; each entry fills in on first lookup and is never recomputed.
     """
 
     embedded: dict[tuple[int, str], EmbeddedFont | FontUnusable] = field(default_factory=dict)
@@ -132,8 +67,8 @@ class FontCache:
     aliases: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
     # The page's name for each face we ship, by (page, face file), once drawn.
     face_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
-    # How far the page moves the pen for a space in a font with none, in ems.
-    usual_spaces: dict[tuple[int, str], float] = field(default_factory=dict)
+    # The page's usual gap for a space, in a font with none of its own.
+    usual_gaps: dict[tuple[int, str], float] = field(default_factory=dict)
     # Each page's text as it was, read once.
     lines: dict[int, list[list[TextPiece]]] = field(default_factory=dict)
 
@@ -227,9 +162,9 @@ class Engine:
 
         # Written by letter: widths come from the font itself.
         widths = letter_widths(embedded.program, letters)
-        # No space glyph: a space is the page's usual gap, as in `measure`.
-        if not embedded.program.maps(" "):
-            widths[" "] = round(self._usual_space(span, embedded.program) * _EM, _WIDTH_DP)
+        # No space of its own: a space is the page's usual gap, as in `measure`.
+        if lacks_space(embedded.program):
+            widths[" "] = round(self._usual_gap(span, embedded.program) * _EM, _WIDTH_DP)
         return widths
 
     def measure(self, span: Span, text: str) -> float:
@@ -280,8 +215,8 @@ class Engine:
             embedded = self._embedded(span)
             self._look_alike(span)
             # Erasing takes the gaps a new space is measured against.
-            if embedded is not None and not embedded.program.maps(" "):
-                self._usual_space(span, embedded.program)
+            if embedded is not None and lacks_space(embedded.program):
+                self._usual_gap(span, embedded.program)
 
         for page, page_spans in by_page.items():
             self._driver.erase_text(page, [span.bbox for span in page_spans])
@@ -488,34 +423,22 @@ class Engine:
     def _words(
         self, span: Span, text: str, *, font: FontProgram, size: float
     ) -> tuple[list[Word], float]:
-        """`text` as `draw` places it in `font`, and its width.
+        """`text` as `draw` places it in `font`, and where the pen ends: its width."""
+        one_run = not lacks_space(font) or " " not in text
+        if one_run:
+            return [Word(text, 0.0)], font.width(text, size)
+        # No space to draw: each word goes where the file's gaps put it.
+        gaps, usual = span_gaps(span, font), self._usual_gap(span, font)
+        return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
 
-        A font with no space would draw its empty glyph for one, so its words go one by one.
-        """
-        # It has a space, or needs none: one run.
-        if font.maps(" ") or " " not in text:
-            return [Word(0.0, text)], font.width(text, size)
-        spaces, usual = space_widths(span, font), self._usual_space(span, font)
-        return placed_words(text, font=font, size=size, spaces=spaces, usual=usual)
-
-    def _usual_space(self, span: Span, font: FontProgram) -> float:
-        """The median gap the page leaves for a space in the span's font, in ems.
-
-        Read once, before any edit; with no gap to go by, the library's own figure.
-        """
-        key = (span.page, span.font)
-        if key not in self._cache.usual_spaces:
-            gaps = [
-                gap
-                for piece in pieces_in(self._page_lines(span.page), span.font)
-                for gap in spaces_in(
-                    piece.text, width=piece.box.width, font=font, size=piece.size
-                )
-            ]
-            self._cache.usual_spaces[key] = (
-                statistics.median(gaps) if gaps else font.advance(" ")
-            )
-        return self._cache.usual_spaces[key]
+    def _usual_gap(self, span: Span, font: FontProgram) -> float:
+        """The page's usual gap for a space in the span's font, read once, before any edit."""
+        font_name = strip_subset(span.font)
+        key = (span.page, font_name)
+        if key not in self._cache.usual_gaps:
+            lines = self._page_lines(span.page)
+            self._cache.usual_gaps[key] = usual_gap(lines, font_name=font_name, font=font)
+        return self._cache.usual_gaps[key]
 
     def _page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""

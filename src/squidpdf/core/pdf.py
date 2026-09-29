@@ -218,9 +218,9 @@ class PdfFile:
         mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
 
     def add_opacity(self, page: int, opacity: float) -> str:
-        """The page's name for a graphics state that fills at `opacity`, added on first use.
+        """The page's name for a graphics state that fills at `opacity`, written to the page.
 
-        Rounded to a thousandth and named for it, so one name always paints the same.
+        Rounded to a thousandth and named for it, so writing it again changes nothing.
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
