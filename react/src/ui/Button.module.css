@@ -1,0 +1,22 @@
+.button {
+  position: relative;
+  font: inherit; font-size: var(--fs-sm); color: var(--ink);
+  background: none; border: 1px solid var(--ink); border-radius: 1px;
+  padding: var(--s1) var(--s3); cursor: pointer;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+/* The hit area grows past the button without moving what you see. */
+.button::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: max(100%, var(--hit)); height: max(100%, var(--hit));
+  transform: translate(-50%, -50%);
+}
+.button kbd { color: var(--ink-lo); margin-left: var(--s1); }
+.button[data-hovered] { background: var(--ink); color: var(--strip); }
+.button[data-hovered] kbd { color: var(--strip); }
+.button[data-pressed] { transform: scale(.97); }
+.button[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
+.button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .button[data-pressed] { transform: none; }
+}

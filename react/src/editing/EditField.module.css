@@ -21,8 +21,7 @@
   pointer-events: none;
   animation: arrive var(--dur-move) var(--ease-out);
 }
-.bad { color: var(--warn); font-weight: 600; white-space: normal; max-width: 36ch; line-height: 1.4; }
-.num { font-family: var(--mono); font-size: var(--fs-micro); }
+.bad { white-space: normal; max-width: 36ch; line-height: 1.4; }
 @media (prefers-reduced-motion: reduce) {
   .chip { animation: fade var(--dur-quick) var(--ease-out); }
 }

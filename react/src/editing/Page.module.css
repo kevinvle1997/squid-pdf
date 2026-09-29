@@ -22,16 +22,12 @@
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }
 /* The page never themes: the marks and previews on it use the page's own tokens. */
-.preview, .previewLeaving {
+.preview {
   position: absolute;
   background: var(--sheet);
   white-space: pre;
   pointer-events: none;
 }
-.preview { font-family: var(--preview-face, serif); }
-/* The render has landed under it: the preview fades, opacity only, so it survives reduced motion. */
-.previewLeaving { animation: settle var(--dur-settle) var(--ease-out) forwards; }
-@keyframes settle { to { opacity: 0; } }
 @media (max-width: 820px) {
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
 }

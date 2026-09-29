@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { flushSync } from "react-dom";
-import { Button } from "react-aria-components";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ProblemError, exportPdf, stillThere, upload } from "../api/client";
 import type { Document, SpanInfo } from "../api/types";
-import { Wordmark } from "../Wordmark";
+import { Button } from "../ui/Button";
+import { Notice } from "../ui/Notice";
+import { SkipLink } from "../ui/SkipLink";
+import { Status } from "../ui/Status";
+import { Warn } from "../ui/Warn";
+import { Wordmark } from "../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "./constants";
 import { EditorContext, type Editing, type EditorState, focusSpan } from "./context";
 import styles from "./Editor.module.css";
-import { EMPTY_LOG, editsOf, latestTexts, logReducer } from "./log";
+import { EMPTY_LOG, type LogAction, editsOf, latestTexts, logReducer } from "./log";
 import { Page } from "./Page";
 import { useStrips } from "./useStrips";
 import { counted } from "./words";
@@ -17,7 +20,7 @@ const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePix
 const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const COMMAND = APPLE ? "⌘" : "Ctrl ";
 
-interface Notice {
+interface Said {
   tone: "plain" | "warn";
   text: string;
 }
@@ -45,15 +48,20 @@ function download(pdf: Blob, name: string): void {
 /** The open document: every page, every span marked, editable in place. */
 export function Editor({ file, opened }: { file: File; opened: Document }) {
   const [doc, setDoc] = useState(opened);
-  const [log, dispatch] = useReducer(logReducer, EMPTY_LOG);
+  // The history and the text being typed. Each ref is what handlers read, current the moment
+  // it changes (export reads both straight after finishing the typing); the state redraws.
+  const history = useRef(EMPTY_LOG);
+  const [log, setLog] = useState(EMPTY_LOG);
   const edits = useMemo(() => editsOf(log), [log]);
-  // Export reads this, not `edits`: an edit committed just before it is in here already.
-  const editsNow = useRef(edits);
-  editsNow.current = edits;
   const latest = useMemo(() => latestTexts(edits), [edits]);
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const draft = useRef<Editing | null>(null);
+  const [editing, setEditingState] = useState<Editing | null>(null);
+  const setEditing = (next: Editing | null) => {
+    draft.current = next;
+    setEditingState(next);
+  };
   const [returnedTo, returnTo] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(() => {
+  const [notice, setNotice] = useState<Said | null>(() => {
     const [first] = opened.notices;
     return first === undefined ? null : { tone: "warn", text: first.detail };
   });
@@ -64,11 +72,11 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
 
   // The hour ran out: open the same file again. Span ids are the same, so every edit still applies.
   const reopening = useRef<Promise<Document | null> | null>(null);
-  const reopen = useCallback((): Promise<Document | null> => {
+  function reopen(): Promise<Document | null> {
     reopening.current ??= upload(file, () => undefined)
       .then((again) => {
         setDoc(again);
-        setNotice({ tone: "plain", text: "This document's hour ran out, so it was opened again from this browser." });
+        setNotice({ tone: "plain", text: again.copy.reopened });
         return again;
       })
       .catch((error: unknown) => {
@@ -80,18 +88,39 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
         reopening.current = null;
       });
     return reopening.current;
-  }, [file]);
+  }
 
-  const onProblem = useCallback((detail: string) => setNotice({ tone: "warn", text: detail }), []);
-  const onExpired = useCallback(() => void reopen(), [reopen]);
+  const onProblem = (detail: string) => setNotice({ tone: "warn", text: detail });
+  const { strips, shown, fits, redraw } = useStrips({ scale: SCALE, reopen, onProblem });
+
+  // Every change to the history comes through here, and redraws what it changed.
+  function change(action: LogAction) {
+    const before = history.current;
+    const after = logReducer(before, action);
+    if (after === before) return;
+    history.current = after;
+    setLog(after);
+    // A message about the last export or reopening is stale once the user edits again.
+    setNotice((now) => (now?.tone === "plain" ? null : now));
+    redraw(doc, editsOf(before), editsOf(after));
+  }
+
+  // Typing ends once, however it ends: Enter, Escape, leaving the field, or an export.
+  function finish(keep: boolean) {
+    const typed = draft.current;
+    if (typed === null) return;
+    setEditing(null);
+    const was = latestTexts(editsOf(history.current)).get(typed.spanId) ?? spans.get(typed.spanId)?.text;
+    // Emptying a span isn't a replacement: taking text out is redaction's job.
+    if (!keep || typed.text === was || typed.text.trim() === "") return;
+    change({ kind: "add", step: [{ kind: "replace", span_id: typed.spanId, text: typed.text }] });
+    setSaid(`Changed to ${typed.text}`);
+  }
+
   // A page image can fail for any reason; only a document that's really gone is opened again.
-  const onImageFailed = useCallback(async () => {
+  async function onImageFailed() {
     if (!(await stillThere(doc.id))) await reopen();
-  }, [doc.id, reopen]);
-
-  // A message about the last export or reopening is stale once the user edits again.
-  useEffect(() => setNotice((now) => (now?.tone === "plain" ? null : now)), [edits]);
-  const { strips, previews, fits, settled } = useStrips({ doc, edits, scale: SCALE, onExpired, onProblem });
+  }
 
   const changed = [...latest].filter(([id, text]) => spans.get(id)?.text !== text);
   const similar = changed.filter(([id]) => {
@@ -102,13 +131,13 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
 
   const exporting = useRef(false);
   const [busy, setBusy] = useState(false);
-  const exportNow = useCallback(async () => {
+  async function exportNow() {
     if (exporting.current) return;
     exporting.current = true;
     setBusy(true);
-    // An edit still being typed goes in first: leaving the field commits it.
-    flushSync(() => (document.activeElement as HTMLElement | null)?.blur());
-    const edits = editsNow.current;
+    // An edit still being typed goes in first.
+    finish(true);
+    const edits = editsOf(history.current);
     try {
       let exported;
       try {
@@ -121,12 +150,11 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
         exported = await exportPdf(again.id, edits);
       }
       download(exported.pdf, file.name);
-      const left = exported.skipped.length;
-      const text =
-        left > 0
-          ? `Downloaded, but ${counted(left, { one: "change was", other: "changes were" })} left out: they point at text that isn't in this document.`
-          : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
-      setNotice({ tone: left > 0 ? "warn" : "plain", text });
+      const leftOut = exported.skipped.length > 0;
+      const text = leftOut
+        ? doc.copy.export_left_out
+        : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
+      setNotice({ tone: leftOut ? "warn" : "plain", text });
       setSaid(text);
     } catch (error) {
       if (!(error instanceof ProblemError)) throw error;
@@ -136,63 +164,57 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
       exporting.current = false;
       setBusy(false);
     }
-  }, [doc.id, file.name, reopen]);
+  }
 
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === "s") {
-        event.preventDefault();
-        void exportNow();
-        return;
-      }
-      // In a text field, undo and redo are the field's own.
-      if (isTyping(event.target)) return;
-      if (key === "z" || key === "y") {
-        event.preventDefault();
-        dispatch({ kind: key === "y" || event.shiftKey ? "redo" : "undo" });
-      }
+  // The one effect: shortcuts work wherever focus is, so they listen on the window.
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === "s") {
+      event.preventDefault();
+      void exportNow();
+      return;
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [exportNow]);
+    // In a text field, undo and redo are the field's own.
+    if (isTyping(event.target)) return;
+    if (key === "z" || key === "y") {
+      event.preventDefault();
+      change({ kind: key === "y" || event.shiftKey ? "redo" : "undo" });
+    }
+  });
+  useEffect(() => {
+    const listen = (event: KeyboardEvent) => onKey(event);
+    window.addEventListener("keydown", listen);
+    return () => window.removeEventListener("keydown", listen);
+  }, []);
 
   const state: EditorState = {
     doc,
     scale: SCALE,
     fonts,
     latest,
+    shown,
     fits,
-    previews,
     editing,
     returnedTo,
     returnTo,
-    edit: (spanId, atPt) => setEditing({ spanId, atPt }),
-    commit: (spanId, text) => {
-      setEditing(null);
-      const was = latest.get(spanId) ?? spans.get(spanId)?.text;
-      // Emptying a span isn't a replacement: taking text out is redaction's job.
-      if (text === was || text.trim() === "") return;
-      dispatch({ kind: "add", step: [{ kind: "replace", span_id: spanId, text }] });
-      setSaid(`Changed to ${text}`);
+    edit: (spanId, atPt) => setEditing({ spanId, atPt, text: latest.get(spanId) ?? spans.get(spanId)?.text ?? "" }),
+    type: (text) => {
+      if (draft.current !== null) setEditing({ ...draft.current, text });
     },
-    stopEditing: () => setEditing(null),
+    finish,
     revert: (spanId) => {
-      dispatch({ kind: "revert", spanId });
+      change({ kind: "revert", spanId });
       setSaid(`Put back ${spans.get(spanId)?.text ?? ""}`);
       focusSpan(spanId);
     },
-    settled,
     say: setSaid,
     imageFailed: () => void onImageFailed(),
   };
 
   return (
     <EditorContext.Provider value={state}>
-      <a className={styles.skip} href="#pages">
-        Skip to the document
-      </a>
+      <SkipLink to="pages">Skip to the document</SkipLink>
       <header className={styles.bar}>
         <Wordmark />
         <span className={styles.file}>
@@ -205,23 +227,21 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
           {similar.length > 0 && (
             <>
               {" · "}
-              <b className={styles.warn}>{similar.length}</b> in a similar font
+              <Warn>{similar.length}</Warn> in a similar font
             </>
           )}
         </span>
-        <Button className={styles.export} onPress={() => void exportNow()} isDisabled={busy}>
+        <Button onPress={() => void exportNow()} isDisabled={busy}>
           Export <kbd>{COMMAND}S</kbd>
         </Button>
       </header>
-      {notice !== null && <p className={notice.tone === "warn" ? styles.noticeWarn : styles.notice}>{notice.text}</p>}
+      {notice !== null && <Notice tone={notice.tone}>{notice.text}</Notice>}
       <main id="pages" className={styles.pages} tabIndex={-1}>
         {doc.pages.map((info, index) => (
           <Page key={index} index={index} info={info} spans={pages.get(index) ?? []} strips={strips.get(index)} />
         ))}
       </main>
-      <p className="vh" role="status">
-        {said}
-      </p>
+      <Status>{said}</Status>
     </EditorContext.Provider>
   );
 }

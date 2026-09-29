@@ -1,10 +1,12 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type FocusEvent, type KeyboardEvent, useRef } from "react";
 import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../api/types";
-import { boxOf, focusSpan, markId, points, useEditor } from "./context";
+import { Num } from "../ui/Num";
+import { Warn } from "../ui/Warn";
+import { boxOf, points, useEditor } from "./context";
 import styles from "./EditField.module.css";
-import { previewFaceOf, useFace } from "./faces";
-import { fitOf, troublesOf, widthPt } from "./fit";
+import { familyOf, previewFaceOf } from "./faces";
+import { type Fit, fitOf, troublesOf, widthPt } from "./fit";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -27,64 +29,53 @@ function wordAround(text: string, index: number): [number, number] {
   return [start, end];
 }
 
-/** Typing in place: the span's text in the face that will draw it, checked as it's typed. */
-export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
+/**
+ * Typing in place: the span's text in the face that will draw it, checked as it's typed.
+ * It stands where the span's mark stood, so Tab and Shift+Tab go on to the next span unaided.
+ * The editor holds what's typed, so an export mid-word takes it too.
+ */
+export function EditField({ span, info, text }: { span: SpanInfo; info: PageInfo; text: string }) {
   const editor = useEditor();
+  const { fit: rules, copy } = editor.doc;
   const font = editor.fonts.get(span.font);
   const start = editor.latest.get(span.id) ?? span.text;
-  const [text, setText] = useState(start);
   const face = font === undefined ? "Liberation Serif Regular" : previewFaceOf(font);
-  const family = useFace(face);
-  const input = useRef<HTMLInputElement>(null);
-  const finished = useRef(false);
+  const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
-  const fit = font === undefined ? null : fitOf(span, font, text, editor.doc.fit);
-  const troubles = fit === null ? [] : troublesOf(fit, editor.doc.fit, editor.doc.copy, font?.substitute ?? face);
-  const said = troubles.join("; ");
+  const fitFor = (typed: string) => (font === undefined ? null : fitOf(span, font, typed, rules));
+  const troublesIn = (fit: Fit | null) => (fit === null ? [] : troublesOf(fit, rules, copy, font?.substitute ?? face));
+  const said = troublesIn(fitFor(text)).join("; ");
 
-  // Put the caret where the press was: the word under it, or everything from the keyboard.
-  useEffect(() => {
-    const field = input.current;
-    if (field === null) return;
-    field.focus();
+  // Once, as the field takes focus: the caret goes where the press was, the word under it,
+  // or everything from the keyboard. Later focus keeps the caret where the user put it.
+  function place(event: FocusEvent<HTMLInputElement>) {
+    if (placed.current) return;
+    placed.current = true;
+    const field = event.currentTarget;
     const at = editor.editing?.atPt;
-    if (at == null) return field.select();
-    const [from, to] = wordAround(start, letterAt(start, at, glyphs, span.size));
-    field.setSelectionRange(from, to);
-    // Only when editing starts: later renders keep the caret where the user put it.
-  }, []);
+    if (at == null) field.select();
+    else field.setSelectionRange(...wordAround(start, letterAt(start, at, glyphs, span.size)));
+    if (said !== "") editor.say(said);
+  }
 
-  // A trouble is announced once when it appears, not on every keystroke.
-  const say = editor.say;
-  useEffect(() => {
-    if (said !== "") say(said);
-  }, [said, say]);
-
-  function finish(keep: boolean, then?: () => void) {
-    if (finished.current) return;
-    finished.current = true;
-    if (keep) editor.commit(span.id, text);
-    else editor.stopEditing();
-    then?.();
+  // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
+  function type(next: string) {
+    const kind = (fit: Fit | null) => (fit === null ? "" : `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`);
+    const now = fitFor(next);
+    if (kind(now) !== kind(fitFor(text))) {
+      const troubles = troublesIn(now);
+      if (troubles.length > 0) editor.say(troubles.join("; "));
+    }
+    editor.type(next);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter" || event.key === "Escape") {
-      event.preventDefault();
-      // Back on the span, but its note would cover what was just typed: it waits for the next visit.
-      editor.returnTo(span.id);
-      finish(event.key === "Enter", () => requestAnimationFrame(() => focusSpan(span.id)));
-      return;
-    }
-    // Tab goes on to the next span, as it does between marks.
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const marks = [...document.querySelectorAll<HTMLElement>("[id^='span-']")];
-      const here = marks.findIndex((mark) => mark.id === markId(span.id));
-      const next = marks[here + (event.shiftKey ? -1 : 1)];
-      finish(true, () => requestAnimationFrame(() => next?.focus()));
-    }
+    if (event.key !== "Enter" && event.key !== "Escape") return;
+    event.preventDefault();
+    // Back on the span, but its note would cover what was just typed: it waits for the next visit.
+    editor.returnTo(span.id);
+    editor.finish(event.key === "Enter");
   }
 
   const box = boxOf(span.bbox, info);
@@ -93,32 +84,35 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
   return (
     <>
-      <TextField aria-label={`Change “${start}”`} value={text} onChange={setText} className={styles.field}>
+      <TextField aria-label={`Change “${start}”`} value={text} onChange={type} className={styles.field}>
         <Input
-          ref={input}
-          className={troubles.length > 0 ? styles.troubleInput : styles.input}
+          autoFocus
+          onFocus={place}
+          className={said !== "" ? styles.troubleInput : styles.input}
           spellCheck={false}
           autoComplete="off"
           onKeyDown={onKeyDown}
-          onBlur={() => finish(true)}
+          onBlur={() => editor.finish(true)}
           style={{
             left: box.left,
             top: box.top,
             height: box.height,
             width: points(wide, info),
             fontSize: points(span.size, info),
-            fontFamily: family === null ? "serif" : `"${family}", serif`,
+            fontFamily: familyOf(face),
             color: `rgb(${red * 255} ${green * 255} ${blue * 255})`,
           }}
         />
       </TextField>
       <div className={styles.chip} aria-hidden="true" style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
-        {troubles.length > 0 ? (
-          <span className={styles.bad}>{said}</span>
+        {said !== "" ? (
+          <span className={styles.bad}>
+            <Warn>{said}</Warn>
+          </span>
         ) : (
           <>
             <span>{face}</span>
-            <span className={styles.num}>{SIZE.format(span.size)} pt</span>
+            <Num>{SIZE.format(span.size)} pt</Num>
           </>
         )}
       </div>

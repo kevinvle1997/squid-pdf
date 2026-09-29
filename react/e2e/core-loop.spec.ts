@@ -103,3 +103,30 @@ test("Cmd+S while still typing exports the edit being typed", async ({ page }) =
   expect((await sent).postData()).toContain("3 May 2026");
   await downloading;
 });
+
+test("typing previews in the stand-in face, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
+  await open(page);
+  // Held, so the browser's preview stays up to be looked at.
+  let release = () => undefined as void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/render", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByRole("button", { name: LINE }).focus();
+  await page.keyboard.press("Enter");
+  const field = page.getByRole("textbox", { name: `Change “${LINE}”` });
+  await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
+  // Each letter makes it longer; the number on screen ticks, what's said doesn't.
+  await field.pressSequentially("xxx");
+  await expect(page.getByRole("status")).toHaveText("5.5 pt too long");
+  await field.fill("This agreement is made on 2 April 2026 between");
+
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Wescott Analytics Ltd and Lindqvist & Rowe LLP." })).toBeFocused();
+  const preview = page.locator("[data-preview]");
+  expect(await preview.evaluate((drawn) => getComputedStyle(drawn).fontFamily)).toContain("preview Liberation Serif");
+  release();
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  await expect(preview).toHaveCount(0);
+});

@@ -74,6 +74,10 @@ def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
         words.sentence("stand_in_same_widths"),
         "same-width sentence",
     )
+    # What the browser says after its own steps, in the server's words too.
+    said = (copy["reopened"], copy["export_left_out"])
+    catalog = (words.sentence("reopened"), words.sentence("export_left_out"))
+    assert_equal(said, catalog, "the browser's own sentences")
     # A font only named here: the face that really draws it, whose letters are as wide.
     times = next(f for f in doc["fonts"] if f["name"] == "Times-Roman")
     expected = ("Liberation Serif Regular", True)

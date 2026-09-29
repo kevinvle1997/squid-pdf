@@ -1,0 +1,15 @@
+/* Shadow only, no hairline, no side stripe. Warning shows in the heading's colour and mark. */
+.note {
+  max-width: 292px;
+  padding: var(--s3);
+  background: var(--strip);
+  box-shadow: var(--lift-2);
+  font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-lo);
+  display: flex; flex-direction: column; gap: var(--s1);
+}
+.note[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
+.note[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
+.heading { font-weight: 600; color: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+  .note[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
+}

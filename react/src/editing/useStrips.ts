@@ -1,31 +1,29 @@
-// The server's render of each edited row, kept in step with the edit list.
-// Typing never waits on it: the browser previews at once, and the render replaces the
-// preview when its images can paint, so the swap never flickers.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// The server's render of each edited row, redrawn when the edit list changes.
+// Typing never waits on it: while a span's text differs from what its strip shows, the
+// browser previews it; the strip goes in only once its images can paint, so the swap
+// never flickers.
+import { useRef, useState } from "react";
 import { ProblemError, render } from "../api/client";
-import type { Document, Edit, FitInfo, ImageInfo } from "../api/types";
+import type { Document, Edit, FitInfo, ImageInfo, Region } from "../api/types";
 import { changedSpans, latestTexts } from "./log";
 import { regionsFor } from "./strips";
 
-/** The browser's own drawing of a span's text, shown until the server's render lands. */
-export interface Preview {
-  text: string;
-  leaving: boolean; // the render has landed; the preview fades out over it
-}
-
 interface Options {
-  doc: Document;
-  edits: Edit[];
   scale: number;
-  onExpired: () => void; // the document's hour ran out: open it again from this browser
+  reopen: () => Promise<Document | null>; // the document's hour ran out: open it again from this browser
   onProblem: (detail: string) => void;
 }
 
 export interface Strips {
   strips: ReadonlyMap<number, ImageInfo[]>; // by page
-  previews: ReadonlyMap<string, Preview>; // by span
+  shown: ReadonlyMap<string, string>; // by span: the text its strip shows, when it has one
   fits: Readonly<Record<string, FitInfo>>; // the server's fit for each replaced span
-  settled: (spanId: string) => void; // a preview has faded out
+  redraw: (doc: Document, before: readonly Edit[], after: Edit[]) => void; // the edit list changed
+}
+
+interface Asking {
+  ask: AbortController;
+  pages: ReadonlySet<number>;
 }
 
 function decoded(image: ImageInfo): Promise<void> {
@@ -35,95 +33,88 @@ function decoded(image: ImageInfo): Promise<void> {
   return element.decode().catch(() => undefined);
 }
 
-export function useStrips({ doc, edits, scale, onExpired, onProblem }: Options): Strips {
+export function useStrips({ scale, reopen, onProblem }: Options): Strips {
   const [strips, setStrips] = useState<ReadonlyMap<number, ImageInfo[]>>(new Map());
-  const [previews, setPreviews] = useState<ReadonlyMap<string, Preview>>(new Map());
+  const [shown, setShown] = useState<ReadonlyMap<string, string>>(new Map());
   const [fits, setFits] = useState<Readonly<Record<string, FitInfo>>>({});
-  const drawn = useRef<{ docId: string; edits: Edit[] }>({ docId: doc.id, edits: [] });
-  const asks = useRef(new Map<number, AbortController>());
-  const spans = useMemo(() => new Map(doc.spans.map((span) => [span.id, span])), [doc]);
+  // One request at a time, so an older reply can never land over a newer one.
+  const asking = useRef<Asking | null>(null);
 
-  // The latest callbacks, without making every render of the editor redraw pages.
-  const report = useRef({ onExpired, onProblem });
-  report.current = { onExpired, onProblem };
-
-  useEffect(() => {
-    // A document opened again has a new id and none of our strips: redraw every edit.
-    const before = drawn.current.docId === doc.id ? drawn.current.edits : [];
-    const changed = changedSpans(before, edits);
-    drawn.current = { docId: doc.id, edits };
-    if (changed.size === 0) return;
-    const latest = latestTexts(edits);
-
-    // Preview each changed span in its final text at once: the typed text, or the original's.
-    setPreviews((now) => {
+  // What the strips on `pages` show now: each span's text in `latest`, or the original's.
+  const showing = (doc: Document, pages: ReadonlySet<number>, latest: ReadonlyMap<string, string>) =>
+    setShown((now) => {
       const next = new Map(now);
-      for (const id of changed) {
-        const span = spans.get(id);
-        if (span !== undefined) next.set(id, { text: latest.get(id) ?? span.text, leaving: false });
+      for (const span of doc.spans) {
+        if (!pages.has(span.page)) continue;
+        const text = latest.get(span.id);
+        if (text === undefined) next.delete(span.id);
+        else next.set(span.id, text);
       }
       return next;
     });
 
-    const onPage = (page: number) => (id: string) => spans.get(id)?.page === page;
-    const leave = (page: number) =>
-      setPreviews((now) => {
-        const next = new Map(now);
-        for (const [id, preview] of now) if (onPage(page)(id)) next.set(id, { ...preview, leaving: true });
-        return next;
-      });
+  async function draw(doc: Document, edits: Edit[], wanted: ReadonlySet<number>) {
+    // A newer change takes over the pages an older request was still drawing.
+    const pages = new Set(wanted);
+    const before = asking.current;
+    before?.ask.abort();
+    before?.pages.forEach((page) => pages.add(page));
 
-    async function redraw(page: number) {
-      asks.current.get(page)?.abort();
+    const latest = latestTexts(edits);
+    const regions: Region[] = [];
+    const bare = new Set<number>();
+    for (const page of pages) {
       const edited = doc.spans.filter((span) => span.page === page && latest.has(span.id));
       const info = doc.pages[page];
       // Nothing edited on this page any more: the original image beneath is already right.
-      if (edited.length === 0 || info === undefined) {
-        setStrips((now) => new Map([...now].filter(([drawnPage]) => drawnPage !== page)));
-        leave(page);
-        return;
-      }
-      const ask = new AbortController();
-      asks.current.set(page, ask);
-      try {
-        const regions = regionsFor(page, info, edited);
-        const reply = await render(doc.id, { edits, scale, regions }, ask.signal);
-        const images = reply.images.filter((image) => image.page === page);
-        await Promise.all(images.map(decoded));
-        // A newer edit asked again while this one was out: its reply is the one to show.
-        if (ask.signal.aborted) return;
-        setStrips((now) => new Map(now).set(page, images));
-        setFits(reply.fits);
-        leave(page);
-      } catch (error) {
-        if (ask.signal.aborted) return;
-        if (!(error instanceof ProblemError)) throw error;
-        if (error.problem.status === 404) report.current.onExpired();
-        else report.current.onProblem(error.problem.detail);
-      }
+      if (edited.length === 0 || info === undefined) bare.add(page);
+      else regions.push(...regionsFor(page, info, edited));
+    }
+    if (bare.size > 0) {
+      setStrips((now) => new Map([...now].filter(([page]) => !bare.has(page))));
+      showing(doc, bare, latest);
+    }
+    const drawing = new Set([...pages].filter((page) => !bare.has(page)));
+    if (drawing.size === 0) {
+      asking.current = null;
+      return;
     }
 
-    const pages = new Set(
-      [...changed].map((id) => spans.get(id)?.page).filter((page) => page !== undefined),
-    );
-    for (const page of pages) void redraw(page);
-  }, [doc, edits, scale, spans]);
-
-  useEffect(() => {
-    const open = asks.current;
-    return () => open.forEach((ask) => ask.abort());
-  }, []);
-
-  const settled = useCallback(
-    (spanId: string) =>
-      setPreviews((now) => {
-        if (!now.get(spanId)?.leaving) return now;
+    const ask = new AbortController();
+    asking.current = { ask, pages: drawing };
+    try {
+      const reply = await render(doc.id, { edits, scale, regions }, ask.signal);
+      await Promise.all(reply.images.map(decoded));
+      if (ask.signal.aborted) return;
+      asking.current = null;
+      setStrips((now) => {
         const next = new Map(now);
-        next.delete(spanId);
+        for (const page of drawing) next.set(page, reply.images.filter((image) => image.page === page));
         return next;
-      }),
-    [],
-  );
+      });
+      setFits(reply.fits);
+      showing(doc, drawing, latest);
+    } catch (error) {
+      if (ask.signal.aborted) return;
+      if (!(error instanceof ProblemError)) throw error;
+      if (error.problem.status !== 404) {
+        asking.current = null;
+        onProblem(error.problem.detail);
+        return;
+      }
+      // Still ours while the document opens again, so a newer change can take these pages over.
+      const again = await reopen();
+      if (again === null || ask.signal.aborted) return;
+      asking.current = null;
+      await draw(again, edits, drawing);
+    }
+  }
 
-  return { strips, previews, fits, settled };
+  function redraw(doc: Document, before: readonly Edit[], after: Edit[]) {
+    const changed = changedSpans(before, after);
+    const pages = new Set(doc.spans.filter((span) => changed.has(span.id)).map((span) => span.page));
+    if (pages.size > 0) void draw(doc, after, pages);
+  }
+
+  return { strips, shown, fits, redraw };
 }

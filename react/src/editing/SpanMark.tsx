@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { Button, type PressEvent, Tooltip, TooltipTrigger } from "react-aria-components";
+import { Button, type PressEvent, TooltipTrigger } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../api/types";
+import { Tooltip } from "../ui/Tooltip";
 import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "./constants";
 import { boxOf, markId, useEditor } from "./context";
 import styles from "./SpanMark.module.css";
@@ -19,16 +20,6 @@ function noteOf(font: FontInfo | undefined, fit: FitInfo | undefined, copy: Copy
   if (font?.substitute == null) return null;
   const sentence = font.same_widths ? copy.stand_in_same_widths : copy.stand_in;
   return { warn: !font.same_widths, said: fill(sentence, { font: font.substitute }), why: font.why };
-}
-
-function WarnMark() {
-  return (
-    <svg viewBox="0 0 12 12" aria-hidden="true" className={styles.mark}>
-      <path d="M6 1.5 11 10.5H1Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M6 5v2.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="6" cy="8.9" r=".7" fill="currentColor" />
-    </svg>
-  );
 }
 
 /** A span of the page's text: pressable, with its fidelity on hover, focus and a single tap. */
@@ -86,17 +77,15 @@ export function SpanMark({ span, info }: { span: SpanInfo; info: PageInfo }) {
         className={state}
         style={boxOf(span.bbox, info)}
         onPress={pressed}
+        // Back from editing this span: the mark takes the field's place and focus with it.
+        autoFocus={quiet}
         onBlur={() => quiet && editor.returnTo(null)}
       >
         <span className="vh">{now ?? span.text}</span>
       </Button>
       {note !== null && (
-        <Tooltip className={styles.note} placement="top" offset={8}>
-          <span className={note.warn ? styles.warnHead : styles.head}>
-            {note.warn && <WarnMark />}
-            {note.said}
-          </span>
-          {note.why !== null && <span className={styles.why}>{note.why}</span>}
+        <Tooltip heading={note.said} warn={note.warn}>
+          {note.why}
         </Tooltip>
       )}
     </TooltipTrigger>

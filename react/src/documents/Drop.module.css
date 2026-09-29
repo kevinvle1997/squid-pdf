@@ -15,20 +15,10 @@
   text-align: center;
 }
 .title { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
-.choose {
-  font: inherit; font-size: var(--fs-sm); color: var(--ink);
-  background: none; border: 1px solid var(--ink); border-radius: 1px;
-  padding: var(--s2) var(--s4); min-height: var(--hit); cursor: pointer;
-  transition: transform var(--dur-press) var(--ease-out);
-}
-.choose[data-hovered] { background: var(--ink); color: var(--strip); }
-.choose[data-pressed] { transform: scale(.97); }
-.choose[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
-.choose[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* The landing's one call to act: the app's button, a hit area tall. */
+.choose { padding: var(--s2) var(--s4); min-height: var(--hit); }
 .status { margin: 0; min-height: 1.5em; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
-.failed { color: var(--warn); font-weight: 600; }
-.num { font-family: var(--mono); font-size: var(--fs-micro); }
+/* Out of sight, and out of the accessibility tree, until the quiet spell is over. */
+.progress { animation: after-quiet var(--dur-quick) var(--ease-out) backwards; }
+@keyframes after-quiet { from { visibility: hidden; opacity: 0; } }
 .fine { margin: 0; font-size: var(--fs-sm); color: var(--ink-lo); }
-@media (prefers-reduced-motion: reduce) {
-  .choose[data-pressed] { transform: none; }
-}

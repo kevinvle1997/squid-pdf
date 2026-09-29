@@ -1,6 +1,5 @@
 // The faces the preview draws in: the very files the server draws with, from
 // src/squidpdf/fonts, so a preview has the widths the render will have.
-import { useEffect, useState } from "react";
 import type { FontInfo } from "../api/types";
 
 // Longest first, so "Bold Italic" isn't read as "Italic".
@@ -35,37 +34,22 @@ export function previewFaceOf(font: FontInfo): string {
 const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
   query: "?url",
   import: "default",
+  eager: true,
 });
 
-const loading = new Map<string, Promise<string | null>>();
+const registered = new Set<string>();
 
-/** Load a face for the preview, once; its CSS family name, or null when there's no such file. */
-export function loadFace(face: string): Promise<string | null> {
-  const known = loading.get(face);
-  if (known !== undefined) return known;
-  const load = FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
+/**
+ * The CSS font-family that draws `face` in the preview. The face goes on the document once,
+ * unloaded: the browser fetches its file the first time text uses it, so nothing waits on it.
+ */
+export function familyOf(face: string): string {
+  const url = FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
+  if (url === undefined) return "serif";
   const family = `preview ${face}`;
-  const loaded =
-    load === undefined
-      ? Promise.resolve(null)
-      : load().then(async (url) => {
-          const fontFace = new FontFace(family, `url(${url})`);
-          document.fonts.add(await fontFace.load());
-          return family;
-        });
-  loading.set(face, loaded);
-  return loaded;
-}
-
-/** A face's CSS family once it has loaded, so what's drawn with it has its real widths. */
-export function useFace(face: string): string | null {
-  const [family, setFamily] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    void loadFace(face).then((loaded) => current && setFamily(loaded));
-    return () => {
-      current = false;
-    };
-  }, [face]);
-  return family;
+  if (!registered.has(family)) {
+    registered.add(family);
+    document.fonts.add(new FontFace(family, `url(${url})`));
+  }
+  return `"${family}", serif`;
 }

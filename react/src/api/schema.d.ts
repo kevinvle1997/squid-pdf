@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Read
-         * @description The document, in the reader's language. Worked out again only for a new `build`.
+         * @description The document, in the reader's language, or 304 if the browser has it already.
          */
         get: operations["read_api_documents__doc_id__get"];
         put?: never;
@@ -57,10 +57,7 @@ export interface paths {
         };
         /**
          * Page
-         * @description Page `n` of the original, unrotated, `scale` pixels per point.
-         *
-         *     A page too big for that scale gets the largest that stays under the pixel
-         *     limit. An old `build` still gets the image, but not to keep.
+         * @description Page `n` of the original as a PNG, unrotated, `scale` pixels per point.
          */
         get: operations["page_api_documents__doc_id__pages__n__get"];
         put?: never;
@@ -121,8 +118,6 @@ export interface paths {
         /**
          * Fonts
          * @description Every face new text can be drawn in, by family, with each letter's width.
-         *
-         *     An old `build` still gets the list, but not to keep.
          */
         get: operations["fonts_api_fonts_get"];
         put?: never;
@@ -188,6 +183,10 @@ export interface components {
             stand_in_same_widths: string;
             /** Undo Redaction */
             undo_redaction: string;
+            /** Reopened */
+            reopened: string;
+            /** Export Left Out */
+            export_left_out: string;
             /** Options */
             options: {
                 [key: string]: {

@@ -11,7 +11,8 @@ export function App() {
   if (opened === null) return <Drop onOpened={setOpened} onOpening={() => void loadEditor()} />;
   return (
     <Suspense fallback={null}>
-      <Editor file={opened.file} opened={opened.doc} />
+      {/* Keyed: the editor takes `opened` only as it starts, so another document is another editor. */}
+      <Editor key={opened.doc.id} file={opened.file} opened={opened.doc} />
     </Suspense>
   );
 }

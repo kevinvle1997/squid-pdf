@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Button, DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
+import { useState } from "react";
+import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { ProblemError, upload } from "../api/client";
 import type { Document } from "../api/types";
-import { Wordmark } from "../Wordmark";
+import { Button } from "../ui/Button";
+import { Num } from "../ui/Num";
+import { Warn } from "../ui/Warn";
+import { Wordmark } from "../ui/Wordmark";
 import { QUIET_MS } from "./constants";
 import styles from "./Drop.module.css";
 
@@ -13,7 +16,7 @@ export interface Opened {
 
 type State =
   | { kind: "waiting" }
-  | { kind: "opening"; name: string; sent: number; total: number; shown: boolean }
+  | { kind: "opening"; name: string; sent: number; total: number }
   | { kind: "failed"; detail: string };
 
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
@@ -21,16 +24,12 @@ const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
 /** The landing: the whole window takes a dropped PDF. No tool grid, no sign-in. */
 export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => void; onOpening: () => void }) {
   const [state, setState] = useState<State>({ kind: "waiting" });
-  const quiet = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(quiet.current), []);
 
   async function open(file: File) {
+    // One file at a time: a second drop mid-upload would race the first to the editor.
+    if (state.kind === "opening") return;
     onOpening();
-    setState({ kind: "opening", name: file.name, sent: 0, total: file.size, shown: false });
-    quiet.current = window.setTimeout(
-      () => setState((now) => (now.kind === "opening" ? { ...now, shown: true } : now)),
-      QUIET_MS,
-    );
+    setState({ kind: "opening", name: file.name, sent: 0, total: file.size });
     try {
       const doc = await upload(file, (sent, total) =>
         setState((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
@@ -40,8 +39,6 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
       // Only the upload's own failures are expected here; anything else is a bug to see.
       if (!(error instanceof ProblemError)) throw error;
       setState({ kind: "failed", detail: error.problem.detail });
-    } finally {
-      window.clearTimeout(quiet.current);
     }
   }
 
@@ -65,8 +62,8 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
           </Button>
         </FileTrigger>
         <p className={styles.status} role="status">
-          {state.kind === "opening" && state.shown && <Progress {...state} />}
-          {state.kind === "failed" && <span className={styles.failed}>{state.detail}</span>}
+          {state.kind === "opening" && <Progress {...state} />}
+          {state.kind === "failed" && <Warn>{state.detail}</Warn>}
         </p>
         <p className={styles.fine}>Your file is deleted an hour after you last touch it.</p>
       </main>
@@ -76,10 +73,18 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
 
 function Progress({ name, sent, total }: { name: string; sent: number; total: number }) {
   // Sent, the server is reading the text: a real step, not invented progress.
-  if (total > 0 && sent >= total) return <>Reading the text of {name}</>;
+  const said =
+    total > 0 && sent >= total ? (
+      <>Reading the text of {name}</>
+    ) : (
+      <>
+        Sending {name} <Num>{PERCENT.format(total > 0 ? sent / total : 0)}</Num>
+      </>
+    );
+  // Hidden for the quiet spell by CSS, so a quick open never flashes it and no timer is needed.
   return (
-    <>
-      Sending {name} <span className={styles.num}>{PERCENT.format(total > 0 ? sent / total : 0)}</span>
-    </>
+    <span className={styles.progress} style={{ animationDelay: `${QUIET_MS}ms` }}>
+      {said}
+    </span>
   );
 }

@@ -1,39 +1,42 @@
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { pageUrl } from "../api/client";
 import type { ImageInfo, PageInfo, SpanInfo } from "../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "./constants";
 import { boxOf, points, useEditor } from "./context";
 import { EditField } from "./EditField";
+import { familyOf, previewFaceOf } from "./faces";
 import { Margin } from "./Margin";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
 
-/** Whether an element is near enough the viewport to be drawn. Pages far off stay empty boxes. */
-function useNear(target: RefObject<HTMLElement | null>): boolean {
+/**
+ * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
+ * (pages far off stay empty boxes), and a margin note's height in the page's points.
+ */
+function useSheet(pageHeightPt: number) {
   const [near, setNear] = useState(false);
-  useEffect(() => {
-    const element = target.current;
-    if (element === null) return;
-    const watch = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
-      rootMargin: LAZY_MARGIN,
-    });
-    watch.observe(element);
-    return () => watch.disconnect();
-  }, [target]);
-  return near;
-}
-
-/** An element's height in CSS pixels, kept current. */
-function useHeight(target: RefObject<HTMLElement | null>): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    const element = target.current;
-    if (element === null) return;
-    const watch = new ResizeObserver(([entry]) => setHeight(entry?.contentRect.height ?? 0));
-    watch.observe(element);
-    return () => watch.disconnect();
-  }, [target]);
-  return height;
+  const [gapPt, setGapPt] = useState(0);
+  const ref = useCallback(
+    (sheet: HTMLDivElement) => {
+      const nearby = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
+        rootMargin: LAZY_MARGIN,
+      });
+      const size = new ResizeObserver(([entry]) => {
+        const height = entry?.contentRect.height ?? 0;
+        // A note is a hit area tall, and --hit is larger on a touch screen.
+        const hit = parseFloat(getComputedStyle(sheet).getPropertyValue("--hit")) || 0;
+        setGapPt(height > 0 ? (hit / height) * pageHeightPt : 0);
+      });
+      nearby.observe(sheet);
+      size.observe(sheet);
+      return () => {
+        nearby.disconnect();
+        size.disconnect();
+      };
+    },
+    [pageHeightPt],
+  );
+  return { ref, near, gapPt };
 }
 
 interface Props {
@@ -46,9 +49,7 @@ interface Props {
 /** One page: its box reserved from its size, the image when near, and a mark over every span. */
 export function Page({ index, info, spans, strips }: Props) {
   const editor = useEditor();
-  const sheet = useRef<HTMLDivElement>(null);
-  const near = useNear(sheet);
-  const height = useHeight(sheet);
+  const sheet = useSheet(info.height);
   // The file's /Rotate turns the page with CSS; everything inside stays in unrotated points.
   const turned = info.rotation % 180 !== 0;
   const [wide, tall] = turned ? [info.height, info.width] : [info.width, info.height];
@@ -56,14 +57,13 @@ export function Page({ index, info, spans, strips }: Props) {
     const now = editor.latest.get(span.id);
     return now !== undefined && now !== span.text;
   });
-  const editingSpan = spans.find((span) => span.id === editor.editing?.spanId);
   const label = `Page ${index + 1}`;
 
   return (
     <section className={styles.page} aria-label={label}>
-      <Margin info={info} spans={changes} pageHeight={height} shape="margin" label={label} />
+      <Margin info={info} spans={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <div
-        ref={sheet}
+        ref={sheet.ref}
         className={styles.sheet}
         style={{ aspectRatio: `${wide} / ${tall}`, maxWidth: `${wide * PX_PER_PT}px` }}
       >
@@ -75,7 +75,7 @@ export function Page({ index, info, spans, strips }: Props) {
             transform: `translate(-50%, -50%) rotate(${info.rotation}deg)`,
           }}
         >
-          {near && (
+          {sheet.near && (
             <img
               className={styles.image}
               src={pageUrl(editor.doc, index, editor.scale)}
@@ -96,29 +96,35 @@ export function Page({ index, info, spans, strips }: Props) {
           {spans.map((span) => (
             <Preview key={span.id} span={span} info={info} />
           ))}
-          {near && spans.map((span) => <SpanMark key={span.id} span={span} info={info} />)}
-          {editingSpan !== undefined && <EditField span={editingSpan} info={info} />}
+          {sheet.near &&
+            spans.map((span) =>
+              span.id === editor.editing?.spanId ? (
+                <EditField key={span.id} span={span} info={info} text={editor.editing.text} />
+              ) : (
+                <SpanMark key={span.id} span={span} info={info} />
+              ),
+            )}
         </div>
       </div>
-      <Margin info={info} spans={changes} pageHeight={height} shape="list" label={label} />
+      <Margin info={info} spans={changes} gapPt={sheet.gapPt} shape="list" label={label} />
     </section>
   );
 }
 
-/** The browser's drawing of a span's new text, until the server's render lands and it fades. */
+/** The browser's drawing of a span's text, while the server's strip under it shows other words. */
 function Preview({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
-  const preview = editor.previews.get(span.id);
   const font = editor.fonts.get(span.font);
-  if (preview === undefined || font === undefined || editor.editing?.spanId === span.id) return null;
+  const text = editor.latest.get(span.id) ?? span.text;
+  const drawn = editor.shown.get(span.id) ?? span.text;
+  if (text === drawn || font === undefined || editor.editing?.spanId === span.id) return null;
   const box = boxOf(span.bbox, info);
   const [red = 0, green = 0, blue = 0] = span.color;
   return (
     <span
-      className={preview.leaving ? styles.previewLeaving : styles.preview}
+      className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      onAnimationEnd={() => editor.settled(span.id)}
       style={{
         left: box.left,
         top: box.top,
@@ -126,10 +132,11 @@ function Preview({ span, info }: { span: SpanInfo; info: PageInfo }) {
         height: box.height,
         lineHeight: box.height,
         fontSize: points(span.size, info),
+        fontFamily: familyOf(previewFaceOf(font)),
         color: `rgb(${red * 255} ${green * 255} ${blue * 255})`,
       }}
     >
-      {preview.text}
+      {text}
     </span>
   );
 }
