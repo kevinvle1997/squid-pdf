@@ -23,10 +23,10 @@ from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, Message, NotFound, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents import constants, store
-from squidpdf.documents.analyse import analyse, page_image
-from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
-from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
-from squidpdf.documents.pages import page_scale
+from squidpdf.documents.analyse import analyse
+from squidpdf.documents.constants import DOCUMENT_CACHE, SWEEP_EVERY_S
+from squidpdf.documents.errors import NotAPdf, TooLarge
+from squidpdf.documents.pages import PageController
 from squidpdf.documents.types import (
     Analysis,
     Copy,
@@ -43,6 +43,7 @@ __all__ = [
     "upload",
     "read",
     "delete",
+    "page_controller",
     "page",
     "sweep_forever",
 ]
@@ -143,6 +144,11 @@ def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     store.delete(doc.folder)
 
 
+def page_controller(workers: Annotated[Pool, Depends(pool.current)]) -> PageController:
+    """The page image's controller, on the app's workers."""
+    return PageController(workers)
+
+
 @router.get(
     "/{doc_id}/pages/{n}",
     response_class=Response,
@@ -154,20 +160,11 @@ async def page(
     n: int,
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
-    workers: Annotated[Pool, Depends(pool.current)],
+    controller: Annotated[PageController, Depends(page_controller)],
 ) -> Response:
-    """Page `n` of the original, unrotated, `scale` pixels per point.
-
-    A page too big for that scale gets the largest that stays under the pixel
-    limit. An old `build` still gets the image, but not to keep.
-    """
-    pages = store.load_pages(doc.folder)
-    if not 0 <= n < len(pages):
-        raise NoSuchPage()
-    task = partial(page_image, str(doc.folder), page=n, scale=page_scale(pages[n], scale))
-    png = await workers.run(constants.PAGE_IMAGE_TIMEOUT_S, task)
-    cache = PAGE_CACHE if build == BUILD else "no-store"
-    return Response(png, media_type="image/png", headers={"Cache-Control": cache})
+    """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
+    reply = await controller.page(doc, page=n, scale=scale, build=build)
+    return Response(reply.png, media_type="image/png", headers=reply.headers)
 
 
 async def sweep_forever() -> None:

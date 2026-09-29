@@ -25,6 +25,7 @@ __all__ = [
     "DocumentNoticeInfo",
     "Document",
     "Loaded",
+    "PageReply",
 ]
 
 
@@ -153,3 +154,11 @@ class Loaded:
     id: str
     folder: Path
     expires_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class PageReply:
+    """A page image's reply, ready to send: the PNG and its headers."""
+
+    png: bytes
+    headers: dict[str, str]

@@ -21,6 +21,7 @@ _FRAMEWORK = ("fastapi", "starlette", "pydantic")
     [
         "squidpdf.cli",
         "squidpdf.documents.analyse",
+        "squidpdf.documents.pages",
         "squidpdf.editing.export",
         "squidpdf.editing.redaction",
         "squidpdf.editing.render",
