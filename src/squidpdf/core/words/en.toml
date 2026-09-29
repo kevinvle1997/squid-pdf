@@ -60,7 +60,7 @@ redaction_conflict = "This text has a redaction. Undo it to edit."
 bad_reference = "A redaction points at text that isn't in this document: {span_id}."
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 font_mismatch = "This isn't the font the document uses. Its letters are a different width."
-invalid_request = "Something went wrong sending your changes. Reload the page and try again."
+invalid_request = "Something went wrong sending this to us. Reload the page and try again."
 rate_limited = "Too many files at once. Try again in a minute."
 # support@example.com is a placeholder until there's a real inbox: the same in every language.
 too_slow = "This took too long, so we stopped. Try again, and if it keeps happening, email support@example.com."
