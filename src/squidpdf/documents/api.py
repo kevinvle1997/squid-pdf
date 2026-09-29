@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 from functools import partial
 from typing import Annotated
 
@@ -20,26 +19,19 @@ from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, Message, NotFound, words
-from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.core import BUILD, NotFound, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import DOCUMENT_CACHE, SWEEP_EVERY_S
-from squidpdf.documents.errors import NotAPdf, TooLarge
+from squidpdf.documents.info import document_response
 from squidpdf.documents.pages import PageController
-from squidpdf.documents.types import (
-    Analysis,
-    Copy,
-    Document,
-    DocumentNoticeInfo,
-    FontFacts,
-    FontInfo,
-    Loaded,
-)
+from squidpdf.documents.types import Document, Loaded
+from squidpdf.documents.upload import UploadController
 
 __all__ = [
     "router",
     "load",
+    "upload_controller",
     "upload",
     "read",
     "delete",
@@ -52,9 +44,6 @@ router = APIRouter(prefix="/api/documents")
 
 _logger = logging.getLogger(__name__)
 
-_PDF_HEADER = b"%PDF-"
-_HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
-
 
 def load(doc_id: str, request: Request) -> Loaded:
     """This browser's document, or not_found for any other: missing, expired or not theirs."""
@@ -66,45 +55,31 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
+def upload_controller(workers: Annotated[Pool, Depends(pool.current)]) -> UploadController:
+    """Upload's controller, on the app's workers."""
+    return UploadController(workers)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
 async def upload(
     request: Request,
     *,
     token: Annotated[str, Depends(owner.token)],
-    workers: Annotated[Pool, Depends(pool.current)],
+    controller: Annotated[UploadController, Depends(upload_controller)],
     said_in: ReaderLanguage,
     response: Response,
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     declared = request.headers.get("content-length")  # absent when the body is chunked
-    declared_too_large = declared is not None and int(declared) > constants.MAX_FILE_BYTES
-    if declared_too_large:
-        raise TooLarge(constants.MAX_FILE_MB)
-    doc_id, folder = store.create(owner.digest(token))
-    try:
-        # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
-        size, first_kb = 0, b""
-        with (folder / store.ORIGINAL).open("wb") as out:
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > constants.MAX_FILE_BYTES:
-                    raise TooLarge(constants.MAX_FILE_MB)
-                first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
-                header_missing = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
-                if header_missing:
-                    raise NotAPdf()
-                out.write(chunk)
-        if _PDF_HEADER not in first_kb:
-            raise NotAPdf()
-        task = partial(analyse, str(folder), constants.MAX_PAGES)
-        analysis = await workers.run(constants.UPLOAD_TIMEOUT_S, task)
-    except BaseException:  # refused, damaged, or the browser left: keep nothing
-        store.delete(folder)
-        raise
-    response.headers.update(words.language_headers(said_in))
-    return document_response(
-        doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
+    reply = await controller.upload(
+        owner.digest(token),
+        declared=None if declared is None else int(declared),
+        chunks=request.stream(),
+        said_in=said_in,
     )
+    # Data, not a Response: FastAPI adds the new owner cookie only to a reply it makes.
+    response.headers.update(reply.headers)
+    return reply.body
 
 
 @router.get("/{doc_id}", response_model=Document)
@@ -179,63 +154,3 @@ async def sweep_forever() -> None:
             await asyncio.to_thread(store.sweep)
         except Exception:  # one bad pass must not end expiry for good
             _logger.exception("A sweep failed; the next runs in %s s", SWEEP_EVERY_S)
-
-
-def document_response(
-    doc_id: str, *, expires_at: float, analysis: Analysis, said_in: str
-) -> Document:
-    """The analysis, plus what belongs to this document and this moment, in `said_in`."""
-    return {
-        "build": analysis["build"],
-        "pages": analysis["pages"],
-        "spans": analysis["spans"],
-        "fonts": [font_info(font, said_in) for font in analysis["fonts"]],
-        "id": doc_id,
-        "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
-        "fit": {
-            "tolerance_pt": TOLERANCE_PT,
-            "condense_limit": CONDENSE_LIMIT,
-            "shrink_floor": SHRINK_FLOOR,
-        },
-        "copy": copy_in(said_in),
-        "notices": notices_in(analysis, said_in),
-    }
-
-
-def font_info(font: FontFacts, said_in: str) -> FontInfo:
-    """A font as the browser gets it: why its own copy can't be used, in `said_in`."""
-    why = None if font["why"] is None else Message.from_info(font["why"])
-    return {
-        "name": font["name"],
-        "substitute": font["substitute"],
-        "why": None if why is None else words.render(why, said_in),
-        "why_code": None if why is None else why.key,
-        "why_params": {} if why is None else why.params,
-        "same_widths": font["same_widths"],
-        "glyphs": font["glyphs"],
-    }
-
-
-def copy_in(said_in: str) -> Copy:
-    """The sentences the browser fills in as the user types, in `said_in`, unfilled."""
-    options = {
-        name: {part: words.sentence(key, said_in) for part, key in keys.items()}
-        for name, keys in words.OPTION_KEYS.items()
-    }
-    return {
-        "missing": words.sentence("missing", said_in),
-        "too_long": words.sentence("too_long", said_in),
-        "stand_in": words.sentence("stand_in", said_in),
-        "stand_in_same_widths": words.sentence("stand_in_same_widths", said_in),
-        "undo_redaction": words.sentence("undo_redaction", said_in),
-        "options": options,
-    }
-
-
-def notices_in(analysis: Analysis, said_in: str) -> list[DocumentNoticeInfo]:
-    """What may not be what the user expected of this document, in `said_in`."""
-    # A scan has no text layer: say so, rather than show a page nothing on can be edited.
-    if analysis["spans"]:
-        return []
-    no_text = Message("no_text")
-    return [{"type": "no_text", "detail": words.render(no_text, said_in), **no_text.as_info()}]

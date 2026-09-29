@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import math
 import shutil
+from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pymupdf
 import pytest
@@ -15,7 +17,10 @@ from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import MAX_PAGES, PAGE_CACHE
 from squidpdf.documents.pages import PageController
 from squidpdf.documents.types import Loaded
-from tests.helpers import assert_equal
+from squidpdf.documents.upload import UploadController
+from tests.helpers import assert_equal, assert_true
+
+_CHUNK = 4096  # a network-sized piece, so the upload arrives in several
 
 
 class _InProcess:
@@ -45,3 +50,28 @@ def test_a_page_is_drawn_with_no_web_server_in_between(doc):
     expected = (math.ceil(page.width * 2), math.ceil(page.height * 2))
     assert_equal(size, expected, "the image's size")
     assert_equal(reply.headers, {"Cache-Control": PAGE_CACHE}, "the reply's headers")
+
+
+async def _chunks(body: bytes) -> AsyncIterator[bytes]:
+    """The body as it arrives over the network: a piece at a time."""
+    for start in range(0, len(body), _CHUNK):
+        yield body[start : start + _CHUNK]
+
+
+def test_an_upload_is_kept_and_judged_with_no_web_server_in_between(pdf):
+    body = Path(pdf).read_bytes()
+    upload = UploadController(_InProcess()).upload(
+        "owner", declared=None, chunks=_chunks(body), said_in="en"
+    )
+
+    reply = asyncio.run(upload)
+
+    found = store.find(reply.body["id"])
+    if found is None:
+        pytest.fail("the upload wasn't kept")
+    folder, owner = found
+    assert_equal(owner, "owner", "whose the upload is")
+    assert_equal((folder / store.ORIGINAL).read_bytes(), body, "the original as kept")
+    assert_equal(len(reply.body["pages"]), 2, "pages judged")
+    assert_true(len(reply.body["spans"]) > 0, "no spans judged")
+    assert_equal(reply.headers["Content-Language"], "en", "the reply's language")

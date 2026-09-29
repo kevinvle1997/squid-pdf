@@ -26,6 +26,7 @@ __all__ = [
     "Document",
     "Loaded",
     "PageReply",
+    "DocumentReply",
 ]
 
 
@@ -161,4 +162,12 @@ class PageReply:
     """A page image's reply, ready to send: the PNG and its headers."""
 
     png: bytes
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentReply:
+    """A document's reply, ready to send: the JSON body and its headers."""
+
+    body: Document
     headers: dict[str, str]
