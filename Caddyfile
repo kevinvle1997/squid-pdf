@@ -1,0 +1,13 @@
+# The one way in: HTTPS, compression, and a password until the app opens to the public.
+{$SQUIDPDF_DOMAIN} {
+	# Render's JSON carries its images as base64, which gzip wins back. PDFs are left alone.
+	encode zstd gzip
+
+	# Every path, /api/health too. The app never knows, so opening up deletes this block.
+	basic_auth {
+		{$SQUIDPDF_USER} {$SQUIDPDF_PASSWORD_HASH}
+	}
+
+	# No body cap or wait limit by default: the app enforces its own, and must see them.
+	reverse_proxy app:8000
+}
