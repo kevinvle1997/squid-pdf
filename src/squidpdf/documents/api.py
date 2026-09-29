@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
+from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
 from squidpdf.core import NotFound
@@ -68,10 +69,9 @@ async def upload(
     response: Response,
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
-    declared = request.headers.get("content-length")  # absent when the body is chunked
     reply = await controller.upload(
         owner.digest(token),
-        declared=None if declared is None else int(declared),
+        declared=declared_size(request),
         chunks=request.stream(),
         said_in=said_in,
     )
