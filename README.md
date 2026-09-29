@@ -25,8 +25,9 @@ from the API's OpenAPI after the API changes.
 
 ## Deploy
 
-The app runs behind [Caddy](https://caddyserver.com), which gets the HTTPS
-certificate, compresses replies and asks for a password on every page. On a
+The API runs behind [Caddy](https://caddyserver.com), which serves the
+browser app beside it, gets the HTTPS certificate, compresses replies and asks
+for a password on every page. On a
 fresh server:
 
 1. **Install Docker**, with its compose plugin:

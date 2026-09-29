@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves a running stack serves through its gate: the gate refuses a stranger,
-# then with the password the health check, an upload, an export with one edit,
-# compression and a delete all work. Needs curl and jq.
+# then with the password the browser app, the health check, an upload, an export
+# with one edit, compression and a delete all work. Needs curl and jq.
 #
 #   deploy/check.sh https://your.domain user password [root.crt]
 #
@@ -41,6 +41,11 @@ read -r status seconds < <(call "${signed_in[@]}" "$base/api/health")
 [[ $status == 200 ]] && jq -e '.status == "ok"' "$work/body" >/dev/null ||
   fail "with the password, /api/health answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "/api/health answers through the gate: $status in ${seconds}s"
+
+read -r status seconds < <(call "${signed_in[@]}" "$base/")
+[[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
+  fail "the browser app answered $status: $(head -c "$shown_bytes" "$work/body")"
+pass "the browser app is served: $status in ${seconds}s"
 
 read -r status seconds < <(call "${signed_in[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")

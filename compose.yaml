@@ -18,8 +18,12 @@ services:
       - documents:/data
     # No ports: only Caddy, on this network, reaches the app.
 
+  # Caddy, with the browser app built into it: see react/Dockerfile.
   proxy:
-    image: caddy:2.11.4
+    build:
+      context: .
+      dockerfile: react/Dockerfile
+    image: squidpdf-proxy
     restart: unless-stopped
     depends_on:
       app:
