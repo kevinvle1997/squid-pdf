@@ -52,6 +52,58 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf uv run pytest -q
 
+  # The browser app: its types are the API's OpenAPI, it typechecks, its unit
+  # tests pass, and the core loop works end to end in Chromium against the real API.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: react
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the API
+        working-directory: .
+        run: uv sync --locked --all-extras
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: react/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Types match the API
+        run: npm run types:check
+
+      - name: Types (tsc)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End to end
+        run: npm run e2e
+
+      - name: Traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: react/test-results/
+
   # The image served behind Caddy as deployed, with a password made here and
   # thrown away: the gate, an upload and an export, all through the proxy.
   serve:
