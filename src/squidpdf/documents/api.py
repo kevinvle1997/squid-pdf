@@ -1,30 +1,27 @@
 """Upload a document, read it, delete it, and view its pages.
 
-Also `load`, the dependency every route on a document starts with: editing
-reuses it. Routes stay thin: owner, validate, pool, reply.
+Routes are HTTP only: read the request, call the action's controller, send
+what it hands back. Delete has none: it's one call to the store. Also `load`,
+the dependency every route on a document starts with; editing reuses it.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from functools import partial
 from typing import Annotated
 
-import orjson
-import xxhash
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, pool
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD, NotFound, words
-from squidpdf.documents import constants, store
-from squidpdf.documents.analyse import analyse
-from squidpdf.documents.constants import DOCUMENT_CACHE, SWEEP_EVERY_S
-from squidpdf.documents.info import document_response
+from squidpdf.core import NotFound
+from squidpdf.documents import store
+from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.pages import PageController
+from squidpdf.documents.read import ReadController
 from squidpdf.documents.types import Document, Loaded
 from squidpdf.documents.upload import UploadController
 
@@ -33,6 +30,7 @@ __all__ = [
     "load",
     "upload_controller",
     "upload",
+    "read_controller",
     "read",
     "delete",
     "page_controller",
@@ -82,35 +80,23 @@ async def upload(
     return reply.body
 
 
+def read_controller(workers: Annotated[Pool, Depends(pool.current)]) -> ReadController:
+    """Read's controller, on the app's workers."""
+    return ReadController(workers)
+
+
 @router.get("/{doc_id}", response_model=Document)
 async def read(
     doc: Annotated[Loaded, Depends(load)],
     *,
     request: Request,
-    response: Response,
-    workers: Annotated[Pool, Depends(pool.current)],
+    controller: Annotated[ReadController, Depends(read_controller)],
     said_in: ReaderLanguage,
-) -> Document | Response:
-    """The document, in the reader's language. Worked out again only for a new `build`."""
-    raw = store.load_analysis(doc.folder, BUILD)
-    if raw is None:
-        task = partial(analyse, str(doc.folder), constants.MAX_PAGES)
-        analysis = await workers.run(constants.UPLOAD_TIMEOUT_S, task)
-        raw = orjson.dumps(analysis)
-    else:
-        analysis = orjson.loads(raw)
-    # Over the analysis and the words it's said in; not `expires_at`, which moves
-    # on every visit and is a hint. The analysis is in no language, so the words
-    # too: another language, or a sentence reworded since, is another body.
-    said = orjson.dumps([said_in, words.catalog(said_in)])
-    etag = f'"{xxhash.xxh3_64_hexdigest(raw + said)}"'
-    headers = {"ETag": etag, "Cache-Control": DOCUMENT_CACHE, **words.language_headers(said_in)}
-    if request.headers.get("if-none-match") == etag:  # absent on a first read
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
-    response.headers.update(headers)
-    return document_response(
-        doc.id, expires_at=doc.expires_at, analysis=analysis, said_in=said_in
-    )
+) -> Response:
+    """The document, in the reader's language, or 304 if the browser has it already."""
+    if_none_match = request.headers.get("if-none-match")  # absent on a first read
+    reply = await controller.read(doc, said_in=said_in, if_none_match=if_none_match)
+    return Response(reply.body, status_code=reply.status, headers=reply.headers)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

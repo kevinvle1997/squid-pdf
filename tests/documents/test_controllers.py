@@ -8,6 +8,7 @@ import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+import orjson
 import pymupdf
 import pytest
 
@@ -16,9 +17,10 @@ from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import MAX_PAGES, PAGE_CACHE
 from squidpdf.documents.pages import PageController
+from squidpdf.documents.read import ReadController
 from squidpdf.documents.types import Loaded
 from squidpdf.documents.upload import UploadController
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_equal, assert_not_in, assert_true
 
 _CHUNK = 4096  # a network-sized piece, so the upload arrives in several
 
@@ -75,3 +77,21 @@ def test_an_upload_is_kept_and_judged_with_no_web_server_in_between(pdf):
     assert_equal(len(reply.body["pages"]), 2, "pages judged")
     assert_true(len(reply.body["spans"]) > 0, "no spans judged")
     assert_equal(reply.headers["Content-Language"], "en", "the reply's language")
+
+
+def test_a_document_reads_back_and_then_as_unchanged_with_no_web_server_in_between(doc):
+    read = ReadController(_InProcess())
+
+    first = asyncio.run(read.read(doc, said_in="en", if_none_match=None))
+    again = asyncio.run(read.read(doc, said_in="en", if_none_match=first.headers["ETag"]))
+
+    kept = store.load_analysis(doc.folder, BUILD)
+    if kept is None:
+        pytest.fail("the analysis wasn't kept")
+    spans = orjson.loads(first.body)["spans"]
+    assert_equal(spans, orjson.loads(kept)["spans"], "the spans read back")
+    assert_equal((again.status, again.body), (304, b""), "the reply once the browser has it")
+    assert_equal(
+        again.headers["ETag"], first.headers["ETag"], "the ETag once the browser has it"
+    )
+    assert_not_in("Content-Type", again.headers, "the 304's headers")

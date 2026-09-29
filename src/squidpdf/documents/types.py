@@ -27,6 +27,7 @@ __all__ = [
     "Loaded",
     "PageReply",
     "DocumentReply",
+    "ReadReply",
 ]
 
 
@@ -170,4 +171,13 @@ class DocumentReply:
     """A document's reply, ready to send: the JSON body and its headers."""
 
     body: Document
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ReadReply:
+    """Read's reply, ready to send: the JSON body, its status and its headers."""
+
+    body: bytes
+    status: int  # 304, with no body, when the browser's copy is current
     headers: dict[str, str]
