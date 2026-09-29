@@ -82,7 +82,7 @@ async def fonts(
 ) -> Response:
     """Every face new text can be drawn in, by family, with each letter's width."""
     reply = await controller.font_list(build)
-    return Response(reply.body, media_type="application/json", headers=reply.headers)
+    return Response(reply.json, media_type="application/json", headers=reply.headers)
 
 
 @router.post("/{doc_id}/render", response_model=Render)

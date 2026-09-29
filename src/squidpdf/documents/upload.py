@@ -11,7 +11,7 @@ from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.errors import NotAPdf, TooLarge
 from squidpdf.documents.info import document_response
-from squidpdf.documents.types import Analysis, DocumentReply
+from squidpdf.documents.types import Analysis, UploadReply
 
 __all__ = [
     "UploadController",
@@ -35,7 +35,7 @@ class UploadController:
         declared: int | None,
         chunks: AsyncIterable[bytes],
         said_in: str,
-    ) -> DocumentReply:
+    ) -> UploadReply:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
         `declared` is the size the request states, None when it streams without
@@ -47,7 +47,7 @@ class UploadController:
             raise TooLarge(constants.MAX_FILE_MB)
         doc_id, folder = store.create(owner_digest)
         try:
-            await UploadController.save_original(chunks, to=folder / store.ORIGINAL)
+            await save_original(chunks, to=folder / store.ORIGINAL)
             analysis = await self._enqueue_analyse(folder)
         except BaseException:  # refused, damaged, or the browser left: keep nothing
             store.delete(folder)
@@ -55,26 +55,26 @@ class UploadController:
         body = document_response(
             doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
         )
-        return DocumentReply(body, words.language_headers(said_in))
-
-    @staticmethod
-    async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
-        """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF."""
-        size, first_kb = 0, b""
-        with to.open("wb") as out:
-            async for chunk in chunks:
-                size += len(chunk)
-                if size > constants.MAX_FILE_BYTES:
-                    raise TooLarge(constants.MAX_FILE_MB)
-                first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
-                no_header = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
-                if no_header:
-                    raise NotAPdf()
-                out.write(chunk)
-        if _PDF_HEADER not in first_kb:
-            raise NotAPdf()
+        return UploadReply(body, words.language_headers(said_in))
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), constants.MAX_PAGES)
-        return await self._workers.run(constants.UPLOAD_TIMEOUT_S, task)
+        return await self._workers.run(constants.ANALYSE_TIMEOUT_S, task)
+
+
+async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
+    """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF."""
+    size, first_kb = 0, b""
+    with to.open("wb") as out:
+        async for chunk in chunks:
+            size += len(chunk)
+            if size > constants.MAX_FILE_BYTES:
+                raise TooLarge(constants.MAX_FILE_MB)
+            first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
+            no_header = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
+            if no_header:
+                raise NotAPdf()
+            out.write(chunk)
+    if _PDF_HEADER not in first_kb:
+        raise NotAPdf()

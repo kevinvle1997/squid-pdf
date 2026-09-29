@@ -88,9 +88,9 @@ def test_a_document_reads_back_and_then_as_unchanged_with_no_web_server_in_betwe
     kept = store.load_analysis(doc.folder, BUILD)
     if kept is None:
         pytest.fail("the analysis wasn't kept")
-    spans = orjson.loads(first.body)["spans"]
+    spans = orjson.loads(first.json)["spans"]
     assert_equal(spans, orjson.loads(kept)["spans"], "the spans read back")
-    assert_equal((again.status, again.body), (304, b""), "the reply once the browser has it")
+    assert_equal((again.status, again.json), (304, b""), "the reply once the browser has it")
     assert_equal(
         again.headers["ETag"], first.headers["ETag"], "the ETag once the browser has it"
     )

@@ -14,8 +14,7 @@ __all__ = [
     "FontListController",
 ]
 
-# The same for everyone under a build, so worked out once per server and kept.
-# Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
+# The same for everyone under a build, and 5 s of pool work (measured): made once per server.
 _font_lists: dict[str, bytes] = {}
 
 
@@ -28,14 +27,14 @@ class FontListController:
 
     async def font_list(self, build: str) -> FontListReply:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
-        body = _font_lists.get(BUILD)  # None until the first ask since the server started
-        if body is None:
-            body = _font_lists[BUILD] = orjson.dumps(await self._enqueue_list_fonts())
+        json = _font_lists.get(BUILD)  # None until the first ask since the server started
+        if json is None:
+            json = _font_lists[BUILD] = orjson.dumps(await self._enqueue_measure_faces())
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
-        return FontListReply(body, {"Cache-Control": cache})
+        return FontListReply(json, {"Cache-Control": cache})
 
     @staticmethod
-    def list_fonts() -> FontList:
+    def measure_faces() -> FontList:
         """Every face we ship, grouped by family, in the catalog's order.
 
         Runs in a worker, so it's a staticmethod the worker can import by name.
@@ -55,6 +54,6 @@ class FontListController:
             )
         return {"build": BUILD, "families": list(families.values())}
 
-    async def _enqueue_list_fonts(self) -> FontList:
+    async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
-        return await self._workers.run(FONT_LIST_TIMEOUT_S, FontListController.list_fonts)
+        return await self._workers.run(FONT_LIST_TIMEOUT_S, FontListController.measure_faces)

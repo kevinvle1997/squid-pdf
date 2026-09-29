@@ -110,7 +110,7 @@ class RenderReply:
 class FontListReply:
     """The font list's reply, ready to send: the JSON and its headers."""
 
-    body: bytes
+    json: bytes
     headers: dict[str, str]
 
 

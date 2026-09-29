@@ -96,7 +96,7 @@ async def read(
     """The document, in the reader's language, or 304 if the browser has it already."""
     if_none_match = request.headers.get("if-none-match")  # absent on a first read
     reply = await controller.read(doc, said_in=said_in, if_none_match=if_none_match)
-    return Response(reply.body, status_code=reply.status, headers=reply.headers)
+    return Response(reply.json, status_code=reply.status, headers=reply.headers)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

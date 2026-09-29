@@ -10,7 +10,7 @@ MAX_FILE_BYTES = MAX_FILE_MB * _MB
 MAX_PAGES = 1_000
 
 # Workers. Past a timeout the task is killed and the user told it took too long.
-UPLOAD_TIMEOUT_S = 30  # the analysis, at upload or under a new build
+ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or under a new build
 PAGE_IMAGE_TIMEOUT_S = 10
 
 IDLE_S = 3600  # a document untouched this long is deleted
