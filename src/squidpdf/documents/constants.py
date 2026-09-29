@@ -1,6 +1,17 @@
-"""How long a document lives, how big its page images get, and how browsers keep it."""
+"""What an upload may be, how long a document lives, and how its page images are kept."""
 
 from __future__ import annotations
+
+_MB = 1024 * 1024
+
+# Uploads.
+MAX_FILE_MB = 100  # as the refusal says it
+MAX_FILE_BYTES = MAX_FILE_MB * _MB
+MAX_PAGES = 1_000
+
+# Workers. Past a timeout the task is killed and the user told it took too long.
+ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or under a new build
+PAGE_IMAGE_TIMEOUT_S = 10
 
 IDLE_S = 3600  # a document untouched this long is deleted
 SWEEP_EVERY_S = 60

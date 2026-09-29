@@ -11,7 +11,7 @@ from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.core.fonts import FACES
-from squidpdf.documents import store
+from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
@@ -182,10 +182,24 @@ def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, 
 
 
 def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monkeypatch):
-    monkeypatch.setattr(limits, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
     before = _kept()
     chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])  # no length up front: it streams
     response = mine.post("/api/documents", content=chunks)
     assert_problem(response, "too_large", 413)
     assert_equal(response.json()["detail"], "This file is over 100 MB.", "the refusal")
+    assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
+@pytest.mark.parametrize(
+    "declared",
+    ["many", "1_000", "-5", "9" * 5000],
+    ids=["a word", "underscores", "negative", "past what int() reads"],
+)
+def test_an_upload_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes, declared):
+    """A past bug: int() made "many" a 500, took "-5", and can't read 5000 digits."""
+    before = _kept()
+    headers = {"content-type": "application/pdf", "content-length": declared}
+    response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
+    assert_problem(response, "invalid_request", 400)
     assert_equal(_kept(), before, "documents on disk after a refusal")

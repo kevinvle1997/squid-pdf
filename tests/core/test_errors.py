@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import pickle
+import pkgutil
+from collections.abc import Iterator
 
+import squidpdf
 from squidpdf.core import Damaged, Encrypted, Message, Problem, Unreadable, words
 from squidpdf.documents.errors import TooLarge
 from tests.conftest import pseudo_sentence
@@ -56,3 +60,23 @@ def test_a_problem_is_said_in_the_language_asked_for(pseudo):
 
 def test_a_problem_no_catalog_has_says_its_own_sentence_in_any_language(pseudo):
     assert_equal(_Sized(100).said_in(pseudo), "over 100 MB", "the class's own sentence")
+
+
+def _each_problem(kind: type[Problem]) -> Iterator[type[Problem]]:
+    """`kind` and every subclass of it, however deep."""
+    yield kind
+    for sub in kind.__subclasses__():
+        yield from _each_problem(sub)
+
+
+def test_every_problem_the_app_can_raise_has_a_sentence():
+    """One without would fail inside the error handler, and the user would read nothing."""
+    # Each feature keeps its own errors.py: import them all so every subclass is known.
+    for module in pkgutil.walk_packages(squidpdf.__path__, "squidpdf."):
+        importlib.import_module(module.name)
+    unsaid = [
+        kind.__name__
+        for kind in _each_problem(Problem)
+        if kind.type not in words.ENGLISH_SENTENCES and kind.sentence is None
+    ]
+    assert_equal(unsaid, [], "problems with no sentence")

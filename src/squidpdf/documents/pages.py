@@ -1,11 +1,50 @@
-"""How big a page's image is drawn. Render's strips use it too, so they line up."""
+"""A page of the original as an image, and how big it's drawn; render's strips match it."""
 
 from __future__ import annotations
 
 import math
+from functools import partial
+from pathlib import Path
 
-from squidpdf.core import Page
-from squidpdf.documents.constants import MAX_IMAGE_PIXELS
+from squidpdf.core import BUILD, Page, Workers, open_pdf
+from squidpdf.documents import store
+from squidpdf.documents.constants import MAX_IMAGE_PIXELS, PAGE_CACHE, PAGE_IMAGE_TIMEOUT_S
+from squidpdf.documents.errors import NoSuchPage
+from squidpdf.documents.types import Loaded, PageReply
+
+
+class PageController:
+    """A page image, from request to reply."""
+
+    def __init__(self, workers: Workers) -> None:
+        """Draw on `workers`, off the server's own thread."""
+        self._workers = workers
+
+    async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> PageReply:
+        """Page `page` as a PNG, at `scale` or less if the page is very large."""
+        pages = store.load_pages(doc.folder)
+        if not 0 <= page < len(pages):
+            raise NoSuchPage()
+        png = await self._enqueue_draw_page(
+            doc.folder, page=page, scale=page_scale(pages[page], scale)
+        )
+        # An old `build` still gets the image, but not to keep: its bytes may change.
+        cache = PAGE_CACHE if build == BUILD else "no-store"
+        return PageReply(png, {"Cache-Control": cache})
+
+    @staticmethod
+    def draw_page(folder: str, page: int, scale: float) -> bytes:
+        """Draw one page of the original, unrotated.
+
+        Runs in a worker, so it's a staticmethod the worker can import by name.
+        """
+        with open_pdf(str(Path(folder) / store.ORIGINAL)) as engine:
+            return engine.page_image(page, scale)
+
+    async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
+        """Draw the page on a worker."""
+        task = partial(PageController.draw_page, str(folder), page=page, scale=scale)
+        return await self._workers.run(PAGE_IMAGE_TIMEOUT_S, task)
 
 
 def page_scale(page: Page, scale: int) -> float:

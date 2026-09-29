@@ -17,7 +17,6 @@ from squidpdf.documents.types import Analysis, FontFacts, SpanInfo
 
 __all__ = [
     "analyse",
-    "page_image",
 ]
 
 
@@ -66,12 +65,6 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     }
     store.save_analysis(path, BUILD, orjson.dumps(analysis))
     return analysis
-
-
-def page_image(folder: str, page: int, scale: float) -> bytes:
-    """One page of the original as a PNG, unrotated."""
-    with open_pdf(str(Path(folder) / store.ORIGINAL)) as eng:
-        return eng.page_image(page, scale)
 
 
 def why_of(report: FidelityReport) -> MessageInfo | None:

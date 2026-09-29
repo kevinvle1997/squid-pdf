@@ -15,6 +15,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from squidpdf.api import constants as limits
 from squidpdf.api import errors
+from squidpdf.api.body import declared_size
 from squidpdf.api.language import language_of
 from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
@@ -41,12 +42,19 @@ async def limit_body(request: Request, call_next: RequestResponseEndpoint) -> Re
     """Refuse a too-large edit list before it's read. Uploads check their own, larger limit.
 
     Only a body that says its size up front; a chunked one is read regardless.
+    A size that isn't a whole number is a bad request.
     """
-    declared = request.headers.get("content-length")  # absent when the body is chunked
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     upload_path = request.app.url_path_for(documents.upload.__name__)
     is_upload = request.method == "POST" and request.url.path == upload_path
-    too_large = declared is not None and not is_upload and int(declared) > limits.MAX_BODY_BYTES
+    # An upload reads its own size.
+    if is_upload:
+        return await call_next(request)
+    try:
+        declared = declared_size(request)
+    except errors.InvalidRequest as problem:  # the size it states isn't a whole number
+        return errors.response(problem, language_of(request))
+    too_large = declared is not None and declared > limits.MAX_BODY_BYTES
     if too_large:
         return errors.response(errors.RequestTooLarge(), language_of(request))
     return await call_next(request)

@@ -7,13 +7,10 @@ from __future__ import annotations
 
 _MB = 1024 * 1024
 
-# Page images.
+# Page images: the scales a route accepts. The pixel limit is documents' own.
 PAGE_SCALES = (1, 2, 3, 4)
 
-# Uploads.
-MAX_FILE_MB = 100  # as the refusal says it
-MAX_FILE_BYTES = MAX_FILE_MB * _MB
-MAX_PAGES = 1_000
+# Uploads. Their size and page limits are documents' own.
 UPLOADS_PER_MINUTE = 20  # per IP
 
 # Every request body but an upload, which checks its own size.
@@ -23,9 +20,6 @@ MAX_BODY_BYTES = 5 * _MB
 MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
-# Workers. Past a timeout the task is killed and the user told it took too long.
-UPLOAD_TIMEOUT_S = 30
-RENDER_TIMEOUT_S = 10  # one page image; editing has its own
-FONT_LIST_TIMEOUT_S = 30  # measured at 5 s; once per server, so room for a slow machine
+# Workers. Each feature's timeouts are in its own constants.py.
 WORKER_MEMORY_BYTES = 1024 * _MB
 TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
@@ -36,3 +37,20 @@ def test_an_edit_list_too_large_is_refused_but_an_upload_that_size_is_not(
 
     assert_equal(uploaded.status_code, 201, f"status of an upload of {len(pdf_bytes)} bytes")
     assert_problem(too_large, "request_too_large", 413)
+
+
+@pytest.mark.parametrize(
+    "declared",
+    ["many", "1_000", "-5", "9" * 5000],
+    ids=["a word", "underscores", "negative", "past what int() reads"],
+)
+def test_a_request_whose_size_isnt_a_whole_number_is_a_bad_request(
+    browser, pdf_bytes, declared
+):
+    """A past bug: the edit list's size check read it with int(), so "many" was a 500."""
+    mine = browser()
+    doc = upload(mine, pdf_bytes).json()
+    body = b'{"edits": [], "scale": 1, "regions": [{"page": 0}]}'
+    headers = {"content-type": "application/json", "content-length": declared}
+    response = mine.post(f"/api/documents/{doc['id']}/render", content=body, headers=headers)
+    assert_problem(response, "invalid_request", 400)
