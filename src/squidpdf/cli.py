@@ -29,8 +29,8 @@ from squidpdf.core import (
     write_sample,
 )
 from squidpdf.editing import (
+    ExportController,
     Redact,
-    RedactionController,
     RedactionFailed,
     Replace,
     apply,
@@ -151,20 +151,16 @@ def cmd_redact(args: argparse.Namespace) -> int:
         if span is None:
             return no_span(args.span_id)
 
-        edits = [Redact(span.id)]
-        redactions = RedactionController.from_edits(engine, edits, index)
-        applied = apply(engine, edits, index)
-        saved = engine.save(args.out)
-
-    # The same check a download gets.
-    try:
-        redactions.check_saved(args.out)
-    except RedactionFailed as failed:  # the text is still in the file, so delete it
-        Path(args.out).unlink()
-        print(f"  {RED}{failed.detail}{OFF}")
-        return 1
+        # The same save and check a download gets.
+        try:
+            saved = ExportController.save_edited(
+                engine, index, edits=[Redact(span.id)], to=args.out
+            )
+        except RedactionFailed as failed:  # the text was still in the file, so none was kept
+            print(f"  {RED}{failed.detail}{OFF}")
+            return 1
     print(f"\n  removed {span.text!r}")
-    for said in [notice.detail for notice in applied.notices] + saved:
+    for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
         print(f"  {YELLOW}{words.render(said)}{OFF}")
     print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
     return 0

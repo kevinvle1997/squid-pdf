@@ -25,8 +25,8 @@ _LINES = ["First page", "Second page", "Third page"]
 class _InProcess:
     """Runs pool work in the test's own process, where a monkeypatch reaches it."""
 
-    async def run(self, _timeout, fn, /, *args, **kwargs):
-        return fn(*args, **kwargs)
+    async def run(self, _timeout, task):
+        return task()
 
 
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:

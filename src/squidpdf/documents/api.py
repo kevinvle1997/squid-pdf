@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from functools import partial
 from typing import Annotated
 
 import orjson
@@ -94,9 +95,8 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise NotAPdf()
-        analysis = await workers.run(
-            limits.UPLOAD_TIMEOUT_S, analyse, str(folder), limits.MAX_PAGES
-        )
+        task = partial(analyse, str(folder), limits.MAX_PAGES)
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -118,9 +118,8 @@ async def read(
     """The document, in the reader's language. Worked out again only for a new `build`."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        analysis = await workers.run(
-            limits.UPLOAD_TIMEOUT_S, analyse, str(doc.folder), limits.MAX_PAGES
-        )
+        task = partial(analyse, str(doc.folder), limits.MAX_PAGES)
+        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -165,9 +164,8 @@ async def page(
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
         raise NoSuchPage()
-    png = await workers.run(
-        limits.RENDER_TIMEOUT_S, page_image, str(doc.folder), n, page_scale(pages[n], scale)
-    )
+    task = partial(page_image, str(doc.folder), n, page_scale(pages[n], scale))
+    png = await workers.run(limits.RENDER_TIMEOUT_S, task)
     cache = PAGE_CACHE if build == BUILD else "no-store"
     return Response(png, media_type="image/png", headers={"Cache-Control": cache})
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import math
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 from squidpdf.core import BUILD, Engine, InvalidRequest, Page, Rect, Workers, open_pdf, words
@@ -16,9 +17,8 @@ from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply, log_fits
-from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS, RENDER_TIMEOUT_S
-from squidpdf.editing.edits import Edit, Insert, Replace
-from squidpdf.editing.errors import TextTooLong, TooManyEdits
+from squidpdf.editing.constants import RENDER_TIMEOUT_S
+from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
 from squidpdf.editing.types import ImageInfo, Region, Render, Rendered, RenderReply
 
@@ -48,47 +48,15 @@ class RenderController:
         Refuses edits over the limits and regions the document lacks. A
         redaction pointing at nothing fails the whole request.
         """
-        if len(edits) > MAX_EDITS:
-            raise TooManyEdits(MAX_EDITS)
-        too_long = any(
-            isinstance(edit, Replace | Insert) and len(edit.text) > MAX_TEXT_CHARS
-            for edit in edits
-        )
-        if too_long:
-            raise TextTooLong(MAX_TEXT_CHARS)
+        check_edits(edits)
         pages = store.load_pages(doc.folder)
-        for region in regions:
-            if not 0 <= region.page < len(pages):
-                raise NoSuchPage(debug=f"regions: no page {region.page}")
-            top = 0.0 if region.y0 is None else region.y0
-            bottom = pages[region.page].height if region.y1 is None else region.y1
-            # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
-            if not top < bottom:
-                reason = f"regions: y0 must be a number above y1 on page {region.page}"
-                raise InvalidRequest(debug=reason)
-        scales = {r.page: page_scale(pages[r.page], scale) for r in regions}
-        rendered = await self._workers.run(
-            RENDER_TIMEOUT_S,
-            RenderController.draw_regions,
-            folder=str(doc.folder),
-            edits=edits,
-            regions=regions,
-            scales=scales,
+        check_regions(regions, pages)
+        # Each strip at its page image's scale, so the two line up.
+        scales = {region.page: page_scale(pages[region.page], scale) for region in regions}
+        rendered = await self._enqueue_draw_regions(
+            doc.folder, edits=edits, regions=regions, scales=scales
         )
-        fits = rendered.fits
-        body: Render = {
-            "images": rendered.images,
-            "fits": {span_id: fit_info(fit, said_in) for span_id, fit in fits.replaces.items()},
-            "insert_fits": [
-                {**fit_info(fit, said_in), "edit": position}
-                for position, fit in fits.inserts.items()
-            ],
-            "redactions": [],  # verdicts come with export
-            "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
-            "notices": [notice_info(notice, said_in) for notice in rendered.notices],
-            "build": BUILD,
-            "expires_at": datetime.fromtimestamp(doc.expires_at, UTC).isoformat(),
-        }
+        body = reply_body(rendered, doc.expires_at, said_in)
         return RenderReply(body, words.language_headers(said_in))
 
     @staticmethod
@@ -115,6 +83,55 @@ class RenderController:
             ]
 
         return Rendered(images, fits, applied.skipped, applied.notices)
+
+    async def _enqueue_draw_regions(
+        self,
+        folder: Path,
+        *,
+        edits: list[Edit],
+        regions: list[Region],
+        scales: dict[int, float],
+    ) -> Rendered:
+        """Draw the regions on a worker."""
+        task = partial(
+            RenderController.draw_regions,
+            str(folder),
+            edits=edits,
+            regions=regions,
+            scales=scales,
+        )
+        return await self._workers.run(RENDER_TIMEOUT_S, task)
+
+
+def check_regions(regions: list[Region], pages: list[Page]) -> None:
+    """Refuse a region the document can't give: a page it lacks, or a top below its bottom."""
+    for region in regions:
+        if not 0 <= region.page < len(pages):
+            raise NoSuchPage(debug=f"regions: no page {region.page}")
+        top = 0.0 if region.y0 is None else region.y0
+        bottom = pages[region.page].height if region.y1 is None else region.y1
+        # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
+        if not top < bottom:
+            reason = f"regions: y0 must be a number above y1 on page {region.page}"
+            raise InvalidRequest(debug=reason)
+
+
+def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
+    """What render worked out, as the browser gets it, in the reader's words."""
+    fits = rendered.fits
+    return {
+        "images": rendered.images,
+        "fits": {span_id: fit_info(fit, said_in) for span_id, fit in fits.replaces.items()},
+        "insert_fits": [
+            {**fit_info(fit, said_in), "edit": position}
+            for position, fit in fits.inserts.items()
+        ],
+        "redactions": [],  # verdicts come with export
+        "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
+        "notices": [notice_info(notice, said_in) for notice in rendered.notices],
+        "build": BUILD,
+        "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
+    }
 
 
 def draw(engine: Engine, region: Region, *, page: Page, scale: float) -> ImageInfo:

@@ -40,15 +40,13 @@ class Pool:
             context=cast(ModuleType, multiprocessing.get_context("spawn")),
         )
 
-    async def run[**P, T](
-        self, timeout: float, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
-    ) -> T:
-        """`fn(*args, **kwargs)` in a worker, killed after `timeout` seconds.
+    async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
+        """`task()` in a worker, killed after `timeout` seconds.
 
         If the request goes away first, the task is cancelled and pebble stops
         the worker running it.
         """
-        future = self._pool.submit(fn, timeout, *args, **kwargs)
+        future = self._pool.submit(task, timeout)
         try:
             return await asyncio.wrap_future(future)
         except TimeoutError as exc:  # out of time: slow, not necessarily broken

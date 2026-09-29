@@ -88,6 +88,17 @@ class Exported:
 
 
 @dataclass(frozen=True, slots=True)
+class Saved:
+    """What saving an edited file came out with.
+
+    `applied` is about the edits; `notices` about the file as a whole, such as dropped tags.
+    """
+
+    applied: Applied
+    notices: list[Message]
+
+
+@dataclass(frozen=True, slots=True)
 class RenderReply:
     """Render's reply, ready to send: the JSON body and its headers."""
 

@@ -12,11 +12,10 @@ from typing import Protocol
 class Workers(Protocol):
     """Worker processes that run a function and hand back what it returns."""
 
-    async def run[**P, T](
-        self, timeout: float, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
-    ) -> T:
-        """`fn(*args, **kwargs)` in a worker, stopped after `timeout` seconds.
+    async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
+        """`task()` in a worker, stopped after `timeout` seconds.
 
-        `fn` must be importable by name, and its arguments plain data: they cross processes.
+        `task` crosses to another process, so it's a function importable by name
+        with its arguments bound by `functools.partial`, not a lambda.
         """
         ...
