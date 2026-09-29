@@ -7,9 +7,9 @@ import shutil
 import orjson
 import pytest
 
-from squidpdf.api.constants import MAX_PAGES
 from squidpdf.core import BUILD, Engine, words
 from squidpdf.documents import analyse, store
+from squidpdf.documents.constants import MAX_PAGES
 from tests.helpers import assert_equal, assert_true
 
 

@@ -22,7 +22,7 @@ from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
 from squidpdf.core import BUILD, Message, NotFound, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
-from squidpdf.documents import store
+from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse, page_image
 from squidpdf.documents.constants import DOCUMENT_CACHE, PAGE_CACHE, SWEEP_EVERY_S
 from squidpdf.documents.errors import NoSuchPage, NotAPdf, TooLarge
@@ -76,9 +76,9 @@ async def upload(
 ) -> Document:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     declared = request.headers.get("content-length")  # absent when the body is chunked
-    declared_too_large = declared is not None and int(declared) > limits.MAX_FILE_BYTES
+    declared_too_large = declared is not None and int(declared) > constants.MAX_FILE_BYTES
     if declared_too_large:
-        raise TooLarge(limits.MAX_FILE_MB)
+        raise TooLarge(constants.MAX_FILE_MB)
     doc_id, folder = store.create(owner.digest(token))
     try:
         # Streamed to disk, refused as soon as it's too big or plainly not a PDF.
@@ -86,8 +86,8 @@ async def upload(
         with (folder / store.ORIGINAL).open("wb") as out:
             async for chunk in request.stream():
                 size += len(chunk)
-                if size > limits.MAX_FILE_BYTES:
-                    raise TooLarge(limits.MAX_FILE_MB)
+                if size > constants.MAX_FILE_BYTES:
+                    raise TooLarge(constants.MAX_FILE_MB)
                 first_kb += chunk[: _HEADER_WINDOW - len(first_kb)]
                 header_missing = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
                 if header_missing:
@@ -95,8 +95,8 @@ async def upload(
                 out.write(chunk)
         if _PDF_HEADER not in first_kb:
             raise NotAPdf()
-        task = partial(analyse, str(folder), limits.MAX_PAGES)
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
+        task = partial(analyse, str(folder), constants.MAX_PAGES)
+        analysis = await workers.run(constants.UPLOAD_TIMEOUT_S, task)
     except BaseException:  # refused, damaged, or the browser left: keep nothing
         store.delete(folder)
         raise
@@ -118,8 +118,8 @@ async def read(
     """The document, in the reader's language. Worked out again only for a new `build`."""
     raw = store.load_analysis(doc.folder, BUILD)
     if raw is None:
-        task = partial(analyse, str(doc.folder), limits.MAX_PAGES)
-        analysis = await workers.run(limits.UPLOAD_TIMEOUT_S, task)
+        task = partial(analyse, str(doc.folder), constants.MAX_PAGES)
+        analysis = await workers.run(constants.UPLOAD_TIMEOUT_S, task)
         raw = orjson.dumps(analysis)
     else:
         analysis = orjson.loads(raw)
@@ -164,8 +164,8 @@ async def page(
     pages = store.load_pages(doc.folder)
     if not 0 <= n < len(pages):
         raise NoSuchPage()
-    task = partial(page_image, str(doc.folder), n, page_scale(pages[n], scale))
-    png = await workers.run(limits.RENDER_TIMEOUT_S, task)
+    task = partial(page_image, str(doc.folder), page=n, scale=page_scale(pages[n], scale))
+    png = await workers.run(constants.PAGE_IMAGE_TIMEOUT_S, task)
     cache = PAGE_CACHE if build == BUILD else "no-store"
     return Response(png, media_type="image/png", headers={"Cache-Control": cache})
 

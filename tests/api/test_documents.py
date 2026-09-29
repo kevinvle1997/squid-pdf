@@ -11,7 +11,7 @@ from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.core.fonts import FACES
-from squidpdf.documents import store
+from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
@@ -182,7 +182,7 @@ def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, 
 
 
 def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monkeypatch):
-    monkeypatch.setattr(limits, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
     before = _kept()
     chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])  # no length up front: it streams
     response = mine.post("/api/documents", content=chunks)
