@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import orjson
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -18,13 +17,11 @@ from squidpdf.api import constants as limits
 from squidpdf.api import pool
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
-from squidpdf.core import BUILD
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
 from squidpdf.editing.edits import Insert, Redact, Replace
 from squidpdf.editing.export import ExportController
-from squidpdf.editing.fonts import font_list
+from squidpdf.editing.fonts import FontListController
 from squidpdf.editing.render import RenderController
 from squidpdf.editing.types import FontList, Region, Render
 
@@ -36,6 +33,7 @@ __all__ = [
     "ExportBody",
     "render_controller",
     "export_controller",
+    "font_list_controller",
     "fonts",
     "render",
     "export",
@@ -46,10 +44,6 @@ fonts_router = APIRouter(prefix="/api/fonts")
 
 # Read by `kind` first: one bad kind is one error, not one per edit type.
 AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
-
-# The font list, worked out once per server under this build: the same for everyone.
-# Measured: 5 s of pool work for 700 KB of JSON, so it's kept rather than redone.
-_font_lists: dict[str, bytes] = {}
 
 
 class RenderBody(BaseModel):
@@ -77,18 +71,18 @@ def export_controller(workers: Annotated[Pool, Depends(pool.current)]) -> Export
     return ExportController(workers)
 
 
-@fonts_router.get("", response_model=FontList)
-async def fonts(build: str, workers: Annotated[Pool, Depends(pool.current)]) -> Response:
-    """Every face new text can be drawn in, by family, with each letter's width.
+def font_list_controller(workers: Annotated[Pool, Depends(pool.current)]) -> FontListController:
+    """The font list's controller, on the app's workers."""
+    return FontListController(workers)
 
-    An old `build` still gets the list, but not to keep.
-    """
-    body = _font_lists.get(BUILD)  # None until the first ask since the server started
-    if body is None:
-        listed = await workers.run(FONT_LIST_TIMEOUT_S, font_list)
-        body = _font_lists[BUILD] = orjson.dumps(listed)
-    cache = FONT_LIST_CACHE if build == BUILD else "no-store"
-    return Response(body, media_type="application/json", headers={"Cache-Control": cache})
+
+@fonts_router.get("", response_model=FontList)
+async def fonts(
+    build: str, controller: Annotated[FontListController, Depends(font_list_controller)]
+) -> Response:
+    """Every face new text can be drawn in, by family, with each letter's width."""
+    reply = await controller.font_list(build)
+    return Response(reply.body, media_type="application/json", headers=reply.headers)
 
 
 @router.post("/{doc_id}/render", response_model=Render)

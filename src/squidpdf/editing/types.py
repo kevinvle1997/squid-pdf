@@ -107,6 +107,14 @@ class RenderReply:
 
 
 @dataclass(frozen=True, slots=True)
+class FontListReply:
+    """The font list's reply, ready to send: the JSON and its headers."""
+
+    body: bytes
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class ExportReply:
     """Export's reply, ready to send: the PDF and its headers."""
 
