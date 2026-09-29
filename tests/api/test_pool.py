@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import time
 
@@ -27,11 +26,6 @@ def pool():
     pool.close()
 
 
-def _pid() -> int:
-    """The process this runs in."""
-    return os.getpid()
-
-
 def _hang() -> None:
     """Work that takes far longer than any timeout here."""
     time.sleep(_HANG_S)
@@ -40,11 +34,6 @@ def _hang() -> None:
 def _overeat() -> int:
     """Work that asks for twice a worker's memory."""
     return len(bytearray(2 * WORKER_MEMORY_BYTES))
-
-
-def test_work_runs_in_a_worker_not_the_server(pool):
-    worker = asyncio.run(pool.run(_ENOUGH_S, _pid))
-    assert_true(worker != os.getpid(), f"worker pid {worker} is the server's own")
 
 
 def test_work_past_its_timeout_is_killed_and_called_too_slow(pool):

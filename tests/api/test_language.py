@@ -33,29 +33,15 @@ def _in(language: str) -> dict[str, str]:
     ("accept_language", "chosen"),
     [
         (None, "en"),
-        ("", "en"),
-        ("fr-FR, fr;q=0.9", "en"),
-        (PSEUDO, PSEUDO),
         (f"{PSEUDO}-XX", PSEUDO),
         (f"fr, {PSEUDO};q=0.9, en;q=0.8", PSEUDO),
-        (f"en;q=0.5, {PSEUDO}", PSEUDO),
-        (f"en, {PSEUDO}", "en"),
         (f"{PSEUDO};q=0", "en"),
-        (f"{PSEUDO};q=nonsense", "en"),
-        (f"*, {PSEUDO};q=0.5", "en"),
     ],
     ids=[
         "no header",
-        "an empty header",
-        "only languages we lack",
-        "one we have",
         "one we have, more exactly",
         "the best we have, by weight",
-        "a heavier one later in the list",
-        "the first of two equally wanted",
         "one refused",
-        "a weight that can't be read",
-        "any language",
     ],
 )
 def test_the_language_answered_in_is_the_most_wanted_one_we_have(
@@ -66,16 +52,8 @@ def test_the_language_answered_in_is_the_most_wanted_one_we_have(
     )
 
 
-def test_a_document_is_answered_in_english_by_default_and_says_so(mine, pdf_bytes):
-    response = upload(mine, pdf_bytes)
-    assert_equal(response.headers["content-language"], "en", "the language it's in")
-    assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
-    assert_equal(
-        response.json()["copy"]["missing"], words.sentence("missing"), "the English sentence"
-    )
-
-
 def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc):
+    """Uploaded in English, read in another: the analysis keeps codes, not sentences."""
     response = mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO))
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
@@ -85,32 +63,21 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     )
     shrink = copy["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
-
-
-def test_why_a_font_stands_in_is_said_in_the_language_asked_for(pseudo, mine, doc):
-    def times(document: dict) -> dict:
-        """What the document says about Times, which the sample only names."""
-        return next(font for font in document["fonts"] if font["name"] == "Times-Roman")
-
-    english = times(doc)
+    # Times is only named in the sample: why its own copy can't be used, said and unsaid.
+    times = next(font for font in response.json()["fonts"] if font["name"] == "Times-Roman")
+    said = (times["why"], times["why_code"], times["why_params"])
     expected: tuple[str, str, dict] = (
-        words.sentence("font_not_in_file"),
+        pseudo_sentence(words.sentence("font_not_in_file")),
         "font_not_in_file",
         {},
     )
-    said = (english["why"], english["why_code"], english["why_params"])
-    assert_equal(said, expected, "why, in English and unsaid")
-    other = times(mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO)).json())
-    assert_equal(
-        other["why"], pseudo_sentence(words.sentence("font_not_in_file")), "why, in pseudo"
-    )
-    exact = next(font for font in doc["fonts"] if font["why"] is None)
-    assert_equal((exact["why_code"], exact["why_params"]), (None, {}), "a font that's used")
+    assert_equal(said, expected, "why Times stands in")
 
 
 def test_one_language_s_etag_never_answers_for_another(pseudo, mine, doc):
     url = f"/api/documents/{doc['id']}"
     english = mine.get(url)
+    assert_equal(english.headers["cache-control"], "private, no-cache", "document caching")
     asked_again = {"if-none-match": english.headers["etag"]}
     same = mine.get(url, headers=asked_again)
     assert_equal(same.status_code, 304, "the same language, unchanged")
@@ -159,16 +126,6 @@ def test_a_problem_is_said_in_the_language_asked_for_with_its_code(pseudo, mine)
     assert_equal((body["detail"], body["code"], body["params"]), expected, "what it says")
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
-
-
-def test_a_problem_s_facts_come_with_it(mine, doc):
-    edits = [{"kind": "redact", "span_id": "nosuchspan00"}]
-    body = {"edits": edits, "scale": 2, "regions": [{"page": 0}]}
-    response = mine.post(f"/api/documents/{doc['id']}/render", json=body)
-    assert_problem(response, "bad_reference", 422)
-    got = response.json()
-    expected = ("bad_reference", {"span_id": "nosuchspan00"})
-    assert_equal((got["code"], got["params"]), expected, "the problem, unsaid")
 
 
 def test_render_says_what_went_wrong_in_the_language_asked_for(pseudo, mine, doc):

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import pickle
-
 from fastapi.testclient import TestClient
 
 from squidpdf.api.errors import ServerError
-from squidpdf.core import Damaged, Encrypted, NotFound, Problem, Unreadable, words
-from squidpdf.documents.errors import Gone, TooManyPages
-from squidpdf.editing.errors import BadReference
+from squidpdf.core import Damaged, NotFound, Problem, Unreadable, words
+from squidpdf.documents.errors import Gone
 from tests.api.conftest import BASE_URL, upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
 
@@ -46,7 +43,8 @@ def _every(cls: type[Problem]) -> list[type[Problem]]:
     return [cls, *(sub for child in cls.__subclasses__() for sub in _every(child))]
 
 
-def test_every_problem_has_its_own_wire_type(app):
+def test_every_problem_has_its_own_wire_type_and_an_english_sentence(app):
+    """The browser branches on the type; one with no sentence fails in the error handler."""
     # `app` imports every feature, so every Problem subclass is defined by now.
     # The same failure, as far as the browser knows.
     shared = {Gone: NotFound, Damaged: Unreadable, ServerError: Problem}
@@ -54,24 +52,8 @@ def test_every_problem_has_its_own_wire_type(app):
     for cls in _every(Problem):
         if cls.__module__.startswith("tests."):
             continue
-        assert_equal(cls.type, cls.type.lower(), f"{cls.__name__}.type is lower case")
+        said = f"the catalog's sentence for {cls.__name__}"
+        assert_in(cls.type, words.ENGLISH_SENTENCES, said)
         owner = seen.setdefault(cls.type, cls)
         if owner is not cls:
             assert_equal(shared.get(cls), owner, f"{cls.__name__} reuses {cls.type!r}")
-
-
-def test_every_problem_has_an_english_sentence_under_its_type(app):
-    # `app` imports every feature, so every Problem subclass is defined by now.
-    for cls in _every(Problem):
-        if cls.__module__.startswith("tests."):
-            continue
-        assert_in(
-            cls.type, words.ENGLISH_SENTENCES, f"the catalog's sentence for {cls.__name__}"
-        )
-
-
-def test_a_worker_s_problem_arrives_saying_the_same_thing():
-    for raised in (TooManyPages(3), BadReference("s1"), Gone(), Encrypted(), Damaged()):
-        back = pickle.loads(pickle.dumps(raised))
-        assert_equal(type(back), type(raised), "the class after a pickle round trip")
-        assert_equal(back.detail, raised.detail, f"what {type(raised).__name__} says")

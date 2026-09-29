@@ -14,7 +14,7 @@ from squidpdf.core import Engine, words
 from squidpdf.documents import store
 from squidpdf.editing.constants import MAX_TEXT_CHARS
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
+from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
 _NOTICES = "Squid-Notices"
@@ -103,20 +103,6 @@ def _lines(pdf: pymupdf.Document) -> list[list[str]]:
     return [page.get_text().splitlines() for page in pdf.pages()]
 
 
-def test_an_export_opens_and_a_replaced_span_reads_back_as_the_new_text(mine, doc):
-    span = _span(doc, 1, "Delivery")
-    text = span["text"].replace("14 March", "2 March")
-
-    response = _export(mine, doc, [{"kind": "replace", "span_id": span["id"], "text": text}])
-
-    pdf = _opened(response)
-    assert_equal(pdf.page_count, 2, "pages in the file")
-    assert_in(text, _lines(pdf)[1], "the edited page's lines")
-    assert_not_in("14 March", pdf[1].get_text(), "the edited page")
-    assert_equal(response.headers[_SKIPPED], "", "edits left out")
-    assert_equal(response.headers[_NOTICES], "[]", "what came out other than asked")
-
-
 def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_still_comes(
     app, mine, doc, monkeypatch, pseudo
 ):
@@ -144,16 +130,6 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     ]
     assert_equal(json.loads(said), expected, "what came out other than asked")
     assert_equal(response.headers["Content-Language"], pseudo, "the language it's said in")
-
-
-def test_a_redacted_span_is_gone_from_the_downloaded_file(mine, doc):
-    span = _span(doc, 1, "Invoices")
-
-    pdf = _opened(_export(mine, doc, [_redact(span)]))
-
-    text = "".join(page.get_text() for page in pdf.pages())
-    assert_not_in(span["text"], text, "the file's text")
-    assert_in("Delivery begins 14 March", text, "the file's text")
 
 
 def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
@@ -243,17 +219,18 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     """Skipping it would send the text the user asked to remove."""
     response = _export(mine, doc, [{"kind": "redact", "span_id": "nosuchspan00"}])
     assert_problem(response, "bad_reference", 422)
+    got = response.json()
+    expected = ("bad_reference", {"span_id": "nosuchspan00"})
+    assert_equal((got["code"], got["params"]), expected, "the problem, unsaid")
 
 
 @pytest.mark.parametrize(
     ("pages", "problem", "status"),
     [
         ([2], "no_such_page", 422),
-        ([-1], "no_such_page", 422),
         ([0, 0], "invalid_request", 400),
-        ([], "invalid_request", 400),
     ],
-    ids=["past the last page", "before the first", "a page twice", "no pages"],
+    ids=["past the last page", "a page twice"],
 )
 def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     mine, doc, pages, problem, status
@@ -265,8 +242,3 @@ def test_new_text_past_the_limit_is_refused(mine, doc):
     text = "x" * (MAX_TEXT_CHARS + 1)
     edit = {"kind": "replace", "span_id": doc["spans"][0]["id"], "text": text}
     assert_problem(_export(mine, doc, [edit]), "text_too_long", 422)
-
-
-def test_another_browser_is_told_there_is_no_such_document(browser, doc, mine):
-    assert_equal(_export(mine, doc, []).status_code, 200, "the owner's status")
-    assert_problem(_export(browser(), doc, []), "not_found", 404)

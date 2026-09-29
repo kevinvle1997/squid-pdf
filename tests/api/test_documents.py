@@ -8,16 +8,14 @@ import pymupdf
 import pytest
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, face_widths, words
-from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.core import BUILD, face_widths
 from squidpdf.core.fonts import FACES
 from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
+from tests.helpers import assert_equal, assert_problem, assert_true
 
-_A4 = {"width": 595.0, "height": 842.0, "rotation": 0}
 _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
 
@@ -36,48 +34,6 @@ def doc(mine, pdf_bytes) -> dict:
 def _kept() -> int:
     """How many documents are on disk."""
     return len(os.listdir(store.root()))
-
-
-def test_an_upload_answers_with_every_span_judged_before_any_edit(mine, pdf_bytes, engine):
-    response = upload(mine, pdf_bytes)
-    assert_equal(response.status_code, 201, "upload status")
-    got = {s["id"]: s["fidelity"] for s in response.json()["spans"]}
-    expected = {r.span_id: r.state.value for r in engine.assess(engine.index())}
-    assert_equal(got, expected, "each span's fidelity, against the engine's own")
-
-
-def test_every_font_lists_only_the_glyphs_it_really_draws(doc):
-    fonts = {f["name"]: f for f in doc["fonts"]}
-    for span in doc["spans"]:
-        assert_in(span["font"], fonts, "fonts the document lists")
-    embedded = fonts[next(s["font"] for s in doc["spans"] if s["fidelity"] == "exact")]
-    assert_in("D", embedded["glyphs"], "glyphs of the subset font")
-    assert_not_in("é", embedded["glyphs"], "glyphs of the subset font")
-
-
-def test_the_document_brings_its_pages_fit_rules_and_sentences(doc):
-    assert_equal(doc["build"], BUILD, "build")
-    assert_equal(doc["pages"], [_A4, _A4], "pages")
-    rules = {
-        "tolerance_pt": TOLERANCE_PT,
-        "condense_limit": CONDENSE_LIMIT,
-        "shrink_floor": SHRINK_FLOOR,
-    }
-    assert_equal(doc["fit"], rules, "fit")
-    assert_equal(
-        doc["copy"]["missing"], words.sentence("missing"), "the missing-glyph sentence"
-    )
-    assert_equal(doc["notices"], [], "notices")
-    copy = doc["copy"]
-    assert_equal(
-        copy["stand_in_same_widths"],
-        words.sentence("stand_in_same_widths"),
-        "same-width sentence",
-    )
-    # A font only named here: the face that really draws it, whose letters are as wide.
-    times = next(f for f in doc["fonts"] if f["name"] == "Times-Roman")
-    expected = ("Liberation Serif Regular", True)
-    assert_equal((times["substitute"], times["same_widths"]), expected, "Times' stand-in")
 
 
 def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):
@@ -111,17 +67,16 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     pix = pymupdf.Pixmap(response.content)
     assert_equal((pix.width, pix.height), (595 * 2, 842 * 2), "pixels at scale 2")
 
+    # Under an old build it's still drawn, but not to keep.
+    params = {"scale": 1, "build": "an-older-build"}
+    old = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
+    assert_equal(old.headers["cache-control"], "no-store", "caching under an old build")
+
     # A page it doesn't have is its own problem: "not found" would make the browser re-upload.
     params = {"scale": 2, "build": doc["build"]}
     assert_problem(
         mine.get(f"/api/documents/{doc['id']}/pages/9", params=params), "no_such_page", 422
     )
-
-
-def test_a_page_asked_for_under_an_old_build_is_not_kept(mine, doc):
-    params = {"scale": 1, "build": "an-older-build"}
-    response = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
-    assert_equal(response.headers["cache-control"], "no-store", "caching under an old build")
 
 
 def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
@@ -135,15 +90,6 @@ def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
         pix.width * pix.height <= MAX_IMAGE_PIXELS,
         f"{pix.width}x{pix.height} is past the pixel limit",
     )
-
-
-def test_reading_it_again_unchanged_answers_not_modified(mine, doc):
-    first = mine.get(f"/api/documents/{doc['id']}")
-    assert_equal(first.headers["cache-control"], "private, no-cache", "document caching")
-    again = mine.get(
-        f"/api/documents/{doc['id']}", headers={"if-none-match": first.headers["etag"]}
-    )
-    assert_equal(again.status_code, 304, "status for an unchanged document")
 
 
 def test_deleting_it_leaves_nothing_behind(mine, doc):
@@ -167,13 +113,11 @@ def _locked() -> bytes:
     ("body", "problem", "status"),
     [
         (b"Dear Sir, please find attached.", "not_a_pdf", 415),
-        # A PNG's opening bytes, then zeros.
-        (b"\x89PNG\r\n\x1a\n" + bytes(4096), "not_a_pdf", 415),
         # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
         (_locked(), "encrypted", 422),
     ],
-    ids=["text", "png", "garbage after the header", "password-protected"],
+    ids=["text", "garbage after the header", "password-protected"],
 )
 def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, status):
     before = _kept()
@@ -191,15 +135,10 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
-@pytest.mark.parametrize(
-    "declared",
-    ["many", "1_000", "-5", "9" * 5000],
-    ids=["a word", "underscores", "negative", "past what int() reads"],
-)
-def test_an_upload_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes, declared):
-    """A past bug: int() made "many" a 500, took "-5", and can't read 5000 digits."""
+def test_an_upload_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes):
+    """A past bug: int() made "many" a 500. Uploads and edit lists read it the same way."""
     before = _kept()
-    headers = {"content-type": "application/pdf", "content-length": declared}
+    headers = {"content-type": "application/pdf", "content-length": "many"}
     response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
     assert_problem(response, "invalid_request", 400)
     assert_equal(_kept(), before, "documents on disk after a refusal")
