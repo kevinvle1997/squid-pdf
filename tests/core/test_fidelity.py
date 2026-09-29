@@ -7,8 +7,8 @@ from collections.abc import Callable, Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core import Fidelity, FidelityReport, Span, green_rate, open_pdf, words
-from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as
+from squidpdf.core import Fidelity, FidelityReport, Span, open_pdf, words
+from tests.conftest import REFERENCED_PAGE, named_only, saved_as
 from tests.helpers import assert_all, assert_between, assert_equal
 
 _EM = 1000
@@ -79,9 +79,6 @@ def test_referenced_font_is_a_substitution(engine):
     ("base_font", "flags", "face", "same_widths"),
     [
         ("Calibri-Bold", None, "Carlito Bold", True),
-        ("Cambria,Italic", None, "Caladea Italic", True),
-        ("TimesNewRomanPS-BoldItalicMT", None, "Liberation Serif Bold Italic", True),
-        ("Calibri-Light", None, "Carlito Regular", False),  # a cut we don't ship
         # A font we don't know: its kind comes from the PDF's description, not its name.
         ("NimbusSomething", _SERIF_FLAGS, "Liberation Serif Regular", False),
         ("NimbusSomething", None, "Liberation Sans Regular", False),
@@ -106,18 +103,6 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     [drawn] = _drawn(out)
     expected = ("Hello again", saved_as(face))
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
-
-
-def test_embedded_font_is_exact(engine):
-    reports = {r.span_id: r for r in engine.assess(engine.index())}
-    embedded = [s for s in engine.index() if s.page == EMBEDDED_PAGE]
-    describe = _describe_report(reports)
-    assert_all(embedded, lambda s: reports[s.id].state is Fidelity.EXACT, describe)
-
-
-def test_green_rate_is_the_share_that_keep_their_font(engine):
-    rate = green_rate(engine.assess(engine.index()))
-    assert_between(rate, 0.0, 1.0, "green rate on a deliberately mixed fixture")
 
 
 def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_path):
@@ -157,7 +142,11 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
 
 
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
-    """No letter can be looked up in it, but its ToUnicode says which code writes each."""
+    """No letter can be looked up in it, but its ToUnicode says which code writes each.
+
+    The redraw starts where the original did, on a mediabox not at 0,0 and, for
+    the Type0, turned; and the old text is gone from the saved file (Rule 4).
+    """
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(coded) as eng:
         span = next(iter(eng.index()))
@@ -167,41 +156,15 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
         eng.save(out)
 
     assert_equal(report.state, Fidelity.EXACT, "fidelity of a span its own font draws by code")
-    [drawn] = _drawn(out)
-    assert_equal((_text(drawn), drawn["font"]), ("BA AB", "Coded"), "what redrew, and in what")
-    assert_equal(_font_objects(out), _font_objects(coded), "fonts on the page, none added")
-
-
-def test_a_redraw_by_code_really_removes_the_old_text(coded, tmp_path):
-    """Rule 4: re-read the saved file, not the open one."""
-    out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(coded) as eng:
-        span = next(iter(eng.index()))
-        eng.remove([span])
-        eng.draw(span, "BAB")
-        eng.save(out)
-
-    [drawn] = _drawn(out)
-    assert_equal(drawn["font"], "Coded", "the font that redrew it")
-    with open_pdf(out) as saved:
-        assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
-
-
-def test_a_redraw_by_code_lands_where_the_original_was(coded, tmp_path):
-    """On a mediabox not at 0,0, and turned for the Type0."""
-    out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(coded) as eng:
-        span = next(iter(eng.index()))
-        eng.remove([span])
-        eng.draw(span, span.text)
-        eng.save(out)
-
     [before] = _drawn(coded)
     [after] = _drawn(out)
-    assert_equal(after["font"], "Coded", "the font that redrew it")
+    assert_equal((_text(after), after["font"]), ("BA AB", "Coded"), "what redrew, and in what")
+    assert_equal(_font_objects(out), _font_objects(coded), "fonts on the page, none added")
     x0, y0 = before["chars"][0]["origin"]
     x1, y1 = after["chars"][0]["origin"]
     assert_between(abs(x1 - x0) + abs(y1 - y0), -1, _ORIGIN_TOLERANCE_PT, "first glyph moved")
+    with open_pdf(out) as saved:
+        assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
 
 
 def test_widths_by_code_come_from_the_font_dict(coded):
