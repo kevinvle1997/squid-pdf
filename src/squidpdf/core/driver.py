@@ -8,6 +8,7 @@ two protocols over pypdfium2 and pikepdf, and nothing else.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from squidpdf.core.types import (
@@ -18,6 +19,7 @@ from squidpdf.core.types import (
     PageFont,
     Rect,
     TextPiece,
+    TextRun,
 )
 
 
@@ -30,6 +32,10 @@ class FontProgram(Protocol):
 
     def advance(self, ch: str) -> float:
         """How far `ch` moves the pen, in ems."""
+        ...
+
+    def maps(self, ch: str) -> bool:
+        """Whether the font has a glyph of its own for `ch`, even an empty one."""
         ...
 
     def width(self, text: str, size: float) -> float:
@@ -103,16 +109,16 @@ class PdfDriver(Protocol):
         self,
         page: int,
         *,
-        origin: tuple[float, float],
-        text: str,
+        runs: Sequence[TextRun],
         font: str,
         size: float,
         color: tuple[float, float, float],
+        opacity: float,
         scale_x: float,
     ) -> None:
-        """Write `text` from `origin` on its baseline, in the font the page calls `font`.
+        """Write each run from its origin, on top of the page, in the font it calls `font`.
 
-        On top of everything on the page; `scale_x` narrows it from its start.
+        `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
         """
         ...
 
@@ -122,6 +128,10 @@ class PdfDriver(Protocol):
 
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
         """Turn a point on the page as you see it into the PDF's own coordinates."""
+        ...
+
+    def add_opacity(self, page: int, opacity: float) -> str:
+        """The page's name for painting at `opacity`; writing it again changes nothing."""
         ...
 
     def add_content(self, page: int, stream: bytes) -> None:

@@ -31,6 +31,8 @@ _FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
+_OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
+_PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
 
 # The catalog entry for the file's tags: the reading order a screen reader follows.
 _TAGS_KEY = "StructTreeRoot"
@@ -215,6 +217,28 @@ class PdfFile:
             fonts = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_Font, 1)
         mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
 
+    def add_opacity(self, page: int, opacity: float) -> str:
+        """The page's name for a graphics state that fills at `opacity`, written to the page.
+
+        Rounded to a thousandth and named for it, so writing it again changes nothing.
+        """
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        permille = round(opacity * _PERMILLE)
+        name = f"{_OPACITY_PREFIX}{permille}"
+        page_obj = mu.pdf_lookup_page_obj(pdf, page)
+        resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
+        # An empty m_internal means the key isn't there yet, so make it.
+        if not resources.m_internal:
+            resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
+        states = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_ExtGState)
+        if not states.m_internal:
+            states = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_ExtGState, 1)
+        state = mu.pdf_new_dict(pdf, 1)
+        mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, permille / _PERMILLE)
+        mu.pdf_dict_puts(states, name, state)
+        return name
+
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
         """Turn a point on the page as you see it into the PDF's own coordinates.
 
@@ -287,6 +311,7 @@ def text_piece(raw: dict) -> TextPiece:
         font=raw["font"],
         size=raw["size"],
         color=rgb(raw["color"]),
+        opacity=raw["alpha"] / _BYTE_MAX,
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
     )

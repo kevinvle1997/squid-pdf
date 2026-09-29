@@ -29,7 +29,7 @@ def _piece(
 ) -> TextPiece:
     """A piece of text from `x0` to `x1` on a baseline, boxed as a font of its size is."""
     box = Rect(x0, baseline - size * 0.8, x1, baseline + size * 0.2)
-    return TextPiece(text, font, size, (0.0, 0.0, 0.0), box, (x0, baseline))
+    return TextPiece(text, font, size, (0.0, 0.0, 0.0), 1.0, box, (x0, baseline))
 
 
 def _texts(groups: list[list[TextPiece]]) -> list[str]:

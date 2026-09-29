@@ -1,4 +1,4 @@
-"""Hand-built PDFs whose fonts can only be reached by code, shared by the core tests."""
+"""Hand-built PDFs with the odd fonts real files carry, shared by the core tests."""
 
 from __future__ import annotations
 
@@ -24,6 +24,16 @@ _BY_FIRST_USE = {0x20: "A", 0x21: "B", 0x22: "space", 0x23: "C"}
 # test_fidelity.py's _ADVANCES are these, by letter.
 _WIDTHS = "500 550 250 600"
 
+# The gapped fixture: its words, their size, and the gap between them, in ems.
+GAPPED_TEXT = "AB BA AB"
+LONE_WORD = "BA"
+GAPPED_SIZE = 12.0
+GAPPED_LINES = (700, 650, 600)  # each line's baseline, in PDF space
+GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
+_ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
+
+TRANSLUCENT = 0.6  # the translucent fixtures' opacity: 153 of 255, as MuPDF reads it back
+
 _DESCRIPTOR = (
     "<</Type/FontDescriptor/FontName/{name}/Flags 4/FontBBox[0 -200 600 800]"
     "/ItalicAngle 0/Ascent 800/Descent -200/CapHeight 700/StemV 80/FontFile2 {file}>>"
@@ -45,21 +55,24 @@ def _square() -> Glyph:
     return pen.glyph()
 
 
-def _truetype(cmap: dict[int, str] | None, symbol: bool = True) -> bytes:
+def _truetype(
+    cmap: dict[int, str] | None, symbol: bool = True, family: str = "Symbolic"
+) -> bytes:
     """A tiny made-up TrueType font, built fresh for the tests.
 
     A and B are squares; space, C and .notdef have no shape. C is empty on
     purpose, the way a trimmed-down font leaves out letters it didn't need.
-    `cmap` is its own letter lookup: a (3,0) symbol one, or none at all.
+    `cmap` is its own letter lookup: a (3,0) symbol one, a Unicode one when
+    `symbol` is False, or none at all.
     """
     fb = FontBuilder(_EM, isTTF=True)
     fb.setupGlyphOrder(_GLYPHS)
     fb.setupCharacterMap(cmap or {})
     square, empty = _square(), TTGlyphPen(None).glyph()
     fb.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
-    fb.setupHorizontalMetrics({n: (600, 50) for n in _GLYPHS})
+    fb.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
     fb.setupHorizontalHeader(ascent=800, descent=-200)
-    fb.setupNameTable({"familyName": "Symbolic", "styleName": "Regular"})
+    fb.setupNameTable({"familyName": family, "styleName": "Regular"})
     fb.setupOS2()
     fb.setupPost()
     if cmap is None:
@@ -93,10 +106,12 @@ def _embed_by_hand(
     dicts: dict[str, str],
     box: str | None = None,
     rotate: int = 0,
+    resources: str = "",
 ) -> str:
     """One page drawing streams["content"] with /F1 as dicts["font"].
 
     Each dict names another object as {its key}; the font program is {file}.
+    `resources` goes into the page's resources beside the font.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -108,7 +123,7 @@ def _embed_by_hand(
         doc.update_object(xref[name], obj.format(**refs))
     for name, data in streams.items():
         doc.update_stream(xref[name], data)
-    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>>>")
+    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>{resources}>>")
     doc.xref_set_key(page.xref, "Contents", refs["content"])
     if box is not None:
         doc.xref_set_key(page.xref, "MediaBox", box)
@@ -159,6 +174,48 @@ def coded_symbol(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="module")
+def coded_translucent(tmp_path_factory) -> str:
+    """The symbol fixture's ABBA, painted at TRANSLUCENT opacity by a graphics state (/GS1)."""
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("coded") / "translucent.pdf"),
+        {
+            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
+            "to_unicode": _to_unicode(
+                "<00> <FF>",
+                "1 beginbfrange <20> <21> <0041> endbfrange"
+                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
+            ),
+            "content": b"q /GS1 gs BT /F1 12 Tf 172 700 Td <20212120> Tj ET Q",
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
+            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
+            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
+        },
+        resources=f"/ExtGState<</GS1<</ca {TRANSLUCENT}>>>>",
+    )
+
+
+@pytest.fixture(scope="module")
+def translucent(tmp_path_factory) -> str:
+    """One line in a stored Times Roman, trimmed and painted at TRANSLUCENT opacity.
+
+    Trimmed, so a letter it didn't use sends a redraw to the stand-in.
+    """
+    path = str(tmp_path_factory.mktemp("translucent") / "translucent.pdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # "emb" is only the name the page files the font under; "tiro" is MuPDF's Times Roman.
+    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
+    page.insert_text(
+        (72, 700), "Valid until March", fontname="emb", fontsize=12, fill_opacity=TRANSLUCENT
+    )
+    doc.subset_fonts(verbose=False)
+    doc.save(path)
+    return path
+
+
+@pytest.fixture(scope="module")
 def coded_type0(tmp_path_factory) -> str:
     """ABBA in a Type0 Identity-H TrueType with no cmap table, as the order file is, turned."""
     return _embed_by_hand(
@@ -200,6 +257,50 @@ def corrupt(tmp_path_factory) -> str:
             "/Widths[600 600]/FontDescriptor {descriptor}>>",
         },
     )
+
+
+@pytest.fixture(scope="module")
+def gapped(tmp_path_factory) -> str:
+    """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
+
+    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps:
+    - GAPPED_TEXT, word by word: each gap is a piece of its own.
+    - GAPPED_TEXT in one run (TJ): the gaps are spaces inside one piece.
+    - LONE_WORD: no gap but the page's.
+    """
+    path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    font = _truetype({ord("A"): "A", ord("B"): "B"}, symbol=False, family="Gapped")
+    # "gap" is only the name the page files the font under; MuPDF writes it by glyph id.
+    page.insert_font(fontname="gap", fontbuffer=font)
+    [(_xref, _ext, _kind, _name, resource, _encoding)] = page.get_fonts()
+    words = GAPPED_TEXT.split()
+    step = (len(words[0]) * _ADVANCE / _EM + GAP_EM) * GAPPED_SIZE
+    start = f"BT /{resource} {GAPPED_SIZE} Tf"
+    # PDF space: y counts up from the bottom of the page.
+    one_by_one = [
+        f"{start} {72 + i * step} {GAPPED_LINES[0]} Td <{_ids(word)}> Tj ET"
+        for i, word in enumerate(words)
+    ]
+    gap = -round(GAP_EM * _EM)  # a TJ number moves the pen back, in thousandths of an em
+    one_run = f" {gap} ".join(f"<{_ids(word)}>" for word in words)
+    content = [
+        *one_by_one,
+        f"{start} 72 {GAPPED_LINES[1]} Td [{one_run}] TJ ET",
+        f"{start} 72 {GAPPED_LINES[2]} Td <{_ids(LONE_WORD)}> Tj ET",
+    ]
+    xref = doc.get_new_xref()
+    doc.update_object(xref, "<<>>")
+    doc.update_stream(xref, "\n".join(content).encode())
+    doc.xref_set_key(page.xref, "Contents", f"{xref} 0 R")
+    doc.save(path)
+    return path
+
+
+def _ids(word: str) -> str:
+    """A word as the glyph ids the gapped fixture writes: A is 1, B is 2 (see _GLYPHS)."""
+    return "".join(f"{_GLYPHS.index(letter):04x}" for letter in word)
 
 
 @pytest.fixture(params=["coded_symbol", "coded_type0"])

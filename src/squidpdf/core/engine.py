@@ -19,8 +19,10 @@ from squidpdf.core.embedded import EmbeddedFont, FontUnusable, open_embedded
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import face_bytes, look_alike, strip_subset, trimmed
 from squidpdf.core.message import Message
+from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps, usual_gap
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
+    SOLID,
     CodedFont,
     Face,
     LookAlike,
@@ -29,6 +31,8 @@ from squidpdf.core.types import (
     Rect,
     Span,
     SpanIndex,
+    TextPiece,
+    TextRun,
 )
 
 __all__ = [
@@ -51,10 +55,10 @@ def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]
 
 @dataclass(slots=True)
 class FontCache:
-    """What the engine has looked up about the fonts on each page.
+    """What the engine has looked up about each page: its fonts, and its text as it was.
 
-    Keyed by (page, font name, subset prefix aside); each entry fills in on
-    first lookup and is never recomputed.
+    Keyed by (page, font name, subset prefix aside), or by page alone for its
+    text; each entry fills in on first lookup and is never recomputed.
     """
 
     embedded: dict[tuple[int, str], EmbeddedFont | FontUnusable] = field(default_factory=dict)
@@ -63,6 +67,10 @@ class FontCache:
     aliases: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
     # The page's name for each face we ship, by (page, face file), once drawn.
     face_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
+    # The page's usual gap for a space, in a font with none of its own.
+    usual_gaps: dict[tuple[int, str], float] = field(default_factory=dict)
+    # Each page's text as it was, read once.
+    lines: dict[int, list[list[TextPiece]]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -153,15 +161,20 @@ class Engine:
             return {ch: round(codes[ch].width, _WIDTH_DP) for ch in letters}
 
         # Written by letter: widths come from the font itself.
-        return letter_widths(embedded.program, letters)
+        widths = letter_widths(embedded.program, letters)
+        # No space of its own: a space is the page's usual gap, as in `measure`.
+        if lacks_space(embedded.program):
+            widths[" "] = round(self._usual_gap(span, embedded.program) * _EM, _WIDTH_DP)
+        return widths
 
     def measure(self, span: Span, text: str) -> float:
-        """How wide `text` would render, in the face `draw` would pick and this span's size."""
+        """How wide `text` would render, placed as `draw` places it, at this span's size."""
         coded = self._coded_for(span, text)
         if coded is not None:
             return sum(coded.letters[ch].width for ch in text) * span.size / _EM
         font, text = self._run(span, text)
-        return font.width(text, span.size)
+        _words, width = self._words(span, text, font=font, size=span.size)
+        return width
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters this span's font cannot actually draw.
@@ -194,13 +207,16 @@ class Engine:
         One box per span, not per fragment: the cost grows with the box count,
         and a span's box covers its fragments. Lines and underlines stay. Each
         span's font and look-alike are read first: erasing can delete a font the
-        page no longer uses, and `draw` still needs both.
+        page no longer uses, and `draw` still needs both. So are the page's gaps.
         """
         by_page: dict[int, list[Span]] = {}
         for span in spans:
             by_page.setdefault(span.page, []).append(span)
-            self._embedded(span)
+            embedded = self._embedded(span)
             self._look_alike(span)
+            # Erasing takes the gaps a new space is measured against.
+            if embedded is not None and lacks_space(embedded.program):
+                self._usual_gap(span, embedded.program)
 
         for page, page_spans in by_page.items():
             self._driver.erase_text(page, [span.bbox for span in page_spans])
@@ -212,8 +228,9 @@ class Engine:
 
         `size` in points replaces the span's own; `scale_x` narrows the run from
         its start. A character the font can't draw sends the whole run to the
-        stand-in, so a line never mixes two faces. Returns anything that came
-        out other than asked, for the edge to put into words; empty when nothing did.
+        stand-in, so a line never mixes two faces. A font with no space is drawn
+        word by word. Returns anything that came out other than asked, for the
+        edge to put into words; empty when nothing did.
         """
         font_size = span.size if size is None else size
 
@@ -232,7 +249,14 @@ class Engine:
             except FontUnusable as problem:  # the page wouldn't take the font
                 notices.append(problem.reason)
             else:
-                self._write(span, text, font=alias, size=font_size, scale_x=scale_x)
+                self._write(
+                    span,
+                    text,
+                    font=embedded.program,
+                    alias=alias,
+                    size=font_size,
+                    scale_x=scale_x,
+                )
                 return notices
 
         # Otherwise the stand-in draws the whole run, less what even it can't draw.
@@ -241,7 +265,10 @@ class Engine:
             notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
         alias = self._face_alias(span.page, drawn_in.face)
         self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
-        self._write(span, drawn_in.text, font=alias, size=font_size, scale_x=scale_x)
+        face = self._driver.face_font(drawn_in.face)
+        self._write(
+            span, drawn_in.text, font=face, alias=alias, size=font_size, scale_x=scale_x
+        )
         return notices
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
@@ -393,15 +420,53 @@ class Engine:
 
     # Drawing.
 
-    def _write(self, span: Span, text: str, *, font: str, size: float, scale_x: float) -> None:
-        """Write `text` at the span's baseline in the font the page calls `font`."""
+    def _words(
+        self, span: Span, text: str, *, font: FontProgram, size: float
+    ) -> tuple[list[Word], float]:
+        """`text` as `draw` places it in `font`, and where the pen ends: its width."""
+        one_run = not lacks_space(font) or " " not in text
+        if one_run:
+            return [Word(text, 0.0)], font.width(text, size)
+        # No space to draw: each word goes where the file's gaps put it.
+        gaps, usual = span_gaps(span, font), self._usual_gap(span, font)
+        return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
+
+    def _usual_gap(self, span: Span, font: FontProgram) -> float:
+        """The page's usual gap for a space in the span's font, read once, before any edit."""
+        font_name = strip_subset(span.font)
+        key = (span.page, font_name)
+        if key not in self._cache.usual_gaps:
+            lines = self._page_lines(span.page)
+            self._cache.usual_gaps[key] = usual_gap(lines, font_name=font_name, font=font)
+        return self._cache.usual_gaps[key]
+
+    def _page_lines(self, page: int) -> list[list[TextPiece]]:
+        """The page's text as it was when first asked for, line by line."""
+        if page not in self._cache.lines:
+            self._cache.lines[page] = self._driver.text_lines(page)
+        return self._cache.lines[page]
+
+    def _write(
+        self,
+        span: Span,
+        text: str,
+        *,
+        font: FontProgram,
+        alias: str,
+        size: float,
+        scale_x: float,
+    ) -> None:
+        """Write `text` at the span's baseline in `font`, which the page calls `alias`."""
+        x, y = span.origin
+        words, _width = self._words(span, text, font=font, size=size)
+        runs = [TextRun(word.text, (x + word.offset * scale_x, y)) for word in words]
         self._driver.write_text(
             span.page,
-            origin=span.origin,
-            text=text,
-            font=font,
+            runs=runs,
+            font=alias,
             size=size,
             color=span.color,
+            opacity=span.opacity,
             scale_x=scale_x,
         )
 
@@ -421,10 +486,14 @@ class Engine:
         r, g, b = span.color
         hex_digits = coded.code_bytes * 2
         hex_codes = "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
+        # See-through, as the original was.
+        paint = ""
+        if span.opacity < SOLID:
+            paint = f" /{self._driver.add_opacity(span.page, span.opacity)} gs"
         # Save the page's settings, set color, font and size, place the text,
         # write the codes, then put the settings back.
         stream = (
-            f"q BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
+            f"q{paint} BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
             f" /{coded.resource} {size:.{_PDF_DP}f} Tf"
             f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
             f" <{hex_codes}> Tj ET Q"

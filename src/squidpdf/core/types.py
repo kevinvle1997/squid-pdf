@@ -69,8 +69,17 @@ class TextPiece:
     font: str
     size: float
     color: tuple[float, float, float]  # r, g, b, each 0-1
+    opacity: float  # 0 is see-through, 1 solid
     box: Rect
     origin: tuple[float, float]  # where the text starts, on its baseline
+
+
+@dataclass(frozen=True, slots=True)
+class TextRun:
+    """Text written in one go from a point on its baseline."""
+
+    text: str
+    origin: tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +124,7 @@ class Span:
 
     `id` is stable for the life of a document because the index is built once
     from the pristine file and never rebuilt from an edited one. See SpanIndex.
+    `color` and `opacity` are its first fragment's.
     """
 
     id: str
@@ -123,6 +133,7 @@ class Span:
     font: str
     size: float
     color: tuple[float, float, float]
+    opacity: float  # 0 is see-through, 1 solid
     bbox: Rect
     origin: tuple[float, float]
     fragments: tuple[Fragment, ...]
@@ -156,6 +167,8 @@ class CodedFont:
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
 
+
+SOLID = 1.0  # an opacity that hides what's under it
 
 type Style = Literal["regular", "bold", "italic", "bold-italic"]
 type Category = Literal["sans", "serif", "mono", "handwriting"]
@@ -202,11 +215,22 @@ def new_text(
 ) -> Span:
     """A span for text that isn't in the document yet, so it's judged and drawn like any other.
 
-    Its box is only nominal: nothing reads it for new text.
+    Its box is only nominal: nothing reads it for new text. It's painted solid.
     """
     x, y = origin
     box = Rect(x, y - size, x, y)
-    return Span("", page, text, font, size, color, box, origin, ())
+    return Span(
+        id="",
+        page=page,
+        text=text,
+        font=font,
+        size=size,
+        color=color,
+        opacity=SOLID,
+        bbox=box,
+        origin=origin,
+        fragments=(),
+    )
 
 
 class SpanIndex:
