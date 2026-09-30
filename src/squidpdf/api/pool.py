@@ -5,6 +5,9 @@ concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF,
 eat memory or crash it. A hung worker is killed at its timeout, memory past
 the cap fails in the worker, not the server, and a crash takes only its
 worker; each comes back as the Problem that says which.
+
+pebble gives up on the whole pool when a worker dies between tasks (the kernel
+killed it, say), so the pool is replaced when that happens.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import asyncio
 import multiprocessing
 import sys
 from collections.abc import Callable
+from concurrent.futures.process import BrokenProcessPool
 from functools import partial
 from types import ModuleType
 from typing import cast
@@ -45,6 +49,8 @@ class Pool:
     def __init__(self) -> None:
         """Set the pool up; pebble starts the workers on the first task."""
         self._pool = process_pool()
+        # One replacement at a time: two tasks that find the pool broken build one new pool.
+        self._replacing = asyncio.Lock()
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task()` in a worker, killed after `timeout` seconds.
@@ -53,11 +59,28 @@ class Pool:
         the worker running it. The PDF library's own failures come back as the
         Problems they mean (`core.result_of`), and pebble's by `_FAILURES`.
         """
-        future = self._pool.submit(partial(result_of, task), timeout)
+        pool = await self._running()
+        future = pool.submit(partial(result_of, task), timeout)
         try:
             return await asyncio.wrap_future(future)
         except _FAILED as failure:  # pebble's, listed in _FAILURES
             raise problem_of(failure) from failure
+
+    async def ready(self) -> bool:
+        """Whether workers can take a task, replacing them first if the pool broke."""
+        try:
+            return (await self._running()).active  # starts a new pool's workers
+        except BrokenProcessPool:  # raised by pebble when it can't start a worker process
+            return False
+
+    async def _running(self) -> ProcessPool:
+        """The pool, or a new one if a worker died between tasks and broke it."""
+        async with self._replacing:
+            if not self._pool.active:  # pebble stops taking tasks for good after that
+                broken, self._pool = self._pool, process_pool()
+                broken.stop()
+                await asyncio.to_thread(broken.join)  # waits for pebble's own threads
+            return self._pool
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
