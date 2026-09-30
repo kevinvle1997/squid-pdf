@@ -15,6 +15,12 @@ BASELINE_EPS = 0.6
 SIZE_EPS = 0.1
 GAP_RATIO = 0.35
 
+# Two copies of a font under one name are one font when every letter both draw
+# is this close in width, per 1000 em: a width list rounds to whole units.
+SAME_WIDTH = 1.0
+# ...and only when they share at least this many letters: a few can agree by chance.
+SAME_FONT_SHARED = 3
+
 # Fit. The server's check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
@@ -24,7 +30,8 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
 # 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.
 # 4: a font with no space of its own gives a space the gap the file drew, so widths changed.
-LIBRARY_VERSION = "4"
+# 5: a letter another copy of the same font in the file draws counts, so letter lists changed.
+LIBRARY_VERSION = "5"
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
