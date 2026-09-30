@@ -314,8 +314,11 @@ def from_cache(ready: Path, file: GoogleFile) -> bytes | None:
         return None
     if blob_hash(font_file) == sound:
         return font_file
-    _logger.warning("Google's copy of %s in the cache is damaged: deleted", file.source)
-    ready.unlink(missing_ok=True)
+    _logger.warning("Google's copy of %s in the cache is damaged: fetched again", file.source)
+    try:
+        ready.unlink(missing_ok=True)
+    except OSError:  # a read-only disk: the bad copy stays, and is passed over each time
+        _logger.warning("Damaged copy of %s can't be deleted", file.source, exc_info=True)
     return None
 
 

@@ -173,6 +173,22 @@ def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, cap
     assert_true(cached.read_bytes() == poppins, "the cache holds Google's copy after")
 
 
+def test_a_damaged_copy_on_a_read_only_disk_is_left_and_fetched_again(tmp_path, monkeypatch):
+    """A disk remounted read-only after errors: the bad copy can't go, and nothing raises."""
+    poppins = POPPINS.read_bytes()
+    file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    cached = tmp_path / GOOGLE_FONTS_COMMIT / file.source
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"")
+
+    def read_only(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno.EROFS, os.strerror(errno.EROFS))
+
+    monkeypatch.setattr(Path, "unlink", read_only)
+    got = _fetched(file, tmp_path, _returning(poppins))
+    assert_true(got == poppins, "Google's copy was handed back")
+
+
 def _square(width: int) -> Glyph:
     """A plain filled box `width` wide: the test only measures how wide A is."""
     pen = TTGlyphPen(None)
