@@ -1,8 +1,10 @@
 """The worker processes every piece of PDF work runs in, never the event loop.
 
 pebble rather than the stdlib pool: it kills a hung worker, where
-concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF
-or eat memory; either way its worker dies, and the request says which.
+concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF,
+eat memory or crash it. A hung worker is killed at its timeout, memory past
+the cap fails in the worker, not the server, and a crash takes only its
+worker; each comes back as the Problem that says which.
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ def current(request: Request) -> Pool:
 
 
 def limit_memory() -> None:
-    """Cap a worker's memory, so a hostile PDF kills its worker, not the server.
+    """Cap a worker's memory, so a hostile PDF runs out in its worker, not the server.
 
     Linux only. macOS doesn't enforce RLIMIT_AS, so development runs uncapped.
     """

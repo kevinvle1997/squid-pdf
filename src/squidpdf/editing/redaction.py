@@ -29,8 +29,8 @@ class RedactionController:
     ) -> RedactionController:
         """Every span whose last edit is a Redact, worked out before anything is drawn.
 
-        A Replace after a Redact undoes it. A redaction pointing at nothing
-        raises BadReference: skipping it would leak.
+        Redaction wins: a Replace after a Redact raises RedactionConflict. A
+        redaction pointing at nothing raises BadReference: skipping it would leak.
         """
         span_edits = resolve(engine, edits, index).span_edits
         return cls([span for edit, span in span_edits if isinstance(edit, Redact)])
@@ -38,7 +38,8 @@ class RedactionController:
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's text is gone from the document in memory, by span id.
 
-        Render's early check, before anything is saved.
+        For render's early check, before anything is saved: render's
+        `redactions` reply, which phase 5 builds. Nothing calls it yet.
         """
         left = {span.id for span in engine.still_there(self._as_saved())}
         return {span.id: span.id not in left for span in self._redacted}

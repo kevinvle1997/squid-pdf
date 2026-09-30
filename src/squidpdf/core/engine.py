@@ -190,11 +190,13 @@ class Engine:
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em.
 
-        The same font `measure` uses, so widths agree: every copy of it in the
-        file, pooled. A trimmed (subset) font's emptied letters don't count; if
-        Coverage can't read a copy, the library's own list stands in. A font not
-        in the file is drawn in its look-alike, whose list is kept to
-        GLYPH_LIST_RANGES.
+        The same font `measure` uses, every copy of it in the file pooled, so
+        the browser's sum of them agrees with it, with one exception: in a font
+        with no space, a space here is the page's usual gap, where `measure`
+        keeps the line's own, so a justified line can differ. A trimmed (subset)
+        font's emptied letters don't count; if Coverage can't read a copy, the
+        library's own list stands in. A font not in the file is drawn in its
+        look-alike, whose list is kept to GLYPH_LIST_RANGES.
         """
         pool = self._fonts.own(span)
 
