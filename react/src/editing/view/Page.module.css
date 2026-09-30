@@ -1,15 +1,17 @@
-/* A page and its margin: the margin sits left of the text, as corrections do on a proof. */
+/* A page and its margin: the margin sits left of the text, as corrections do on a proof.
+   --sheet-width is the page's printed width, set on each page: pages in one file needn't match. */
 .page {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
   gap: var(--s4);
   width: 100%;
-  max-width: calc(104px + var(--s4) + 794px);
+  max-width: calc(104px + var(--s4) + var(--sheet-width));
   margin: 0 auto var(--s7);
 }
 .sheet {
   position: relative;
   width: 100%;
+  max-width: var(--sheet-width);
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
   overflow: hidden;

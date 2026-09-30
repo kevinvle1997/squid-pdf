@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -46,10 +46,10 @@ beforeEach(() => {
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
 });
 
-async function draw(index = 0) {
+async function draw(index = 0, info = A4) {
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={index} info={A4} />
+      <Page index={index} info={info} />
     </EditorContext.Provider>,
   );
 }
@@ -121,5 +121,14 @@ describe("a page", () => {
     land(aReply({ fits: { [span.id]: aFit() } }));
     await expect.poll(() => editor.store.get().drawn.from.has(0)).toBe(true);
     expect(drawn.margins).toBe(before);
+  });
+
+  test("a page wider than A4 shows at its printed size too", async () => {
+    await page.viewport(1400, 900);
+    const letter = { width: 612, height: 792, rotation: 0 };
+    const screen = await draw(0, letter);
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element().children[1];
+    // 612 pt at 96 dpi is 816 px.
+    expect(sheet?.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
 });

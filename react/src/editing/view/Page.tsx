@@ -82,13 +82,10 @@ export const Page = memo(function Page({ index, info }: Props) {
   const label = `Page ${index + 1}`;
 
   return (
-    <section className={styles.page} aria-label={label}>
+    // The sheet's printed width, which the page's own column and max width are built from.
+    <section className={styles.page} aria-label={label} style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
-      <div
-        ref={sheet.ref}
-        className={styles.sheet}
-        style={{ aspectRatio: `${wide} / ${tall}`, maxWidth: `${wide * PX_PER_PT}px` }}
-      >
+      <div ref={sheet.ref} className={styles.sheet} style={{ aspectRatio: `${wide} / ${tall}` }}>
         <div
           className={styles.layer}
           style={{
