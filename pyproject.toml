@@ -38,6 +38,11 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+# 0.9 is the first uv that installs a released Python 3.14. An older one settles for
+# 3.14.0rc2, where pydantic fails on import and takes every API test with it.
+required-version = ">=0.9"
+
 [tool.hatch.build.targets.wheel]
 # Every file in the package ships, not only Python: the fonts we draw with
 # (`squidpdf/fonts/`), their licences and README go in the wheel as they are.
