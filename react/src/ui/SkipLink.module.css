@@ -1,5 +1,5 @@
 .skip {
-  position: absolute; left: var(--s2); top: -100px; z-index: 100;
+  position: absolute; left: var(--s2); top: -100px; z-index: var(--z-skip);
   background: var(--strip); color: var(--ink);
   padding: var(--s2) var(--s3); font-size: var(--fs-sm);
   box-shadow: var(--lift-1);

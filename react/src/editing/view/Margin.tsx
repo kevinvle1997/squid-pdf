@@ -1,13 +1,14 @@
 import { Button } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
-import type { SpanView } from "../project";
-import { focusSpan, useEditor } from "./context";
+import { notePlaces } from "../margin";
+import type { SpanReading } from "../project";
+import { useEditor } from "./context";
 import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
-  changes: readonly SpanView[]; // the spans replaced on this page
+  changes: readonly SpanReading[]; // the spans replaced on this page
   gapPt: number; // a note's height in page points, to keep notes a hit area apart
   shape: "margin" | "list";
   label: string;
@@ -26,10 +27,7 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
       key={span.id}
       className={styles.note}
       aria-label={`Undo: “${now}” goes back to “${span.text}”`}
-      onPress={() => {
-        putBack(editor, span.id);
-        focusSpan(span.id);
-      }}
+      onPress={() => putBack(editor, span.id)}
     >
       <span className={styles.old}>{span.text}</span>
       {shape === "list" && <span className={styles.now}>{now}</span>}
@@ -49,20 +47,12 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
     );
   }
 
-  // Each note level with its span, nudged down so no two overlap.
-  const order = changes
-    .map(({ span }, index) => ({ index, want: (span.bbox.y0 + span.bbox.y1) / 2 }))
-    .sort((a, b) => a.want - b.want);
-  const tops = new Map<number, number>();
-  let last = -Infinity;
-  for (const { index, want } of order) {
-    last = Math.max(want, last + gapPt);
-    tops.set(index, last);
-  }
+  const places = notePlaces(changes, gapPt);
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
     <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">
       {notes.map((note, index) => (
-        <div key={note.key} className={styles.place} style={{ top: `${((tops.get(index) ?? 0) / info.height) * 100}%` }}>
+        <div key={note.key} className={styles.place} style={{ top: `${((places[index] ?? 0) / info.height) * 100}%` }}>
           {note}
         </div>
       ))}

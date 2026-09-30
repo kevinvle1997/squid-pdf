@@ -20,5 +20,6 @@ export type Render = Schemas["Render"];
 export type ImageInfo = Schemas["ImageInfo"];
 export type FitInfo = Schemas["FitInfo"];
 export type NoticeInfo = Schemas["NoticeInfo"];
+export type SkippedInfo = Schemas["SkippedInfo"];
 export type ProblemInfo = Schemas["ProblemInfo"];
 export type Strategy = Schemas["Strategy"];

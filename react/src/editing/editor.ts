@@ -3,11 +3,13 @@
 // state and the change every edit, undo and put-back goes through.
 import { ProblemError } from "../api/client";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
+import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
-import { EMPTY_HISTORY, type History, type HistoryAction, entriesOf, historyReducer, touching } from "./history";
-import { type EditedView, UNEDITED, project } from "./project";
+import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
+import { NO_NOTICES, type Notices, plain, warn } from "./notices";
+import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
-import { type Store, createStore } from "./store";
+import { createStore, type Store } from "./store";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {
@@ -17,10 +19,12 @@ export interface Draft {
   readonly text: string;
 }
 
-/** A line under the bar about what just happened. */
-export interface Notice {
-  readonly tone: "plain" | "warn";
-  readonly text: string;
+/**
+ * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
+ * margin note. Its note stays shut until focus moves on, since it would cover the words.
+ */
+export interface FocusTo {
+  readonly spanId: string;
 }
 
 /** The document's spans and fonts, looked up by what the page needs. */
@@ -35,11 +39,11 @@ export interface EditorState {
   readonly layout: Layout;
   readonly scale: number; // pixels per point, as the page images are drawn
   readonly history: History;
-  readonly view: EditedView; // what the history reads as
+  readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
   readonly draft: Draft | null;
-  readonly returnedTo: string | null; // the span focus went back to after its edit: its note stays shut
-  readonly notice: Notice | null;
+  readonly focusTo: FocusTo | null;
+  readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
   readonly said: string; // what a screen reader hears, for what the page doesn't show
   readonly exporting: boolean;
 }
@@ -66,51 +70,64 @@ export function layoutOf(doc: Document): Layout {
 }
 
 export function createEditor(file: File, opened: Document, scale: number): Editor {
-  const [first] = opened.notices;
   const store = createStore<EditorState>({
     doc: opened,
     layout: layoutOf(opened),
     scale,
     history: EMPTY_HISTORY,
-    view: UNEDITED,
+    reading: UNEDITED,
     drawn: NOTHING_DRAWN,
     draft: null,
-    returnedTo: null,
-    notice: first === undefined ? null : { tone: "warn", text: first.detail },
+    focusTo: null,
+    notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
     said: "",
     exporting: false,
   });
   // The hour ran out and the document opened again: the same spans, under a new id.
   const reopener = new Reopener(file, opened, (doc) =>
-    store.set({ doc, layout: layoutOf(doc), notice: { tone: "plain", text: doc.copy.reopened } }),
+    store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } }),
   );
-  const queue = new RenderQueue({
-    reopener,
-    scale,
-    drawn: (drawn) => store.set({ drawn }),
-    failed: (detail) => store.set({ notice: { tone: "warn", text: detail } }),
-  });
+  const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => store.set({ drawn }) });
   return { store, file, reopener, queue };
 }
 
-/** Every change to the history comes through here, and redraws what it changed. */
-export function change(editor: Editor, action: HistoryAction): void {
+/**
+ * Every change to the history comes through here, and redraws what it changed. `also` is the
+ * rest of the action that made it, so what's drawn never sees one half without the other.
+ */
+export function change(editor: Editor, action: HistoryAction, also: Partial<EditorState> = {}): void {
   const { store, queue } = editor;
   const state = store.get();
   const history = historyReducer(state.history, action);
-  if (history === state.history) return;
-  const view = project(state.doc.spans, entriesOf(history), state.view);
-  // A message about the last export or reopening is stale once the user edits again.
-  const notice = state.notice?.tone === "plain" ? null : state.notice;
-  store.set({ history, view, notice });
-  queue.draw(view);
+  if (history === state.history) {
+    if (Object.keys(also).length > 0) store.set(also);
+    return;
+  }
+  const reading = project(state.doc.spans, entriesOf(history), state.reading);
+  // What the last export or reopening said is stale once the user edits again.
+  const notices = { ...state.notices, export: null, reopen: null };
+  store.set({ history, reading, notices, ...also });
+  queue.draw(reading);
 }
 
-/** Put a span back as the document had it, from its margin note. */
+/** Put a span back as the document had it, from its margin note; focus goes to the span. */
 export function putBack(editor: Editor, spanId: string): void {
-  const { store } = editor;
-  change(editor, { kind: "remove", ids: touching(store.get().history, spanId) });
-  store.set({ said: `Put back ${store.get().layout.spans.get(spanId)?.text ?? ""}` });
+  const { history, layout } = editor.store.get();
+  change(
+    editor,
+    { kind: "remove", ids: touching(history, spanId) },
+    { said: `Put back ${layout.spans.get(spanId)?.text ?? ""}`, focusTo: { spanId } },
+  );
+}
+
+/** Focus has left the span it was sent to: the next visit is an ordinary one. */
+export function focusMoved(editor: Editor): void {
+  editor.store.set({ focusTo: null });
+}
+
+/** The editor is going: a render in flight is dropped rather than landing on nothing. */
+export function closeEditor(editor: Editor): void {
+  editor.queue.stop();
 }
 
 /** Tell a screen reader, for what the page doesn't show. */
@@ -121,22 +138,24 @@ export function say(editor: Editor, text: string): void {
 /** A page image failed: the document may have gone. */
 export function imageFailed(editor: Editor): void {
   editor.reopener.check().catch((error: unknown) => {
-    if (!(error instanceof ProblemError)) throw error;
-    editor.store.set({ notice: { tone: "warn", text: error.problem.detail } });
+    const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+    const { notices } = editor.store.get();
+    editor.store.set({ notices: { ...notices, reopen: warn(text) } });
   });
 }
 
 /** How many spans read other than the original. */
 export function changedCount(state: EditorState): number {
-  return state.view.spans.size;
+  return state.reading.spans.size;
 }
 
 /** How many changed spans are drawn in a similar font, not the file's own. */
 export function similarCount(state: EditorState): number {
   let count = 0;
-  for (const { span, replaced } of state.view.spans.values()) {
+  for (const { span, replaced } of state.reading.spans.values()) {
     const inSimilar = state.layout.fonts.get(span.font)?.substitute != null;
-    if (replaced && (inSimilar || (state.drawn.fits[span.id]?.missing.length ?? 0) > 0)) count++;
+    const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
+    if (replaced && (inSimilar || missing.length > 0)) count++;
   }
   return count;
 }

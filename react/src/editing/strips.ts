@@ -2,7 +2,7 @@
 // around each changed line is byte-identical to the page and a few KB, not a page.
 import type { Insert, PageInfo, Region, SpanInfo } from "../api/types";
 import { INSERT_ASCENT_EM, INSERT_DESCENT_EM, STRIP_PAD_PT } from "./constants";
-import { type EditedView, type PageEdits, samePage } from "./project";
+import { type PageEdits, type Reading, samePage } from "./project";
 
 export interface Row {
   y0: number;
@@ -39,14 +39,14 @@ export function merged(rows: readonly Row[]): Row[] {
 /** The regions a render of this page asks for: one strip per group of changed rows. */
 export function regionsFor(pageIndex: number, page: PageInfo, edits: PageEdits): Region[] {
   const rows = [
-    ...edits.spans.map((view) => rowOf(view.span, page)),
+    ...edits.spans.map((reading) => rowOf(reading.span, page)),
     ...edits.inserts.map((insert) => insertRowOf(insert.edit, page)),
   ];
   return merged(rows).map((row) => ({ page: pageIndex, ...row }));
 }
 
 /** The pages whose edits now read other than the reading their strips were drawn from. */
-export function stalePages(view: EditedView, drawn: ReadonlyMap<number, EditedView>): Set<number> {
-  const pages = new Set([...view.pages.keys(), ...drawn.keys()]);
-  return new Set([...pages].filter((page) => !samePage(view.pages.get(page), drawn.get(page)?.pages.get(page))));
+export function stalePages(reading: Reading, drawn: ReadonlyMap<number, Reading>): Set<number> {
+  const pages = new Set([...reading.pages.keys(), ...drawn.keys()]);
+  return new Set([...pages].filter((page) => !samePage(reading.pages.get(page), drawn.get(page)?.pages.get(page))));
 }

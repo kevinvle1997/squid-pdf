@@ -5,8 +5,8 @@
   background: var(--strip);
   box-shadow: var(--lift-2);
   font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-lo);
-  display: flex; flex-direction: column; gap: var(--s1);
 }
+.words { display: flex; flex-direction: column; gap: var(--s1); }
 .note[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
 .note[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
 .heading { font-weight: 600; color: var(--ink); }

@@ -3,7 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { type Page, expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
 const LINE = "This agreement is made on 14 March 2026 between";
@@ -59,7 +59,9 @@ test("an edit is drawn by the server, and undo puts the original back", async ({
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
   await expect(page.getByText("1 change")).toBeVisible();
   // Focus is back on the span, but its note would cover what was just typed.
-  await expect(page.getByRole("button", { name: "This agreement is made on 2 April 2026 between", exact: true })).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "This agreement is made on 2 April 2026 between", exact: true }),
+  ).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Undo: “This agreement is made on 2 April 2026/ })).toBeVisible();
 
@@ -133,10 +135,12 @@ test("Cmd+S while still typing exports the edit being typed", async ({ page }) =
   await downloading;
 });
 
-test("typing previews in the stand-in face, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
+test("typing previews in the stand-in face, says a trouble once, and Tab goes on to the next span", async ({
+  page,
+}) => {
   await open(page);
   // Held, so the browser's preview stays up to be looked at.
-  let release = () => undefined as void;
+  let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/render", async (route) => {
     await held;

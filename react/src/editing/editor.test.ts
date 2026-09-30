@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { ProblemError, exportPdf, render } from "../api/client";
-import type { Document, FontInfo, ProblemInfo, Render, SpanInfo } from "../api/types";
-import { type Editor, change, changedCount, createEditor, putBack, similarCount } from "./editor";
+import { exportPdf, ProblemError, render } from "../api/client";
+import type { Render } from "../api/types";
+import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { change, changedCount, createEditor, type Editor, putBack, similarCount } from "./editor";
 import { exportNow } from "./export";
-import { edit, finish, type } from "./typing";
+import { plain, warn } from "./notices";
+import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -13,41 +15,25 @@ vi.mock(import("../api/client"), async (original) => ({
   stillThere: vi.fn(),
 }));
 
-const spanOf = (id: string, font: string): SpanInfo => ({
-  id,
-  page: 0,
-  text: `was ${id}`,
-  font,
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
-  origin: [72, 110],
-  fidelity: "exact",
-  why: null,
+const DOC = aDoc({
+  spans: [aSpan({ id: "own", font: "Kept" }), aSpan({ id: "similar", font: "Named" })],
+  fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
 });
-const fontOf = (name: string, substitute: string | null): FontInfo =>
-  ({ name, substitute, why: null, same_widths: true, glyphs: {} }) as unknown as FontInfo;
-const DOC = {
-  id: "doc",
-  pages: [{ width: 595, height: 842, rotation: 0 }],
-  spans: [spanOf("own", "Kept"), spanOf("similar", "Named")],
-  fonts: [fontOf("Kept", null), fontOf("Named", "Liberation Serif Regular")],
-  notices: [],
-  copy: { reopened: "Opened again.", export_left_out: "Some edits were left out." },
-} as unknown as Document;
 const FILE = new File(["%PDF-"], "contract.pdf");
 
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(render).mockReset().mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(render)
+    .mockReset()
+    .mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(exportPdf).mockReset();
   editor = createEditor(FILE, DOC, 2);
 });
 
 const typed = (spanId: string, text: string) => {
   edit(editor, spanId, null);
-  type(editor, text);
+  typeInto(editor, text);
   finish(editor, true);
 };
 
@@ -55,42 +41,54 @@ describe("an edit", () => {
   test("typing holds a draft apart from the history, until it's finished", () => {
     edit(editor, "own", null);
     expect(editor.store.get().draft).toMatchObject({ spanId: "own", page: 0, text: "was own" });
-    type(editor, "now");
+    typeInto(editor, "now");
     expect(editor.store.get().history.done).toEqual([]);
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
-    expect(editor.store.get().view.spans.get("own")?.text).toBe("now");
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
     expect(editor.store.get().said).toBe("Changed to now");
+  });
+
+  test("a trouble is said as it appears or changes, not as its numbers tick by with each letter", () => {
+    const glyphs = { a: 500, b: 500 }; // 5 pt each at 10 pt
+    const doc = aDoc({ spans: [aSpan({ id: "ab", text: "ab" })], fonts: [aFont("Times-Roman", { glyphs })] });
+    editor = createEditor(FILE, doc, 2);
+    edit(editor, "ab", null);
+    typeInto(editor, "abab");
+    expect(editor.store.get().said).toBe("10.0 pt too long");
+    typeInto(editor, "ababa");
+    expect(editor.store.get().said).toBe("10.0 pt too long");
+    typeInto(editor, "ababac");
+    expect(editor.store.get().said).toContain("no c in this font");
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {
     edit(editor, "own", null);
-    type(editor, "now");
+    typeInto(editor, "now");
     finish(editor, false);
     typed("own", "was own");
     typed("own", "   ");
     expect(editor.store.get().history.done).toEqual([]);
   });
 
-  test("a change goes to the server to draw, and clears a plain message, not a warning", () => {
-    editor.store.set({ notice: { tone: "plain", text: "Downloaded contract.pdf." } });
+  test("a change goes to the server to draw; what export and reopening said goes, the document's stays", () => {
+    const found = { code: "signed", params: {}, type: "t", detail: "This file is signed." };
+    editor = createEditor(FILE, { ...DOC, notices: [found] }, 2);
+    const { notices } = editor.store.get();
+    editor.store.set({ notices: { ...notices, export: plain("Downloaded contract.pdf."), reopen: plain("Opened.") } });
     typed("own", "now");
-    expect(editor.store.get().notice).toBeNull();
+    expect(editor.store.get().notices).toEqual({ document: [warn(found.detail)], export: null, reopen: null });
     expect(render).toHaveBeenCalledTimes(1);
-
-    editor.store.set({ notice: { tone: "warn", text: "Couldn't reach the server." } });
-    typed("own", "later");
-    expect(editor.store.get().notice?.tone).toBe("warn");
   });
 
   test("undo, redo and putting a span back from its margin note", () => {
     typed("own", "one");
     typed("own", "two");
     change(editor, { kind: "undo" });
-    expect(editor.store.get().view.spans.get("own")?.text).toBe("one");
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
     change(editor, { kind: "redo" });
     putBack(editor, "own");
-    expect(editor.store.get().view.spans.has("own")).toBe(false);
+    expect(editor.store.get().reading.spans.has("own")).toBe(false);
     expect(editor.store.get().said).toBe("Put back was own");
   });
 
@@ -112,10 +110,10 @@ describe("export", () => {
   test("an edit still being typed goes in first", async () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
     edit(editor, "own", null);
-    type(editor, "typed");
+    typeInto(editor, "typed");
     await exportNow(editor);
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
-    expect(editor.store.get().notice).toEqual({ tone: "plain", text: "Downloaded contract.pdf." });
+    expect(editor.store.get().notices.export).toEqual(plain("Downloaded contract.pdf."));
     expect(editor.store.get().exporting).toBe(false);
   });
 
@@ -123,14 +121,23 @@ describe("export", () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [0], notices: [] });
     typed("own", "now");
     await exportNow(editor);
-    expect(editor.store.get().notice).toEqual({ tone: "warn", text: "Some edits were left out." });
+    expect(editor.store.get().notices.export).toEqual(warn(COPY.export_left_out));
+  });
+
+  test("a bug in export is said and logged, not thrown, and export can be tried again", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(exportPdf).mockRejectedValue(new TypeError("undefined is not a function"));
+    await exportNow(editor);
+    expect(editor.store.get().notices.export?.tone).toBe("warn");
+    expect(logged).toHaveBeenCalledWith(new TypeError("undefined is not a function"));
+    expect(editor.store.get().exporting).toBe(false);
   });
 
   test("a failure is said in the server's words, and export can be tried again", async () => {
-    const problem = { status: 422, detail: "Couldn't remove it, so nothing was downloaded." } as ProblemInfo;
+    const problem = aProblem(422, "Couldn't remove it, so nothing was downloaded.");
     vi.mocked(exportPdf).mockRejectedValue(new ProblemError(problem));
     await exportNow(editor);
-    expect(editor.store.get().notice).toEqual({ tone: "warn", text: problem.detail });
+    expect(editor.store.get().notices.export).toEqual(warn(problem.detail));
     expect(editor.store.get().exporting).toBe(false);
   });
 });

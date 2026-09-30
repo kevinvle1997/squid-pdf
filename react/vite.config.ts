@@ -6,12 +6,23 @@ import { defineConfig } from "vite";
 // Everything under /api is the Python app's; the rest of the host is this one's.
 // Same origin in development too: the owner cookie is SameSite=Strict, and the API has no CORS.
 // The view's tests have no server: what they ask of it is mocked, and page images just fail.
-const api: Record<string, string> = process.env.VITEST ? {} : { "/api": process.env.SQUIDPDF_API ?? "http://127.0.0.1:8000" };
+const api: Record<string, string> = process.env.VITEST
+  ? {}
+  : { "/api": process.env.SQUIDPDF_API ?? "http://127.0.0.1:8000" };
 
 export default defineConfig({
   plugins: [react()],
   // Bundled up front, so a test never reloads halfway with a second copy of React.
-  optimizeDeps: { include: ["react", "react-dom", "react-dom/client", "react-aria-components", "vitest-browser-react"] },
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react-aria-components",
+      "use-sync-external-store/with-selector",
+      "vitest-browser-react",
+    ],
+  },
   server: {
     proxy: api,
     // The preview draws in the very font files the server draws with, from src/squidpdf/fonts.

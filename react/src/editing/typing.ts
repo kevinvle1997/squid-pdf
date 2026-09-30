@@ -1,36 +1,56 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import { type Editor, change } from "./editor";
+import { change, type Editor, type EditorState } from "./editor";
+import { previewFaceOf } from "./faces";
+import { fitOf, troubleKindOf, troublesOf } from "./fit";
 
 /** Start typing into a span, from what it reads now. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {
   const { store } = editor;
-  const { layout, view } = store.get();
+  const { layout, reading } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
-  store.set({ draft: { spanId, page: span.page, atPt, text: view.spans.get(spanId)?.text ?? span.text } });
+  const text = reading.spans.get(spanId)?.text ?? span.text;
+  store.set({ draft: { spanId, page: span.page, atPt, text }, focusTo: null });
 }
 
-export function type(editor: Editor, text: string): void {
-  const { store } = editor;
-  const { draft } = store.get();
-  if (draft !== null) store.set({ draft: { ...draft, text } });
+/** What the draft's span would get wrong reading `text`, in the server's words; nothing when it fits. */
+export function troublesIn(state: EditorState, text: string): { said: string[]; kind: string } {
+  const span = state.draft === null ? undefined : state.layout.spans.get(state.draft.spanId);
+  const font = span === undefined ? undefined : state.layout.fonts.get(span.font);
+  if (span === undefined || font === undefined) return { said: [], kind: "" };
+  const { fit: rules, copy } = state.doc;
+  const fit = fitOf(span, font, text, rules);
+  const standIn = font.substitute ?? previewFaceOf(font);
+  return { said: troublesOf(fit, rules, copy, standIn), kind: troubleKindOf(fit, rules) };
 }
 
-/** End the typing: `keep` puts what was typed in the history. */
-export function finish(editor: Editor, keep: boolean): void {
+export function typeInto(editor: Editor, text: string): void {
   const { store } = editor;
-  const { draft, layout, view } = store.get();
+  const state = store.get();
+  if (state.draft === null) return;
+  const was = troublesIn(state, state.draft.text);
+  const now = troublesIn(state, text);
+  // A trouble is said as it appears or changes, not as its numbers tick by with each letter.
+  const said = now.kind !== was.kind && now.said.length > 0 ? now.said.join("; ") : state.said;
+  store.set({ draft: { ...state.draft, text }, said });
+}
+
+/**
+ * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
+ * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
+ */
+export function finish(editor: Editor, keep: boolean, { returnFocus = false } = {}): void {
+  const { store } = editor;
+  const { draft, layout, reading } = store.get();
   if (draft === null) return;
-  store.set({ draft: null });
-  const was = view.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
+  const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
+  const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || draft.text === was || draft.text.trim() === "") return;
-  change(editor, { kind: "add", edits: [{ kind: "replace", span_id: draft.spanId, text: draft.text }] });
-  store.set({ said: `Changed to ${draft.text}` });
-}
-
-/** Focus went back to a span after its edit, or moved on from it. */
-export function returnTo(editor: Editor, spanId: string | null): void {
-  editor.store.set({ returnedTo: spanId });
+  if (!keep || draft.text === was || draft.text.trim() === "") {
+    store.set(ended);
+    return;
+  }
+  const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text };
+  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: `Changed to ${draft.text}` });
 }

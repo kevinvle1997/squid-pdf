@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Copy, FitRules, FontInfo, SpanInfo } from "../api/types";
+import { aFont, aSpan, COPY as copy, RULES } from "../fixtures";
 import { fitOf, missingIn, optionsFor, troublesOf, widthPt } from "./fit";
-
-// The server's thresholds, as core/constants.py sets them.
-const RULES: FitRules = { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 };
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
 const HALF = 500;
@@ -11,31 +8,8 @@ const glyphs = {
   ...Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz0123456789 "].map((l) => [l, HALF])),
   ".": 300, // 3 pt at 10 pt: less than the tolerance
 };
-const font: FontInfo = {
-  name: "Times-Roman",
-  substitute: null,
-  why: null,
-  why_code: null,
-  why_params: {},
-  same_widths: true,
-  glyphs,
-};
-const span: SpanInfo = {
-  id: "s1",
-  page: 0,
-  text: "abcdefghij",
-  font: "Times-Roman",
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 0, y0: 0, x1: 50, y1: 12 },
-  origin: [0, 10],
-  fidelity: "exact",
-  why: null,
-};
-const copy = {
-  missing: "no {chars} in this font, so the line is drawn in {font}",
-  too_long: "{delta_pt} pt too long",
-} as Copy;
+const font = aFont("Times-Roman", { glyphs });
+const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50, y1: 12 } });
 
 describe("the fit check", () => {
   test("widths come from the server's letter widths at the span's size", () => {

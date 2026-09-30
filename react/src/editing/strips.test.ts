@@ -1,22 +1,12 @@
 import { describe, expect, test } from "vitest";
-import type { Edit, Insert, PageInfo, SpanInfo } from "../api/types";
+import type { Edit, Insert, SpanInfo } from "../api/types";
+import { aSpan, A4 as page } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
-import { UNEDITED, project } from "./project";
+import { project, UNEDITED } from "./project";
 import { insertRowOf, merged, regionsFor, rowOf, stalePages } from "./strips";
 
-const page: PageInfo = { width: 595, height: 842, rotation: 0 };
-const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo => ({
-  id: `s${pageIndex}-${y0}`,
-  page: pageIndex,
-  text: "x",
-  font: "f",
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0, x1: 100, y1 },
-  origin: [72, y1 - 2],
-  fidelity: "exact",
-  why: null,
-});
+const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo =>
+  aSpan({ id: `s${pageIndex}-${y0}`, page: pageIndex, bbox: { x0: 72, y0, x1: 100, y1 } });
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>
   project(SPANS, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
@@ -35,13 +25,18 @@ describe("strips to redraw", () => {
   });
 
   test("two edits on one line are one strip", () => {
-    expect(merged([{ y0: 98, y1: 114 }, { y0: 99, y1: 113 }])).toEqual([{ y0: 98, y1: 114 }]);
+    expect(
+      merged([
+        { y0: 98, y1: 114 },
+        { y0: 99, y1: 113 },
+      ]),
+    ).toEqual([{ y0: 98, y1: 114 }]);
   });
 
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
-    const view = readingOf(replace(bottom), replace(top));
-    expect(regionsFor(0, page, view.pages.get(0)!)).toEqual([
+    const reading = readingOf(replace(bottom), replace(top));
+    expect(regionsFor(0, page, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
     ]);
@@ -52,9 +47,9 @@ describe("pages to redraw", () => {
   const [top, , other] = SPANS as [SpanInfo, SpanInfo, SpanInfo];
 
   test("a page is stale when its edits read other than what its strips were drawn from", () => {
-    const view = readingOf(replace(top), replace(other));
-    expect(stalePages(view, new Map())).toEqual(new Set([0, 1]));
-    expect(stalePages(view, new Map([[0, view]]))).toEqual(new Set([1]));
+    const reading = readingOf(replace(top), replace(other));
+    expect(stalePages(reading, new Map())).toEqual(new Set([0, 1]));
+    expect(stalePages(reading, new Map([[0, reading]]))).toEqual(new Set([1]));
   });
 
   test("a page whose strips show edits since undone is stale, until it's drawn bare", () => {

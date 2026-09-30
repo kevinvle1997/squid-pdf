@@ -1,31 +1,45 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { pageUrl } from "../../api/client";
-import type { PageInfo, SpanInfo } from "../../api/types";
+import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
+import { Tooltip } from "../../ui/Tooltip";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import { imageFailed } from "../editor";
-import { familyOf, previewFaceOf } from "../faces";
-import { type SpanView, differing } from "../project";
-import { boxOf, points, useEditor, useEditorState } from "./context";
+import { type EditorState, type FocusTo, imageFailed } from "../editor";
+import { previewFaceOf } from "../faces";
+import { lookOf } from "../marks";
+import { differing, type PageEdits, type SpanReading } from "../project";
+import type { PageFits, Strip } from "../render";
+import { shallowEqual } from "../store";
+import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
+import { boxOf, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
+import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
 
 const NO_SPANS: readonly SpanInfo[] = [];
-const NO_CHANGES: readonly SpanView[] = [];
+const NO_FITS: PageFits = {};
+const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
- * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
- * (pages far off stay empty boxes), and a margin note's height in the page's points.
+ * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw its
+ * marks (pages far off stay empty boxes), whether it ever has been (its image stays, so scrolling
+ * back doesn't fetch and decode it again), and a margin note's height in the page's points.
  */
 function useSheet(pageHeightPt: number) {
   const [near, setNear] = useState(false);
+  const [seen, setSeen] = useState(false);
   const [gapPt, setGapPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
-      const nearby = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
-        rootMargin: LAZY_MARGIN,
-      });
+      const nearby = new IntersectionObserver(
+        ([entry]) => {
+          const isNear = entry?.isIntersecting ?? false;
+          setNear(isNear);
+          if (isNear) setSeen(true);
+        },
+        { rootMargin: LAZY_MARGIN },
+      );
       const size = new ResizeObserver(([entry]) => {
         const height = entry?.contentRect.height ?? 0;
         // A note is a hit area tall, and --hit is larger on a touch screen.
@@ -41,7 +55,38 @@ function useSheet(pageHeightPt: number) {
     },
     [pageHeightPt],
   );
-  return { ref, near, gapPt };
+  return { ref, near, seen, gapPt };
+}
+
+/** Everything a page draws from the editor's state: it redraws when one of these changes. */
+interface PageState {
+  readonly spans: readonly SpanInfo[]; // its text, in the document's order
+  readonly edits: PageEdits | undefined; // what the history reads as, here
+  readonly drawnFrom: PageEdits | undefined; // what its strips were drawn from
+  readonly strips: readonly Strip[] | undefined;
+  readonly fits: PageFits;
+  readonly src: string; // the page image
+  readonly typingIn: string | null; // the span being typed into, when it's here
+  readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
+  // What every mark shows, selected once here rather than by each mark.
+  readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly copy: Copy;
+}
+
+function pageState(state: EditorState, index: number): PageState {
+  return {
+    spans: state.layout.pages.get(index) ?? NO_SPANS,
+    edits: state.reading.pages.get(index),
+    drawnFrom: state.drawn.from.get(index)?.pages.get(index),
+    strips: state.drawn.strips.get(index),
+    fits: state.drawn.fits.get(index) ?? NO_FITS,
+    src: pageUrl(state.doc, index, state.scale),
+    typingIn: state.draft?.page === index ? state.draft.spanId : null,
+    focusTo:
+      state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
+    fonts: state.layout.fonts,
+    copy: state.doc.copy,
+  };
 }
 
 interface Props {
@@ -56,104 +101,143 @@ interface Props {
 export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(info.height);
-  const spans = useEditorState((state) => state.layout.pages.get(index)) ?? NO_SPANS;
-  const edits = useEditorState((state) => state.view.pages.get(index));
-  const drawnFrom = useEditorState((state) => state.drawn.from.get(index)?.pages.get(index));
-  const strips = useEditorState((state) => state.drawn.strips.get(index));
-  const src = useEditorState((state) => pageUrl(state.doc, index, state.scale));
-  const typingIn = useEditorState((state) => (state.draft?.page === index ? state.draft.spanId : null));
-  // What every mark on the page shows, selected once here rather than by each mark.
-  const fonts = useEditorState((state) => state.layout.fonts);
-  const copy = useEditorState((state) => state.doc.copy);
-  const fits = useEditorState((state) => state.drawn.fits);
-  const quiet = useEditorState((state) => {
-    const back = state.returnedTo === null ? undefined : state.layout.spans.get(state.returnedTo);
-    return back?.page === index ? back.id : null;
-  });
-  const views = useMemo(() => new Map(edits?.spans.map((view) => [view.span.id, view])), [edits]);
-  // The file's /Rotate turns the page with CSS; everything inside stays in unrotated points.
-  const turned = info.rotation % 180 !== 0;
-  const [wide, tall] = turned ? [info.height, info.width] : [info.width, info.height];
-  const changes = edits?.spans.filter((view) => view.replaced) ?? NO_CHANGES;
-  // Where a span reads other than its strip shows, the browser draws it until the server has.
-  const previews = differing(edits, drawnFrom).filter(({ span }) => span.id !== typingIn);
+  const page = useEditorState((state) => pageState(state, index), shallowEqual);
+  const changes = page.edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
+  const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
 
   return (
-    <section className={styles.page} aria-label={label}>
+    // The sheet's printed width, which the page's own column and max width are built from.
+    <section className={styles.page} aria-label={label} style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
-      <div
-        ref={sheet.ref}
-        className={styles.sheet}
-        style={{ aspectRatio: `${wide} / ${tall}`, maxWidth: `${wide * PX_PER_PT}px` }}
-      >
-        <div
-          className={styles.layer}
-          style={{
-            width: `${(info.width / wide) * 100}%`,
-            height: `${(info.height / tall) * 100}%`,
-            transform: `translate(-50%, -50%) rotate(${info.rotation}deg)`,
-          }}
-        >
-          {sheet.near && <img className={styles.image} src={src} alt="" onError={() => imageFailed(editor)} />}
-          {strips?.map((strip) => (
-            <img
-              key={strip.y}
-              className={styles.strip}
-              src={`data:image/png;base64,${strip.image}`}
-              alt=""
-              data-strip=""
-              style={{ top: `${(strip.y / info.height) * 100}%` }}
-            />
-          ))}
-          {previews.map(({ span, text }) => (
-            <Preview key={span.id} span={span} text={text} info={info} />
-          ))}
-          {sheet.near &&
-            spans.map((span) =>
-              span.id === typingIn ? (
-                <EditField key={span.id} span={span} info={info} />
-              ) : (
-                <SpanMark
-                  key={span.id}
-                  span={span}
-                  info={info}
-                  now={views.get(span.id)}
-                  font={fonts.get(span.font)}
-                  fit={fits[span.id]}
-                  copy={copy}
-                  quiet={quiet === span.id}
-                />
-              ),
-            )}
-        </div>
-      </div>
+      <Sheet info={info} sheetRef={sheet.ref}>
+        {sheet.seen && (
+          // Decoded off the main thread, so a page coming near doesn't hold up the scroll.
+          <img className={styles.image} src={page.src} alt="" decoding="async" onError={() => imageFailed(editor)} />
+        )}
+        {page.strips?.map((strip) => (
+          <img
+            key={strip.y}
+            className={styles.strip}
+            src={strip.src}
+            alt=""
+            data-strip=""
+            style={{ top: `${(strip.y / info.height) * 100}%` }}
+          />
+        ))}
+        <Previews page={page} info={info} />
+        {sheet.near && <Marks page={page} info={info} />}
+      </Sheet>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="list" label={label} />
     </section>
   );
 });
 
+/** The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated points. */
+function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTMLDivElement>; children: ReactNode }) {
+  const [wide, tall] = shownSize(info);
+  return (
+    <div ref={sheetRef} className={styles.sheet} style={{ aspectRatio: `${wide} / ${tall}` }}>
+      <div
+        className={styles.layer}
+        style={{
+          width: `${(info.width / wide) * 100}%`,
+          height: `${(info.height / tall) * 100}%`,
+          transform: `translate(-50%, -50%) rotate(${info.rotation}deg)`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Where a span reads other than its strip shows, the browser draws it until the server has. */
+function Previews({ page, info }: { page: PageState; info: PageInfo }) {
+  const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
+  return previews.map(({ span, text }) => (
+    <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />
+  ));
+}
+
+/** A mark over every span, or the field where one is being typed into, and the one note they share. */
+function Marks({ page, info }: { page: PageState; info: PageInfo }) {
+  const [notes] = useState(createNotes);
+  const noteId = useId();
+  const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
+  return (
+    <>
+      {page.spans.map((span) =>
+        span.id === page.typingIn ? (
+          <EditField key={span.id} span={span} info={info} />
+        ) : (
+          <SpanMark
+            key={span.id}
+            span={span}
+            info={info}
+            edited={readings.get(span.id)}
+            font={page.fonts.get(span.font)}
+            fit={page.fits[span.id]}
+            copy={page.copy}
+            focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
+            notes={notes}
+            noteId={noteId}
+          />
+        ),
+      )}
+      <PageNote notes={notes} id={noteId} page={page} readings={readings} />
+    </>
+  );
+}
+
+/** The note of the span the page's marks say, over its mark; kept while it closes, for its animation. */
+function PageNote(props: { notes: Notes; id: string; page: PageState; readings: ReadonlyMap<string, SpanReading> }) {
+  const { notes, id, page, readings } = props;
+  const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
+  const span = last === null ? undefined : page.spans.find((each) => each.id === last.spanId);
+  if (last === null || span === undefined) return null;
+  const { note } = lookOf({
+    font: page.fonts.get(span.font),
+    edited: readings.get(span.id),
+    fit: page.fits[span.id],
+    copy: page.copy,
+  });
+  if (note === null) return null;
+  return (
+    <Tooltip
+      key={last.spanId}
+      id={id}
+      triggerRef={{ current: last.anchor }}
+      isOpen={shown !== null}
+      onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
+      heading={note.said}
+      warn={note.warn}
+    >
+      {note.why}
+    </Tooltip>
+  );
+}
+
 /** The browser's drawing of a span's text, while the server's strip under it shows other words. */
-function Preview({ span, text, info }: { span: SpanInfo; text: string; info: PageInfo }) {
-  const font = useEditorState((state) => state.layout.fonts.get(span.font));
+function Preview({
+  span,
+  text,
+  info,
+  font,
+}: {
+  span: SpanInfo;
+  text: string;
+  info: PageInfo;
+  font: FontInfo | undefined;
+}) {
   if (font === undefined) return null;
   const box = boxOf(span.bbox, info);
-  const [red = 0, green = 0, blue = 0] = span.color;
   return (
     <span
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{
-        left: box.left,
-        top: box.top,
-        minWidth: box.width,
-        height: box.height,
-        lineHeight: box.height,
-        fontSize: points(span.size, info),
-        fontFamily: familyOf(previewFaceOf(font)),
-        color: `rgb(${red * 255} ${green * 255} ${blue * 255})`,
-      }}
+      style={{ ...spanTextStyle(span, info, previewFaceOf(font)), minWidth: box.width, lineHeight: box.height }}
     >
       {text}
     </span>

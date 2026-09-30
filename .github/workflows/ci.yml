@@ -53,8 +53,8 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
-  # The browser app: its types are the API's OpenAPI, it typechecks, its unit
-  # tests pass, and the core loop works end to end in Chromium against the real API.
+  # The browser app: it lints, its types are the API's OpenAPI, it typechecks, its
+  # unit tests pass, and the core loop works end to end in Chromium against the real API.
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -76,6 +76,10 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      # First: it needs neither the API nor a browser, so a lint failure costs seconds.
+      - name: Lint and format
+        run: npm run lint
 
       - name: Types match the API
         run: npm run types:check
