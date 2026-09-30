@@ -67,15 +67,21 @@ def result_of[T](task: Callable[[], T]) -> T:
 
     A worker runs its task through this: MuPDF's exceptions hold a pointer, so
     they can't be sent back from another process, and they mean something a
-    person can be told. Past a limit or out of memory is too heavy; anything
-    else MuPDF couldn't do with the file, damaged.
+    person can be told. The ErrorController's MuPDF rows say what; anything
+    else goes up as it is.
     """
-    try:
-        return task()
-    except MUPDF_TOO_HEAVY as exc:  # MuPDF ran out of memory, or past a limit of its own
-        raise TooHeavy(debug=f"{type(exc).__name__}: {exc}") from None
-    except MUPDF_OWN_ERRORS as exc:  # MuPDF couldn't make sense of the file
-        raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
+    # Imported here: the imports above are the driver's to change, and wave 2 lifts these.
+    from squidpdf.core.errors import ErrorController, machine_failure, problem_maker
+    from squidpdf.core.pdf import MUPDF_SYSTEM_ERRORS
+
+    mupdf = ErrorController(
+        (
+            (MUPDF_TOO_HEAVY, problem_maker(TooHeavy)),  # past a limit of MuPDF's own
+            (MUPDF_SYSTEM_ERRORS, machine_failure),  # out of memory, or a file it can't open
+            (MUPDF_OWN_ERRORS, problem_maker(Damaged)),  # anything else it couldn't make out
+        )
+    )
+    return mupdf.result_of(task)
 
 
 @cache
