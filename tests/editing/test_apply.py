@@ -467,3 +467,38 @@ def test_an_edit_to_turned_text_leaves_the_lines_beside_it_alone(tmp_path):
     assert_in(_LINES[0], left, "the line on one side")
     assert_in(_LINES[2], left, "the line on the other")
     assert_not_in("48,500", left, "the redacted line")
+
+
+_INK = 128  # a pixel darker than this, out of 255, is text drawn, not paper
+_ROUND_ONE = "Made on 15 June 2026 between Wescott and Rowe."
+_ROUND_TWO = "Signed by Quinn Jakobsz, 16 June 2026."  # letters round one didn't use
+_ROUND_FACE = "Liberation Serif Regular"  # what draws round one: the page's Times, only named
+
+
+def _inked(path: str, page: int, text: str) -> bool:
+    """Whether `text` on the page puts ink down, not only reads back."""
+    drawn = pymupdf.open(path)[page]
+    [box] = drawn.search_for(text)
+    return min(drawn.get_pixmap(clip=box).samples) < _INK
+
+
+def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
+    # Round two adds text in the face round one drew in, on the same page. It must
+    # not write into round one's copy, cut down to round one's letters, nor cut
+    # that copy again to its own.
+    first, second = str(tmp_path / "first.pdf"), str(tmp_path / "second.pdf")
+    with open_pdf(pdf) as engine:
+        index = engine.index()
+        [made] = [s for s in index if s.text.startswith("Made on")]
+        apply(engine, [Replace(made.id, _ROUND_ONE)], index)
+        engine.save(first)
+    with open_pdf(first) as engine:
+        signed = Insert(REFERENCED_PAGE, (72, 200), _ROUND_TWO, size=11, font=_ROUND_FACE)
+        apply(engine, [signed], engine.index())
+        engine.save(second)
+
+    lines = pymupdf.open(second)[REFERENCED_PAGE].get_text().splitlines()
+    assert_in(_ROUND_ONE, lines, "the first round's line, read back")
+    assert_in(_ROUND_TWO, lines, "the second round's line, read back")
+    assert_true(_inked(second, REFERENCED_PAGE, _ROUND_ONE), "the first round's line is drawn")
+    assert_true(_inked(second, REFERENCED_PAGE, _ROUND_TWO), "the second round's line is drawn")

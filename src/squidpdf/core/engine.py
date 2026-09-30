@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from itertools import groupby
+from itertools import chain, count, groupby
 
 from squidpdf.core import faces
 from squidpdf.core.document_fonts import DocumentFonts
@@ -502,7 +502,7 @@ class Engine:
     def _add_font(self, page: int, copy: FontCopy) -> str | FontUnusable:
         """Add a copy of a font in the file to a page under a new name, or say why it failed."""
         # Each copy its own name, by its object: copies of one font share their name.
-        alias = page_name("F", f"{copy.font.xref} {copy.font.name}")
+        alias = self._new_name(page, "F", seed=f"{copy.font.xref} {copy.font.name}")
         try:
             self._driver.add_font(page, alias, copy.embedded.file)
         except ValueError:
@@ -518,17 +518,32 @@ class Engine:
         """
         key = (page, face.file)
         if key not in self._names.faces:
-            alias = page_name("S", face.file)
+            alias = self._new_name(page, "S", seed=face.file)
             xref = self._driver.add_font(page, alias, face_bytes(face))
             self._names.faces[key] = alias
             self._added.by_xref[xref] = face
         return self._names.faces[key]
 
+    def _new_name(self, page: int, prefix: str, *, seed: str) -> str:
+        """A font name the page doesn't use yet, made from `seed`, e.g. "S7ce2b5727ecc".
+
+        From the seed, so it can't clash with the names a file's writer chose.
+        Numbered past any the page has: a file we exported already has ours, and
+        adding a font under a name the page uses gets the font already there.
+        """
+        name = page_name(prefix, seed)
+        taken = {font.resource for font in self._driver.fonts(page)}
+        return next(
+            candidate
+            for candidate in chain([name], (f"{name}{n}" for n in count(2)))
+            if candidate not in taken
+        )
+
 
 def page_name(kind: str, source: str) -> str:
-    """A new name for the page's resources, `kind` then a digest of `source`.
+    """A name for the page's resources, `kind` then a digest of `source`.
 
-    Made from what it names, so it can't clash with a name already on the page.
+    Made from what it names, so it can't clash with a name a file's writer chose.
     """
     digest = hashlib.blake2s(source.encode(), digest_size=_ALIAS_DIGEST_SIZE)
     return kind + digest.hexdigest()
