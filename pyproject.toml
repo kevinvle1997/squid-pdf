@@ -66,6 +66,10 @@ select = [
 [tool.ruff.lint.pylint]
 max-positional-args = 3
 
+[tool.ruff.lint.flake8-tidy-imports]
+# Absolute only, so the layer rules in tests/test_layers.py read every import by its full name.
+ban-relative-imports = "all"
+
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pymupdf.mupdf".msg = "MuPDF's low-level API lives in core/pdf.py; add a PdfFile method there."
 
