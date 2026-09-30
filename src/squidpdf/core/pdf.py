@@ -12,6 +12,7 @@ import re
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import pymupdf
 
@@ -33,6 +34,10 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
+_STRIP_PAD_PT = 0.1  # how far an erased strip reaches past the points it runs through
+# Where an erased strip runs: this share of each letter's height up from its baseline.
+# Every font's glyph boxes reach just above the baseline; few reach the next line's.
+_STRIP_LIFTS = (0.05, 0.2)
 _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
 _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
 
@@ -43,6 +48,16 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 # What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
 # which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
 MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
+
+
+@dataclass(frozen=True, slots=True)
+class Letter:
+    """One letter as get_text("rawdict") reads it, with its line's direction."""
+
+    text: str
+    box: tuple[float, float, float, float]  # x0, y0, x1, y1, from ascender to descender
+    origin: tuple[float, float]  # where it starts, on its baseline
+    direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
 
 
 class PdfFile:
@@ -62,9 +77,13 @@ class PdfFile:
 
         A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
-        blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        letters = list(each_letter(blocks))
+        letters = self._letters(page)
         return [letters_inside(letters, box) for box in boxes]
+
+    def _letters(self, page: int) -> list[Letter]:
+        """Every letter on the page, in reading order."""
+        blocks = self._doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
+        return list(each_letter(blocks))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -183,7 +202,26 @@ class PdfFile:
             mu.ll_pdf_drop_font(font)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
-        """Delete the text inside these boxes. Images and drawings stay."""
+        """Delete the letters whose middle is inside each box. Images and drawings stay.
+
+        The same letters `text_in` reads, so what's erased is what's checked.
+        MuPDF deletes every letter whose box a redaction touches, and a letter's
+        box runs from its font's ascender to its descender: at usual line spacing
+        it reaches the lines above and below. So each box is erased as a thin
+        strip just above its own letters' baselines, which other lines' boxes
+        don't reach. A box that still has letters afterwards (a font whose boxes
+        sit oddly) is erased whole, so old text is never left under new.
+        """
+        letters = self._letters(page)
+        # No letter's middle inside: erase the whole box, as nothing else would.
+        self._redact(page, [strip_through(letters, box) or box for box in boxes])
+        left = self.text_in(page, boxes)
+        missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
+        if missed:
+            self._redact(page, missed)
+
+    def _redact(self, page: int, boxes: list[Rect]) -> None:
+        """Delete every letter whose box touches one of `boxes`, and nothing else."""
         pg = self._doc[page]
         for box in boxes:
             pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
@@ -301,11 +339,14 @@ def each_line(blocks: list[dict]) -> Iterator[dict]:
         yield from block["lines"]
 
 
-def each_letter(blocks: list[dict]) -> Iterator[dict]:
+def each_letter(blocks: list[dict]) -> Iterator[Letter]:
     """Every letter get_text("rawdict") read, in reading order."""
     for line in each_line(blocks):
+        direction = (line["dir"][0], line["dir"][1])
         for piece in line["spans"]:
-            yield from piece["chars"]
+            for char in piece["chars"]:
+                origin = (char["origin"][0], char["origin"][1])
+                yield Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
 def text_piece(raw: dict) -> TextPiece:
@@ -321,15 +362,57 @@ def text_piece(raw: dict) -> TextPiece:
     )
 
 
-def letters_inside(letters: list[dict], box: Rect) -> str:
-    """The letters, from get_text("rawdict"), whose middle is inside `box`, in order."""
-    return "".join(char["c"] for char in letters if middle_inside(char["bbox"], box))
+def letters_inside(letters: list[Letter], box: Rect) -> str:
+    """The letters whose middle is inside `box`, in order."""
+    return "".join(letter.text for letter in letters if middle_inside(letter.box, box))
+
+
+def middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+    """The middle of a box given as x0, y0, x1, y1."""
+    x0, y0, x1, y1 = bbox
+    return (x0 + x1) / 2, (y0 + y1) / 2
 
 
 def middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
     """Whether the middle of `bbox` lies inside `box`."""
-    x0, y0, x1, y1 = bbox
-    return box.x0 <= (x0 + x1) / 2 <= box.x1 and box.y0 <= (y0 + y1) / 2 <= box.y1
+    x, y = middle_of(bbox)
+    return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
+
+
+def strip_through(letters: list[Letter], box: Rect) -> Rect | None:
+    """A thin box along the letters whose middle is in `box`, just above their baselines.
+
+    None when no letter's middle is there.
+    """
+    points = [
+        point
+        for letter in letters
+        if middle_inside(letter.box, box)
+        for point in lifted(letter)
+    ]
+    if not points:
+        return None
+    xs, ys = [x for x, _y in points], [y for _x, y in points]
+    pad = _STRIP_PAD_PT
+    return Rect(min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+
+
+def lifted(letter: Letter) -> list[tuple[float, float]]:
+    """Points over the letter's middle, each _STRIP_LIFTS of its height up from its baseline.
+
+    Up is across the line's direction, so a line turned on the page works too.
+    """
+    x0, y0, x1, y1 = letter.box
+    along_x, along_y = letter.direction
+    up_x, up_y = along_y, -along_x  # the page's y grows downward
+    width = abs(x1 - x0) * abs(along_x) + abs(y1 - y0) * abs(along_y)
+    height = abs(x1 - x0) * abs(up_x) + abs(y1 - y0) * abs(up_y)
+    x, y = letter.origin
+    middle_x, middle_y = x + along_x * width / 2, y + along_y * width / 2
+    return [
+        (middle_x + up_x * height * lift, middle_y + up_y * height * lift)
+        for lift in _STRIP_LIFTS
+    ]
 
 
 def rgb(packed: int) -> tuple[float, float, float]:

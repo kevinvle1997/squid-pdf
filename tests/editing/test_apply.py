@@ -381,3 +381,89 @@ def test_a_redaction_pointing_at_nothing_is_an_error(engine):
     """Skipping it would leave the text the user asked to remove."""
     with pytest.raises(BadReference):
         apply(engine, [Redact("nosuchid")], engine.index())
+
+
+def _three_lines(path: str, *, spacing: float, font: str) -> str:
+    """Three 12 pt lines, `spacing` times their size apart, in one of MuPDF's own fonts.
+
+    Word and LaTeX set lines about 1.15 to 1.2 times their size apart; at that,
+    each letter's box (from its font's ascender to its descender) reaches the
+    lines above and below.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for number, line in enumerate(_LINES):
+        baseline = 100 + number * _LINE_SIZE * spacing
+        page.insert_text((72, baseline), line, fontname=font, fontsize=_LINE_SIZE)
+    doc.save(path)
+    return path
+
+
+_LINE_SIZE = 12
+_LINES = ("Line above the edited one", "Total due: 48,500 now", "Next line of the contract")
+
+
+@pytest.mark.parametrize("edit", ["replace", "redact"])
+@pytest.mark.parametrize("font", ["tiro", "helv"])
+@pytest.mark.parametrize("spacing", [1.0, 1.15, 1.2])
+def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, spacing):
+    path = _three_lines(str(tmp_path / "lines.pdf"), spacing=spacing, font=font)
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [middle] = [span for span in index if span.text == _LINES[1]]
+        change: Edit = (
+            Replace(middle.id, "Total due: 49,500 now")
+            if edit == "replace"
+            else Redact(middle.id)
+        )
+        apply(engine, [change], index)
+        engine.save(out)
+
+    left = pymupdf.open(out)[0].get_text()
+    assert_in(_LINES[0], left, "the line above")
+    assert_in(_LINES[2], left, "the line below")
+    assert_not_in("48,500", left, "the edited line's old text")
+
+
+def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
+    # "Jones" starts half a point inside the colon's box, as kerning leaves it.
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Total:", fontname="helv", fontsize=_LINE_SIZE)
+    end = 72 + pymupdf.get_text_length("Total:", fontname="helv", fontsize=_LINE_SIZE)
+    page.insert_text((end - 0.5, 100), "Jones", fontname="tiro", fontsize=_LINE_SIZE)
+    path = str(tmp_path / "touching.pdf")
+    doc.save(path)
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [name] = [span for span in index if span.text == "Jones"]
+        apply(engine, [Redact(name.id)], index)
+        engine.save(out)
+
+    left = pymupdf.open(out)[0].get_text()
+    assert_in("Total:", left, "the word before")
+    assert_not_in("Jones", left, "the redacted word")
+
+
+def test_an_edit_to_turned_text_leaves_the_lines_beside_it_alone(tmp_path):
+    # Three lines reading bottom to top, as a margin note or a stamp is set.
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for number, line in enumerate(_LINES):
+        x = 100 + number * _LINE_SIZE * 1.2
+        page.insert_text((x, 500), line, fontname="helv", fontsize=_LINE_SIZE, rotate=90)
+    path = str(tmp_path / "turned.pdf")
+    doc.save(path)
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [middle] = [span for span in index if span.text == _LINES[1]]
+        apply(engine, [Redact(middle.id)], index)
+        engine.save(out)
+
+    left = pymupdf.open(out)[0].get_text()
+    assert_in(_LINES[0], left, "the line on one side")
+    assert_in(_LINES[2], left, "the line on the other")
+    assert_not_in("48,500", left, "the redacted line")
