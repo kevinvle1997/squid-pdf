@@ -8,6 +8,8 @@ _MB = 1024 * 1024
 MAX_FILE_MB = 100  # as the refusal says it
 MAX_FILE_BYTES = MAX_FILE_MB * _MB
 MAX_PAGES = 1_000
+# Free disk below which uploads are refused: room for what the ones under way keep.
+MIN_FREE_BYTES = 2 * 1024 * _MB
 
 # Workers. Past a timeout the task is killed and the user told it took too long.
 ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or under a new build

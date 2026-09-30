@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from collections.abc import AsyncIterable
 from functools import partial
 from http import HTTPStatus
@@ -11,7 +12,7 @@ from pathlib import Path
 from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
-from squidpdf.documents.errors import Gone, NotAPdf, TooLarge
+from squidpdf.documents.errors import Gone, NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.info import document_json
 from squidpdf.documents.types import Analysis
 
@@ -41,12 +42,15 @@ class UploadController:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
         `declared` is the size the request states, None when it streams without
-        one. Refuses a file too large or not a PDF, and keeps nothing then.
+        one. Refuses a file too large or not a PDF, and keeps nothing then. Refuses
+        any file while the disk is nearly full.
         """
         # Read as module attributes, so a test can lower the limit.
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
+        if disk_nearly_full():
+            raise ServerFull()
         doc_id, folder = store.create(owner_digest)
         try:
             await save_original(chunks, to=folder / store.ORIGINAL)
@@ -67,6 +71,14 @@ class UploadController:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), constants.MAX_PAGES)
         return await self._workers.run(constants.ANALYSE_TIMEOUT_S, task)
+
+
+def disk_nearly_full() -> bool:
+    """Whether the disk documents are kept on has less than MIN_FREE_BYTES free."""
+    root = store.root()
+    root.mkdir(parents=True, exist_ok=True)  # otherwise made by the first upload
+    # Read as a module attribute, so a test can raise the floor.
+    return shutil.disk_usage(root).free < constants.MIN_FREE_BYTES
 
 
 async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:

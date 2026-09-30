@@ -175,6 +175,23 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
+def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, monkeypatch):
+    """The server says so and keeps nothing, rather than fill the disk every document is on."""
+    whole_disk = shutil.disk_usage(store.root()).total
+    monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
+    before = _kept()
+    assert_problem(upload(mine, pdf_bytes), "server_full", 503)
+    assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
+def test_the_first_upload_makes_the_folder_documents_are_kept_in(
+    mine, pdf_bytes, monkeypatch, tmp_path
+):
+    """As on a server's first start, before anything was kept."""
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "not made yet"))
+    assert_equal(upload(mine, pdf_bytes).status_code, 201, "status of the first upload")
+
+
 @pytest.mark.parametrize(
     "path", ["/api/documents", "/api/documents/any/render"], ids=["an upload", "an edit list"]
 )

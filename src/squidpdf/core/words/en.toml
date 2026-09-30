@@ -87,6 +87,7 @@ too_many_edits = "That's more than {edits} changes at once. Download what you ha
 text_too_long = "New text can be up to {chars} characters."
 request_too_large = "That's too much to send at once. Download what you have and go on from there."
 server_error = "Something went wrong on our side. Try again."
+server_full = "We can't take new files right now. Try again in a few minutes."
 
 # A notice on an upload that worked, but may not be what the user expected.
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
