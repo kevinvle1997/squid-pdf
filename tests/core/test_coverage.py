@@ -53,7 +53,7 @@ def test_every_face_we_ship_is_the_file_it_names_and_draws():
         assert_equal(in_file, face.name, f"the face in {face.file}")
         assert_true(Coverage(buffer).covers("A"), f"{face.name} draws an A")
     shipped = {path.name for path in resources.files("squidpdf").joinpath("fonts").iterdir()}
-    font_files = {name for name in shipped if name.endswith(".ttf")}
+    font_files = {name for name in shipped if name.endswith((".ttf", ".otf"))}
     assert_equal(font_files, {face.file for face in CATALOG}, "font files, each in the catalog")
 
 
