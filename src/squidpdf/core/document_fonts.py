@@ -9,7 +9,9 @@ lacks can come from another, and last with Google's copy, if it has one.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 
 from squidpdf.core import faces
 from squidpdf.core.driver import FontProgram, PdfDriver
@@ -151,24 +153,38 @@ class DocumentFonts:
         return facts.read_as
 
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
-        """Open the page's copy of the font, then pool the file's other copies with it.
+        """Open the page's copy of the font, then pool the copies that lend it letters with it.
 
         Raises FontUnusable, saying why, when the page's copy can't be used.
         """
         own = self._opened(page_font)
         if isinstance(own, FontUnusable):
             raise FontUnusable(own.reason)
+        return pooled(own, partial(self._lenders, page, own))
+
+    def _lenders(
+        self, page: int, own: FontCopy, lent: Mapping[str, FontCopy]
+    ) -> Iterator[FontCopy]:
+        """Every copy that may lend the own copy letters, in the order they lend: the chain.
+
+        The file's other copies, nearest page first; then copies from outside
+        the file, only while `lent`, the letters the pool has so far, lacks one
+        someone could type. A face we ship is the engine's last resort, not a lender.
+        """
         opened = (self._opened(font) for font in self._other_copies(page, own.font))
         # A copy we can't open lends no letters; the span's own still draws what it can.
-        others = [copy for copy in opened if isinstance(copy, FontCopy)]
-        pool = pooled(own, others)
-        # Google's copy lends last, and only a letter someone could type is worth a fetch.
-        if not lacks_a_keyboard_letter(pool):
-            return pool
-        google = self._google_copy(own)
-        if google is None:
-            return pool
-        return pooled(own, [*others, google])
+        yield from (copy for copy in opened if isinstance(copy, FontCopy))
+        # From outside the file, in order. The user's own copy of a font, once
+        # they can attach one, goes before Google's.
+        from_outside = (self._google_copy,)
+        for outside_copy in from_outside:
+            # Only a letter someone could type is worth fetching a copy for.
+            if not lacks_a_keyboard_letter(lent):
+                return
+            copy = outside_copy(own)
+            # None: no copy of this font to be had there.
+            if copy is not None:
+                yield copy
 
     def _google_copy(self, own: FontCopy) -> FontCopy | None:
         """Google's copy of the own copy's font; None when it has none, or it can't be had."""

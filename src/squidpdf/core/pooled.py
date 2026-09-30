@@ -8,7 +8,7 @@ and opens the copies.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import groupby
 
@@ -36,6 +36,10 @@ __all__ = [
 ]
 
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
+
+# The copies that may lend the own copy letters, in the order they lend, given the
+# letters lent so far: whether a later one is worth opening can depend on them.
+type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,17 +175,17 @@ def copy_source(copy: FontCopy) -> str:
     return f"{copy.font.xref} {copy.font.name}"
 
 
-def lacks_a_keyboard_letter(pool: PooledFont) -> bool:
-    """Whether some letter in KEYBOARD_RANGES is one no copy in the pool draws."""
+def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
+    """Whether some letter in KEYBOARD_RANGES is one no copy lends in `letters`."""
     keyboard = (chr(code) for start, end in KEYBOARD_RANGES for code in range(start, end))
-    return any(ch not in pool.letters for ch in keyboard)
+    return any(ch not in letters for ch in keyboard)
 
 
-def pooled(own: FontCopy, others: Iterable[FontCopy]) -> PooledFont:
-    """The own copy's letters, then each same-font copy's, in the order given."""
+def pooled(own: FontCopy, lenders: Lenders) -> PooledFont:
+    """The own copy's letters, then each same-font copy's, in the order `lenders` gives them."""
     letters = dict.fromkeys(own.widths, own)
     turned_away: list[TurnedAway] = []
-    for other in others:
+    for other in lenders(letters):
         why = why_turned_away(other, own=own, letters=letters)
         # Only the same name: it lends nothing, and keeps why for the report.
         if why is not None:
