@@ -50,8 +50,13 @@ def draw_page(folder: str, page: int, scale: float) -> bytes:
 
 
 def page_scale(page: Page, scale: int) -> float:
-    """`scale`, or less if the page would go over the pixel limit."""
+    """`scale`, or less if the page would go over the pixel limit.
+
+    MuPDF rounds each side up to a whole pixel, so the image can be a pixel
+    more a side: the largest scale is where (width s + 1)(height s + 1) meets
+    the limit, solved for s. Always above 0, however thin the page.
+    """
     width, height = page.width, page.height
-    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
-    largest = math.sqrt(MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
+    area, rim = width * height, width + height
+    largest = (math.sqrt(rim**2 + 4 * area * (MAX_IMAGE_PIXELS - 1)) - rim) / (2 * area)
     return min(scale, largest)
