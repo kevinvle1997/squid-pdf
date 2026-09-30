@@ -18,7 +18,7 @@ from itertools import chain, count, groupby
 from squidpdf.core import faces
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
 from squidpdf.core.document_fonts import DocumentFonts
-from squidpdf.core.driver import FontProgram, PdfDriver
+from squidpdf.core.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.embedded import FontUnusable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
 from squidpdf.core.fonts import face_bytes, strip_subset, trimmed
@@ -386,7 +386,10 @@ class Engine:
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = added.file
                 notices.append(Message("face_not_trimmed", {"font": added.name}))
-            self._driver.replace_font_file(xref, font_file)
+            try:
+                self._driver.replace_font_file(xref, font_file)
+            except DriverError as problem:  # its file can't be swapped: it stays whole
+                notices.append(problem.reason)
         self._driver.save(path)
         return notices
 
@@ -614,10 +617,8 @@ class Engine:
         alias = self._new_name(page, "F", seed=copy_source(copy))
         try:
             xref = self._driver.add_font(page, alias, copy.embedded.file)
-        except ValueError:
-            # The bytes opened as a font, but adding them to a page is another path
-            # that can still fail; the stand-in draws instead.
-            return FontUnusable(Message("font_not_added"))
+        except DriverError as problem:  # the page won't take it: the stand-in draws instead
+            return FontUnusable(problem.reason)
         if copy.google is not None:
             self._added.by_xref[xref] = AddedFont(lent_name(copy), copy.embedded.file)
         return alias

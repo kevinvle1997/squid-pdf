@@ -16,10 +16,12 @@ import pymupdf
 
 from squidpdf.core import faces
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
+from squidpdf.core.driver import DriverError
 from squidpdf.core.engine import Engine, letter_widths
 from squidpdf.core.errors import Damaged, Encrypted, TooHeavy
 from squidpdf.core.fonts import face_bytes
 from squidpdf.core.google import Fetch
+from squidpdf.core.message import Message
 from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
 from squidpdf.core.types import Face, Page, Rect, TextRun
 
@@ -175,11 +177,14 @@ class MuPDFDriver(PdfFile):
         return pix.tobytes("png")
 
     def open_font(self, font_file: bytes) -> MuPDFFont:
-        """Open a font file to measure with. Raises ValueError when MuPDF can't."""
+        """Open a font file to measure with. Raises DriverError when it isn't one."""
+        # No bytes at all: MuPDF would open its own Noto Serif in their place.
+        if not font_file:
+            raise DriverError(Message("font_unreadable"), debug="no bytes")
         try:
             return MuPDFFont(pymupdf.Font(fontbuffer=font_file))
-        except MUPDF_ERRORS as exc:
-            raise ValueError("MuPDF can't open this font file") from exc
+        except MUPDF_ERRORS as exc:  # MuPDF can't read the bytes as a font
+            raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
 
     def face_font(self, face: Face) -> MuPDFFont:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
@@ -188,12 +193,12 @@ class MuPDFDriver(PdfFile):
     def add_font(self, page: int, name: str, font_file: bytes) -> int:
         """Add a font to the page under `name`; returns its object number.
 
-        Raises ValueError when MuPDF won't add it.
+        Raises DriverError when MuPDF won't add it.
         """
         try:
             return self._doc[page].insert_font(fontname=name, fontbuffer=font_file)
-        except MUPDF_ERRORS as exc:
-            raise ValueError(f"MuPDF won't add font {name} to page {page}") from exc
+        except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
+            raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
 
     def write_text(
         self,

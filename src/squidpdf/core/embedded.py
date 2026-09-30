@@ -9,7 +9,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from squidpdf.core.coverage import Coverage
-from squidpdf.core.driver import FontProgram, PdfDriver
+from squidpdf.core.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.message import Message
 from squidpdf.core.types import CodedFont, FontCode, FontKind, PageFont
 
@@ -52,14 +52,11 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
     # Not in the file at all: only named.
     if not page_font.is_embedded:
         raise FontUnusable(Message("font_not_in_file"))
-    font_file = driver.font_bytes(page_font.xref)
-    # Stored, but the library can't read it out.
-    if not font_file:
-        raise FontUnusable(Message("font_unreadable"))
     try:
+        font_file = driver.font_bytes(page_font.xref)
         return open_font_file(driver, page_font, font_file)
-    except ValueError as exc:  # the library can't read the font
-        raise FontUnusable(Message("font_unreadable")) from exc
+    except DriverError as problem:  # the library can't read the font out, open it or load it
+        raise FontUnusable(problem.reason) from problem
 
 
 def open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:

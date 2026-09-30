@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from squidpdf.core.driver import DriverError
+from squidpdf.core.message import Message
 from squidpdf.core.types import (
     FontCode,
     FontDescriptor,
@@ -138,13 +140,16 @@ class PdfFile:
             for xref, file_type, kind, name, resource, encoding, referencer in listed
         ]
 
-    def font_bytes(self, xref: int) -> bytes | None:
-        """The font file stored in the PDF, or None if MuPDF can't read it."""
+    def font_bytes(self, xref: int) -> bytes:
+        """The font file stored in the PDF. Raises DriverError when MuPDF can't read it out."""
         try:
             _name, _ext, _kind, buffer = self._doc.extract_font(xref)
-        except MUPDF_ERRORS:  # MuPDF can't read the font's stream out
-            return None
-        return buffer or None
+        except MUPDF_ERRORS as exc:  # MuPDF can't read the font's stream out
+            raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
+        # Stored, but empty: nothing to draw with.
+        if not buffer:
+            raise DriverError(Message("font_unreadable"), debug=f"font {xref} is empty")
+        return buffer
 
     def font_descriptor(self, xref: int) -> FontDescriptor | None:
         """What the font's description says about how it looks; None when it has none.
@@ -169,8 +174,11 @@ class PdfFile:
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         owner = self._describing_font(xref)
-        if owner is None:  # MuPDF always points at the inner font, so this is someone else's
-            raise ValueError(f"font {xref} has its inner font written out in place")
+        # Its inner font written out in place: MuPDF never adds one so, so it's someone else's.
+        if owner is None:
+            _kind, base_font = self._doc.xref_get_key(xref, "BaseFont")
+            said = Message("face_not_trimmed", {"font": base_font.lstrip("/")})
+            raise DriverError(said, debug=f"font {xref} has its inner font in place")
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self._doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
         value = next(value for kind, value in stored if kind == "xref")
@@ -200,7 +208,7 @@ class PdfFile:
         """Each code the font has a letter for, lowest first.
 
         None if the font has no letter list (its ToUnicode) or MuPDF can't read
-        that list; ValueError if MuPDF can't load the font at all. `code_bytes`
+        that list; DriverError if MuPDF can't load the font at all. `code_bytes`
         is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
         value_type, _value = self._doc.xref_get_key(xref, "ToUnicode")
@@ -226,7 +234,7 @@ class PdfFile:
         try:
             with self._mupdf_font_record(xref) as font:
                 return pymupdf.mupdf.ll_fz_font_name(font.font)
-        except ValueError:  # MuPDF can't load the font
+        except DriverError:  # MuPDF can't load the font
             return None
 
     @contextmanager
@@ -235,7 +243,7 @@ class PdfFile:
 
         MuPDF's C function pdf_load_font builds the record and pdf_drop_font
         frees it; Python never frees it, so it is only lent out inside a `with`.
-        ValueError if MuPDF can't load the font.
+        DriverError if MuPDF can't load the font.
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
@@ -244,7 +252,7 @@ class PdfFile:
                 pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
             )
         except MUPDF_ERRORS as exc:  # MuPDF can't make sense of the font object
-            raise ValueError(f"MuPDF can't load font {xref}") from exc
+            raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
         try:
             yield font
         finally:
