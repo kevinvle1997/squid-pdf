@@ -3,11 +3,9 @@ import type { Edit, Replace } from "../api/types";
 import {
   EMPTY_HISTORY,
   type History,
-  changedSpans,
   editsOf,
   entriesOf,
   historyReducer,
-  latestTexts,
   touching,
 } from "./history";
 
@@ -65,16 +63,5 @@ describe("the edit history", () => {
   test("taking out an edit that isn't there changes nothing", () => {
     const history = add(EMPTY_HISTORY, replace("a", "one"));
     expect(historyReducer(history, { kind: "remove", ids: touching(history, "z") })).toBe(history);
-  });
-
-  test("the last edit to a span is its text, as the server draws it", () => {
-    expect(latestTexts([replace("a", "one"), replace("a", "two")])).toEqual(new Map([["a", "two"]]));
-  });
-
-  test("only spans whose final text changed need redrawing", () => {
-    const before = [replace("a", "one"), replace("b", "two")];
-    const after = [replace("a", "one"), replace("b", "three"), replace("c", "four")];
-    expect(changedSpans(before, after)).toEqual(new Set(["b", "c"]));
-    expect(changedSpans(after, before)).toEqual(new Set(["b", "c"]));
   });
 });

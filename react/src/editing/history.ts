@@ -73,23 +73,3 @@ export function spanOf(edit: Edit): string | undefined {
 export function touching(history: History, spanId: string): Set<number> {
   return new Set(entriesOf(history).flatMap((entry) => (spanOf(entry.edit) === spanId ? [entry.id] : [])));
 }
-
-/** The text each replaced span ends with. The last edit to a span wins, as on the server. */
-export function latestTexts(edits: readonly Edit[]): Map<string, string> {
-  const latest = new Map<string, string>();
-  for (const edit of edits) {
-    if (edit.kind === "replace") latest.set(edit.span_id, edit.text);
-  }
-  return latest;
-}
-
-/** The spans whose final text differs between two edit lists: what a render must redraw. */
-export function changedSpans(before: readonly Edit[], after: readonly Edit[]): Set<string> {
-  const was = latestTexts(before);
-  const now = latestTexts(after);
-  const changed = new Set<string>();
-  for (const id of new Set([...was.keys(), ...now.keys()])) {
-    if (was.get(id) !== now.get(id)) changed.add(id);
-  }
-  return changed;
-}

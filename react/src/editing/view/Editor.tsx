@@ -11,7 +11,8 @@ import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { EditorContext, type Editing, type EditorState, focusSpan } from "./context";
 import styles from "./Editor.module.css";
-import { EMPTY_HISTORY, type HistoryAction, editsOf, historyReducer, latestTexts, touching } from "../history";
+import { EMPTY_HISTORY, type History, type HistoryAction, entriesOf, historyReducer, touching } from "../history";
+import { project } from "../project";
 import { Page } from "./Page";
 import { useStrips } from "./useStrips";
 import { counted } from "../words";
@@ -53,8 +54,8 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   // it changes (export reads both straight after finishing the typing); the state redraws.
   const history = useRef(EMPTY_HISTORY);
   const [log, setLog] = useState(EMPTY_HISTORY);
-  const edits = useMemo(() => editsOf(log), [log]);
-  const latest = useMemo(() => latestTexts(edits), [edits]);
+  const view = useMemo(() => project(doc.spans, entriesOf(log)), [doc, log]);
+  const latest = useMemo(() => new Map([...view.spans].map(([id, span]) => [id, span.text])), [view]);
   const draft = useRef<Editing | null>(null);
   const [editing, setEditingState] = useState<Editing | null>(null);
   const setEditing = (next: Editing | null) => {
@@ -92,15 +93,17 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     setLog(after);
     // A message about the last export or reopening is stale once the user edits again.
     setNotice((now) => (now?.tone === "plain" ? null : now));
-    redraw(doc, editsOf(before), editsOf(after));
+    redraw(doc, viewOf(before), viewOf(after));
   }
+
+  const viewOf = (of: History) => project(doc.spans, entriesOf(of));
 
   // Typing ends once, however it ends: Enter, Escape, leaving the field, or an export.
   function finish(keep: boolean) {
     const typed = draft.current;
     if (typed === null) return;
     setEditing(null);
-    const was = latestTexts(editsOf(history.current)).get(typed.spanId) ?? spans.get(typed.spanId)?.text;
+    const was = viewOf(history.current).spans.get(typed.spanId)?.text ?? spans.get(typed.spanId)?.text;
     // Emptying a span isn't a replacement: taking text out is redaction's job.
     if (!keep || typed.text === was || typed.text.trim() === "") return;
     change({ kind: "add", edits: [{ kind: "replace", span_id: typed.spanId, text: typed.text }] });
@@ -129,9 +132,9 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     setBusy(true);
     // An edit still being typed goes in first.
     finish(true);
-    const edits = editsOf(history.current);
+    const { edits } = viewOf(history.current);
     try {
-      const exported = await reopener.withDocument((current) => exportPdf(current.id, edits));
+      const exported = await reopener.withDocument((current) => exportPdf(current.id, [...edits]));
       download(exported.pdf, file.name);
       const leftOut = exported.skipped.length > 0;
       const text = leftOut

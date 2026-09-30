@@ -4,9 +4,9 @@
 // never flickers.
 import { useRef, useState } from "react";
 import { ProblemError, render } from "../../api/client";
-import type { Document, Edit, FitInfo, ImageInfo, Region } from "../../api/types";
+import type { Document, FitInfo, ImageInfo, Region } from "../../api/types";
 import type { Reopener } from "../../documents/reopen";
-import { changedSpans, latestTexts } from "../history";
+import { type EditedView, samePage } from "../project";
 import { regionsFor } from "../strips";
 
 interface Options {
@@ -19,7 +19,7 @@ export interface Strips {
   strips: ReadonlyMap<number, ImageInfo[]>; // by page
   shown: ReadonlyMap<string, string>; // by span: the text its strip shows, when it has one
   fits: Readonly<Record<string, FitInfo>>; // the server's fit for each replaced span
-  redraw: (doc: Document, before: readonly Edit[], after: Edit[]) => void; // the edit list changed
+  redraw: (doc: Document, before: EditedView, after: EditedView) => void; // the edits changed
 }
 
 interface Asking {
@@ -41,39 +41,38 @@ export function useStrips({ scale, reopener, onProblem }: Options): Strips {
   // One request at a time, so an older reply can never land over a newer one.
   const asking = useRef<Asking | null>(null);
 
-  // What the strips on `pages` show now: each span's text in `latest`, or the original's.
-  const showing = (doc: Document, pages: ReadonlySet<number>, latest: ReadonlyMap<string, string>) =>
+  // What the strips on `pages` show now: each span's text in `view`, or the original's.
+  const showing = (doc: Document, pages: ReadonlySet<number>, view: EditedView) =>
     setShown((now) => {
       const next = new Map(now);
       for (const span of doc.spans) {
         if (!pages.has(span.page)) continue;
-        const text = latest.get(span.id);
+        const text = view.spans.get(span.id)?.text;
         if (text === undefined) next.delete(span.id);
         else next.set(span.id, text);
       }
       return next;
     });
 
-  async function draw(doc: Document, edits: Edit[], wanted: ReadonlySet<number>) {
+  async function draw(doc: Document, view: EditedView, wanted: ReadonlySet<number>) {
     // A newer change takes over the pages an older request was still drawing.
     const pages = new Set(wanted);
     const before = asking.current;
     before?.ask.abort();
     before?.pages.forEach((page) => pages.add(page));
 
-    const latest = latestTexts(edits);
     const regions: Region[] = [];
     const bare = new Set<number>();
     for (const page of pages) {
-      const edited = doc.spans.filter((span) => span.page === page && latest.has(span.id));
+      const edited = view.pages.get(page);
       const info = doc.pages[page];
       // Nothing edited on this page any more: the original image beneath is already right.
-      if (edited.length === 0 || info === undefined) bare.add(page);
+      if (edited === undefined || info === undefined) bare.add(page);
       else regions.push(...regionsFor(page, info, edited));
     }
     if (bare.size > 0) {
       setStrips((now) => new Map([...now].filter(([page]) => !bare.has(page))));
-      showing(doc, bare, latest);
+      showing(doc, bare, view);
     }
     const drawing = new Set([...pages].filter((page) => !bare.has(page)));
     if (drawing.size === 0) {
@@ -85,7 +84,9 @@ export function useStrips({ scale, reopener, onProblem }: Options): Strips {
     asking.current = { ask, pages: drawing };
     try {
       // Still ours while the document opens again, so a newer change can take these pages over.
-      const reply = await reopener.withDocument((current) => render(current.id, { edits, scale, regions }, ask.signal));
+      const reply = await reopener.withDocument((current) =>
+        render(current.id, { edits: [...view.edits], scale, regions }, ask.signal),
+      );
       await Promise.all(reply.images.map(decoded));
       if (ask.signal.aborted) return;
       asking.current = null;
@@ -95,7 +96,7 @@ export function useStrips({ scale, reopener, onProblem }: Options): Strips {
         return next;
       });
       setFits(reply.fits);
-      showing(doc, drawing, latest);
+      showing(doc, drawing, view);
     } catch (error) {
       if (ask.signal.aborted) return;
       if (!(error instanceof ProblemError)) throw error;
@@ -104,9 +105,9 @@ export function useStrips({ scale, reopener, onProblem }: Options): Strips {
     }
   }
 
-  function redraw(doc: Document, before: readonly Edit[], after: Edit[]) {
-    const changed = changedSpans(before, after);
-    const pages = new Set(doc.spans.filter((span) => changed.has(span.id)).map((span) => span.page));
+  function redraw(doc: Document, before: EditedView, after: EditedView) {
+    const touched = new Set([...before.pages.keys(), ...after.pages.keys()]);
+    const pages = new Set([...touched].filter((page) => !samePage(before.pages.get(page), after.pages.get(page))));
     if (pages.size > 0) void draw(doc, after, pages);
   }
 

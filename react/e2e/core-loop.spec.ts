@@ -71,6 +71,20 @@ test("an edit is drawn by the server, and undo puts the original back", async ({
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
 });
 
+test("a span edited back to its own words is untouched: nothing is drawn over it", async ({ page }) => {
+  await open(page);
+  await edit(page, "This agreement is made on 2 April 2026 between");
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  await page.getByRole("button", { name: "This agreement is made on 2 April 2026 between", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const field = page.getByRole("textbox", { name: "Change “This agreement is made on 2 April 2026 between”" });
+  await field.fill(LINE);
+  await field.press("Enter");
+  // Drawn again, the line would come back in the stand-in face while the page says nothing changed.
+  await expect(page.locator("img[data-strip]")).toHaveCount(0);
+  await expect(page.getByText("1 change")).toHaveCount(0);
+});
+
 test("a change put back from the margin leaves the page as it was", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");
