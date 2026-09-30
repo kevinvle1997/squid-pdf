@@ -391,10 +391,11 @@ class Engine:
         return notices
 
     def still_there(self, spans: Iterable[Span]) -> list[Span]:
-        """The spans whose text is still in their box. A black box over it doesn't hide it.
+        """The spans with any word of their text still in their box. A black box won't hide it.
 
-        Only each span's own box is read, so the same words elsewhere aren't a
-        leak. Spaces are ignored, so respacing can't hide a leftover.
+        Part of a card number is as much a leak as all of it. Only each span's
+        own box is read, so the same words elsewhere aren't a leak. Spaces are
+        ignored, so respacing can't hide a leftover.
         """
         by_page: dict[int, list[Span]] = {}
         for span in spans:
@@ -403,10 +404,10 @@ class Engine:
         return [span for on_page in left for span in on_page]
 
     def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
-        """Those of `spans`, all on `page`, whose text is still in their box."""
+        """Those of `spans`, all on `page`, with any word of their text still in their box."""
         texts = self._driver.text_in(page, [span.bbox for span in spans])
         pairs = zip(spans, texts, strict=True)
-        return [span for span, left in pairs if unspaced(span.text) in unspaced(left)]
+        return [span for span, left in pairs if any_word_left(span.text, left)]
 
     def close(self) -> None:
         """Release the open document."""
@@ -720,6 +721,12 @@ def spelled(own: PooledFont, text: str) -> str:
 def unspaced(text: str) -> str:
     """`text` with every space, tab and line break taken out."""
     return "".join(text.split())
+
+
+def any_word_left(text: str, left: str) -> bool:
+    """Whether any word of `text` is in `left`, spaces aside."""
+    leftover = unspaced(left)
+    return any(word in leftover for word in text.split())
 
 
 def said_left_out(letters: list[str]) -> list[Message]:
