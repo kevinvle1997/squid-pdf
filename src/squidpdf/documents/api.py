@@ -61,7 +61,7 @@ async def upload(
     controller: Annotated[UploadController, Depends(controller(UploadController))],
     said_in: ReaderLanguage,
     response: Response,
-) -> Document:
+) -> Response:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
     reply = await controller.upload(
         owner.digest(token),
@@ -69,9 +69,7 @@ async def upload(
         chunks=request.stream(),
         said_in=said_in,
     )
-    # Data, not a Response: FastAPI adds the new owner cookie only to a reply it makes.
-    response.headers.update(reply.headers)
-    return reply.body
+    return response_of(reply, media_type=_JSON, set_by=response)
 
 
 @router.get("/{doc_id}", response_model=Document)

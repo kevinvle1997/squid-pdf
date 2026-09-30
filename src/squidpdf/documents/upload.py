@@ -5,14 +5,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterable
 from functools import partial
+from http import HTTPStatus
 from pathlib import Path
 
-from squidpdf.core import Reply, Workers, words
+from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
-from squidpdf.documents.errors import NotAPdf, TooLarge
-from squidpdf.documents.info import document_response
-from squidpdf.documents.types import Analysis, Document
+from squidpdf.documents.errors import Gone, NotAPdf, TooLarge
+from squidpdf.documents.info import document_json
+from squidpdf.documents.types import Analysis
 
 __all__ = [
     "UploadController",
@@ -36,7 +37,7 @@ class UploadController:
         declared: int | None,
         chunks: AsyncIterable[bytes],
         said_in: str,
-    ) -> Reply[Document]:
+    ) -> Reply[bytes]:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
         `declared` is the size the request states, None when it streams without
@@ -49,14 +50,18 @@ class UploadController:
         doc_id, folder = store.create(owner_digest)
         try:
             await save_original(chunks, to=folder / store.ORIGINAL)
-            analysis = await self._enqueue_analyse(folder)
+            await self._enqueue_analyse(folder)
+            # Sent as kept, as a read sends it: writing it out again takes a while.
+            saved = await asyncio.to_thread(store.load_analysis, folder, BUILD)
         except BaseException:  # refused, damaged, or the browser left: keep nothing
             await asyncio.to_thread(store.delete, folder)
             raise
-        body = document_response(
-            doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
+        if saved is None:  # deleted since it was analysed
+            raise Gone()
+        body = document_json(
+            doc_id, expires_at=store.touch(folder), saved=saved, said_in=said_in
         )
-        return Reply(body, words.language_headers(said_in))
+        return Reply(body, words.language_headers(said_in), HTTPStatus.CREATED)
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""

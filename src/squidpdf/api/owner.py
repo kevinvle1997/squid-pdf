@@ -23,7 +23,8 @@ def token(request: Request, response: Response) -> str:
     """This browser's owner token, setting a new cookie on `response` if it has none.
 
     As a dependency, FastAPI copies the cookie onto the reply only if the route
-    returns data; a route that returns a `Response` itself must set it there.
+    returns data; a route that returns a `Response` itself copies it over with
+    `response_of(..., set_by=response)`.
     """
     existing = request.cookies.get(_COOKIE)  # None on a browser's first upload
     if existing is not None:

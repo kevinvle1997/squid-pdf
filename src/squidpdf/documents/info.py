@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import orjson
+
 from squidpdf.core import Message, words
 from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
 from squidpdf.documents.types import (
@@ -16,22 +18,36 @@ from squidpdf.documents.types import (
 )
 
 __all__ = [
-    "document_response",
+    "document_json",
     "time_of",
 ]
 
 # Every way a span can be approximate: the sentences behind a span's `why` code.
 _APPROXIMATE_KEYS = ("turned_text", "spaced_text", "undrawable_letters")
 
+# Where the spans are in the kept analysis: after the build and the pages, before the fonts.
+_SPANS_KEY = b'"spans":'
+_FONTS_KEY = b',"fonts":'
+_NO_SPANS = b"[]"
 
-def document_response(
-    doc_id: str, *, expires_at: float, analysis: Analysis, said_in: str
-) -> Document:
-    """The analysis, plus what belongs to this document and this moment, in `said_in`."""
-    return {
+
+def document_json(doc_id: str, *, expires_at: float, saved: bytes, said_in: str) -> bytes:
+    """The document as the browser gets it, as JSON: the kept analysis, said in `said_in`.
+
+    The spans go out exactly as kept, never read: on a long document they are
+    nearly all of it, and reading them and writing them out again held up the
+    server for a fifth of a second.
+    """
+    start = saved.index(_SPANS_KEY) + len(_SPANS_KEY)
+    # From the end, as the fonts come last: nothing inside them is named "fonts".
+    end = saved.rindex(_FONTS_KEY)
+    spans = saved[start:end]
+    # The rest is read as usual: the pages' sizes and the fonts, small beside the spans.
+    analysis: Analysis = orjson.loads(saved[:start] + _NO_SPANS + saved[end:])
+    body: Document = {
         "build": analysis["build"],
         "pages": analysis["pages"],
-        "spans": analysis["spans"],
+        "spans": [],  # sent as kept, below
         "fonts": [font_info(font, said_in) for font in analysis["fonts"]],
         "id": doc_id,
         "expires_at": time_of(expires_at),
@@ -41,8 +57,9 @@ def document_response(
             "shrink_floor": SHRINK_FLOOR,
         },
         "copy": copy_in(said_in),
-        "notices": notices_in(analysis, said_in),
+        "notices": notices_in(has_text=spans != _NO_SPANS, said_in=said_in),
     }
+    return orjson.dumps({**body, "spans": orjson.Fragment(spans)})
 
 
 def time_of(epoch_seconds: float) -> str:
@@ -83,10 +100,10 @@ def copy_in(said_in: str) -> Copy:
     }
 
 
-def notices_in(analysis: Analysis, said_in: str) -> list[DocumentNoticeInfo]:
+def notices_in(*, has_text: bool, said_in: str) -> list[DocumentNoticeInfo]:
     """What may not be what the user expected of this document, in `said_in`."""
     # A scan has no text layer: say so, rather than show a page nothing on can be edited.
-    if analysis["spans"]:
+    if has_text:
         return []
     no_text = Message("no_text")
     return [{"type": "no_text", "detail": words.render(no_text, said_in), **no_text.as_info()}]

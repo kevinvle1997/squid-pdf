@@ -17,7 +17,13 @@ from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_not_in, assert_problem, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_equal,
+    assert_not_in,
+    assert_problem,
+    assert_true,
+)
 
 _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
@@ -224,3 +230,10 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")
     said_in_body = first.json()["expires_at"]
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
+
+
+def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
+    """Both send the spans as the analysis kept them, spliced in unread."""
+    read = mine.get(f"/api/documents/{doc['id']}").json()
+    assert_equal(read | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read")
+    assert_at_least(len(doc["spans"]), 1, "spans in the sample")
