@@ -26,3 +26,6 @@ MAX_FONTS = 20  # per document
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
 TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
+# A task allowed this long (an export, an analysis) is stopped when its caller leaves.
+# A shorter one (a render, a page image) finishes: stopping it kills its worker.
+STOP_WHEN_LEFT_S = 30

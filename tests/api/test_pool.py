@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import sys
 import time
 from collections.abc import Callable
+from functools import partial
+from pathlib import Path
 
 import pebble.pool.process
 import pymupdf
@@ -18,13 +21,15 @@ from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import Pool
 from squidpdf.core import Problem
+from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
-from tests.helpers import assert_at_most, assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
 _HANG_S = 60
 _TIMEOUT_S = 0.5
 _ENOUGH_S = 10
 _BUSY_S = 5  # far past _TIMEOUT_S: a task that waited for these would be late
+_WORK_S = 1  # how long a task works on after its caller has left
 _POLL_S = 0.05
 
 
@@ -182,3 +187,52 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     finally:
         pool.close()
     assert_true(worker != os.getpid(), "the task ran in a worker")
+
+
+def _note_pid_then_work(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then says it's done."""
+    (folder / "pid").write_text(str(os.getpid()))
+    time.sleep(_WORK_S)
+    (folder / "done").touch()
+
+
+def _leave_while_it_works(pool: Pool, folder: Path, timeout: float) -> int:
+    """Start a task, leave once it's working, and wait until it's done or its worker gone.
+
+    Returns the worker's process id.
+    """
+
+    async def leave() -> int:
+        task = partial(_note_pid_then_work, folder)
+        caller = asyncio.ensure_future(pool.run(timeout, task))
+        while not (folder / "pid").exists():
+            await asyncio.sleep(_POLL_S)
+        caller.cancel()
+        with contextlib.suppress(asyncio.CancelledError):  # raised: we cancelled it
+            await caller
+        worker = int((folder / "pid").read_text())
+
+        def ended() -> bool:
+            return (folder / "done").exists() or _is_gone(worker)
+
+        # Inside the loop: when it ends, anything still running is cancelled.
+        await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
+        return worker
+
+    return asyncio.run(leave())
+
+
+def test_a_render_whose_browser_left_finishes_and_keeps_its_worker(pool, tmp_path):
+    """Stopping it would kill its worker, and the next task would wait for a new one."""
+    worker = _leave_while_it_works(pool, tmp_path, RENDER_TIMEOUT_S)
+
+    assert_true((tmp_path / "done").exists(), "the render finished its work")
+    assert_false(_is_gone(worker), "the render's worker is still alive")
+
+
+def test_an_export_whose_browser_left_is_stopped(pool, tmp_path):
+    """Long enough that stopping it is worth a new worker."""
+    worker = _leave_while_it_works(pool, tmp_path, EXPORT_TIMEOUT_S)
+
+    assert_true(_is_gone(worker), "the export's worker was stopped")
+    assert_false((tmp_path / "done").exists(), "the export didn't run to its end")

@@ -58,10 +58,12 @@ class Pool:
         """`task()` in a worker, given `timeout` seconds from this call.
 
         Time spent waiting for a free worker counts; a new worker's start doesn't,
-        since that's the server's time, not the task's. If the request goes away
-        first, a task still waiting is dropped, and pebble stops the worker
-        running one. The PDF library's own failures come back as the Problems
-        they mean (`core.result_of`), and pebble's by `_FAILURES`.
+        since that's the server's time, not the task's. If the caller goes away
+        first, a task still waiting is dropped, and a long one (`STOP_WHEN_LEFT_S`)
+        is stopped. A short one finishes: stopping it would kill its worker, and
+        the next task would wait for a new one. The PDF library's own failures
+        come back as the Problems they mean (`core.result_of`), and pebble's by
+        `_FAILURES`.
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -78,9 +80,13 @@ class Pool:
         job = asyncio.create_task(self._in_worker(left, task))
         job.add_done_callback(lambda _job: self._free.release())
         try:
-            return await job
+            return await asyncio.shield(job)
         except _FAILED as failure:  # pebble's, listed in _FAILURES
             raise problem_of(failure) from failure
+        finally:
+            # The caller left: a long task stops; pebble holds a short one to its time.
+            if timeout >= constants.STOP_WHEN_LEFT_S:
+                job.cancel()  # does nothing to a task that has finished
 
     async def ready(self) -> bool:
         """Whether workers can take a task, replacing them first if the pool broke."""
