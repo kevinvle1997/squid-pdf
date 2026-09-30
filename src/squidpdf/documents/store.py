@@ -141,12 +141,19 @@ def write_whole(path: Path, data: bytes) -> None:
     Written beside it, then renamed over it, which the filesystem does at once.
     A half file (a worker killed mid-write, a full disk) would read as broken
     JSON on every visit, and every visit restarts the hour, so it would never go.
+    Raises Gone if the document was deleted meanwhile, by its owner or the sweep.
     """
-    handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    except FileNotFoundError as exc:  # its folder was deleted since it was found
+        raise Gone from exc
     try:
         with os.fdopen(handle, "wb") as out:
             out.write(data)
         os.replace(part, path)
+    except FileNotFoundError as exc:  # its folder was deleted mid-write
+        Path(part).unlink(missing_ok=True)  # most likely gone with the folder already
+        raise Gone from exc
     except BaseException:  # cut short: the old file stays, and the piece goes
         Path(part).unlink(missing_ok=True)
         raise

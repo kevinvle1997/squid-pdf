@@ -94,3 +94,13 @@ def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
     store.delete(folder)
     with pytest.raises(Gone):
         store.touch(folder)
+
+
+def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
+    """A worker found it, then its owner deleted it: analysis ends Gone, not a 500."""
+    _, folder = store.create("owner")
+    store.delete(folder)
+    with pytest.raises(Gone):
+        store.save_index(folder, engine.index())
+    with pytest.raises(Gone):
+        store.save_analysis(folder, "a-build", b"{}")
