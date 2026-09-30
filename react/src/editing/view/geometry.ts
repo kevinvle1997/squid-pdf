@@ -24,6 +24,12 @@ export function points(value: number, page: { width: number }): string {
   return `${(value / page.width) * 100}cqw`;
 }
 
+/** The page's width and height as shown, in points: the file's /Rotate turns a page on its side. */
+export function shownSize(page: PageInfo): [wide: number, tall: number] {
+  const turned = page.rotation % 180 !== 0;
+  return turned ? [page.height, page.width] : [page.width, page.height];
+}
+
 /** A PDF colour, each part from 0 to 1, as CSS. */
 export function rgbOf(color: readonly number[]): string {
   const [red = 0, green = 0, blue = 0] = color;

@@ -14,7 +14,14 @@ export default defineConfig({
   plugins: [react()],
   // Bundled up front, so a test never reloads halfway with a second copy of React.
   optimizeDeps: {
-    include: ["react", "react-dom", "react-dom/client", "react-aria-components", "vitest-browser-react"],
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react-aria-components",
+      "use-sync-external-store/with-selector",
+      "vitest-browser-react",
+    ],
   },
   server: {
     proxy: api,

@@ -1,7 +1,8 @@
 // The open document's editor, for what draws it. State is read through a selector, so a
 // component redraws only when what it selected changes; actions take the editor itself,
 // which never changes, so passing it down redraws nothing.
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext, useContext } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { Editor, EditorState } from "../editor";
 
 export const EditorContext = createContext<Editor | null>(null);
@@ -14,12 +15,13 @@ export function useEditor(): Editor {
 }
 
 /**
- * Part of the editor's state. `select` returns something the state holds, or a string or a
- * number: a new object from each call would look like a change every time.
+ * Part of the editor's state: what's drawn from it redraws only when it changes. That's by
+ * `Object.is`, unless `isEqual` says otherwise: a selection built fresh each time, as an
+ * object of several parts is, passes `shallowEqual`, or every change would look like one.
  */
-export function useEditorState<T>(select: (state: EditorState) => T): T {
+export function useEditorState<T>(select: (state: EditorState) => T, isEqual?: (a: T, b: T) => boolean): T {
   const { store } = useEditor();
-  return useSyncExternalStore(store.subscribe, () => select(store.get()));
+  return useSyncExternalStoreWithSelector(store.subscribe, store.get, undefined, select, isEqual);
 }
 
 /** Put focus on a span's mark, as a keyboard user expects after editing it. */
