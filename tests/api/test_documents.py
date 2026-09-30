@@ -17,7 +17,7 @@ from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_problem, assert_true
+from tests.helpers import assert_equal, assert_not_in, assert_problem, assert_true
 
 _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
@@ -216,7 +216,9 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     first = mine.get(url)
     again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
 
+    assert_equal(first.headers["content-type"], "application/json", "the body's type")
     assert_equal(again.status_code, 304, "status of a read the browser has already")
+    assert_not_in("content-type", again.headers, "the type of a body a 304 doesn't have")
     expires = datetime.fromisoformat(again.headers["squid-expires-at"])
     uploaded = datetime.fromisoformat(doc["expires_at"])
     assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")

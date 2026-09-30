@@ -69,14 +69,13 @@ def answer(
         _EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
     }
-    # The browser's copy is current: a 304 carries no body, so no body's type.
+    # The browser's copy is current: a 304 carries no body.
     if if_none_match == headers["ETag"]:
         return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
     body = document_response(
         doc.id, expires_at=doc.expires_at, analysis=orjson.loads(saved), said_in=said_in
     )
-    typed = headers | {"Content-Type": "application/json"}
-    return Reply(orjson.dumps(body), typed)
+    return Reply(orjson.dumps(body), headers)
 
 
 def etag_of(saved: bytes, said_in: str) -> str:
