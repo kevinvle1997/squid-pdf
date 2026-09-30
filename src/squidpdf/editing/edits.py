@@ -1,15 +1,14 @@
-"""Everything the user did, as one ordered log.
+"""Everything the user did, as one ordered list: the browser keeps it and sends it whole.
 
-One union rather than a list per kind. Undo is then truncation regardless of what
-was undone, and export applies a single list in order, which matters when a
-redaction and an edit touch the same region and the result depends on which
-happened first.
+One union rather than a list per kind, so undo in the browser is truncation
+whatever was undone. The server applies the list as its final state: each span
+once, as its last edit leaves it.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Literal
 
 from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS
@@ -83,28 +82,3 @@ def check_edits(edits: list[Edit]) -> None:
     )
     if too_long:
         raise TextTooLong(MAX_TEXT_CHARS)
-
-
-class EditLog:
-    """The ordered list of edits against one document.
-
-    Held by the client in the stateless design and sent with each render, so this
-    is a value object: no document, no engine, nothing that cannot be serialised.
-    `edits` is a plain list: append, iterate, or take its length directly.
-    """
-
-    def __init__(self, edits: list[Edit] | None = None) -> None:
-        """Start a log, optionally pre-loaded with edits already made."""
-        self.edits: list[Edit] = list(edits or [])
-
-    def undo(self) -> Edit | None:
-        """Truncation. Works the same for every kind, which is the point."""
-        return self.edits.pop() if self.edits else None
-
-    def touching(self, span_id: str) -> list[Edit]:
-        """Every edit in the log that touched this span, in order."""
-        return [e for e in self.edits if getattr(e, "span_id", None) == span_id]
-
-    def as_list(self) -> list[dict]:
-        """The log as plain dicts, for sending over the wire."""
-        return [asdict(e) for e in self.edits]

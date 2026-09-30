@@ -12,7 +12,7 @@ from squidpdf.editing.apply import (
     log_fits,
     replace_fit,
 )
-from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
+from squidpdf.editing.edits import Edit, Insert, Redact, Replace
 from squidpdf.editing.errors import BadReference, RedactionFailed
 from squidpdf.editing.export import ExportController, save_edited
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
@@ -30,7 +30,6 @@ __all__ = [
     "insert_fit",
     "log_fits",
     "Edit",
-    "EditLog",
     "Insert",
     "Redact",
     "Replace",
