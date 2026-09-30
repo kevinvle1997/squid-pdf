@@ -31,13 +31,16 @@ def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
 
 
 def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
-    dressed = [
-        f"{key}: {said}"
-        for key, said in words.ENGLISH_SENTENCES.items()
-        for _text, name, spec, conv in Formatter().parse(said)
-        if name and (spec or conv)
-    ]
-    assert_equal(dressed, [], "sentences with a placeholder the browser can't fill")
+    for language, catalog in words.CATALOGS.items():
+        dressed = [key for key, said in catalog.items() if _dressed(said)]
+        assert_equal(dressed, [], f"{language!r} sentences the browser can't fill")
+
+
+def _dressed(sentence: str) -> bool:
+    """Whether a placeholder in `sentence` carries a format or a conversion, like `{n:.1f}`."""
+    return any(
+        name and (spec or conv) for _text, name, spec, conv in Formatter().parse(sentence)
+    )
 
 
 @pytest.mark.parametrize(
