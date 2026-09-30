@@ -1,5 +1,5 @@
 import { Button } from "react-aria-components";
-import type { PageInfo, SpanInfo } from "../api/types";
+import type { PageInfo, SpanInfo } from "../../api/types";
 import { useEditor } from "./context";
 import styles from "./Margin.module.css";
 

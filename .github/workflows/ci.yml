@@ -88,11 +88,12 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm test
-
+      # Before the tests: the view's tests run in Chromium too.
       - name: Browser
         run: npx playwright install --with-deps chromium
+
+      - name: Unit and view tests
+        run: npm test
 
       - name: End to end
         run: npm run e2e

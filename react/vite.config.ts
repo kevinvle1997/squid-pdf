@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
 
 // Everything under /api is the Python app's; the rest of the host is this one's.
@@ -14,5 +15,19 @@ export default defineConfig({
     fs: { allow: [".."] },
   },
   preview: { proxy: api },
-  test: { include: ["src/**/*.test.ts"] },
+  test: {
+    projects: [
+      // The logic: no React, no DOM, in node.
+      { extends: true, test: { name: "unit", include: ["src/**/*.test.ts"] } },
+      // What's drawn: in a real Chromium, for its layout, observers, fonts and React Aria's pointer handling.
+      {
+        extends: true,
+        test: {
+          name: "view",
+          include: ["src/**/*.test.tsx"],
+          browser: { enabled: true, headless: true, provider: playwright(), instances: [{ browser: "chromium" }] },
+        },
+      },
+    ],
+  },
 });

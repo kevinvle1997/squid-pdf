@@ -1,19 +1,19 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ProblemError, exportPdf, stillThere, upload } from "../api/client";
-import type { Document, SpanInfo } from "../api/types";
-import { Button } from "../ui/Button";
-import { Notice } from "../ui/Notice";
-import { SkipLink } from "../ui/SkipLink";
-import { Status } from "../ui/Status";
-import { Warn } from "../ui/Warn";
-import { Wordmark } from "../ui/Wordmark";
-import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "./constants";
+import { ProblemError, exportPdf, stillThere, upload } from "../../api/client";
+import type { Document, SpanInfo } from "../../api/types";
+import { Button } from "../../ui/Button";
+import { Notice } from "../../ui/Notice";
+import { SkipLink } from "../../ui/SkipLink";
+import { Status } from "../../ui/Status";
+import { Warn } from "../../ui/Warn";
+import { Wordmark } from "../../ui/Wordmark";
+import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { EditorContext, type Editing, type EditorState, focusSpan } from "./context";
 import styles from "./Editor.module.css";
-import { EMPTY_LOG, type LogAction, editsOf, latestTexts, logReducer } from "./log";
+import { EMPTY_LOG, type LogAction, editsOf, latestTexts, logReducer } from "../log";
 import { Page } from "./Page";
 import { useStrips } from "./useStrips";
-import { counted } from "./words";
+import { counted } from "../words";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));

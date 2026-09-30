@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
-import { pageUrl } from "../api/client";
-import type { ImageInfo, PageInfo, SpanInfo } from "../api/types";
-import { LAZY_MARGIN, PX_PER_PT } from "./constants";
+import { pageUrl } from "../../api/client";
+import type { ImageInfo, PageInfo, SpanInfo } from "../../api/types";
+import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { boxOf, points, useEditor } from "./context";
 import { EditField } from "./EditField";
-import { familyOf, previewFaceOf } from "./faces";
+import { familyOf, previewFaceOf } from "../faces";
 import { Margin } from "./Margin";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";

@@ -1,8 +1,8 @@
 import { Suspense, lazy, useState } from "react";
-import { Drop, type Opened } from "./documents/Drop";
+import { Drop, type Opened } from "./documents/view/Drop";
 
 // The editor's code comes in while the file uploads, so the landing loads only what it shows.
-const loadEditor = () => import("./editing/Editor");
+const loadEditor = () => import("./editing/view/Editor");
 const Editor = lazy(() => loadEditor().then((module) => ({ default: module.Editor })));
 
 /** The landing is a drop target and nothing else; once a file is open, the editor. */

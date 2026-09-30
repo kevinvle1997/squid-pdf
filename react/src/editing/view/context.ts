@@ -1,6 +1,6 @@
 // What every part of the open document reads: the document, the edits, and what to do.
 import { createContext, useContext } from "react";
-import type { Document, FitInfo, FontInfo } from "../api/types";
+import type { Document, FitInfo, FontInfo } from "../../api/types";
 
 export interface Editing {
   spanId: string;

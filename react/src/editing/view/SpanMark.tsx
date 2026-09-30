@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { Button, type PressEvent, TooltipTrigger } from "react-aria-components";
-import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../api/types";
-import { Tooltip } from "../ui/Tooltip";
-import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "./constants";
+import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../../api/types";
+import { Tooltip } from "../../ui/Tooltip";
+import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "../constants";
 import { boxOf, markId, useEditor } from "./context";
 import styles from "./SpanMark.module.css";
-import { fill } from "./words";
+import { fill } from "../words";
 
 interface Note {
   warn: boolean;

@@ -1,12 +1,12 @@
 import { type FocusEvent, type KeyboardEvent, useRef } from "react";
 import { Input, TextField } from "react-aria-components";
-import type { PageInfo, SpanInfo } from "../api/types";
-import { Num } from "../ui/Num";
-import { Warn } from "../ui/Warn";
+import type { PageInfo, SpanInfo } from "../../api/types";
+import { Num } from "../../ui/Num";
+import { Warn } from "../../ui/Warn";
 import { boxOf, points, useEditor } from "./context";
 import styles from "./EditField.module.css";
-import { familyOf, previewFaceOf } from "./faces";
-import { type Fit, fitOf, troublesOf, widthPt } from "./fit";
+import { familyOf, previewFaceOf } from "../faces";
+import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 

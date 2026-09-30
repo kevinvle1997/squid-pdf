@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
-import { ProblemError, upload } from "../api/client";
-import type { Document } from "../api/types";
-import { Button } from "../ui/Button";
-import { Num } from "../ui/Num";
-import { Warn } from "../ui/Warn";
-import { Wordmark } from "../ui/Wordmark";
-import { QUIET_MS } from "./constants";
+import { ProblemError, upload } from "../../api/client";
+import type { Document } from "../../api/types";
+import { Button } from "../../ui/Button";
+import { Num } from "../../ui/Num";
+import { Warn } from "../../ui/Warn";
+import { Wordmark } from "../../ui/Wordmark";
+import { QUIET_MS } from "../constants";
 import styles from "./Drop.module.css";
 
 export interface Opened {

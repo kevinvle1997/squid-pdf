@@ -29,10 +29,12 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
+    "@vitest/browser-playwright": "5.0.2",
     "openapi-typescript": "7.13.0",
     "typescript": "5.9.3",
     "vite": "8.3.1",
-    "vitest": "5.0.2"
+    "vitest": "5.0.2",
+    "vitest-browser-react": "2.3.0"
   },
   "overrides": {
     "playwright-core": "$@playwright/test"

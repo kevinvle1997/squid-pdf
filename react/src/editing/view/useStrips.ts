@@ -3,10 +3,10 @@
 // browser previews it; the strip goes in only once its images can paint, so the swap
 // never flickers.
 import { useRef, useState } from "react";
-import { ProblemError, render } from "../api/client";
-import type { Document, Edit, FitInfo, ImageInfo, Region } from "../api/types";
-import { changedSpans, latestTexts } from "./log";
-import { regionsFor } from "./strips";
+import { ProblemError, render } from "../../api/client";
+import type { Document, Edit, FitInfo, ImageInfo, Region } from "../../api/types";
+import { changedSpans, latestTexts } from "../log";
+import { regionsFor } from "../strips";
 
 interface Options {
   scale: number;
