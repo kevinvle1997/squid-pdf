@@ -19,6 +19,7 @@ from squidpdf.core.errors import (
     Unreadable,
 )
 from squidpdf.core.fidelity import Fidelity, FidelityReport, green_rate
+from squidpdf.core.google import google_fonts
 from squidpdf.core.message import Message, MessageInfo, Param
 
 # The one import that names the driver: another PDF library is swapped in here.
@@ -39,6 +40,7 @@ __all__ = [
     "Engine",
     "open_pdf",
     "result_of",
+    "google_fonts",
     "write_sample",
     "write_dense",
     "Message",

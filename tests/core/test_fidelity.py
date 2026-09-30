@@ -260,6 +260,13 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     return missing, report
 
 
+def _why_new(engine: Engine, span: Span, text: str) -> str | None:
+    """Why new text in the span's font would be a substitute, by its sentence's key."""
+    new = new_text(0, origin=(72, 200), text=text, size=span.size, font=span.font)
+    [report] = engine.assess(SpanIndex([new]))
+    return None if report.why is None else report.why.key
+
+
 def _assert_drawn_in_both_copies(original: str, out: str) -> None:
     """The line reads back whole, every letter inked, drawn in the file's two copies alone."""
     saved, merged = pymupdf.open(out), pymupdf.open(original)
@@ -291,17 +298,22 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
         span = _first_span(eng)
         missing = eng.missing(span, _POOLED)
         listed = eng.widths(span)
+        why = _why_new(eng, span, _POOLED)
 
     assert_equal(missing, ["Y", "a", "y"], "letters Times lacks")
     assert_not_in("Y", listed, "letters the browser is told Times draws")
+    assert_equal(why, "copy_other_widths", "why new text in it is a substitute")
 
 
 def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
     with open_pdf(merged_apart) as eng:
-        missing = eng.missing(_first_span(eng), "Yak Hello")
+        span = _first_span(eng)
+        missing = eng.missing(span, "Yak Hello")
+        why = _why_new(eng, span, "Yak Hello")
 
     assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
+    assert_equal(why, "copy_too_few_shared", "why new text in it is a substitute")
 
 
 def test_widths_list_the_pooled_letters_and_measure_agrees(merged):

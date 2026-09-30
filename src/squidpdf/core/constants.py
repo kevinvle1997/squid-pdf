@@ -37,7 +37,17 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 5: a letter another copy of the same font in the file draws counts, so letter lists changed.
 # 6: more families (Poppins, Open Sans, FreeSans, Latin Modern...), so more look-alikes changed.
 # 7: text turned, or spaced unlike its font's own widths, is approximate, not exact.
-LIBRARY_VERSION = "7"
+# 8: Google's copy of a font lends the letters the file's copies lack, so fidelity changed.
+LIBRARY_VERSION = "8"
+
+# Google's font collection (github.com/google/fonts) at this commit: the family
+# list in `fonts/google-families.json` is read from it, and every copy is fetched
+# from it. Part of `build`: a new pin judges every document again.
+GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
+# How long one fetch of Google's copy may take before the line goes to the stand-in.
+FETCH_TIMEOUT_S = 5.0
+# The letters a Western keyboard types: a pool missing one looks to Google's copy.
+KEYBOARD_RANGES = ((0x20, 0x7F), (0xA0, 0x100))
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.

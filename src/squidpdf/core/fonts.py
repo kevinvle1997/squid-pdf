@@ -421,8 +421,8 @@ def face_bytes(face: Face) -> bytes:
     return resources.files("squidpdf").joinpath("fonts", face.file).read_bytes()
 
 
-def trimmed(face: Face, letters: Iterable[str]) -> bytes:
-    """The face's font file, cut down to `letters`."""
+def trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
+    """A font file we added whole, cut down to `letters`."""
     options = Options(
         hinting=True,  # keeps small text crisp on screen, for a few KB
         layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
@@ -432,7 +432,7 @@ def trimmed(face: Face, letters: Iterable[str]) -> bytes:
     )
     subsetter = Subsetter(options)
     subsetter.populate(unicodes=[ord(ch) for ch in letters])
-    font = TTFont(io.BytesIO(face_bytes(face)))
+    font = TTFont(io.BytesIO(font_file))
     subsetter.subset(font)
     cut = io.BytesIO()
     font.save(cut)

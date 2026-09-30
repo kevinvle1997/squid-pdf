@@ -26,6 +26,10 @@ font_unreadable = "This font is stored in the file but can't be read, so a simil
 font_no_letter_list = "This font is stored in the file without saying which shape is which letter, so a similar font stands in for it."
 font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
 font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
+# Why another copy by the font's name, in the file or Google's, lends it no letter.
+copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
+copy_too_few_shared = "Another copy of this font has the letters needed here, but too few letters in common with this one to be sure it's the same font, so a similar font stands in for it."
+copy_other_widths = "Another font by this name has the letters needed here, but its letters are a different width, so a similar font stands in for it."
 
 # Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."

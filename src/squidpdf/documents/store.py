@@ -19,7 +19,18 @@ from typing import Any
 
 import orjson
 
-from squidpdf.core import LEVEL, SOLID, Engine, Fragment, Page, Rect, Span, SpanIndex, open_pdf
+from squidpdf.core import (
+    LEVEL,
+    SOLID,
+    Engine,
+    Fragment,
+    Page,
+    Rect,
+    Span,
+    SpanIndex,
+    google_fonts,
+    open_pdf,
+)
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 
@@ -77,9 +88,12 @@ def find(doc_id: str) -> tuple[Path, str] | None:
 
 
 def open_original(folder: Path) -> Engine:
-    """The document's original, open for editing. Raises Gone if it was deleted meanwhile."""
+    """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
+
+    Google's copy of a font lends the letters its copies in the file lack.
+    """
     try:
-        return open_pdf(str(folder / ORIGINAL))
+        return open_pdf(str(folder / ORIGINAL), fetch=google_fonts())
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 
