@@ -49,6 +49,19 @@ describe("an edit", () => {
     expect(editor.store.get().said).toBe("Changed to now");
   });
 
+  test("a trouble is said as it appears or changes, not as its numbers tick by with each letter", () => {
+    const glyphs = { a: 500, b: 500 }; // 5 pt each at 10 pt
+    const doc = aDoc({ spans: [aSpan({ id: "ab", text: "ab" })], fonts: [aFont("Times-Roman", { glyphs })] });
+    editor = createEditor(FILE, doc, 2);
+    edit(editor, "ab", null);
+    typeInto(editor, "abab");
+    expect(editor.store.get().said).toBe("10.0 pt too long");
+    typeInto(editor, "ababa");
+    expect(editor.store.get().said).toBe("10.0 pt too long");
+    typeInto(editor, "ababac");
+    expect(editor.store.get().said).toContain("no c in this font");
+  });
+
   test("Escape, the same words, or nothing at all put nothing in the history", () => {
     edit(editor, "own", null);
     typeInto(editor, "now");

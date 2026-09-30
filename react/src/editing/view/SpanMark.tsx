@@ -3,26 +3,11 @@ import { Button, type PressEvent, TooltipTrigger } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "../constants";
+import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
 import { edit, returnTo } from "../typing";
-import { fill } from "../words";
 import { boxOf, markId, useEditor } from "./context";
 import styles from "./SpanMark.module.css";
-
-interface Note {
-  warn: boolean;
-  said: string; // the server's sentence
-  why: string | null; // why the file's own font can't be used
-}
-
-/** What a span's note says, before any edit: its fidelity. Nothing for a span that keeps its font. */
-function noteOf(font: FontInfo | undefined, fit: FitInfo | undefined, copy: Copy): Note | null {
-  // After an edit, the server's own verdict on it comes first.
-  if (fit?.message) return { warn: true, said: fit.message, why: null };
-  if (font?.substitute == null) return null;
-  const sentence = font.same_widths ? copy.stand_in_same_widths : copy.stand_in;
-  return { warn: !font.same_widths, said: fill(sentence, { font: font.substitute }), why: font.why };
-}
 
 interface Props {
   span: SpanInfo;
@@ -41,8 +26,8 @@ interface Props {
  */
 export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, quiet }: Props) {
   const editor = useEditor();
-  const changed = edited?.replaced ?? false;
-  const note = noteOf(font, changed ? fit : undefined, copy);
+  const look = lookOf({ font, edited, fit, copy });
+  const note = look.note;
   const [open, setOpen] = useState(false);
   const lastPress = useRef(0);
 
@@ -69,9 +54,9 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
 
   const className = [
     styles.span,
-    font?.substitute != null && styles.similar,
-    changed && styles.changed,
-    fit?.message && styles.trouble,
+    look.similar && styles.similar,
+    look.changed && styles.changed,
+    look.trouble && styles.trouble,
   ]
     .filter(Boolean)
     .join(" ");

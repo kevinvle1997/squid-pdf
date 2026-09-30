@@ -3,33 +3,15 @@ import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
+import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
-import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
-import { finish, returnTo, typeInto } from "../typing";
+import { widthPt } from "../fit";
+import { finish, returnTo, troublesIn, typeInto } from "../typing";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
-
-/** The index in `text` of the letter at `atPt` points from its start. */
-function letterAt(text: string, atPt: number, glyphs: Record<string, number>, size: number): number {
-  const letters = [...text];
-  for (let index = 0; index < letters.length; index++) {
-    if (widthPt(letters.slice(0, index + 1).join(""), glyphs, size) > atPt) return index;
-  }
-  return letters.length;
-}
-
-/** The word around `index`: what a double press selects. */
-function wordAround(text: string, index: number): [number, number] {
-  const isWord = (letter: string | undefined) => letter !== undefined && /\S/.test(letter);
-  let start = index;
-  let end = index;
-  while (isWord(text[start - 1])) start--;
-  while (isWord(text[end])) end++;
-  return [start, end];
-}
 
 /**
  * Typing in place: the span's text in the face that will draw it, checked as it's typed.
@@ -39,17 +21,13 @@ function wordAround(text: string, index: number): [number, number] {
 export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
   const text = useEditorState((state) => state.draft?.text ?? "");
-  const rules = useEditorState((state) => state.doc.fit);
-  const copy = useEditorState((state) => state.doc.copy);
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
   const face = font === undefined ? "Liberation Serif Regular" : previewFaceOf(font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
-  const fitFor = (typed: string) => (font === undefined ? null : fitOf(span, font, typed, rules));
-  const troublesIn = (fit: Fit | null) => (fit === null ? [] : troublesOf(fit, rules, copy, font?.substitute ?? face));
-  const trouble = troublesIn(fitFor(text)).join("; ");
+  const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("; "));
 
   // Once, as the field takes focus: the caret goes where the press was, the word under it,
   // or everything from the keyboard. Later focus keeps the caret where the user put it.
@@ -61,18 +39,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     if (at == null) field.select();
     else field.setSelectionRange(...wordAround(start, letterAt(start, at, glyphs, span.size)));
     if (trouble !== "") say(editor, trouble);
-  }
-
-  // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
-  function typed(next: string) {
-    const kind = (fit: Fit | null) =>
-      fit === null ? "" : `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`;
-    const now = fitFor(next);
-    if (kind(now) !== kind(fitFor(text))) {
-      const troubles = troublesIn(now);
-      if (troubles.length > 0) say(editor, troubles.join("; "));
-    }
-    typeInto(editor, next);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -89,7 +55,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
   return (
     <>
-      <TextField aria-label={`Change “${start}”`} value={text} onChange={typed} className={styles.field}>
+      <TextField
+        aria-label={`Change “${start}”`}
+        value={text}
+        onChange={(next) => typeInto(editor, next)}
+        className={styles.field}
+      >
         <Input
           autoFocus
           onFocus={place}

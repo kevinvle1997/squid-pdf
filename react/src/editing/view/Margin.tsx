@@ -1,6 +1,7 @@
 import { Button } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
+import { notePlaces } from "../margin";
 import type { SpanReading } from "../project";
 import { focusSpan, useEditor } from "./context";
 import styles from "./Margin.module.css";
@@ -49,25 +50,12 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
     );
   }
 
-  // Each note level with its span, nudged down so no two overlap.
-  const order = changes
-    .map(({ span }, index) => ({ index, want: (span.bbox.y0 + span.bbox.y1) / 2 }))
-    .sort((a, b) => a.want - b.want);
-  const tops = new Map<number, number>();
-  let last = -Infinity;
-  for (const { index, want } of order) {
-    last = Math.max(want, last + gapPt);
-    tops.set(index, last);
-  }
+  const places = notePlaces(changes, gapPt);
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
     <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">
       {notes.map((note, index) => (
-        <div
-          key={note.key}
-          className={styles.place}
-          style={{ top: `${((tops.get(index) ?? 0) / info.height) * 100}%` }}
-        >
+        <div key={note.key} className={styles.place} style={{ top: `${((places[index] ?? 0) / info.height) * 100}%` }}>
           {note}
         </div>
       ))}

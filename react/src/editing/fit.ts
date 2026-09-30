@@ -58,6 +58,11 @@ export function fitOf(span: SpanInfo, font: FontInfo, text: string, rules: FitRu
   };
 }
 
+/** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
+export function troubleKindOf(fit: Fit, rules: FitRules): string {
+  return `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`;
+}
+
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */
 export function troublesOf(fit: Fit, rules: FitRules, copy: Copy, standIn: string): string[] {
   const troubles: string[] = [];
