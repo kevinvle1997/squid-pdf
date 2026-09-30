@@ -69,10 +69,16 @@ def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeyp
     ("character", "said"),
     [
         ("\u202f", "narrow no-break space"),
-        ("\t", "U+0009"),
-        ("\u0301", "combining acute accent"),
+        ("\u2004", "three-per-em space"),
+        ("\x01", "U+0001"),
+        ("\u0301", "acute accent"),
     ],
-    ids=["one with a name", "one without", "an accent on its own: it'd sit on the space"],
+    ids=[
+        "one the catalog names",
+        "one only Unicode names",
+        "one with no name at all",
+        "an accent on its own: it'd sit on the space",
+    ],
 )
 def test_a_character_that_draws_nothing_is_named(character, said):
     fit = Message("missing", {"chars": ["é", character], "font": "Noto Sans Regular"})
@@ -81,6 +87,26 @@ def test_a_character_that_draws_nothing_is_named(character, said):
     left_out = Message("left_out", {"letters": [character]})
     expected = f"Left out {said}: no font we have can draw them."
     assert_equal(words.render(left_out), expected, "the sentence naming it")
+
+
+def test_a_character_is_named_in_the_reader_s_language(pseudo):
+    said = words.render(Message("left_out", {"letters": ["\u202f"]}), pseudo)
+    expected = pseudo_sentence("Left out narrow no-break space: no font we have can draw them.")
+    assert_equal(said, expected, "the name, in the language asked for")
+
+
+def test_every_character_name_in_the_catalog_is_said_for_its_character(pseudo):
+    """A name's key is its character's code point; a typo in one would leave it unsaid."""
+    names = {
+        key: said for key, said in words.ENGLISH_SENTENCES.items() if key.startswith("char_")
+    }
+    unsaid = [
+        key
+        for key, said in names.items()
+        if words.visible(chr(int(key.removeprefix("char_u"), 16)), pseudo)
+        != pseudo_sentence(said)
+    ]
+    assert_equal(unsaid, [], "names in the catalog their character isn't said by")
 
 
 def test_every_key_the_code_names_is_in_the_catalog():

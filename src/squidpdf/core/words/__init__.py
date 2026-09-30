@@ -30,6 +30,7 @@ __all__ = [
     "render_all",
     "fill",
     "language_headers",
+    "visible",
 ]
 
 ENGLISH = "en"
@@ -100,25 +101,30 @@ def language_headers(language: str) -> dict[str, str]:
 def written_out(name: str, value: Param, language: str) -> str:
     """One fact as it reads in a sentence: a list joined, a fraction to one decimal place."""
     if isinstance(value, list):
-        return sentence(f"join_{name}", language).join(visible(item) for item in value)
+        return sentence(f"join_{name}", language).join(
+            visible(item, language) for item in value
+        )
     if isinstance(value, float):
         return f"{value:.1f}".replace(".", sentence("decimal_separator", language))
     return str(value)
 
 
-def visible(character: str) -> str:
+def visible(character: str, language: str = ENGLISH) -> str:
     """A character as a person can see it: itself, or its name when it draws nothing alone.
 
-    Names are Unicode's, lower case, e.g. "narrow no-break space"; one without a
-    name, such as a control character, is its code point, e.g. "U+0009". An
-    accent on its own is named too: in a sentence it would sit on the space before it.
+    Named in `language`, e.g. "narrow no-break space", when a catalog names
+    it; else by Unicode's name, lower case; else, for a control character with
+    no name, by its code point, e.g. "U+0001". An accent on its own is named
+    too: in a sentence it would sit on the space before it.
     """
     alone = len(character) == 1
     blank = alone and (not character.isprintable() or character.isspace())
     shows = not blank and not (alone and unicodedata.combining(character))
     if shows:
         return character
+    key = f"char_u{ord(character):04x}"  # its code point: U+202F is char_u202f
     try:
-        return unicodedata.name(character).lower()
+        unicode_name = unicodedata.name(character).lower()
     except ValueError:  # control characters and unassigned code points have no name
-        return f"U+{ord(character):04X}"
+        unicode_name = f"U+{ord(character):04X}"
+    return sentence(key, language, default=unicode_name)
