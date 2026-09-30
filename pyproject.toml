@@ -93,6 +93,12 @@ ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A new warning fails the suite. These two are our dependencies' own, not ours to fix.
+filterwarnings = [
+    "error",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated",
+]
 
 [tool.mypy]
 python_version = "3.14"
