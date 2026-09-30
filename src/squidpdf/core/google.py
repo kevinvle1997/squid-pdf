@@ -305,7 +305,8 @@ def from_cache(ready: Path, file: GoogleFile) -> bytes | None:
     """The cached copy of `file` at `ready`; None when there's none, or it's gone bad.
 
     Checked on every read: a copy cut short (a crash before the disk caught up)
-    would otherwise be trusted for good. A bad one is deleted, to be fetched again.
+    would otherwise be trusted for good. A bad one is deleted where the disk
+    allows, and fetched again.
     """
     try:
         font_file = ready.read_bytes()

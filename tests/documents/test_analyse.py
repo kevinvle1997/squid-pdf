@@ -1,4 +1,4 @@
-"""Analysis runs once per build, always over the index built from the original."""
+"""Analysis runs once per build, over the index built from the original; only it downloads."""
 
 from __future__ import annotations
 

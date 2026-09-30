@@ -93,7 +93,7 @@ def open_to_analyse(folder: Path) -> Engine:
 
     The one open that downloads Google's copies of its fonts, into the cache
     beside the documents (the sweep passes over it). Every other open reads
-    that cache alone, so it lends exactly the letters the analysis judged.
+    that cache alone, so it lends what the analysis fetched and never waits.
     """
     fonts = google_fonts(folder=root() / "fonts")
     try:

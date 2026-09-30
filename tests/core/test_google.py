@@ -1,4 +1,4 @@
-"""Google's copy of a font: fetched by name, lending only when its widths agree."""
+"""Google's copy of a font: fetched by name, cached soundly, lent if its widths agree."""
 
 from __future__ import annotations
 
