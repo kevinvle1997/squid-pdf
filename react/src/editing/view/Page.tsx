@@ -23,24 +23,17 @@ const NO_FITS: PageFits = {};
 const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
- * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw its
- * marks (pages far off stay empty boxes), whether it ever has been (its image stays, so scrolling
- * back doesn't fetch and decode it again), and a margin note's height in the page's points.
+ * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
+ * (pages far off stay empty boxes), and a margin note's height in the page's points.
  */
 function useSheet(pageHeightPt: number) {
   const [near, setNear] = useState(false);
-  const [seen, setSeen] = useState(false);
   const [gapPt, setGapPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
-      const nearby = new IntersectionObserver(
-        ([entry]) => {
-          const isNear = entry?.isIntersecting ?? false;
-          setNear(isNear);
-          if (isNear) setSeen(true);
-        },
-        { rootMargin: LAZY_MARGIN },
-      );
+      const nearby = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
+        rootMargin: LAZY_MARGIN,
+      });
       const size = new ResizeObserver(([entry]) => {
         const height = entry?.contentRect.height ?? 0;
         // A note is a hit area tall, and --hit is larger on a touch screen.
@@ -56,7 +49,7 @@ function useSheet(pageHeightPt: number) {
     },
     [pageHeightPt],
   );
-  return { ref, near, seen, gapPt };
+  return { ref, near, gapPt };
 }
 
 /** Everything a page draws from the editor's state: it redraws when one of these changes. */
@@ -112,7 +105,7 @@ export const Page = memo(function Page({ index, info }: Props) {
     <section className={styles.page} aria-label={label} style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
-        {sheet.seen && (
+        {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll.
           <img className={styles.image} src={page.src} alt="" decoding="async" onError={() => imageFailed(editor)} />
         )}
