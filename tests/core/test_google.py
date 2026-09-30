@@ -227,6 +227,32 @@ def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(t
     assert_equal(_fetched(file, tmp_path, _failing), None, "a cut gone bad")
 
 
+def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
+    """The network answered, so other files are still worth a try; the cut is kept when done."""
+    variable = _variable_font()
+    file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
+    poppins = POPPINS.read_bytes()
+    other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    released = threading.Event()
+    cut = google.cut
+
+    def slow_cut(variable_font: bytes, weight: int) -> bytes:
+        released.wait(_HANG_S)
+        return cut(variable_font, weight)
+
+    monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
+    monkeypatch.setattr(google, "cut", slow_cut)
+    by_path = {google.raw_url(file.path): variable, google.raw_url(other.path): poppins}
+    retry_at: RetryAt = {}
+    try:
+        late = fetched(file, folder=tmp_path, download=by_path.__getitem__, retry_at=retry_at)
+        got = fetched(other, folder=tmp_path, download=by_path.__getitem__, retry_at=retry_at)
+    finally:
+        released.set()
+    assert_equal(late, None, "the copy still being cut")
+    assert_true(got == poppins, "another file was fetched")
+
+
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())

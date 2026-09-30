@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache, partial
 from importlib import resources
 from pathlib import Path
@@ -215,12 +215,11 @@ def fetched(
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
     From the cache in `folder` when it's there and sound. Else, given `download`,
-    downloaded in
-    the background and waited on for FETCH_TIMEOUT_S at most; one that finishes
-    later is still checked, cut and cached, for the next analysis. A failure is
-    logged, not raised, and noted in `retry_at`, so nothing waits on it again
-    for FETCH_RETRY_S. A download that gets no answer holds back every file:
-    the network failed, not the file, and each would wait as long.
+    downloaded in the background and waited on for FETCH_TIMEOUT_S at most; one
+    that finishes later is still checked, cut and cached, for the next analysis.
+    A failure is logged, not raised, and noted in `retry_at`, so nothing waits
+    on it again for FETCH_RETRY_S. A download that gets no answer holds back
+    every file: the network failed, not the file, and each would wait as long.
     """
     ready = folder / GOOGLE_FONTS_COMMIT / file.source
     cached = from_cache(ready, file)
@@ -235,47 +234,60 @@ def fetched(
     # Failed a moment ago: not worth another wait yet.
     if now < held_until:
         return None
-    answer: queue.Queue[bytes | None] = queue.Queue(maxsize=1)
-    job = partial(fetch_into, file, ready=ready, download=download, answer=answer)
+    fetching = Fetching(ready=ready, download=download)
     # A daemon: one still hanging never keeps the worker from exiting.
-    threading.Thread(target=job, daemon=True).start()
+    threading.Thread(target=fetch_into, args=(file, fetching), daemon=True).start()
     try:
-        font_file = answer.get(timeout=FETCH_TIMEOUT_S)
-    except queue.Empty:  # no answer by the deadline: it carries on, and caches what it gets
-        _logger.warning("No Google copy of %s: no answer in %s s", file.path, FETCH_TIMEOUT_S)
-        retry_at[_EVERY_FILE] = now + FETCH_RETRY_S
+        font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
+    except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
+        _logger.warning("No Google copy of %s: not ready in %s s", file.path, FETCH_TIMEOUT_S)
+        # No answer from the network holds back every file; a slow cut, only this one.
+        held = file.source if fetching.answered.is_set() else _EVERY_FILE
+        retry_at[held] = now + FETCH_RETRY_S
         return None
     if font_file is None:
         retry_at[file.source] = now + FETCH_RETRY_S
     return font_file
 
 
-def fetch_into(
-    file: GoogleFile, *, ready: Path, download: Download, answer: queue.Queue[bytes | None]
-) -> None:
-    """Download `file` and cache it at `ready`, then hand it, or None, to `answer`.
+@dataclass(frozen=True, slots=True)
+class Fetching:
+    """One download under way in the background, and what it tells the one waiting on it."""
 
-    `answer` may have stopped waiting; what's cached is there for the next analysis.
+    ready: Path  # where it's cached
+    download: Download
+    # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
+    answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
+    # Set once the network has answered, so a slow cut isn't taken for a network down.
+    answered: threading.Event = field(default_factory=threading.Event)
+
+
+def fetch_into(file: GoogleFile, fetching: Fetching) -> None:
+    """Download `file`, check it, cut it if variable and cache it; then hand it, or None, on.
+
+    The one waiting may have given up; what's cached is there for the next analysis.
     """
-    font_file = checked_and_cut(file, download)
+    font_file = checked_and_cut(file, fetching)
     # Nothing to keep: the failure is logged.
     if font_file is None:
-        answer.put(None)
+        fetching.answer.put(None)
         return
-    kept(ready, font_file)
+    kept(fetching.ready, font_file)
     # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
     if file.weight is not None:
-        kept(hash_beside(ready), blob_hash(font_file).encode())
-    answer.put(font_file)
+        kept(hash_beside(fetching.ready), blob_hash(font_file).encode())
+    fetching.answer.put(font_file)
 
 
-def checked_and_cut(file: GoogleFile, download: Download) -> bytes | None:
+def checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
-        whole = download(raw_url(file.path))
+        whole = fetching.download(raw_url(file.path))
     except Exception:  # a network fails in many ways; logged, and the stand-in draws
         _logger.warning("No Google copy of %s: fetch failed", file.path, exc_info=True)
         return None
+    finally:
+        fetching.answered.set()
     if blob_hash(whole) != file.blob:
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None
