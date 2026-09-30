@@ -1,9 +1,11 @@
-import { memo, type ReactNode, type Ref, useCallback, useMemo, useState } from "react";
+import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, ImageInfo, PageInfo, SpanInfo } from "../../api/types";
+import { Tooltip } from "../../ui/Tooltip";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { type EditorState, type FocusTo, imageFailed } from "../editor";
 import { previewFaceOf } from "../faces";
+import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits } from "../render";
 import { shallowEqual } from "../store";
@@ -11,6 +13,7 @@ import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
 import { boxOf, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
+import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
 
@@ -147,24 +150,61 @@ function Previews({ page, info }: { page: PageState; info: PageInfo }) {
   ));
 }
 
-/** A mark over every span, or the field where one is being typed into. */
+/** A mark over every span, or the field where one is being typed into, and the one note they share. */
 function Marks({ page, info }: { page: PageState; info: PageInfo }) {
+  const [notes] = useState(createNotes);
+  const noteId = useId();
   const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
-  return page.spans.map((span) =>
-    span.id === page.typingIn ? (
-      <EditField key={span.id} span={span} info={info} />
-    ) : (
-      <SpanMark
-        key={span.id}
-        span={span}
-        info={info}
-        edited={readings.get(span.id)}
-        font={page.fonts.get(span.font)}
-        fit={page.fits[span.id]}
-        copy={page.copy}
-        focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
-      />
-    ),
+  return (
+    <>
+      {page.spans.map((span) =>
+        span.id === page.typingIn ? (
+          <EditField key={span.id} span={span} info={info} />
+        ) : (
+          <SpanMark
+            key={span.id}
+            span={span}
+            info={info}
+            edited={readings.get(span.id)}
+            font={page.fonts.get(span.font)}
+            fit={page.fits[span.id]}
+            copy={page.copy}
+            focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
+            notes={notes}
+            noteId={noteId}
+          />
+        ),
+      )}
+      <PageNote notes={notes} id={noteId} page={page} readings={readings} />
+    </>
+  );
+}
+
+/** The note of the span the page's marks say, over its mark; kept while it closes, for its animation. */
+function PageNote(props: { notes: Notes; id: string; page: PageState; readings: ReadonlyMap<string, SpanReading> }) {
+  const { notes, id, page, readings } = props;
+  const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
+  const span = last === null ? undefined : page.spans.find((each) => each.id === last.spanId);
+  if (last === null || span === undefined) return null;
+  const { note } = lookOf({
+    font: page.fonts.get(span.font),
+    edited: readings.get(span.id),
+    fit: page.fits[span.id],
+    copy: page.copy,
+  });
+  if (note === null) return null;
+  return (
+    <Tooltip
+      key={last.spanId}
+      id={id}
+      triggerRef={{ current: last.anchor }}
+      isOpen={shown !== null}
+      onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
+      heading={note.said}
+      warn={note.warn}
+    >
+      {note.why}
+    </Tooltip>
   );
 }
 

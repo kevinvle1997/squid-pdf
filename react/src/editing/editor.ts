@@ -19,10 +19,12 @@ export interface Draft {
   readonly text: string;
 }
 
-/** A span whose mark takes focus as soon as it's drawn, and keeps it until focus moves on. */
+/**
+ * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
+ * margin note. Its note stays shut until focus moves on, since it would cover the words.
+ */
 export interface FocusTo {
   readonly spanId: string;
-  readonly noteShut: boolean; // back from its field: its note would cover the words just typed
 }
 
 /** The document's spans and fonts, looked up by what the page needs. */
@@ -114,7 +116,7 @@ export function putBack(editor: Editor, spanId: string): void {
   change(
     editor,
     { kind: "remove", ids: touching(history, spanId) },
-    { said: `Put back ${layout.spans.get(spanId)?.text ?? ""}`, focusTo: { spanId, noteShut: false } },
+    { said: `Put back ${layout.spans.get(spanId)?.text ?? ""}`, focusTo: { spanId } },
   );
 }
 

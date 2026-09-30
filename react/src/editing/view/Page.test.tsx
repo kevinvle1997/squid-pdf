@@ -132,4 +132,22 @@ describe("a page", () => {
     // 612 pt at 96 dpi is 816 px.
     expect(sheet?.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
+
+  test("a span in a similar font shares the page's note: focus shows it, Escape closes it, Enter still edits", async () => {
+    const similar = aSpan({ id: "s3", text: "in Arial", font: "Arial", bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    const standIn = aFont("Arial", { substitute: "Liberation Sans Regular", same_widths: false, why: "Not embedded." });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [similar], fonts: [standIn] }), 2);
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "in Arial" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
+    await expect.element(note).toBeVisible();
+    await expect.element(mark).toHaveAccessibleDescription(/Edits here use Liberation Sans Regular/);
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(note).not.toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “in Arial”" })).toHaveFocus();
+  });
 });

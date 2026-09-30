@@ -44,7 +44,7 @@ export function finish(editor: Editor, keep: boolean, { returnFocus = false } = 
   const { store } = editor;
   const { draft, layout, reading } = store.get();
   if (draft === null) return;
-  const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId, noteShut: true } }) };
+  const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
   const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
   if (!keep || draft.text === was || draft.text.trim() === "") {
