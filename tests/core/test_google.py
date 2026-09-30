@@ -10,9 +10,17 @@ import pymupdf
 import pytest
 
 from squidpdf.core import Fidelity, google, open_pdf
+from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.google import Fetch, GoogleFile, blob_hash, fetched, google_fonts
+from squidpdf.core.google import (
+    Fetch,
+    GoogleFile,
+    blob_hash,
+    family_list,
+    fetched,
+    google_fonts,
+)
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_equal, assert_false, assert_true
 
@@ -124,6 +132,11 @@ def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():
     listed = "0bda228ade88b0bb5aac7da2c881d0c3f64d0817"  # Poppins-Regular.ttf at the pin
     assert_equal(blob_hash(POPPINS.read_bytes()), listed, "the test font's git hash")
     assert_false(any(ch in POPPINS_TEXT for ch in _LACKED), "the line uses a lacked letter")
+
+
+def test_the_vendored_family_list_was_read_from_the_pinned_commit():
+    """A new pin without a new list would fail every changed file's hash check, quietly."""
+    assert_equal(family_list()["commit"], GOOGLE_FONTS_COMMIT, "the list's commit")
 
 
 def test_nothing_is_fetched_when_told_not_to():
