@@ -9,12 +9,12 @@ from pathlib import Path
 import orjson
 import xxhash
 
-from squidpdf.core import BUILD, Workers, words
+from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
 from squidpdf.documents.info import document_response
-from squidpdf.documents.types import Analysis, Loaded, ReadReply
+from squidpdf.documents.types import Analysis, Loaded
 
 __all__ = [
     "ReadController",
@@ -28,7 +28,9 @@ class ReadController:
         """Analyse on `workers`, off the server's own thread."""
         self._workers = workers
 
-    async def read(self, doc: Loaded, *, said_in: str, if_none_match: str | None) -> ReadReply:
+    async def read(
+        self, doc: Loaded, *, said_in: str, if_none_match: str | None
+    ) -> Reply[bytes]:
         """The document as JSON with its ETag, or a 304 when `if_none_match` is that ETag."""
         saved = await self._saved_analysis(doc)
         headers = {
@@ -38,12 +40,12 @@ class ReadController:
         }
         # The browser's copy is current: a 304 carries no body, so no body's type.
         if if_none_match == headers["ETag"]:
-            return ReadReply(b"", HTTPStatus.NOT_MODIFIED, headers)
+            return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
         body = document_response(
             doc.id, expires_at=doc.expires_at, analysis=orjson.loads(saved), said_in=said_in
         )
         typed = headers | {"Content-Type": "application/json"}
-        return ReadReply(orjson.dumps(body), HTTPStatus.OK, typed)
+        return Reply(orjson.dumps(body), typed)
 
     async def _saved_analysis(self, doc: Loaded) -> bytes:
         """The analysis kept under this build, worked out first if the build is new."""

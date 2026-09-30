@@ -22,6 +22,7 @@ from squidpdf.core.message import Message, MessageInfo, Param
 
 # The one line that names the driver: another PDF library is swapped in here.
 from squidpdf.core.mupdf import BUILD, face_widths, open_pdf, write_sample
+from squidpdf.core.reply import Reply
 from squidpdf.core.types import SOLID, Fragment, Page, Rect, Span, SpanIndex, new_text
 from squidpdf.core.workers import Workers
 
@@ -34,6 +35,7 @@ __all__ = [
     "MessageInfo",
     "Param",
     "Problem",
+    "Reply",
     "NotFound",
     "InvalidRequest",
     "Unreadable",

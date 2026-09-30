@@ -25,9 +25,6 @@ __all__ = [
     "DocumentNoticeInfo",
     "Document",
     "Loaded",
-    "PageReply",
-    "UploadReply",
-    "ReadReply",
 ]
 
 
@@ -156,28 +153,3 @@ class Loaded:
     id: str
     folder: Path
     expires_at: float
-
-
-@dataclass(frozen=True, slots=True)
-class PageReply:
-    """A page image's reply, ready to send: the PNG and its headers."""
-
-    png: bytes
-    headers: dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class UploadReply:
-    """Upload's reply, ready to send: the document and its headers."""
-
-    body: Document
-    headers: dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class ReadReply:
-    """Read's reply, ready to send: the JSON, its status and its headers."""
-
-    json: bytes
-    status: int  # 304, with no JSON, when the browser's copy is current
-    headers: dict[str, str]

@@ -5,10 +5,10 @@ from __future__ import annotations
 import orjson
 
 # Not through `Engine`: these are our own files, with no document to open.
-from squidpdf.core import BUILD, Workers, face_widths
+from squidpdf.core import BUILD, Reply, Workers, face_widths
 from squidpdf.core.fonts import CATALOG
 from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
-from squidpdf.editing.types import FamilyInfo, FontList, FontListReply
+from squidpdf.editing.types import FamilyInfo, FontList
 
 __all__ = [
     "FontListController",
@@ -25,13 +25,13 @@ class FontListController:
         """List the fonts on `workers`, off the server's own thread."""
         self._workers = workers
 
-    async def font_list(self, build: str) -> FontListReply:
+    async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
         json = _font_lists.get(BUILD)  # None until the first ask since the server started
         if json is None:
             json = _font_lists[BUILD] = orjson.dumps(await self._enqueue_measure_faces())
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
-        return FontListReply(json, {"Cache-Control": cache})
+        return Reply(json, {"Cache-Control": cache})
 
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""

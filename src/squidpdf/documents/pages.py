@@ -6,11 +6,11 @@ import math
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import BUILD, Page, Workers, open_pdf
+from squidpdf.core import BUILD, Page, Reply, Workers, open_pdf
 from squidpdf.documents import store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS, PAGE_CACHE, PAGE_IMAGE_TIMEOUT_S
 from squidpdf.documents.errors import NoSuchPage
-from squidpdf.documents.types import Loaded, PageReply
+from squidpdf.documents.types import Loaded
 
 __all__ = [
     "PageController",
@@ -25,7 +25,7 @@ class PageController:
         """Draw on `workers`, off the server's own thread."""
         self._workers = workers
 
-    async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> PageReply:
+    async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> Reply[bytes]:
         """Page `page` as a PNG, at `scale` or less if the page is very large."""
         pages = store.load_pages(doc.folder)
         if not 0 <= page < len(pages):
@@ -35,7 +35,7 @@ class PageController:
         )
         # An old `build` still gets the image, but not to keep: its bytes may change.
         cache = PAGE_CACHE if build == BUILD else "no-store"
-        return PageReply(png, {"Cache-Control": cache})
+        return Reply(png, {"Cache-Control": cache})
 
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
         """Draw the page on a worker."""

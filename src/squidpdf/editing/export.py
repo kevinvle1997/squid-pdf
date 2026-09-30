@@ -10,7 +10,7 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import Engine, InvalidRequest, SpanIndex, Workers, open_pdf, words
+from squidpdf.core import Engine, InvalidRequest, Reply, SpanIndex, Workers, open_pdf, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.types import Loaded
@@ -20,7 +20,7 @@ from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
 from squidpdf.editing.info import notice_info
 from squidpdf.editing.redaction import RedactionController
-from squidpdf.editing.types import Exported, ExportReply, Notice, Saved
+from squidpdf.editing.types import Exported, Notice, Saved
 
 __all__ = [
     "ExportController",
@@ -43,7 +43,7 @@ class ExportController:
 
     async def export(
         self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, said_in: str
-    ) -> ExportReply:
+    ) -> Reply[bytes]:
         """The edited PDF, every page or `pages` in that order, and headers for the rest.
 
         Refuses edits over the limits and pages the document lacks. A
@@ -53,7 +53,7 @@ class ExportController:
         if pages is not None:
             check_pages(pages, len(store.load_pages(doc.folder)))
         exported = await self._enqueue_make_pdf(doc.folder, edits=edits, pages=pages)
-        return ExportReply(exported.pdf, reply_headers(exported, said_in))
+        return Reply(exported.pdf, reply_headers(exported, said_in))
 
     async def _enqueue_make_pdf(
         self, folder: Path, *, edits: list[Edit], pages: list[int] | None

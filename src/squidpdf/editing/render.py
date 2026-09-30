@@ -11,7 +11,17 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import BUILD, Engine, InvalidRequest, Page, Rect, Workers, open_pdf, words
+from squidpdf.core import (
+    BUILD,
+    Engine,
+    InvalidRequest,
+    Page,
+    Rect,
+    Reply,
+    Workers,
+    open_pdf,
+    words,
+)
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.pages import page_scale
@@ -20,7 +30,7 @@ from squidpdf.editing.apply import apply, log_fits
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import ImageInfo, Region, Render, Rendered, RenderReply
+from squidpdf.editing.types import ImageInfo, Region, Render, Rendered
 
 __all__ = [
     "RenderController",
@@ -42,7 +52,7 @@ class RenderController:
         regions: list[Region],
         scale: int,
         said_in: str,
-    ) -> RenderReply:
+    ) -> Reply[Render]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
         Refuses edits over the limits and regions the document lacks. A
@@ -57,7 +67,7 @@ class RenderController:
             doc.folder, edits=edits, regions=regions, scales=scales
         )
         body = reply_body(rendered, doc.expires_at, said_in)
-        return RenderReply(body, words.language_headers(said_in))
+        return Reply(body, words.language_headers(said_in))
 
     async def _enqueue_draw_regions(
         self,

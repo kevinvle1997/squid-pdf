@@ -6,12 +6,12 @@ from collections.abc import AsyncIterable
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import Workers, words
+from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.errors import NotAPdf, TooLarge
 from squidpdf.documents.info import document_response
-from squidpdf.documents.types import Analysis, UploadReply
+from squidpdf.documents.types import Analysis, Document
 
 __all__ = [
     "UploadController",
@@ -35,7 +35,7 @@ class UploadController:
         declared: int | None,
         chunks: AsyncIterable[bytes],
         said_in: str,
-    ) -> UploadReply:
+    ) -> Reply[Document]:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
         `declared` is the size the request states, None when it streams without
@@ -55,7 +55,7 @@ class UploadController:
         body = document_response(
             doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
         )
-        return UploadReply(body, words.language_headers(said_in))
+        return Reply(body, words.language_headers(said_in))
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""

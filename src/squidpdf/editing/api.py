@@ -82,7 +82,7 @@ async def fonts(
 ) -> Response:
     """Every face new text can be drawn in, by family, with each letter's width."""
     reply = await controller.font_list(build)
-    return Response(reply.json, media_type="application/json", headers=reply.headers)
+    return Response(reply.body, media_type="application/json", headers=reply.headers)
 
 
 @router.post("/{doc_id}/render", response_model=Render)
@@ -114,4 +114,4 @@ async def export(
 ) -> Response:
     """The edited document as a PDF: every page, or `pages` in that order."""
     reply = await controller.export(doc, edits=body.edits, pages=body.pages, said_in=said_in)
-    return Response(reply.pdf, media_type="application/pdf", headers=reply.headers)
+    return Response(reply.body, media_type="application/pdf", headers=reply.headers)
