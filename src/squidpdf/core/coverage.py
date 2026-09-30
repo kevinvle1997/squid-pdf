@@ -21,11 +21,11 @@ __all__ = [
     "Coverage",
 ]
 
-# Counted as drawable whether the font maps them or not: tabs and line breaks
-# aren't drawn, and the plain space is one text extraction adds between words a
-# font never drew a space for. Any other space (no-break, figure, thin...) draws
-# nothing yet still needs the font to map it: unmapped, it's drawn as .notdef.
-_ALWAYS_DRAWABLE = frozenset({" ", "\t", "\n", "\r"})
+# Counted as drawable whether the font maps it or not: the plain space is one text
+# extraction adds between words a font never drew a space for. Any other space
+# (no-break, figure, thin...) draws nothing yet still needs the font to map it:
+# unmapped, it's drawn as .notdef. Line breaks and tabs aren't text on a line.
+_ALWAYS_DRAWABLE = frozenset({" "})
 
 
 # A bare CFF font program starts with this header (major.minor version 1.0);

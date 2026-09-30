@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 
 import pymupdf
 import pytest
@@ -92,3 +93,28 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     response = _render(mine, doc, [{**_INSERT, **change}], [{"page": 0}])
     assert_problem(response, "invalid_request", 400)
     assert_in(field, response.json()["debug"], "what a developer reads")
+
+
+@pytest.mark.parametrize("kind", ["replace", "insert"])
+@pytest.mark.parametrize(
+    "character",
+    ["\n", "\r", "\t", "\ud800"],
+    ids=["line break", "carriage return", "tab", "half an emoji"],
+)
+def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
+    """A line break would draw a second line over the next; half an emoji draws nothing."""
+    span = _span(doc, 0, "Made")
+    replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
+    insert = {**_INSERT, "text": f"Sig{character}ned"}
+    edit = replace if kind == "replace" else insert
+    body = {"edits": [edit], "scale": _SCALE, "regions": [{"page": 0}]}
+
+    # Escaped, as a browser's JSON.stringify sends half an emoji.
+    response = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        content=json.dumps(body),
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("text", response.json()["debug"], "what a developer reads")

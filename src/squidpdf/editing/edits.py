@@ -8,12 +8,29 @@ once, as its last edit leaves it.
 from __future__ import annotations
 
 import math
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
 from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
+
+# Unicode's categories for characters that aren't letters on a line: controls (line
+# breaks, tabs) and one half of a pair that only means something whole (an emoji).
+_NOT_ON_A_LINE = frozenset({"Cc", "Cs"})
+
+
+def check_text(text: str) -> None:
+    """Refuse new text that isn't one line of letters, however the edit is made.
+
+    A line break would draw a second line over the next (reflow is out of
+    scope), and the rest draw nothing. From the browser, pydantic turns the
+    ValueError into a bad request.
+    """
+    for position, ch in enumerate(text):
+        if unicodedata.category(ch) in _NOT_ON_A_LINE:
+            raise ValueError(f"text: U+{ord(ch):04X} at {position}; new text is one line")
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +41,10 @@ class Replace:
     text: str
     strategy: Strategy = "as-is"
     kind: Literal["replace"] = "replace"
+
+    def __post_init__(self) -> None:
+        """Refuse text that isn't one line of letters."""
+        check_text(self.text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +79,7 @@ class Insert:
     kind: Literal["insert"] = "insert"
 
     def __post_init__(self) -> None:
-        """Refuse a place, size or color nothing can draw, however the insert is made.
+        """Refuse a place, size, color or text nothing can draw, however the insert is made.
 
         From the browser, pydantic turns the ValueError into a bad request.
         """
@@ -68,6 +89,7 @@ class Insert:
             raise ValueError(f"size must be above 0, got {self.size}")
         if not all(0 <= channel <= 1 for channel in self.color):
             raise ValueError(f"color channels must be from 0 to 1, got {self.color}")
+        check_text(self.text)
 
 
 type Edit = Replace | Redact | Insert
