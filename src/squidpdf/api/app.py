@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from squidpdf.api import errors
 from squidpdf.api.body import BodyLimit
+from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
@@ -52,6 +53,8 @@ def create_app() -> FastAPI:
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     uploads = app.url_path_for(documents.upload.__name__)
     app.add_middleware(BodyLimit, streamed=[uploads])
+    # Outermost, so it sees the body come in however BodyLimit reads it.
+    app.add_middleware(CancelOnDisconnect)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
