@@ -15,7 +15,7 @@ import pymupdf
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts import strip_subset
 from tests.api.conftest import span_starting, upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.helpers import assert_at_most, assert_equal, assert_in, assert_not_in, assert_true
 
 _SCALE = 2
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
@@ -81,7 +81,7 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     body = {"edits": [replace], "scale": _SCALE, "regions": []}
     fit = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()["fits"]
     fit = fit[delivery["id"]]
-    assert_true(fit["delta_pt"] <= TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
+    assert_at_most(fit["delta_pt"], TOLERANCE_PT, "points past the original")
     assert_equal((fit["missing"], fit["message"]), ([], None), "what's wrong with it")
     preview = _strip(mine, doc, [replace], delivery)
     changed = preview != _strip(mine, doc, [], delivery)

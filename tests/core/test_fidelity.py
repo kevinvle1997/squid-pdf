@@ -22,7 +22,7 @@ from squidpdf.core.fonts import strip_subset
 from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
 from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
-from tests.helpers import assert_all, assert_between, assert_equal, assert_not_in
+from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
 
 _EM = 1000
 _SIZE = 12
@@ -186,7 +186,9 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     assert_equal(_font_objects(out), _font_objects(coded), "fonts on the page, none added")
     x0, y0 = before["chars"][0]["origin"]
     x1, y1 = after["chars"][0]["origin"]
-    assert_between(abs(x1 - x0) + abs(y1 - y0), -1, _ORIGIN_TOLERANCE_PT, "first glyph moved")
+    assert_at_most(
+        abs(x1 - x0) + abs(y1 - y0), _ORIGIN_TOLERANCE_PT, "points the first glyph moved"
+    )
     with open_pdf(out) as saved:
         assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
 
@@ -313,7 +315,7 @@ def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
     assert_equal(every_letter - widths.keys(), set(), "letters the pooled list leaves out")
     assert_equal(widths["Y"], others["Y"], "Y's width, borrowed and in its own copy")
     listed = sum(widths[ch] for ch in _POOLED) * own.size / _EM
-    assert_between(measured - listed, -_SAME_PT, _SAME_PT, "measured less listed width")
+    assert_close(measured, listed, _SAME_PT, "measured against listed width")
 
 
 def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_coded, tmp_path):

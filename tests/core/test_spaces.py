@@ -12,7 +12,7 @@ import pytest
 
 from squidpdf.core import Span, open_pdf
 from tests.core.conftest import GAP_EM, GAPPED_SIZE
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_close, assert_equal
 
 _EM = 1000
 _LANDS_PT = 0.1  # how far a redrawn letter may land from where it was
@@ -58,7 +58,7 @@ def test_a_redraw_puts_every_word_back_where_it_was(gapped, tmp_path, line):
     read = "".join(c for c, _start, _end in after)
     assert_equal(read, "".join(c for c, _start, _end in before), "the text read back")
     moved = max(abs(b[1] - a[1]) for a, b in zip(before, after, strict=True))
-    assert_true(moved <= _LANDS_PT, f"a letter moved {moved:.2f} pt")
+    assert_at_most(moved, _LANDS_PT, "points a letter moved")
 
 
 @pytest.mark.parametrize(
@@ -82,9 +82,9 @@ def test_what_is_measured_is_what_is_drawn(gapped, tmp_path, line, text):
     _redraw(gapped, out, line, text)
 
     drawn_to = _letters(out, span)[-1][2] - span.origin[0]
-    assert_true(abs(drawn_to - measured) < _SAME_PT, f"drawn {drawn_to}, measured {measured}")
+    assert_close(drawn_to, measured, _SAME_PT, "where it was drawn to, against the measure")
     words = text.split()
     letters = sum(len(word) for word in words)
     expected = (letters * _ADVANCE_EM + (len(words) - 1) * GAP_EM) * GAPPED_SIZE
-    assert_true(abs(measured - expected) < _SAME_PT, f"measured {measured}, not {expected}")
+    assert_close(measured, expected, _SAME_PT, "the measure")
     assert_equal(widths[" "], GAP_EM * _EM, "a space's width, as the browser checks with it")

@@ -27,7 +27,15 @@ from squidpdf.editing import (
     replace_fit,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_at_most,
+    assert_close,
+    assert_equal,
+    assert_in,
+    assert_not_in,
+    assert_true,
+)
 
 _LONGER = "!!"  # a few points past the original: within reach of shrink and condense
 _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
@@ -146,7 +154,7 @@ def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
     """A resource per redrawn span piled up on the page."""
     index = engine.index()
     embedded = [s for s in index if s.page == EMBEDDED_PAGE]
-    assert_true(len(embedded) >= 2, f"spans in one font on page 2, found {len(embedded)}")
+    assert_at_least(len(embedded), 2, "spans in one font on page 2")
 
     apply(engine, [Replace(s.id, s.text) for s in embedded], index)
     engine.save(str(tmp_path / "redrawn.pdf"))
@@ -202,7 +210,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
         out, EMBEDDED_PAGE, "Liberation Serif Regular", "Delivery begins 14 Février 2026"
     )
     added = out.stat().st_size - unedited.stat().st_size
-    assert_true(added < _ONE_EDIT_ADDS_AT_MOST, f"the edit added {added} bytes to the file")
+    assert_at_most(added, _ONE_EDIT_ADDS_AT_MOST, "bytes the edit added to the file")
     # The document's own font still draws the other line, and nothing in it changed.
     own = strip_subset(span.font)
     [own_name] = [f[3] for f in pymupdf.open(pdf)[EMBEDDED_PAGE].get_fonts() if own in f[3]]
@@ -235,7 +243,7 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
     assert_equal(drawn["font"], saved_as("Liberation Serif Regular"), "the font that drew it")
     x0, _y0, x1, _y1 = drawn["bbox"]
     moved = abs(x0 - span.bbox.x0) + abs(x1 - span.bbox.x1)
-    assert_true(moved < _SAME_WIDTH_PT, f"the line's ends moved {moved:.2f} pt")
+    assert_at_most(moved, _SAME_WIDTH_PT, "points the line's ends moved")
 
 
 def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(tmp_path):
@@ -317,7 +325,7 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
     assert_equal((drawn["text"], drawn["font"]), expected, "what drew, and in what")
     x0, _y0, x1, _y1 = drawn["bbox"]
     width = x1 - x0
-    assert_true(abs(width - measured) < _SAME_WIDTH_PT, f"drawn {width}, measured {measured}")
+    assert_close(width, measured, _SAME_WIDTH_PT, "the drawn width, against the measured")
 
 
 @pytest.mark.parametrize("strategy", ["shrink", "condense"])
@@ -337,7 +345,7 @@ def test_a_fitting_strategy_ends_the_run_where_the_original_did(
 
     drawn = _drawn(out, REFERENCED_PAGE, _LONGER)
     _x0, top, end, bottom = drawn["bbox"]
-    assert_true(end <= span.bbox.x1 + _EDGE_PT, f"{strategy} ends at {end}, not {span.bbox.x1}")
+    assert_at_most(end, span.bbox.x1 + _EDGE_PT, f"where {strategy} ends")
     # Height, not size: MuPDF reports a narrowed run's size as smaller too.
     height = bottom - top
     _x0, as_is_top, _x1, as_is_bottom = _drawn(as_is, REFERENCED_PAGE, _LONGER)["bbox"]

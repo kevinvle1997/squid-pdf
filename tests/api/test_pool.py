@@ -13,7 +13,7 @@ import pytest
 from squidpdf.api.constants import WORKER_MEMORY_BYTES
 from squidpdf.api.pool import Pool
 from squidpdf.core import Problem
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal
 
 _HANG_S = 60
 _TIMEOUT_S = 0.5
@@ -67,7 +67,7 @@ def test_work_past_its_timeout_is_killed_and_called_too_slow(pool):
         asyncio.run(pool.run(_TIMEOUT_S, _hang))
     waited = time.monotonic() - started
     assert_equal(caught.value.type, "too_slow", "problem for a task that hung")
-    assert_true(waited < _ENOUGH_S, f"waited {waited:.1f} s for a {_TIMEOUT_S} s timeout")
+    assert_at_most(waited, _ENOUGH_S, f"seconds waited for a {_TIMEOUT_S} s timeout")
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="the memory ceiling is Linux only")

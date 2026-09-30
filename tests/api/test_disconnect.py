@@ -13,7 +13,7 @@ import time
 from starlette.types import Message, Receive, Scope, Send
 
 from squidpdf.api.disconnect import CancelOnDisconnect
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal, assert_true
 
 _WORK_S = 30  # far longer than the test waits: work that finished wasn't stopped
 _LEAVES_AFTER_S = 0.05
@@ -58,7 +58,7 @@ def test_work_for_a_browser_that_left_is_stopped():
 
     assert_true(stopped, "the work for a browser that left was stopped")
     took = time.monotonic() - started
-    assert_true(took < _ENOUGH_S, f"it took {took:.1f} s to stop")
+    assert_at_most(took, _ENOUGH_S, "seconds it took to stop")
 
 
 def test_an_answer_already_begun_runs_to_its_end():

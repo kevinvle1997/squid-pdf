@@ -38,6 +38,22 @@ def assert_not_in(item: object, container: Container, label: str) -> None:
     assert item not in container, f"{label}: {item!r} unexpectedly found in {container!r}"
 
 
+def assert_at_most(value: float, most: float, label: str) -> None:
+    """Assert `value <= most`; name what was being measured."""
+    assert value <= most, f"{label}: expected at most {most!r}, got {value!r}"
+
+
+def assert_at_least(value: float, least: float, label: str) -> None:
+    """Assert `value >= least`; name what was being measured."""
+    assert value >= least, f"{label}: expected at least {least!r}, got {value!r}"
+
+
+def assert_close(actual: float, expected: float, within: float, label: str) -> None:
+    """Assert `actual` is no further than `within` from `expected`; name what was measured."""
+    off = abs(actual - expected)
+    assert off <= within, f"{label}: expected {expected!r} within {within!r}, got {actual!r}"
+
+
 def assert_between(value: float, low: float, high: float, label: str) -> None:
     """Assert `low < value < high`; name what was being measured."""
     assert low < value < high, f"{label}: {value!r} not between {low!r} and {high!r}"

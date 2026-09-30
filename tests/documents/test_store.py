@@ -12,7 +12,7 @@ from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
-from tests.helpers import assert_equal, assert_false, assert_in, assert_true
+from tests.helpers import assert_at_least, assert_equal, assert_false, assert_in, assert_true
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
 
@@ -64,7 +64,7 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
         sweeping.cancel()
 
     asyncio.run(sweep_until_a_second_pass())
-    assert_true(passes > 1, f"sweeps after the one that failed: {passes - 1}")
+    assert_at_least(passes, 2, "sweeps, the one that failed and those after it")
     assert_in("the disk said no", caplog.text, "what the log says about the failed sweep")
 
 
