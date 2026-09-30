@@ -1,13 +1,16 @@
 // Where the caret goes as a double press opens a span's field: the word under the press.
 import { widthPt } from "./fit";
 
-/** The index in `text` of the letter at `atPt` points from its start. */
+/** Where in `text` the letter at `atPt` points from its start begins, counted as the field counts: in UTF-16 units. */
 export function letterAt(text: string, atPt: number, glyphs: Record<string, number>, size: number): number {
-  const letters = [...text];
-  for (let index = 0; index < letters.length; index++) {
-    if (widthPt(letters.slice(0, index + 1).join(""), glyphs, size) > atPt) return index;
+  let widthSoFar = 0;
+  let offset = 0;
+  for (const letter of text) {
+    widthSoFar += widthPt(letter, glyphs, size);
+    if (widthSoFar > atPt) return offset;
+    offset += letter.length;
   }
-  return letters.length;
+  return text.length;
 }
 
 /** The word around `index`, as the field's start and end: what a double press selects. */
