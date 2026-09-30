@@ -10,6 +10,7 @@ Replace or a Redact is, which is what keeps `core` free of feature imports.
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from itertools import chain, count, groupby
@@ -218,6 +219,7 @@ class Engine:
         trimmed (subset) font still lists letters whose shapes were emptied. A
         font not in the file is checked against its look-alike, the real file we ship.
         """
+        text = self._spelled(span, text)
         pool = self._fonts.own(span)
         # Not in the file: the look-alike draws it.
         if pool is None:
@@ -398,6 +400,7 @@ class Engine:
         draws, switching would draw none of them, so the own font keeps the
         line without them.
         """
+        text = self._spelled(span, text)
         own = self._fonts.own(span)
         missing = [] if own is None else own.missing(text)
         if own is not None and not missing:
@@ -418,6 +421,23 @@ class Engine:
         font = self._program(plan)
         _words, width = self._words(span, plan.text, font=font, size=size)
         return width
+
+    def _spelled(self, span: Span, text: str) -> str:
+        """`text` spelled as the span's own font has it: as typed, composed or in pieces.
+
+        é can be one letter or e and an accent. A trimmed font keeps whichever
+        its document used, and macOS pastes in pieces. With none whole in the
+        font, composed: the faces we ship draw it that way.
+        """
+        composed = unicodedata.normalize("NFC", text)
+        own = self._fonts.own(span)
+        if own is None:
+            return composed
+        in_pieces = unicodedata.normalize("NFD", text)
+        whole = (
+            spelling for spelling in (text, composed, in_pieces) if not own.missing(spelling)
+        )
+        return next(whole, composed)
 
     def _program(self, plan: DrawPlan) -> FontProgram:
         """The font program that measures and draws `plan`'s line."""

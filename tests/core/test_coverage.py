@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import unicodedata
 from importlib import resources
 
 import pymupdf
@@ -145,3 +146,20 @@ def test_a_letter_table_past_unicode_is_passed_over_not_a_crash():
 
     coverage = Coverage(font_file.getvalue())
     assert_equal(coverage.drawable(), [" ", "A"], "what it draws")
+
+
+def test_a_letter_typed_in_two_pieces_is_the_one_the_font_has(tmp_path):
+    """é can be one letter, or e and an accent (as macOS pastes it); the font keeps one."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
+    page.insert_text((72, 100), "Café in Zürich", fontname="emb", fontsize=12)
+    doc.subset_fonts(verbose=False)  # keeps é and ü whole, not their pieces
+    path = str(tmp_path / "accented.pdf")
+    doc.save(path)
+    in_pieces = unicodedata.normalize("NFD", "Café in Zürich")
+
+    with open_pdf(path) as engine:
+        [span] = engine.index()
+        assert_equal(engine.missing(span, in_pieces), [], "letters the font lacks")
+        assert_equal(engine.left_out(span, in_pieces), [], "letters left out")
