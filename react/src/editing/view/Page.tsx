@@ -2,7 +2,7 @@ import { memo, type ReactNode, type Ref, useCallback, useMemo, useState } from "
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, ImageInfo, PageInfo, SpanInfo } from "../../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import { type EditorState, imageFailed } from "../editor";
+import { type EditorState, type FocusTo, imageFailed } from "../editor";
 import { previewFaceOf } from "../faces";
 import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits } from "../render";
@@ -57,14 +57,13 @@ interface PageState {
   readonly fits: PageFits;
   readonly src: string; // the page image
   readonly typingIn: string | null; // the span being typed into, when it's here
-  readonly quiet: string | null; // the span focus went back to after its edit, when it's here
+  readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
   // What every mark shows, selected once here rather than by each mark.
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly copy: Copy;
 }
 
 function pageState(state: EditorState, index: number): PageState {
-  const back = state.returnedTo === null ? undefined : state.layout.spans.get(state.returnedTo);
   return {
     spans: state.layout.pages.get(index) ?? NO_SPANS,
     edits: state.reading.pages.get(index),
@@ -73,7 +72,8 @@ function pageState(state: EditorState, index: number): PageState {
     fits: state.drawn.fits.get(index) ?? NO_FITS,
     src: pageUrl(state.doc, index, state.scale),
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
-    quiet: back?.page === index ? back.id : null,
+    focusTo:
+      state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
     fonts: state.layout.fonts,
     copy: state.doc.copy,
   };
@@ -162,7 +162,7 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
         font={page.fonts.get(span.font)}
         fit={page.fits[span.id]}
         copy={page.copy}
-        quiet={page.quiet === span.id}
+        focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
       />
     ),
   );

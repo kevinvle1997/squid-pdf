@@ -84,12 +84,13 @@ describe("a page", () => {
     expect(getComputedStyle(said.element()).color).toBe(getComputedStyle(warn).color);
   });
 
-  test("a kept edit gets a margin note that puts it back, and focus returns to the span", async () => {
+  test("Enter keeps the edit and puts focus back on the span; its margin note puts it back, and focus with it", async () => {
     const screen = await draw();
     await editSpan(screen);
     await screen.getByRole("textbox").fill("is here");
     await userEvent.keyboard("{Enter}");
     expect(vi.mocked(renderOnServer)).toHaveBeenCalledTimes(1);
+    await expect.element(screen.getByRole("button", { name: "is here" })).toHaveFocus();
 
     const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
     await note.click();

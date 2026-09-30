@@ -23,12 +23,3 @@ export function useEditorState<T>(select: (state: EditorState) => T, isEqual?: (
   const { store } = useEditor();
   return useSyncExternalStoreWithSelector(store.subscribe, store.get, undefined, select, isEqual);
 }
-
-/** Put focus on a span's mark, as a keyboard user expects after editing it. */
-export function focusSpan(spanId: string): void {
-  document.getElementById(markId(spanId))?.focus();
-}
-
-export function markId(spanId: string): string {
-  return `span-${spanId}`;
-}

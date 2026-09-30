@@ -7,7 +7,7 @@ import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
-import { finish, returnTo, troublesIn, typeInto } from "../typing";
+import { finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { boxOf, points, spanTextStyle } from "./geometry";
@@ -45,9 +45,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter" && event.key !== "Escape") return;
     event.preventDefault();
-    // Back on the span, but its note would cover what was just typed: it waits for the next visit.
-    returnTo(editor, span.id);
-    finish(editor, event.key === "Enter");
+    finish(editor, event.key === "Enter", { returnFocus: true });
   }
 
   const box = boxOf(span.bbox, info);

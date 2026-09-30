@@ -3,7 +3,7 @@ import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
 import { notePlaces } from "../margin";
 import type { SpanReading } from "../project";
-import { focusSpan, useEditor } from "./context";
+import { useEditor } from "./context";
 import styles from "./Margin.module.css";
 
 interface Props {
@@ -27,10 +27,7 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
       key={span.id}
       className={styles.note}
       aria-label={`Undo: “${now}” goes back to “${span.text}”`}
-      onPress={() => {
-        putBack(editor, span.id);
-        focusSpan(span.id);
-      }}
+      onPress={() => putBack(editor, span.id)}
     >
       <span className={styles.old}>{span.text}</span>
       {shape === "list" && <span className={styles.now}>{now}</span>}

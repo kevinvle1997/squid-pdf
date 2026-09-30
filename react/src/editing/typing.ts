@@ -10,7 +10,8 @@ export function edit(editor: Editor, spanId: string, atPt: number | null): void 
   const { layout, reading } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
-  store.set({ draft: { spanId, page: span.page, atPt, text: reading.spans.get(spanId)?.text ?? span.text } });
+  const text = reading.spans.get(spanId)?.text ?? span.text;
+  store.set({ draft: { spanId, page: span.page, atPt, text }, focusTo: null });
 }
 
 /** What the draft's span would get wrong reading `text`, in the server's words; nothing when it fits. */
@@ -35,20 +36,21 @@ export function typeInto(editor: Editor, text: string): void {
   store.set({ draft: { ...state.draft, text }, said });
 }
 
-/** End the typing: `keep` puts what was typed in the history. */
-export function finish(editor: Editor, keep: boolean): void {
+/**
+ * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
+ * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
+ */
+export function finish(editor: Editor, keep: boolean, { returnFocus = false } = {}): void {
   const { store } = editor;
   const { draft, layout, reading } = store.get();
   if (draft === null) return;
-  store.set({ draft: null });
+  const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId, noteShut: true } }) };
   const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || draft.text === was || draft.text.trim() === "") return;
-  change(editor, { kind: "add", edits: [{ kind: "replace", span_id: draft.spanId, text: draft.text }] });
-  store.set({ said: `Changed to ${draft.text}` });
-}
-
-/** Focus went back to a span after its edit, or moved on from it. */
-export function returnTo(editor: Editor, spanId: string | null): void {
-  editor.store.set({ returnedTo: spanId });
+  if (!keep || draft.text === was || draft.text.trim() === "") {
+    store.set(ended);
+    return;
+  }
+  const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text };
+  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: `Changed to ${draft.text}` });
 }

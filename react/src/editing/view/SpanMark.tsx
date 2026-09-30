@@ -1,12 +1,13 @@
-import { memo, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Button, type PressEvent, TooltipTrigger } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "../constants";
+import { type FocusTo, focusMoved } from "../editor";
 import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
-import { edit, returnTo } from "../typing";
-import { markId, useEditor } from "./context";
+import { edit } from "../typing";
+import { useEditor } from "./context";
 import { boxOf } from "./geometry";
 import styles from "./SpanMark.module.css";
 
@@ -17,7 +18,7 @@ interface Props {
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
   copy: Copy;
-  quiet: boolean; // focus just came back from editing it: its note would cover the new words
+  focusTo: FocusTo | null; // focus is sent here: back from its field, or put back from the margin
 }
 
 /**
@@ -25,12 +26,19 @@ interface Props {
  * The page hands it what it shows, so a page's marks subscribe to nothing of their own and
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
-export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, quiet }: Props) {
+export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, focusTo }: Props) {
   const editor = useEditor();
   const look = lookOf({ font, edited, fit, copy });
   const note = look.note;
   const [open, setOpen] = useState(false);
   const lastPress = useRef(0);
+  // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
+  const takeFocus = useCallback(
+    (mark: HTMLButtonElement | null) => {
+      if (focusTo !== null) mark?.focus();
+    },
+    [focusTo],
+  );
 
   function pressed(event: PressEvent) {
     // Enter, Space, or a screen reader's activation: edit at once, the whole span selected.
@@ -67,17 +75,15 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
       delay={NOTE_DELAY_MS}
       closeDelay={0}
       isDisabled={note === null}
-      isOpen={open && note !== null && !quiet}
+      isOpen={open && note !== null && !focusTo?.noteShut}
       onOpenChange={setOpen}
     >
       <Button
-        id={markId(span.id)}
+        ref={takeFocus}
         className={className}
         style={boxOf(span.bbox, info)}
         onPress={pressed}
-        // Back from editing this span: the mark takes the field's place and focus with it.
-        autoFocus={quiet}
-        onBlur={() => quiet && returnTo(editor, null)}
+        onBlur={() => focusTo !== null && focusMoved(editor)}
       >
         <span className="vh">{edited?.text ?? span.text}</span>
       </Button>

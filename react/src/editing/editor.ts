@@ -19,6 +19,12 @@ export interface Draft {
   readonly text: string;
 }
 
+/** A span whose mark takes focus as soon as it's drawn, and keeps it until focus moves on. */
+export interface FocusTo {
+  readonly spanId: string;
+  readonly noteShut: boolean; // back from its field: its note would cover the words just typed
+}
+
 /** The document's spans and fonts, looked up by what the page needs. */
 export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
@@ -34,7 +40,7 @@ export interface EditorState {
   readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
   readonly draft: Draft | null;
-  readonly returnedTo: string | null; // the span focus went back to after its edit: its note stays shut
+  readonly focusTo: FocusTo | null;
   readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
   readonly said: string; // what a screen reader hears, for what the page doesn't show
   readonly exporting: boolean;
@@ -70,7 +76,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     reading: UNEDITED,
     drawn: NOTHING_DRAWN,
     draft: null,
-    returnedTo: null,
+    focusTo: null,
     notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
     said: "",
     exporting: false,
@@ -83,24 +89,38 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   return { store, file, reopener, queue };
 }
 
-/** Every change to the history comes through here, and redraws what it changed. */
-export function change(editor: Editor, action: HistoryAction): void {
+/**
+ * Every change to the history comes through here, and redraws what it changed. `also` is the
+ * rest of the action that made it, so what's drawn never sees one half without the other.
+ */
+export function change(editor: Editor, action: HistoryAction, also: Partial<EditorState> = {}): void {
   const { store, queue } = editor;
   const state = store.get();
   const history = historyReducer(state.history, action);
-  if (history === state.history) return;
+  if (history === state.history) {
+    if (Object.keys(also).length > 0) store.set(also);
+    return;
+  }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export or reopening said is stale once the user edits again.
   const notices = { ...state.notices, export: null, reopen: null };
-  store.set({ history, reading, notices });
+  store.set({ history, reading, notices, ...also });
   queue.draw(reading);
 }
 
-/** Put a span back as the document had it, from its margin note. */
+/** Put a span back as the document had it, from its margin note; focus goes to the span. */
 export function putBack(editor: Editor, spanId: string): void {
-  const { store } = editor;
-  change(editor, { kind: "remove", ids: touching(store.get().history, spanId) });
-  store.set({ said: `Put back ${store.get().layout.spans.get(spanId)?.text ?? ""}` });
+  const { history, layout } = editor.store.get();
+  change(
+    editor,
+    { kind: "remove", ids: touching(history, spanId) },
+    { said: `Put back ${layout.spans.get(spanId)?.text ?? ""}`, focusTo: { spanId, noteShut: false } },
+  );
+}
+
+/** Focus has left the span it was sent to: the next visit is an ordinary one. */
+export function focusMoved(editor: Editor): void {
+  editor.store.set({ focusTo: null });
 }
 
 /** Tell a screen reader, for what the page doesn't show. */
