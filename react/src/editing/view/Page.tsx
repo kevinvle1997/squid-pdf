@@ -3,11 +3,12 @@ import { pageUrl } from "../../api/client";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { imageFailed } from "../editor";
-import { familyOf, previewFaceOf } from "../faces";
+import { previewFaceOf } from "../faces";
 import { differing, type SpanReading } from "../project";
 import type { PageFits } from "../render";
-import { boxOf, points, useEditor, useEditorState } from "./context";
+import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
+import { boxOf, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
@@ -137,22 +138,12 @@ function Preview({ span, text, info }: { span: SpanInfo; text: string; info: Pag
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   if (font === undefined) return null;
   const box = boxOf(span.bbox, info);
-  const [red = 0, green = 0, blue = 0] = span.color;
   return (
     <span
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{
-        left: box.left,
-        top: box.top,
-        minWidth: box.width,
-        height: box.height,
-        lineHeight: box.height,
-        fontSize: points(span.size, info),
-        fontFamily: familyOf(previewFaceOf(font)),
-        color: `rgb(${red * 255} ${green * 255} ${blue * 255})`,
-      }}
+      style={{ ...spanTextStyle(span, info, previewFaceOf(font)), minWidth: box.width, lineHeight: box.height }}
     >
       {text}
     </span>

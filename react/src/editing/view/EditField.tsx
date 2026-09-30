@@ -5,11 +5,12 @@ import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
-import { familyOf, previewFaceOf } from "../faces";
+import { previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
 import { finish, returnTo, troublesIn, typeInto } from "../typing";
-import { boxOf, points, useEditor, useEditorState } from "./context";
+import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
+import { boxOf, points, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -50,7 +51,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   }
 
   const box = boxOf(span.bbox, info);
-  const [red = 0, green = 0, blue = 0] = span.color;
   // Half an em spare: the preview face's widths are close to the server's, not always equal.
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
   return (
@@ -69,15 +69,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           autoComplete="off"
           onKeyDown={onKeyDown}
           onBlur={() => finish(editor, true)}
-          style={{
-            left: box.left,
-            top: box.top,
-            height: box.height,
-            width: points(wide, info),
-            fontSize: points(span.size, info),
-            fontFamily: familyOf(face),
-            color: `rgb(${red * 255} ${green * 255} ${blue * 255})`,
-          }}
+          style={{ ...spanTextStyle(span, info, face), width: points(wide, info) }}
         />
       </TextField>
       <div className={styles.chip} aria-hidden="true" style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>

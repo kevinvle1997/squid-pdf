@@ -6,7 +6,8 @@ import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "../constants";
 import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
 import { edit, returnTo } from "../typing";
-import { boxOf, markId, useEditor } from "./context";
+import { markId, useEditor } from "./context";
+import { boxOf } from "./geometry";
 import styles from "./SpanMark.module.css";
 
 interface Props {

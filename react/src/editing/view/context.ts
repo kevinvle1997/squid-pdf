@@ -30,23 +30,3 @@ export function focusSpan(spanId: string): void {
 export function markId(spanId: string): string {
   return `span-${spanId}`;
 }
-
-/** A box on the page as percentages of it, so it scales with the page. */
-export function boxOf(
-  bbox: { x0: number; y0: number; x1: number; y1: number },
-  page: { width: number; height: number },
-): { left: string; top: string; width: string; height: string } {
-  const across = (value: number) => `${(value / page.width) * 100}%`;
-  const down = (value: number) => `${(value / page.height) * 100}%`;
-  return {
-    left: across(bbox.x0),
-    top: down(bbox.y0),
-    width: across(bbox.x1 - bbox.x0),
-    height: down(bbox.y1 - bbox.y0),
-  };
-}
-
-/** A length in points as CSS, against the page's width: the page layer is a size container. */
-export function points(value: number, page: { width: number }): string {
-  return `${(value / page.width) * 100}cqw`;
-}
