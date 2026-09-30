@@ -5,9 +5,11 @@ from __future__ import annotations
 import io
 from importlib import resources
 
+import pymupdf
 import pytest
 from fontTools.ttLib import TTFont
 
+from squidpdf.core import open_pdf
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import CATALOG, face_bytes
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
@@ -68,3 +70,18 @@ def test_glyph_advances_agree_with_the_server_measure(engine):
             pytest.approx(engine.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
             f"width of {word!r} in {span.font}",
         )
+
+
+def test_a_ligature_a_stored_font_draws_counts_as_drawn(tmp_path):
+    """Typeset text keeps ﬁ as one letter, U+FB01; trimmed Times draws it, by its shape "fi"."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
+    page.insert_text((72, 100), "The ﬁnancial year", fontname="emb", fontsize=12)
+    doc.subset_fonts(verbose=False)
+    path = str(tmp_path / "ligature.pdf")
+    doc.save(path)
+
+    with open_pdf(path) as engine:
+        [span] = engine.index()
+        assert_equal(engine.missing(span, span.text), [], "letters the font lacks")

@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 from collections.abc import Iterable, Mapping
 
-from fontTools.agl import UV2AGL
+from fontTools.agl import toUnicode
 from fontTools.cffLib import CFFFontSet
 from fontTools.pens.recordingPen import RecordingPen
 from fontTools.ttLib import TTFont
@@ -31,14 +31,6 @@ _ALWAYS_DRAWABLE = frozenset({" "})
 # A bare CFF font program starts with this header (major.minor version 1.0);
 # anything else handed to Coverage is assumed to be a TrueType/OpenType wrapper.
 _BARE_CFF_SIGNATURE = b"\x01\x00"
-
-# The codepoints worth checking for a name-keyed CFF's glyph names: from the
-# first printable ASCII character through the end of Supplemental Punctuation,
-# covering Latin, Greek, Cyrillic and friends. A document needing coverage
-# checked past this is rare enough not to justify scanning the full Unicode
-# space on every font load.
-_CODEPOINT_SCAN_START = 0x20
-_CODEPOINT_SCAN_END = 0x2E00
 
 
 class Coverage:
@@ -91,12 +83,12 @@ class Coverage:
     def _load_bare_cff(self, buffer: bytes) -> None:
         """A bare CFF, as CIDFontType0 subsets are embedded.
 
-        There is no cmap here, so characters are matched by glyph name using the
-        standard Adobe names the charset already carries. That only works for
-        name-keyed CFFs; a CID-keyed one carries CID glyph names instead
-        (`cid00034`, not `eacute`), which cannot be mapped back to Unicode from
-        the font bytes alone. Raised so the font is marked unusable rather than
-        silently reporting every character as missing.
+        There is no cmap here, so each glyph's name says its letter: Adobe's
+        names ("eacute", "fi" for the ligature ﬁ) or "uni00E9". That only
+        works for name-keyed CFFs; a CID-keyed one carries CID glyph names
+        instead (`cid00034`, not `eacute`), which cannot be mapped back to
+        Unicode from the font bytes alone. Raised so the font is marked
+        unusable rather than silently reporting every character as missing.
         """
         cff = CFFFontSet()
         cff.decompile(io.BytesIO(buffer), None)
@@ -104,11 +96,11 @@ class Coverage:
         if getattr(font, "ROS", None) is not None:
             raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
         self._glyphs = font.CharStrings
-        names = set(font.getGlyphOrder())
-        for codepoint in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
-            name = adobe_name(codepoint)
-            if name in names:
-                self._glyph_names[Codepoint(codepoint)] = name
+        # The glyph order's: the first shape named for a letter draws it.
+        for name in font.getGlyphOrder():
+            letter = letter_named(name)
+            if letter is not None:
+                self._glyph_names.setdefault(Codepoint(ord(letter)), name)
 
     def covers(self, ch: str) -> bool:
         """True when this font really puts ink on the page for `ch`, or places its space."""
@@ -170,6 +162,12 @@ def glyph_name_for_each_letter(
     return {Codepoint(codepoint): name for codepoint, name in cmap.items()}
 
 
-def adobe_name(codepoint: int) -> str:
-    """Standard Adobe glyph name for a code point, for fonts with no letter table."""
-    return UV2AGL.get(codepoint, f"uni{codepoint:04X}")
+def letter_named(glyph_name: GlyphName) -> str | None:
+    """The one letter a glyph's name says it draws; None for none, several, or a variant.
+
+    A variant ("a.alt", "T.sc") is another shape for the letter, not its own.
+    """
+    if "." in glyph_name:
+        return None
+    letter = toUnicode(glyph_name)
+    return letter if len(letter) == 1 else None
