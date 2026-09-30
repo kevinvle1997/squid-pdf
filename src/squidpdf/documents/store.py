@@ -14,6 +14,7 @@ import secrets
 import shutil
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -180,13 +181,39 @@ def save_index(folder: Path, index: SpanIndex) -> None:
     write_whole(folder / _INDEX, orjson.dumps(list(index)))
 
 
+@dataclass(slots=True)
+class KeptIndex:
+    """The last index this worker read, and which file it read it from."""
+
+    file: tuple[Path, int, int] | None = None  # folder, mtime and inode
+    index: SpanIndex | None = None
+
+
+kept_index = KeptIndex()  # per worker process: each has its own
+
+
 def load_index(folder: Path) -> SpanIndex | None:
-    """The saved index, or None before the first analysis."""
+    """The saved index, or None before the first analysis.
+
+    Read once per worker: parsing a large one was most of a render. Kept while
+    its file is the same file, so an index saved again or deleted is never served.
+    """
     try:
-        raw = orjson.loads((folder / _INDEX).read_bytes())
-    except FileNotFoundError:  # not analysed yet
+        saved = (folder / _INDEX).open("rb")
+    except FileNotFoundError:  # not analysed yet, or deleted since
         return None
-    return SpanIndex([load_span(span) for span in raw])
+    with saved:
+        # Mtime and inode: each save is a new file, but the clock may not have moved.
+        written = os.fstat(saved.fileno())
+        file = (folder, written.st_mtime_ns, written.st_ino)
+        if file == kept_index.file:
+            return kept_index.index
+        # Dropped before the next is read, so two never share the worker's memory cap.
+        kept_index.file, kept_index.index = None, None
+        raw = orjson.loads(saved.read())
+    kept_index.index = SpanIndex([load_span(span) for span in raw])
+    kept_index.file = file
+    return kept_index.index
 
 
 def load_span(saved: dict[str, Any]) -> Span:
