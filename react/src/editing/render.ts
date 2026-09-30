@@ -39,7 +39,10 @@ export const NOTHING_DRAWN: Drawn = {
   failed: null,
 };
 
-/** What a reply says, less the images. */
+/**
+ * What a reply says, less the images. Not read yet: `insert_fits` and `redactions`, since
+ * nothing inserts or redacts yet, and `build` and `expires_at`, which the document has.
+ */
 type Said = Pick<Render, "fits" | "notices" | "skipped">;
 
 /** The page a notice is about: its span's, or its edit's. */
