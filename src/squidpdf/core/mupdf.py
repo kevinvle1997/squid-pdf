@@ -11,6 +11,7 @@ from __future__ import annotations
 import random
 from collections.abc import Callable, Sequence
 from functools import cache
+from itertools import chain, count
 
 import pymupdf
 
@@ -23,7 +24,7 @@ from squidpdf.core.fonts import face_bytes
 from squidpdf.core.google import Fetch
 from squidpdf.core.message import Message
 from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
-from squidpdf.core.types import Face, Page, Rect, TextRun
+from squidpdf.core.types import Face, FontResource, Page, Rect, TextRun
 
 __all__ = [
     "BUILD",
@@ -146,6 +147,9 @@ class MuPDFDriver(PdfFile):
             doc.close()
             raise Damaged(debug="no pages")
         super().__init__(doc)
+        # The fonts add_font put on each page, by resource name, for erase_text to keep.
+        # By the page's own object, whose number stays when the pages are renumbered.
+        self._added: dict[int, dict[str, int]] = {}
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -190,15 +194,34 @@ class MuPDFDriver(PdfFile):
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
         return open_face(face)
 
-    def add_font(self, page: int, name: str, font_file: bytes) -> int:
-        """Add a font to the page under `name`; returns its object number.
+    def add_font(self, page: int, font_file: bytes, *, name: str) -> FontResource:
+        """Add a font to the page, as `name` unless the page already has a font by it.
 
-        Raises DriverError when MuPDF won't add it.
+        Then as `name` numbered past any the page has: MuPDF, given a name the
+        page uses, hands back the font already there. Raises DriverError when
+        MuPDF won't add it.
         """
+        taken = {font.resource for font in self.fonts(page)}
+        candidates = chain([name], (f"{name}{n}" for n in count(2)))
+        resource = next(candidate for candidate in candidates if candidate not in taken)
+        pg = self._doc[page]
         try:
-            return self._doc[page].insert_font(fontname=name, fontbuffer=font_file)
+            xref = pg.insert_font(fontname=resource, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
+        self._added.setdefault(pg.xref, {})[resource] = xref
+        return FontResource(resource, xref)
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> None:
+        """Delete the letters whose middle is inside these boxes, for real.
+
+        Images, drawings, links and the fonts `add_font` put on the page stay.
+        """
+        super().erase_text(page, boxes)
+        # MuPDF drops a font no text on the page uses any more: put back ours.
+        # .get: a page nothing was added to.
+        for resource, xref in self._added.get(self._doc[page].xref, {}).items():
+            self.restore_font(page, resource, xref)
 
     def write_text(
         self,

@@ -13,7 +13,7 @@ import hashlib
 import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from itertools import chain, count, groupby
+from itertools import groupby
 
 from squidpdf.core import faces
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
@@ -614,14 +614,14 @@ class Engine:
         Google's copy goes in whole, to be cut down on save like a face we ship.
         """
         # Each copy its own name, by its source: copies of one font share their name.
-        alias = self._new_name(page, "F", seed=copy_source(copy))
+        name = page_name("F", copy_source(copy))
         try:
-            xref = self._driver.add_font(page, alias, copy.embedded.file)
+            added = self._driver.add_font(page, copy.embedded.file, name=name)
         except DriverError as problem:  # the page won't take it: the stand-in draws instead
             return FontUnusable(problem.reason)
         if copy.google is not None:
-            self._added.by_xref[xref] = AddedFont(lent_name(copy), copy.embedded.file)
-        return alias
+            self._added.by_xref[added.xref] = AddedFont(lent_name(copy), copy.embedded.file)
+        return added.resource
 
     def _note_google_letters(self, pool: PooledFont, text: str) -> None:
         """Keep the letters Google's copy draws in `text`, for `save` to cut it down to."""
@@ -637,26 +637,11 @@ class Engine:
         """
         key = (page, face.file)
         if key not in self._names.faces:
-            alias = self._new_name(page, "S", seed=face.file)
-            xref = self._driver.add_font(page, alias, face_bytes(face))
-            self._names.faces[key] = alias
-            self._added.by_xref[xref] = AddedFont(face.name, face_bytes(face))
+            name = page_name("S", face.file)
+            added = self._driver.add_font(page, face_bytes(face), name=name)
+            self._names.faces[key] = added.resource
+            self._added.by_xref[added.xref] = AddedFont(face.name, face_bytes(face))
         return self._names.faces[key]
-
-    def _new_name(self, page: int, prefix: str, *, seed: str) -> str:
-        """A font name the page doesn't use yet, made from `seed`, e.g. "S7ce2b5727ecc".
-
-        From the seed, so it can't clash with the names a file's writer chose.
-        Numbered past any the page has: a file we exported already has ours, and
-        adding a font under a name the page uses gets the font already there.
-        """
-        name = page_name(prefix, seed)
-        taken = {font.resource for font in self._driver.fonts(page)}
-        return next(
-            candidate
-            for candidate in chain([name], (f"{name}{n}" for n in count(2)))
-            if candidate not in taken
-        )
 
 
 def page_name(kind: str, source: str) -> str:

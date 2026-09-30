@@ -16,6 +16,7 @@ from squidpdf.core.types import (
     Face,
     FontCode,
     FontDescriptor,
+    FontResource,
     Page,
     PageFont,
     Rect,
@@ -122,7 +123,9 @@ class PdfDriver(Protocol):
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Images, drawings and links stay.
+        Images, drawings and links stay, and so does every font `add_font` put
+        on the page, under the same resource name. A font of the file's own
+        that no text on the page uses any more may go.
         """
         ...
 
@@ -130,10 +133,11 @@ class PdfDriver(Protocol):
         """Delete every link whose area overlaps one of `boxes`."""
         ...
 
-    def add_font(self, page: int, name: str, font_file: bytes) -> int:
-        """Add a font to the page under `name`; returns its object number.
+    def add_font(self, page: int, font_file: bytes, *, name: str) -> FontResource:
+        """Add a font to the page, as `name` unless the page already has a font by it.
 
-        Raises DriverError when the library won't add it.
+        Returns the resource name it went under, and its PDF object. Raises
+        DriverError when the library won't add it.
         """
         ...
 
@@ -156,7 +160,7 @@ class PdfDriver(Protocol):
         ...
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Point the page's font name `resource` back at font `xref`."""
+        """Point the page's resource name `resource` back at font `xref`."""
         ...
 
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:

@@ -84,12 +84,24 @@ class TextPiece:
 
 
 @dataclass(frozen=True, slots=True)
+class FontResource:
+    """A font as a page names it, and the font itself.
+
+    A page's drawing never names a font by its own name: it uses a short name
+    the page lists in its resources, such as "F1", its resource name.
+    """
+
+    resource: str  # its resource name on the page, e.g. "F1"
+    xref: int  # its PDF object
+
+
+@dataclass(frozen=True, slots=True)
 class TextRun:
     """Text written in one go from a point on its baseline, in one font."""
 
     text: str
     origin: tuple[float, float]
-    font: str  # the page's name for the font it's written in
+    font: str  # the resource name of the font it's written in
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +112,7 @@ class PageFont:
     name: str  # e.g. "ABCDEF+Arial"
     kind: FontKind
     file_type: FontFileType
-    resource: str  # its name in the page's font resources, e.g. "F1"
+    resource: str  # its resource name on the page, e.g. "F1"
     encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
     in_form: bool  # used inside a form (a reusable drawing), not by the page itself
 
@@ -173,7 +185,7 @@ class CodedFont:
     code is which letter.
     """
 
-    resource: str  # its name in the page's font resources, e.g. "F1"
+    resource: str  # its resource name on the page, e.g. "F1"
     xref: int  # its PDF object
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
