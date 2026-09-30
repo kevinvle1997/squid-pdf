@@ -11,7 +11,7 @@ import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { EditorContext, type Editing, type EditorState, focusSpan } from "./context";
 import styles from "./Editor.module.css";
-import { EMPTY_LOG, type LogAction, editsOf, latestTexts, logReducer } from "../log";
+import { EMPTY_HISTORY, type HistoryAction, editsOf, historyReducer, latestTexts, touching } from "../history";
 import { Page } from "./Page";
 import { useStrips } from "./useStrips";
 import { counted } from "../words";
@@ -51,8 +51,8 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   const [doc, setDoc] = useState(opened);
   // The history and the text being typed. Each ref is what handlers read, current the moment
   // it changes (export reads both straight after finishing the typing); the state redraws.
-  const history = useRef(EMPTY_LOG);
-  const [log, setLog] = useState(EMPTY_LOG);
+  const history = useRef(EMPTY_HISTORY);
+  const [log, setLog] = useState(EMPTY_HISTORY);
   const edits = useMemo(() => editsOf(log), [log]);
   const latest = useMemo(() => latestTexts(edits), [edits]);
   const draft = useRef<Editing | null>(null);
@@ -84,9 +84,9 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   const { strips, shown, fits, redraw } = useStrips({ scale: SCALE, reopener, onProblem });
 
   // Every change to the history comes through here, and redraws what it changed.
-  function change(action: LogAction) {
+  function change(action: HistoryAction) {
     const before = history.current;
-    const after = logReducer(before, action);
+    const after = historyReducer(before, action);
     if (after === before) return;
     history.current = after;
     setLog(after);
@@ -103,7 +103,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     const was = latestTexts(editsOf(history.current)).get(typed.spanId) ?? spans.get(typed.spanId)?.text;
     // Emptying a span isn't a replacement: taking text out is redaction's job.
     if (!keep || typed.text === was || typed.text.trim() === "") return;
-    change({ kind: "add", step: [{ kind: "replace", span_id: typed.spanId, text: typed.text }] });
+    change({ kind: "add", edits: [{ kind: "replace", span_id: typed.spanId, text: typed.text }] });
     setSaid(`Changed to ${typed.text}`);
   }
 
@@ -187,7 +187,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     },
     finish,
     revert: (spanId) => {
-      change({ kind: "revert", spanId });
+      change({ kind: "remove", ids: touching(history.current, spanId) });
       setSaid(`Put back ${spans.get(spanId)?.text ?? ""}`);
       focusSpan(spanId);
     },

@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { ProblemError, render } from "../../api/client";
 import type { Document, Edit, FitInfo, ImageInfo, Region } from "../../api/types";
 import type { Reopener } from "../../documents/reopen";
-import { changedSpans, latestTexts } from "../log";
+import { changedSpans, latestTexts } from "../history";
 import { regionsFor } from "../strips";
 
 interface Options {
