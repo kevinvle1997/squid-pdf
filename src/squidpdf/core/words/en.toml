@@ -27,6 +27,10 @@ font_no_letter_list = "This font is stored in the file without saying which shap
 font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
 font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
 
+# Why text in its own font still won't come back as it looks now. One per span.
+turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
+spaced_text = "This text is spaced out or stretched in a way edits don't copy yet, so an edit here will look different."
+
 # An edit that went in, but not quite as asked. `{letters}` is space-separated.
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
 left_out = "Left out {letters}: no font we have can draw them."

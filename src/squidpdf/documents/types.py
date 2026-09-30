@@ -46,7 +46,11 @@ class PageInfo(TypedDict):
 
 
 class SpanInfo(TypedDict):
-    """One editable span and whether it keeps its own font."""
+    """One editable span and whether it keeps its own font.
+
+    `why` says how an approximate span would come back unlike itself, in no
+    language: its sentence is in the reply's `copy`, under `approximate`.
+    """
 
     id: str
     page: int
@@ -57,6 +61,7 @@ class SpanInfo(TypedDict):
     bbox: Box
     origin: list[float]
     fidelity: str
+    why: MessageInfo | None
 
 
 class FontFacts(TypedDict):
@@ -121,6 +126,7 @@ class Copy(TypedDict):
     stand_in_same_widths: str  # when they are exactly as wide: `same_widths` on the font
     undo_redaction: str
     options: dict[str, dict[str, str]]
+    approximate: dict[str, str]  # each way a span can be approximate, by its `why` code
 
 
 class DocumentNoticeInfo(MessageInfo):

@@ -70,7 +70,10 @@ class PdfFile:
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
         blocks = self._doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
-        return [[text_piece(raw) for raw in line["spans"]] for line in each_line(blocks)]
+        return [
+            [text_piece(raw, direction=line["dir"]) for raw in line["spans"]]
+            for line in each_line(blocks)
+        ]
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
         """The letters inside each box on the page, in reading order.
@@ -349,8 +352,8 @@ def each_letter(blocks: list[dict]) -> Iterator[Letter]:
                 yield Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
-def text_piece(raw: dict) -> TextPiece:
-    """One piece of text from get_text("dict"), with named fields."""
+def text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
+    """One piece of text from get_text("dict"), named, on a line that reads `direction`."""
     return TextPiece(
         text=raw["text"],
         font=raw["font"],
@@ -359,6 +362,7 @@ def text_piece(raw: dict) -> TextPiece:
         opacity=raw["alpha"] / _BYTE_MAX,
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
+        direction=(direction[0], direction[1]),
     )
 
 

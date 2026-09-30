@@ -18,7 +18,7 @@ from typing import Any
 
 import orjson
 
-from squidpdf.core import SOLID, Fragment, Page, Rect, Span, SpanIndex
+from squidpdf.core import LEVEL, SOLID, Fragment, Page, Rect, Span, SpanIndex
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 
@@ -126,6 +126,8 @@ def load_span(saved: dict[str, Any]) -> Span:
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
         "fragments": tuple(load_fragment(fragment) for fragment in saved["fragments"]),
+        # .get: an index saved before spans kept their direction; all were drawn level then.
+        "direction": tuple(saved.get("direction", LEVEL)),
     }
     return Span(**saved | rebuilt)
 

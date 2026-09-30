@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from itertools import chain, count, groupby
 
 from squidpdf.core import faces
+from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
 from squidpdf.core.document_fonts import DocumentFonts
 from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.embedded import FontUnusable
@@ -119,19 +120,27 @@ class Engine:
     # What we can promise about it.
 
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
-        """Judge every span in the index as exact or substitute.
+        """Judge every span in the index as exact, approximate or substitute.
 
-        Exact only if the span's own font draws its own text: `draw` swaps the
-        run otherwise, so a redraw of it would be in the substitute.
+        Exact only if the file's copies of the span's font redraw its own text
+        as the page shows it now: `draw` swaps the run otherwise, so a redraw of
+        it would be in the substitute, and it draws level and closed up, so a
+        line turned or spaced out would come back unlike itself.
         """
         return [self._assess_one(span) for span in index]
 
     def _assess_one(self, span: Span) -> FidelityReport:
-        """Exact or substitute, for one span."""
-        drawn_in = self._plan(span, span.text).drawn_in
-        # The file's own font redraws its own text.
+        """Exact, approximate or substitute, for one span."""
+        plan = self._plan(span, span.text)
+        drawn_in = plan.drawn_in
+        # The file's own font redraws its own text, as it is or not quite.
         if isinstance(drawn_in, PooledFont):
-            return FidelityReport(span.id, Fidelity.EXACT, span.font, in_file=True)
+            unlike = self._unlike(span, plan)
+            if unlike is None:
+                return FidelityReport(span.id, Fidelity.EXACT, span.font, in_file=True)
+            return FidelityReport(
+                span.id, Fidelity.APPROXIMATE, span.font, in_file=True, why=unlike
+            )
         in_file = self._fonts.own(span) is not None
         match = self._fonts.look_alike(span)
         return FidelityReport(
@@ -143,6 +152,21 @@ class Engine:
             why=self._fonts.why_not(span) if not in_file else Message("font_lacks_letters"),
             same_widths=match.same_widths and drawn_in == match.face,
         )
+
+    def _unlike(self, span: Span, plan: DrawPlan) -> Message | None:
+        """How a redraw of the span's own text in its own font looks unlike it; None if not."""
+        # Turned on the page: redraws are level.
+        _along, rise = span.direction
+        if abs(rise) > TURN_TOLERANCE:
+            return Message("turned_text")
+        # New text: its box is only nominal, so there's no spacing of its own to keep.
+        if not span.fragments:
+            return None
+        # Spaced or stretched (letter spacing, scaling, a justified line): redraws close it up.
+        redrawn = self._width(span, plan, size=span.size)
+        if abs(span.bbox.width - redrawn) > TOLERANCE_PT:
+            return Message("spaced_text")
+        return None
 
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em.
@@ -171,14 +195,7 @@ class Engine:
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
-        plan = self._plan(span, text)
-        by_code = coded_in(plan)
-        # Written by code: widths come from each copy's width list.
-        if by_code is not None:
-            return sum(by_code.letters[ch].widths[ch] for ch in plan.text) * span.size / _EM
-        font = self._program(plan)
-        _words, width = self._words(span, plan.text, font=font, size=span.size)
-        return width
+        return self._width(span, self._plan(span, text), size=span.size)
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters no copy of this span's font in the file can actually draw.
@@ -360,6 +377,16 @@ class Engine:
             return DrawPlan(own, text, [])
         stand_in = self._fonts.stand_in(span, text)
         return DrawPlan(stand_in.face, stand_in.text, stand_in.left_out)
+
+    def _width(self, span: Span, plan: DrawPlan, *, size: float) -> float:
+        """How wide `plan`'s line is, placed as `draw` places it, at `size` points."""
+        by_code = coded_in(plan)
+        # Written by code: widths come from each copy's width list.
+        if by_code is not None:
+            return sum(by_code.letters[ch].widths[ch] for ch in plan.text) * size / _EM
+        font = self._program(plan)
+        _words, width = self._words(span, plan.text, font=font, size=size)
+        return width
 
     def _program(self, plan: DrawPlan) -> FontProgram:
         """The font program that measures and draws `plan`'s line."""

@@ -19,6 +19,9 @@ __all__ = [
     "document_response",
 ]
 
+# Every way a span can be approximate: the sentences behind a span's `why` code.
+_APPROXIMATE_KEYS = ("turned_text", "spaced_text")
+
 
 def document_response(
     doc_id: str, *, expires_at: float, analysis: Analysis, said_in: str
@@ -68,6 +71,7 @@ def copy_in(said_in: str) -> Copy:
         "stand_in_same_widths": words.sentence("stand_in_same_widths", said_in),
         "undo_redaction": words.sentence("undo_redaction", said_in),
         "options": options,
+        "approximate": {key: words.sentence(key, said_in) for key in _APPROXIMATE_KEYS},
     }
 
 

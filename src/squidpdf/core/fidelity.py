@@ -17,9 +17,11 @@ from squidpdf.core.message import Message
 
 
 class Fidelity(StrEnum):
-    """The three ways an edit can turn out, in terms of the original font."""
+    """The ways an edit can turn out, in terms of the original font."""
 
     EXACT = "exact"  # the document's own font is in the file and covers it
+    # The file's own font draws it, but not as the page shows it now: `why` says how.
+    APPROXIMATE = "approximate"
     SUBSTITUTE = "substitute"  # the file's own copy can't be used; another face draws
     IMAGE = "image"  # no text layer here at all
 
@@ -33,7 +35,9 @@ class FidelityReport:
     font: str
     in_file: bool  # the file's own copy of the font can be used, if only for some letters
     substitute: str | None = None  # the face we ship that draws it, e.g. "Carlito Bold"
-    why: Message | None = None  # why the file's own font can't be used
+    why: Message | None = (
+        None  # why it isn't exact: the own font can't be used, or how it differs
+    )
     same_widths: bool = False  # the substitute's letters are as wide, so nothing moves
 
 

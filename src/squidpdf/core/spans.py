@@ -100,6 +100,7 @@ def span_from(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
         bbox=bbox,
         origin=fragments[0].origin,
         fragments=fragments,
+        direction=first.direction,
     )
 
 

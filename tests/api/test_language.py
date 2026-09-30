@@ -63,6 +63,8 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     )
     shrink = copy["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
+    turned = copy["approximate"]["turned_text"]
+    assert_equal(turned, pseudo_sentence(words.sentence("turned_text")), "why text won't match")
     # Times is only named in the sample: why its own copy can't be used, said and unsaid.
     times = next(font for font in response.json()["fonts"] if font["name"] == "Times-Roman")
     said = (times["why"], times["why_code"], times["why_params"])

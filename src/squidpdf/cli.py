@@ -49,6 +49,13 @@ __all__ = [
 
 DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
+# How each judgement is marked in `spans`, padded to one width.
+_MARKS = {
+    Fidelity.EXACT: f"{GREEN}exact{OFF}      ",
+    Fidelity.APPROXIMATE: f"{YELLOW}approximate{OFF}",
+    Fidelity.SUBSTITUTE: f"{YELLOW}substitute{OFF} ",
+}
+
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
 _NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
 _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
@@ -65,8 +72,7 @@ def cmd_spans(args: argparse.Namespace) -> int:
             if on_other_page:
                 continue
             report = reports[span.id]
-            is_exact = report.state is Fidelity.EXACT
-            mark = f"{GREEN}exact{OFF}     " if is_exact else f"{YELLOW}substitute{OFF}"
+            mark = _MARKS[report.state]
             note = f" -> {report.substitute}" if report.substitute else ""
             fragments = f" {DIM}({len(span.fragments)} fragments){OFF}" if span.merged else ""
             fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
@@ -76,6 +82,9 @@ def cmd_spans(args: argparse.Namespace) -> int:
                 f"{DIM}{span.font}{note} {span.size}pt{OFF}{fragments}\n"
                 f"           {preview}"
             )
+            # Its own font draws it, but not as it looks: say how.
+            if report.state is Fidelity.APPROXIMATE and report.why is not None:
+                print(f"           {DIM}{words.render(report.why)}{OFF}")
         summary(list(reports.values()))
     return 0
 
@@ -83,11 +92,14 @@ def cmd_spans(args: argparse.Namespace) -> int:
 def summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
-    substituted = sum(1 for report in reports if report.state is not Fidelity.EXACT)
+    count = {state: 0 for state in Fidelity}
+    for report in reports:
+        count[report.state] += 1
     colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
     print(
-        f"\n  {len(reports)} spans · {len(reports) - substituted} exact"
-        f" · {substituted} substitute"
+        f"\n  {len(reports)} spans · {count[Fidelity.EXACT]} exact"
+        f" · {count[Fidelity.APPROXIMATE]} approximate"
+        f" · {count[Fidelity.SUBSTITUTE]} substitute"
         f" · {colour}{rate:.0%} keep the original font{OFF}"
     )
 

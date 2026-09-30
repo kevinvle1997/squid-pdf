@@ -19,7 +19,7 @@ from squidpdf.core import (
 )
 from squidpdf.core.fonts import strip_subset
 from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
-from tests.conftest import REFERENCED_PAGE, named_only, saved_as
+from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import assert_all, assert_between, assert_equal, assert_not_in
 
@@ -350,3 +350,26 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
 
     assert_all(reports, lambda r: r.state is Fidelity.EXACT, lambda r: r.span_id)
     assert_equal(len(opened), 1, "times the shared font was opened")
+
+
+@pytest.mark.parametrize(
+    ("setting", "rotate", "state", "why"),
+    [
+        ("", 0, Fidelity.EXACT, None),
+        ("1.5 Tc", 0, Fidelity.APPROXIMATE, "spaced_text"),
+        ("80 Tz", 0, Fidelity.APPROXIMATE, "spaced_text"),
+        ("", 90, Fidelity.APPROXIMATE, "turned_text"),
+    ],
+    ids=["as its font sets it", "letter spacing", "narrowed", "turned to read upward"],
+)
+def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(
+    tmp_path, setting, rotate, state, why
+):
+    """Its own font draws it, but level and closed up: an edit would look different."""
+    path = drawn_with(str(tmp_path / "line.pdf"), setting=setting, rotate=rotate)
+
+    with open_pdf(path) as engine:
+        [report] = engine.assess(engine.index())
+
+    judged = (report.state, None if report.why is None else report.why.key)
+    assert_equal(judged, (state, why), "how the line is judged, and why")
