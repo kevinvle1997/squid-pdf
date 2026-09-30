@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterable
 from functools import partial
 from pathlib import Path
@@ -50,7 +51,7 @@ class UploadController:
             await save_original(chunks, to=folder / store.ORIGINAL)
             analysis = await self._enqueue_analyse(folder)
         except BaseException:  # refused, damaged, or the browser left: keep nothing
-            store.delete(folder)
+            await asyncio.to_thread(store.delete, folder)
             raise
         body = document_response(
             doc_id, expires_at=store.touch(folder), analysis=analysis, said_in=said_in
@@ -64,7 +65,10 @@ class UploadController:
 
 
 async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
-    """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF."""
+    """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF.
+
+    Each chunk is written off the server's thread: a disk can be slow.
+    """
     size, first_kb = 0, b""
     with to.open("wb") as out:
         async for chunk in chunks:
@@ -75,6 +79,6 @@ async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
             no_header = len(first_kb) == _HEADER_WINDOW and _PDF_HEADER not in first_kb
             if no_header:
                 raise NotAPdf()
-            out.write(chunk)
+            await asyncio.to_thread(out.write, chunk)
     if _PDF_HEADER not in first_kb:
         raise NotAPdf()

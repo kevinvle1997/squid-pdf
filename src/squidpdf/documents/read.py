@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
@@ -40,24 +41,14 @@ class ReadController:
         on every visit, and a 304's browser keeps the body it had.
         """
         saved = await self._saved_analysis(doc)
-        headers = {
-            "ETag": etag_of(saved, said_in),
-            "Cache-Control": DOCUMENT_CACHE,
-            _EXPIRES_HEADER: time_of(doc.expires_at),
-            **words.language_headers(said_in),
-        }
-        # The browser's copy is current: a 304 carries no body, so no body's type.
-        if if_none_match == headers["ETag"]:
-            return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
-        body = document_response(
-            doc.id, expires_at=doc.expires_at, analysis=orjson.loads(saved), said_in=said_in
+        # A thousand pages' analysis takes a while to hash and write: off the server's thread.
+        return await asyncio.to_thread(
+            answer, doc, saved=saved, said_in=said_in, if_none_match=if_none_match
         )
-        typed = headers | {"Content-Type": "application/json"}
-        return Reply(orjson.dumps(body), typed)
 
     async def _saved_analysis(self, doc: Loaded) -> bytes:
         """The analysis kept under this build, worked out first if the build is new."""
-        saved = store.load_analysis(doc.folder, BUILD)
+        saved = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
         if saved is None:  # a new build: worked out again over the saved index
             saved = orjson.dumps(await self._enqueue_analyse(doc.folder))
         return saved
@@ -66,6 +57,26 @@ class ReadController:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), MAX_PAGES)
         return await self._workers.run(ANALYSE_TIMEOUT_S, task)
+
+
+def answer(
+    doc: Loaded, *, saved: bytes, said_in: str, if_none_match: str | None
+) -> Reply[bytes]:
+    """The analysis kept, as the browser gets it: the JSON with its ETag, or a 304."""
+    headers = {
+        "ETag": etag_of(saved, said_in),
+        "Cache-Control": DOCUMENT_CACHE,
+        _EXPIRES_HEADER: time_of(doc.expires_at),
+        **words.language_headers(said_in),
+    }
+    # The browser's copy is current: a 304 carries no body, so no body's type.
+    if if_none_match == headers["ETag"]:
+        return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
+    body = document_response(
+        doc.id, expires_at=doc.expires_at, analysis=orjson.loads(saved), said_in=said_in
+    )
+    typed = headers | {"Content-Type": "application/json"}
+    return Reply(orjson.dumps(body), typed)
 
 
 def etag_of(saved: bytes, said_in: str) -> str:
