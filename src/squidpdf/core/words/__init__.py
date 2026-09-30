@@ -102,7 +102,7 @@ def written_out(name: str, value: Param, language: str) -> str:
     if isinstance(value, list):
         return sentence(f"join_{name}", language).join(visible(item) for item in value)
     if isinstance(value, float):
-        return f"{value:.1f}"
+        return f"{value:.1f}".replace(".", sentence("decimal_separator", language))
     return str(value)
 
 

@@ -10,6 +10,7 @@ from string import Formatter
 import pytest
 
 from squidpdf.core import Message, words
+from tests.conftest import pseudo_sentence
 from tests.helpers import assert_equal
 
 _SRC = Path(__file__).parents[2] / "src"
@@ -56,6 +57,12 @@ def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
 )
 def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
     assert_equal(words.render(message), said, "the sentence")
+
+
+def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeypatch):
+    monkeypatch.setitem(words.CATALOGS[pseudo], "decimal_separator", ",")
+    said = words.render(Message("too_long", {"delta_pt": 3.14159}), pseudo)
+    assert_equal(said, pseudo_sentence("3,1 pt too long"), "a fraction in another language")
 
 
 @pytest.mark.parametrize(
