@@ -1,8 +1,13 @@
-# The Python side as every job needs it: uv, cached on the lockfile, and the
-# environment the suite runs in (every extra, the dev tools). One copy, so the
+# The Python side as every job needs it: uv, cached on the lockfile, and by default
+# the environment the suite runs in (every extra, the dev tools). One copy, so the
 # jobs can't drift into testing different environments.
 name: uv
 description: Install uv and sync the locked environment.
+
+inputs:
+  sync:
+    description: What to install besides the locked base dependencies, as `uv sync` options.
+    default: --all-extras
 
 runs:
   using: composite
@@ -15,4 +20,4 @@ runs:
     # From the root, even when the job's steps run in react/.
     - shell: bash
       working-directory: ${{ github.workspace }}
-      run: uv sync --locked --all-extras
+      run: uv sync --locked ${{ inputs.sync }}

@@ -176,13 +176,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The CLI as a user installs it: no `api` extra and no dev tools, so it proves it runs
+      # without them. `uv run --no-dev` keeps them out, where plain `uv run` would add the tools.
       - name: Install
         uses: ./.github/actions/uv
+        with:
+          sync: --no-dev
 
       - name: Green rate
         run: |
-          uv run squidpdf fixture /tmp/sample.pdf
-          uv run squidpdf report /tmp/sample.pdf | tee /tmp/report.txt
+          uv run --no-dev squidpdf fixture /tmp/sample.pdf
+          uv run --no-dev squidpdf report /tmp/sample.pdf | tee /tmp/report.txt
           {
             echo '### Green rate'
             echo '```'

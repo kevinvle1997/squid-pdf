@@ -9,13 +9,13 @@ dependencies = [
     "pymupdf>=1.25.3",  # 1.25.3 is the first to read text's opacity (span "alpha")
     "fonttools>=4.53",
     "httpx>=0.28",  # fetches Google's copy of a font, in the CLI as in the app
+    "orjson>=3.10",  # the document store's files; the CLI imports the store
 ]
 
 [project.optional-dependencies]
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "orjson>=3.10",
     "xxhash>=3.5",
     "pebble>=5.2",
 ]
