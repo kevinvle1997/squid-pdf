@@ -26,6 +26,7 @@ from squidpdf.core import (
     Fidelity,
     FidelityReport,
     Problem,
+    google_fonts,
     green_rate,
     open_pdf,
     result_of,
@@ -73,7 +74,7 @@ _SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
 
 def cmd_spans(args: argparse.Namespace) -> int:
     """List every editable span and whether it would keep its own font."""
-    with open_pdf(args.pdf) as engine:
+    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
@@ -115,7 +116,7 @@ def summary(reports: list[FidelityReport]) -> None:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
-    with open_pdf(args.pdf) as engine:
+    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
@@ -142,7 +143,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def cmd_edit(args: argparse.Namespace) -> int:
     """Replace a span's text and save. Refuses if it will not fit, unless --force."""
-    with open_pdf(args.pdf) as engine:
+    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
@@ -167,7 +168,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
 
 def cmd_redact(args: argparse.Namespace) -> int:
     """Remove a span, save, and verify by re-reading the output that it is gone."""
-    with open_pdf(args.pdf) as engine:
+    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
         index = engine.index()
         span = index.get(args.span_id)
         if span is None:
@@ -192,7 +193,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     total = exact = 0
     for path in args.pdfs:
         try:
-            with open_pdf(path) as engine:
+            with open_pdf(path, fetch=google_fonts()) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))

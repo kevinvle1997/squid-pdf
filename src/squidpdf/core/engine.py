@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import unicodedata
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import chain, count, groupby
 
@@ -21,9 +21,10 @@ from squidpdf.core.document_fonts import DocumentFonts
 from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.embedded import FontUnusable
 from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.fonts import face_bytes, trimmed
+from squidpdf.core.fonts import face_bytes, strip_subset, trimmed
+from squidpdf.core.google import Fetch, GoogleFontController
 from squidpdf.core.message import Message
-from squidpdf.core.pooled import FontCopy, PooledFont
+from squidpdf.core.pooled import CodedStretch, FontCopy, PooledFont, copy_source
 from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
@@ -41,7 +42,8 @@ __all__ = [
     "letter_widths",
     "DrawPlan",
     "PageNames",
-    "AddedFaces",
+    "AddedFont",
+    "AddedFonts",
     "Engine",
 ]
 
@@ -84,31 +86,52 @@ class Setting:
 class PageNames:
     """The name each page gives a font once it's been added there to draw with."""
 
-    # Each copy of a font in the file, by (page, font object), or why it wasn't added.
-    own: dict[tuple[int, int], str | FontUnusable] = field(default_factory=dict)
+    # Each copy of a font, by (page, `copy_source`), or why it wasn't added.
+    own: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
     # The faces we ship, by (page, face file).
     faces: dict[tuple[int, str], str] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
-class AddedFaces:
-    """The faces we ship that were added to the document, for `save` to trim."""
+@dataclass(frozen=True, slots=True)
+class AddedFont:
+    """A font we added to the document whole: a face we ship, or Google's copy of one."""
 
-    # By font object: pages share one per face.
-    by_xref: dict[int, Face] = field(default_factory=dict)
-    # Every letter drawn in each face, over all pages.
-    drawn: dict[Face, set[str]] = field(default_factory=dict)
+    name: str  # what the user reads, and what its drawn letters are kept under
+    file: bytes  # the whole font, to cut down on save
+
+
+@dataclass(slots=True)
+class AddedFonts:
+    """The fonts added to the document whole, for `save` to cut down."""
+
+    # By font object: pages share one per font.
+    by_xref: dict[int, AddedFont] = field(default_factory=dict)
+    # Every letter drawn in each, over all pages, by its name.
+    drawn: dict[str, set[str]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class Stretch:
+    """Letters of one word drawn in one font, and where on the line they start."""
+
+    text: str
+    offset: float  # from the line's start, in points
+    alias: str  # the page's name for the font they're drawn in
 
 
 class Engine:
     """A PDF open for editing. Use it in a `with`, or close it."""
 
-    def __init__(self, driver: PdfDriver) -> None:
-        """Take over an open document, with nothing looked up or added yet."""
+    def __init__(self, driver: PdfDriver, *, fetch: Fetch | None = None) -> None:
+        """Take over an open document, with nothing looked up or added yet.
+
+        `fetch` gets Google's copy of a font; without one, only the file's copies lend.
+        """
         self._driver = driver
-        self._fonts = DocumentFonts(driver)
+        self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
+        self._fonts = DocumentFonts(driver, google=self._google)
         self._names = PageNames()
-        self._added = AddedFaces()
+        self._added = AddedFonts()
 
     # What the document says.
 
@@ -157,15 +180,15 @@ class Engine:
             return FidelityReport(
                 span.id, Fidelity.APPROXIMATE, span.font, in_file=True, why=unlike
             )
-        in_file = self._fonts.own(span) is not None
+        own = self._fonts.own(span)
         match = self._fonts.look_alike(span)
         return FidelityReport(
             span.id,
             Fidelity.SUBSTITUTE,
             span.font,
-            in_file=in_file,
+            in_file=own is not None,
             substitute=drawn_in.name,
-            why=self._fonts.why_not(span) if not in_file else Message("font_lacks_letters"),
+            why=self._fonts.why_not(span) if own is None else own.why_missing(span.text),
             same_widths=match.same_widths and drawn_in == match.face,
         )
 
@@ -303,8 +326,9 @@ class Engine:
             )
 
         # The file's own font, written by code as the original was.
-        if drawn_in.own.embedded.coded is not None:
-            self._draw_codes(span, drawn_in, text=plan.text, setting=setting)
+        by_code = coded_in(plan)
+        if by_code is not None:
+            self._draw_codes(span, by_code, setting=setting)
             return said_left_out(plan.left_out)
 
         # The file's own copies of the font, by letter, once the page has them.
@@ -320,6 +344,7 @@ class Engine:
                 setting=setting,
             )
             return [problem.reason, *drawn]
+        self._note_google_letters(drawn_in, plan.text)
         self._write(span, plan.text, font=drawn_in, aliases=aliases, setting=setting)
         return said_left_out(plan.left_out)
 
@@ -333,7 +358,7 @@ class Engine:
         said = [] if every_page_kept else self._drop_tags()
         self._driver.keep_pages(pages)
         # Looked up and named by page number, and those just changed.
-        self._fonts = DocumentFonts(self._driver)
+        self._fonts = DocumentFonts(self._driver, google=self._google)
         self._names = PageNames()
         return said
 
@@ -348,19 +373,19 @@ class Engine:
         return [Message("tags_dropped")]
 
     def save(self, path: str) -> list[Message]:
-        """Write the document to `path`, our faces cut to the letters drawn in them.
+        """Write the document to `path`, the fonts we added cut to the letters drawn in them.
 
-        Call it last: afterwards our faces can't draw any new letter. Returns
+        Call it last: afterwards they can't draw any new letter. Returns
         anything that came out other than asked, for the edge to put into words.
         """
         notices: list[Message] = []
-        for xref, face in self._added.by_xref.items():
+        for xref, added in self._added.by_xref.items():
             try:
-                font_file = trimmed(face, self._added.drawn[face])
+                font_file = trimmed(added.file, self._added.drawn[added.name])
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
                 # The whole file still draws every letter; the file is only bigger.
-                font_file = face_bytes(face)
-                notices.append(Message("face_not_trimmed", {"font": face.name}))
+                font_file = added.file
+                notices.append(Message("face_not_trimmed", {"font": added.name}))
             self._driver.replace_font_file(xref, font_file)
         self._driver.save(path)
         return notices
@@ -423,7 +448,10 @@ class Engine:
         by_code = coded_in(plan)
         # Written by code: widths come from each copy's width list.
         if by_code is not None:
-            return sum(by_code.letters[ch].widths[ch] for ch in plan.text) * size / _EM
+            widths = (
+                stretch.coded.letters[ch].width for stretch in by_code for ch in stretch.text
+            )
+            return sum(widths) * size / _EM
         font = self._program(plan)
         _words, width = self._words(span, plan.text, font=font, size=size)
         return width
@@ -470,7 +498,7 @@ class Engine:
     ) -> list[Message]:
         """Write `text` at the span's baseline in a face we ship, and say what was left out."""
         alias = self._face_alias(span.page, face)
-        self._added.drawn.setdefault(face, set()).update(text)
+        self._added.drawn.setdefault(face.name, set()).update(text)
         font = self._driver.face_font(face)
         self._write(span, text, font=font, aliases=dict.fromkeys(text, alias), setting=setting)
         return said_left_out(left_out)
@@ -495,12 +523,14 @@ class Engine:
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         words, _width = self._words(span, text, font=font, size=setting.size)
-        stretches = each_stretch(words, aliases=aliases, font=font, size=setting.size)
+        stretches = stretches_in(words, aliases=aliases, font=font, size=setting.size)
         runs = [
             TextRun(
-                stretch.text, (x + step_x * stretch.offset, y + step_y * stretch.offset), alias
+                stretch.text,
+                (x + step_x * stretch.offset, y + step_y * stretch.offset),
+                stretch.alias,
             )
-            for alias, stretch in stretches
+            for stretch in stretches
         ]
         self._driver.write_text(
             span.page,
@@ -512,7 +542,9 @@ class Engine:
             turn=setting.turn,
         )
 
-    def _draw_codes(self, span: Span, pool: PooledFont, *, text: str, setting: Setting) -> None:
+    def _draw_codes(
+        self, span: Span, stretches: list[CodedStretch], *, setting: Setting
+    ) -> None:
         """Write `text` as codes in the file's own copies of its font, on top of the page.
 
         One text object: each stretch switches to its copy, and the pen moves on
@@ -521,9 +553,9 @@ class Engine:
         x, y = self._driver.to_pdf_space(span.page, span.origin)
         r, g, b = span.color
         shown: list[str] = []
-        for copy, stretch in pool.stretches(text):
-            resource = self._resource_for(span.page, pool, copy)
-            codes = hex_codes(coded_of(copy), stretch)
+        for stretch in stretches:
+            resource = self._resource_for(span.page, stretch)
+            codes = hex_codes(stretch.coded, stretch.text)
             shown.append(f"/{resource} {setting.size:.{_PDF_DP}f} Tf <{codes}> Tj")
         # See-through, as the original was.
         paint = ""
@@ -543,17 +575,17 @@ class Engine:
         )
         self._driver.add_content(span.page, stream.encode())
 
-    def _resource_for(self, page: int, pool: PooledFont, copy: FontCopy) -> str:
+    def _resource_for(self, page: int, stretch: CodedStretch) -> str:
         """The page's name for a copy written by code, pointed at it before each draw.
 
         Erasing can drop a font the page no longer uses. The span's own copy
         keeps the name the page gave it; any other gets a fresh one, since
         another page's name for it may mean something else here.
         """
-        own = copy.font.xref == pool.own.font.xref
-        fresh = page_name("C", f"{copy.font.xref} {copy.font.name}")
-        resource = coded_of(copy).resource if own else fresh
-        self._driver.restore_font(page, resource, copy.font.xref)
+        font = stretch.copy.font
+        fresh = page_name("C", f"{font.xref} {font.name}")
+        resource = stretch.coded.resource if stretch.own else fresh
+        self._driver.restore_font(page, resource, font.xref)
         return resource
 
     def _aliases(self, page: int, pool: PooledFont, text: str) -> dict[str, str]:
@@ -569,7 +601,7 @@ class Engine:
         Once per page, not per span: a copy per span piled up and slowed every
         redraw. Raises FontUnusable when the library won't add it.
         """
-        key = (page, copy.font.xref)
+        key = (page, copy_source(copy))
         if key not in self._names.own:
             self._names.own[key] = self._add_font(page, copy)
         found = self._names.own[key]
@@ -578,16 +610,28 @@ class Engine:
         return found
 
     def _add_font(self, page: int, copy: FontCopy) -> str | FontUnusable:
-        """Add a copy of a font in the file to a page under a new name, or say why it failed."""
-        # Each copy its own name, by its object: copies of one font share their name.
-        alias = self._new_name(page, "F", seed=f"{copy.font.xref} {copy.font.name}")
+        """Add a copy of a font to a page under a new name, or say why it failed.
+
+        Google's copy goes in whole, to be cut down on save like a face we ship.
+        """
+        # Each copy its own name, by its source: copies of one font share their name.
+        alias = self._new_name(page, "F", seed=copy_source(copy))
         try:
-            self._driver.add_font(page, alias, copy.embedded.file)
+            xref = self._driver.add_font(page, alias, copy.embedded.file)
         except ValueError:
             # The bytes opened as a font, but adding them to a page is another path
             # that can still fail; the stand-in draws instead.
             return FontUnusable(Message("font_not_added"))
+        if copy.google is not None:
+            self._added.by_xref[xref] = AddedFont(lent_name(copy), copy.embedded.file)
         return alias
+
+    def _note_google_letters(self, pool: PooledFont, text: str) -> None:
+        """Keep the letters Google's copy draws in `text`, for `save` to cut it down to."""
+        for ch in text:
+            copy = pool.copy_for(ch)
+            if copy.google is not None:
+                self._added.drawn.setdefault(lent_name(copy), set()).add(ch)
 
     def _face_alias(self, page: int, face: Face) -> str:
         """The page's name for a face we ship, added to the page on first use.
@@ -599,7 +643,7 @@ class Engine:
             alias = self._new_name(page, "S", seed=face.file)
             xref = self._driver.add_font(page, alias, face_bytes(face))
             self._names.faces[key] = alias
-            self._added.by_xref[xref] = face
+            self._added.by_xref[xref] = AddedFont(face.name, face_bytes(face))
         return self._names.faces[key]
 
     def _new_name(self, page: int, prefix: str, *, seed: str) -> str:
@@ -627,23 +671,36 @@ def page_name(kind: str, source: str) -> str:
     return kind + digest.hexdigest()
 
 
-def each_stretch(
+def lent_name(copy: FontCopy) -> str:
+    """What the user reads for Google's copy of a font: the font's own name, "Poppins-Bold"."""
+    return strip_subset(copy.font.name)
+
+
+def stretches_in(
     words: Iterable[Word], *, aliases: Mapping[str, str], font: FontProgram, size: float
-) -> Iterator[tuple[str, Word]]:
-    """Each stretch of a word in one font: the page's name for it, and where it starts."""
-    for word in words:
-        pen = word.offset
-        for alias, letters in groupby(word.text, key=aliases.__getitem__):
-            stretch = "".join(letters)
-            yield alias, Word(stretch, pen)
-            pen += font.width(stretch, size)
+) -> list[Stretch]:
+    """Each word split where the font its letters are drawn in changes, in order.
+
+    `aliases` is the page's name for the font each letter is drawn in.
+    """
+    return [
+        stretch
+        for word in words
+        for stretch in word_stretches(word, aliases=aliases, font=font, size=size)
+    ]
 
 
-def coded_of(copy: FontCopy) -> CodedFont:
-    """The codes a copy is written in. Every copy pooled with one written by code has them."""
-    coded = copy.embedded.coded
-    assert coded is not None, "a pool written by code holds only copies written by code"
-    return coded
+def word_stretches(
+    word: Word, *, aliases: Mapping[str, str], font: FontProgram, size: float
+) -> list[Stretch]:
+    """One word split where its font changes, each stretch starting where the last ends."""
+    stretches: list[Stretch] = []
+    start = word.offset
+    for alias, letters in groupby(word.text, key=lambda ch: aliases[ch]):
+        text = "".join(letters)
+        stretches.append(Stretch(text, start, alias))
+        start += font.width(text, size)
+    return stretches
 
 
 def hex_codes(coded: CodedFont, text: str) -> str:
@@ -662,10 +719,13 @@ def said_left_out(letters: list[str]) -> list[Message]:
     return [Message("left_out", {"letters": list(letters)})] if letters else []
 
 
-def coded_in(plan: DrawPlan) -> PooledFont | None:
-    """The file's own copies of the font, when they draw `plan`'s line by code."""
+def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
+    """`plan`'s line in the codes of the file's copies of its font, a stretch per copy.
+
+    None unless they draw it by code.
+    """
     drawn_in = plan.drawn_in
     # A face we ship, or the file's copies written by letter: no codes.
     if isinstance(drawn_in, Face) or drawn_in.own.embedded.coded is None:
         return None
-    return drawn_in
+    return drawn_in.coded_stretches(plan.text)

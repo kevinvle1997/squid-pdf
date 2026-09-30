@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+from collections.abc import Iterator
 
 import pymupdf
 import pytest
@@ -18,6 +19,14 @@ _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a stand-in
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
+
+
+@pytest.fixture(scope="session", autouse=True)
+def no_fetch() -> Iterator[None]:
+    """Nothing in the suite reaches Google: set before any worker starts, so they inherit it."""
+    with pytest.MonkeyPatch.context() as env:
+        env.setenv("SQUIDPDF_NO_FETCH", "1")
+        yield
 
 
 def saved_as(face: str) -> str:

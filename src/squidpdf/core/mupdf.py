@@ -15,10 +15,11 @@ from functools import cache
 import pymupdf
 
 from squidpdf.core import faces
-from squidpdf.core.constants import LIBRARY_VERSION
+from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine, letter_widths
 from squidpdf.core.errors import Damaged, Encrypted, TooHeavy
 from squidpdf.core.fonts import face_bytes
+from squidpdf.core.google import Fetch
 from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
 from squidpdf.core.types import Face, Page, Rect, TextRun
 
@@ -48,12 +49,17 @@ _DENSE_WORDS = (
 _DENSE_TERMS = ("the Services", "the Client", "the Provider", "Confidential Information")
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
-BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
+# Google's copies are part of it: a new pin lends other letters.
+_GOOGLE = GOOGLE_FONTS_COMMIT[:7]
+BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
-def open_pdf(path: str) -> Engine:
-    """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
-    return Engine(MuPDFDriver(path))
+def open_pdf(path: str, *, fetch: Fetch | None = None) -> Engine:
+    """The PDF at `path`, open for editing. Use it in a `with`, or close it.
+
+    `fetch` gets Google's copy of a font the file's copies can't draw all of.
+    """
+    return Engine(MuPDFDriver(path), fetch=fetch)
 
 
 def result_of[T](task: Callable[[], T]) -> T:

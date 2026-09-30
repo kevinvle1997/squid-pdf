@@ -4,7 +4,7 @@ What the engine knows about fonts, read through the driver once and kept. A
 copy of a font is opened once per listing, not once per page, so a font every
 page shares is read and parsed once. A span's font is its page's copy pooled
 with every other copy of it in the file (`core.pooled`), so a letter one copy
-lacks can come from another.
+lacks can come from another, and last with Google's copy, if it has one.
 """
 
 from __future__ import annotations
@@ -15,8 +15,16 @@ from squidpdf.core import faces
 from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.embedded import FontUnusable, open_embedded
 from squidpdf.core.fonts import look_alike, strip_subset
+from squidpdf.core.google import GoogleFontController
 from squidpdf.core.message import Message
-from squidpdf.core.pooled import FontCopy, PooledFont, font_copy, pooled
+from squidpdf.core.pooled import (
+    FontCopy,
+    PooledFont,
+    font_copy,
+    google_copy,
+    lacks_a_keyboard_letter,
+    pooled,
+)
 from squidpdf.core.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
@@ -56,9 +64,13 @@ class FontCache:
 class DocumentFonts:
     """The fonts a document's spans are written in, and the faces we ship that stand in."""
 
-    def __init__(self, driver: PdfDriver) -> None:
-        """Read through `driver`, with nothing looked up yet."""
+    def __init__(self, driver: PdfDriver, *, google: GoogleFontController | None) -> None:
+        """Read through `driver`, with nothing looked up yet.
+
+        Without `google`, only the file's own copies of a font lend it letters.
+        """
         self._driver = driver
+        self._google = google
         self._cache = FontCache()
 
     def lookup(self, span: Span) -> PooledFont | FontUnusable:
@@ -132,9 +144,30 @@ class DocumentFonts:
         own = self._opened(page_font)
         if isinstance(own, FontUnusable):
             raise FontUnusable(own.reason)
-        others = (self._opened(font) for font in self._other_copies(page, own.font))
+        opened = (self._opened(font) for font in self._other_copies(page, own.font))
         # A copy we can't open lends no letters; the span's own still draws what it can.
-        return pooled(own, (copy for copy in others if isinstance(copy, FontCopy)))
+        others = [copy for copy in opened if isinstance(copy, FontCopy)]
+        pool = pooled(own, others)
+        # Google's copy lends last, and only a letter someone could type is worth a fetch.
+        if not lacks_a_keyboard_letter(pool):
+            return pool
+        google = self._google_copy(own)
+        if google is None:
+            return pool
+        return pooled(own, [*others, google])
+
+    def _google_copy(self, own: FontCopy) -> FontCopy | None:
+        """Google's copy of the own copy's font; None when it has none, or it can't be had."""
+        if self._google is None:
+            return None
+        file = self._google.file_for(own.font)
+        # Not one of Google's families, or a cut it may not make.
+        if file is None:
+            return None
+        embedded = self._google.opened(file)
+        if embedded is None:
+            return None
+        return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""

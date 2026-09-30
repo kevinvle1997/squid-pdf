@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pymupdf
 import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.subset import Options, Subsetter
+from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 from squidpdf.core.fonts import FACES, face_bytes
@@ -394,3 +397,37 @@ def merged_unlike(tmp_path_factory) -> str:
     renamed = path.replace(".pdf", "-renamed.pdf")
     doc.save(renamed)
     return renamed
+
+
+# Poppins as Google's collection has it, with its licence beside it: the whole font.
+POPPINS = Path(__file__).parent / "fonts" / "Poppins-Regular.ttf"
+# What the Poppins fixture's page draws; "Yearly Hello" needs Y, a and y besides.
+POPPINS_TEXT = "Hello there"
+
+
+@pytest.fixture(scope="module")
+def poppins_subset(tmp_path_factory) -> str:
+    """One line in a trimmed copy of Poppins, named as a real trimmed copy is.
+
+    Trimmed with fontTools, which keeps its letter table, so the engine writes
+    it by letter. MuPDF files an added font as "Poppins Regular"; a real file
+    names it `ABCDEF+Poppins-Regular`, so that's the name it's given, on the
+    font and the one inside it.
+    """
+    trimmer = Subsetter(Options())
+    trimmer.populate(text=POPPINS_TEXT)
+    font = TTFont(POPPINS)
+    trimmer.subset(font)
+    trimmed_file = io.BytesIO()
+    font.save(trimmed_file)
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
+    page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_MERGED_SIZE)
+    [(xref, *_)] = page.get_fonts()
+    _kind, inner = doc.xref_get_key(xref, "DescendantFonts")
+    for named in (xref, int(inner.strip("[]").split()[0])):
+        doc.xref_set_key(named, "BaseFont", "/ABCDEF+Poppins-Regular")
+    path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
+    doc.save(path)
+    return path
