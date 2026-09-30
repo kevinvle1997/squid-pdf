@@ -51,6 +51,10 @@ class PdfDriver(Protocol):
     says the library couldn't: the engine then falls back rather than crashing.
     """
 
+    def page_count(self) -> int:
+        """How many pages the document has, without reading any of them."""
+        ...
+
     def pages(self) -> list[Page]:
         """Each page's size, unrotated, and the turn it asks for."""
         ...

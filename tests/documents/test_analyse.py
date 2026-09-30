@@ -9,6 +9,7 @@ import pytest
 from squidpdf.core import Engine
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import MAX_PAGES
+from squidpdf.documents.errors import TooManyPages
 from tests.conftest import drawn_with
 from tests.helpers import assert_equal, assert_true
 
@@ -51,3 +52,17 @@ def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usab
     assert_equal(judged, ("approximate", {"code": "spaced_text", "params": {}}), "the span")
     [font] = analysis["fonts"]
     assert_equal((font["substitute"], font["why"]), (None, None), "its font: nothing stands in")
+
+
+def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(
+    folder, monkeypatch
+):
+    """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
+
+    def read_pages(self):
+        """Stands in for reading every page's size, to fail if anything does."""
+        raise AssertionError("the pages were read")
+
+    monkeypatch.setattr(Engine, "pages", read_pages)
+    with pytest.raises(TooManyPages):
+        analyse.analyse(str(folder), 1)  # the sample has two

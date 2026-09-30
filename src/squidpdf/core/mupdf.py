@@ -124,6 +124,10 @@ class MuPDFDriver(PdfFile):
             raise Damaged(debug="no pages")
         super().__init__(doc)
 
+    def page_count(self) -> int:
+        """How many pages the document has, without reading any of them."""
+        return len(self._doc)
+
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for.
 

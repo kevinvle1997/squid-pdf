@@ -114,8 +114,12 @@ class Engine:
 
     def index(self) -> SpanIndex:
         """Every editable span, extracted once from the pristine document."""
-        page_count = len(self._driver.pages())
+        page_count = self._driver.page_count()
         return build_index(self._driver.text_lines(page) for page in range(page_count))
+
+    def page_count(self) -> int:
+        """How many pages the document has, without reading any of them."""
+        return self._driver.page_count()
 
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
@@ -323,7 +327,7 @@ class Engine:
         Call it after the last draw: page numbers change here. Returns what
         came out other than asked.
         """
-        every_page_kept = set(pages) == set(range(len(self._driver.pages())))
+        every_page_kept = set(pages) == set(range(self._driver.page_count()))
         said = [] if every_page_kept else self._drop_tags()
         self._driver.keep_pages(pages)
         # Looked up and named by page number, and those just changed.

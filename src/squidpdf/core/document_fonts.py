@@ -171,7 +171,7 @@ class DocumentFonts:
     def _page_fonts(self) -> list[list[PageFont]]:
         """Every page's fonts, read once, before an edit can drop one."""
         if self._cache.page_fonts is None:
-            page_count = len(self._driver.pages())
+            page_count = self._driver.page_count()
             self._cache.page_fonts = [self._driver.fonts(page) for page in range(page_count)]
         return self._cache.page_fonts
 

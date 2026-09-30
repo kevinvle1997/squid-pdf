@@ -33,7 +33,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     with store.open_original(path) as eng:
         index = store.load_index(path)
         if index is None:
-            if len(eng.pages()) > max_pages:
+            if eng.page_count() > max_pages:
                 raise TooManyPages(max_pages)
             index = eng.index()
             store.save_index(path, index)

@@ -67,7 +67,7 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
     """
     # Only inserts need the page count, so skip reading the pages without one.
     has_inserts = any(isinstance(e, Insert) for e in edits)
-    page_count = len(engine.pages()) if has_inserts else 0
+    page_count = engine.page_count() if has_inserts else 0
     spans: dict[str, Span] = {}
     redacted: set[str] = set()
     kept: list[Replace | Redact] = []
