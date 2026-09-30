@@ -227,7 +227,7 @@ class Engine:
         """Delete these spans' text for real, not by covering it with a box.
 
         One box per span, not per fragment: the cost grows with the box count,
-        and a span's box covers its fragments. Lines and underlines stay. Each
+        and a span's box covers its fragments. Lines, underlines and links stay. Each
         span's font and look-alike are read first: erasing can delete a font the
         page no longer uses, and `draw` still needs both. So are the page's gaps.
         """
@@ -242,6 +242,14 @@ class Engine:
 
         for page, page_spans in by_page.items():
             self._driver.erase_text(page, [span.bbox for span in page_spans])
+
+    def unlink(self, spans: list[Span]) -> None:
+        """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
+        by_page: dict[int, list[Span]] = {}
+        for span in spans:
+            by_page.setdefault(span.page, []).append(span)
+        for page, page_spans in by_page.items():
+            self._driver.drop_links(page, [span.bbox for span in page_spans])
 
     def draw(
         self, span: Span, text: str, *, size: float | None = None, scale_x: float = 1.0

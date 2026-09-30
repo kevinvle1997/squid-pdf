@@ -95,7 +95,14 @@ class PdfDriver(Protocol):
         ...
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
-        """Delete the text inside these boxes for real. Images and drawings stay."""
+        """Delete the letters whose middle is inside these boxes, for real.
+
+        Images, drawings and links stay.
+        """
+        ...
+
+    def drop_links(self, page: int, boxes: list[Rect]) -> None:
+        """Delete every link whose area overlaps one of `boxes`."""
         ...
 
     def add_font(self, page: int, name: str, font_file: bytes) -> int:

@@ -125,12 +125,16 @@ def apply(
     resolved = resolve(engine, edits, index)
 
     to_remove: list[Span] = []
+    to_unlink: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
     for edit, span in resolved.span_edits:
         off_screen = pages is not None and span.page not in pages
         if off_screen:
             continue
         to_remove.append(span)
+        # A redacted span's links go too: one can carry the text it's on, as a mailto: does.
+        if isinstance(edit, Redact):
+            to_unlink.append(span)
         if isinstance(edit, Replace):
             # Worked out before remove(), which can drop the fonts it measures with.
             size, scale_x = drawn_at(engine, span, edit)
@@ -138,6 +142,8 @@ def apply(
 
     if to_remove:
         engine.remove(to_remove)
+    if to_unlink:
+        engine.unlink(to_unlink)
     undone = Message("redaction_undone")
     notices = [Notice(span_id, undone) for span_id in undone_redactions(edits)]
     for span, text, size, scale_x in to_draw:

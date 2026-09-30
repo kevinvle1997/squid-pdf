@@ -205,7 +205,7 @@ class PdfFile:
             mu.ll_pdf_drop_font(font)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
-        """Delete the letters whose middle is inside each box. Images and drawings stay.
+        """Delete the letters whose middle is inside each box. Images, drawings and links stay.
 
         The same letters `text_in` reads, so what's erased is what's checked.
         MuPDF deletes every letter whose box a redaction touches, and a letter's
@@ -213,8 +213,10 @@ class PdfFile:
         it reaches the lines above and below. So each box is erased as a thin
         strip just above its own letters' baselines, which other lines' boxes
         don't reach. A box that still has letters afterwards (a font whose boxes
-        sit oddly) is erased whole, so old text is never left under new.
+        sit oddly) is erased whole, so old text is never left under new. MuPDF
+        also deletes any link a redaction touches: those are put back.
         """
+        links = self._doc[page].get_links()
         letters = self._letters(page)
         # No letter's middle inside: erase the whole box, as nothing else would.
         self._redact(page, [strip_through(letters, box) or box for box in boxes])
@@ -222,6 +224,23 @@ class PdfFile:
         missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
         if missed:
             self._redact(page, missed)
+        self._restore_links(page, links)
+
+    def _restore_links(self, page: int, links: list[dict]) -> None:
+        """Add back any of `links`, as get_links read them, that the page no longer has."""
+        pg = self._doc[page]
+        kept = {link_key(link) for link in pg.get_links()}
+        for link in links:
+            if link_key(link) not in kept:
+                pg.insert_link(link)
+
+    def drop_links(self, page: int, boxes: list[Rect]) -> None:
+        """Delete every link whose area overlaps one of `boxes`."""
+        pg = self._doc[page]
+        areas = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
+        for link in pg.get_links():
+            if any(pymupdf.Rect(link["from"]).intersects(area) for area in areas):
+                pg.delete_link(link)
 
     def _redact(self, page: int, boxes: list[Rect]) -> None:
         """Delete every letter whose box touches one of `boxes`, and nothing else."""
@@ -369,6 +388,13 @@ def text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
 def letters_inside(letters: list[Letter], box: Rect) -> str:
     """The letters whose middle is inside `box`, in order."""
     return "".join(letter.text for letter in letters if middle_inside(letter.box, box))
+
+
+def link_key(link: dict) -> tuple[tuple[str, str], ...]:
+    """What a link from get_links is: where it sits and where it goes, not its object number."""
+    return tuple(
+        sorted((key, repr(value)) for key, value in link.items() if key not in ("xref", "id"))
+    )
 
 
 def middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:

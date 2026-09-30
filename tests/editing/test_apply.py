@@ -527,3 +527,45 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     assert_equal([words.render(part) for part in fit.describe()], [left_out], "the fit")
     notice = (span.id, words.sentence("left_out").format(letters="中"), None)
     assert_equal(_said(applied.notices), [notice], "what render tells the user")
+
+
+def _linked(path: str) -> str:
+    """A line whose address is a link, and a link elsewhere on the page."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Contact: sales@example.com", fontname="helv", fontsize=12)
+    page.insert_text((72, 200), "Terms online", fontname="helv", fontsize=12)
+    for text, uri in (
+        ("sales@example.com", "mailto:sales@example.com"),
+        ("Terms", "https://x.test"),
+    ):
+        [area] = page.search_for(text)
+        page.insert_link({"kind": pymupdf.LINK_URI, "from": area, "uri": uri})
+    doc.save(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("edit", "links"),
+    [
+        ("replace", ["mailto:sales@example.com", "https://x.test"]),
+        ("redact", ["https://x.test"]),
+    ],
+    ids=["a replaced line keeps its link", "a redacted one loses it: it can carry the text"],
+)
+def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
+    path = _linked(str(tmp_path / "linked.pdf"))
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [line] = [span for span in index if span.text.startswith("Contact")]
+        change: Edit = (
+            Replace(line.id, "Contact: help@example.com")
+            if edit == "replace"
+            else Redact(line.id)
+        )
+        apply(engine, [change], index)
+        engine.save(out)
+
+    left = [link["uri"] for link in pymupdf.open(out)[0].get_links()]
+    assert_equal(sorted(left), sorted(links), "the page's links")
