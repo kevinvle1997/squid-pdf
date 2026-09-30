@@ -326,7 +326,8 @@ def cut(variable_font: bytes, weight: int) -> bytes:
 
     MuPDF draws a variable font only at its default weight.
     """
-    font = TTFont(io.BytesIO(variable_font))
+    # No time stamp: two workers cutting one file at once must keep the same bytes.
+    font = TTFont(io.BytesIO(variable_font), recalcTimestamp=False)
     axes = {axis.axisTag: axis for axis in font["fvar"].axes}
     wanted = {"wght": weight, "wdth": _WIDTH}
     # Each axis at the value asked for, kept within what the font can do.

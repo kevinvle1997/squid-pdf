@@ -227,6 +227,16 @@ def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(t
     assert_equal(_fetched(file, tmp_path, _failing), None, "a cut gone bad")
 
 
+def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(monkeypatch):
+    """Two workers may cut one file at once, each keeping its hash: they must agree."""
+    variable = _variable_font()
+    # fontTools stamps a saved font with the time, read from here when it's set.
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+    first = google.cut(variable, 700)
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "2000000000")
+    assert_true(google.cut(variable, 700) == first, "a later cut matches the first")
+
+
 def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
     """The network answered, so other files are still worth a try; the cut is kept when done."""
     variable = _variable_font()
