@@ -102,15 +102,23 @@ def delete(folder: Path) -> None:
 
 
 def sweep() -> None:
-    """Delete every document left untouched for longer than the idle hour."""
-    cutoff = time.time() - IDLE_S
+    """Delete every document left untouched for longer than the idle hour, and nothing else.
+
+    Only a folder named like a document and holding an owner: the data folder
+    can be shared. A request that loses the race with a delete says Gone.
+    """
     for folder in root().glob("*"):
-        try:
-            idle = folder.is_dir() and folder.stat().st_mtime < cutoff
-        except FileNotFoundError:  # its owner deleted it since the listing
-            continue
-        if idle:
+        is_document = _ID_SHAPE.fullmatch(folder.name) and (folder / _OWNER).is_file()
+        if is_document and idle(folder):
             delete(folder)
+
+
+def idle(folder: Path) -> bool:
+    """Whether the folder has gone untouched past the idle hour; False once it's gone."""
+    try:
+        return folder.stat().st_mtime < time.time() - IDLE_S
+    except FileNotFoundError:  # its owner deleted it since the listing
+        return False
 
 
 def write_whole(path: Path, data: bytes) -> None:

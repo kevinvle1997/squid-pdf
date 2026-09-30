@@ -28,11 +28,16 @@ def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = store.create("owner")
     _, fresh = store.create("owner")
+    # Not a document: a folder of someone else's that shares the data folder.
+    other = store.root() / "backups"
+    other.mkdir()
     past = time.time() - IDLE_S - 1
-    os.utime(idle, (past, past))
+    for folder in (idle, other):
+        os.utime(folder, (past, past))
     store.sweep()
     assert_false(idle.exists(), "a document idle past the hour is still on disk")
     assert_true(fresh.exists(), "a document in use was swept")
+    assert_true(other.exists(), "a folder that isn't a document was swept")
 
 
 def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
