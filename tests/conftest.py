@@ -13,6 +13,10 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import open_pdf, words
 from squidpdf.core.fonts import FACES, face_bytes
 
+# pytest only explains the asserts in test modules; this has it explain the helpers' too,
+# so a failing assert_equal shows a diff, not two whole values. Before any test imports them.
+pytest.register_assert_rewrite("tests.helpers")
+
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 
 # The sample's two pages, counted from 0 as spans count them.
