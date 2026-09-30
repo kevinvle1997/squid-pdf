@@ -97,6 +97,10 @@ def test_referenced_font_is_a_substitution(engine):
     ("base_font", "flags", "face", "same_widths"),
     [
         ("Calibri-Bold", None, "Carlito Bold", True),
+        # The typeface itself, shipped: its own letters, so its own widths.
+        ("Poppins-Bold", None, "Poppins Bold", True),
+        # A name that says its cut with no dash, as TeX's do: the name alone picks the face.
+        ("CMBX10", None, "Latin Modern Roman 10 Bold", True),
         # A font we don't know: its kind comes from the PDF's description, not its name.
         ("NimbusSomething", _SERIF_FLAGS, "Liberation Serif Regular", False),
         ("NimbusSomething", None, "Liberation Sans Regular", False),

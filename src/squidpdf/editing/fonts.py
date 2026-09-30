@@ -45,10 +45,13 @@ class FontListController:
                 "family": face.family,
                 "category": face.category,
                 "license": face.license,
-                "same_widths_as": list(face.same_widths_as),
+                "same_widths_as": [],
                 "faces": [],
             }
             family = families.setdefault(face.family, new_family)
+            # A cut can match fonts its family doesn't, as CMBX10 is only the bold.
+            listed = family["same_widths_as"]
+            listed.extend(name for name in face.same_widths_as if name not in listed)
             family["faces"].append(
                 {"name": face.name, "style": face.style, "glyphs": face_widths(face)}
             )

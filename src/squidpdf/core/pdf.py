@@ -26,6 +26,8 @@ _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
 # The object the first entry of an array points at: "[15 0 R]" -> 15.
 _FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
+# Where a font description keeps the font file, by the kind of file it is.
+_FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
@@ -113,7 +115,9 @@ class PdfFile:
         owner = self._describing_font(xref)
         if owner is None:  # MuPDF always points at the inner font, so this is someone else's
             raise ValueError(f"font {xref} has its inner font written out in place")
-        _kind, value = self._doc.xref_get_key(owner, "FontDescriptor/FontFile2")
+        # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
+        stored = (self._doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
+        value = next(value for kind, value in stored if kind == "xref")
         file_xref = int(value.split()[0])  # "7 0 R" -> 7
         self._doc.update_stream(file_xref, font_file)
         # A TrueType file states its size before compression, too.

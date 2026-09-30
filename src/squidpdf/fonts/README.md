@@ -4,8 +4,11 @@ The faces squid-pdf draws with when a document's own font can't be used, and the
 faces new text can be drawn in. `squidpdf.core.fonts.CATALOG` lists them; a test
 checks every file here is in it and is the face it says.
 
-All are under the SIL Open Font License 1.1, free to embed in any PDF. Each
-family's licence is in `licenses/`. Fetched 2026-09-26.
+Most are under the SIL Open Font License 1.1; Latin Modern is under the GUST
+Font License (the LaTeX Project Public License) and FreeSans and FreeSerif under
+the GPL-3 with its font exception. All three let a PDF embed the font without
+the document taking on the licence. Each family's licence is in `licenses/`.
+Fetched 2026-09-26; the families from Poppins down, 2026-09-29.
 
 ## Where each came from
 
@@ -15,6 +18,13 @@ family's licence is in `licenses/`. Fetched 2026-09-26.
 | Carlito | 1.104 | Same widths as Calibri | github.com/google/fonts `ofl/carlito` (upstream googlefonts/carlito @ 3a810ca) | `licenses/Carlito.txt` |
 | Caladea | 1.001 | Same widths as Cambria | github.com/google/fonts `ofl/caladea` (upstream googlefonts/caladea @ 336a529) | `licenses/Caladea.txt` |
 | Noto Sans, Noto Serif | 2.015 | The broadest: Latin, Greek, Cyrillic. Draws a line whose letters its look-alike lacks | github.com/notofonts/notofonts.github.io `fonts/Noto{Sans,Serif}/unhinted/ttf` | `licenses/Noto.txt` |
+| Poppins | 4.004 | The typeface itself, for documents that use it | github.com/google/fonts `ofl/poppins` (upstream itfoundry/Poppins @ 738d9d6) | `licenses/Poppins.txt` |
+| Open Sans | 3.003 | The typeface itself | github.com/googlefonts/opensans @ bd7e376, `fonts/ttf` (the static files) | `licenses/OpenSans.txt` |
+| Montserrat | 9.000 | The typeface itself | github.com/JulietaUla/Montserrat @ 555facf, `fonts/ttf` (the static files) | `licenses/Montserrat.txt` |
+| Nunito | 3.602 | The typeface itself | github.com/google/fonts `ofl/nunito` (upstream googlefonts/nunito @ 8c6a9bb) | `licenses/Nunito.txt` |
+| PT Sans, PT Serif | 2.003W, 1.000W | The typeface itself | github.com/google/fonts `ofl/ptsans`, `ofl/ptserif` (`PT_Sans-Web-*.ttf`, renamed to our file names) | `licenses/PTSans.txt`, `licenses/PTSerif.txt` |
+| FreeSans, FreeSerif | 20120503 | The typeface itself: GNU FreeFont, which LibreOffice and many invoice generators embed | ftp.gnu.org/gnu/freefont/freefont-ttf-20120503.zip | `licenses/FreeFont.txt` (the font exception, then the GPL-3) |
+| Latin Modern Roman 10, 12, 17, Roman Caps 10, Mono 10 | 2.004 | Same widths as LaTeX's Computer Modern (CMR10, CMBX10, CMTT10...), checked against a LaTeX résumé | gust.org.pl `lm2.004otf.zip` | `licenses/LatinModern.txt` |
 | Inter | 4.001 | Sans, for new text | github.com/google/fonts `ofl/inter` (upstream rsms/inter @ 66647c0) | `licenses/Inter.txt` |
 | Roboto | 3.015 | Sans, for new text | github.com/google/fonts `ofl/roboto` (upstream googlefonts/roboto-classic @ 91d5d3e) | `licenses/Roboto.txt` |
 | Lato | 2.015 | Sans, for new text | github.com/google/fonts `ofl/lato` (upstream googlefonts/LatoGFVersion @ 080cb69) | `licenses/Lato.txt` |
@@ -24,11 +34,11 @@ family's licence is in `licenses/`. Fetched 2026-09-26.
 | Caveat | 2.000 | Handwriting, for signatures | github.com/google/fonts `ofl/caveat` (upstream googlefonts/caveat @ 59745e8) | `licenses/Caveat.txt` |
 | Great Vibes | 1.103 | A script signature face | github.com/google/fonts `ofl/greatvibes` (upstream googlefonts/great-vibes @ f95eb96) | `licenses/GreatVibes.txt` |
 
-Every file is as its source ships it, except the four families below.
+Every file is as its source ships it, except the five families below.
 
 ## Made from variable fonts
 
-Inter, Roboto, EB Garamond and Caveat ship only as variable fonts (one file for
+Inter, Roboto, EB Garamond, Caveat and Nunito ship only as variable fonts (one file for
 every weight). MuPDF draws a variable font at its default weight only, so each
 style here is a fixed instance cut with fontTools 4.65
 (`fontTools.varLib.instancer.instantiateVariableFont`), at weight 400 (Regular,
@@ -39,7 +49,7 @@ PostScript name) and the STAT table dropped. None of these four families has a
 Reserved Font Name, so the OFL allows this under the same names.
 
 Families that do reserve their name (Merriweather, Source Code Pro, Dancing
-Script) were left out rather than cut this way; families with a reserved name
+Script, Raleway, Playfair Display) were left out rather than cut this way; families with a reserved name
 here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 
 | Source file | sha256 |
@@ -51,12 +61,18 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 | `EBGaramond[wght].ttf` | `ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027` |
 | `EBGaramond-Italic[wght].ttf` | `bba2c4499c93c9612b90b9825d32b07da52fce2fe57562a1eb6b833553f93c4e` |
 | `Caveat[wght].ttf` | `0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988` |
+| `Nunito[wght].ttf` | `bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207` |
+| `Nunito-Italic[wght].ttf` | `b520cc871868b0acfca1beda875df7f4a44ebce914f8a89f83977fc9c09529c8` |
 
 ## Left out
 
 - **Liberation Sans Narrow** (Arial Narrow's look-alike): its only release is
   1.07, under GPL-2 with a font exception, not the OFL. Arial Narrow is drawn in
   Liberation Sans instead, and the app says the widths may differ.
+- **Raleway, Playfair Display**: variable fonts only, with a Reserved Font Name
+  (see above). A document in either is drawn in a plain face of its kind.
+- **FreeSans matched to Liberation Sans**: tried first, but 36 of the 60 letters
+  an invoice's FreeSans drew are other widths, so FreeSans ships as itself.
 
 ## Checksums of the files here
 
@@ -76,6 +92,14 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 | `EBGaramond-BoldItalic.ttf` | `e18de2cf42a6a75fa9f13f7bde8836e900ed74edef7d599aae09f64f8a2be330` |
 | `EBGaramond-Italic.ttf` | `1c6103150c31d57535b5a478bfaff306b9b35a70cc2e9e738f0acd997c0dde33` |
 | `EBGaramond-Regular.ttf` | `fb924d382de190911961eadcee4002a630dee5ffa97fb5ecf6f5a74d854addc7` |
+| `FreeSans.ttf` | `c80858440d8fb618e0ac5ff6f16251dbfa6b3316f00f3cdd17d477297dd87b04` |
+| `FreeSansBold.ttf` | `982534a3731416a15e2756601721f26053f68bf4239011550f3dd23ce6308215` |
+| `FreeSansBoldOblique.ttf` | `deb48d677df0b521793df8da28729316bfcc255309aeb6dacfbd38241ac9b7ba` |
+| `FreeSansOblique.ttf` | `43ef481308dfb3aa1103a75699cb4976139b6339eda0901df69a25533f07cf6b` |
+| `FreeSerif.ttf` | `658563c732eafdc851de2b3f38b27d0afcde5674b2f93440971b9693438c6494` |
+| `FreeSerifBold.ttf` | `973791e2bb5ef4ba7ac9e7423f8a8d8441468da3a37c7e38ab38256011f5f261` |
+| `FreeSerifBoldItalic.ttf` | `38e39596c9daec677633761324216ffda969c65b9515cf273b001521f22cb2b3` |
+| `FreeSerifItalic.ttf` | `1cef05c1ea5d88f0e06b212bdb0510edf65c5456523dd81ddccfe9847a77284f` |
 | `GreatVibes-Regular.ttf` | `8d509802186f1b51572531ecf313e8098f9a5bfdfaca93f0c9b34467f9982d15` |
 | `IBMPlexMono-Bold.ttf` | `ac27abd6450a64dd94467580a02fe6235156d5b92f2926ebbc8e7489df64e0be` |
 | `IBMPlexMono-BoldItalic.ttf` | `af4e05a761e98c1adf064c48a6352c9bec1a6ad70982cd2a544149323391f98e` |
@@ -105,6 +129,21 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 | `LiberationSerif-BoldItalic.ttf` | `379010e87421a883f7bbfa7936d23dfe0257a54ce850819b74556e9f2c615a8a` |
 | `LiberationSerif-Italic.ttf` | `eaeaf7f2b12544ecde64290c1fa7ec403ff70fd58b313637b265400b20249242` |
 | `LiberationSerif-Regular.ttf` | `705903ae1382f0150f115d6f10a30f5b2f3d6ade649c474afe6366c39174fb65` |
+| `lmmono10-italic.otf` | `14e6328a5383d2b927c47051093ce0aff60deea07e6df71b8b99ee8d9c2ff8f2` |
+| `lmmono10-regular.otf` | `22deb6d3be3ffcb40b33f0e010afb256c677d97c2a2bdee1f5740cdc97751558` |
+| `lmroman10-bold.otf` | `102fe06c430a8b681b2bf6876b7cd967ae4d47b4b6b41d915eb7913b726d9fb1` |
+| `lmroman10-bolditalic.otf` | `c37a28eed7a6e03f792b98b5e5f637b2fcda378bb4855f99284f1a88fe35f124` |
+| `lmroman10-italic.otf` | `c1fce25075567bb8dbf2151658c3b442690041db17a2d49fc9e55905ea5b7169` |
+| `lmroman10-regular.otf` | `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852` |
+| `lmroman12-bold.otf` | `28c8782ac2b6486958b5dc7610ada7800c53546ff7f36bc65909a876e1cd338e` |
+| `lmroman12-italic.otf` | `ada6b3f451238784e5a5ea75d43efa1eb4329cd75ce65bf047ed2f31b7b5e2f3` |
+| `lmroman12-regular.otf` | `e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870` |
+| `lmroman17-regular.otf` | `ed048c80fb4b67663b80899b89fe5fba17d7442e1286d61fd08fe5689c6b7c3c` |
+| `lmromancaps10-regular.otf` | `1ab40332a969892c7ed6cb010193b5276ccef1da6798bcbd1a465fee23d29334` |
+| `Montserrat-Bold.ttf` | `bc6e854971cea46b463be6f9eef4d9cd52f51cfc1fc0dd90c9d3e6483dc0ec61` |
+| `Montserrat-BoldItalic.ttf` | `b4c121b337aaa977d711b6f397c5b9672d720af622555f1e3f9d3b87f2983665` |
+| `Montserrat-Italic.ttf` | `b8fa0ea7f433669d94d27e66ea81cc627deb71861ed9d20f53d7afa1f33ba86a` |
+| `Montserrat-Regular.ttf` | `3e8abe50c44c82e2242e97d1ec8c0d385c4890cdc50447bcdb8605c81a38cfb2` |
 | `NotoSans-Bold.ttf` | `87cb2d84472a7d66da659ee47b6cdb9552326e8c128245231f191b6ac72529d9` |
 | `NotoSans-BoldItalic.ttf` | `3d367743f371f28671d2764e911a53d7c20ec9b6aa8791d059e7090389fc52a5` |
 | `NotoSans-Italic.ttf` | `678288f868807d4d64a6f3b51466871d117d915780381ce9d0ed4b3bcbd06d37` |
@@ -113,6 +152,26 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 | `NotoSerif-BoldItalic.ttf` | `1bc4f86502eaa368718f6192bee022ea9a703d5af1c18b7d291212657b63074a` |
 | `NotoSerif-Italic.ttf` | `c4b3c971741ecdb40f5a443bce754e8fe91efe761b6ea10c92be7c3597cdadc4` |
 | `NotoSerif-Regular.ttf` | `a15cfbbc1539d707115111d672d590a3d70d4f74b4c0a315956da20ae19a14e1` |
+| `Nunito-Bold.ttf` | `18614d7c88dfa5fb6d25eef3f4d159790d34cfd7eb84935496c503be9c87865d` |
+| `Nunito-BoldItalic.ttf` | `e9a13913af94298dad9bac582d886ec209e042f9e52e1e4a3cafc06d3ad2d826` |
+| `Nunito-Italic.ttf` | `89b106ca1ee7e0aed814d949305ba45104204c2ac4b59dfc6caf45a7e5879aaa` |
+| `Nunito-Regular.ttf` | `c58d1037233693d124c6eec882bab831dad7a106ba9db0fe8c06032c8224e2e7` |
+| `OpenSans-Bold.ttf` | `27da758f4dcac9a65abe914c13b463b42982b9909bc65713424099f4810bd1e6` |
+| `OpenSans-BoldItalic.ttf` | `d672a770037104b6af45e1336b3d3c1729c8aea940f81e010f5a8a7319c29a21` |
+| `OpenSans-Italic.ttf` | `93bc1bb6abf4e6b7c75d7131714061d5b57cc478abcabe4cb3519bb38fb917aa` |
+| `OpenSans-Regular.ttf` | `c53aceea2dcf5b4098099c0c4d0a061d17e178a049317b42a422b1a9f7f8eb59` |
+| `Poppins-Bold.ttf` | `983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c` |
+| `Poppins-BoldItalic.ttf` | `3572ac8116a0ac7317d342262b29937bcbaf94d8f03f90df6fe666fa7e2fb43a` |
+| `Poppins-Italic.ttf` | `4fa76ae75b40f926420514044722cb97f32186cafd3b38263cc34dad7174d46d` |
+| `Poppins-Regular.ttf` | `7e65201e9b79159e2300267cc885e16c8dcef2424cdfa09a29bfb0980a94a7ba` |
+| `PTSans-Bold.ttf` | `3128bd5ecf01816e59a23d54c57a7a6b14615b07db53ff277c77376010265b05` |
+| `PTSans-BoldItalic.ttf` | `81ac221cdd02bccfa679c74adb122478e9d092e65a722e31ca11469961483785` |
+| `PTSans-Italic.ttf` | `5a90fe2d0cd798700935240580bdcc12c0ffc9102c0c7163b3418e13bc21debd` |
+| `PTSans-Regular.ttf` | `9cc831490532009bae2b3ce0d39c62adfc889060beb421593bfd9d2396d0f10a` |
+| `PTSerif-Bold.ttf` | `038ba7336bd7ea14f12ad155bed51a4345cac5153275d521dec3ba04021c526e` |
+| `PTSerif-BoldItalic.ttf` | `f003788ba08981eb0988b3557a6f224a53dab49c20e283e8b74d5af3c466f8be` |
+| `PTSerif-Italic.ttf` | `f57e95ff9dc85691a3b2e193f2028db36f6663939a46c0fc4f286d618b80b7ce` |
+| `PTSerif-Regular.ttf` | `a4951fade06ff8f09b7673aa81ffb65a8cd409e24d3289a6dc670bc4dda2557a` |
 | `Roboto-Bold.ttf` | `60d8a1b2e78f863ab3b3b7193bc67df9719071adb2e5cd70573e658d96c35d95` |
 | `Roboto-BoldItalic.ttf` | `fdb2fad89019d21f59ea789445d40ae0bc9c0e9af074a1e4b3caf8b9462e6749` |
 | `Roboto-Italic.ttf` | `a13a74400cc0484d5c1170b35bdeb0135276344892bbfbf67758e7bebe78f4e5` |

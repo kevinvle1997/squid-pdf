@@ -31,7 +31,8 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.
 # 4: a font with no space of its own gives a space the gap the file drew, so widths changed.
 # 5: a letter another copy of the same font in the file draws counts, so letter lists changed.
-LIBRARY_VERSION = "5"
+# 6: more families (Poppins, Open Sans, FreeSans, Latin Modern...), so more look-alikes changed.
+LIBRARY_VERSION = "6"
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
