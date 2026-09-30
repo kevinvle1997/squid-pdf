@@ -10,30 +10,13 @@ import pytest
 
 from squidpdf.core import words
 from squidpdf.core.constants import TOLERANCE_PT
-from tests.api.conftest import upload
+from tests.api.conftest import span_starting
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
-
-
-@pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the document."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The sample PDF as uploaded by `mine`: what the upload answered."""
-    return upload(mine, pdf_bytes).json()
-
-
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
@@ -48,7 +31,7 @@ def _png(image: dict) -> bytes:
 
 
 def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
-    span = _span(doc, 0, "Made")
+    span = span_starting(doc, 0, "Made")
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"] + _LONGER}
 
     fit = _render(mine, doc, [edit], []).json()["fits"][span["id"]]
@@ -61,7 +44,7 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
 
 def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     """Else a strip laid over the page image would show a seam."""
-    edited = _span(doc, 1, "Delivery")
+    edited = span_starting(doc, 1, "Delivery")
     edit = {"kind": "replace", "span_id": edited["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
@@ -103,7 +86,7 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
 )
 def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
     """A line break would draw a second line over the next; half an emoji draws nothing."""
-    span = _span(doc, 0, "Made")
+    span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
     edit = replace if kind == "replace" else insert

@@ -22,18 +22,6 @@ from tests.helpers import assert_equal, assert_problem, assert_true
 _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
 
-@pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the document."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The sample PDF as uploaded by `mine`: what the upload answered."""
-    return upload(mine, pdf_bytes).json()
-
-
 def _kept() -> int:
     """How many documents are on disk."""
     return len(os.listdir(store.root()))

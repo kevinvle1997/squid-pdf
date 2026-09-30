@@ -12,18 +12,6 @@ from tests.conftest import PSEUDO, pseudo_sentence
 from tests.helpers import assert_equal, assert_in, assert_problem
 
 
-@pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the document."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The sample PDF as uploaded by `mine`, in English."""
-    return upload(mine, pdf_bytes).json()
-
-
 def _in(language: str) -> dict[str, str]:
     """The header a browser asks for `language` with."""
     return {"accept-language": language}

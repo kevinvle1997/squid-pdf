@@ -14,16 +14,11 @@ import pymupdf
 
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts import strip_subset
-from tests.api.conftest import upload
+from tests.api.conftest import span_starting, upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
 _SCALE = 2
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
-
-
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
 
 
 def _rect(box: dict) -> pymupdf.Rect:
@@ -68,8 +63,8 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     uploaded = upload(mine, pdf_bytes)
     assert_equal(uploaded.status_code, 201, "upload status")
     doc = uploaded.json()
-    delivery, invoices = _span(doc, 1, "Delivery"), _span(doc, 1, "Invoices")
-    made = _span(doc, 0, "Made")
+    delivery, invoices = span_starting(doc, 1, "Delivery"), span_starting(doc, 1, "Invoices")
+    made = span_starting(doc, 0, "Made")
     judged = (delivery["fidelity"], made["fidelity"])
     assert_equal(judged, ("exact", "substitute"), "a font in the file, and one only named")
     fonts = {font["name"]: font for font in doc["fonts"]}

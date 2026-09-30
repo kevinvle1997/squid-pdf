@@ -55,3 +55,20 @@ def upload(client: TestClient, body: bytes) -> Response:
 def pdf_bytes(pdf: str) -> bytes:
     """The shared sample PDF, as a browser would upload it."""
     return Path(pdf).read_bytes()
+
+
+@pytest.fixture
+def mine(browser: Callable[[], TestClient]) -> TestClient:
+    """The browser that uploads, and so owns, the document."""
+    return browser()
+
+
+@pytest.fixture
+def doc(mine: TestClient, pdf_bytes: bytes) -> dict:
+    """The sample PDF as uploaded by `mine`: what the upload answered."""
+    return upload(mine, pdf_bytes).json()
+
+
+def span_starting(doc: dict, page: int, starts: str) -> dict:
+    """The span on `page` of an uploaded `doc` whose text starts with `starts`."""
+    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))

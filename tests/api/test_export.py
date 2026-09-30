@@ -13,7 +13,7 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
 from squidpdf.editing import constants as editing_constants
-from tests.api.conftest import upload
+from tests.api.conftest import span_starting, upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
@@ -49,26 +49,9 @@ def three_pages() -> bytes:
 
 
 @pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the documents."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The two-page sample as uploaded by `mine`: what the upload answered."""
-    return upload(mine, pdf_bytes).json()
-
-
-@pytest.fixture
 def three(mine, three_pages) -> dict:
     """The three pages as uploaded by `mine`."""
     return upload(mine, three_pages).json()
-
-
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
 
 
 def _redact(span: dict) -> dict:
@@ -110,7 +93,7 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
     monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
-    span = _span(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
+    span = span_starting(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
 
     response = _export(mine, doc, [edit], language=pseudo)
@@ -143,7 +126,7 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
-    span = _span(doc, 1, "Invoices")
+    span = span_starting(doc, 1, "Invoices")
     kept = _files(doc)
 
     response = _export(mine, doc, [_redact(span)], pages=pages)
@@ -179,7 +162,7 @@ def test_what_an_export_saves_is_in_its_document_so_the_sweep_takes_it(
 
 def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(mine, three):
     """Page 0's header is redacted and page 0 comes out second: it's read, and gone, there."""
-    response = _export(mine, three, [_redact(_span(three, 0, _HEADER))], pages=[2, 0])
+    response = _export(mine, three, [_redact(span_starting(three, 0, _HEADER))], pages=[2, 0])
 
     expected = [[_HEADER, "Third page"], ["First page"]]
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
@@ -187,7 +170,7 @@ def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(
 
 def test_a_redaction_on_a_page_left_out_does_not_fail_the_export(mine, three):
     """The page goes, and its text with it: nothing is left to check."""
-    response = _export(mine, three, [_redact(_span(three, 1, _HEADER))], pages=[2, 0])
+    response = _export(mine, three, [_redact(span_starting(three, 1, _HEADER))], pages=[2, 0])
 
     expected = [[_HEADER, "Third page"], [_HEADER, "First page"]]
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
@@ -208,7 +191,7 @@ def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(min
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
     """The body is the file, so what was left out travels beside it, by place in the list."""
-    span = _span(doc, 1, "Invoices")
+    span = span_starting(doc, 1, "Invoices")
     ninety = span["text"].replace("thirty", "ninety")
     edits = [
         {"kind": "replace", "span_id": "nosuchspan00", "text": "x"},
