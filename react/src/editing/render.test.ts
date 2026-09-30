@@ -1,29 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
-import type { Document, Edit, ImageInfo, ProblemInfo, Render, RenderBody, SpanInfo } from "../api/types";
+import type { Edit, ImageInfo, Render, RenderBody, SpanInfo } from "../api/types";
+import { aDoc, aProblem, aReply, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
 
-const spanOn = (page: number, y0: number): SpanInfo => ({
-  id: `p${page}-${y0}`,
-  page,
-  text: "was",
-  font: "f",
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0, x1: 100, y1: y0 + 12 },
-  origin: [72, y0 + 10],
-  fidelity: "exact",
-  why: null,
-});
-const ONE = spanOn(0, 100);
-const TWO = spanOn(1, 100);
-const DOC = {
-  id: "doc",
-  pages: [0, 1].map(() => ({ width: 595, height: 842, rotation: 0 })),
-  spans: [ONE, TWO],
-} as unknown as Document;
+const ONE = aSpan({ id: "one", page: 0 });
+const TWO = aSpan({ id: "two", page: 1 });
+const DOC = aDoc({ spans: [ONE, TWO] });
 const readingOf = (...edits: Edit[]) =>
   project(DOC.spans, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 const replace = (span: SpanInfo, text = "now"): Edit => ({ kind: "replace", span_id: span.id, text });
@@ -44,7 +29,7 @@ function server() {
         signal.addEventListener("abort", () => fail(new DOMException("aborted", "AbortError")));
       }),
   );
-  const reply = (pages: number[]): Render => ({ images: pages.map(stripFor), fits: {} }) as unknown as Render;
+  const reply = (pages: number[]): Render => aReply({ images: pages.map(stripFor) });
   return { asked, render, reply };
 }
 
@@ -133,10 +118,9 @@ describe("the render queue", () => {
   });
 
   test("a failed render says why, and its page is asked for again with the next change", async () => {
-    const problem = { type: "t", status: 0, detail: "Couldn't reach the server.", code: "unreachable", params: {} };
     queue.draw(readingOf(replace(ONE)));
     await settle();
-    fake.asked[0]?.fail(new ProblemError(problem as ProblemInfo));
+    fake.asked[0]?.fail(new ProblemError(aProblem(0, "Couldn't reach the server.")));
     await settle();
     expect(failures).toEqual(["Couldn't reach the server."]);
     expect(queue.drawn.from.has(0)).toBe(false);
@@ -149,7 +133,7 @@ describe("the render queue", () => {
   test("retry asks again for what's still stale, and nothing once it's all drawn", async () => {
     queue.draw(readingOf(replace(ONE)));
     await settle();
-    fake.asked[0]?.fail(new ProblemError({ status: 0, detail: "offline" } as ProblemInfo));
+    fake.asked[0]?.fail(new ProblemError(aProblem(0, "offline")));
     await settle();
     queue.retry();
     await settle();

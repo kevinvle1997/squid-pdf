@@ -1,21 +1,10 @@
 import { describe, expect, test } from "vitest";
-import type { Edit, Insert, SpanInfo } from "../api/types";
+import type { Edit, Insert } from "../api/types";
+import { aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
 import { type EditedView, project, samePage, sameSpan } from "./project";
 
-const spanOf = (id: string, page: number, text = `was ${id}`): SpanInfo => ({
-  id,
-  page,
-  text,
-  font: "Times-Roman",
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
-  origin: [72, 110],
-  fidelity: "exact",
-  why: null,
-});
-const SPANS = [spanOf("a", 0), spanOf("b", 0), spanOf("c", 1)];
+const SPANS = [aSpan({ id: "a" }), aSpan({ id: "b" }), aSpan({ id: "c", page: 1 })];
 const replace = (span_id: string, text: string): Edit => ({ kind: "replace", span_id, text });
 const insert: Insert = { kind: "insert", page: 1, origin: [72, 300], text: "Signed", size: 12 };
 

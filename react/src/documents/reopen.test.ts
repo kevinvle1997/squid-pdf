@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, stillThere, upload } from "../api/client";
-import type { Document, ProblemInfo } from "../api/types";
+import type { Document } from "../api/types";
+import { aDoc, aProblem } from "../fixtures";
 import { Reopener } from "./reopen";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), upload: vi.fn(), stillThere: vi.fn() }));
 
-const docOf = (id: string) => ({ id }) as Document;
-const problem = (status: number, detail = "said"): ProblemError =>
-  new ProblemError({ type: "t", status, detail, code: "c", params: {} } as ProblemInfo);
+const docOf = (id: string) => aDoc({ id });
+const problem = (status: number, detail = "said"): ProblemError => new ProblemError(aProblem(status, detail));
 const FILE = new Blob(["%PDF-"]);
 
 let reopened: Document[];

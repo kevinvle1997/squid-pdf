@@ -1,16 +1,8 @@
 import { describe, expect, test } from "vitest";
-import type { FontInfo } from "../api/types";
+import { aFont } from "../fixtures";
 import { fileOf, previewFaceOf } from "./faces";
 
-const font = (name: string, substitute: string | null = null): FontInfo => ({
-  name,
-  substitute,
-  why: null,
-  why_code: null,
-  why_params: {},
-  same_widths: true,
-  glyphs: {},
-});
+const font = (name: string, substitute: string | null = null) => aFont(name, { substitute });
 
 describe("preview faces", () => {
   test("a face's file is named as the server names it", () => {

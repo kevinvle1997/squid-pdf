@@ -4,7 +4,8 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
-import type { Document, FontInfo, Render, SpanInfo } from "../../api/types";
+import type { Render } from "../../api/types";
+import { A4, aDoc, aFont, aSpan } from "../../fixtures";
 import { createEditor, type Editor } from "../editor";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -28,37 +29,10 @@ vi.mock(import("./Margin"), async (original) => {
 });
 
 const WORDS = "was here";
-const span: SpanInfo = {
-  id: "s1",
-  page: 0,
-  text: WORDS,
-  font: "Times-Roman",
-  size: 20,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0: 100, x1: 152, y1: 124 },
-  origin: [72, 120],
-  fidelity: "exact",
-  why: null,
-};
+const span = aSpan({ id: "s1", text: WORDS, size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 }, origin: [72, 120] });
 // Every letter half the size wide: the span's eight are 80 pt at 20 pt.
-const font = {
-  name: "Times-Roman",
-  substitute: null,
-  why: null,
-  same_widths: true,
-  glyphs: Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500])),
-} as unknown as FontInfo;
-const PAGE = { width: 595, height: 842, rotation: 0 };
-const DOC = {
-  id: "doc",
-  build: "b",
-  pages: [PAGE],
-  spans: [span],
-  fonts: [font],
-  fit: { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 },
-  copy: { missing: "no {chars} in this font", too_long: "{delta_pt} pt too long", reopened: "", export_left_out: "" },
-  notices: [],
-} as unknown as Document;
+const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
+const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs })] });
 
 let editor: Editor;
 
@@ -72,7 +46,7 @@ beforeEach(() => {
 async function draw() {
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={0} info={PAGE} />
+      <Page index={0} info={A4} />
     </EditorContext.Provider>,
   );
 }

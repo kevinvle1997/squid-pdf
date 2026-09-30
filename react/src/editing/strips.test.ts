@@ -1,22 +1,12 @@
 import { describe, expect, test } from "vitest";
-import type { Edit, Insert, PageInfo, SpanInfo } from "../api/types";
+import type { Edit, Insert, SpanInfo } from "../api/types";
+import { aSpan, A4 as page } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { insertRowOf, merged, regionsFor, rowOf, stalePages } from "./strips";
 
-const page: PageInfo = { width: 595, height: 842, rotation: 0 };
-const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo => ({
-  id: `s${pageIndex}-${y0}`,
-  page: pageIndex,
-  text: "x",
-  font: "f",
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0, x1: 100, y1 },
-  origin: [72, y1 - 2],
-  fidelity: "exact",
-  why: null,
-});
+const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo =>
+  aSpan({ id: `s${pageIndex}-${y0}`, page: pageIndex, bbox: { x0: 72, y0, x1: 100, y1 } });
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>
   project(SPANS, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));

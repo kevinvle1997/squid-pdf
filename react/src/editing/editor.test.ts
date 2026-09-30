@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
-import type { Document, FontInfo, ProblemInfo, Render, SpanInfo } from "../api/types";
+import type { Render } from "../api/types";
+import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { change, changedCount, createEditor, type Editor, putBack, similarCount } from "./editor";
 import { exportNow } from "./export";
 import { edit, finish, type } from "./typing";
@@ -13,28 +14,10 @@ vi.mock(import("../api/client"), async (original) => ({
   stillThere: vi.fn(),
 }));
 
-const spanOf = (id: string, font: string): SpanInfo => ({
-  id,
-  page: 0,
-  text: `was ${id}`,
-  font,
-  size: 10,
-  color: [0, 0, 0],
-  bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
-  origin: [72, 110],
-  fidelity: "exact",
-  why: null,
+const DOC = aDoc({
+  spans: [aSpan({ id: "own", font: "Kept" }), aSpan({ id: "similar", font: "Named" })],
+  fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
 });
-const fontOf = (name: string, substitute: string | null): FontInfo =>
-  ({ name, substitute, why: null, same_widths: true, glyphs: {} }) as unknown as FontInfo;
-const DOC = {
-  id: "doc",
-  pages: [{ width: 595, height: 842, rotation: 0 }],
-  spans: [spanOf("own", "Kept"), spanOf("similar", "Named")],
-  fonts: [fontOf("Kept", null), fontOf("Named", "Liberation Serif Regular")],
-  notices: [],
-  copy: { reopened: "Opened again.", export_left_out: "Some edits were left out." },
-} as unknown as Document;
 const FILE = new File(["%PDF-"], "contract.pdf");
 
 let editor: Editor;
@@ -125,11 +108,11 @@ describe("export", () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [0], notices: [] });
     typed("own", "now");
     await exportNow(editor);
-    expect(editor.store.get().notice).toEqual({ tone: "warn", text: "Some edits were left out." });
+    expect(editor.store.get().notice).toEqual({ tone: "warn", text: COPY.export_left_out });
   });
 
   test("a failure is said in the server's words, and export can be tried again", async () => {
-    const problem = { status: 422, detail: "Couldn't remove it, so nothing was downloaded." } as ProblemInfo;
+    const problem = aProblem(422, "Couldn't remove it, so nothing was downloaded.");
     vi.mocked(exportPdf).mockRejectedValue(new ProblemError(problem));
     await exportNow(editor);
     expect(editor.store.get().notice).toEqual({ tone: "warn", text: problem.detail });
