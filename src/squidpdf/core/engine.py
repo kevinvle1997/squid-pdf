@@ -131,13 +131,14 @@ class Engine:
         drawn_in = self._plan(span, span.text).drawn_in
         # The file's own font redraws its own text.
         if isinstance(drawn_in, PooledFont):
-            return FidelityReport(span.id, Fidelity.EXACT, span.font)
+            return FidelityReport(span.id, Fidelity.EXACT, span.font, in_file=True)
         in_file = self._fonts.own(span) is not None
         match = self._fonts.look_alike(span)
         return FidelityReport(
             span.id,
             Fidelity.SUBSTITUTE,
             span.font,
+            in_file=in_file,
             substitute=drawn_in.name,
             why=self._fonts.why_not(span) if not in_file else Message("font_lacks_letters"),
             same_widths=match.same_widths and drawn_in == match.face,

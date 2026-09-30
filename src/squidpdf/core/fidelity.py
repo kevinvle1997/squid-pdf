@@ -31,6 +31,7 @@ class FidelityReport:
     span_id: str
     state: Fidelity
     font: str
+    in_file: bool  # the file's own copy of the font can be used, if only for some letters
     substitute: str | None = None  # the face we ship that draws it, e.g. "Carlito Bold"
     why: Message | None = None  # why the file's own font can't be used
     same_widths: bool = False  # the substitute's letters are as wide, so nothing moves

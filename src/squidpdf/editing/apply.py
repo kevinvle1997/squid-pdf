@@ -207,8 +207,7 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     # One that only lacks a letter can: the stand-in draws that line, as for a replace.
-    why_not = None if report.why is None else report.why.key
-    unusable = not shipped and why_not not in (None, "font_lacks_letters")
+    unusable = not shipped and not report.in_file
     return FitReport(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),
