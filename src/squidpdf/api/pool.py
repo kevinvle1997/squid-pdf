@@ -1,8 +1,10 @@
 """The worker processes every piece of PDF work runs in, never the event loop.
 
 pebble rather than the stdlib pool: it kills a hung worker, where
-concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF
-or eat memory; either way its worker dies, and the request says which.
+concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF,
+eat memory or crash it. A hung worker is killed at its timeout, memory past
+the cap fails in the worker, not the server, and a crash takes only its
+worker; each comes back as the Problem that says which.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import asyncio
 import multiprocessing
 import sys
 from collections.abc import Callable
+from functools import partial
 from types import ModuleType
 from typing import cast
 
@@ -19,7 +22,7 @@ from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import constants
 from squidpdf.api.errors import TooHeavy, TooSlow
-from squidpdf.core import Damaged
+from squidpdf.core import Damaged, result_of
 
 __all__ = [
     "Pool",
@@ -44,9 +47,10 @@ class Pool:
         """`task()` in a worker, killed after `timeout` seconds.
 
         If the request goes away first, the task is cancelled and pebble stops
-        the worker running it.
+        the worker running it. The PDF library's own failures come back as the
+        Problems they mean (`core.result_of`).
         """
-        future = self._pool.submit(task, timeout)
+        future = self._pool.submit(partial(result_of, task), timeout)
         try:
             return await asyncio.wrap_future(future)
         except TimeoutError as exc:  # out of time: slow, not necessarily broken
@@ -68,7 +72,7 @@ def current(request: Request) -> Pool:
 
 
 def limit_memory() -> None:
-    """Cap a worker's memory, so a hostile PDF kills its worker, not the server.
+    """Cap a worker's memory, so a hostile PDF runs out in its worker, not the server.
 
     Linux only. macOS doesn't enforce RLIMIT_AS, so development runs uncapped.
     """

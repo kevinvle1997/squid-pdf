@@ -13,14 +13,16 @@ from squidpdf.core import (
     FidelityReport,
     Span,
     SpanIndex,
+    green_rate,
     new_text,
     open_pdf,
     words,
 )
 from squidpdf.core.fonts import strip_subset
-from tests.conftest import REFERENCED_PAGE, named_only, saved_as
+from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
+from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
-from tests.helpers import assert_all, assert_between, assert_equal, assert_not_in
+from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
 
 _EM = 1000
 _SIZE = 12
@@ -184,7 +186,9 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     assert_equal(_font_objects(out), _font_objects(coded), "fonts on the page, none added")
     x0, y0 = before["chars"][0]["origin"]
     x1, y1 = after["chars"][0]["origin"]
-    assert_between(abs(x1 - x0) + abs(y1 - y0), -1, _ORIGIN_TOLERANCE_PT, "first glyph moved")
+    assert_at_most(
+        abs(x1 - x0) + abs(y1 - y0), _ORIGIN_TOLERANCE_PT, "points the first glyph moved"
+    )
     with open_pdf(out) as saved:
         assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
 
@@ -311,7 +315,7 @@ def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
     assert_equal(every_letter - widths.keys(), set(), "letters the pooled list leaves out")
     assert_equal(widths["Y"], others["Y"], "Y's width, borrowed and in its own copy")
     listed = sum(widths[ch] for ch in _POOLED) * own.size / _EM
-    assert_between(measured - listed, -_SAME_PT, _SAME_PT, "measured less listed width")
+    assert_close(measured, listed, _SAME_PT, "measured against listed width")
 
 
 def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_coded, tmp_path):
@@ -321,3 +325,80 @@ def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_c
 
     assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
     _assert_drawn_in_both_copies(merged_coded, out)
+
+
+def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
+    # Three pages, one stored font object: a long document's usual shape. Trimmed,
+    # as a generator leaves it, which also names it the way its spans are named.
+    doc = pymupdf.open()
+    font_file = pymupdf.Font("tiro").buffer
+    for page_number in range(3):
+        page = doc.new_page()
+        page.insert_font(fontname="emb", fontbuffer=font_file)
+        page.insert_text((72, 72), f"Page {page_number} text", fontname="emb", fontsize=_SIZE)
+    doc.subset_fonts(verbose=False)
+    path = str(tmp_path / "shared.pdf")
+    doc.save(path)
+    opened: list[bytes] = []
+    open_font = MuPDFDriver.open_font
+
+    def counted(self: MuPDFDriver, font_file: bytes) -> MuPDFFont:
+        opened.append(font_file)
+        return open_font(self, font_file)
+
+    monkeypatch.setattr(MuPDFDriver, "open_font", counted)
+
+    with open_pdf(path) as engine:
+        reports = engine.assess(engine.index())
+
+    assert_all(reports, lambda r: r.state is Fidelity.EXACT, lambda r: r.span_id)
+    assert_equal(len(opened), 1, "times the shared font was opened")
+
+
+@pytest.mark.parametrize(
+    ("setting", "rotate", "state", "why"),
+    [
+        ("", 0, Fidelity.EXACT, None),
+        ("1.5 Tc", 0, Fidelity.APPROXIMATE, "spaced_text"),
+        ("80 Tz", 0, Fidelity.APPROXIMATE, "spaced_text"),
+        ("", 90, Fidelity.APPROXIMATE, "turned_text"),
+    ],
+    ids=["as its font sets it", "letter spacing", "narrowed", "turned to read upward"],
+)
+def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(
+    tmp_path, setting, rotate, state, why
+):
+    """Its own font draws it, but level and closed up: an edit would look different."""
+    path = drawn_with(str(tmp_path / "line.pdf"), setting=setting, rotate=rotate)
+
+    with open_pdf(path) as engine:
+        [report] = engine.assess(engine.index())
+
+    judged = (report.state, None if report.why is None else report.why.key)
+    assert_equal(judged, (state, why), "how the line is judged, and why")
+
+
+def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path):
+    """Its text reads "NimbusRoman-Regular", the font file's own name; the page lists it
+    as "Nimbus Roman Regular". The same font either way, so the next edit keeps it.
+    """
+    out = str(tmp_path / "exported.pdf")
+    with open_pdf(pdf) as engine:
+        index = engine.index()
+        [line] = [span for span in index if span.text.startswith("Invoices")]
+        engine.remove([line])
+        engine.draw(line, "Invoices are due within ten days.")
+        engine.save(out)
+
+    with open_pdf(out) as again:
+        index = again.index()
+        [line] = [span for span in index if span.text.startswith("Invoices")]
+        [report] = again.assess(SpanIndex([line]))
+
+    assert_equal((report.state, _said(report)), (Fidelity.EXACT, None), "the redrawn line")
+
+
+def test_the_green_rate_is_the_share_of_spans_that_keep_their_font(engine):
+    """The one number tracked: two of the sample's four spans are in a font the file stores."""
+    assert_equal(green_rate(engine.assess(engine.index())), 0.5, "the sample's green rate")
+    assert_equal(green_rate([]), 0.0, "the green rate of a document with no text")

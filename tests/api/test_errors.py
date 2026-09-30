@@ -15,6 +15,12 @@ def test_an_unknown_path_is_not_found(browser):
     assert_problem(browser().get("/api/nothing-here"), "not_found", 404)
 
 
+def test_a_method_a_path_doesnt_take_says_which_it_does(browser):
+    response = browser().put("/api/documents")
+    assert_problem(response, "method_not_allowed", 405)
+    assert_equal(response.headers.get("allow"), "POST", "the methods it takes")
+
+
 def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
     mine = browser()
     doc = upload(mine, pdf_bytes).json()
@@ -50,7 +56,7 @@ def test_every_problem_has_its_own_wire_type_and_an_english_sentence(app):
     shared = {Gone: NotFound, Damaged: Unreadable, ServerError: Problem}
     seen: dict[str, type[Problem]] = {}
     for cls in _every(Problem):
-        if cls.__module__.startswith("tests."):
+        if not cls.__module__.startswith("squidpdf."):  # a test's own, or a library's
             continue
         said = f"the catalog's sentence for {cls.__name__}"
         assert_in(cls.type, words.ENGLISH_SENTENCES, said)

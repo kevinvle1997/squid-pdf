@@ -12,18 +12,6 @@ from tests.conftest import PSEUDO, pseudo_sentence
 from tests.helpers import assert_equal, assert_in, assert_problem
 
 
-@pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the document."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The sample PDF as uploaded by `mine`, in English."""
-    return upload(mine, pdf_bytes).json()
-
-
 def _in(language: str) -> dict[str, str]:
     """The header a browser asks for `language` with."""
     return {"accept-language": language}
@@ -36,12 +24,14 @@ def _in(language: str) -> dict[str, str]:
         (f"{PSEUDO}-XX", PSEUDO),
         (f"fr, {PSEUDO};q=0.9, en;q=0.8", PSEUDO),
         (f"{PSEUDO};q=0", "en"),
+        (f"{PSEUDO}-XX;q=0.9, {PSEUDO};q=0", "en"),
     ],
     ids=[
         "no header",
         "one we have, more exactly",
         "the best we have, by weight",
         "one refused",
+        "one refused, though a longer form of it is wanted",
     ],
 )
 def test_the_language_answered_in_is_the_most_wanted_one_we_have(
@@ -63,6 +53,8 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     )
     shrink = copy["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
+    turned = copy["approximate"]["turned_text"]
+    assert_equal(turned, pseudo_sentence(words.sentence("turned_text")), "why text won't match")
     # Times is only named in the sample: why its own copy can't be used, said and unsaid.
     times = next(font for font in response.json()["fonts"] if font["name"] == "Times-Roman")
     said = (times["why"], times["why_code"], times["why_params"])

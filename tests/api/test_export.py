@@ -12,8 +12,8 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
-from squidpdf.editing.constants import MAX_TEXT_CHARS
-from tests.api.conftest import upload
+from squidpdf.editing import constants as editing_constants
+from tests.api.conftest import span_starting, upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
@@ -49,26 +49,9 @@ def three_pages() -> bytes:
 
 
 @pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the documents."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The two-page sample as uploaded by `mine`: what the upload answered."""
-    return upload(mine, pdf_bytes).json()
-
-
-@pytest.fixture
 def three(mine, three_pages) -> dict:
     """The three pages as uploaded by `mine`."""
     return upload(mine, three_pages).json()
-
-
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
 
 
 def _redact(span: dict) -> dict:
@@ -110,7 +93,7 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
     monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
-    span = _span(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
+    span = span_starting(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
 
     response = _export(mine, doc, [edit], language=pseudo)
@@ -132,14 +115,21 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     assert_equal(response.headers["Content-Language"], pseudo, "the language it's said in")
 
 
-def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
-    """Text still in the saved file means no file, and the user is told which span."""
+@pytest.mark.parametrize("pages", [None, [1, 0]], ids=["every page", "pages moved"])
+def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
+    app, mine, doc, monkeypatch, pages
+):
+    """Text still in the saved file means no file, and the user is told which span.
+
+    The erase is what's broken here, not the check: the text really is still
+    in the file, and the check reads it where its page went.
+    """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
-    span = _span(doc, 1, "Invoices")
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
+    span = span_starting(doc, 1, "Invoices")
     kept = _files(doc)
 
-    response = _export(mine, doc, [_redact(span)])
+    response = _export(mine, doc, [_redact(span)], pages=pages)
 
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=span["text"], page=2)
@@ -172,7 +162,7 @@ def test_what_an_export_saves_is_in_its_document_so_the_sweep_takes_it(
 
 def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(mine, three):
     """Page 0's header is redacted and page 0 comes out second: it's read, and gone, there."""
-    response = _export(mine, three, [_redact(_span(three, 0, _HEADER))], pages=[2, 0])
+    response = _export(mine, three, [_redact(span_starting(three, 0, _HEADER))], pages=[2, 0])
 
     expected = [[_HEADER, "Third page"], ["First page"]]
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
@@ -180,7 +170,7 @@ def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(
 
 def test_a_redaction_on_a_page_left_out_does_not_fail_the_export(mine, three):
     """The page goes, and its text with it: nothing is left to check."""
-    response = _export(mine, three, [_redact(_span(three, 1, _HEADER))], pages=[2, 0])
+    response = _export(mine, three, [_redact(span_starting(three, 1, _HEADER))], pages=[2, 0])
 
     expected = [[_HEADER, "Third page"], [_HEADER, "First page"]]
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
@@ -201,7 +191,7 @@ def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(min
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
     """The body is the file, so what was left out travels beside it, by place in the list."""
-    span = _span(doc, 1, "Invoices")
+    span = span_starting(doc, 1, "Invoices")
     ninety = span["text"].replace("thirty", "ninety")
     edits = [
         {"kind": "replace", "span_id": "nosuchspan00", "text": "x"},
@@ -213,6 +203,17 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, do
 
     assert_equal(response.headers[_SKIPPED], "0, 2", "edits left out")
     assert_in("ninety days", _opened(response)[1].get_text(), "the edit that was good")
+
+
+def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc):
+    """Redaction wins: the list's order must not bring the text back into the file."""
+    span = next(s for s in doc["spans"] if s["page"] == 1)
+    redact = {"kind": "redact", "span_id": span["id"]}
+    replace = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
+
+    response = _export(mine, doc, [redact, replace])
+
+    assert_problem(response, "redaction_conflict", 422)
 
 
 def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
@@ -229,8 +230,9 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     [
         ([2], "no_such_page", 422),
         ([0, 0], "invalid_request", 400),
+        ([], "invalid_request", 400),
     ],
-    ids=["past the last page", "a page twice"],
+    ids=["past the last page", "a page twice", "no page at all: leave pages out for every one"],
 )
 def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     mine, doc, pages, problem, status
@@ -238,7 +240,29 @@ def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     assert_problem(_export(mine, doc, [], pages), problem, status)
 
 
-def test_new_text_past_the_limit_is_refused(mine, doc):
-    text = "x" * (MAX_TEXT_CHARS + 1)
-    edit = {"kind": "replace", "span_id": doc["spans"][0]["id"], "text": text}
-    assert_problem(_export(mine, doc, [edit]), "text_too_long", 422)
+_LOWERED = 3  # each limit, lowered so a test can pass it with a short list
+
+
+@pytest.mark.parametrize(
+    ("limit", "made", "problem"),
+    [
+        ("MAX_EDITS", lambda span: [_redact(span)] * (_LOWERED + 1), "too_many_edits"),
+        (
+            "MAX_TEXT_CHARS",
+            lambda span: [{"kind": "replace", "span_id": span["id"], "text": "x" * 4}],
+            "text_too_long",
+        ),
+        (
+            "MAX_TEXT_CHARS",
+            lambda _span: [
+                {"kind": "insert", "page": 0, "origin": [72, 700], "text": "xxxx", "size": 12}
+            ],
+            "text_too_long",
+        ),
+    ],
+    ids=["too many edits", "a replacement too long", "an insert too long"],
+)
+def test_an_edit_list_past_a_limit_is_refused(mine, doc, monkeypatch, limit, made, problem):
+    monkeypatch.setattr(editing_constants, limit, _LOWERED)
+    edits = made(doc["spans"][0])
+    assert_problem(_export(mine, doc, edits), problem, 422)

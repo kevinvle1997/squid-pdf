@@ -1,20 +1,37 @@
-"""Everything the user did, as one ordered log.
+"""Everything the user did, as one ordered list: the browser keeps it and sends it whole.
 
-One union rather than a list per kind. Undo is then truncation regardless of what
-was undone, and export applies a single list in order, which matters when a
-redaction and an edit touch the same region and the result depends on which
-happened first.
+One union rather than a list per kind, so undo in the browser is truncation
+whatever was undone. The server applies the list as its final state: each span
+once, as its last edit leaves it, except that a redaction is never undone by
+an edit after it (the whole list is refused).
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+import unicodedata
+from dataclasses import dataclass
 from typing import Literal
 
-from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS
+from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
+
+# Unicode's categories for characters that aren't letters on a line: controls (line
+# breaks, tabs) and one half of a pair that only means something whole (an emoji).
+_NOT_ON_A_LINE = frozenset({"Cc", "Cs"})
+
+
+def check_text(text: str) -> None:
+    """Refuse new text that isn't one line of letters, however the edit is made.
+
+    A line break would draw a second line over the next (reflow is out of
+    scope), and the rest draw nothing. From the browser, pydantic turns the
+    ValueError into a bad request.
+    """
+    for position, ch in enumerate(text):
+        if unicodedata.category(ch) in _NOT_ON_A_LINE:
+            raise ValueError(f"text: U+{ord(ch):04X} at {position}; new text is one line")
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +42,10 @@ class Replace:
     text: str
     strategy: Strategy = "as-is"
     kind: Literal["replace"] = "replace"
+
+    def __post_init__(self) -> None:
+        """Refuse text that isn't one line of letters."""
+        check_text(self.text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +80,7 @@ class Insert:
     kind: Literal["insert"] = "insert"
 
     def __post_init__(self) -> None:
-        """Refuse a place, size or color nothing can draw, however the insert is made.
+        """Refuse a place, size, color or text nothing can draw, however the insert is made.
 
         From the browser, pydantic turns the ValueError into a bad request.
         """
@@ -69,6 +90,7 @@ class Insert:
             raise ValueError(f"size must be above 0, got {self.size}")
         if not all(0 <= channel <= 1 for channel in self.color):
             raise ValueError(f"color channels must be from 0 to 1, got {self.color}")
+        check_text(self.text)
 
 
 type Edit = Replace | Redact | Insert
@@ -76,35 +98,10 @@ type Edit = Replace | Redact | Insert
 
 def check_edits(edits: list[Edit]) -> None:
     """Refuse an edit list over the limits: too many edits, or too much text in one."""
-    if len(edits) > MAX_EDITS:
-        raise TooManyEdits(MAX_EDITS)
-    too_long = any(
-        isinstance(edit, Replace | Insert) and len(edit.text) > MAX_TEXT_CHARS for edit in edits
-    )
+    # Read as module attributes, so a test can lower the limits.
+    if len(edits) > constants.MAX_EDITS:
+        raise TooManyEdits(constants.MAX_EDITS)
+    longest = constants.MAX_TEXT_CHARS
+    too_long = any(isinstance(e, Replace | Insert) and len(e.text) > longest for e in edits)
     if too_long:
-        raise TextTooLong(MAX_TEXT_CHARS)
-
-
-class EditLog:
-    """The ordered list of edits against one document.
-
-    Held by the client in the stateless design and sent with each render, so this
-    is a value object: no document, no engine, nothing that cannot be serialised.
-    `edits` is a plain list: append, iterate, or take its length directly.
-    """
-
-    def __init__(self, edits: list[Edit] | None = None) -> None:
-        """Start a log, optionally pre-loaded with edits already made."""
-        self.edits: list[Edit] = list(edits or [])
-
-    def undo(self) -> Edit | None:
-        """Truncation. Works the same for every kind, which is the point."""
-        return self.edits.pop() if self.edits else None
-
-    def touching(self, span_id: str) -> list[Edit]:
-        """Every edit in the log that touched this span, in order."""
-        return [e for e in self.edits if getattr(e, "span_id", None) == span_id]
-
-    def as_list(self) -> list[dict]:
-        """The log as plain dicts, for sending over the wire."""
-        return [asdict(e) for e in self.edits]
+        raise TextTooLong(longest)

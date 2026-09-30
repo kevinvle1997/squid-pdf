@@ -11,7 +11,12 @@ from fastapi.responses import JSONResponse
 from starlette import status
 from starlette.exceptions import HTTPException
 
-from squidpdf.api.errors.generic import InvalidRequest, NotFound, ServerError
+from squidpdf.api.errors.generic import (
+    InvalidRequest,
+    MethodNotAllowed,
+    NotFound,
+    ServerError,
+)
 from squidpdf.api.language import language_of
 from squidpdf.core import Problem, words
 
@@ -28,12 +33,21 @@ def from_validation(exc: Exception) -> Problem:
     return InvalidRequest(debug="; ".join(describe(item) for item in exc.errors()))
 
 
+# Starlette's own failures a Problem keeps the status of; any other is a bad request.
+_HTTP_PROBLEMS: dict[int, type[Problem]] = {
+    status.HTTP_404_NOT_FOUND: NotFound,  # an unknown path
+    status.HTTP_405_METHOD_NOT_ALLOWED: MethodNotAllowed,  # a path asked the wrong way
+}
+
+
 def from_http(exc: Exception) -> Problem:
-    """Starlette's own: a 404 for an unknown path, anything else a bad request."""
+    """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
     assert isinstance(exc, HTTPException)
-    if exc.status_code == status.HTTP_404_NOT_FOUND:
-        return NotFound()
-    return InvalidRequest(debug=str(exc.detail))
+    # .get: most of Starlette's failures are the browser's, said as a bad request.
+    problem = _HTTP_PROBLEMS.get(exc.status_code)
+    if problem is None:
+        return InvalidRequest(debug=str(exc.detail))
+    return problem()
 
 
 # Exceptions from outside our code, and the Problem each one means.
@@ -77,8 +91,14 @@ def response(problem: Problem, language: str) -> JSONResponse:
 
 
 async def handle(request: Request, exc: Exception) -> Response:
-    """Whatever was raised, answered as the Problem Details the browser gets."""
-    return response(adopt(exc), language_of(request))
+    """Whatever was raised, answered as the Problem Details the browser gets.
+
+    Starlette's own headers ride along: a 405's Allow says the methods the path takes.
+    """
+    answer = response(adopt(exc), language_of(request))
+    if isinstance(exc, HTTPException) and exc.headers:
+        answer.headers.update(exc.headers)
+    return answer
 
 
 def describe(item: dict[str, Any]) -> str:

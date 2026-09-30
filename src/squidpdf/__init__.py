@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from squidpdf.core import Engine, Fidelity, Span, SpanIndex, green_rate, open_pdf
-from squidpdf.editing import Edit, EditLog, Redact, Replace
+from squidpdf.editing import Edit, Redact, Replace
 
 __all__ = [
     "open_pdf",
@@ -13,7 +13,6 @@ __all__ = [
     "Fidelity",
     "green_rate",
     "Edit",
-    "EditLog",
     "Replace",
     "Redact",
 ]

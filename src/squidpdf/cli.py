@@ -1,4 +1,4 @@
-"""Command line for the engine spike.
+"""Command line for the engine.
 
 squidpdf spans   file.pdf              what is editable, and how it would edit
 squidpdf check   file.pdf ID "text"    what would happen if you typed that
@@ -13,8 +13,10 @@ squidpdf fixture out.pdf               a sample document to try it on
 from __future__ import annotations
 
 import argparse
+import os
 import posixpath
 import sys
+from functools import partial
 from pathlib import Path
 
 from squidpdf.core import (
@@ -25,17 +27,19 @@ from squidpdf.core import (
     Problem,
     green_rate,
     open_pdf,
+    result_of,
     words,
     write_sample,
 )
 from squidpdf.editing import (
-    ExportController,
     Redact,
     RedactionFailed,
     Replace,
     apply,
     replace_fit,
+    save_edited,
 )
+from squidpdf.editing.edits import check_text
 
 __all__ = [
     "cmd_spans",
@@ -47,7 +51,17 @@ __all__ = [
     "main",
 ]
 
-DIM, RED, GREEN, YELLOW, OFF = "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
+# Colours for a terminal; none when the output is piped or the reader set NO_COLOR.
+_COLOURED = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+_COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
+DIM, RED, GREEN, YELLOW, OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
+
+# How each judgement is marked in `spans`, padded to one width.
+_MARKS = {
+    Fidelity.EXACT: f"{GREEN}exact{OFF}      ",
+    Fidelity.APPROXIMATE: f"{YELLOW}approximate{OFF}",
+    Fidelity.SUBSTITUTE: f"{YELLOW}substitute{OFF} ",
+}
 
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
 _NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
@@ -60,13 +74,11 @@ def cmd_spans(args: argparse.Namespace) -> int:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
-        for span in index:
-            on_other_page = args.page is not None and span.page != args.page
-            if on_other_page:
-                continue
+        # `--page` counts from 1, as the listing prints it.
+        shown = [s for s in index if args.page is None or s.page == args.page - 1]
+        for span in shown:
             report = reports[span.id]
-            is_exact = report.state is Fidelity.EXACT
-            mark = f"{GREEN}exact{OFF}     " if is_exact else f"{YELLOW}substitute{OFF}"
+            mark = _MARKS[report.state]
             note = f" -> {report.substitute}" if report.substitute else ""
             fragments = f" {DIM}({len(span.fragments)} fragments){OFF}" if span.merged else ""
             fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
@@ -76,18 +88,24 @@ def cmd_spans(args: argparse.Namespace) -> int:
                 f"{DIM}{span.font}{note} {span.size}pt{OFF}{fragments}\n"
                 f"           {preview}"
             )
-        summary(list(reports.values()))
+            # Its own font draws it, but not as it looks: say how.
+            if report.state is Fidelity.APPROXIMATE and report.why is not None:
+                print(f"           {DIM}{words.render(report.why)}{OFF}")
+        summary([reports[span.id] for span in shown])
     return 0
 
 
 def summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
-    substituted = sum(1 for report in reports if report.state is not Fidelity.EXACT)
+    count = {state: 0 for state in Fidelity}
+    for report in reports:
+        count[report.state] += 1
     colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
     print(
-        f"\n  {len(reports)} spans · {len(reports) - substituted} exact"
-        f" · {substituted} substitute"
+        f"\n  {len(reports)} spans · {count[Fidelity.EXACT]} exact"
+        f" · {count[Fidelity.APPROXIMATE]} approximate"
+        f" · {count[Fidelity.SUBSTITUTE]} substitute"
         f" · {colour}{rate:.0%} keep the original font{OFF}"
     )
 
@@ -131,7 +149,8 @@ def cmd_edit(args: argparse.Namespace) -> int:
         refused = not fit.ok and not args.force
         if refused:
             problem = words.render_all(fit.describe())
-            print(f"  {RED}{problem}{OFF} {DIM}(pass --force to do it anyway){OFF}")
+            refusal = f"  {RED}{problem}{OFF} {DIM}(pass --force to do it anyway){OFF}"
+            print(refusal, file=sys.stderr)
             return 1
 
         applied = apply(engine, [Replace(span.id, args.text)], index)
@@ -153,11 +172,9 @@ def cmd_redact(args: argparse.Namespace) -> int:
 
         # The same save and check a download gets.
         try:
-            saved = ExportController.save_edited(
-                engine, index, edits=[Redact(span.id)], to=args.out
-            )
+            saved = save_edited(engine, index, edits=[Redact(span.id)], to=args.out)
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
-            print(f"  {RED}{failed.detail}{OFF}")
+            print(f"  {RED}{failed.detail}{OFF}", file=sys.stderr)
             return 1
     print(f"\n  removed {span.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
@@ -219,7 +236,8 @@ def cmd_fixture(args: argparse.Namespace) -> int:
 def no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
     said = words.sentence("no_span")
-    print(f"  {RED}{said}{OFF} {DIM}({span_id}: run `squidpdf spans` to list them){OFF}")
+    hint = f"{DIM}({span_id}: run `squidpdf spans` to list them){OFF}"
+    print(f"  {RED}{said}{OFF} {hint}", file=sys.stderr)
     return 1
 
 
@@ -228,6 +246,15 @@ def existing_file(path: str) -> str:
     if not Path(path).is_file():
         raise argparse.ArgumentTypeError(f"there's no file at {path}")
     return path
+
+
+def one_line(text: str) -> str:
+    """New text, as one line of letters; otherwise a usage error that says why."""
+    try:
+        check_text(text)
+    except ValueError as exc:  # a line break, a tab, or half an emoji
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return text
 
 
 def new_file(path: str) -> str:
@@ -257,19 +284,19 @@ def main(argv: list[str] | None = None) -> int:
 
     command = commands.add_parser("spans", help="list editable text and how it would edit")
     command.add_argument("pdf", type=existing_file)
-    command.add_argument("-p", "--page", type=int, default=None)
+    command.add_argument("-p", "--page", type=int, default=None, help="only this page, from 1")
     command.set_defaults(fn=cmd_spans)
 
     command = commands.add_parser("check", help="what would happen if you typed this")
     command.add_argument("pdf", type=existing_file)
     command.add_argument("span_id")
-    command.add_argument("text")
+    command.add_argument("text", type=one_line)
     command.set_defaults(fn=cmd_check)
 
     command = commands.add_parser("edit", help="replace a span and save")
     command.add_argument("pdf", type=existing_file)
     command.add_argument("span_id")
-    command.add_argument("text")
+    command.add_argument("text", type=one_line)
     command.add_argument("-o", "--out", default="out.pdf", type=new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
     command.set_defaults(fn=cmd_edit)
@@ -295,9 +322,10 @@ def main(argv: list[str] | None = None) -> int:
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
     try:
-        return args.fn(args)
+        # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
+        return result_of(partial(args.fn, args))
     except Problem as exc:  # e.g. the one PDF a command was given won't open
-        print(f"  {RED}{exc.detail}{OFF}")
+        print(f"  {RED}{exc.detail}{OFF}", file=sys.stderr)
         return 1
 
 

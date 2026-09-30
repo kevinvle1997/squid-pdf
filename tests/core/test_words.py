@@ -10,7 +10,7 @@ from string import Formatter
 import pytest
 
 from squidpdf.core import Message, words
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_equal
 
 _SRC = Path(__file__).parents[2] / "src"
 
@@ -30,9 +30,13 @@ def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
 
 
 def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
-    for key, said in words.ENGLISH_SENTENCES.items():
-        specs = [(spec, conv) for _t, name, spec, conv in Formatter().parse(said) if name]
-        assert_true(all(spec == "" and conv is None for spec, conv in specs), f"{key}: {said}")
+    dressed = [
+        f"{key}: {said}"
+        for key, said in words.ENGLISH_SENTENCES.items()
+        for _text, name, spec, conv in Formatter().parse(said)
+        if name and (spec or conv)
+    ]
+    assert_equal(dressed, [], "sentences with a placeholder the browser can't fill")
 
 
 @pytest.mark.parametrize(
@@ -59,8 +63,9 @@ def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
     [
         ("\u202f", "narrow no-break space"),
         ("\t", "U+0009"),
+        ("\u0301", "combining acute accent"),
     ],
-    ids=["one with a name", "one without"],
+    ids=["one with a name", "one without", "an accent on its own: it'd sit on the space"],
 )
 def test_a_character_that_draws_nothing_is_named(character, said):
     fit = Message("missing", {"chars": ["é", character], "font": "Noto Sans Regular"})

@@ -8,21 +8,37 @@ redaction is gone from the file downloaded (Rule 4).
 from __future__ import annotations
 
 import base64
+import math
 
 import pymupdf
 
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts import strip_subset
-from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.api.conftest import span_starting, upload
+from tests.helpers import assert_at_most, assert_equal, assert_in, assert_not_in, assert_true
 
 _SCALE = 2
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
+def _rect(box: dict) -> pymupdf.Rect:
+    """A box from the JSON, as MuPDF takes it."""
+    return pymupdf.Rect(box["x0"], box["y0"], box["x1"], box["y1"])
+
+
+def _pixels(png: bytes) -> bytes:
+    """An image's pixels, however it was compressed."""
+    return pymupdf.Pixmap(png).samples
+
+
+def _drawn_rows(page: pymupdf.Page, region: dict) -> bytes:
+    """The pixels of `region`'s rows of a page, drawn as render draws a strip."""
+    top = math.floor(region["y0"] * _SCALE) / _SCALE
+    bottom = math.ceil(region["y1"] * _SCALE) / _SCALE
+    rows = pymupdf.Rect(0, top, page.rect.width, bottom)
+    return page.get_pixmap(
+        matrix=pymupdf.Matrix(_SCALE, _SCALE), clip=rows, alpha=False
+    ).samples
 
 
 def _around(span: dict) -> dict:
@@ -47,8 +63,8 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     uploaded = upload(mine, pdf_bytes)
     assert_equal(uploaded.status_code, 201, "upload status")
     doc = uploaded.json()
-    delivery, invoices = _span(doc, 1, "Delivery"), _span(doc, 1, "Invoices")
-    made = _span(doc, 0, "Made")
+    delivery, invoices = span_starting(doc, 1, "Delivery"), span_starting(doc, 1, "Invoices")
+    made = span_starting(doc, 0, "Made")
     judged = (delivery["fidelity"], made["fidelity"])
     assert_equal(judged, ("exact", "substitute"), "a font in the file, and one only named")
     fonts = {font["name"]: font for font in doc["fonts"]}
@@ -65,9 +81,10 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     body = {"edits": [replace], "scale": _SCALE, "regions": []}
     fit = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()["fits"]
     fit = fit[delivery["id"]]
-    assert_true(fit["delta_pt"] <= TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
+    assert_at_most(fit["delta_pt"], TOLERANCE_PT, "points past the original")
     assert_equal((fit["missing"], fit["message"]), ([], None), "what's wrong with it")
-    changed = _strip(mine, doc, [replace], delivery) != _strip(mine, doc, [], delivery)
+    preview = _strip(mine, doc, [replace], delivery)
+    changed = preview != _strip(mine, doc, [], delivery)
     assert_true(changed, "the strip over the line shows the fix")
 
     # Download: the fix and a redaction, applied to the file itself.
@@ -86,6 +103,12 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     assert_not_in("14 March", edited, "the edited page's text")
     everything = "".join(page.get_text() for page in pdf.pages())
     assert_not_in(invoices["text"], everything, "the file's text after the redaction")
+    # Not only the whole line: nothing at all is left where it was.
+    left = "".join(pdf[1].get_textbox(_rect(invoices["bbox"])).split())
+    assert_equal(left, "", "letters left in the redacted line's box")
+    # What you see is what exports (Rule 2): the preview is the file's own rows, exactly.
+    exported = _drawn_rows(pdf[1], _around(delivery))
+    assert_equal(_pixels(preview), exported, "the preview strip and the exported page's rows")
     # The one number tracked: the fix kept the document's own font, as the check said.
     # A stand-in would be a second font on the page; there's only the one the file had.
     on_page = {strip_subset(name) for _xref, _ext, _kind, name, *_ in pdf[1].get_fonts()}

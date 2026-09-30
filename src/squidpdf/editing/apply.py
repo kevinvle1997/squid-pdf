@@ -8,13 +8,14 @@ is this module's whole job.
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 
 from squidpdf.core import Message
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import FACES
 from squidpdf.core.types import Span, SpanIndex, new_text
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
-from squidpdf.editing.errors import BadReference
+from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import FitReport, LogFits, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
@@ -23,10 +24,23 @@ __all__ = [
     "log_fits",
     "insert_fit",
     "replace_fit",
+    "Resolved",
     "resolve",
 ]
 
 _BAD_REFERENCE = "bad_reference"
+
+
+@dataclass(frozen=True, slots=True)
+class Resolved:
+    """An edit list checked against the document: what each edit points at."""
+
+    # The last edit to each span, with the span, in the order spans were first edited.
+    span_edits: list[tuple[Replace | Redact, Span]]
+    # Each insert on a page the document has, with its place in the list.
+    inserts: list[tuple[int, Insert]]
+    # Edits that point at nothing, left out and said why.
+    skipped: list[Skipped]
 
 
 def collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
@@ -44,31 +58,18 @@ def collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
     return list(latest.values())
 
 
-def undone_redactions(edits: Sequence[Edit]) -> list[str]:
-    """The spans a Replace brought back after they were redacted: the last edit wins."""
-    redacted: set[str] = set()
-    undone: dict[str, None] = {}  # a dict, to keep the order and drop repeats
-    for edit in edits:
-        if isinstance(edit, Redact):
-            redacted.add(edit.span_id)
-            undone.pop(edit.span_id, None)  # redacted again: the redaction holds
-        elif isinstance(edit, Replace) and edit.span_id in redacted:
-            undone[edit.span_id] = None
-    return list(undone)
+def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
+    """The list checked against the document: each edit with what it points at.
 
-
-def resolve(
-    engine: Engine, edits: Sequence[Edit], index: SpanIndex
-) -> tuple[list[tuple[Replace | Redact, Span]], list[tuple[int, Insert]], list[Skipped]]:
-    """The log collapsed, each span edit with its span, each insert with its place, and what
-    points at nothing.
-
-    A redaction that points at nothing raises BadReference instead.
+    A redaction that points at nothing raises BadReference instead of being
+    skipped, and a replace after a redaction of the same text raises
+    RedactionConflict: redaction wins, so the list's order can't undo one.
     """
     # Only inserts need the page count, so skip reading the pages without one.
     has_inserts = any(isinstance(e, Insert) for e in edits)
-    page_count = len(engine.pages()) if has_inserts else 0
+    page_count = engine.page_count() if has_inserts else 0
     spans: dict[str, Span] = {}
+    redacted: set[str] = set()
     kept: list[Replace | Redact] = []
     inserts: list[tuple[int, Insert]] = []
     skipped: list[Skipped] = []
@@ -90,10 +91,17 @@ def resolve(
         if span is None:
             skipped.append(Skipped(position, _BAD_REFERENCE, Message("no_span")))
             continue
+        # A replace of redacted text: the browser undoes a redaction by leaving it out.
+        if isinstance(edit, Replace) and span.id in redacted:
+            raise RedactionConflict(
+                debug=f"edit {position} replaces span {span.id}, redacted before"
+            )
+        if isinstance(edit, Redact):
+            redacted.add(span.id)
         spans[span.id] = span
         kept.append(edit)
-    span_edits = collapse(kept)
-    return [(e, spans[e.span_id]) for e in span_edits], inserts, skipped
+    span_edits = [(edit, spans[edit.span_id]) for edit in collapse(kept)]
+    return Resolved(span_edits, inserts, skipped)
 
 
 def apply(
@@ -111,15 +119,19 @@ def apply(
     redactions per page, and a redaction applied after a redraw would erase the
     new text.
     """
-    span_edits, inserts, skipped = resolve(engine, edits, index)
+    resolved = resolve(engine, edits, index)
 
     to_remove: list[Span] = []
+    to_unlink: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
-    for edit, span in span_edits:
+    for edit, span in resolved.span_edits:
         off_screen = pages is not None and span.page not in pages
         if off_screen:
             continue
         to_remove.append(span)
+        # A redacted span's links go too: one can carry the text it's on, as a mailto: does.
+        if isinstance(edit, Redact):
+            to_unlink.append(span)
         if isinstance(edit, Replace):
             # Worked out before remove(), which can drop the fonts it measures with.
             size, scale_x = drawn_at(engine, span, edit)
@@ -127,17 +139,21 @@ def apply(
 
     if to_remove:
         engine.remove(to_remove)
-    undone = Message("redaction_undone")
-    notices = [Notice(span_id, undone) for span_id in undone_redactions(edits)]
+    if to_unlink:
+        engine.unlink(to_unlink)
+    notices: list[Notice] = []
     for span, text, size, scale_x in to_draw:
         for said in engine.draw(span, text, size=size, scale_x=scale_x):
             notices.append(Notice(span.id, said))
-    for position, insert in inserts:
+    # New text reads upright as the page is shown: turned by its page's own turn.
+    turns = [page.rotation for page in engine.pages()] if resolved.inserts else []
+    for position, insert in resolved.inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
-            for said in engine.draw(insert_span(insert), insert.text):
+            turn = turns[insert.page]
+            for said in engine.draw(insert_span(insert), insert.text, turn=turn):
                 notices.append(Notice(None, said, edit=position))
-    return Applied(skipped, notices)
+    return Applied(resolved.skipped, notices)
 
 
 def insert_span(insert: Insert) -> Span:
@@ -175,14 +191,14 @@ def log_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> LogFits
 
     Measurement only.
     """
-    span_edits, inserts, _skipped = resolve(engine, edits, index)
+    resolved = resolve(engine, edits, index)
     return LogFits(
         replaces={
             span.id: replace_fit(engine, span, edit.text, strategy=edit.strategy)
-            for edit, span in span_edits
+            for edit, span in resolved.span_edits
             if isinstance(edit, Replace)
         },
-        inserts={position: insert_fit(engine, insert) for position, insert in inserts},
+        inserts={position: insert_fit(engine, insert) for position, insert in resolved.inserts},
     )
 
 
@@ -196,8 +212,7 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     # One that only lacks a letter can: the stand-in draws that line, as for a replace.
-    why_not = None if report.why is None else report.why.key
-    unusable = not shipped and why_not not in (None, "font_lacks_letters")
+    unusable = not shipped and not report.in_file
     return FitReport(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),

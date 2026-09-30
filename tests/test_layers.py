@@ -49,6 +49,7 @@ def _within(name: str, package: str) -> bool:
     ("importers", "imported", "allowed"),
     [
         ("squidpdf", "pymupdf", ["squidpdf.core.pdf", "squidpdf.core.mupdf"]),
+        ("squidpdf", "fitz", []),
         ("squidpdf", "squidpdf.core.mupdf", ["squidpdf.core"]),
         ("squidpdf", "squidpdf.core.pdf", ["squidpdf.core"]),
         ("squidpdf.core", "squidpdf.editing", []),
@@ -65,6 +66,7 @@ def _within(name: str, package: str) -> bool:
     ],
     ids=[
         "only core/pdf.py and core/mupdf.py talk to MuPDF",
+        "nothing reaches MuPDF by its old name, around the rule above",
         "outside core, nothing names the driver: open_pdf is the way in",
         "outside core, nothing reads MuPDF's low-level wrapper",
         "core imports no feature: editing",
@@ -89,3 +91,12 @@ def test_the_import_rule_holds(importers, imported, allowed):
         and any(_within(name, imported) for name in imports)
     ]
     assert_equal(breaking, [], f"modules in {importers} importing {imported}")
+
+
+def test_nothing_inside_imports_the_package_itself():
+    """`squidpdf` re-exports editing for outside callers: core importing it imports a feature.
+
+    The rules above can't see it: `from squidpdf import Edit` names no feature.
+    """
+    breaking = [module for module, imports in _MODULES.items() if "squidpdf" in imports]
+    assert_equal(breaking, [], "modules importing the squidpdf package itself")

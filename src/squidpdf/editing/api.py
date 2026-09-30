@@ -19,7 +19,7 @@ from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.pool import Pool
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.edits import Insert, Redact, Replace
+from squidpdf.editing.edits import Edit
 from squidpdf.editing.export import ExportController
 from squidpdf.editing.fonts import FontListController
 from squidpdf.editing.render import RenderController
@@ -42,8 +42,9 @@ __all__ = [
 router = APIRouter(prefix="/api/documents")
 fonts_router = APIRouter(prefix="/api/fonts")
 
-# Read by `kind` first: one bad kind is one error, not one per edit type.
-AnyEdit = Annotated[Replace | Redact | Insert, Field(discriminator="kind")]
+# Read by `kind` first: one bad kind is one error, not one per edit type. The union is
+# edits.py's, so a new edit type is read here as soon as it's added there.
+AnyEdit = Annotated[Edit, Field(discriminator="kind")]
 
 
 class RenderBody(BaseModel):
@@ -82,7 +83,7 @@ async def fonts(
 ) -> Response:
     """Every face new text can be drawn in, by family, with each letter's width."""
     reply = await controller.font_list(build)
-    return Response(reply.json, media_type="application/json", headers=reply.headers)
+    return Response(reply.body, media_type="application/json", headers=reply.headers)
 
 
 @router.post("/{doc_id}/render", response_model=Render)
@@ -114,4 +115,4 @@ async def export(
 ) -> Response:
     """The edited document as a PDF: every page, or `pages` in that order."""
     reply = await controller.export(doc, edits=body.edits, pages=body.pages, said_in=said_in)
-    return Response(reply.pdf, media_type="application/pdf", headers=reply.headers)
+    return Response(reply.body, media_type="application/pdf", headers=reply.headers)

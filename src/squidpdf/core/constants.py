@@ -23,6 +23,10 @@ SAME_FONT_SHARED = 3
 
 # Fit. The server's check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
+
+# A line turned further than this (the sine of its angle, about half a degree) isn't
+# redrawn as it was: redraws are level, and half a degree drifts 4 pt over a page's width.
+TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
@@ -32,7 +36,8 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 4: a font with no space of its own gives a space the gap the file drew, so widths changed.
 # 5: a letter another copy of the same font in the file draws counts, so letter lists changed.
 # 6: more families (Poppins, Open Sans, FreeSans, Latin Modern...), so more look-alikes changed.
-LIBRARY_VERSION = "6"
+# 7: text turned, or spaced unlike its font's own widths, is approximate, not exact.
+LIBRARY_VERSION = "7"
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.

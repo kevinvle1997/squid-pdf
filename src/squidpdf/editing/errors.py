@@ -54,14 +54,14 @@ class TextTooLong(Problem):
         super().__init__(chars=chars)
 
 
-# Not raised yet: kept for the browser, which already branches on them.
 class RedactionConflict(Problem):
-    """Editing text that has a redaction on it."""
+    """Editing text redacted earlier in the list: redaction wins, so the whole list fails."""
 
     type = "redaction_conflict"
     status = 422
 
 
+# Not raised yet: kept for the browser, which already branches on it.
 class FontMismatch(Problem):
     """A font that isn't the one the document uses."""
 

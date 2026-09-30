@@ -6,11 +6,16 @@ import math
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import BUILD, Page, Workers, open_pdf
+from squidpdf.core import BUILD, Page, Reply, Workers
 from squidpdf.documents import store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS, PAGE_CACHE, PAGE_IMAGE_TIMEOUT_S
 from squidpdf.documents.errors import NoSuchPage
-from squidpdf.documents.types import Loaded, PageReply
+from squidpdf.documents.types import Loaded
+
+__all__ = [
+    "PageController",
+    "page_scale",
+]
 
 
 class PageController:
@@ -20,7 +25,7 @@ class PageController:
         """Draw on `workers`, off the server's own thread."""
         self._workers = workers
 
-    async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> PageReply:
+    async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> Reply[bytes]:
         """Page `page` as a PNG, at `scale` or less if the page is very large."""
         pages = store.load_pages(doc.folder)
         if not 0 <= page < len(pages):
@@ -30,26 +35,28 @@ class PageController:
         )
         # An old `build` still gets the image, but not to keep: its bytes may change.
         cache = PAGE_CACHE if build == BUILD else "no-store"
-        return PageReply(png, {"Cache-Control": cache})
-
-    @staticmethod
-    def draw_page(folder: str, page: int, scale: float) -> bytes:
-        """Draw one page of the original, unrotated.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        """
-        with open_pdf(str(Path(folder) / store.ORIGINAL)) as engine:
-            return engine.page_image(page, scale)
+        return Reply(png, {"Cache-Control": cache})
 
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
         """Draw the page on a worker."""
-        task = partial(PageController.draw_page, str(folder), page=page, scale=scale)
+        task = partial(draw_page, str(folder), page=page, scale=scale)
         return await self._workers.run(PAGE_IMAGE_TIMEOUT_S, task)
 
 
+def draw_page(folder: str, page: int, scale: float) -> bytes:
+    """Draw one page of the original, unrotated. Runs in a worker."""
+    with store.open_original(Path(folder)) as engine:
+        return engine.page_image(page, scale)
+
+
 def page_scale(page: Page, scale: int) -> float:
-    """`scale`, or less if the page would go over the pixel limit."""
+    """`scale`, or less if the page would go over the pixel limit.
+
+    MuPDF rounds each side up to a whole pixel, so the image can be a pixel
+    more a side: the largest scale is where (width s + 1)(height s + 1) meets
+    the limit, solved for s. Always above 0, however thin the page.
+    """
     width, height = page.width, page.height
-    # Less a pixel a side: MuPDF rounds each side up, which could tip it over.
-    largest = math.sqrt(MAX_IMAGE_PIXELS / (width * height)) - 1 / min(width, height)
+    area, rim = width * height, width + height
+    largest = (math.sqrt(rim**2 + 4 * area * (MAX_IMAGE_PIXELS - 1)) - rim) / (2 * area)
     return min(scale, largest)

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Correct text already in a PDF, and know beforehand whether it will look identical."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "pymupdf>=1.25.3",  # 1.25.3 is the first to read text's opacity (span "alpha")
     "fonttools>=4.53",
@@ -66,6 +66,10 @@ select = [
 [tool.ruff.lint.pylint]
 max-positional-args = 3
 
+[tool.ruff.lint.flake8-tidy-imports]
+# Absolute only, so the layer rules in tests/test_layers.py read every import by its full name.
+ban-relative-imports = "all"
+
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pymupdf.mupdf".msg = "MuPDF's low-level API lives in core/pdf.py; add a PdfFile method there."
 
@@ -73,7 +77,7 @@ max-positional-args = 3
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 files = ["src", "tests"]
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -90,7 +94,7 @@ module = "squidpdf.*"
 disallow_untyped_defs = true
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 include = ["src", "tests"]

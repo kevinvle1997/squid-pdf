@@ -6,10 +6,13 @@ import asyncio
 import os
 import time
 
+import pytest
+
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
-from tests.helpers import assert_equal, assert_false, assert_in, assert_true
+from squidpdf.documents.errors import Gone
+from tests.helpers import assert_at_least, assert_equal, assert_false, assert_in, assert_true
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
 
@@ -26,11 +29,16 @@ def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = store.create("owner")
     _, fresh = store.create("owner")
+    # Not a document: a folder of someone else's that shares the data folder.
+    other = store.root() / "backups"
+    other.mkdir()
     past = time.time() - IDLE_S - 1
-    os.utime(idle, (past, past))
+    for folder in (idle, other):
+        os.utime(folder, (past, past))
     store.sweep()
     assert_false(idle.exists(), "a document idle past the hour is still on disk")
     assert_true(fresh.exists(), "a document in use was swept")
+    assert_true(other.exists(), "a folder that isn't a document was swept")
 
 
 def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
@@ -56,5 +64,33 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
         sweeping.cancel()
 
     asyncio.run(sweep_until_a_second_pass())
-    assert_true(passes > 1, f"sweeps after the one that failed: {passes - 1}")
+    assert_at_least(passes, 2, "sweeps, the one that failed and those after it")
     assert_in("the disk said no", caplog.text, "what the log says about the failed sweep")
+
+
+def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
+    """A reader must see the old file or the new one, never half: half reads as broken JSON."""
+    _, folder = store.create("owner")
+    store.save_analysis(folder, "a-build", b'{"worked": "out"}')
+
+    def disk_full(*_paths: object) -> None:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(store.os, "replace", disk_full)
+    with pytest.raises(OSError):
+        store.save_analysis(folder, "a-build", b'{"worked": "out again"}')
+
+    kept = store.load_analysis(folder, "a-build")
+    assert_equal(kept, b'{"worked": "out"}', "the analysis kept")
+    names = sorted(path.name for path in folder.iterdir())
+    assert_equal(
+        names, sorted(["owner", store.analysis_file("a-build")]), "files in the folder"
+    )
+
+
+def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
+    """Found, then deleted by its owner or the sweep before its hour restarts."""
+    _, folder = store.create("owner")
+    store.delete(folder)
+    with pytest.raises(Gone):
+        store.touch(folder)
