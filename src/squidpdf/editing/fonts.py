@@ -33,30 +33,27 @@ class FontListController:
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
         return FontListReply(json, {"Cache-Control": cache})
 
-    @staticmethod
-    def measure_faces() -> FontList:
-        """Every face we ship, grouped by family, in the catalog's order.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        """
-        families: dict[str, FamilyInfo] = {}
-        for face in CATALOG:
-            new_family: FamilyInfo = {
-                "family": face.family,
-                "category": face.category,
-                "license": face.license,
-                "same_widths_as": [],
-                "faces": [],
-            }
-            family = families.setdefault(face.family, new_family)
-            # A cut can match fonts its family doesn't, as CMBX10 is only the bold.
-            listed = family["same_widths_as"]
-            listed.extend(name for name in face.same_widths_as if name not in listed)
-            family["faces"].append(
-                {"name": face.name, "style": face.style, "glyphs": face_widths(face)}
-            )
-        return {"build": BUILD, "families": list(families.values())}
-
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
-        return await self._workers.run(FONT_LIST_TIMEOUT_S, FontListController.measure_faces)
+        return await self._workers.run(FONT_LIST_TIMEOUT_S, measure_faces)
+
+
+def measure_faces() -> FontList:
+    """Every face we ship, grouped by family, in the catalog's order. Runs in a worker."""
+    families: dict[str, FamilyInfo] = {}
+    for face in CATALOG:
+        new_family: FamilyInfo = {
+            "family": face.family,
+            "category": face.category,
+            "license": face.license,
+            "same_widths_as": [],
+            "faces": [],
+        }
+        family = families.setdefault(face.family, new_family)
+        # A cut can match fonts its family doesn't, as CMBX10 is only the bold.
+        listed = family["same_widths_as"]
+        listed.extend(name for name in face.same_widths_as if name not in listed)
+        family["faces"].append(
+            {"name": face.name, "style": face.style, "glyphs": face_widths(face)}
+        )
+    return {"build": BUILD, "families": list(families.values())}

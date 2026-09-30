@@ -29,12 +29,12 @@ from squidpdf.core import (
     write_sample,
 )
 from squidpdf.editing import (
-    ExportController,
     Redact,
     RedactionFailed,
     Replace,
     apply,
     replace_fit,
+    save_edited,
 )
 
 __all__ = [
@@ -153,9 +153,7 @@ def cmd_redact(args: argparse.Namespace) -> int:
 
         # The same save and check a download gets.
         try:
-            saved = ExportController.save_edited(
-                engine, index, edits=[Redact(span.id)], to=args.out
-            )
+            saved = save_edited(engine, index, edits=[Redact(span.id)], to=args.out)
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             print(f"  {RED}{failed.detail}{OFF}")
             return 1

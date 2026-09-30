@@ -24,6 +24,7 @@ from squidpdf.editing.types import Exported, ExportReply, Notice, Saved
 
 __all__ = [
     "ExportController",
+    "save_edited",
 ]
 
 _EXPORTED = "export.pdf"  # the file saved, then checked, before its bytes go back
@@ -54,60 +55,59 @@ class ExportController:
         exported = await self._enqueue_make_pdf(doc.folder, edits=edits, pages=pages)
         return ExportReply(exported.pdf, reply_headers(exported, said_in))
 
-    @staticmethod
-    def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Exported:
-        """The document in `folder` with the edits applied and checked, as PDF bytes.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        """
-        path = Path(folder)
-        index = store.load_index(path)
-        if index is None:  # only a sweep removes it
-            raise Gone
-
-        # In the document's folder, so a killed worker's file is swept with it.
-        with (
-            tempfile.TemporaryDirectory(dir=path) as scratch,
-            open_pdf(str(path / store.ORIGINAL)) as engine,
-        ):
-            out = Path(scratch) / _EXPORTED
-            saved = ExportController.save_edited(
-                engine, index, edits=edits, pages=pages, to=str(out)
-            )
-            skipped = [skip.edit for skip in saved.applied.skipped]
-            # Only the file's own notices: render already said apply's.
-            return Exported(out.read_bytes(), skipped, saved.notices)
-
-    @staticmethod
-    def save_edited(
-        engine: Engine,
-        index: SpanIndex,
-        *,
-        edits: list[Edit],
-        pages: list[int] | None = None,
-        to: str,
-    ) -> Saved:
-        """Apply the edits, keep `pages`, save to `to`, and check the redactions there.
-
-        Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
-        """
-        redactions = RedactionController.from_edits(engine, edits, index)
-        applied = apply(engine, edits, index)
-        notices = [] if pages is None else redactions.keep_pages(engine, pages)
-        notices += engine.save(to)
-        try:
-            redactions.check_saved(to)
-        except RedactionFailed:  # the text is still in the file: never leave it lying around
-            Path(to).unlink()
-            raise
-        return Saved(applied, notices)
-
     async def _enqueue_make_pdf(
         self, folder: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
         """Make the PDF on a worker."""
-        task = partial(ExportController.make_pdf, str(folder), edits=edits, pages=pages)
+        task = partial(make_pdf, str(folder), edits=edits, pages=pages)
         return await self._workers.run(EXPORT_TIMEOUT_S, task)
+
+
+def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Exported:
+    """The document in `folder` with the edits applied and checked, as PDF bytes.
+
+    Runs in a worker.
+    """
+    path = Path(folder)
+    index = store.load_index(path)
+    if index is None:  # only a sweep removes it
+        raise Gone
+
+    # In the document's folder, so a killed worker's file is swept with it.
+    with (
+        tempfile.TemporaryDirectory(dir=path) as scratch,
+        open_pdf(str(path / store.ORIGINAL)) as engine,
+    ):
+        out = Path(scratch) / _EXPORTED
+        saved = save_edited(engine, index, edits=edits, pages=pages, to=str(out))
+        skipped = [skip.edit for skip in saved.applied.skipped]
+        # Only the file's own notices: render already said apply's.
+        return Exported(out.read_bytes(), skipped, saved.notices)
+
+
+def save_edited(
+    engine: Engine,
+    index: SpanIndex,
+    *,
+    edits: list[Edit],
+    pages: list[int] | None = None,
+    to: str,
+) -> Saved:
+    """Apply the edits, keep `pages`, save to `to`, and check the redactions there.
+
+    Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
+    The same save and check whether a browser downloads the file or the CLI writes it.
+    """
+    redactions = RedactionController.from_edits(engine, edits, index)
+    applied = apply(engine, edits, index)
+    notices = [] if pages is None else redactions.keep_pages(engine, pages)
+    notices += engine.save(to)
+    try:
+        redactions.check_saved(to)
+    except RedactionFailed:  # the text is still in the file: never leave it lying around
+        Path(to).unlink()
+        raise
+    return Saved(applied, notices)
 
 
 def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:

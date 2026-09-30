@@ -14,7 +14,7 @@ from squidpdf.editing.apply import (
 )
 from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
 from squidpdf.editing.errors import BadReference, RedactionFailed
-from squidpdf.editing.export import ExportController
+from squidpdf.editing.export import ExportController, save_edited
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
@@ -25,6 +25,7 @@ __all__ = [
     "RedactionController",
     "ExportController",
     "apply",
+    "save_edited",
     "replace_fit",
     "insert_fit",
     "log_fits",

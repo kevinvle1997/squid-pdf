@@ -59,31 +59,6 @@ class RenderController:
         body = reply_body(rendered, doc.expires_at, said_in)
         return RenderReply(body, words.language_headers(said_in))
 
-    @staticmethod
-    def draw_regions(
-        folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
-    ) -> Rendered:
-        """Apply the edits on the drawn pages, then draw each region.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        `scales` is each page's pixels per point, the same as its page image.
-        """
-        path = Path(folder)
-        index = store.load_index(path)
-        if index is None:  # only a sweep removes it
-            raise Gone
-        pages = store.load_pages(path)
-
-        with open_pdf(str(path / store.ORIGINAL)) as engine:
-            fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
-            applied = apply(engine, edits, index, pages={region.page for region in regions})
-            images = [
-                draw(engine, region, page=pages[region.page], scale=scales[region.page])
-                for region in regions
-            ]
-
-        return Rendered(images, fits, applied.skipped, applied.notices)
-
     async def _enqueue_draw_regions(
         self,
         folder: Path,
@@ -94,13 +69,37 @@ class RenderController:
     ) -> Rendered:
         """Draw the regions on a worker."""
         task = partial(
-            RenderController.draw_regions,
+            draw_regions,
             str(folder),
             edits=edits,
             regions=regions,
             scales=scales,
         )
         return await self._workers.run(RENDER_TIMEOUT_S, task)
+
+
+def draw_regions(
+    folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
+) -> Rendered:
+    """Apply the edits on the drawn pages, then draw each region. Runs in a worker.
+
+    `scales` is each page's pixels per point, the same as its page image.
+    """
+    path = Path(folder)
+    index = store.load_index(path)
+    if index is None:  # only a sweep removes it
+        raise Gone
+    pages = store.load_pages(path)
+
+    with open_pdf(str(path / store.ORIGINAL)) as engine:
+        fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
+        applied = apply(engine, edits, index, pages={region.page for region in regions})
+        images = [
+            draw(engine, region, page=pages[region.page], scale=scales[region.page])
+            for region in regions
+        ]
+
+    return Rendered(images, fits, applied.skipped, applied.notices)
 
 
 def check_regions(regions: list[Region], pages: list[Page]) -> None:

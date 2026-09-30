@@ -12,6 +12,11 @@ from squidpdf.documents.constants import MAX_IMAGE_PIXELS, PAGE_CACHE, PAGE_IMAG
 from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.types import Loaded, PageReply
 
+__all__ = [
+    "PageController",
+    "page_scale",
+]
+
 
 class PageController:
     """A page image, from request to reply."""
@@ -32,19 +37,16 @@ class PageController:
         cache = PAGE_CACHE if build == BUILD else "no-store"
         return PageReply(png, {"Cache-Control": cache})
 
-    @staticmethod
-    def draw_page(folder: str, page: int, scale: float) -> bytes:
-        """Draw one page of the original, unrotated.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        """
-        with open_pdf(str(Path(folder) / store.ORIGINAL)) as engine:
-            return engine.page_image(page, scale)
-
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
         """Draw the page on a worker."""
-        task = partial(PageController.draw_page, str(folder), page=page, scale=scale)
+        task = partial(draw_page, str(folder), page=page, scale=scale)
         return await self._workers.run(PAGE_IMAGE_TIMEOUT_S, task)
+
+
+def draw_page(folder: str, page: int, scale: float) -> bytes:
+    """Draw one page of the original, unrotated. Runs in a worker."""
+    with open_pdf(str(Path(folder) / store.ORIGINAL)) as engine:
+        return engine.page_image(page, scale)
 
 
 def page_scale(page: Page, scale: int) -> float:
