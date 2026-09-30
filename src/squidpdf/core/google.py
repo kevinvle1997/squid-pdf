@@ -242,11 +242,21 @@ def cut(variable_font: bytes, weight: int) -> bytes:
 
 
 def kept(path: Path, font_file: bytes) -> None:
-    """Write `font_file` to the cache whole or not at all, so a reader never sees half."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as partial_file:
-        partial_file.write(font_file)
-    os.replace(partial_file.name, path)
+    """Write `font_file` to the cache whole or not at all; a failure is logged, not raised.
+
+    Written beside it, then renamed over it, so a reader never sees half.
+    """
+    part: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as partial_file:
+            part = Path(partial_file.name)
+            partial_file.write(font_file)
+        os.replace(part, path)
+    except OSError:  # a full disk, a read-only one: the copy still lends, uncached
+        _logger.warning("Google's copy of %s not cached", path.name, exc_info=True)
+        if part is not None:
+            part.unlink(missing_ok=True)
 
 
 def download(url: str) -> bytes:

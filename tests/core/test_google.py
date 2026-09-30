@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import logging
+import os
 import time
 from collections.abc import Callable
 
@@ -116,6 +118,25 @@ def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
     assert_equal(got, poppins, "what the pinned file's own bytes give")
     # Kept: the next ask is answered from disk, with the network down.
     assert_equal(fetched(file, folder=tmp_path, download=_failing), poppins, "from the cache")
+
+
+def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
+    tmp_path, monkeypatch, caplog
+):
+    """A full disk: the checked copy still lends, the failure is logged, and no piece stays."""
+    poppins = POPPINS.read_bytes()
+    file = GoogleFile("ofl/poppins/Poppins-Regular.ttf", blob_hash(poppins), None)
+
+    def disk_full(*_args: object) -> None:
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    monkeypatch.setattr(os, "replace", disk_full)
+    with caplog.at_level(logging.WARNING):
+        got = fetched(file, folder=tmp_path, download=_returning(poppins))
+
+    assert_equal(got, poppins, "what the checked download gives")
+    assert_true("not cached" in caplog.text, "the failure was logged")
+    assert_equal([path for path in tmp_path.rglob("*") if path.is_file()], [], "files left")
 
 
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
