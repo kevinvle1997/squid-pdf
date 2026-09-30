@@ -10,7 +10,7 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import Engine, InvalidRequest, Reply, SpanIndex, Workers, open_pdf, words
+from squidpdf.core import Engine, InvalidRequest, Reply, SpanIndex, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.types import Loaded
@@ -70,13 +70,13 @@ def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Expo
     """
     path = Path(folder)
     index = store.load_index(path)
-    if index is None:  # only a sweep removes it
+    if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
 
     # In the document's folder, so a killed worker's file is swept with it.
     with (
         tempfile.TemporaryDirectory(dir=path) as scratch,
-        open_pdf(str(path / store.ORIGINAL)) as engine,
+        store.open_original(path) as engine,
     ):
         out = Path(scratch) / _EXPORTED
         saved = save_edited(engine, index, edits=edits, pages=pages, to=str(out))

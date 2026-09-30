@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+from pathlib import Path
 
 import pymupdf
 import pytest
@@ -184,3 +186,32 @@ def test_an_upload_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_byt
     response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
     assert_problem(response, "invalid_request", 400)
     assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
+@pytest.mark.parametrize(
+    ("path", "deleted"),
+    [
+        ("", "the whole folder"),
+        (
+            "/pages/0?scale=1&build=any",
+            "only the original, as a sweep partway through leaves it",
+        ),
+    ],
+    ids=["read", "a page"],
+)
+def test_a_document_deleted_while_its_request_runs_is_not_found(
+    mine, doc, monkeypatch, path, deleted
+):
+    """The browser uploads again on not_found; a server error would leave it stuck."""
+    touch = store.touch
+
+    def touch_then_lose(folder: Path) -> float:
+        expires = touch(folder)
+        if deleted == "the whole folder":
+            shutil.rmtree(folder)
+        else:
+            (folder / store.ORIGINAL).unlink()
+        return expires
+
+    monkeypatch.setattr(store, "touch", touch_then_lose)
+    assert_problem(mine.get(f"/api/documents/{doc['id']}{path}"), "not_found", 404)

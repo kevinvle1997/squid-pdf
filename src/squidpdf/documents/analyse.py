@@ -10,7 +10,7 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.core import BUILD, Fidelity, FidelityReport, MessageInfo, Span, open_pdf
+from squidpdf.core import BUILD, Fidelity, FidelityReport, MessageInfo, Span
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontFacts, SpanInfo
@@ -30,7 +30,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     more than `max_pages`.
     """
     path = Path(folder)
-    with open_pdf(str(path / store.ORIGINAL)) as eng:
+    with store.open_original(path) as eng:
         index = store.load_index(path)
         if index is None:
             if len(eng.pages()) > max_pages:

@@ -6,7 +6,7 @@ import math
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import BUILD, Page, Reply, Workers, open_pdf
+from squidpdf.core import BUILD, Page, Reply, Workers
 from squidpdf.documents import store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS, PAGE_CACHE, PAGE_IMAGE_TIMEOUT_S
 from squidpdf.documents.errors import NoSuchPage
@@ -45,7 +45,7 @@ class PageController:
 
 def draw_page(folder: str, page: int, scale: float) -> bytes:
     """Draw one page of the original, unrotated. Runs in a worker."""
-    with open_pdf(str(Path(folder) / store.ORIGINAL)) as engine:
+    with store.open_original(Path(folder)) as engine:
         return engine.page_image(page, scale)
 
 

@@ -19,7 +19,6 @@ from squidpdf.core import (
     Rect,
     Reply,
     Workers,
-    open_pdf,
     words,
 )
 from squidpdf.documents import store
@@ -97,11 +96,11 @@ def draw_regions(
     """
     path = Path(folder)
     index = store.load_index(path)
-    if index is None:  # only a sweep removes it
+    if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
     pages = store.load_pages(path)
 
-    with open_pdf(str(path / store.ORIGINAL)) as engine:
+    with store.open_original(path) as engine:
         fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
         applied = apply(engine, edits, index, pages={region.page for region in regions})
         images = [
