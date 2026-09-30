@@ -6,7 +6,7 @@ import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { Render } from "../../api/types";
 import { aDoc, aFont, aNotice, aReply, aSkipped, aSpan } from "../../fixtures";
-import { Editor } from "./Editor";
+import { EditorShell } from "./EditorShell";
 
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
@@ -37,7 +37,7 @@ describe("the editor", () => {
     vi.mocked(renderOnServer).mockResolvedValue(
       aReply({ notices: [aNotice(drewOtherwise, { span_id: span.id })], skipped: [aSkipped(0, leftOut)] }),
     );
-    const screen = await render(<Editor file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
     await change(screen, "is here");
     await expect.element(screen.getByText(drewOtherwise)).toBeVisible();
     await expect.element(screen.getByText(leftOut)).toBeVisible();
@@ -49,7 +49,9 @@ describe("the editor", () => {
       { code: "a", params: {}, type: "t", detail: "Some text is in a font we can't use." },
       { code: "b", params: {}, type: "t", detail: "This file is signed; editing breaks the signature." },
     ];
-    const screen = await render(<Editor file={new File(["%PDF-"], "contract.pdf")} opened={{ ...DOC, notices }} />);
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={{ ...DOC, notices }} />,
+    );
     await expect.element(screen.getByText(notices[0]?.detail ?? "")).toBeVisible();
     await expect.element(screen.getByText(notices[1]?.detail ?? "")).toBeVisible();
   });

@@ -53,8 +53,8 @@ const settle = () => new Promise((resolve) => setTimeout(resolve));
 
 describe("the render queue", () => {
   test("it asks for a strip around each edited row, sending the edits as they read; fits land with their page", async () => {
-    const view = readingOf(replace(ONE));
-    queue.draw(view);
+    const reading = readingOf(replace(ONE));
+    queue.draw(reading);
     await settle();
     expect(fake.asked).toHaveLength(1);
     expect(fake.asked[0]?.body).toEqual({ edits: [replace(ONE)], scale: 2, regions: [{ page: 0, y0: 98, y1: 114 }] });
@@ -62,7 +62,7 @@ describe("the render queue", () => {
     fake.asked[0]?.answer(aReply({ images: [stripFor(0)], fits: { [ONE.id]: aFit() } }));
     await settle();
     expect(queue.drawn.strips.get(0)).toEqual([stripFor(0)]);
-    expect(queue.drawn.from.get(0)).toBe(view);
+    expect(queue.drawn.from.get(0)).toBe(reading);
     expect(queue.drawn.fits.get(0)).toEqual({ [ONE.id]: aFit() });
   });
 

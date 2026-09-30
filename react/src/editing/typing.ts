@@ -5,13 +5,13 @@ import { change, type Editor } from "./editor";
 /** Start typing into a span, from what it reads now. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {
   const { store } = editor;
-  const { layout, view } = store.get();
+  const { layout, reading } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
-  store.set({ draft: { spanId, page: span.page, atPt, text: view.spans.get(spanId)?.text ?? span.text } });
+  store.set({ draft: { spanId, page: span.page, atPt, text: reading.spans.get(spanId)?.text ?? span.text } });
 }
 
-export function type(editor: Editor, text: string): void {
+export function typeInto(editor: Editor, text: string): void {
   const { store } = editor;
   const { draft } = store.get();
   if (draft !== null) store.set({ draft: { ...draft, text } });
@@ -20,10 +20,10 @@ export function type(editor: Editor, text: string): void {
 /** End the typing: `keep` puts what was typed in the history. */
 export function finish(editor: Editor, keep: boolean): void {
   const { store } = editor;
-  const { draft, layout, view } = store.get();
+  const { draft, layout, reading } = store.get();
   if (draft === null) return;
   store.set({ draft: null });
-  const was = view.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
+  const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
   if (!keep || draft.text === was || draft.text.trim() === "") return;
   change(editor, { kind: "add", edits: [{ kind: "replace", span_id: draft.spanId, text: draft.text }] });

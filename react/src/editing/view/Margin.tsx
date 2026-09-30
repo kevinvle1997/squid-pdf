@@ -1,13 +1,13 @@
 import { Button } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
-import type { SpanView } from "../project";
+import type { SpanReading } from "../project";
 import { focusSpan, useEditor } from "./context";
 import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
-  changes: readonly SpanView[]; // the spans replaced on this page
+  changes: readonly SpanReading[]; // the spans replaced on this page
   gapPt: number; // a note's height in page points, to keep notes a hit area apart
   shape: "margin" | "list";
   label: string;

@@ -3,7 +3,7 @@ import { Button, type PressEvent, TooltipTrigger } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_PRESS_MS, NOTE_DELAY_MS } from "../constants";
-import type { SpanView } from "../project";
+import type { SpanReading } from "../project";
 import { edit, returnTo } from "../typing";
 import { fill } from "../words";
 import { boxOf, markId, useEditor } from "./context";
@@ -27,7 +27,7 @@ function noteOf(font: FontInfo | undefined, fit: FitInfo | undefined, copy: Copy
 interface Props {
   span: SpanInfo;
   info: PageInfo;
-  now: SpanView | undefined; // what it reads now, if an edit changed it
+  edited: SpanReading | undefined; // what it reads now, if an edit changed it
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
   copy: Copy;
@@ -39,9 +39,9 @@ interface Props {
  * The page hands it what it shows, so a page's marks subscribe to nothing of their own and
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
-export const SpanMark = memo(function SpanMark({ span, info, now, font, fit, copy, quiet }: Props) {
+export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, quiet }: Props) {
   const editor = useEditor();
-  const changed = now?.replaced ?? false;
+  const changed = edited?.replaced ?? false;
   const note = noteOf(font, changed ? fit : undefined, copy);
   const [open, setOpen] = useState(false);
   const lastPress = useRef(0);
@@ -67,7 +67,7 @@ export const SpanMark = memo(function SpanMark({ span, info, now, font, fit, cop
     window.addEventListener("pointerdown", () => setOpen(false), { once: true, capture: true });
   }
 
-  const state = [
+  const className = [
     styles.span,
     font?.substitute != null && styles.similar,
     changed && styles.changed,
@@ -86,14 +86,14 @@ export const SpanMark = memo(function SpanMark({ span, info, now, font, fit, cop
     >
       <Button
         id={markId(span.id)}
-        className={state}
+        className={className}
         style={boxOf(span.bbox, info)}
         onPress={pressed}
         // Back from editing this span: the mark takes the field's place and focus with it.
         autoFocus={quiet}
         onBlur={() => quiet && returnTo(editor, null)}
       >
-        <span className="vh">{now?.text ?? span.text}</span>
+        <span className="vh">{edited?.text ?? span.text}</span>
       </Button>
       {note !== null && (
         <Tooltip heading={note.said} warn={note.warn}>

@@ -6,8 +6,8 @@ import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { Wordmark } from "./ui/Wordmark";
 
 // The editor's code comes in while the file uploads, so the landing loads only what it shows.
-const loadEditor = () => import("./editing/view/Editor");
-const Editor = lazy(() => loadEditor().then((module) => ({ default: module.Editor })));
+const loadEditor = () => import("./editing/view/EditorShell");
+const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
 /** The landing is a drop target and nothing else; once a file is open, the editor. */
 export function App() {
@@ -24,7 +24,7 @@ function Screens() {
   return (
     <Suspense fallback={null}>
       {/* Keyed: the editor takes `opened` only as it starts, so another document is another editor. */}
-      <Editor key={opened.doc.id} file={opened.file} opened={opened.doc} />
+      <EditorShell key={opened.doc.id} file={opened.file} opened={opened.doc} />
     </Suspense>
   );
 }

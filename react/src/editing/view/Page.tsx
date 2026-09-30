@@ -4,7 +4,7 @@ import type { PageInfo, SpanInfo } from "../../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { imageFailed } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
-import { differing, type SpanView } from "../project";
+import { differing, type SpanReading } from "../project";
 import type { PageFits } from "../render";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
@@ -14,7 +14,7 @@ import { SpanMark } from "./SpanMark";
 
 const NO_SPANS: readonly SpanInfo[] = [];
 const NO_FITS: PageFits = {};
-const NO_CHANGES: readonly SpanView[] = [];
+const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
  * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
@@ -59,7 +59,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(info.height);
   const spans = useEditorState((state) => state.layout.pages.get(index)) ?? NO_SPANS;
-  const edits = useEditorState((state) => state.view.pages.get(index));
+  const edits = useEditorState((state) => state.reading.pages.get(index));
   const drawnFrom = useEditorState((state) => state.drawn.from.get(index)?.pages.get(index));
   const strips = useEditorState((state) => state.drawn.strips.get(index));
   const src = useEditorState((state) => pageUrl(state.doc, index, state.scale));
@@ -72,11 +72,11 @@ export const Page = memo(function Page({ index, info }: Props) {
     const back = state.returnedTo === null ? undefined : state.layout.spans.get(state.returnedTo);
     return back?.page === index ? back.id : null;
   });
-  const views = useMemo(() => new Map(edits?.spans.map((view) => [view.span.id, view])), [edits]);
+  const readings = useMemo(() => new Map(edits?.spans.map((reading) => [reading.span.id, reading])), [edits]);
   // The file's /Rotate turns the page with CSS; everything inside stays in unrotated points.
   const turned = info.rotation % 180 !== 0;
   const [wide, tall] = turned ? [info.height, info.width] : [info.width, info.height];
-  const changes = edits?.spans.filter((view) => view.replaced) ?? NO_CHANGES;
+  const changes = edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
   // Where a span reads other than its strip shows, the browser draws it until the server has.
   const previews = differing(edits, drawnFrom).filter(({ span }) => span.id !== typingIn);
   const label = `Page ${index + 1}`;
@@ -117,7 +117,7 @@ export const Page = memo(function Page({ index, info }: Props) {
                   key={span.id}
                   span={span}
                   info={info}
-                  now={views.get(span.id)}
+                  edited={readings.get(span.id)}
                   font={fonts.get(span.font)}
                   fit={fits[span.id]}
                   copy={copy}

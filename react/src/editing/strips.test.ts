@@ -35,8 +35,8 @@ describe("strips to redraw", () => {
 
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
-    const view = readingOf(replace(bottom), replace(top));
-    expect(regionsFor(0, page, view.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
+    const reading = readingOf(replace(bottom), replace(top));
+    expect(regionsFor(0, page, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
     ]);
@@ -47,9 +47,9 @@ describe("pages to redraw", () => {
   const [top, , other] = SPANS as [SpanInfo, SpanInfo, SpanInfo];
 
   test("a page is stale when its edits read other than what its strips were drawn from", () => {
-    const view = readingOf(replace(top), replace(other));
-    expect(stalePages(view, new Map())).toEqual(new Set([0, 1]));
-    expect(stalePages(view, new Map([[0, view]]))).toEqual(new Set([1]));
+    const reading = readingOf(replace(top), replace(other));
+    expect(stalePages(reading, new Map())).toEqual(new Set([0, 1]));
+    expect(stalePages(reading, new Map([[0, reading]]))).toEqual(new Set([1]));
   });
 
   test("a page whose strips show edits since undone is stale, until it's drawn bare", () => {

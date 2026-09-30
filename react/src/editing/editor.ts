@@ -7,7 +7,7 @@ import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
 import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
 import { NO_NOTICES, type Notices, plain, warn } from "./notices";
-import { type EditedView, project, UNEDITED } from "./project";
+import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { createStore, type Store } from "./store";
 
@@ -31,7 +31,7 @@ export interface EditorState {
   readonly layout: Layout;
   readonly scale: number; // pixels per point, as the page images are drawn
   readonly history: History;
-  readonly view: EditedView; // what the history reads as
+  readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
   readonly draft: Draft | null;
   readonly returnedTo: string | null; // the span focus went back to after its edit: its note stays shut
@@ -67,7 +67,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     layout: layoutOf(opened),
     scale,
     history: EMPTY_HISTORY,
-    view: UNEDITED,
+    reading: UNEDITED,
     drawn: NOTHING_DRAWN,
     draft: null,
     returnedTo: null,
@@ -89,11 +89,11 @@ export function change(editor: Editor, action: HistoryAction): void {
   const state = store.get();
   const history = historyReducer(state.history, action);
   if (history === state.history) return;
-  const view = project(state.doc.spans, entriesOf(history), state.view);
+  const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export or reopening said is stale once the user edits again.
   const notices = { ...state.notices, export: null, reopen: null };
-  store.set({ history, view, notices });
-  queue.draw(view);
+  store.set({ history, reading, notices });
+  queue.draw(reading);
 }
 
 /** Put a span back as the document had it, from its margin note. */
@@ -119,13 +119,13 @@ export function imageFailed(editor: Editor): void {
 
 /** How many spans read other than the original. */
 export function changedCount(state: EditorState): number {
-  return state.view.spans.size;
+  return state.reading.spans.size;
 }
 
 /** How many changed spans are drawn in a similar font, not the file's own. */
 export function similarCount(state: EditorState): number {
   let count = 0;
-  for (const { span, replaced } of state.view.spans.values()) {
+  for (const { span, replaced } of state.reading.spans.values()) {
     const inSimilar = state.layout.fonts.get(span.font)?.substitute != null;
     const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
     if (replaced && (inSimilar || missing.length > 0)) count++;

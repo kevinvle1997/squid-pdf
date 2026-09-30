@@ -7,7 +7,7 @@ import { render as renderOnServer } from "../../api/client";
 import type { Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aReply, aSpan } from "../../fixtures";
 import { createEditor, type Editor } from "../editor";
-import { edit, finish, type } from "../typing";
+import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
@@ -94,7 +94,7 @@ describe("a page", () => {
     const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
     await note.click();
     await expect.element(note).not.toBeInTheDocument();
-    expect(editor.store.get().view.spans.size).toBe(0);
+    expect(editor.store.get().reading.spans.size).toBe(0);
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
   });
 
@@ -115,7 +115,7 @@ describe("a page", () => {
     const screen = await draw(1);
     await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
     edit(editor, span.id, null);
-    type(editor, "is here");
+    typeInto(editor, "is here");
     finish(editor, true);
     const before = drawn.margins;
     land(aReply({ fits: { [span.id]: aFit() } }));

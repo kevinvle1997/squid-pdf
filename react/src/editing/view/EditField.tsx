@@ -6,7 +6,7 @@ import { Warn } from "../../ui/Warn";
 import { say } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
 import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
-import { finish, returnTo, type as typeInto } from "../typing";
+import { finish, returnTo, typeInto } from "../typing";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 
@@ -42,14 +42,14 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const rules = useEditorState((state) => state.doc.fit);
   const copy = useEditorState((state) => state.doc.copy);
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
-  const start = useEditorState((state) => state.view.spans.get(span.id)?.text) ?? span.text;
+  const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
   const face = font === undefined ? "Liberation Serif Regular" : previewFaceOf(font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
   const fitFor = (typed: string) => (font === undefined ? null : fitOf(span, font, typed, rules));
   const troublesIn = (fit: Fit | null) => (fit === null ? [] : troublesOf(fit, rules, copy, font?.substitute ?? face));
-  const said = troublesIn(fitFor(text)).join("; ");
+  const trouble = troublesIn(fitFor(text)).join("; ");
 
   // Once, as the field takes focus: the caret goes where the press was, the word under it,
   // or everything from the keyboard. Later focus keeps the caret where the user put it.
@@ -60,11 +60,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     const at = editor.store.get().draft?.atPt;
     if (at == null) field.select();
     else field.setSelectionRange(...wordAround(start, letterAt(start, at, glyphs, span.size)));
-    if (said !== "") say(editor, said);
+    if (trouble !== "") say(editor, trouble);
   }
 
   // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
-  function type(next: string) {
+  function typed(next: string) {
     const kind = (fit: Fit | null) =>
       fit === null ? "" : `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`;
     const now = fitFor(next);
@@ -89,11 +89,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
   return (
     <>
-      <TextField aria-label={`Change “${start}”`} value={text} onChange={type} className={styles.field}>
+      <TextField aria-label={`Change “${start}”`} value={text} onChange={typed} className={styles.field}>
         <Input
           autoFocus
           onFocus={place}
-          className={said !== "" ? styles.troubleInput : styles.input}
+          className={trouble !== "" ? styles.troubleInput : styles.input}
           spellCheck={false}
           autoComplete="off"
           onKeyDown={onKeyDown}
@@ -110,9 +110,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         />
       </TextField>
       <div className={styles.chip} aria-hidden="true" style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
-        {said !== "" ? (
+        {trouble !== "" ? (
           <span className={styles.bad}>
-            <Warn>{said}</Warn>
+            <Warn>{trouble}</Warn>
           </span>
         ) : (
           <>

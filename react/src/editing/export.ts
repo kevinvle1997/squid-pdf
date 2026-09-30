@@ -20,7 +20,7 @@ export async function exportNow(editor: Editor): Promise<void> {
   if (store.get().exporting) return;
   store.set({ exporting: true });
   finish(editor, true);
-  const { edits } = store.get().view;
+  const { edits } = store.get().reading;
   try {
     const exported = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits]));
     download(exported.pdf, file.name);

@@ -7,12 +7,12 @@ import { Status } from "../../ui/Status";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { change, changedCount, createEditor, type Editor as OpenDocument, similarCount } from "../editor";
+import { change, changedCount, createEditor, type Editor, similarCount } from "../editor";
 import { exportNow } from "../export";
 import { noticeLines } from "../notices";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
-import styles from "./Editor.module.css";
+import styles from "./EditorShell.module.css";
 import { Page } from "./Page";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
@@ -25,7 +25,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /** Shortcuts, wherever focus is. */
-function onKey(editor: OpenDocument, event: KeyboardEvent): void {
+function onKey(editor: Editor, event: KeyboardEvent): void {
   if (!(event.metaKey || event.ctrlKey)) return;
   const key = event.key.toLowerCase();
   if (key === "s") {
@@ -41,8 +41,8 @@ function onKey(editor: OpenDocument, event: KeyboardEvent): void {
   }
 }
 
-/** The open document: every page, every span marked, editable in place. */
-export function Editor({ file, opened }: { file: File; opened: Document }) {
+/** The open document: every page, every span marked, editable in place, under the bar. */
+export function EditorShell({ file, opened }: { file: File; opened: Document }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
 
   // The one effect, for what happens outside React: shortcuts anywhere, and the connection coming back.

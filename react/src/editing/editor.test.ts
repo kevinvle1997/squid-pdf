@@ -5,7 +5,7 @@ import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { change, changedCount, createEditor, type Editor, putBack, similarCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
-import { edit, finish, type } from "./typing";
+import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -33,7 +33,7 @@ beforeEach(() => {
 
 const typed = (spanId: string, text: string) => {
   edit(editor, spanId, null);
-  type(editor, text);
+  typeInto(editor, text);
   finish(editor, true);
 };
 
@@ -41,17 +41,17 @@ describe("an edit", () => {
   test("typing holds a draft apart from the history, until it's finished", () => {
     edit(editor, "own", null);
     expect(editor.store.get().draft).toMatchObject({ spanId: "own", page: 0, text: "was own" });
-    type(editor, "now");
+    typeInto(editor, "now");
     expect(editor.store.get().history.done).toEqual([]);
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
-    expect(editor.store.get().view.spans.get("own")?.text).toBe("now");
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
     expect(editor.store.get().said).toBe("Changed to now");
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {
     edit(editor, "own", null);
-    type(editor, "now");
+    typeInto(editor, "now");
     finish(editor, false);
     typed("own", "was own");
     typed("own", "   ");
@@ -72,10 +72,10 @@ describe("an edit", () => {
     typed("own", "one");
     typed("own", "two");
     change(editor, { kind: "undo" });
-    expect(editor.store.get().view.spans.get("own")?.text).toBe("one");
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
     change(editor, { kind: "redo" });
     putBack(editor, "own");
-    expect(editor.store.get().view.spans.has("own")).toBe(false);
+    expect(editor.store.get().reading.spans.has("own")).toBe(false);
     expect(editor.store.get().said).toBe("Put back was own");
   });
 
@@ -97,7 +97,7 @@ describe("export", () => {
   test("an edit still being typed goes in first", async () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
     edit(editor, "own", null);
-    type(editor, "typed");
+    typeInto(editor, "typed");
     await exportNow(editor);
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
     expect(editor.store.get().notices.export).toEqual(plain("Downloaded contract.pdf."));
