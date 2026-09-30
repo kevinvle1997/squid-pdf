@@ -304,10 +304,10 @@ def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
     assert_equal(len(asked), 1, "downloads tried")
 
 
-def test_a_fetch_with_no_answer_holds_back_every_file_and_keeps_what_comes_later(
+def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
     tmp_path, monkeypatch
 ):
-    """GitHub not answering: one wait, not one per font, and a late answer is still kept."""
+    """GitHub not answering: one wait, not one per font. A late answer is kept, and lifts it."""
     poppins = POPPINS.read_bytes()
     released = threading.Event()
     asked: list[str] = []
@@ -336,3 +336,5 @@ def test_a_fetch_with_no_answer_holds_back_every_file_and_keeps_what_comes_later
         time.sleep(_DEADLINE_S)
     late = fetched(file, folder=tmp_path, download=_failing, retry_at=retry_at)
     assert_true(late == poppins, "the late answer was kept, and is read from the cache")
+    fetched(other, folder=tmp_path, download=hanging, retry_at=retry_at)
+    assert_equal(len(asked), 2, "downloads tried, once the network answered")

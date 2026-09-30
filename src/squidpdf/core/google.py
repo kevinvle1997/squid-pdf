@@ -234,7 +234,7 @@ def fetched(
     # Failed a moment ago: not worth another wait yet.
     if now < held_until:
         return None
-    fetching = Fetching(ready=ready, download=download)
+    fetching = Fetching(ready=ready, download=download, retry_at=retry_at)
     # A daemon: one still hanging never keeps the worker from exiting.
     threading.Thread(target=fetch_into, args=(file, fetching), daemon=True).start()
     try:
@@ -256,6 +256,7 @@ class Fetching:
 
     ready: Path  # where it's cached
     download: Download
+    retry_at: RetryAt  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
     # Set once the network has answered, so a slow cut isn't taken for a network down.
@@ -288,6 +289,8 @@ def checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
         return None
     finally:
         fetching.answered.set()
+    # The network works after all: a wait that ran out held back every file for nothing.
+    fetching.retry_at.pop(_EVERY_FILE, None)
     if blob_hash(whole) != file.blob:
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None
