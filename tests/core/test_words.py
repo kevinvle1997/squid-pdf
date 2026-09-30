@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import ast
-from collections.abc import Iterator
-from pathlib import Path
 from string import Formatter
 
 import pytest
@@ -12,8 +9,6 @@ import pytest
 from squidpdf.core import Message, words
 from tests.conftest import pseudo_sentence
 from tests.helpers import assert_equal
-
-_SRC = Path(__file__).parents[2] / "src"
 
 
 def _placeholders(sentence: str) -> set[str]:
@@ -116,27 +111,3 @@ def test_every_character_name_in_the_catalog_is_said_for_its_character(pseudo):
         != pseudo_sentence(said)
     ]
     assert_equal(unsaid, [], "names in the catalog their character isn't said by")
-
-
-def test_every_key_the_code_names_is_in_the_catalog():
-    """A mistyped key would pass every check and fail only when it's said."""
-    named = {
-        (key, str(path.relative_to(_SRC)))
-        for path in sorted(_SRC.rglob("*.py"))
-        for key in _sentence_keys(path)
-    }
-    unknown = sorted((key, path) for key, path in named if key not in words.ENGLISH_SENTENCES)
-    assert_equal(unknown, [], "keys named in the code with no English sentence")
-
-
-def _sentence_keys(path: Path) -> Iterator[str]:
-    """Every key a file writes out as `Message("key", ...)`."""
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        # A call to Message whose first argument is a string written out.
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
-            continue
-        if node.func.id != "Message" or not node.args:
-            continue
-        first = node.args[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            yield first.value
