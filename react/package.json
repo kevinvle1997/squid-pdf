@@ -9,6 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check --error-on-warnings",
+    "fix": "biome check --write",
     "test": "vitest run",
     "types": "scripts/types.sh",
     "types:check": "scripts/types.sh && git diff --exit-code -- src/api/schema.d.ts",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@biomejs/biome": "2.5.14",
     "@playwright/test": "1.56.1",
     "@types/node": "22.20.4",
     "@types/react": "19.3.0",

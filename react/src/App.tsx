@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Drop, type Opened } from "./documents/view/Drop";
 
 // The editor's code comes in while the file uploads, so the landing loads only what it shows.

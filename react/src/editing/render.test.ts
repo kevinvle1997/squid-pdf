@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
 import type { Document, Edit, ImageInfo, ProblemInfo, Render, RenderBody, SpanInfo } from "../api/types";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
-import { UNEDITED, project } from "./project";
+import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
 
 const spanOn = (page: number, y0: number): SpanInfo => ({
@@ -31,7 +31,12 @@ const stripFor = (page: number): ImageInfo => ({ page, y: 98, image: `page ${pag
 
 /** The server, answering only when a test says so. */
 function server() {
-  const asked: { body: RenderBody; signal: AbortSignal; answer: (reply: Render) => void; fail: (error: unknown) => void }[] = [];
+  const asked: {
+    body: RenderBody;
+    signal: AbortSignal;
+    answer: (reply: Render) => void;
+    fail: (error: unknown) => void;
+  }[] = [];
   const render = vi.fn(
     (_id: string, body: RenderBody, signal: AbortSignal) =>
       new Promise<Render>((answer, fail) => {
@@ -107,7 +112,7 @@ describe("the render queue", () => {
   });
 
   test("strips wait for their images to decode, so the preview never gives way to nothing", async () => {
-    let decoded = () => undefined as void;
+    let decoded: () => void = () => undefined;
     const decoding = new Promise<void>((resolve) => (decoded = resolve));
     queue = new RenderQueue({
       reopener: { doc: DOC, withDocument: (use) => use(DOC) },

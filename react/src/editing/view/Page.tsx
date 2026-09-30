@@ -4,7 +4,7 @@ import type { PageInfo, SpanInfo } from "../../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { imageFailed } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
-import { type SpanView, differing } from "../project";
+import { differing, type SpanView } from "../project";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
 import { Margin } from "./Margin";

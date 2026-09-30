@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, Insert, SpanInfo } from "../api/types";
-import { EMPTY_HISTORY, type History, entriesOf, historyReducer } from "./history";
+import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
 import { type EditedView, project, samePage, sameSpan } from "./project";
 
 const spanOf = (id: string, page: number, text = `was ${id}`): SpanInfo => ({

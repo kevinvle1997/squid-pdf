@@ -7,7 +7,7 @@ import { Status } from "../../ui/Status";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { type Editor as OpenDocument, change, changedCount, createEditor, similarCount } from "../editor";
+import { change, changedCount, createEditor, type Editor as OpenDocument, similarCount } from "../editor";
 import { exportNow } from "../export";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";

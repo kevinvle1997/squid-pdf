@@ -38,7 +38,12 @@ export function boxOf(
 ): { left: string; top: string; width: string; height: string } {
   const across = (value: number) => `${(value / page.width) * 100}%`;
   const down = (value: number) => `${(value / page.height) * 100}%`;
-  return { left: across(bbox.x0), top: down(bbox.y0), width: across(bbox.x1 - bbox.x0), height: down(bbox.y1 - bbox.y0) };
+  return {
+    left: across(bbox.x0),
+    top: down(bbox.y0),
+    width: across(bbox.x1 - bbox.x0),
+    height: down(bbox.y1 - bbox.y0),
+  };
 }
 
 /** A length in points as CSS, against the page's width: the page layer is a size container. */

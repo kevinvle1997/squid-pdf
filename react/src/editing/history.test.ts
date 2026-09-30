@@ -1,13 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, Replace } from "../api/types";
-import {
-  EMPTY_HISTORY,
-  type History,
-  editsOf,
-  entriesOf,
-  historyReducer,
-  touching,
-} from "./history";
+import { EMPTY_HISTORY, editsOf, entriesOf, type History, historyReducer, touching } from "./history";
 
 const replace = (span_id: string, text: string): Replace => ({ kind: "replace", span_id, text });
 const add = (history: History, ...edits: Edit[]) => historyReducer(history, { kind: "add", edits });

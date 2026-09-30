@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { ProblemError, exportPdf, render } from "../api/client";
+import { exportPdf, ProblemError, render } from "../api/client";
 import type { Document, FontInfo, ProblemInfo, Render, SpanInfo } from "../api/types";
-import { type Editor, change, changedCount, createEditor, putBack, similarCount } from "./editor";
+import { change, changedCount, createEditor, type Editor, putBack, similarCount } from "./editor";
 import { exportNow } from "./export";
 import { edit, finish, type } from "./typing";
 
@@ -40,7 +40,9 @@ const FILE = new File(["%PDF-"], "contract.pdf");
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(render).mockReset().mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(render)
+    .mockReset()
+    .mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(exportPdf).mockReset();
   editor = createEditor(FILE, DOC, 2);
 });

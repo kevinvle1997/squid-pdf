@@ -1,7 +1,7 @@
 // The browser's layers, as tests/test_layers.py checks the server's. A feature's logic sits at
 // its folder's root and knows nothing of React; what draws it is in its view/, as only a
 // feature's api.py knows FastAPI. Imports go one way: editing may use documents, never back.
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
@@ -31,12 +31,15 @@ function sources(folder = SRC): Source[] {
 
 const ALL = sources();
 const isView = (path: string) => /^[^/]+\/view\//.test(path);
-const drawsWithReact = (path: string) => isView(path) || path.startsWith("ui/") || ["App.tsx", "main.tsx"].includes(path);
+const drawsWithReact = (path: string) =>
+  isView(path) || path.startsWith("ui/") || ["App.tsx", "main.tsx"].includes(path);
 const isFramework = (spec: string) => FRAMEWORK.includes(spec) || spec.endsWith(".module.css");
 const slice = (path: string) => path.split("/")[0] ?? "";
 
 function breaking(rule: (source: Source, spec: string) => boolean): string[] {
-  return ALL.flatMap((source) => source.imports.filter((spec) => rule(source, spec)).map((spec) => `${source.path} → ${spec}`));
+  return ALL.flatMap((source) =>
+    source.imports.filter((spec) => rule(source, spec)).map((spec) => `${source.path} → ${spec}`),
+  );
 }
 
 describe("the browser's layers", () => {

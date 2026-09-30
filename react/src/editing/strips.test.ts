@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, Insert, PageInfo, SpanInfo } from "../api/types";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
-import { UNEDITED, project } from "./project";
+import { project, UNEDITED } from "./project";
 import { insertRowOf, merged, regionsFor, rowOf, stalePages } from "./strips";
 
 const page: PageInfo = { width: 595, height: 842, rotation: 0 };
@@ -35,13 +35,18 @@ describe("strips to redraw", () => {
   });
 
   test("two edits on one line are one strip", () => {
-    expect(merged([{ y0: 98, y1: 114 }, { y0: 99, y1: 113 }])).toEqual([{ y0: 98, y1: 114 }]);
+    expect(
+      merged([
+        { y0: 98, y1: 114 },
+        { y0: 99, y1: 113 },
+      ]),
+    ).toEqual([{ y0: 98, y1: 114 }]);
   });
 
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
     const view = readingOf(replace(bottom), replace(top));
-    expect(regionsFor(0, page, view.pages.get(0)!)).toEqual([
+    expect(regionsFor(0, page, view.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
     ]);

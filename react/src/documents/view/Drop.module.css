@@ -1,4 +1,5 @@
 .zone {
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh where a browser doesn't know dvh yet */
   min-height: 100vh; min-height: 100dvh;
   display: flex; flex-direction: column;
   outline: none;

@@ -1,5 +1,5 @@
 // The edited document, downloaded under its own name. An edit still being typed goes in first.
-import { ProblemError, exportPdf } from "../api/client";
+import { exportPdf, ProblemError } from "../api/client";
 import type { Editor } from "./editor";
 import { finish } from "./typing";
 

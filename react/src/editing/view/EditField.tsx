@@ -4,11 +4,11 @@ import type { PageInfo, SpanInfo } from "../../api/types";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { say } from "../editor";
+import { familyOf, previewFaceOf } from "../faces";
+import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
 import { finish, returnTo, type as typeInto } from "../typing";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { familyOf, previewFaceOf } from "../faces";
-import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -65,7 +65,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
 
   // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
   function type(next: string) {
-    const kind = (fit: Fit | null) => (fit === null ? "" : `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`);
+    const kind = (fit: Fit | null) =>
+      fit === null ? "" : `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`;
     const now = fitFor(next);
     if (kind(now) !== kind(fitFor(text))) {
       const troubles = troublesIn(now);

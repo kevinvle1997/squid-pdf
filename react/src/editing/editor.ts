@@ -4,10 +4,10 @@
 import { ProblemError } from "../api/client";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
-import { EMPTY_HISTORY, type History, type HistoryAction, entriesOf, historyReducer, touching } from "./history";
-import { type EditedView, UNEDITED, project } from "./project";
+import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
+import { type EditedView, project, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
-import { type Store, createStore } from "./store";
+import { createStore, type Store } from "./store";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {

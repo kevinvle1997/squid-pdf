@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import { type Editor, change } from "./editor";
+import { change, type Editor } from "./editor";
 
 /** Start typing into a span, from what it reads now. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {

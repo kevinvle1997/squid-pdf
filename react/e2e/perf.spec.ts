@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type CDPSession, type Page, expect, test } from "@playwright/test";
+import { type CDPSession, expect, type Page, test } from "@playwright/test";
 
 const LINE = "This agreement is made on 14 March 2026 between";
 const PAGES = 30; // "tens of pages": the size the editor is built for

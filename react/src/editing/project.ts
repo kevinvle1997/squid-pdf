@@ -84,8 +84,8 @@ export function project(spans: readonly SpanInfo[], entries: readonly Entry[], p
   const views = new Map<string, SpanView>();
   const byPage = new Map<number, { spans: SpanView[]; inserts: InsertView[] }>();
   const onPage = (page: number) => {
-    let edits = byPage.get(page);
-    if (edits === undefined) byPage.set(page, (edits = { spans: [], inserts: [] }));
+    const edits = byPage.get(page) ?? { spans: [], inserts: [] };
+    byPage.set(page, edits);
     return edits;
   };
   const live = new Set<Edit>(); // the replaces that change what a span reads

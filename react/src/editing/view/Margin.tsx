@@ -60,9 +60,14 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
     tops.set(index, last);
   }
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
     <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">
       {notes.map((note, index) => (
-        <div key={note.key} className={styles.place} style={{ top: `${((tops.get(index) ?? 0) / info.height) * 100}%` }}>
+        <div
+          key={note.key}
+          className={styles.place}
+          style={{ top: `${((tops.get(index) ?? 0) / info.height) * 100}%` }}
+        >
           {note}
         </div>
       ))}

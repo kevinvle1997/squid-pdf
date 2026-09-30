@@ -5,7 +5,7 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { Document, FontInfo, Render, SpanInfo } from "../../api/types";
-import { type Editor, createEditor } from "../editor";
+import { createEditor, type Editor } from "../editor";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
@@ -48,10 +48,11 @@ const font = {
   same_widths: true,
   glyphs: Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500])),
 } as unknown as FontInfo;
+const PAGE = { width: 595, height: 842, rotation: 0 };
 const DOC = {
   id: "doc",
   build: "b",
-  pages: [{ width: 595, height: 842, rotation: 0 }],
+  pages: [PAGE],
   spans: [span],
   fonts: [font],
   fit: { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 },
@@ -62,14 +63,16 @@ const DOC = {
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(renderOnServer).mockReset().mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(renderOnServer)
+    .mockReset()
+    .mockReturnValue(new Promise<Render>(() => undefined));
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
 });
 
 async function draw() {
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={0} info={DOC.pages[0]!} />
+      <Page index={0} info={PAGE} />
     </EditorContext.Provider>,
   );
 }
