@@ -51,18 +51,34 @@ class Pool:
         self._pool = process_pool()
         # One replacement at a time: two tasks that find the pool broken build one new pool.
         self._replacing = asyncio.Lock()
+        # Tasks wait for a worker here, not in pebble's queue: leaving from here costs nothing.
+        self._free = asyncio.Semaphore(constants.WORKERS)
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
-        """`task()` in a worker, killed after `timeout` seconds.
+        """`task()` in a worker, given `timeout` seconds from this call.
 
-        If the request goes away first, the task is cancelled and pebble stops
-        the worker running it. The PDF library's own failures come back as the
-        Problems they mean (`core.result_of`), and pebble's by `_FAILURES`.
+        Time spent waiting for a free worker counts; a new worker's start doesn't,
+        since that's the server's time, not the task's. If the request goes away
+        first, a task still waiting is dropped, and pebble stops the worker
+        running one. The PDF library's own failures come back as the Problems
+        they mean (`core.result_of`), and pebble's by `_FAILURES`.
         """
-        pool = await self._running()
-        future = pool.submit(partial(result_of, task), timeout)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         try:
-            return await asyncio.wrap_future(future)
+            async with asyncio.timeout_at(deadline):
+                await self._free.acquire()
+        except TimeoutError as waited:  # no worker came free in time
+            raise TooSlow() from waited
+        left = deadline - loop.time()
+        if left <= 0:  # free just as time ran out; pebble reads 0 as no timeout at all
+            self._free.release()
+            raise TooSlow()
+        # Created at once, and the worker given back when it's done, however it ends.
+        job = asyncio.create_task(self._in_worker(left, task))
+        job.add_done_callback(lambda _job: self._free.release())
+        try:
+            return await job
         except _FAILED as failure:  # pebble's, listed in _FAILURES
             raise problem_of(failure) from failure
 
@@ -81,6 +97,11 @@ class Pool:
                 broken.stop()
                 await asyncio.to_thread(broken.join)  # waits for pebble's own threads
             return self._pool
+
+    async def _in_worker[T](self, timeout: float, task: Callable[[], T]) -> T:
+        """`task()` on a worker set aside for it, killed by pebble `timeout` seconds in."""
+        pool = await self._running()
+        return await asyncio.wrap_future(pool.submit(partial(result_of, task), timeout))
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""

@@ -15,15 +15,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from squidpdf.api.app import create_app
-from squidpdf.api.constants import WORKER_MEMORY_BYTES
+from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import Pool
 from squidpdf.core import Problem
 from tests.api.conftest import BASE_URL, upload
-from tests.helpers import assert_at_most, assert_equal
+from tests.helpers import assert_at_most, assert_equal, assert_true
 
 _HANG_S = 60
 _TIMEOUT_S = 0.5
 _ENOUGH_S = 10
+_BUSY_S = 5  # far past _TIMEOUT_S: a task that waited for these would be late
 _POLL_S = 0.05
 
 
@@ -145,3 +146,39 @@ def test_health_says_so_when_no_worker_can_start(tmp_path, monkeypatch):
     assert_equal(broken.status_code, 503, "health status while no worker can start")
     assert_equal(broken.json(), {"status": "no_workers"}, "health while no worker can start")
     assert_equal(healed.json(), {"status": "ok"}, "health once workers can start again")
+
+
+def _noop() -> None:
+    """Work that takes no time at all."""
+
+
+def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
+    """Waiting behind other tasks is the caller's time, so it counts."""
+
+    async def queued_behind_busy_workers(pool: Pool) -> None:
+        busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
+        await asyncio.sleep(0)  # they take every worker first
+        await pool.run(_TIMEOUT_S, _noop)
+        for task in busy:
+            task.cancel()
+
+    pool = Pool()  # its own: this one fills every worker
+    started = time.monotonic()
+    try:
+        with pytest.raises(Problem) as caught:
+            asyncio.run(queued_behind_busy_workers(pool))
+        waited = time.monotonic() - started
+    finally:
+        pool.close()
+    assert_equal(caught.value.type, "too_slow", "problem for a task that never got a worker")
+    assert_at_most(waited, _BUSY_S, "seconds waited, which the busy workers would have taken")
+
+
+def test_a_new_workers_start_doesnt_count_toward_the_timeout():
+    """Starting a worker is the server's time: a quick task on a new pool isn't too slow."""
+    pool = Pool()  # its own: no worker started yet
+    try:
+        worker = asyncio.run(pool.run(_TIMEOUT_S, os.getpid))
+    finally:
+        pool.close()
+    assert_true(worker != os.getpid(), "the task ran in a worker")
