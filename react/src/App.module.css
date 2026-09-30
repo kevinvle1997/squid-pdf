@@ -1,0 +1,12 @@
+/* The landing's layout, for the one screen that replaces the app when it fails. */
+.crashed { min-height: 100dvh; display: flex; flex-direction: column; }
+.top { padding: var(--s4); }
+.middle {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s4);
+  padding: var(--s8) var(--s4);
+  text-align: center;
+}
+.title { margin: 0; font-size: var(--fs-lg); font-weight: 600; text-wrap: balance; }
+.fine { margin: 0; font-size: var(--fs-sm); color: var(--ink-lo); }

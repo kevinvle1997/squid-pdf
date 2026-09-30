@@ -3,6 +3,7 @@
 // state and the change every edit, undo and put-back goes through.
 import { ProblemError } from "../api/client";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
+import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
 import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
 import { NO_NOTICES, type Notices, plain, warn } from "./notices";
@@ -110,9 +111,9 @@ export function say(editor: Editor, text: string): void {
 /** A page image failed: the document may have gone. */
 export function imageFailed(editor: Editor): void {
   editor.reopener.check().catch((error: unknown) => {
-    if (!(error instanceof ProblemError)) throw error;
+    const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
     const { notices } = editor.store.get();
-    editor.store.set({ notices: { ...notices, reopen: warn(error.problem.detail) } });
+    editor.store.set({ notices: { ...notices, reopen: warn(text) } });
   });
 }
 

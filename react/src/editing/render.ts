@@ -5,6 +5,7 @@
 // for it again, and so does `retry`, when the connection comes back.
 import { ProblemError, render as renderOnServer } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, Region, Render, SkippedInfo } from "../api/types";
+import { reportBug } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { EditedView } from "./project";
 import { regionsFor, stalePages } from "./strips";
@@ -133,9 +134,9 @@ export class RenderQueue {
       this.#landed(view, drawing, reply.images, reply);
     } catch (error) {
       if (ask.signal.aborted) return;
-      if (!(error instanceof ProblemError)) throw error;
       this.#asking = null;
-      this.#drawn = { ...this.#drawn, failed: error.problem.detail };
+      const failed = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+      this.#drawn = { ...this.#drawn, failed };
       this.#options.drawn(this.#drawn);
     }
   }

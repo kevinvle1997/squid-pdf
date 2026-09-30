@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { ProblemError, upload } from "../../api/client";
 import type { Document } from "../../api/types";
+import { reportBug } from "../../bugs";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
@@ -36,9 +37,8 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
       );
       onOpened({ file, doc });
     } catch (error) {
-      // Only the upload's own failures are expected here; anything else is a bug to see.
-      if (!(error instanceof ProblemError)) throw error;
-      setState({ kind: "failed", detail: error.problem.detail });
+      const detail = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+      setState({ kind: "failed", detail });
     }
   }
 

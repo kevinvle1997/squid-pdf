@@ -131,6 +131,17 @@ describe("the render queue", () => {
     expect(queue.drawn.failed).toBeNull();
   });
 
+  test("a bug while rendering is said and logged, not thrown, and its page stays stale", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    queue.draw(readingOf(replace(ONE)));
+    await settle();
+    fake.asked[0]?.fail(new TypeError("reply.images is undefined"));
+    await settle();
+    expect(queue.drawn.failed).not.toBeNull();
+    expect(logged).toHaveBeenCalledWith(new TypeError("reply.images is undefined"));
+    expect(queue.drawn.from.has(0)).toBe(false);
+  });
+
   test("what a reply says of a page goes with its strips; what it left out is of the whole list", async () => {
     const drewOtherwise = aNotice("Drawn in Liberation Serif.", { span_id: ONE.id });
     const leftOut = aSkipped(0, "An edit points at nothing.");

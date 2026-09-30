@@ -111,6 +111,15 @@ describe("export", () => {
     expect(editor.store.get().notices.export).toEqual(warn(COPY.export_left_out));
   });
 
+  test("a bug in export is said and logged, not thrown, and export can be tried again", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(exportPdf).mockRejectedValue(new TypeError("undefined is not a function"));
+    await exportNow(editor);
+    expect(editor.store.get().notices.export?.tone).toBe("warn");
+    expect(logged).toHaveBeenCalledWith(new TypeError("undefined is not a function"));
+    expect(editor.store.get().exporting).toBe(false);
+  });
+
   test("a failure is said in the server's words, and export can be tried again", async () => {
     const problem = aProblem(422, "Couldn't remove it, so nothing was downloaded.");
     vi.mocked(exportPdf).mockRejectedValue(new ProblemError(problem));
