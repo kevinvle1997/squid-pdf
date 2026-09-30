@@ -121,10 +121,12 @@ class PdfDriver(Protocol):
         color: tuple[float, float, float],
         opacity: float,
         scale_x: float,
+        turn: int,
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
         `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
+        `turn` turns each run counter-clockwise about its origin: 0, 90, 180 or 270.
         """
         ...
 

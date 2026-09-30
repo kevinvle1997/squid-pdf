@@ -48,6 +48,8 @@ _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
+# Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
+_QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
@@ -66,6 +68,15 @@ class DrawPlan:
     drawn_in: PooledFont | Face  # the file's own copies of the font, pooled, or a face we ship
     text: str  # the line as drawn, without the letters left out
     left_out: list[str]  # letters no font we have can draw, each once, in the order typed
+
+
+@dataclass(frozen=True, slots=True)
+class Setting:
+    """How a line is set: its size, how much it's narrowed, and how far it's turned."""
+
+    size: float  # in points
+    scale_x: float  # 1 is as the font draws it; less narrows each run from its start
+    turn: int  # degrees counter-clockwise on the page unrotated: 0, 90, 180 or 270
 
 
 @dataclass(slots=True)
@@ -252,7 +263,13 @@ class Engine:
             self._driver.drop_links(page, [span.bbox for span in page_spans])
 
     def draw(
-        self, span: Span, text: str, *, size: float | None = None, scale_x: float = 1.0
+        self,
+        span: Span,
+        text: str,
+        *,
+        size: float | None = None,
+        scale_x: float = 1.0,
+        turn: int = 0,
     ) -> list[Message]:
         """Redraw `text` at the span's baseline, in its own font where the file has it.
 
@@ -263,26 +280,23 @@ class Engine:
         line never mixes two faces, unless no font we have draws it: then it's
         only left out. A font with no space is drawn word by word.
         Returns anything that came out other than asked, for the edge to put
-        into words; empty when nothing did.
+        into words; empty when nothing did. `turn` turns the line counter-clockwise
+        on the page unrotated: new text is turned by its page's own turn, so it
+        reads upright as the page is shown.
         """
-        font_size = span.size if size is None else size
+        setting = Setting(span.size if size is None else size, scale_x, turn)
         plan = self._plan(span, text)
         drawn_in = plan.drawn_in
 
         # A face we ship draws the whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             return self._draw_in_face(
-                span,
-                drawn_in,
-                text=plan.text,
-                left_out=plan.left_out,
-                size=font_size,
-                scale_x=scale_x,
+                span, drawn_in, text=plan.text, left_out=plan.left_out, setting=setting
             )
 
         # The file's own font, written by code as the original was.
         if drawn_in.own.embedded.coded is not None:
-            self._draw_codes(span, drawn_in, text=plan.text, size=font_size, scale_x=scale_x)
+            self._draw_codes(span, drawn_in, text=plan.text, setting=setting)
             return said_left_out(plan.left_out)
 
         # The file's own copies of the font, by letter, once the page has them.
@@ -295,13 +309,10 @@ class Engine:
                 stand_in.face,
                 text=stand_in.text,
                 left_out=stand_in.left_out,
-                size=font_size,
-                scale_x=scale_x,
+                setting=setting,
             )
             return [problem.reason, *drawn]
-        self._write(
-            span, plan.text, font=drawn_in, aliases=aliases, size=font_size, scale_x=scale_x
-        )
+        self._write(span, plan.text, font=drawn_in, aliases=aliases, setting=setting)
         return said_left_out(plan.left_out)
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
@@ -429,27 +440,13 @@ class Engine:
         return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
 
     def _draw_in_face(
-        self,
-        span: Span,
-        face: Face,
-        *,
-        text: str,
-        left_out: list[str],
-        size: float,
-        scale_x: float,
+        self, span: Span, face: Face, *, text: str, left_out: list[str], setting: Setting
     ) -> list[Message]:
         """Write `text` at the span's baseline in a face we ship, and say what was left out."""
         alias = self._face_alias(span.page, face)
         self._added.drawn.setdefault(face, set()).update(text)
         font = self._driver.face_font(face)
-        self._write(
-            span,
-            text,
-            font=font,
-            aliases=dict.fromkeys(text, alias),
-            size=size,
-            scale_x=scale_x,
-        )
+        self._write(span, text, font=font, aliases=dict.fromkeys(text, alias), setting=setting)
         return said_left_out(left_out)
 
     def _write(
@@ -459,8 +456,7 @@ class Engine:
         *,
         font: FontProgram,
         aliases: Mapping[str, str],
-        size: float,
-        scale_x: float,
+        setting: Setting,
     ) -> None:
         """Write `text` at the span's baseline, placed by `font`'s widths.
 
@@ -469,24 +465,28 @@ class Engine:
         reading order, so the text reads back as written.
         """
         x, y = span.origin
-        words, _width = self._words(span, text, font=font, size=size)
-        stretches = each_stretch(words, aliases=aliases, font=font, size=size)
+        cos, sin = _QUARTER_TURNS[setting.turn]
+        # A point's move along the line, narrowed; the page's y grows downward.
+        step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
+        words, _width = self._words(span, text, font=font, size=setting.size)
+        stretches = each_stretch(words, aliases=aliases, font=font, size=setting.size)
         runs = [
-            TextRun(stretch.text, (x + stretch.offset * scale_x, y), alias)
+            TextRun(
+                stretch.text, (x + step_x * stretch.offset, y + step_y * stretch.offset), alias
+            )
             for alias, stretch in stretches
         ]
         self._driver.write_text(
             span.page,
             runs=runs,
-            size=size,
+            size=setting.size,
             color=span.color,
             opacity=span.opacity,
-            scale_x=scale_x,
+            scale_x=setting.scale_x,
+            turn=setting.turn,
         )
 
-    def _draw_codes(
-        self, span: Span, pool: PooledFont, *, text: str, size: float, scale_x: float
-    ) -> None:
+    def _draw_codes(self, span: Span, pool: PooledFont, *, text: str, setting: Setting) -> None:
         """Write `text` as codes in the file's own copies of its font, on top of the page.
 
         One text object: each stretch switches to its copy, and the pen moves on
@@ -498,16 +498,21 @@ class Engine:
         for copy, stretch in pool.stretches(text):
             resource = self._resource_for(span.page, pool, copy)
             codes = hex_codes(coded_of(copy), stretch)
-            shown.append(f"/{resource} {size:.{_PDF_DP}f} Tf <{codes}> Tj")
+            shown.append(f"/{resource} {setting.size:.{_PDF_DP}f} Tf <{codes}> Tj")
         # See-through, as the original was.
         paint = ""
         if span.opacity < SOLID:
             paint = f" /{self._driver.add_opacity(span.page, span.opacity)} gs"
+        # Where the text goes: narrowed along its line, turned, and placed.
+        cos, sin = _QUARTER_TURNS[setting.turn]
+        narrow = setting.scale_x
+        matrix = [narrow * cos, narrow * sin, -sin, cos, x, y]
+        placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
         # Save the page's settings, set color, place the text, write each stretch
         # in its font and size, then put the settings back.
         stream = (
             f"q{paint} BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
-            f" {scale_x:.{_PDF_DP}f} 0 0 1 {x:.{_PDF_DP}f} {y:.{_PDF_DP}f} Tm"
+            f" {placed} Tm"
             f" {' '.join(shown)} ET Q"
         )
         self._driver.add_content(span.page, stream.encode())

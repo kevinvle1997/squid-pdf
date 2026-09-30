@@ -149,10 +149,13 @@ def apply(
     for span, text, size, scale_x in to_draw:
         for said in engine.draw(span, text, size=size, scale_x=scale_x):
             notices.append(Notice(span.id, said))
+    # New text reads upright as the page is shown: turned by its page's own turn.
+    turns = [page.rotation for page in engine.pages()] if resolved.inserts else []
     for position, insert in resolved.inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
-            for said in engine.draw(insert_span(insert), insert.text):
+            turn = turns[insert.page]
+            for said in engine.draw(insert_span(insert), insert.text, turn=turn):
                 notices.append(Notice(None, said, edit=position))
     return Applied(resolved.skipped, notices)
 
