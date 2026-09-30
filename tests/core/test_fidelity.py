@@ -18,6 +18,7 @@ from squidpdf.core import (
     words,
 )
 from squidpdf.core.fonts import strip_subset
+from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
 from tests.conftest import REFERENCED_PAGE, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import assert_all, assert_between, assert_equal, assert_not_in
@@ -321,3 +322,31 @@ def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_c
 
     assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
     _assert_drawn_in_both_copies(merged_coded, out)
+
+
+def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
+    # Three pages, one stored font object: a long document's usual shape. Trimmed,
+    # as a generator leaves it, which also names it the way its spans are named.
+    doc = pymupdf.open()
+    font_file = pymupdf.Font("tiro").buffer
+    for page_number in range(3):
+        page = doc.new_page()
+        page.insert_font(fontname="emb", fontbuffer=font_file)
+        page.insert_text((72, 72), f"Page {page_number} text", fontname="emb", fontsize=_SIZE)
+    doc.subset_fonts(verbose=False)
+    path = str(tmp_path / "shared.pdf")
+    doc.save(path)
+    opened: list[bytes] = []
+    open_font = MuPDFDriver.open_font
+
+    def counted(self: MuPDFDriver, font_file: bytes) -> MuPDFFont:
+        opened.append(font_file)
+        return open_font(self, font_file)
+
+    monkeypatch.setattr(MuPDFDriver, "open_font", counted)
+
+    with open_pdf(path) as engine:
+        reports = engine.assess(engine.index())
+
+    assert_all(reports, lambda r: r.state is Fidelity.EXACT, lambda r: r.span_id)
+    assert_equal(len(opened), 1, "times the shared font was opened")
