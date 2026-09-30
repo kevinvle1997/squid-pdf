@@ -2,12 +2,13 @@
 
 A PDF stores only the letters it used, per copy of a font, and one file can
 hold several copies of one face: merged documents, or a copy per page, and
-Google's copy of it can join them. Pure functions: `core.document_fonts` finds
-and opens the copies.
+Google's copy of it can join them. `core.document_fonts` finds and opens the
+copies; the pool takes each in only when a letter needs it.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from itertools import groupby
@@ -35,6 +36,13 @@ __all__ = [
 ]
 
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
+# How many of Google's copies a process keeps the letters of: each is a few tens of KB.
+_GOOGLE_COPIES_KEPT = 32
+
+# Each Google copy's letters and widths, by a digest of the file, oldest first. A
+# process keeps them: finding which letters really draw takes tens of milliseconds
+# a request, and the same bytes always give the same answer.
+_google_widths: dict[bytes, dict[str, float]] = {}
 
 # The copies that may lend the own copy letters, in the order they lend, given the
 # letters lent so far: whether a later one is worth opening can depend on them.
@@ -195,10 +203,27 @@ def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> Font
 
     Stands for the same font as the own copy, so it's checked like any other copy.
     """
+    return FontCopy(own.font, embedded, google_widths(embedded), file)
+
+
+def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
+
+    Worked out once per process for each file, keeping the latest _GOOGLE_COPIES_KEPT.
+    By the bytes, not the file's name: a test can hand in another font under it.
+    """
+    digest = hashlib.sha256(embedded.file).digest()
+    # Kept already: this process has measured these bytes.
+    if digest in _google_widths:
+        return _google_widths[digest]
+    # Full: forget the one kept longest, so a long-lived worker stays small.
+    if len(_google_widths) >= _GOOGLE_COPIES_KEPT:
+        del _google_widths[next(iter(_google_widths))]
     program = embedded.program
     letters = [ch for ch in embedded.coverage.drawable() if in_glyph_list(ch)]
     widths = {ch: program.advance(ch) * _EM for ch in letters}
-    return FontCopy(own.font, embedded, widths, file)
+    _google_widths[digest] = widths
+    return widths
 
 
 def in_glyph_list(ch: str) -> bool:

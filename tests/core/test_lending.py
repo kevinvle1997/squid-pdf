@@ -6,8 +6,11 @@ import pymupdf
 import pytest
 
 from squidpdf.core import open_pdf
+from squidpdf.core.fonts import FACES, face_bytes
+from squidpdf.core.google import GoogleFile
 from squidpdf.core.mupdf import MuPDFDriver
 from squidpdf.core.types import PageFont
+from tests.core.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in
 
 _SIZE = 14.0
@@ -88,3 +91,26 @@ def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path, noted):
     assert_equal(after_borrowing, ([first, second], [0, 1]), looked_at)
     assert_in("J", widths, "letters the browser is told the pool draws")
     assert_in(third, read_out, "copies read out once the whole pool is asked for")
+
+
+def _missing_with_google(path: str, font_file: bytes) -> list[str]:
+    """What the first span can't draw of "Yearly Hello", with `font_file` as Google's copy."""
+
+    def fetch(_file: GoogleFile) -> bytes:
+        return font_file
+
+    with open_pdf(path, fetch=fetch) as engine:
+        span = next(iter(engine.index()))
+        return engine.missing(span, "Yearly Hello")
+
+
+def test_googles_copy_is_measured_by_its_bytes_not_its_name(poppins_subset):
+    """A process keeps what Google's copies draw, and must not answer for other bytes."""
+    lent = _missing_with_google(poppins_subset, POPPINS.read_bytes())
+    # Liberation Sans handed back under Poppins' name: other widths, so it lends nothing.
+    impostor = _missing_with_google(
+        poppins_subset, face_bytes(FACES["Liberation Sans Regular"])
+    )
+
+    assert_equal(lent, [], "letters Google's Poppins leaves missing")
+    assert_equal(impostor, ["Y", "a", "y"], "letters another font by its name leaves")
