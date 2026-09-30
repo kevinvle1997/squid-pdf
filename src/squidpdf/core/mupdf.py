@@ -33,7 +33,7 @@ __all__ = [
     "write_dense",
 ]
 
-_GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
+_GARBAGE_COLLECT = 2  # drop unused objects; 3 also merges copies, taking pages-squared time
 
 # The long fixture's page: a contract's body text, set the way a word processor sets it.
 _DENSE_SIZE = 10.5  # points
@@ -235,7 +235,7 @@ class MuPDFDriver(PdfFile):
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
         # Object streams compress the plain objects too: a face's width list is most of it.
-        self._doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True, use_objstms=True)
+        self._doc.save(path, garbage=_GARBAGE_COLLECT, deflate=True, use_objstms=True)
 
     def close(self) -> None:
         """Release the open document."""
