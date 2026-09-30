@@ -614,6 +614,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fonttools" },
+    { name = "httpx" },
     { name = "pymupdf" },
 ]
 
@@ -628,7 +629,6 @@ api = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -640,6 +640,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
     { name = "fonttools", specifier = ">=4.53" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "orjson", marker = "extra == 'api'", specifier = ">=3.10" },
     { name = "pebble", marker = "extra == 'api'", specifier = ">=5.2" },
     { name = "pymupdf", specifier = ">=1.25.3" },
@@ -650,7 +651,6 @@ provides-extras = ["api"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.7" },

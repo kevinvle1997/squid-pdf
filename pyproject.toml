@@ -8,6 +8,7 @@ requires-python = ">=3.14"
 dependencies = [
     "pymupdf>=1.25.3",  # 1.25.3 is the first to read text's opacity (span "alpha")
     "fonttools>=4.53",
+    "httpx>=0.28",  # fetches Google's copy of a font, in the CLI as in the app
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,6 @@ dev = [
     "mypy>=1.13",
     # Pre-1.0: its checks change between releases, so move this pin on purpose.
     "ty==0.0.84",
-    "httpx>=0.28",
     # The API's tests need it, and the CLI must still run without it.
     "squidpdf[api]",
 ]
