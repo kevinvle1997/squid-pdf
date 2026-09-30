@@ -24,22 +24,26 @@ _WILDCARD = "*"  # "any language": ours first
 def best_language(accept_language: str | None) -> str:
     """The tag of the catalog to answer in: the most wanted one we have, else English.
 
-    A tag we lack falls back to its shorter forms, so "en-GB" is answered in "en".
-    Weights break ties in the order given; a tag weighted 0 is refused.
+    A tag we lack falls back to its shorter forms, so "en-GB" is answered in "en",
+    unless the browser refused that form itself. Weights break ties in the order
+    given; a tag weighted 0 is refused.
     """
     wanted: list[tuple[float, int, str]] = []
+    refused: set[str] = set()
     for position, item in enumerate((accept_language or "").split(",")):
         tag, _, weight = item.partition(";")
         tag, quality = tag.strip().lower(), quality_of(weight)
         if tag and quality > 0:
             wanted.append((-quality, position, tag))
+        if tag and quality == 0:
+            refused.add(tag)
     for _quality_first, _position, tag in sorted(wanted):
         if tag == _WILDCARD:
             return words.ENGLISH
         subtags = tag.split("-")
         for length in range(len(subtags), 0, -1):
             candidate = "-".join(subtags[:length])
-            if candidate in words.CATALOGS:
+            if candidate in words.CATALOGS and candidate not in refused:
                 return candidate
     return words.ENGLISH
 

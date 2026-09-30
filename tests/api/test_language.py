@@ -36,12 +36,14 @@ def _in(language: str) -> dict[str, str]:
         (f"{PSEUDO}-XX", PSEUDO),
         (f"fr, {PSEUDO};q=0.9, en;q=0.8", PSEUDO),
         (f"{PSEUDO};q=0", "en"),
+        (f"{PSEUDO}-XX;q=0.9, {PSEUDO};q=0", "en"),
     ],
     ids=[
         "no header",
         "one we have, more exactly",
         "the best we have, by weight",
         "one refused",
+        "one refused, though a longer form of it is wanted",
     ],
 )
 def test_the_language_answered_in_is_the_most_wanted_one_we_have(
