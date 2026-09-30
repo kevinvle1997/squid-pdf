@@ -1,4 +1,4 @@
-name: Lint and tests
+name: CI
 
 on:
   push:
@@ -9,20 +9,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
-  check:
+  backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
       - name: Install
-        run: uv sync --locked --all-extras
+        uses: ./.github/actions/uv
 
       - name: Lint
         run: uv run ruff check src tests
@@ -36,41 +35,37 @@ jobs:
       - name: Types (ty)
         run: uv run ty check
 
+      # One worker per core. More is slower: the API's tests each start a process pool.
       - name: Test
-        run: uv run pytest -q
+        run: uv run pytest -q -n auto
 
-  # Nothing else would notice if the Dockerfile stopped building.
-  docker:
+  # Nothing else would notice if the test image stopped building. The suite itself
+  # runs in `backend`; here a slice of it proves the tools, tests and fixtures made it in.
+  image:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
-      # The test image: the server's, plus the dev tools and tests/. Its command is the suite.
       - name: Build
         run: docker build --target test -t squidpdf-test .
 
       - name: Test inside the image
-        run: docker run --rm squidpdf-test
+        run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
   # The browser app: its types are the API's OpenAPI, it typechecks, its unit
   # tests pass, and the core loop works end to end in Chromium against the real API.
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: react
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
       - name: Install the API
-        working-directory: .
-        run: uv sync --locked --all-extras
+        uses: ./.github/actions/uv
 
       - name: Install Node
         uses: actions/setup-node@v5
@@ -88,9 +83,23 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
+      # The lockfile pins Playwright, and Playwright pins its Chromium.
+      - name: Browser cache
+        id: browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('react/package-lock.json') }}
+
       # Before the tests: the view's tests run in Chromium too.
       - name: Browser
+        if: steps.browser.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      # The system libraries it needs live outside the cache, so a hit still installs them.
+      - name: Browser's system libraries
+        if: steps.browser.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Unit and view tests
         run: npm test
@@ -107,16 +116,19 @@ jobs:
 
   # The image served behind Caddy as deployed, with a password made here and
   # thrown away: the gate, an upload and an export, all through the proxy.
-  serve:
+  deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
+      # Hashed by the Caddy the proxy is built on, named once in react/Dockerfile.
       - name: Throwaway password
         run: |
+          caddy=$(sed -n 's/^FROM \(caddy:.*\)/\1/p' react/Dockerfile)
           password=$(openssl rand -hex 16)
           echo "::add-mask::$password"
-          hash=$(docker run --rm caddy:2.11.4 caddy hash-password --plaintext "$password")
+          hash=$(docker run --rm "$caddy" caddy hash-password --plaintext "$password")
           printf "SQUIDPDF_DOMAIN=localhost\nSQUIDPDF_USER=ci\nSQUIDPDF_PASSWORD_HASH='%s'\n" "$hash" > .env
           echo "SQUIDPDF_PASSWORD=$password" >> "$GITHUB_ENV"
 
@@ -154,21 +166,16 @@ jobs:
   # The one number the product is judged on. Runs against the generated fixture
   # here; the real answer comes from the corpus of ten real PDFs, which cannot
   # be committed because they are other people's documents.
-  green-rate:
+  report:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
       - name: Install
-        run: uv sync --locked
+        uses: ./.github/actions/uv
 
-      - name: Report
+      - name: Green rate
         run: |
           uv run squidpdf fixture /tmp/sample.pdf
           uv run squidpdf report /tmp/sample.pdf | tee /tmp/report.txt
