@@ -5,12 +5,13 @@
 import { useRef, useState } from "react";
 import { ProblemError, render } from "../../api/client";
 import type { Document, Edit, FitInfo, ImageInfo, Region } from "../../api/types";
+import type { Reopener } from "../../documents/reopen";
 import { changedSpans, latestTexts } from "../log";
 import { regionsFor } from "../strips";
 
 interface Options {
   scale: number;
-  reopen: () => Promise<Document | null>; // the document's hour ran out: open it again from this browser
+  reopener: Reopener; // the document's hour ran out: open it again from this browser
   onProblem: (detail: string) => void;
 }
 
@@ -33,7 +34,7 @@ function decoded(image: ImageInfo): Promise<void> {
   return element.decode().catch(() => undefined);
 }
 
-export function useStrips({ scale, reopen, onProblem }: Options): Strips {
+export function useStrips({ scale, reopener, onProblem }: Options): Strips {
   const [strips, setStrips] = useState<ReadonlyMap<number, ImageInfo[]>>(new Map());
   const [shown, setShown] = useState<ReadonlyMap<string, string>>(new Map());
   const [fits, setFits] = useState<Readonly<Record<string, FitInfo>>>({});
@@ -83,7 +84,8 @@ export function useStrips({ scale, reopen, onProblem }: Options): Strips {
     const ask = new AbortController();
     asking.current = { ask, pages: drawing };
     try {
-      const reply = await render(doc.id, { edits, scale, regions }, ask.signal);
+      // Still ours while the document opens again, so a newer change can take these pages over.
+      const reply = await reopener.withDocument((current) => render(current.id, { edits, scale, regions }, ask.signal));
       await Promise.all(reply.images.map(decoded));
       if (ask.signal.aborted) return;
       asking.current = null;
@@ -97,16 +99,8 @@ export function useStrips({ scale, reopen, onProblem }: Options): Strips {
     } catch (error) {
       if (ask.signal.aborted) return;
       if (!(error instanceof ProblemError)) throw error;
-      if (error.problem.status !== 404) {
-        asking.current = null;
-        onProblem(error.problem.detail);
-        return;
-      }
-      // Still ours while the document opens again, so a newer change can take these pages over.
-      const again = await reopen();
-      if (again === null || ask.signal.aborted) return;
       asking.current = null;
-      await draw(again, edits, drawing);
+      onProblem(error.problem.detail);
     }
   }
 

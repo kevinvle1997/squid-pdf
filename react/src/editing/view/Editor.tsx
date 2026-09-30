@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ProblemError, exportPdf, stillThere, upload } from "../../api/client";
+import { ProblemError, exportPdf } from "../../api/client";
 import type { Document, SpanInfo } from "../../api/types";
+import { Reopener } from "../../documents/reopen";
 import { Button } from "../../ui/Button";
 import { Notice } from "../../ui/Notice";
 import { SkipLink } from "../../ui/SkipLink";
@@ -70,28 +71,17 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   const spans = useMemo(() => new Map(doc.spans.map((span) => [span.id, span])), [doc]);
   const pages = useMemo(() => byPage(doc.spans), [doc]);
 
-  // The hour ran out: open the same file again. Span ids are the same, so every edit still applies.
-  const reopening = useRef<Promise<Document | null> | null>(null);
-  function reopen(): Promise<Document | null> {
-    reopening.current ??= upload(file, () => undefined)
-      .then((again) => {
+  // The hour ran out and the document opened again: the same spans, under a new id.
+  const [reopener] = useState(
+    () =>
+      new Reopener(file, opened, (again) => {
         setDoc(again);
         setNotice({ tone: "plain", text: again.copy.reopened });
-        return again;
-      })
-      .catch((error: unknown) => {
-        if (!(error instanceof ProblemError)) throw error;
-        setNotice({ tone: "warn", text: error.problem.detail });
-        return null;
-      })
-      .finally(() => {
-        reopening.current = null;
-      });
-    return reopening.current;
-  }
+      }),
+  );
 
   const onProblem = (detail: string) => setNotice({ tone: "warn", text: detail });
-  const { strips, shown, fits, redraw } = useStrips({ scale: SCALE, reopen, onProblem });
+  const { strips, shown, fits, redraw } = useStrips({ scale: SCALE, reopener, onProblem });
 
   // Every change to the history comes through here, and redraws what it changed.
   function change(action: LogAction) {
@@ -117,9 +107,11 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     setSaid(`Changed to ${typed.text}`);
   }
 
-  // A page image can fail for any reason; only a document that's really gone is opened again.
-  async function onImageFailed() {
-    if (!(await stillThere(doc.id))) await reopen();
+  function onImageFailed() {
+    reopener.check().catch((error: unknown) => {
+      if (!(error instanceof ProblemError)) throw error;
+      onProblem(error.problem.detail);
+    });
   }
 
   const changed = [...latest].filter(([id, text]) => spans.get(id)?.text !== text);
@@ -139,16 +131,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     finish(true);
     const edits = editsOf(history.current);
     try {
-      let exported;
-      try {
-        exported = await exportPdf(doc.id, edits);
-      } catch (error) {
-        // Only an expired document is worth one quiet retry; anything else is said as it is.
-        if (!(error instanceof ProblemError) || error.problem.status !== 404) throw error;
-        const again = await reopen();
-        if (again === null) return;
-        exported = await exportPdf(again.id, edits);
-      }
+      const exported = await reopener.withDocument((current) => exportPdf(current.id, edits));
       download(exported.pdf, file.name);
       const leftOut = exported.skipped.length > 0;
       const text = leftOut
@@ -209,7 +192,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
       focusSpan(spanId);
     },
     say: setSaid,
-    imageFailed: () => void onImageFailed(),
+    imageFailed: onImageFailed,
   };
 
   return (
