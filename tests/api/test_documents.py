@@ -180,11 +180,14 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
-def test_an_upload_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes):
-    """A past bug: int() made "many" a 500. Uploads and edit lists read it the same way."""
+@pytest.mark.parametrize(
+    "path", ["/api/documents", "/api/documents/any/render"], ids=["an upload", "an edit list"]
+)
+def test_a_body_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes, path):
+    """A past bug: int() made "many" a 500. Uploads and edit lists each read it."""
     before = _kept()
     headers = {"content-type": "application/pdf", "content-length": "many"}
-    response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
+    response = mine.post(path, content=pdf_bytes, headers=headers)
     assert_problem(response, "invalid_request", 400)
     assert_equal(_kept(), before, "documents on disk after a refusal")
 

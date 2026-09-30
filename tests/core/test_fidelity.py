@@ -13,6 +13,7 @@ from squidpdf.core import (
     FidelityReport,
     Span,
     SpanIndex,
+    green_rate,
     new_text,
     open_pdf,
     words,
@@ -393,3 +394,9 @@ def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path)
         [report] = again.assess(SpanIndex([line]))
 
     assert_equal((report.state, _said(report)), (Fidelity.EXACT, None), "the redrawn line")
+
+
+def test_the_green_rate_is_the_share_of_spans_that_keep_their_font(engine):
+    """The one number tracked: two of the sample's four spans are in a font the file stores."""
+    assert_equal(green_rate(engine.assess(engine.index())), 0.5, "the sample's green rate")
+    assert_equal(green_rate([]), 0.0, "the green rate of a document with no text")

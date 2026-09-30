@@ -12,7 +12,7 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
-from squidpdf.editing.constants import MAX_TEXT_CHARS
+from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
@@ -132,14 +132,21 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     assert_equal(response.headers["Content-Language"], pseudo, "the language it's said in")
 
 
-def test_a_redaction_the_check_cannot_confirm_downloads_nothing(app, mine, doc, monkeypatch):
-    """Text still in the saved file means no file, and the user is told which span."""
+@pytest.mark.parametrize("pages", [None, [1, 0]], ids=["every page", "pages moved"])
+def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
+    app, mine, doc, monkeypatch, pages
+):
+    """Text still in the saved file means no file, and the user is told which span.
+
+    The erase is what's broken here, not the check: the text really is still
+    in the file, and the check reads it where its page went.
+    """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
     span = _span(doc, 1, "Invoices")
     kept = _files(doc)
 
-    response = _export(mine, doc, [_redact(span)])
+    response = _export(mine, doc, [_redact(span)], pages=pages)
 
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=span["text"], page=2)
@@ -240,8 +247,9 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     [
         ([2], "no_such_page", 422),
         ([0, 0], "invalid_request", 400),
+        ([], "invalid_request", 400),
     ],
-    ids=["past the last page", "a page twice"],
+    ids=["past the last page", "a page twice", "no page at all: leave pages out for every one"],
 )
 def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     mine, doc, pages, problem, status
@@ -249,7 +257,29 @@ def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     assert_problem(_export(mine, doc, [], pages), problem, status)
 
 
-def test_new_text_past_the_limit_is_refused(mine, doc):
-    text = "x" * (MAX_TEXT_CHARS + 1)
-    edit = {"kind": "replace", "span_id": doc["spans"][0]["id"], "text": text}
-    assert_problem(_export(mine, doc, [edit]), "text_too_long", 422)
+_LOWERED = 3  # each limit, lowered so a test can pass it with a short list
+
+
+@pytest.mark.parametrize(
+    ("limit", "made", "problem"),
+    [
+        ("MAX_EDITS", lambda span: [_redact(span)] * (_LOWERED + 1), "too_many_edits"),
+        (
+            "MAX_TEXT_CHARS",
+            lambda span: [{"kind": "replace", "span_id": span["id"], "text": "x" * 4}],
+            "text_too_long",
+        ),
+        (
+            "MAX_TEXT_CHARS",
+            lambda _span: [
+                {"kind": "insert", "page": 0, "origin": [72, 700], "text": "xxxx", "size": 12}
+            ],
+            "text_too_long",
+        ),
+    ],
+    ids=["too many edits", "a replacement too long", "an insert too long"],
+)
+def test_an_edit_list_past_a_limit_is_refused(mine, doc, monkeypatch, limit, made, problem):
+    monkeypatch.setattr(editing_constants, limit, _LOWERED)
+    edits = made(doc["spans"][0])
+    assert_problem(_export(mine, doc, edits), problem, 422)

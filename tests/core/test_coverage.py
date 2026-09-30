@@ -163,3 +163,9 @@ def test_a_letter_typed_in_two_pieces_is_the_one_the_font_has(tmp_path):
         [span] = engine.index()
         assert_equal(engine.missing(span, in_pieces), [], "letters the font lacks")
         assert_equal(engine.left_out(span, in_pieces), [], "letters left out")
+
+
+def test_a_font_coverage_cant_read_draws_what_the_library_lists():
+    """Bytes no parser reads (a Type 1 font, say): the library's own list is the best left."""
+    coverage = Coverage(b"not a font program", listed_letters=[ord("A")])
+    assert_equal((coverage.covers("A"), coverage.covers("B")), (True, False), "A, then B")

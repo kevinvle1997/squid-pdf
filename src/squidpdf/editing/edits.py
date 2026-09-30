@@ -13,7 +13,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
-from squidpdf.editing.constants import MAX_EDITS, MAX_TEXT_CHARS
+from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
 
@@ -98,10 +98,10 @@ type Edit = Replace | Redact | Insert
 
 def check_edits(edits: list[Edit]) -> None:
     """Refuse an edit list over the limits: too many edits, or too much text in one."""
-    if len(edits) > MAX_EDITS:
-        raise TooManyEdits(MAX_EDITS)
-    too_long = any(
-        isinstance(edit, Replace | Insert) and len(edit.text) > MAX_TEXT_CHARS for edit in edits
-    )
+    # Read as module attributes, so a test can lower the limits.
+    if len(edits) > constants.MAX_EDITS:
+        raise TooManyEdits(constants.MAX_EDITS)
+    longest = constants.MAX_TEXT_CHARS
+    too_long = any(isinstance(e, Replace | Insert) and len(e.text) > longest for e in edits)
     if too_long:
-        raise TextTooLong(MAX_TEXT_CHARS)
+        raise TextTooLong(longest)

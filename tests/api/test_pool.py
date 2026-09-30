@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 
@@ -35,6 +36,17 @@ def _hang() -> None:
 def _overeat() -> int:
     """Work that asks for twice a worker's memory."""
     return len(bytearray(2 * WORKER_MEMORY_BYTES))
+
+
+def _die() -> None:
+    """Work whose process dies under it, as MuPDF crashing on a file takes it down."""
+    os._exit(1)
+
+
+def test_a_worker_that_dies_says_the_file_is_damaged(pool):
+    with pytest.raises(Problem) as caught:
+        asyncio.run(pool.run(_ENOUGH_S, _die))
+    assert_equal(caught.value.type, "damaged", "problem for a worker that died")
 
 
 def _read_a_broken_font() -> None:

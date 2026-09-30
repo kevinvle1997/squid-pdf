@@ -11,6 +11,7 @@ import pytest
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
+from squidpdf.documents.errors import Gone
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
@@ -85,3 +86,11 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
     assert_equal(
         names, sorted(["owner", store.analysis_file("a-build")]), "files in the folder"
     )
+
+
+def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
+    """Found, then deleted by its owner or the sweep before its hour restarts."""
+    _, folder = store.create("owner")
+    store.delete(folder)
+    with pytest.raises(Gone):
+        store.touch(folder)
