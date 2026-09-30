@@ -24,13 +24,13 @@ jobs:
         uses: ./.github/actions/uv
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Format
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
 
       - name: Types (mypy)
-        run: uv run mypy src tests
+        run: uv run mypy src tests scripts
 
       - name: Types (ty)
         run: uv run ty check

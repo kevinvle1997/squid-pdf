@@ -60,15 +60,25 @@ src = ["src", "tests"]
 # TID: only core/pdf.py talks to MuPDF's low-level API.
 # RUF001-3: no invisible or look-alike characters in strings, docstrings or comments.
 # PLR0917: past three parameters, the rest are keyword-only, so every call names them.
+# S101: no bare assert; a failure says what it expected (tests/helpers.py). RET505/506: no
+# else after a return or raise. PLR2004: a number in a comparison is a named constant.
+# ASYNC: nothing blocking on the event loop.
 select = [
     "E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID",
-    "PLR0917",
+    "PLR0917", "S101", "RET505", "RET506", "PLR2004", "ASYNC",
 ]
+# ASYNC109: a timeout parameter on an async function. Ours go to the pool, which kills a
+# worker at its deadline (pebble); asyncio's own timeout can't stop a process.
+ignore = ["ASYNC109"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test names are sentences already; a docstring there is welcome, not required.
 # A test's parameters are fixtures, which pytest passes by name anyway.
-"tests/**" = ["D1", "PLR0917"]
+# A test's numbers are the case it sets up, said once. A test may poll until something
+# happens: it has nothing to await.
+"tests/**" = ["D1", "PLR0917", "PLR2004", "ASYNC110"]
+# The one place a bare assert belongs: the helpers every other check goes through.
+"tests/helpers.py" = ["S101"]
 "src/squidpdf/core/pdf.py" = ["TID251"]
 
 [tool.ruff.lint.pylint]
@@ -86,7 +96,7 @@ testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 # Test functions are unannotated; without this mypy skips their bodies entirely.
@@ -105,4 +115,4 @@ disallow_untyped_defs = true
 python-version = "3.14"
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
