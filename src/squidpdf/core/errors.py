@@ -33,8 +33,6 @@ class Problem(Exception):
 
     type: ClassVar[str] = "server_error"  # what the browser branches on: never renamed
     status: ClassVar[int] = 500
-    # Its own sentence, only for a type no catalog has: the catalogs say the rest.
-    sentence: ClassVar[str | None] = None
 
     def __init__(self, debug: str | None = None, **fill: Param) -> None:
         """Keep what the sentence needs, and the developer's why."""
@@ -48,9 +46,8 @@ class Problem(Exception):
         return Message(self.type, dict(self.fill))
 
     def said_in(self, language: str) -> str:
-        """The sentence the user reads, in `language`, placeholders filled."""
-        template = words.sentence(self.type, language, default=self.sentence)
-        return words.fill(template, self.fill, language)
+        """The sentence the user reads, in `language`: its Message, said as any other is."""
+        return words.render(self.message, language)
 
     @property
     def detail(self) -> str:
