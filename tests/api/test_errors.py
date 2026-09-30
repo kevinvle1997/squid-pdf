@@ -56,7 +56,7 @@ def test_every_problem_has_its_own_wire_type_and_an_english_sentence(app):
     shared = {Gone: NotFound, Damaged: Unreadable, ServerError: Problem}
     seen: dict[str, type[Problem]] = {}
     for cls in _every(Problem):
-        if cls.__module__.startswith("tests."):
+        if not cls.__module__.startswith("squidpdf."):  # a test's own, or a library's
             continue
         said = f"the catalog's sentence for {cls.__name__}"
         assert_in(cls.type, words.ENGLISH_SENTENCES, said)

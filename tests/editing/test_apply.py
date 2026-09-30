@@ -182,6 +182,7 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     edited = pymupdf.open(out)[0]
     assert_equal(len(edited.get_drawings()), 1, "lines left under the replaced text")
     assert_not_in("48,500", edited.get_text(), "the saved page after a replace")
+    assert_in("49,500", edited.get_text(), "the saved page after a replace")
 
 
 def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(

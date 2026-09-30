@@ -11,7 +11,7 @@ import pymupdf
 import pytest
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, face_widths
+from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.fonts import FACES
 from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
@@ -164,7 +164,8 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
     chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])  # no length up front: it streams
     response = mine.post("/api/documents", content=chunks)
     assert_problem(response, "too_large", 413)
-    assert_equal(response.json()["detail"], "This file is over 100 MB.", "the refusal")
+    said = words.sentence("too_large").format(mb=constants.MAX_FILE_MB)
+    assert_equal(response.json()["detail"], said, "the refusal")
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
