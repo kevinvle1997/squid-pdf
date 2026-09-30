@@ -16,6 +16,7 @@ import os
 import queue
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache, partial
@@ -27,7 +28,7 @@ import httpx
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
-from squidpdf.core.constants import FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
+from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.driver import PdfDriver
 from squidpdf.core.embedded import EmbeddedFont
@@ -38,6 +39,7 @@ __all__ = [
     "GoogleFile",
     "Download",
     "Fetch",
+    "RetryAt",
     "GoogleFontController",
     "blob_hash",
     "raw_url",
@@ -54,6 +56,9 @@ _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
+_EVERY_FILE = "*"  # in a RetryAt: a download got no answer, so the network is down
+# This process's record of what failed to come: each worker learns on its own.
+_retry_at: RetryAt = {}
 
 # A weight word in a font's name, and the weight it means; compound words first,
 # so "SemiBold" isn't read as "Bold".
@@ -103,6 +108,9 @@ class GoogleFile:
 type Download = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
+# When each file that failed to come may be tried again, by `GoogleFile.source`, as
+# `time.monotonic()` reads; `_EVERY_FILE` holds back all of them.
+type RetryAt = dict[str, float]
 
 
 class GoogleFontController:
@@ -201,17 +209,64 @@ def raw_url(path: str) -> str:
     return f"{_RAW}/{GOOGLE_FONTS_COMMIT}/{path}"
 
 
-def fetched(file: GoogleFile, *, folder: Path, download: Download) -> bytes | None:
+def fetched(
+    file: GoogleFile, *, folder: Path, download: Download, retry_at: RetryAt
+) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
-    From the cache in `folder` when it's there; else downloaded, checked against
-    the blob hash the list records, cut if it's variable, and cached. A failure
-    is logged, not raised, and not remembered: the next analysis tries again.
+    From the cache in `folder` when it's there and sound. Else downloaded in
+    the background and waited on for FETCH_TIMEOUT_S at most; one that finishes
+    later is still checked, cut and cached, for the next analysis. A failure is
+    logged, not raised, and noted in `retry_at`, so nothing waits on it again
+    for FETCH_RETRY_S. A download that gets no answer holds back every file:
+    the network failed, not the file, and each would wait as long.
     """
     ready = folder / GOOGLE_FONTS_COMMIT / file.source
     cached = from_cache(ready, file)
     if cached is not None:
         return cached
+    now = time.monotonic()
+    # .get: most files, and the network, have never failed
+    held_until = max(retry_at.get(file.source, 0.0), retry_at.get(_EVERY_FILE, 0.0))
+    # Failed a moment ago: not worth another wait yet.
+    if now < held_until:
+        return None
+    answer: queue.Queue[bytes | None] = queue.Queue(maxsize=1)
+    job = partial(fetch_into, file, ready=ready, download=download, answer=answer)
+    # A daemon: one still hanging never keeps the worker from exiting.
+    threading.Thread(target=job, daemon=True).start()
+    try:
+        font_file = answer.get(timeout=FETCH_TIMEOUT_S)
+    except queue.Empty:  # no answer by the deadline: it carries on, and caches what it gets
+        _logger.warning("No Google copy of %s: no answer in %s s", file.path, FETCH_TIMEOUT_S)
+        retry_at[_EVERY_FILE] = now + FETCH_RETRY_S
+        return None
+    if font_file is None:
+        retry_at[file.source] = now + FETCH_RETRY_S
+    return font_file
+
+
+def fetch_into(
+    file: GoogleFile, *, ready: Path, download: Download, answer: queue.Queue[bytes | None]
+) -> None:
+    """Download `file` and cache it at `ready`, then hand it, or None, to `answer`.
+
+    `answer` may have stopped waiting; what's cached is there for the next analysis.
+    """
+    font_file = checked_and_cut(file, download)
+    # Nothing to keep: the failure is logged.
+    if font_file is None:
+        answer.put(None)
+        return
+    kept(ready, font_file)
+    # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
+    if file.weight is not None:
+        kept(hash_beside(ready), blob_hash(font_file).encode())
+    answer.put(font_file)
+
+
+def checked_and_cut(file: GoogleFile, download: Download) -> bytes | None:
+    """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = download(raw_url(file.path))
     except Exception:  # a network fails in many ways; logged, and the stand-in draws
@@ -220,12 +275,11 @@ def fetched(file: GoogleFile, *, folder: Path, download: Download) -> bytes | No
     if blob_hash(whole) != file.blob:
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None
-    font_file = whole if file.weight is None else cut(whole, file.weight)
-    kept(ready, font_file)
-    # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
-    if file.weight is not None:
-        kept(hash_beside(ready), blob_hash(font_file).encode())
-    return font_file
+    try:
+        return whole if file.weight is None else cut(whole, file.weight)
+    except Exception:  # fontTools raises many kinds on a font it can't cut; logged
+        _logger.warning("No Google copy of %s: can't be cut", file.source, exc_info=True)
+        return None
 
 
 def from_cache(ready: Path, file: GoogleFile) -> bytes | None:
@@ -289,29 +343,14 @@ def kept(path: Path, font_file: bytes) -> None:
 
 
 def download(url: str) -> bytes:
-    """The bytes at `url`. Raises on a failed request, or past FETCH_TIMEOUT_S in all.
+    """The bytes at `url`. Raises on a failed request.
 
     httpx's timeout is per step (connecting, each read), not for the whole
-    fetch, and a connection can hang far longer; analysis can't wait on it, so
-    the deadline is kept here. A fetch past it is left to finish on its own.
+    fetch; `fetched` keeps the deadline for the whole of it.
     """
-    answer: queue.Queue[bytes | Exception] = queue.Queue(maxsize=1)
-    # A daemon: one still hanging never keeps the worker from exiting.
-    threading.Thread(target=get_into, args=(url, answer), daemon=True).start()
-    got = answer.get(timeout=FETCH_TIMEOUT_S)  # raises queue.Empty past the deadline
-    if isinstance(got, Exception):
-        raise got
-    return got
-
-
-def get_into(url: str, answer: queue.Queue[bytes | Exception]) -> None:
-    """Fetch `url` into `answer`: its bytes, or what went wrong."""
-    try:
-        response = httpx.get(url, timeout=FETCH_TIMEOUT_S, follow_redirects=True)
-        response.raise_for_status()
-        answer.put(response.content)
-    except Exception as problem:  # noqa: BLE001 (handed to `download`, which raises it)
-        answer.put(problem)
+    response = httpx.get(url, timeout=FETCH_TIMEOUT_S, follow_redirects=True)
+    response.raise_for_status()
+    return response.content
 
 
 def cache_folder() -> Path:
@@ -332,4 +371,4 @@ def google_fonts() -> Fetch | None:
     """
     if os.environ.get(_NO_FETCH):
         return None
-    return partial(fetched, folder=cache_folder(), download=download)
+    return partial(fetched, folder=cache_folder(), download=download, retry_at=_retry_at)

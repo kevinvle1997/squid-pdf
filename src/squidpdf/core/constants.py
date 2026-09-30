@@ -46,6 +46,9 @@ LIBRARY_VERSION = "8"
 GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
 # How long one fetch of Google's copy may take before the line goes to the stand-in.
 FETCH_TIMEOUT_S = 5.0
+# How long a copy that failed to come is left before it's tried again; a fetch with
+# no answer leaves every copy that long, since each would wait out the timeout too.
+FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = ((0x20, 0x7F), (0xA0, 0x100))
 
