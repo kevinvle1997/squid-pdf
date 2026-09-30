@@ -24,7 +24,7 @@ Fetched 2026-09-26; the families from Poppins down, 2026-09-29.
 | Nunito | 3.602 | The typeface itself | github.com/google/fonts `ofl/nunito` (upstream googlefonts/nunito @ 8c6a9bb) | `licenses/Nunito.txt` |
 | PT Sans, PT Serif | 2.003W, 1.000W | The typeface itself | github.com/google/fonts `ofl/ptsans`, `ofl/ptserif` (`PT_Sans-Web-*.ttf`, renamed to our file names) | `licenses/PTSans.txt`, `licenses/PTSerif.txt` |
 | FreeSans, FreeSerif | 20120503 | The typeface itself: GNU FreeFont, which LibreOffice and many invoice generators embed | ftp.gnu.org/gnu/freefont/freefont-ttf-20120503.zip | `licenses/FreeFont.txt` (the font exception, then the GPL-3) |
-| Latin Modern Roman 10, 12, 17, Roman Caps 10, Mono 10 | 2.004 | Same widths as LaTeX's Computer Modern (CMR10, CMBX10, CMTT10...), checked against a LaTeX résumé | gust.org.pl `lm2.004otf.zip` | `licenses/LatinModern.txt` |
+| Latin Modern Roman 10, 12, 17, Roman Caps 10, Mono 10 | 2.004 | Same widths as LaTeX's Computer Modern (CMR10, CMBX10, CMTT10...), checked against pdfTeX output | gust.org.pl `lm2.004otf.zip` | `licenses/LatinModern.txt` |
 | Inter | 4.001 | Sans, for new text | github.com/google/fonts `ofl/inter` (upstream rsms/inter @ 66647c0) | `licenses/Inter.txt` |
 | Roboto | 3.015 | Sans, for new text | github.com/google/fonts `ofl/roboto` (upstream googlefonts/roboto-classic @ 91d5d3e) | `licenses/Roboto.txt` |
 | Lato | 2.015 | Sans, for new text | github.com/google/fonts `ofl/lato` (upstream googlefonts/LatoGFVersion @ 080cb69) | `licenses/Lato.txt` |
@@ -71,8 +71,8 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
   Liberation Sans instead, and the app says the widths may differ.
 - **Raleway, Playfair Display**: variable fonts only, with a Reserved Font Name
   (see above). A document in either is drawn in a plain face of its kind.
-- **FreeSans matched to Liberation Sans**: tried first, but 36 of the 60 letters
-  an invoice's FreeSans drew are other widths, so FreeSans ships as itself.
+- **FreeSans matched to Liberation Sans**: tried first, but most of FreeSans'
+  letters are other widths, so FreeSans ships as itself.
 
 ## Checksums of the files here
 
