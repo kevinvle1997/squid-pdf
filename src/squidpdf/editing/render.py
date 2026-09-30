@@ -112,15 +112,17 @@ def draw_regions(
 
 
 def check_regions(regions: list[Region], pages: list[Page]) -> None:
-    """Refuse a region the document can't give: a page it lacks, or a top below its bottom."""
+    """Refuse a region the document can't give: a page it lacks, or no rows of the page."""
     for region in regions:
         if not 0 <= region.page < len(pages):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
-        top = 0.0 if region.y0 is None else region.y0
-        bottom = pages[region.page].height if region.y1 is None else region.y1
+        height = pages[region.page].height
+        # Only the rows the page has: a strip past its edges is cut to them, as draw cuts it.
+        top = 0.0 if region.y0 is None else max(region.y0, 0.0)
+        bottom = height if region.y1 is None else min(region.y1, height)
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
         if not top < bottom:
-            reason = f"regions: y0 must be a number above y1 on page {region.page}"
+            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {height:g}"
             raise InvalidRequest(debug=reason)
 
 

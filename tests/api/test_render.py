@@ -118,3 +118,13 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
 
     assert_problem(response, "invalid_request", 400)
     assert_in("text", response.json()["debug"], "what a developer reads")
+
+
+@pytest.mark.parametrize(
+    "region",
+    [{"page": 0, "y0": 900, "y1": 1000}, {"page": 0, "y0": -100, "y1": -50}],
+    ids=["below the page", "above it"],
+)
+def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
+    """Nothing to draw there: the browser asked for rows the page doesn't have."""
+    assert_problem(_render(mine, doc, [], [region]), "invalid_request", 400)
