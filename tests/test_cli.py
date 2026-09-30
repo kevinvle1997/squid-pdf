@@ -40,6 +40,36 @@ def test_spans_lists_every_span_and_a_summary(pdf, capsys):
     assert_in("keep the original font", out, "the summary line")
 
 
+def test_spans_on_one_page_counts_that_page_from_1_as_it_prints_it(pdf, capsys):
+    code = main(["spans", pdf, "-p", "2"])
+
+    out = capsys.readouterr().out
+    assert_equal(code, 0, "exit code of `squidpdf spans -p 2`")
+    assert_in("Invoices are due", out, "a span on the second page")
+    assert_not_in("SERVICES AGREEMENT", out, "a span on the first page")
+    assert_in("\n  2 spans", out, "the summary, of the page shown")
+
+
+def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"%PDF-1.7\n" + bytes(range(256)) * 8)
+
+    code = main(["spans", str(broken)])
+
+    said = capsys.readouterr()
+    assert_equal(code, 1, "exit code of `squidpdf spans` on a damaged PDF")
+    assert_in(words.sentence("damaged"), said.err, "what it says")
+    assert_not_in("Traceback", said.err, "what it says")
+
+
+def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["check", pdf, _span_id(pdf, "Invoices"), "Invoices\nare due"])
+
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf check` with a line break")
+    assert_in("one line", capsys.readouterr().err, "the usage error")
+
+
 def test_check_says_a_same_length_edit_fits(pdf, capsys):
     span_id = _span_id(pdf, "Invoices")
 
@@ -83,7 +113,7 @@ def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys
     code = main(["edit", pdf, span_id, longer, "-o", str(out_pdf)])
 
     assert_equal(code, 1, "exit code of `squidpdf edit` for an edit that will not fit")
-    assert_in("--force", capsys.readouterr().out, "the refusal names the way past it")
+    assert_in("--force", capsys.readouterr().err, "the refusal names the way past it")
     assert_true(not out_pdf.exists(), "no file is written when the edit is refused")
 
 
@@ -122,14 +152,14 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
         text="Invoices are due within thirty days.", page=2
     )
     assert_equal(code, 1, "exit code of `squidpdf redact` when the text is still there")
-    assert_in(said, capsys.readouterr().out, "the redact output")
+    assert_in(said, capsys.readouterr().err, "the redact output")
     assert_false(out_pdf.exists(), "a file kept with the text still in it")
 
 
 def test_an_unknown_span_id_fails_and_points_at_spans(pdf, capsys):
     code = main(["edit", pdf, "nope", "text"])
 
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert_equal(code, 1, "exit code of `squidpdf edit` with an unknown span id")
     assert_in(words.sentence("no_span"), out, "the unknown-span error")
     assert_in("nope", out, "the unknown-span error names the id")
