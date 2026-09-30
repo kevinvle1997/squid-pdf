@@ -37,9 +37,10 @@ class FontCache:
 
     # Every page's fonts, read once, before an edit can drop one: None until asked for.
     page_fonts: list[list[PageFont]] | None = None
-
-    # Each page's fonts by name, subset prefix aside.
+    # Each page's fonts by the name the page lists them under, subset prefix aside.
     listed: dict[int, dict[str, PageFont]] = field(default_factory=dict)
+    # Each page's stored fonts by the name their text reads, where that's another.
+    read_as: dict[int, dict[str, PageFont]] = field(default_factory=dict)
     # Each copy of a font in the file, opened, or why it can't be used.
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
     # A span's font with its other copies, by its page and its page's copy.
@@ -91,17 +92,37 @@ class DocumentFonts:
     def page_font(self, span: Span) -> PageFont | None:
         """The page's font by the span's font name, subset prefix aside; None when it has none.
 
-        The first by this name, in the library's order; any other is pooled with it.
+        By the name the page lists it under, else by the one its text reads: a
+        font stored in the file can be read under the name inside it, as ours
+        are once an export redraws with them. The first by a name, in the
+        library's order; any other is pooled with it.
         """
-        if span.page not in self._cache.listed:
-            by_name: dict[str, PageFont] = {}
-            for font in self._page_fonts()[span.page]:
-                by_name.setdefault(
-                    strip_subset(font.name), font
-                )  # the library's order: first wins
-            self._cache.listed[span.page] = by_name
+        name = strip_subset(span.font)
         # .get: new text can name a font the page doesn't have.
-        return self._cache.listed[span.page].get(strip_subset(span.font))
+        listed = self._listed(span.page).get(name)
+        return listed if listed is not None else self._read_as(span.page).get(name)
+
+    def _listed(self, page: int) -> dict[str, PageFont]:
+        """The page's fonts by the name it lists each under."""
+        if page not in self._cache.listed:
+            by_name: dict[str, PageFont] = {}
+            # The library's order: the first by a name wins.
+            for font in self._page_fonts()[page]:
+                by_name.setdefault(strip_subset(font.name), font)
+            self._cache.listed[page] = by_name
+        return self._cache.listed[page]
+
+    def _read_as(self, page: int) -> dict[str, PageFont]:
+        """The page's stored fonts by the name their text reads, found when first needed."""
+        if page not in self._cache.read_as:
+            by_name: dict[str, PageFont] = {}
+            # The library's order again: the first by a name wins.
+            for font in self._page_fonts()[page]:
+                read_as = self._driver.text_font_name(font.xref) if font.is_embedded else None
+                if read_as is not None:
+                    by_name.setdefault(strip_subset(read_as), font)
+            self._cache.read_as[page] = by_name
+        return self._cache.read_as[page]
 
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
         """Open the page's copy of the font, then pool the file's other copies with it.
@@ -143,7 +164,8 @@ class DocumentFonts:
         copies: dict[int, PageFont] = {}
         for font in same_name:
             copies.setdefault(font.xref, font)  # one font object on several pages is one copy
-        del copies[own.xref]
+        # .pop: the own copy may be listed under another name, found by the one its text reads.
+        copies.pop(own.xref, None)
         return list(copies.values())
 
     def _page_fonts(self) -> list[list[PageFont]]:

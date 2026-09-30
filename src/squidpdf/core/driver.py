@@ -71,6 +71,10 @@ class PdfDriver(Protocol):
         """Every font the page uses, including inside forms."""
         ...
 
+    def text_font_name(self, xref: int) -> str | None:
+        """The name text in font `xref` reads, often the font file's own; None if unreadable."""
+        ...
+
     def font_bytes(self, xref: int) -> bytes | None:
         """The font file stored in the PDF, or None if the library can't read it out."""
         ...

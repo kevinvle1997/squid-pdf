@@ -373,3 +373,23 @@ def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(
 
     judged = (report.state, None if report.why is None else report.why.key)
     assert_equal(judged, (state, why), "how the line is judged, and why")
+
+
+def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path):
+    """Its text reads "NimbusRoman-Regular", the font file's own name; the page lists it
+    as "Nimbus Roman Regular". The same font either way, so the next edit keeps it.
+    """
+    out = str(tmp_path / "exported.pdf")
+    with open_pdf(pdf) as engine:
+        index = engine.index()
+        [line] = [span for span in index if span.text.startswith("Invoices")]
+        engine.remove([line])
+        engine.draw(line, "Invoices are due within ten days.")
+        engine.save(out)
+
+    with open_pdf(out) as again:
+        index = again.index()
+        [line] = [span for span in index if span.text.startswith("Invoices")]
+        [report] = again.assess(SpanIndex([line]))
+
+    assert_equal((report.state, _said(report)), (Fidelity.EXACT, None), "the redrawn line")

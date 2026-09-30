@@ -183,6 +183,18 @@ class PdfFile:
             codes = (font_code(font, value) for value in range(code_count))
             return [code for code in codes if code is not None]
 
+    def text_font_name(self, xref: int) -> str | None:
+        """The name text in font `xref` is read under, often the font file's own.
+
+        A page can list a font as "Carlito Bold" while its text reads "Carlito-Bold",
+        the name inside the file. None when MuPDF can't load the font.
+        """
+        try:
+            with self._mupdf_font_record(xref) as font:
+                return pymupdf.mupdf.ll_fz_font_name(font.font)
+        except ValueError:  # MuPDF can't load the font
+            return None
+
     @contextmanager
     def _mupdf_font_record(self, xref: int) -> Iterator[pymupdf.mupdf.pdf_font_desc]:
         """MuPDF's own record of font `xref`: its letter list, codes and glyph widths.
