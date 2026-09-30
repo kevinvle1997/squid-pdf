@@ -1,0 +1,18 @@
+# The Python side as every job needs it: uv, cached on the lockfile, and the
+# environment the suite runs in (every extra, the dev tools). One copy, so the
+# jobs can't drift into testing different environments.
+name: uv
+description: Install uv and sync the locked environment.
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+
+    # From the root, even when the job's steps run in react/.
+    - shell: bash
+      working-directory: ${{ github.workspace }}
+      run: uv sync --locked --all-extras

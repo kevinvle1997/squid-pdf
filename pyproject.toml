@@ -26,6 +26,7 @@ squidpdf = "squidpdf.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.3",
+    "pytest-xdist>=3.6",  # CI runs the suite across the runner's cores
     "ruff>=0.7",
     "mypy>=1.13",
     # Pre-1.0: its checks change between releases, so move this pin on purpose.
