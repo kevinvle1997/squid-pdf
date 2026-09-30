@@ -5,8 +5,9 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { Render } from "../../api/types";
-import { A4, aDoc, aFont, aSpan } from "../../fixtures";
+import { A4, aDoc, aFit, aFont, aReply, aSpan } from "../../fixtures";
 import { createEditor, type Editor } from "../editor";
+import { edit, finish, type } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
@@ -32,7 +33,9 @@ const WORDS = "was here";
 const span = aSpan({ id: "s1", text: WORDS, size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 }, origin: [72, 120] });
 // Every letter half the size wide: the span's eight are 80 pt at 20 pt.
 const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
-const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs })] });
+// A line on the next page, to show what a change to the first leaves alone.
+const elsewhere = aSpan({ id: "s2", page: 1, text: "was there" });
+const DOC = aDoc({ spans: [span, elsewhere], fonts: [aFont("Times-Roman", { glyphs })] });
 
 let editor: Editor;
 
@@ -43,10 +46,10 @@ beforeEach(() => {
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
 });
 
-async function draw() {
+async function draw(index = 0) {
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={0} info={A4} />
+      <Page index={index} info={A4} />
     </EditorContext.Provider>,
   );
 }
@@ -103,6 +106,20 @@ describe("a page", () => {
     const before = drawn.margins;
     await userEvent.keyboard("{End}abc");
     await expect.element(field).toHaveValue(`${WORDS}abc`);
+    expect(drawn.margins).toBe(before);
+  });
+
+  test("the server's render of one page doesn't draw another again", async () => {
+    let land: (reply: Render) => void = () => undefined;
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>((resolve) => (land = resolve)));
+    const screen = await draw(1);
+    await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    type(editor, "is here");
+    finish(editor, true);
+    const before = drawn.margins;
+    land(aReply({ fits: { [span.id]: aFit() } }));
+    await expect.poll(() => editor.store.get().drawn.from.has(0)).toBe(true);
     expect(drawn.margins).toBe(before);
   });
 });

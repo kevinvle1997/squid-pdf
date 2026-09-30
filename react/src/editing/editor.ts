@@ -136,7 +136,8 @@ export function similarCount(state: EditorState): number {
   let count = 0;
   for (const { span, replaced } of state.view.spans.values()) {
     const inSimilar = state.layout.fonts.get(span.font)?.substitute != null;
-    if (replaced && (inSimilar || (state.drawn.fits[span.id]?.missing.length ?? 0) > 0)) count++;
+    const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
+    if (replaced && (inSimilar || missing.length > 0)) count++;
   }
   return count;
 }

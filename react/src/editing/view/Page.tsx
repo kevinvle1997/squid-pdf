@@ -5,6 +5,7 @@ import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { imageFailed } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
 import { differing, type SpanView } from "../project";
+import type { PageFits } from "../render";
 import { boxOf, points, useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
 import { Margin } from "./Margin";
@@ -12,6 +13,7 @@ import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
 
 const NO_SPANS: readonly SpanInfo[] = [];
+const NO_FITS: PageFits = {};
 const NO_CHANGES: readonly SpanView[] = [];
 
 /**
@@ -65,7 +67,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   // What every mark on the page shows, selected once here rather than by each mark.
   const fonts = useEditorState((state) => state.layout.fonts);
   const copy = useEditorState((state) => state.doc.copy);
-  const fits = useEditorState((state) => state.drawn.fits);
+  const fits = useEditorState((state) => state.drawn.fits.get(index)) ?? NO_FITS;
   const quiet = useEditorState((state) => {
     const back = state.returnedTo === null ? undefined : state.layout.spans.get(state.returnedTo);
     return back?.page === index ? back.id : null;

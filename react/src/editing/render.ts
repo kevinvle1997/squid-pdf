@@ -4,18 +4,33 @@
 // so the swap never flickers. A page whose render failed stays stale: the next change asks
 // for it again, and so does `retry`, when the connection comes back.
 import { ProblemError, render as renderOnServer } from "../api/client";
-import type { FitInfo, ImageInfo, Region } from "../api/types";
+import type { FitInfo, ImageInfo, Region, Render } from "../api/types";
 import type { Reopener } from "../documents/reopen";
 import type { EditedView } from "./project";
 import { regionsFor, stalePages } from "./strips";
 
+/** The server's fit for each replaced span on one page, by span id. */
+export type PageFits = Readonly<Record<string, FitInfo>>;
+
 export interface Drawn {
   readonly strips: ReadonlyMap<number, readonly ImageInfo[]>; // by page
   readonly from: ReadonlyMap<number, EditedView>; // by page: the reading its strips were drawn from
-  readonly fits: Readonly<Record<string, FitInfo>>; // the server's fit for each replaced span
+  // By page, and replaced only as that page's strips are: a page whose fits didn't come keeps its object, so it isn't drawn again.
+  readonly fits: ReadonlyMap<number, PageFits>;
 }
 
-export const NOTHING_DRAWN: Drawn = { strips: new Map(), from: new Map(), fits: {} };
+export const NOTHING_DRAWN: Drawn = { strips: new Map(), from: new Map(), fits: new Map() };
+
+/** The reply's fits, by the page each span is on. The server sends one for every replaced span. */
+function fitsByPage(view: EditedView, fits: Render["fits"]): Map<number, Record<string, FitInfo>> {
+  const byPage = new Map<number, Record<string, FitInfo>>();
+  for (const [spanId, fit] of Object.entries(fits)) {
+    const page = view.spans.get(spanId)?.span.page;
+    if (page === undefined) continue;
+    byPage.set(page, { ...byPage.get(page), [spanId]: fit });
+  }
+  return byPage;
+}
 
 interface Options {
   reopener: Pick<Reopener, "doc" | "withDocument">;
@@ -77,7 +92,7 @@ export class RenderQueue {
       drawing.push(page);
       regions.push(...regionsFor(page, info, edits));
     }
-    if (bare.length > 0) this.#landed(view, bare, [], this.#drawn.fits);
+    if (bare.length > 0) this.#landed(view, bare, [], {});
     if (drawing.length === 0) return;
 
     const ask = new AbortController();
@@ -100,14 +115,19 @@ export class RenderQueue {
   }
 
   /** `pages` now show `view`, in `images`. */
-  #landed(view: EditedView, pages: readonly number[], images: readonly ImageInfo[], fits: Drawn["fits"]) {
+  #landed(view: EditedView, pages: readonly number[], images: readonly ImageInfo[], replyFits: Render["fits"]) {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
+    const fits = new Map(this.#drawn.fits);
+    const landedFits = fitsByPage(view, replyFits);
     for (const page of pages) {
       const onPage = images.filter((image) => image.page === page);
       if (onPage.length > 0) strips.set(page, onPage);
       else strips.delete(page);
       from.set(page, view);
+      const pageFits = landedFits.get(page);
+      if (pageFits !== undefined) fits.set(page, pageFits);
+      else fits.delete(page);
     }
     this.#drawn = { strips, from, fits };
     this.#options.drawn(this.#drawn);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
 import type { Edit, ImageInfo, Render, RenderBody, SpanInfo } from "../api/types";
-import { aDoc, aProblem, aReply, aSpan } from "../fixtures";
+import { aDoc, aFit, aProblem, aReply, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
@@ -55,17 +55,18 @@ beforeEach(() => {
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 
 describe("the render queue", () => {
-  test("it asks for a strip around each edited row, sending the edits as they read", async () => {
+  test("it asks for a strip around each edited row, sending the edits as they read; fits land with their page", async () => {
     const view = readingOf(replace(ONE));
     queue.draw(view);
     await settle();
     expect(fake.asked).toHaveLength(1);
     expect(fake.asked[0]?.body).toEqual({ edits: [replace(ONE)], scale: 2, regions: [{ page: 0, y0: 98, y1: 114 }] });
 
-    fake.asked[0]?.answer(fake.reply([0]));
+    fake.asked[0]?.answer(aReply({ images: [stripFor(0)], fits: { [ONE.id]: aFit() } }));
     await settle();
     expect(queue.drawn.strips.get(0)).toEqual([stripFor(0)]);
     expect(queue.drawn.from.get(0)).toBe(view);
+    expect(queue.drawn.fits.get(0)).toEqual({ [ONE.id]: aFit() });
   });
 
   test("a newer change takes over the pages an older request was still drawing", async () => {
@@ -93,6 +94,7 @@ describe("the render queue", () => {
     await settle();
     expect(fake.asked).toHaveLength(1);
     expect(queue.drawn.strips.has(0)).toBe(false);
+    expect(queue.drawn.fits.has(0)).toBe(false);
     expect(queue.drawn.from.get(0)).toBe(UNEDITED);
   });
 
