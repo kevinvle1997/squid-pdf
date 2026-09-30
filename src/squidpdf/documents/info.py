@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 # Every way a span can be approximate: the sentences behind a span's `why` code.
-_APPROXIMATE_KEYS = ("turned_text", "spaced_text")
+_APPROXIMATE_KEYS = ("turned_text", "spaced_text", "undrawable_letters")
 
 
 def document_response(

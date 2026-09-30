@@ -71,6 +71,11 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
     assert_equal(kept, shipped_hinting, f"{face}'s hinting, cut and as shipped")
 
 
+def _squashed(font: str) -> str:
+    """A font's name, subset prefix aside, in lower case with only letters and digits."""
+    return "".join(ch for ch in strip_subset(font).lower() if ch.isalnum())
+
+
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
     """Fails, as fontTools can on an odd font."""
     raise ValueError("fontTools can't cut this font")
@@ -502,3 +507,23 @@ def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
     assert_in(_ROUND_TWO, lines, "the second round's line, read back")
     assert_true(_inked(second, REFERENCED_PAGE, _ROUND_ONE), "the first round's line is drawn")
     assert_true(_inked(second, REFERENCED_PAGE, _ROUND_TWO), "the second round's line is drawn")
+
+
+def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
+    """No face we ship has 中. Switching the line's font wouldn't draw it either."""
+    index = engine.index()
+    span = next(s for s in index if s.page == EMBEDDED_PAGE and s.text.startswith("Invoices"))
+    text = span.text.replace("thirty", "中 thirty")
+    out = tmp_path / "out.pdf"
+
+    fit = replace_fit(engine, span, text)
+    applied = apply(engine, [Replace(span.id, text)], index)
+    engine.save(str(out))
+
+    drawn = _drawn(out, EMBEDDED_PAGE, "Invoices")
+    # Spelled "NimbusRoman-Regular" once redrawn, "Nimbus Roman Regular" as found.
+    assert_equal(_squashed(drawn["font"]), _squashed(span.font), "the font that drew it")
+    left_out = words.sentence("will_leave_out").format(letters="中")
+    assert_equal([words.render(part) for part in fit.describe()], [left_out], "the fit")
+    notice = (span.id, words.sentence("left_out").format(letters="中"), None)
+    assert_equal(_said(applied.notices), [notice], "what render tells the user")

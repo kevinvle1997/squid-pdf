@@ -159,6 +159,9 @@ class Engine:
         _along, rise = span.direction
         if abs(rise) > TURN_TOLERANCE:
             return Message("turned_text")
+        # Letters no font we have draws: a redraw leaves them out.
+        if plan.left_out:
+            return Message("undrawable_letters", {"letters": list(plan.left_out)})
         # New text: its box is only nominal, so there's no spacing of its own to keep.
         if not span.fragments:
             return None
@@ -249,7 +252,8 @@ class Engine:
         its start. A letter the span's copy of its font lacks comes from another
         copy of the same font in the file, placed as one font would place it. A
         character no copy can draw sends the whole run to the stand-in, so a
-        line never mixes two faces. A font with no space is drawn word by word.
+        line never mixes two faces, unless no font we have draws it: then it's
+        only left out. A font with no space is drawn word by word.
         Returns anything that came out other than asked, for the edge to put
         into words; empty when nothing did.
         """
@@ -271,7 +275,7 @@ class Engine:
         # The file's own font, written by code as the original was.
         if drawn_in.own.embedded.coded is not None:
             self._draw_codes(span, drawn_in, text=plan.text, size=font_size, scale_x=scale_x)
-            return []
+            return said_left_out(plan.left_out)
 
         # The file's own copies of the font, by letter, once the page has them.
         try:
@@ -290,7 +294,7 @@ class Engine:
         self._write(
             span, plan.text, font=drawn_in, aliases=aliases, size=font_size, scale_x=scale_x
         )
-        return []
+        return said_left_out(plan.left_out)
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.
@@ -370,12 +374,20 @@ class Engine:
         """How `text` is drawn at this span: the one answer measuring and drawing share.
 
         In the file's copies of the span's font if they draw every character;
-        otherwise the whole line in the stand-in, less what even that can't draw.
+        otherwise the whole line in the stand-in, less what even that can't
+        draw. When the only letters the own font lacks are ones no font we have
+        draws, switching would draw none of them, so the own font keeps the
+        line without them.
         """
         own = self._fonts.own(span)
-        if own is not None and not own.missing(text):
+        missing = [] if own is None else own.missing(text)
+        if own is not None and not missing:
             return DrawPlan(own, text, [])
         stand_in = self._fonts.stand_in(span, text)
+        undrawable = own is not None and set(missing) <= set(stand_in.left_out)
+        if own is not None and undrawable:
+            kept = "".join(ch for ch in text if ch not in missing)
+            return DrawPlan(own, kept, missing)
         return DrawPlan(stand_in.face, stand_in.text, stand_in.left_out)
 
     def _width(self, span: Span, plan: DrawPlan, *, size: float) -> float:
@@ -430,7 +442,7 @@ class Engine:
             size=size,
             scale_x=scale_x,
         )
-        return [Message("left_out", {"letters": list(left_out)})] if left_out else []
+        return said_left_out(left_out)
 
     def _write(
         self,
@@ -604,6 +616,11 @@ def hex_codes(coded: CodedFont, text: str) -> str:
 def unspaced(text: str) -> str:
     """`text` with every space, tab and line break taken out."""
     return "".join(text.split())
+
+
+def said_left_out(letters: list[str]) -> list[Message]:
+    """The notice a draw gives for letters it left out; none when it left none."""
+    return [Message("left_out", {"letters": list(letters)})] if letters else []
 
 
 def coded_in(plan: DrawPlan) -> PooledFont | None:

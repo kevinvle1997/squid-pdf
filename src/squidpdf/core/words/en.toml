@@ -30,6 +30,7 @@ font_cant_write = "This font is stored in the file in a way we can't write new t
 # Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
 spaced_text = "This text is spaced out or stretched in a way edits don't copy yet, so an edit here will look different."
+undrawable_letters = "No font we have can draw {letters} here, so an edit here leaves them out."
 
 # An edit that went in, but not quite as asked. `{letters}` is space-separated.
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
