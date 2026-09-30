@@ -1,8 +1,9 @@
 // The edited document, downloaded under its own name. An edit still being typed goes in first.
 import { exportPdf, ProblemError } from "../api/client";
+import type { Edit } from "../api/types";
 import { reportBug } from "../bugs";
 import type { Editor } from "./editor";
-import { plain, warn } from "./notices";
+import { type Notice, plain, warn } from "./notices";
 import { finish } from "./typing";
 
 function download(pdf: Blob, name: string): void {
@@ -16,24 +17,23 @@ function download(pdf: Blob, name: string): void {
 }
 
 export async function exportNow(editor: Editor): Promise<void> {
-  const { store, reopener, file } = editor;
+  const { store } = editor;
   if (store.get().exporting) return;
-  store.set({ exporting: true });
   finish(editor, true);
-  const { edits } = store.get().reading;
+  store.set({ exporting: true });
+  const notice = await downloaded(editor, store.get().reading.edits);
+  store.set({ exporting: false, notices: { ...store.get().notices, export: notice }, said: notice.text });
+}
+
+/** Export `edits` and download the file; what to say of it, warned when it didn't all go. */
+async function downloaded(editor: Editor, edits: readonly Edit[]): Promise<Notice> {
+  const { store, reopener, file } = editor;
   try {
     const exported = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits]));
     download(exported.pdf, file.name);
-    const leftOut = exported.skipped.length > 0;
-    const text = leftOut
-      ? store.get().doc.copy.export_left_out
-      : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
-    const notice = leftOut ? warn(text) : plain(text);
-    store.set({ notices: { ...store.get().notices, export: notice }, said: text });
+    if (exported.skipped.length > 0) return warn(store.get().doc.copy.export_left_out);
+    return plain(exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
   } catch (error) {
-    const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
-    store.set({ notices: { ...store.get().notices, export: warn(text) }, said: text });
-  } finally {
-    store.set({ exporting: false });
+    return warn(error instanceof ProblemError ? error.problem.detail : reportBug(error));
   }
 }

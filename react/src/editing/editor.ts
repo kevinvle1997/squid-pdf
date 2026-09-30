@@ -123,6 +123,11 @@ export function focusMoved(editor: Editor): void {
   editor.store.set({ focusTo: null });
 }
 
+/** The editor is going: a render in flight is dropped rather than landing on nothing. */
+export function closeEditor(editor: Editor): void {
+  editor.queue.stop();
+}
+
 /** Tell a screen reader, for what the page doesn't show. */
 export function say(editor: Editor, text: string): void {
   editor.store.set({ said: text });

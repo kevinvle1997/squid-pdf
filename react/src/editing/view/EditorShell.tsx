@@ -8,7 +8,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { changedCount, createEditor, similarCount } from "../editor";
+import { changedCount, closeEditor, createEditor, similarCount } from "../editor";
 import { exportNow } from "../export";
 import { noticeLines } from "../notices";
 import { counted } from "../words";
@@ -29,7 +29,8 @@ function isTyping(target: EventTarget | null): boolean {
 export function EditorShell({ file, opened }: { file: File; opened: Document }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
 
-  // The one effect, for what happens outside React: shortcuts anywhere, and the connection coming back.
+  // The one effect, for what happens outside React: shortcuts anywhere, the connection coming back,
+  // and the editor going.
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       const command = commandFor(event, isTyping(event.target));
@@ -43,6 +44,7 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
     return () => {
       window.removeEventListener("keydown", key);
       window.removeEventListener("online", online);
+      closeEditor(editor);
     };
   }, [editor]);
 

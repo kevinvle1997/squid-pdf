@@ -94,6 +94,13 @@ export class RenderQueue {
     void this.#draw(reading);
   }
 
+  /** Stop: what's in flight is dropped, and nothing is asked for again until the next draw. */
+  stop(): void {
+    this.#asking?.abort();
+    this.#asking = null;
+    this.#wanted = null;
+  }
+
   /** Ask again for whatever is still stale. */
   retry(): void {
     if (this.#wanted !== null) this.draw(this.#wanted);

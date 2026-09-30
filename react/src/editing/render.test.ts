@@ -165,6 +165,17 @@ describe("the render queue", () => {
     expect(queue.drawn.notices.size).toBe(0);
   });
 
+  test("stopped, what's in flight is dropped, and nothing is asked for again", async () => {
+    queue.draw(readingOf(replace(ONE)));
+    await settle();
+    queue.stop();
+    expect(fake.asked[0]?.signal.aborted).toBe(true);
+    queue.retry();
+    await settle();
+    expect(fake.asked).toHaveLength(1);
+    expect(drawn).toEqual([]);
+  });
+
   test("retry asks again for what's still stale, and nothing once it's all drawn", async () => {
     queue.draw(readingOf(replace(ONE)));
     await settle();
