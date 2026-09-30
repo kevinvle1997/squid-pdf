@@ -13,7 +13,7 @@ from squidpdf.editing.apply import (
     replace_fit,
 )
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
-from squidpdf.editing.errors import BadReference, RedactionFailed
+from squidpdf.editing.errors import BadReference, RedactionConflict, RedactionFailed
 from squidpdf.editing.export import ExportController, save_edited
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
 from squidpdf.editing.redaction import RedactionController
@@ -21,6 +21,7 @@ from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 __all__ = [
     "BadReference",
+    "RedactionConflict",
     "RedactionFailed",
     "RedactionController",
     "ExportController",

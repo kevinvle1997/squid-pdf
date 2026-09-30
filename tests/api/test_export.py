@@ -215,6 +215,17 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, do
     assert_in("ninety days", _opened(response)[1].get_text(), "the edit that was good")
 
 
+def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc):
+    """Redaction wins: the list's order must not bring the text back into the file."""
+    span = next(s for s in doc["spans"] if s["page"] == 1)
+    redact = {"kind": "redact", "span_id": span["id"]}
+    replace = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
+
+    response = _export(mine, doc, [redact, replace])
+
+    assert_problem(response, "redaction_conflict", 422)
+
+
 def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     """Skipping it would send the text the user asked to remove."""
     response = _export(mine, doc, [{"kind": "redact", "span_id": "nosuchspan00"}])

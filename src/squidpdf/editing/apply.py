@@ -15,7 +15,7 @@ from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import FACES
 from squidpdf.core.types import Span, SpanIndex, new_text
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace
-from squidpdf.editing.errors import BadReference
+from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import FitReport, LogFits, options_for
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
@@ -58,28 +58,18 @@ def collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
     return list(latest.values())
 
 
-def undone_redactions(edits: Sequence[Edit]) -> list[str]:
-    """The spans a Replace brought back after they were redacted: the last edit wins."""
-    redacted: set[str] = set()
-    undone: dict[str, None] = {}  # a dict, to keep the order and drop repeats
-    for edit in edits:
-        if isinstance(edit, Redact):
-            redacted.add(edit.span_id)
-            undone.pop(edit.span_id, None)  # redacted again: the redaction holds
-        elif isinstance(edit, Replace) and edit.span_id in redacted:
-            undone[edit.span_id] = None
-    return list(undone)
-
-
 def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
-    A redaction that points at nothing raises BadReference instead of being skipped.
+    A redaction that points at nothing raises BadReference instead of being
+    skipped, and a replace after a redaction of the same text raises
+    RedactionConflict: redaction wins, so the list's order can't undo one.
     """
     # Only inserts need the page count, so skip reading the pages without one.
     has_inserts = any(isinstance(e, Insert) for e in edits)
     page_count = len(engine.pages()) if has_inserts else 0
     spans: dict[str, Span] = {}
+    redacted: set[str] = set()
     kept: list[Replace | Redact] = []
     inserts: list[tuple[int, Insert]] = []
     skipped: list[Skipped] = []
@@ -101,6 +91,13 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
         if span is None:
             skipped.append(Skipped(position, _BAD_REFERENCE, Message("no_span")))
             continue
+        # A replace of redacted text: the browser undoes a redaction by leaving it out.
+        if isinstance(edit, Replace) and span.id in redacted:
+            raise RedactionConflict(
+                debug=f"edit {position} replaces span {span.id}, redacted before"
+            )
+        if isinstance(edit, Redact):
+            redacted.add(span.id)
         spans[span.id] = span
         kept.append(edit)
     span_edits = [(edit, spans[edit.span_id]) for edit in collapse(kept)]
@@ -144,8 +141,7 @@ def apply(
         engine.remove(to_remove)
     if to_unlink:
         engine.unlink(to_unlink)
-    undone = Message("redaction_undone")
-    notices = [Notice(span_id, undone) for span_id in undone_redactions(edits)]
+    notices: list[Notice] = []
     for span, text, size, scale_x in to_draw:
         for said in engine.draw(span, text, size=size, scale_x=scale_x):
             notices.append(Notice(span.id, said))

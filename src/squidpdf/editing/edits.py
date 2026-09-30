@@ -2,7 +2,8 @@
 
 One union rather than a list per kind, so undo in the browser is truncation
 whatever was undone. The server applies the list as its final state: each span
-once, as its last edit leaves it.
+once, as its last edit leaves it, except that a redaction is never undone by
+an edit after it (the whole list is refused).
 """
 
 from __future__ import annotations

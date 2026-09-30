@@ -37,7 +37,6 @@ font_not_added = "The file's own font couldn't be used for this edit, so a simil
 left_out = "Left out {letters}: no font we have can draw them."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
-redaction_undone = "Editing this text undid its redaction."
 # Exporting some pages of a tagged file drops its tags.
 tags_dropped = "The tags that tell screen readers how to read this file went with the pages left out, so this file has none."
 

@@ -19,6 +19,7 @@ from squidpdf.editing import (
     Insert,
     Notice,
     Redact,
+    RedactionConflict,
     RedactionController,
     Replace,
     apply,
@@ -114,10 +115,10 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
     assert_not_in(span.text, text, "the saved page after a redact")
 
-    # Editing it afterwards brings the text back, and render says so.
-    undone = apply(engine, [*edits, Replace(span.id, "Services")], index).notices
-    expected = [(span.id, words.sentence("redaction_undone"), None)]
-    assert_equal(_said(undone), expected, "notices after the edit")
+    # Editing it afterwards is refused: the order of a list must never bring it back.
+    # The browser undoes a redaction by taking it out of the list.
+    with pytest.raises(RedactionConflict):
+        apply(engine, [*edits, Replace(span.id, "Services")], index)
 
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
