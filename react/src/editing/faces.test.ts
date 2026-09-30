@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aFont } from "../fixtures";
-import { fileOf, previewFaceOf } from "./faces";
+import { DEFAULT_FACE, facesOf, fileOf, previewFaceOf } from "./faces";
 
 const font = (name: string, substitute: string | null = null) => aFont(name, { substitute });
 
@@ -19,5 +19,10 @@ describe("preview faces", () => {
     expect(previewFaceOf(font("ABCDEE+Arial-BoldMT"))).toBe("Liberation Sans Bold");
     expect(previewFaceOf(font("CMR10"))).toBe("Liberation Serif Regular");
     expect(previewFaceOf(font("Courier-Oblique"))).toBe("Liberation Mono Italic");
+  });
+
+  test("a document's faces are each font's once, and the default for a span whose font isn't known", () => {
+    const fonts = [font("Arial", "Liberation Sans Regular"), font("Helvetica"), font("TimesNewRoman")];
+    expect(facesOf(fonts)).toEqual(new Set([DEFAULT_FACE, "Liberation Sans Regular"]));
   });
 });

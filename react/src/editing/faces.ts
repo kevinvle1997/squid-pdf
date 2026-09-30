@@ -37,19 +37,36 @@ const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
   eager: true,
 });
 
-const registered = new Set<string>();
+/** The face a span previews in when its font isn't known. */
+export const DEFAULT_FACE = "Liberation Serif Regular";
+
+const urlOf = (face: string): string | undefined => FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
+const familyName = (face: string) => `preview ${face}`;
+const added = new Set<string>();
+
+/** Every face a document's edits can preview in: each font's, and the default. */
+export function facesOf(fonts: readonly FontInfo[]): Set<string> {
+  return new Set([DEFAULT_FACE, ...fonts.map(previewFaceOf)]);
+}
 
 /**
- * The CSS font-family that draws `face` in the preview. The face goes on the document once,
- * unloaded: the browser fetches its file the first time text uses it, so nothing waits on it.
+ * Put `faces` on the document for the preview, once each, and fetch their files when the browser
+ * is next idle: the first edit then draws in its face at once, and opening waits on none of them.
  */
-export function familyOf(face: string): string {
-  const url = FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
-  if (url === undefined) return "serif";
-  const family = `preview ${face}`;
-  if (!registered.has(family)) {
-    registered.add(family);
-    document.fonts.add(new FontFace(family, `url(${url})`));
+export function addFaces(faces: Iterable<string>): void {
+  const idle = window.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1));
+  for (const face of faces) {
+    const url = urlOf(face);
+    if (url === undefined || added.has(face)) continue;
+    added.add(face);
+    const fontFace = new FontFace(familyName(face), `url(${url})`);
+    document.fonts.add(fontFace);
+    // One that fails to load previews in the browser's serif, as one we don't ship does.
+    idle(() => void fontFace.load().catch(() => undefined));
   }
-  return `"${family}", serif`;
+}
+
+/** The CSS font-family that draws `face` in the preview, once `addFaces` has put it on the document. */
+export function familyOf(face: string): string {
+  return urlOf(face) === undefined ? "serif" : `"${familyName(face)}", serif`;
 }

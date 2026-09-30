@@ -5,7 +5,7 @@ import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
-import { previewFaceOf } from "../faces";
+import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
 import { finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
@@ -24,7 +24,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const text = useEditorState((state) => state.draft?.text ?? "");
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
-  const face = font === undefined ? "Liberation Serif Regular" : previewFaceOf(font);
+  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
