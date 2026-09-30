@@ -24,7 +24,16 @@ from squidpdf.core.fonts import face_bytes
 from squidpdf.core.google import Fetch
 from squidpdf.core.message import Message
 from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
-from squidpdf.core.types import Face, FontResource, Page, Rect, TextRun
+from squidpdf.core.types import (
+    QUARTER_TURNS,
+    SOLID,
+    CodeRun,
+    Face,
+    FontResource,
+    Page,
+    Rect,
+    TextRun,
+)
 
 __all__ = [
     "BUILD",
@@ -50,6 +59,8 @@ _DENSE_WORDS = (
     "purpose agreed liability is limited to the fees paid in the period before the claim"
 ).split()
 _DENSE_TERMS = ("the Services", "the Client", "the Provider", "Confidential Information")
+
+_PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 # Google's copies are part of it: a new pin lends other letters.
@@ -201,9 +212,7 @@ class MuPDFDriver(PdfFile):
         page uses, hands back the font already there. Raises DriverError when
         MuPDF won't add it.
         """
-        taken = {font.resource for font in self.fonts(page)}
-        candidates = chain([name], (f"{name}{n}" for n in count(2)))
-        resource = next(candidate for candidate in candidates if candidate not in taken)
+        resource = self._free_name(page, name)
         pg = self._doc[page]
         try:
             xref = pg.insert_font(fontname=resource, fontbuffer=font_file)
@@ -222,6 +231,62 @@ class MuPDFDriver(PdfFile):
         # .get: a page nothing was added to.
         for resource, xref in self._added.get(self._doc[page].xref, {}).items():
             self.restore_font(page, resource, xref)
+
+    def write_codes(
+        self,
+        page: int,
+        *,
+        origin: tuple[float, float],
+        runs: Sequence[CodeRun],
+        size: float,
+        color: tuple[float, float, float],
+        opacity: float,
+        scale_x: float,
+        turn: int,
+    ) -> None:
+        """Write each run's codes in its font, from `origin` on, on top of the page.
+
+        One text object: each run switches to its font, and the pen moves on by
+        that font's widths. PyMuPDF's writers only take letters, so it's written
+        out here.
+        """
+        x, y = self.to_pdf_space(page, origin)
+        shown = " ".join(
+            f"/{self._resource_of(page, run.font)} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            for run in runs
+        )
+        # See-through: a graphics state that paints at `opacity`.
+        paint = f" /{self.add_opacity(page, opacity)} gs" if opacity < SOLID else ""
+        # Where the text goes: narrowed along its line, turned, and placed.
+        cos, sin = QUARTER_TURNS[turn]
+        matrix = [scale_x * cos, scale_x * sin, -sin, cos, x, y]
+        placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
+        rgb = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
+        # Save the page's settings, set color, place the text, write each run in
+        # its font and size, then put the settings back.
+        stream = f"q{paint} BT {rgb} rg {placed} Tm {shown} ET Q"
+        self.add_content(page, stream.encode())
+
+    def _resource_of(self, page: int, xref: int) -> str:
+        """The page's resource name for font `xref`, giving it one when the page has none.
+
+        It has none when erasing dropped the font, or when it's another page's copy.
+        """
+        on_page = (font for font in self.fonts(page) if not font.in_form)
+        listed = (font.resource for font in on_page if font.xref == xref)
+        # The first name the page lists it under, in MuPDF's order.
+        resource = next(listed, None)
+        if resource is not None:
+            return resource
+        resource = self._free_name(page, f"C{xref}")
+        self.restore_font(page, resource, xref)
+        return resource
+
+    def _free_name(self, page: int, name: str) -> str:
+        """`name`, or `name` numbered past any resource name the page already uses."""
+        taken = {font.resource for font in self.fonts(page)}
+        candidates = chain([name], (f"{name}{n}" for n in count(2)))
+        return next(candidate for candidate in candidates if candidate not in taken)
 
     def write_text(
         self,

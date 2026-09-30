@@ -19,6 +19,8 @@ GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty
 type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
 LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
+# Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
+QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
 
 # What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
 # writes each letter as two bytes; "other" is any kind we don't write in.
@@ -105,6 +107,17 @@ class TextRun:
 
 
 @dataclass(frozen=True, slots=True)
+class CodeRun:
+    """Codes written in one go in one font, each as many bytes as that font's codes take.
+
+    A line's runs follow each other: each starts where the one before left the pen.
+    """
+
+    codes: bytes
+    font: int  # the font's PDF object: the page may know it by another resource name
+
+
+@dataclass(frozen=True, slots=True)
 class PageFont:
     """A font a page uses."""
 
@@ -185,8 +198,6 @@ class CodedFont:
     code is which letter.
     """
 
-    resource: str  # its resource name on the page, e.g. "F1"
-    xref: int  # its PDF object
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
 

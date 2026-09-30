@@ -28,8 +28,9 @@ from squidpdf.core.pooled import CodedStretch, FontCopy, PooledFont, copy_source
 from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.spans import build_index
 from squidpdf.core.types import (
-    SOLID,
+    QUARTER_TURNS,
     CodedFont,
+    CodeRun,
     Face,
     Page,
     Rect,
@@ -50,9 +51,6 @@ __all__ = [
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 _ALIAS_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
-_PDF_DP = 4  # decimals written into a content stream, far below a device pixel
-# Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
-_QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
@@ -518,7 +516,7 @@ class Engine:
         reading order, so the text reads back as written.
         """
         x, y = span.origin
-        cos, sin = _QUARTER_TURNS[setting.turn]
+        cos, sin = QUARTER_TURNS[setting.turn]
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         words, _width = self._words(span, text, font=font, size=setting.size)
@@ -544,48 +542,25 @@ class Engine:
     def _draw_codes(
         self, span: Span, stretches: list[CodedStretch], *, setting: Setting
     ) -> None:
-        """Write `text` as codes in the file's own copies of its font, on top of the page.
+        """Write the line as codes in the file's own copies of its font, on top of the page.
 
-        One text object: each stretch switches to its copy, and the pen moves on
-        by that copy's widths, which agree with the others'.
+        Each stretch in its copy, the pen moving on by that copy's widths, which
+        agree with the others'.
         """
-        x, y = self._driver.to_pdf_space(span.page, span.origin)
-        r, g, b = span.color
-        shown: list[str] = []
-        for stretch in stretches:
-            resource = self._resource_for(span.page, stretch)
-            codes = hex_codes(stretch.coded, stretch.text)
-            shown.append(f"/{resource} {setting.size:.{_PDF_DP}f} Tf <{codes}> Tj")
-        # See-through, as the original was.
-        paint = ""
-        if span.opacity < SOLID:
-            paint = f" /{self._driver.add_opacity(span.page, span.opacity)} gs"
-        # Where the text goes: narrowed along its line, turned, and placed.
-        cos, sin = _QUARTER_TURNS[setting.turn]
-        narrow = setting.scale_x
-        matrix = [narrow * cos, narrow * sin, -sin, cos, x, y]
-        placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
-        # Save the page's settings, set color, place the text, write each stretch
-        # in its font and size, then put the settings back.
-        stream = (
-            f"q{paint} BT {r:.{_PDF_DP}f} {g:.{_PDF_DP}f} {b:.{_PDF_DP}f} rg"
-            f" {placed} Tm"
-            f" {' '.join(shown)} ET Q"
+        runs = [
+            CodeRun(codes_for(stretch.coded, stretch.text), stretch.copy.font.xref)
+            for stretch in stretches
+        ]
+        self._driver.write_codes(
+            span.page,
+            origin=span.origin,
+            runs=runs,
+            size=setting.size,
+            color=span.color,
+            opacity=span.opacity,
+            scale_x=setting.scale_x,
+            turn=setting.turn,
         )
-        self._driver.add_content(span.page, stream.encode())
-
-    def _resource_for(self, page: int, stretch: CodedStretch) -> str:
-        """The page's name for a copy written by code, pointed at it before each draw.
-
-        Erasing can drop a font the page no longer uses. The span's own copy
-        keeps the name the page gave it; any other gets a fresh one, since
-        another page's name for it may mean something else here.
-        """
-        font = stretch.copy.font
-        fresh = page_name("C", f"{font.xref} {font.name}")
-        resource = stretch.coded.resource if stretch.own else fresh
-        self._driver.restore_font(page, resource, font.xref)
-        return resource
 
     def _aliases(self, page: int, pool: PooledFont, text: str) -> dict[str, str]:
         """The page's name for the copy each letter of `text` is drawn in.
@@ -685,10 +660,9 @@ def word_stretches(
     return stretches
 
 
-def hex_codes(coded: CodedFont, text: str) -> str:
-    """`text` as the font's codes, in hex, each as many bytes wide as the font's."""
-    hex_digits = coded.code_bytes * 2
-    return "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
+def codes_for(coded: CodedFont, text: str) -> bytes:
+    """`text` as the font's codes, each as many bytes wide as the font's codes take."""
+    return b"".join(coded.letters[ch].value.to_bytes(coded.code_bytes) for ch in text)
 
 
 def spelled(own: PooledFont, text: str) -> str:

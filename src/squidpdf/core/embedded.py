@@ -116,7 +116,7 @@ def read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
             letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
         raise FontUnusable(Message("font_no_letter_list"))
-    return CodedFont(font.resource, font.xref, code_bytes, letters)
+    return CodedFont(code_bytes, letters)
 
 
 def bytes_per_code(font: PageFont) -> int | None:

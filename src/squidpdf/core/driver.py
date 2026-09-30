@@ -13,6 +13,7 @@ from typing import Protocol
 
 from squidpdf.core.message import Message
 from squidpdf.core.types import (
+    CodeRun,
     Face,
     FontCode,
     FontDescriptor,
@@ -159,20 +160,24 @@ class PdfDriver(Protocol):
         """
         ...
 
-    def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Point the page's resource name `resource` back at font `xref`."""
-        ...
+    def write_codes(
+        self,
+        page: int,
+        *,
+        origin: tuple[float, float],
+        runs: Sequence[CodeRun],
+        size: float,
+        color: tuple[float, float, float],
+        opacity: float,
+        scale_x: float,
+        turn: int,
+    ) -> None:
+        """Write each run's codes in its font, from `origin` on, on top of the page.
 
-    def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
-        """Turn a point on the page as you see it into the PDF's own coordinates."""
-        ...
-
-    def add_opacity(self, page: int, opacity: float) -> str:
-        """The page's name for painting at `opacity`; writing it again changes nothing."""
-        ...
-
-    def add_content(self, page: int, stream: bytes) -> None:
-        """Draw a content stream on top of everything on the page."""
+        For a font that has no letters of its own, only codes. Each run starts
+        where the last left the pen, moved on by that font's own widths. The
+        rest is as for `write_text`.
+        """
         ...
 
     def replace_font_file(self, xref: int, font_file: bytes) -> None:

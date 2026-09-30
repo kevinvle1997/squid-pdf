@@ -318,10 +318,10 @@ class PdfFile:
         self._doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=_PDF_NULL)
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Point the page's font name `resource` back at font `xref`.
+        """Point the page's resource name `resource` at font `xref`, already in the file.
 
-        Erasing text can remove a font the page no longer uses. This puts
-        the same font back under the same name; nothing new is added.
+        Erasing text can remove a font the page no longer uses: this puts it
+        back. Nothing new is added to the file.
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
