@@ -4,7 +4,7 @@
 // so the swap never flickers. A page whose render failed stays stale: the next change asks
 // for it again, and so does `retry`, when the connection comes back.
 import { ProblemError, render as renderOnServer } from "../api/client";
-import type { FitInfo, ImageInfo, Region, Render } from "../api/types";
+import type { FitInfo, ImageInfo, NoticeInfo, Region, Render, SkippedInfo } from "../api/types";
 import type { Reopener } from "../documents/reopen";
 import type { EditedView } from "./project";
 import { regionsFor, stalePages } from "./strips";
@@ -15,28 +15,53 @@ export type PageFits = Readonly<Record<string, FitInfo>>;
 export interface Drawn {
   readonly strips: ReadonlyMap<number, readonly ImageInfo[]>; // by page
   readonly from: ReadonlyMap<number, EditedView>; // by page: the reading its strips were drawn from
-  // By page, and replaced only as that page's strips are: a page whose fits didn't come keeps its object, so it isn't drawn again.
-  readonly fits: ReadonlyMap<number, PageFits>;
+  // What a reply says of a page comes and goes with its strips: a page the reply didn't draw keeps its objects, so it isn't drawn again.
+  readonly fits: ReadonlyMap<number, PageFits>; // by page: the server's fit for each replaced span on it
+  readonly notices: ReadonlyMap<number, readonly NoticeInfo[]>; // by page: what drawing it did other than asked
+  readonly skipped: readonly SkippedInfo[]; // the edits the last reply left out, from every page
+  readonly failed: string | null; // why the last render failed, in the server's words, until one lands
 }
 
-export const NOTHING_DRAWN: Drawn = { strips: new Map(), from: new Map(), fits: new Map() };
+export const NOTHING_DRAWN: Drawn = {
+  strips: new Map(),
+  from: new Map(),
+  fits: new Map(),
+  notices: new Map(),
+  skipped: [],
+  failed: null,
+};
 
-/** The reply's fits, by the page each span is on. The server sends one for every replaced span. */
-function fitsByPage(view: EditedView, fits: Render["fits"]): Map<number, Record<string, FitInfo>> {
-  const byPage = new Map<number, Record<string, FitInfo>>();
-  for (const [spanId, fit] of Object.entries(fits)) {
+/** What a reply says, less the images. */
+type Said = Pick<Render, "fits" | "notices" | "skipped">;
+
+/** The page a notice is about: its span's, or its edit's. */
+function pageOfNotice(view: EditedView, notice: NoticeInfo): number | undefined {
+  const edit = notice.edit === null ? undefined : view.edits[notice.edit];
+  if (edit?.kind === "insert") return edit.page;
+  const spanId = notice.span_id ?? edit?.span_id;
+  return spanId === undefined ? undefined : view.spans.get(spanId)?.span.page;
+}
+
+/** A reply's fits and notices, by the page each is about. The server sends a fit for every replaced span. */
+function byPage(view: EditedView, said: Said, drawing: readonly number[]) {
+  const fits = new Map<number, Record<string, FitInfo>>();
+  for (const [spanId, fit] of Object.entries(said.fits)) {
     const page = view.spans.get(spanId)?.span.page;
-    if (page === undefined) continue;
-    byPage.set(page, { ...byPage.get(page), [spanId]: fit });
+    if (page !== undefined) fits.set(page, { ...fits.get(page), [spanId]: fit });
   }
-  return byPage;
+  const notices = new Map<number, NoticeInfo[]>();
+  for (const notice of said.notices) {
+    // One that names neither span nor edit came from drawing these pages all the same: it goes with the first.
+    const page = pageOfNotice(view, notice) ?? drawing[0];
+    if (page !== undefined) notices.set(page, [...(notices.get(page) ?? []), notice]);
+  }
+  return { fits, notices };
 }
 
 interface Options {
   reopener: Pick<Reopener, "doc" | "withDocument">;
   scale: number; // pixels per point, as the page images are drawn
-  drawn: (drawn: Drawn) => void; // strips went in or came out
-  failed: (detail: string) => void; // a render failed, in the server's words; its pages stay stale
+  drawn: (drawn: Drawn) => void; // strips went in or came out, or a render failed
   render?: typeof renderOnServer;
   decode?: (image: ImageInfo) => Promise<void>;
 }
@@ -74,7 +99,7 @@ export class RenderQueue {
   }
 
   async #draw(view: EditedView): Promise<void> {
-    const { reopener, scale, render, decode, failed } = this.#options;
+    const { reopener, scale, render, decode } = this.#options;
     // A newer reading takes over what an older request was still drawing: those pages are still stale.
     this.#asking?.abort();
     this.#asking = null;
@@ -92,7 +117,7 @@ export class RenderQueue {
       drawing.push(page);
       regions.push(...regionsFor(page, info, edits));
     }
-    if (bare.length > 0) this.#landed(view, bare, [], {});
+    if (bare.length > 0) this.#landed(view, bare, [], null);
     if (drawing.length === 0) return;
 
     const ask = new AbortController();
@@ -105,31 +130,40 @@ export class RenderQueue {
       await Promise.all(reply.images.map(decode));
       if (ask.signal.aborted) return;
       this.#asking = null;
-      this.#landed(view, drawing, reply.images, reply.fits);
+      this.#landed(view, drawing, reply.images, reply);
     } catch (error) {
       if (ask.signal.aborted) return;
       if (!(error instanceof ProblemError)) throw error;
       this.#asking = null;
-      failed(error.problem.detail);
+      this.#drawn = { ...this.#drawn, failed: error.problem.detail };
+      this.#options.drawn(this.#drawn);
     }
   }
 
-  /** `pages` now show `view`, in `images`. */
-  #landed(view: EditedView, pages: readonly number[], images: readonly ImageInfo[], replyFits: Render["fits"]) {
+  /** `pages` now show `view`, in `images`; `said` is the server's reply, or null for pages it wasn't asked about. */
+  #landed(view: EditedView, pages: readonly number[], images: readonly ImageInfo[], said: Said | null) {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);
-    const landedFits = fitsByPage(view, replyFits);
+    const notices = new Map(this.#drawn.notices);
+    const landed = byPage(view, said ?? { fits: {}, notices: [], skipped: [] }, pages);
     for (const page of pages) {
       const onPage = images.filter((image) => image.page === page);
       if (onPage.length > 0) strips.set(page, onPage);
       else strips.delete(page);
       from.set(page, view);
-      const pageFits = landedFits.get(page);
-      if (pageFits !== undefined) fits.set(page, pageFits);
-      else fits.delete(page);
+      setOrDelete(fits, page, landed.fits.get(page));
+      setOrDelete(notices, page, landed.notices.get(page));
     }
-    this.#drawn = { strips, from, fits };
+    // Skipped is of the whole edit list: a reply replaces it, and it goes with the last edit.
+    const skipped = said?.skipped ?? (view.edits.length === 0 ? [] : this.#drawn.skipped);
+    const failed = said === null ? this.#drawn.failed : null;
+    this.#drawn = { strips, from, fits, notices, skipped, failed };
     this.#options.drawn(this.#drawn);
   }
+}
+
+function setOrDelete<V>(map: Map<number, V>, page: number, value: V | undefined): void {
+  if (value === undefined) map.delete(page);
+  else map.set(page, value);
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
 import type { Edit, ImageInfo, Render, RenderBody, SpanInfo } from "../api/types";
-import { aDoc, aFit, aProblem, aReply, aSpan } from "../fixtures";
+import { aDoc, aFit, aNotice, aProblem, aReply, aSkipped, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
@@ -34,19 +34,16 @@ function server() {
 }
 
 let drawn: Drawn[];
-let failures: string[];
 let fake: ReturnType<typeof server>;
 let queue: RenderQueue;
 
 beforeEach(() => {
   drawn = [];
-  failures = [];
   fake = server();
   queue = new RenderQueue({
     reopener: { doc: DOC, withDocument: (use) => use(DOC) },
     scale: 2,
     drawn: (now) => drawn.push(now),
-    failed: (detail) => failures.push(detail),
     render: fake.render,
     decode: async () => undefined,
   });
@@ -81,7 +78,7 @@ describe("the render queue", () => {
     fake.asked[1]?.answer(fake.reply([0, 1]));
     await settle();
     expect([...queue.drawn.from.keys()].sort()).toEqual([0, 1]);
-    expect(failures).toEqual([]);
+    expect(queue.drawn.failed).toBeNull();
   });
 
   test("a page with nothing left on it goes back to its image at once, without asking", async () => {
@@ -105,7 +102,6 @@ describe("the render queue", () => {
       reopener: { doc: DOC, withDocument: (use) => use(DOC) },
       scale: 2,
       drawn: (now) => drawn.push(now),
-      failed: (detail) => failures.push(detail),
       render: fake.render,
       decode: () => decoding,
     });
@@ -119,17 +115,43 @@ describe("the render queue", () => {
     expect(drawn).toHaveLength(1);
   });
 
-  test("a failed render says why, and its page is asked for again with the next change", async () => {
+  test("a failed render says why until one lands, and its page is asked for again with the next change", async () => {
     queue.draw(readingOf(replace(ONE)));
     await settle();
     fake.asked[0]?.fail(new ProblemError(aProblem(0, "Couldn't reach the server.")));
     await settle();
-    expect(failures).toEqual(["Couldn't reach the server."]);
+    expect(queue.drawn.failed).toBe("Couldn't reach the server.");
     expect(queue.drawn.from.has(0)).toBe(false);
 
     queue.draw(readingOf(replace(ONE), replace(TWO)));
     await settle();
     expect(fake.asked[1]?.body.regions.map((region) => region.page)).toEqual([0, 1]);
+    fake.asked[1]?.answer(fake.reply([0, 1]));
+    await settle();
+    expect(queue.drawn.failed).toBeNull();
+  });
+
+  test("what a reply says of a page goes with its strips; what it left out is of the whole list", async () => {
+    const drewOtherwise = aNotice("Drawn in Liberation Serif.", { span_id: ONE.id });
+    const leftOut = aSkipped(0, "An edit points at nothing.");
+    queue.draw(readingOf(replace(ONE)));
+    await settle();
+    fake.asked[0]?.answer(aReply({ images: [stripFor(0)], notices: [drewOtherwise], skipped: [leftOut] }));
+    await settle();
+    expect(queue.drawn.notices.get(0)).toEqual([drewOtherwise]);
+    expect(queue.drawn.skipped).toEqual([leftOut]);
+
+    // Only page 2 is drawn again: page 1 keeps what was said of it.
+    queue.draw(readingOf(replace(ONE), replace(TWO)));
+    await settle();
+    fake.asked[1]?.answer(fake.reply([1]));
+    await settle();
+    expect(queue.drawn.notices.get(0)).toEqual([drewOtherwise]);
+    expect(queue.drawn.skipped).toEqual([]);
+
+    queue.draw(UNEDITED);
+    await settle();
+    expect(queue.drawn.notices.size).toBe(0);
   });
 
   test("retry asks again for what's still stale, and nothing once it's all drawn", async () => {

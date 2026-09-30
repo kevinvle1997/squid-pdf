@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Document } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Notice } from "../../ui/Notice";
@@ -9,6 +9,7 @@ import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { change, changedCount, createEditor, type Editor as OpenDocument, similarCount } from "../editor";
 import { exportNow } from "../export";
+import { noticeLines } from "../notices";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./Editor.module.css";
@@ -98,8 +99,14 @@ function Bar() {
 }
 
 function NoticeLine() {
-  const notice = useEditorState((state) => state.notice);
-  return notice === null ? null : <Notice tone={notice.tone}>{notice.text}</Notice>;
+  const notices = useEditorState((state) => state.notices);
+  const drawn = useEditorState((state) => state.drawn);
+  const lines = useMemo(() => noticeLines(notices, drawn), [notices, drawn]);
+  return lines.map((line) => (
+    <Notice key={line.text} tone={line.tone}>
+      {line.text}
+    </Notice>
+  ));
 }
 
 function Pages() {

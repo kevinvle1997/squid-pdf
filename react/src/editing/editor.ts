@@ -5,6 +5,7 @@ import { ProblemError } from "../api/client";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
+import { NO_NOTICES, type Notices, plain, warn } from "./notices";
 import { type EditedView, project, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { createStore, type Store } from "./store";
@@ -14,12 +15,6 @@ export interface Draft {
   readonly spanId: string;
   readonly page: number;
   readonly atPt: number | null; // where in the span the press was, from its start: the word to select
-  readonly text: string;
-}
-
-/** A line under the bar about what just happened. */
-export interface Notice {
-  readonly tone: "plain" | "warn";
   readonly text: string;
 }
 
@@ -39,7 +34,7 @@ export interface EditorState {
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
   readonly draft: Draft | null;
   readonly returnedTo: string | null; // the span focus went back to after its edit: its note stays shut
-  readonly notice: Notice | null;
+  readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
   readonly said: string; // what a screen reader hears, for what the page doesn't show
   readonly exporting: boolean;
 }
@@ -66,7 +61,6 @@ export function layoutOf(doc: Document): Layout {
 }
 
 export function createEditor(file: File, opened: Document, scale: number): Editor {
-  const [first] = opened.notices;
   const store = createStore<EditorState>({
     doc: opened,
     layout: layoutOf(opened),
@@ -76,20 +70,15 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     drawn: NOTHING_DRAWN,
     draft: null,
     returnedTo: null,
-    notice: first === undefined ? null : { tone: "warn", text: first.detail },
+    notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
     said: "",
     exporting: false,
   });
   // The hour ran out and the document opened again: the same spans, under a new id.
   const reopener = new Reopener(file, opened, (doc) =>
-    store.set({ doc, layout: layoutOf(doc), notice: { tone: "plain", text: doc.copy.reopened } }),
+    store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } }),
   );
-  const queue = new RenderQueue({
-    reopener,
-    scale,
-    drawn: (drawn) => store.set({ drawn }),
-    failed: (detail) => store.set({ notice: { tone: "warn", text: detail } }),
-  });
+  const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => store.set({ drawn }) });
   return { store, file, reopener, queue };
 }
 
@@ -100,9 +89,9 @@ export function change(editor: Editor, action: HistoryAction): void {
   const history = historyReducer(state.history, action);
   if (history === state.history) return;
   const view = project(state.doc.spans, entriesOf(history), state.view);
-  // A message about the last export or reopening is stale once the user edits again.
-  const notice = state.notice?.tone === "plain" ? null : state.notice;
-  store.set({ history, view, notice });
+  // What the last export or reopening said is stale once the user edits again.
+  const notices = { ...state.notices, export: null, reopen: null };
+  store.set({ history, view, notices });
   queue.draw(view);
 }
 
@@ -122,7 +111,8 @@ export function say(editor: Editor, text: string): void {
 export function imageFailed(editor: Editor): void {
   editor.reopener.check().catch((error: unknown) => {
     if (!(error instanceof ProblemError)) throw error;
-    editor.store.set({ notice: { tone: "warn", text: error.problem.detail } });
+    const { notices } = editor.store.get();
+    editor.store.set({ notices: { ...notices, reopen: warn(error.problem.detail) } });
   });
 }
 

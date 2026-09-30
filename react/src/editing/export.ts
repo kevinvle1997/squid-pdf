@@ -1,6 +1,7 @@
 // The edited document, downloaded under its own name. An edit still being typed goes in first.
 import { exportPdf, ProblemError } from "../api/client";
 import type { Editor } from "./editor";
+import { plain, warn } from "./notices";
 import { finish } from "./typing";
 
 function download(pdf: Blob, name: string): void {
@@ -26,10 +27,12 @@ export async function exportNow(editor: Editor): Promise<void> {
     const text = leftOut
       ? store.get().doc.copy.export_left_out
       : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
-    store.set({ notice: { tone: leftOut ? "warn" : "plain", text }, said: text });
+    const notice = leftOut ? warn(text) : plain(text);
+    store.set({ notices: { ...store.get().notices, export: notice }, said: text });
   } catch (error) {
     if (!(error instanceof ProblemError)) throw error;
-    store.set({ notice: { tone: "warn", text: error.problem.detail }, said: error.problem.detail });
+    const text = error.problem.detail;
+    store.set({ notices: { ...store.get().notices, export: warn(text) }, said: text });
   } finally {
     store.set({ exporting: false });
   }
