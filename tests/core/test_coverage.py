@@ -7,7 +7,10 @@ from importlib import resources
 
 import pymupdf
 import pytest
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 
 from squidpdf.core import open_pdf
 from squidpdf.core.coverage import Coverage
@@ -85,3 +88,44 @@ def test_a_ligature_a_stored_font_draws_counts_as_drawn(tmp_path):
     with open_pdf(path) as engine:
         [span] = engine.index()
         assert_equal(engine.missing(span, span.text), [], "letters the font lacks")
+
+
+def _built_of_parts(*, parts_drawn: bool) -> bytes:
+    """A font whose Á is built from its A and its acute, as fonts build accented letters.
+
+    A trimmed font can keep Á while emptying the A and the acute it's built
+    from: then Á draws nothing, though it still points at its parts.
+    """
+    builder = FontBuilder(_EM, isTTF=True)
+    builder.setupGlyphOrder([".notdef", "A", "acute", "Aacute"])
+    builder.setupCharacterMap({ord("A"): "A", 0xB4: "acute", ord("Á"): "Aacute"})
+    pen = TTGlyphPen(None)
+    if parts_drawn:
+        pen.moveTo((50, 0))
+        pen.lineTo((50, 700))
+        pen.lineTo((550, 0))
+        pen.closePath()
+    part = pen.glyph()
+    built = Glyph()
+    built.numberOfContours = -1  # a glyph made of others, not of its own outline
+    built.components = []
+    for name in ("A", "acute"):
+        component = GlyphComponent()
+        component.glyphName, component.x, component.y, component.flags = name, 0, 0, 0
+        built.components.append(component)
+    empty = TTGlyphPen(None).glyph()
+    builder.setupGlyf({".notdef": empty, "A": part, "acute": part, "Aacute": built})
+    builder.setupHorizontalMetrics({name: (600, 0) for name in builder.font.getGlyphOrder()})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "Built", "styleName": "Regular"})
+    builder.setupOS2()
+    builder.setupPost()
+    font_file = io.BytesIO()
+    builder.save(font_file)
+    return font_file.getvalue()
+
+
+@pytest.mark.parametrize("parts_drawn", [True, False], ids=["parts kept", "parts emptied"])
+def test_a_letter_built_from_other_shapes_draws_only_if_they_do(parts_drawn):
+    coverage = Coverage(_built_of_parts(parts_drawn=parts_drawn))
+    assert_equal(coverage.covers("Á"), parts_drawn, "whether Á draws")

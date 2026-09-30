@@ -12,7 +12,7 @@ from collections.abc import Iterable, Mapping
 
 from fontTools.agl import toUnicode
 from fontTools.cffLib import CFFFontSet
-from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
@@ -117,12 +117,16 @@ class Coverage:
         return draws
 
     def _draws(self, ch: str) -> bool:
-        """Ask the glyph itself to draw, and check that it produced any ink."""
+        """Ask the glyph itself to draw, and check that it produced any ink.
+
+        A letter built from others (Á from A and an accent) is drawn through to
+        their outlines: a trimmed font can keep it while emptying its parts.
+        """
         name = self._glyph_names.get(Codepoint(ord(ch)))
         if name is None or self._glyphs is None:
             return False
         try:
-            pen = RecordingPen()
+            pen = DecomposingRecordingPen(self._glyphs)
             self._glyphs[name].draw(pen)
             return bool(pen.value)
         except Exception:  # noqa: BLE001 (a glyph that will not draw is missing)
