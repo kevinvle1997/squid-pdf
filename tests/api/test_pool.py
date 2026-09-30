@@ -6,6 +6,7 @@ import asyncio
 import sys
 import time
 
+import pymupdf
 import pytest
 
 from squidpdf.api.constants import WORKER_MEMORY_BYTES
@@ -34,6 +35,18 @@ def _hang() -> None:
 def _overeat() -> int:
     """Work that asks for twice a worker's memory."""
     return len(bytearray(2 * WORKER_MEMORY_BYTES))
+
+
+def _read_a_broken_font() -> None:
+    """Work that fails inside MuPDF itself, with an error that holds a pointer."""
+    pymupdf.Font(fontbuffer=b"not a font")
+
+
+def test_a_failure_inside_the_pdf_library_comes_back_as_what_it_means(pool):
+    """Not a server error: MuPDF's own exception can't be sent back, its meaning can."""
+    with pytest.raises(Problem) as caught:
+        asyncio.run(pool.run(_ENOUGH_S, _read_a_broken_font))
+    assert_equal(caught.value.type, "damaged", "problem for work MuPDF couldn't do")
 
 
 def test_work_past_its_timeout_is_killed_and_called_too_slow(pool):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from squidpdf.core import InvalidRequest, NotFound, Problem
+from squidpdf.core import InvalidRequest, NotFound, Problem, TooHeavy
 
 __all__ = [
     "InvalidRequest",  # core's, so controllers can raise it too
@@ -10,7 +10,7 @@ __all__ = [
     "RateLimited",
     "RequestTooLarge",
     "ServerError",
-    "TooHeavy",
+    "TooHeavy",  # core's, so a worker can raise it too
     "TooSlow",
 ]
 
@@ -27,13 +27,6 @@ class TooSlow(Problem):
 
     type = "too_slow"
     status = 503
-
-
-class TooHeavy(Problem):
-    """The worker went past the memory ceiling."""
-
-    type = "too_heavy"
-    status = 422
 
 
 class ServerError(Problem):

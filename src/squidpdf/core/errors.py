@@ -19,6 +19,7 @@ __all__ = [
     "Unreadable",
     "Encrypted",
     "Damaged",
+    "TooHeavy",
 ]
 
 
@@ -97,3 +98,10 @@ class Encrypted(Unreadable):
 
 class Damaged(Unreadable):
     """Garbage, truncated or empty; or MuPDF crashed on it."""
+
+
+class TooHeavy(Problem):
+    """The work went past the memory ceiling, or past a limit the PDF library keeps."""
+
+    type = "too_heavy"
+    status = 422

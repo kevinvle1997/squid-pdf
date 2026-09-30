@@ -20,6 +20,8 @@ from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, PageFont, Rec
 
 __all__ = [
     "MUPDF_ERRORS",
+    "MUPDF_OWN_ERRORS",
+    "MUPDF_TOO_HEAVY",
     "PdfFile",
 ]
 
@@ -48,6 +50,10 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 # What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
 # which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
 MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
+# MuPDF's own errors alone, which hold a pointer, so they can't cross between processes.
+MUPDF_OWN_ERRORS = pymupdf.mupdf.FzErrorBase
+# Those of them that mean the work was too big, not the file broken: a limit, or memory.
+MUPDF_TOO_HEAVY = (pymupdf.mupdf.FzErrorLimit, pymupdf.mupdf.FzErrorSystem)
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,6 +11,7 @@ import asyncio
 import multiprocessing
 import sys
 from collections.abc import Callable
+from functools import partial
 from types import ModuleType
 from typing import cast
 
@@ -19,7 +20,7 @@ from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import constants
 from squidpdf.api.errors import TooHeavy, TooSlow
-from squidpdf.core import Damaged
+from squidpdf.core import Damaged, result_of
 
 __all__ = [
     "Pool",
@@ -44,9 +45,10 @@ class Pool:
         """`task()` in a worker, killed after `timeout` seconds.
 
         If the request goes away first, the task is cancelled and pebble stops
-        the worker running it.
+        the worker running it. The PDF library's own failures come back as the
+        Problems they mean (`core.result_of`).
         """
-        future = self._pool.submit(task, timeout)
+        future = self._pool.submit(partial(result_of, task), timeout)
         try:
             return await asyncio.wrap_future(future)
         except TimeoutError as exc:  # out of time: slow, not necessarily broken

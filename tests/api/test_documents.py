@@ -109,6 +109,28 @@ def _locked() -> bytes:
     return doc.tobytes(encryption=_AES_256, user_pw="user", owner_pw="owner")
 
 
+def _written_out(objects: list[str]) -> bytes:
+    """A PDF written by hand from its objects, numbered from 1, with a true index of them.
+
+    Everything else about it is sound, so what the test gives it is its only fault.
+    """
+    out = bytearray(b"%PDF-1.7\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n{body}\nendobj\n".encode()
+    index_at = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode()
+    out += f"startxref\n{index_at}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+_CATALOG = "<< /Type /Catalog /Pages 2 0 R >>"
+_PAGE = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"
+
+
 @pytest.mark.parametrize(
     ("body", "problem", "status"),
     [
@@ -116,8 +138,28 @@ def _locked() -> bytes:
         # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
         (_locked(), "encrypted", 422),
+        # The page list holds itself: reading it never ends.
+        (
+            _written_out([_CATALOG, "<< /Type /Pages /Kids [2 0 R 3 0 R] /Count 2 >>", _PAGE]),
+            "damaged",
+            422,
+        ),
+        # It says five pages and has one.
+        (
+            _written_out([_CATALOG, "<< /Type /Pages /Kids [3 0 R] /Count 5 >>", _PAGE]),
+            "damaged",
+            422,
+        ),
+        (_written_out([_CATALOG, "<< /Type /Pages /Kids [] /Count 0 >>"]), "damaged", 422),
     ],
-    ids=["text", "garbage after the header", "password-protected"],
+    ids=[
+        "text",
+        "garbage after the header",
+        "password-protected",
+        "a page list inside itself",
+        "a page count that lies",
+        "no pages at all",
+    ],
 )
 def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, status):
     before = _kept()
