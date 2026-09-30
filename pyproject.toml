@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Correct text already in a PDF, and know beforehand whether it will look identical."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "pymupdf>=1.25.3",  # 1.25.3 is the first to read text's opacity (span "alpha")
     "fonttools>=4.53",
@@ -73,7 +73,7 @@ max-positional-args = 3
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 files = ["src", "tests"]
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -90,7 +90,7 @@ module = "squidpdf.*"
 disallow_untyped_defs = true
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 include = ["src", "tests"]
