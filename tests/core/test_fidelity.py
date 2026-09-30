@@ -7,14 +7,32 @@ from collections.abc import Callable, Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core import Fidelity, FidelityReport, Span, open_pdf, words
+from squidpdf.core import (
+    Engine,
+    Fidelity,
+    FidelityReport,
+    Span,
+    SpanIndex,
+    new_text,
+    open_pdf,
+    words,
+)
+from squidpdf.core.fonts import strip_subset
 from tests.conftest import REFERENCED_PAGE, named_only, saved_as
-from tests.helpers import assert_all, assert_between, assert_equal
+from tests.core.conftest import MERGED_TEXTS
+from tests.helpers import assert_all, assert_between, assert_equal, assert_not_in
 
 _EM = 1000
 _SIZE = 12
 _ORIGIN_TOLERANCE_PT = 0.01
 _SERIF_FLAGS = 2 | 32  # a PDF font description's Serif and Nonsymbolic bits
+
+# Every letter drawn by one merged page's copy or the other, and the two alternate:
+# Y a y from page 1's copy, the rest from page 0's.
+_POOLED = "Yearly Hello"
+_SAME_PT = 0.01  # how far measure() and the listed widths may part: rounding, no more
+_INK_DPI = 144  # fine enough that a 14 pt letter's middle covers many pixels
+_INK_LEVEL = 128  # a pixel darker than mid-grey is ink on the white page
 
 # The fixtures' /Widths and /W, by letter (see conftest.py).
 _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
@@ -190,3 +208,104 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     [drawn] = _drawn(out)
     expected = ("ABC", saved_as("Liberation Sans Regular"))
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
+
+
+def _first_span(engine: Engine) -> Span:
+    """The first span on page 0: the merged fixtures' one line there."""
+    return next(span for span in engine.index() if span.page == 0)
+
+
+def _font_files(doc: pymupdf.Document, page: int) -> set[bytes]:
+    """Each font file a page of `doc` draws with."""
+    return {doc.extract_font(xref)[-1] for xref, *_ in doc[page].get_fonts()}
+
+
+def _blank_letters(page: pymupdf.Page) -> list[str]:
+    """The letters on a page that put no ink down, in order."""
+    blocks = page.get_text("rawdict")["blocks"]
+    letters = [char for span in _each_span(blocks) for char in span["chars"]]
+    return [
+        char["c"]
+        for char in letters
+        if not char["c"].isspace() and not _inked(page, pymupdf.Rect(char["bbox"]))
+    ]
+
+
+def _inked(page: pymupdf.Page, box: pymupdf.Rect) -> bool:
+    """Whether anything is drawn in the middle half of `box`, clear of its neighbours."""
+    quarter = box.width / 4
+    middle = pymupdf.Rect(box.x0 + quarter, box.y0, box.x1 - quarter, box.y1)
+    samples = page.get_pixmap(clip=middle, dpi=_INK_DPI, alpha=False).samples
+    return min(samples) < _INK_LEVEL
+
+
+def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
+    """Redraw page 0's line as _POOLED: what the fit says is missing, and new text's state."""
+    with open_pdf(path) as eng:
+        span = _first_span(eng)
+        missing = eng.missing(span, _POOLED)
+        new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
+        [report] = eng.assess(SpanIndex([new]))
+        eng.remove([span])
+        eng.draw(span, _POOLED)
+        eng.save(out)
+    return missing, report
+
+
+def _assert_drawn_in_both_copies(original: str, out: str) -> None:
+    """The line reads back whole, every letter inked, drawn in the file's two copies alone."""
+    saved, merged = pymupdf.open(out), pymupdf.open(original)
+    assert_equal(saved[0].get_text().strip(), _POOLED, "the text read back")
+    assert_equal(_blank_letters(saved[0]), [], "letters drawn with no ink")
+    copies = _font_files(merged, 0) | _font_files(merged, 1)
+    assert_equal(len(copies), 2, "copies of the font in the fixture")
+    assert_equal(_font_files(saved, 0), copies, "the font files the redraw used")
+
+
+def test_a_letter_only_another_pages_copy_draws_is_exact_and_redraws_in_the_files_font(
+    merged, tmp_path
+):
+    """Page 0's Times has no Y; page 1's has. Before, the whole line went to the stand-in."""
+    out = str(tmp_path / "redrawn.pdf")
+    missing, report = _redraw(merged, out)
+
+    assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
+    _assert_drawn_in_both_copies(merged, out)
+
+
+def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlike):
+    """Helvetica named as Times: its e, l and r are wider, so it lends Times no letter."""
+    doc = pymupdf.open(merged_unlike)
+    fonts = doc[0].get_fonts() + doc[1].get_fonts()
+    names = {strip_subset(name) for _xref, _ext, _kind, name, *_ in fonts}
+    assert_equal(len(names), 1, "names the fixture's two copies go by, prefix aside")
+    with open_pdf(merged_unlike) as eng:
+        span = _first_span(eng)
+        missing = eng.missing(span, _POOLED)
+        listed = eng.widths(span)
+
+    assert_equal(missing, ["Y", "a", "y"], "letters Times lacks")
+    assert_not_in("Y", listed, "letters the browser is told Times draws")
+
+
+def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
+    """The browser's live fit reads widths(), the server measure(): pooled, they must agree."""
+    with open_pdf(merged) as eng:
+        own, other = list(eng.index())
+        widths, others = eng.widths(own), eng.widths(other)
+        measured = eng.measure(own, _POOLED)
+
+    every_letter = set("".join(MERGED_TEXTS))
+    assert_equal(every_letter - widths.keys(), set(), "letters the pooled list leaves out")
+    assert_equal(widths["Y"], others["Y"], "Y's width, borrowed and in its own copy")
+    listed = sum(widths[ch] for ch in _POOLED) * own.size / _EM
+    assert_between(measured - listed, -_SAME_PT, _SAME_PT, "measured less listed width")
+
+
+def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_coded, tmp_path):
+    """Both copies write Y with one code; only page 1's draws it. It joins page 0's fonts."""
+    out = str(tmp_path / "redrawn.pdf")
+    missing, report = _redraw(merged_coded, out)
+
+    assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
+    _assert_drawn_in_both_copies(merged_coded, out)

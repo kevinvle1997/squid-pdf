@@ -10,6 +10,8 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
+from squidpdf.core.fonts import FACES, face_bytes
+
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
 _OFFSET_BOX = "[100 50 712 842]"  # a mediabox not at 0,0
@@ -307,3 +309,75 @@ def _ids(word: str) -> str:
 def coded(request) -> str:
     """A font the file reaches only by code, in either shape."""
     return request.getfixturevalue(request.param)
+
+
+# The merged fixtures' two pages: each copy draws only its own page's letters.
+# Pooled, "Yearly Hello" draws; "Yes" never can, since neither page drew an s.
+MERGED_TEXTS = ("Hello there", "Yearly quiz")
+_MERGED_SIZE = 14.0
+
+
+def _merged(path: str, fonts: tuple[bytes, bytes]) -> str:
+    """Two one-page PDFs, each with its own trimmed copy of a font, joined into one.
+
+    As merging two documents leaves them: every page keeps the copy it came
+    with, trimmed (subset) to that page's letters, under the same name with a
+    different subset prefix. Page 0 draws MERGED_TEXTS[0] in fonts[0], page 1
+    MERGED_TEXTS[1] in fonts[1].
+    """
+    merged = pymupdf.open()
+    for text, font in zip(MERGED_TEXTS, fonts, strict=True):
+        single = pymupdf.open()
+        page = single.new_page()
+        # "own" is only the name the page files the font under.
+        page.insert_font(fontname="own", fontbuffer=font)
+        page.insert_text((72, 96), text, fontname="own", fontsize=_MERGED_SIZE)
+        single.subset_fonts(verbose=False)
+        # Saved and reopened, as two real files would be, before joining.
+        merged.insert_pdf(pymupdf.open("pdf", single.tobytes()))
+    merged.save(path)
+    return path
+
+
+@pytest.fixture(scope="module")
+def merged(tmp_path_factory) -> str:
+    """Two pages, each with its own trimmed copy of Times, reached by letter.
+
+    MuPDF's Times ("tiro") is a CFF font, which keeps its letter table when
+    trimmed, so the engine writes it by letter. Not a face we ship, so the
+    stand-in (Liberation Serif) can't be mistaken for it.
+    """
+    times = pymupdf.Font("tiro").buffer
+    return _merged(str(tmp_path_factory.mktemp("merged") / "letters.pdf"), (times, times))
+
+
+@pytest.fixture(scope="module")
+def merged_coded(tmp_path_factory) -> str:
+    """Two pages, each with its own trimmed copy of Liberation Sans, reached only by code.
+
+    MuPDF drops a TrueType's letter table (cmap) when it trims one, so only
+    the letter list (ToUnicode) says which code draws each letter. Both copies
+    keep every glyph at its old number and empty the ones the page didn't use:
+    the same code draws Y in page 1's copy and nothing in page 0's.
+    """
+    sans = face_bytes(FACES["Liberation Sans Regular"])
+    return _merged(str(tmp_path_factory.mktemp("merged") / "codes.pdf"), (sans, sans))
+
+
+@pytest.fixture(scope="module")
+def merged_unlike(tmp_path_factory) -> str:
+    """The merged file, but page 1's copy is Helvetica given page 0's name.
+
+    Two different fonts under one name, as two releases of a font or a
+    renamed one leave them: page 1's e, l and r are wider than Times'.
+    """
+    times, helvetica = pymupdf.Font("tiro").buffer, pymupdf.Font("helv").buffer
+    path = _merged(str(tmp_path_factory.mktemp("merged") / "unlike.pdf"), (times, helvetica))
+    doc = pymupdf.open(path)
+    [(_xref, _ext, _kind, times_name, *_)] = doc[0].get_fonts()
+    [(helvetica_xref, *_)] = doc[1].get_fonts()
+    # A PDF name writes each space as #20.
+    doc.xref_set_key(helvetica_xref, "BaseFont", "/" + times_name.replace(" ", "#20"))
+    renamed = path.replace(".pdf", "-renamed.pdf")
+    doc.save(renamed)
+    return renamed
