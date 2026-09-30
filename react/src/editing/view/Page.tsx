@@ -43,7 +43,7 @@ interface Props {
   index: number;
   info: PageInfo;
   spans: SpanInfo[];
-  strips: ImageInfo[] | undefined;
+  strips: readonly ImageInfo[] | undefined;
 }
 
 /** One page: its box reserved from its size, the image when near, and a mark over every span. */

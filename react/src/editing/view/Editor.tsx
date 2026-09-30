@@ -13,8 +13,8 @@ import { EditorContext, type Editing, type EditorState, focusSpan } from "./cont
 import styles from "./Editor.module.css";
 import { EMPTY_HISTORY, type History, type HistoryAction, entriesOf, historyReducer, touching } from "../history";
 import { project } from "../project";
+import { NOTHING_DRAWN, RenderQueue } from "../render";
 import { Page } from "./Page";
-import { useStrips } from "./useStrips";
 import { counted } from "../words";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
@@ -82,7 +82,17 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   );
 
   const onProblem = (detail: string) => setNotice({ tone: "warn", text: detail });
-  const { strips, shown, fits, redraw } = useStrips({ scale: SCALE, reopener, onProblem });
+  const [drawn, setDrawn] = useState(NOTHING_DRAWN);
+  const [queue] = useState(() => new RenderQueue({ reopener, scale: SCALE, drawn: setDrawn, failed: onProblem }));
+  const { strips, fits } = drawn;
+  // The text each span's strip shows, where its page has been drawn.
+  const shown = useMemo(() => {
+    const texts = new Map<string, string>();
+    for (const [page, from] of drawn.from) {
+      for (const span of from.pages.get(page)?.spans ?? []) texts.set(span.span.id, span.text);
+    }
+    return texts;
+  }, [drawn]);
 
   // Every change to the history comes through here, and redraws what it changed.
   function change(action: HistoryAction) {
@@ -93,7 +103,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     setLog(after);
     // A message about the last export or reopening is stale once the user edits again.
     setNotice((now) => (now?.tone === "plain" ? null : now));
-    redraw(doc, viewOf(before), viewOf(after));
+    queue.draw(viewOf(after));
   }
 
   const viewOf = (of: History) => project(doc.spans, entriesOf(of));
@@ -152,7 +162,7 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
     }
   }
 
-  // The one effect: shortcuts work wherever focus is, so they listen on the window.
+  // The one effect, for what happens outside React: shortcuts anywhere, and the connection coming back.
   const onKey = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey)) return;
     const key = event.key.toLowerCase();
@@ -170,9 +180,14 @@ export function Editor({ file, opened }: { file: File; opened: Document }) {
   });
   useEffect(() => {
     const listen = (event: KeyboardEvent) => onKey(event);
+    const online = () => queue.retry();
     window.addEventListener("keydown", listen);
-    return () => window.removeEventListener("keydown", listen);
-  }, []);
+    window.addEventListener("online", online);
+    return () => {
+      window.removeEventListener("keydown", listen);
+      window.removeEventListener("online", online);
+    };
+  }, [queue]);
 
   const state: EditorState = {
     doc,

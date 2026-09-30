@@ -85,6 +85,21 @@ test("a span edited back to its own words is untouched: nothing is drawn over it
   await expect(page.getByText("1 change")).toHaveCount(0);
 });
 
+test("a render lost to the network is asked for again when the connection comes back", async ({ page, context }) => {
+  await open(page);
+  await page.route("**/render", (route) => route.abort("internetdisconnected"));
+  await edit(page, "This agreement is made on 2 April 2026 between");
+  await expect(page.getByText("Couldn't reach the server.", { exact: false })).toBeVisible();
+  // Until then the browser's own drawing of the edit stays up, over the original.
+  await expect(page.locator("[data-preview]")).toHaveCount(1);
+
+  await page.unroute("**/render");
+  await context.setOffline(true);
+  await context.setOffline(false);
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  await expect(page.locator("[data-preview]")).toHaveCount(0);
+});
+
 test("a change put back from the margin leaves the page as it was", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");
