@@ -1,4 +1,15 @@
 # The one way in: HTTPS, compression, and a password until the app opens to the public.
+{
+	servers {
+		# A body sent a trickle at a time holds a connection and an upload open for as long as
+		# it lasts, and the app can't tell slow from stalled. Ten minutes for the whole request
+		# still brings a file at the app's size limit in over a slow line.
+		timeouts {
+			read_body 10m
+		}
+	}
+}
+
 {$SQUIDPDF_DOMAIN} {
 	# Render's JSON carries its images as base64, which gzip wins back. PDFs are left alone.
 	encode zstd gzip
@@ -15,7 +26,7 @@
 		X-Content-Type-Options "nosniff"
 	}
 
-	# No body cap or wait limit by default: the app enforces its own, and must see them.
+	# No body cap here: the app enforces its own, and must see them.
 	handle /api/* {
 		reverse_proxy app:8000
 	}
