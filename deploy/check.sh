@@ -1,26 +1,47 @@
 #!/usr/bin/env bash
 # Proves a running stack serves through its gate: the gate refuses a stranger,
 # then with the password the health check, an upload, an export with one edit,
-# compression and a delete all work. Needs curl and jq.
+# compression, the security headers and a delete all work. Needs curl and jq.
 #
-#   deploy/check.sh https://your.domain user password [root.crt]
+#   deploy/check.sh https://your.domain user [root.crt]
 #
-# root.crt is only for a local run, where Caddy signs its own certificate.
+# The password comes from SQUIDPDF_PASSWORD, or is asked for: never on the
+# command line, where ps and the shell's history would keep it. root.crt is
+# only for a local run, where Caddy signs its own certificate.
 set -euo pipefail
+
+usage() {
+  printf 'usage: %s https://your.domain user [root.crt]
+' "$0" >&2
+  printf '  the password comes from SQUIDPDF_PASSWORD, or is asked for
+' >&2
+  exit 2
+}
+(( $# == 2 || $# == 3 )) || usage
 
 base="$1"
 user="$2"
-password="$3"
-ca="${4:-}"
+ca="${3:-}"
+password="${SQUIDPDF_PASSWORD:-}"
+if [[ -z $password ]]; then
+  read -rsp "password for $user: " password
+  printf '\n' >&2
+fi
 pdf="$(dirname "$0")/../fixtures/sample.pdf"
 work="$(mktemp -d)"
 shown_bytes=300  # of a reply that failed, enough to read its Problem
 trap 'rm -rf "$work"' EXIT
 
+# The name and password go to curl in a file only this user reads, not as arguments.
+escaped="${user}:${password}"
+escaped="${escaped//\\/\\\\}"
+escaped="${escaped//\"/\\\"}"
+(umask 077 && printf 'user = "%s"\n' "$escaped" >"$work/login")
+
 stranger=(--silent --show-error)
 if [[ -n "$ca" ]]; then stranger+=(--cacert "$ca"); fi
 # The owner cookie is how a document knows its browser, so it's kept between calls.
-signed_in=("${stranger[@]}" --user "$user:$password" --cookie-jar "$work/cookies" --cookie "$work/cookies")
+signed_in=("${stranger[@]}" --config "$work/login" --cookie-jar "$work/cookies" --cookie "$work/cookies")
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 pass() { printf 'ok    %s\n' "$*"; }
@@ -41,6 +62,11 @@ read -r status seconds < <(call "${signed_in[@]}" "$base/api/health")
 [[ $status == 200 ]] && jq -e '.status == "ok"' "$work/body" >/dev/null ||
   fail "with the password, /api/health answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "/api/health answers through the gate: $status in ${seconds}s"
+[[ $(header strict-transport-security) == max-age=31536000 ]] ||
+  fail "the reply's Strict-Transport-Security is '$(header strict-transport-security)'"
+[[ $(header x-content-type-options) == nosniff ]] ||
+  fail "the reply's X-Content-Type-Options is '$(header x-content-type-options)'"
+pass "the proxy sends HSTS and nosniff"
 
 read -r status seconds < <(call "${signed_in[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")

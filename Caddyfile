@@ -8,6 +8,13 @@
 		{$SQUIDPDF_USER} {$SQUIDPDF_PASSWORD_HASH}
 	}
 
+	header {
+		# HTTPS only for a year: a browser that has been here never tries plain HTTP.
+		Strict-Transport-Security "max-age=31536000"
+		# Each reply is the type it says: a browser never guesses a PDF or PNG is a page.
+		X-Content-Type-Options "nosniff"
+	}
+
 	# No body cap or wait limit by default: the app enforces its own, and must see them.
 	reverse_proxy app:8000
 }
