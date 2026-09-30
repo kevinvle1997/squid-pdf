@@ -30,7 +30,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     more than `max_pages`.
     """
     path = Path(folder)
-    with store.open_original(path) as eng:
+    with store.open_to_analyse(path) as eng:
         index = store.load_index(path)
         if index is None:
             if eng.page_count() > max_pages:

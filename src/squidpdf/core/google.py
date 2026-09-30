@@ -210,11 +210,12 @@ def raw_url(path: str) -> str:
 
 
 def fetched(
-    file: GoogleFile, *, folder: Path, download: Download, retry_at: RetryAt
+    file: GoogleFile, *, folder: Path, download: Download | None, retry_at: RetryAt
 ) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
-    From the cache in `folder` when it's there and sound. Else downloaded in
+    From the cache in `folder` when it's there and sound. Else, given `download`,
+    downloaded in
     the background and waited on for FETCH_TIMEOUT_S at most; one that finishes
     later is still checked, cut and cached, for the next analysis. A failure is
     logged, not raised, and noted in `retry_at`, so nothing waits on it again
@@ -225,6 +226,9 @@ def fetched(
     cached = from_cache(ready, file)
     if cached is not None:
         return cached
+    # The cache alone: render and export lend what analysis fetched, and never wait.
+    if download is None:
+        return None
     now = time.monotonic()
     # .get: most files, and the network, have never failed
     held_until = max(retry_at.get(file.source, 0.0), retry_at.get(_EVERY_FILE, 0.0))
@@ -366,13 +370,15 @@ def cache_folder() -> Path:
     return Path(user_caches, "squidpdf", "fonts").resolve()
 
 
-def google_fonts(*, folder: Path | None = None) -> Fetch | None:
+def google_fonts(*, folder: Path | None = None, cache_only: bool = False) -> Fetch | None:
     """The way to Google's copies: from the cache in `folder`, else fetched and kept there.
 
-    `folder` is `cache_folder()` unless given, as the server gives its own. None
-    when SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
+    `folder` is `cache_folder()` unless given, as the server gives its own. With
+    `cache_only`, the cache alone, never the network. None when
+    SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
     """
     if os.environ.get(_NO_FETCH):
         return None
     cache = cache_folder() if folder is None else folder
-    return partial(fetched, folder=cache, download=download, retry_at=_retry_at)
+    way_out = None if cache_only else download
+    return partial(fetched, folder=cache, download=way_out, retry_at=_retry_at)
