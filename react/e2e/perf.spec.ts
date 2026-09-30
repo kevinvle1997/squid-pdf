@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, expect, test } from "@playwright/test";
+import { type CDPSession, type Page, expect, test } from "@playwright/test";
 
 const LINE = "This agreement is made on 14 March 2026 between";
 const PAGES = 30; // "tens of pages": the size the editor is built for
@@ -19,6 +19,7 @@ test.skip(!process.env.PERF, "the probe runs on its own: npm run perf");
 
 interface Probe {
   count: boolean; // walk the tree on each commit: costs time, so not while timing
+  prime: () => void; // take the tree as it stands, for the first commit counted to compare against
   commits: number;
   rendered: number[]; // components each commit rendered
   latencies: number[]; // keydown to the frame after it
@@ -33,13 +34,27 @@ declare global {
 
 /** Installed before the app loads: React reports every commit to a DevTools hook, in production too. */
 function instrument() {
-  const probe: Probe = { count: false, commits: 0, rendered: [], latencies: [], longTasks: [] };
-  window.probe = probe;
   type Fiber = { tag: number; flags: number; child: Fiber | null; sibling: Fiber | null };
   // Function, class, forwardRef, memo and simple memo components.
   const COMPONENTS = new Set([0, 1, 11, 14, 15]);
   const PERFORMED_WORK = 1;
   let before = new WeakSet<Fiber>();
+  let last: { current: Fiber } | null = null;
+  const walk = (root: { current: Fiber }, visit: (fiber: Fiber) => void) => {
+    const stack = [root.current];
+    for (let fiber = stack.pop(); fiber !== undefined; fiber = stack.pop()) {
+      visit(fiber);
+      if (fiber.sibling !== null) stack.push(fiber.sibling);
+      if (fiber.child !== null) stack.push(fiber.child);
+    }
+  };
+  const prime = () => {
+    const now = new WeakSet<Fiber>();
+    if (last !== null) walk(last, (fiber) => now.add(fiber));
+    before = now;
+  };
+  const probe: Probe = { count: false, prime, commits: 0, rendered: [], latencies: [], longTasks: [] };
+  window.probe = probe;
   Object.assign(window, {
     __REACT_DEVTOOLS_GLOBAL_HOOK__: {
       supportsFiber: true,
@@ -49,18 +64,16 @@ function instrument() {
       onPostCommitFiberRoot: () => undefined,
       onCommitFiberRoot(_renderer: number, root: { current: Fiber }) {
         probe.commits++;
+        last = root;
         if (!probe.count) return;
         // A fiber that rendered in this commit is new to the tree and did work; one React
         // skipped is the very object that was there last time.
         const now = new WeakSet<Fiber>();
-        const stack = [root.current];
         let rendered = 0;
-        for (let fiber = stack.pop(); fiber !== undefined; fiber = stack.pop()) {
+        walk(root, (fiber) => {
           now.add(fiber);
           if (COMPONENTS.has(fiber.tag) && fiber.flags & PERFORMED_WORK && !before.has(fiber)) rendered++;
-          if (fiber.sibling !== null) stack.push(fiber.sibling);
-          if (fiber.child !== null) stack.push(fiber.child);
-        }
+        });
         before = now;
         probe.rendered.push(rendered);
       },
@@ -91,8 +104,24 @@ function summary(values: number[]) {
   return { n: sorted.length, median: round(at(0.5)), p95: round(at(0.95)), max: round(sorted.at(-1) ?? 0) };
 }
 
+/** Where Chrome's main thread spent its time, in ms: script, layout, style. */
+async function busy(cdp: CDPSession) {
+  const { metrics } = await cdp.send("Performance.getMetrics");
+  const of = (name: string) => (metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
+  return { script: of("ScriptDuration"), layout: of("LayoutDuration"), style: of("RecalcStyleDuration") };
+}
+
+function spent(before: Awaited<ReturnType<typeof busy>>, after: Awaited<ReturnType<typeof busy>>) {
+  return {
+    scriptMs: Math.round(after.script - before.script),
+    layoutMs: Math.round(after.layout - before.layout),
+    styleMs: Math.round(after.style - before.style),
+  };
+}
+
 async function reset(page: Page, count: boolean) {
   await page.evaluate((counting) => {
+    if (counting) window.probe.prime();
     Object.assign(window.probe, { count: counting, commits: 0, rendered: [], latencies: [], longTasks: [] });
   }, count);
 }
@@ -121,11 +150,14 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
 
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: SLOWDOWN });
+  await cdp.send("Performance.enable");
 
   // Timed with nothing else running in the page.
   let field = await openField(page);
   await reset(page, false);
+  const typingFrom = await busy(cdp);
   await field.pressSequentially(TYPED, { delay: 120 });
+  const typingBusy = spent(typingFrom, await busy(cdp));
   const typing = await page.evaluate(() => ({ ...window.probe }));
   await field.press("Escape");
 
@@ -155,12 +187,14 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   await page.mouse.move(400, 400);
   await reset(page, false);
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  const scrollFrom = await busy(cdp);
   const started = Date.now();
   for (let y = 0; y < height; y += 600) {
     await page.mouse.wheel(0, 600);
     await page.waitForTimeout(50);
   }
   const scroll = await page.evaluate(() => ({ ...window.probe }));
+  const scrollBusy = spent(scrollFrom, await busy(cdp));
 
   const report = {
     pages: PAGES,
@@ -168,6 +202,7 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
     marksMountedAtRest: marks,
     keystrokeToFrameMs: summary(typing.latencies),
     longTasksWhileTypingMs: summary(typing.longTasks),
+    whileTyping: typingBusy,
     commitsPerKeystroke: counted.commits / TYPED.length,
     componentsRenderedPerKeystroke: summary(counted.rendered),
     enterToStripMs: Math.round(settle),
@@ -176,6 +211,7 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
       longTasksMs: summary(scroll.longTasks),
       longTaskTotalMs: Math.round(scroll.longTasks.reduce((sum, value) => sum + value, 0)),
       commits: scroll.commits,
+      ...scrollBusy,
     },
   };
   console.log(`perf ${JSON.stringify(report, null, 2)}`);
