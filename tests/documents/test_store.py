@@ -6,6 +6,8 @@ import asyncio
 import os
 import time
 
+import pytest
+
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
@@ -58,3 +60,23 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
     asyncio.run(sweep_until_a_second_pass())
     assert_true(passes > 1, f"sweeps after the one that failed: {passes - 1}")
     assert_in("the disk said no", caplog.text, "what the log says about the failed sweep")
+
+
+def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
+    """A reader must see the old file or the new one, never half: half reads as broken JSON."""
+    _, folder = store.create("owner")
+    store.save_analysis(folder, "a-build", b'{"worked": "out"}')
+
+    def disk_full(*_paths: object) -> None:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(store.os, "replace", disk_full)
+    with pytest.raises(OSError):
+        store.save_analysis(folder, "a-build", b'{"worked": "out again"}')
+
+    kept = store.load_analysis(folder, "a-build")
+    assert_equal(kept, b'{"worked": "out"}', "the analysis kept")
+    names = sorted(path.name for path in folder.iterdir())
+    assert_equal(
+        names, sorted(["owner", store.analysis_file("a-build")]), "files in the folder"
+    )

@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -103,9 +104,26 @@ def sweep() -> None:
             delete(folder)
 
 
+def write_whole(path: Path, data: bytes) -> None:
+    """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
+
+    Written beside it, then renamed over it, which the filesystem does at once.
+    A half file (a worker killed mid-write, a full disk) would read as broken
+    JSON on every visit, and every visit restarts the hour, so it would never go.
+    """
+    handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(handle, "wb") as out:
+            out.write(data)
+        os.replace(part, path)
+    except BaseException:  # cut short: the old file stays, and the piece goes
+        Path(part).unlink(missing_ok=True)
+        raise
+
+
 def save_index(folder: Path, index: SpanIndex) -> None:
     """Keep the index, built once from the original, so ids never change."""
-    (folder / _INDEX).write_bytes(orjson.dumps(list(index)))
+    write_whole(folder / _INDEX, orjson.dumps(list(index)))
 
 
 def load_index(folder: Path) -> SpanIndex | None:
@@ -140,7 +158,7 @@ def load_fragment(saved: dict[str, Any]) -> Fragment:
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
-    (folder / _PAGES).write_bytes(orjson.dumps(pages))
+    write_whole(folder / _PAGES, orjson.dumps(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
@@ -154,7 +172,7 @@ def load_pages(folder: Path) -> list[Page]:
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:
     """Keep what was worked out under this build; another build works it out again."""
-    (folder / analysis_file(build)).write_bytes(analysis)
+    write_whole(folder / analysis_file(build), analysis)
 
 
 def load_analysis(folder: Path, build: str) -> bytes | None:
