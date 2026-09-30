@@ -55,10 +55,10 @@ fresh server:
    docker compose up -d --build
    ```
 7. **Check it**, from your own machine (needs curl and jq). It checks that the
-   gate refuses a stranger, then uploads, exports and deletes a sample:
+   gate refuses a stranger, then uploads, exports and deletes a sample. It asks
+   for your password:
    ```
-   read -rs password
-   deploy/check.sh https://your.domain your-user-name "$password"
+   deploy/check.sh https://your.domain your-user-name
    ```
    Or open the domain in a browser: it asks for the name and password, and
    `/api/health` answers `{"status":"ok"}`.

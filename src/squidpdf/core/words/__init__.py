@@ -107,12 +107,15 @@ def written_out(name: str, value: Param, language: str) -> str:
 
 
 def visible(character: str) -> str:
-    """A character as a person can see it: itself, or its name when it draws nothing.
+    """A character as a person can see it: itself, or its name when it draws nothing alone.
 
     Names are Unicode's, lower case, e.g. "narrow no-break space"; one without a
-    name, such as a control character, is its code point, e.g. "U+0009".
+    name, such as a control character, is its code point, e.g. "U+0009". An
+    accent on its own is named too: in a sentence it would sit on the space before it.
     """
-    shows = len(character) != 1 or (character.isprintable() and not character.isspace())
+    alone = len(character) == 1
+    blank = alone and (not character.isprintable() or character.isspace())
+    shows = not blank and not (alone and unicodedata.combining(character))
     if shows:
         return character
     try:

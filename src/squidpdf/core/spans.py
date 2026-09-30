@@ -40,7 +40,7 @@ def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
 
 
 def merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
-    """Group a line's pieces into spans, one per run of same-style text."""
+    """Group a line's pieces into spans, one per run of text in one font, size and paint."""
     if not pieces:
         return []
     groups = [[pieces[0]]]
@@ -60,6 +60,9 @@ def continues(previous: TextPiece, piece: TextPiece) -> bool:
     if previous.font != piece.font:
         return False
     if abs(previous.size - piece.size) > SIZE_EPS:
+        return False
+    # Another colour or opacity: a span is redrawn in one.
+    if previous.color != piece.color or previous.opacity != piece.opacity:
         return False
     # Another baseline.
     _x, previous_y = previous.origin
@@ -97,6 +100,7 @@ def span_from(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
         bbox=bbox,
         origin=fragments[0].origin,
         fragments=fragments,
+        direction=first.direction,
     )
 
 

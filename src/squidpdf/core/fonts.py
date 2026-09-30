@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Iterable
+from dataclasses import dataclass
 from functools import cache
 from importlib import resources
 
@@ -29,7 +30,10 @@ __all__ = [
     "trimmed",
 ]
 
-_OFL = "OFL-1.1"  # every face we ship is under the SIL Open Font License
+_OFL = "OFL-1.1"  # the SIL Open Font License, which most faces we ship are under
+_GUST = "GUST-Font-License"  # Latin Modern's: the LaTeX Project Public License, plus a request
+# GNU FreeFont's: a document that embeds it stays the user's, under no licence of ours.
+_FREEFONT = "GPL-3.0-or-later WITH Font-exception-2.0"
 
 _ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
 
@@ -62,6 +66,39 @@ def family_faces(
             same_widths_as=same_widths_as,
         )
         for style in styles
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Cut:
+    """One face of a family whose files aren't named our way, as its own files say."""
+
+    style: Style
+    called: str  # the style as the font's own name says it: "Oblique", "10 Bold"
+    file: str
+    same_widths_as: tuple[str, ...] = ()  # document fonts that are this cut, like CMBX10
+
+
+def cut_faces(
+    family: str,
+    category: Category,
+    *,
+    license: str,
+    cuts: tuple[Cut, ...],
+    same_widths_as: tuple[str, ...] = (),
+) -> tuple[Face, ...]:
+    """A family's faces, each named and filed as its source ships it."""
+    return tuple(
+        Face(
+            name=f"{family} {cut.called}",
+            family=family,
+            style=cut.style,
+            category=category,
+            file=cut.file,
+            license=license,
+            same_widths_as=(*same_widths_as, *cut.same_widths_as),
+        )
+        for cut in cuts
     )
 
 
@@ -104,6 +141,99 @@ CATALOG: tuple[Face, ...] = (
     # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
     *family_faces("Noto Sans", "sans"),
     *family_faces("Noto Serif", "serif"),
+    # The typeface a document names, so its widths match. Offered for new text too.
+    *family_faces("Poppins", "sans"),
+    *family_faces("Open Sans", "sans"),
+    *family_faces("Montserrat", "sans"),
+    *family_faces("Nunito", "sans"),
+    *family_faces("PT Sans", "sans"),
+    *family_faces("PT Serif", "serif"),
+    *cut_faces(
+        "FreeSans",
+        "sans",
+        license=_FREEFONT,
+        cuts=(
+            Cut("regular", "Regular", "FreeSans.ttf"),
+            Cut("bold", "Bold", "FreeSansBold.ttf", ("FreeSansBold",)),
+            Cut("italic", "Oblique", "FreeSansOblique.ttf", ("FreeSansOblique",)),
+            Cut(
+                "bold-italic",
+                "Bold Oblique",
+                "FreeSansBoldOblique.ttf",
+                ("FreeSansBoldOblique",),
+            ),
+        ),
+    ),
+    *cut_faces(
+        "FreeSerif",
+        "serif",
+        license=_FREEFONT,
+        cuts=(
+            Cut("regular", "Regular", "FreeSerif.ttf"),
+            Cut("bold", "Bold", "FreeSerifBold.ttf", ("FreeSerifBold",)),
+            Cut("italic", "Italic", "FreeSerifItalic.ttf", ("FreeSerifItalic",)),
+            Cut(
+                "bold-italic",
+                "Bold Italic",
+                "FreeSerifBoldItalic.ttf",
+                ("FreeSerifBoldItalic",),
+            ),
+        ),
+    ),
+    # LaTeX's Computer Modern, redrawn with the same widths. TeX names a font
+    # by its cut and size (CMBX10: bold, 10 pt design), so each name pins one face.
+    *cut_faces(
+        "Latin Modern Roman 10",
+        "serif",
+        license=_GUST,
+        same_widths_as=("LMRoman10",),
+        cuts=(
+            Cut("regular", "Regular", "lmroman10-regular.otf", ("CMR10", "SFRM1000")),
+            Cut("bold", "Bold", "lmroman10-bold.otf", ("CMBX10", "SFBX1000")),
+            Cut("italic", "Italic", "lmroman10-italic.otf", ("CMTI10", "SFTI1000")),
+            Cut(
+                "bold-italic",
+                "Bold Italic",
+                "lmroman10-bolditalic.otf",
+                ("CMBXTI10", "SFBI1000"),
+            ),
+        ),
+    ),
+    *cut_faces(
+        "Latin Modern Roman 12",
+        "serif",
+        license=_GUST,
+        same_widths_as=("LMRoman12",),
+        cuts=(
+            Cut("regular", "Regular", "lmroman12-regular.otf", ("CMR12", "SFRM1200")),
+            Cut("bold", "Bold", "lmroman12-bold.otf", ("CMBX12", "SFBX1200")),
+            Cut("italic", "Italic", "lmroman12-italic.otf", ("CMTI12", "SFTI1200")),
+        ),
+    ),
+    *cut_faces(
+        "Latin Modern Roman 17",
+        "serif",
+        license=_GUST,
+        same_widths_as=("LMRoman17",),
+        cuts=(Cut("regular", "Regular", "lmroman17-regular.otf", ("CMR17", "SFRM1728")),),
+    ),
+    *cut_faces(
+        "Latin Modern Roman Caps 10",
+        "serif",
+        license=_GUST,
+        same_widths_as=("LMRomanCaps10",),
+        cuts=(Cut("regular", "Regular", "lmromancaps10-regular.otf", ("CMCSC10", "SFCC1000")),),
+    ),
+    *cut_faces(
+        "Latin Modern Mono 10",
+        "mono",
+        license=_GUST,
+        same_widths_as=("LMMono10",),
+        cuts=(
+            Cut("regular", "Regular", "lmmono10-regular.otf", ("CMTT10", "SFTT1000")),
+            Cut("italic", "Italic", "lmmono10-italic.otf", ("CMITT10", "SFIT1000")),
+        ),
+    ),
     # More choice for new text.
     *family_faces("Inter", "sans"),
     *family_faces("Roboto", "sans"),
@@ -236,20 +366,35 @@ def by_family() -> dict[str, dict[Style, Face]]:
     return families
 
 
+def pinned() -> dict[str, Face]:
+    """Document fonts only one face stands in for, like CMBX10, by bare name."""
+    faces_by_name: dict[str, list[Face]] = {}
+    for face in CATALOG:
+        for name in face.same_widths_as:
+            faces_by_name.setdefault(bare_name(name), []).append(face)
+    return {name: faces[0] for name, faces in faces_by_name.items() if len(faces) == 1}
+
+
 _BY_FAMILY = by_family()
+_PINNED = pinned()
 
 
 def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike:
     """The face that stands in for a document font, in its style.
 
-    A face we ship by its exact name is itself. A family we know gets the face
-    with the same letter widths. Anything else gets a plain face of its kind,
+    A face we ship by its exact name is itself, and so is one a document font's
+    name pins, cut and all (CMBX10). A family we know gets the face with the
+    same letter widths. Anything else gets a plain face of its kind,
     judged by the PDF's own description of the font (`descriptor`), not its
     name. The style comes from both.
     """
     # Asked for by name, as an insert does.
     if font in FACES:
         return LookAlike(FACES[font], same_widths=True)
+    # A name that says the cut as well as the family, as TeX's do: that one face.
+    pinned_face = _PINNED.get(bare_name(font))
+    if pinned_face is not None:
+        return LookAlike(pinned_face, same_widths=True)
 
     style, usual_cut = style_of(font, descriptor)
     family = _BY_FAMILY.get(bare_name(font))  # None: a family we don't ship

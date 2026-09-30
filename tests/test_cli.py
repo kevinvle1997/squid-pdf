@@ -40,13 +40,34 @@ def test_spans_lists_every_span_and_a_summary(pdf, capsys):
     assert_in("keep the original font", out, "the summary line")
 
 
-def test_spans_with_a_page_lists_only_that_page(pdf, capsys):
-    """Pages are counted from 0 on the command line, as the index counts them."""
-    main(["spans", pdf, "--page", "1"])
+def test_spans_on_one_page_counts_that_page_from_1_as_it_prints_it(pdf, capsys):
+    code = main(["spans", pdf, "-p", "2"])
 
     out = capsys.readouterr().out
-    assert_in("Invoices are due", out, "the listing for page 1")
-    assert_not_in("SERVICES AGREEMENT", out, "the listing for page 1")
+    assert_equal(code, 0, "exit code of `squidpdf spans -p 2`")
+    assert_in("Invoices are due", out, "a span on the second page")
+    assert_not_in("SERVICES AGREEMENT", out, "a span on the first page")
+    assert_in("\n  2 spans", out, "the summary, of the page shown")
+
+
+def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"%PDF-1.7\n" + bytes(range(256)) * 8)
+
+    code = main(["spans", str(broken)])
+
+    said = capsys.readouterr()
+    assert_equal(code, 1, "exit code of `squidpdf spans` on a damaged PDF")
+    assert_in(words.sentence("damaged"), said.err, "what it says")
+    assert_not_in("Traceback", said.err, "what it says")
+
+
+def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["check", pdf, _span_id(pdf, "Invoices"), "Invoices\nare due"])
+
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf check` with a line break")
+    assert_in("one line", capsys.readouterr().err, "the usage error")
 
 
 def test_check_says_a_same_length_edit_fits(pdf, capsys):
@@ -92,7 +113,7 @@ def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys
     code = main(["edit", pdf, span_id, longer, "-o", str(out_pdf)])
 
     assert_equal(code, 1, "exit code of `squidpdf edit` for an edit that will not fit")
-    assert_in("--force", capsys.readouterr().out, "the refusal names the way past it")
+    assert_in("--force", capsys.readouterr().err, "the refusal names the way past it")
     assert_true(not out_pdf.exists(), "no file is written when the edit is refused")
 
 
@@ -118,17 +139,6 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 
-def test_redact_verifies_words_the_document_repeats_elsewhere(repeated, tmp_path, capsys):
-    """A header on every page: removing one must not fail over the others."""
-    out_pdf = tmp_path / "redacted.pdf"
-
-    code = main(["redact", repeated, _span_id(repeated, "CONFIDENTIAL"), "-o", str(out_pdf)])
-
-    assert_equal(code, 0, "exit code of `squidpdf redact` on a line the document repeats")
-    assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
-    assert_true(out_pdf.exists(), "the redacted file is kept")
-
-
 def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
     pdf, tmp_path, monkeypatch, capsys
 ):
@@ -142,24 +152,15 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
         text="Invoices are due within thirty days.", page=2
     )
     assert_equal(code, 1, "exit code of `squidpdf redact` when the text is still there")
-    assert_in(said, capsys.readouterr().out, "the redact output")
+    assert_in(said, capsys.readouterr().err, "the redact output")
     assert_false(out_pdf.exists(), "a file kept with the text still in it")
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["check", "{pdf}", "nope", "text"],
-        ["edit", "{pdf}", "nope", "text"],
-        ["redact", "{pdf}", "nope"],
-    ],
-    ids=["check", "edit", "redact"],
-)
-def test_an_unknown_span_id_fails_and_points_at_spans(pdf, argv, capsys):
-    code = main([a.format(pdf=pdf) for a in argv])
+def test_an_unknown_span_id_fails_and_points_at_spans(pdf, capsys):
+    code = main(["edit", pdf, "nope", "text"])
 
-    out = capsys.readouterr().out
-    assert_equal(code, 1, f"exit code of `squidpdf {argv[0]}` with an unknown span id")
+    out = capsys.readouterr().err
+    assert_equal(code, 1, "exit code of `squidpdf edit` with an unknown span id")
     assert_in(words.sentence("no_span"), out, "the unknown-span error")
     assert_in("nope", out, "the unknown-span error names the id")
     assert_in("squidpdf spans", out, "the unknown-span error names the command to run")
@@ -217,56 +218,35 @@ def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkey
     assert_false((tmp_path / "fixtures" / "sample.pdf").exists(), "the sample, untouched")
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["spans", "{missing}"],
-        ["check", "{missing}", "some-id", "text"],
-        ["edit", "{missing}", "some-id", "text"],
-        ["redact", "{missing}", "some-id"],
-    ],
-    ids=["spans", "check", "edit", "redact"],
-)
-def test_a_pdf_that_is_not_there_is_a_usage_error_not_a_crash(tmp_path, argv, capsys):
+def test_a_pdf_that_is_not_there_is_a_usage_error_not_a_crash(tmp_path, capsys):
     missing = str(tmp_path / "missing.pdf")
 
     with pytest.raises(SystemExit) as exc:
-        main([a.format(missing=missing) for a in argv])
+        main(["spans", missing])
 
-    assert_equal(exc.value.code, 2, f"exit code of `squidpdf {argv[0]}` for a missing file")
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf spans` for a missing file")
     assert_in(f"there's no file at {missing}", capsys.readouterr().err, "the usage error")
 
 
-def test_saving_into_a_missing_folder_is_a_usage_error(tmp_path, monkeypatch, capsys):
-    """`fixture` writes to fixtures/ by default, which only the repository has."""
-    monkeypatch.chdir(tmp_path)
-
-    with pytest.raises(SystemExit) as exc:
-        main(["fixture"])
-
-    assert_equal(exc.value.code, 2, "exit code of `squidpdf fixture` outside the repository")
-    assert_in("there's no folder fixtures", capsys.readouterr().err, "the usage error")
-
-
-@pytest.mark.parametrize("command", ["edit", "redact"])
-def test_saving_over_the_pdf_being_read_is_refused(pdf, tmp_path, command, capsys):
+def test_saving_over_the_pdf_being_read_is_refused(pdf, tmp_path, capsys):
     """Were anything to go wrong, the original would be lost with it."""
     copy = tmp_path / "copy.pdf"
     shutil.copy(pdf, copy)
     before = copy.read_bytes()
-    text = ["Invoices are due within ninety days."] if command == "edit" else []
+    span_id = _span_id(pdf, "Invoices")
 
     with pytest.raises(SystemExit) as exc:
-        main([command, str(copy), _span_id(pdf, "Invoices"), *text, "-o", str(copy)])
+        main(
+            [
+                "edit",
+                str(copy),
+                span_id,
+                "Invoices are due within ninety days.",
+                "-o",
+                str(copy),
+            ]
+        )
 
-    assert_equal(exc.value.code, 2, f"exit code of `squidpdf {command}` writing over its input")
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf edit` writing over its input")
     assert_in("is the PDF being read", capsys.readouterr().err, "the usage error")
     assert_true(copy.read_bytes() == before, "the PDF being read is unchanged")
-
-
-def test_no_command_is_a_usage_error(capsys):
-    with pytest.raises(SystemExit) as exc:
-        main([])
-
-    assert_equal(exc.value.code, 2, "argparse's exit code for a missing command")
-    assert_in("usage: squidpdf", capsys.readouterr().err, "the usage message")

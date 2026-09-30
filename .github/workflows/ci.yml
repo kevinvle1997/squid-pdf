@@ -45,12 +45,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The test image: the server's, plus the dev tools and tests/. Its command is the suite.
       - name: Build
-        run: docker build -t squidpdf .
+        run: docker build --target test -t squidpdf-test .
 
-      # The image's own command serves, so the suite is asked for by name.
       - name: Test inside the image
-        run: docker run --rm squidpdf uv run pytest -q
+        run: docker run --rm squidpdf-test
 
   # The browser app: its types are the API's OpenAPI, it typechecks, its unit
   # tests pass, and the core loop works end to end in Chromium against the real API.
@@ -134,7 +134,7 @@ jobs:
       # bash by name turns on pipefail, so a failed check isn't hidden by tee.
       - name: Check through the proxy
         shell: bash
-        run: deploy/check.sh https://localhost ci "$SQUIDPDF_PASSWORD" /tmp/root.crt 2>&1 | tee /tmp/check.txt
+        run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
       - name: Report
         run: |

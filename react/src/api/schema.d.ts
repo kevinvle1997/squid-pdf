@@ -193,6 +193,10 @@ export interface components {
                     [key: string]: string;
                 };
             };
+            /** Approximate */
+            approximate: {
+                [key: string]: string;
+            };
         };
         /**
          * Document
@@ -597,6 +601,9 @@ export interface components {
         /**
          * SpanInfo
          * @description One editable span and whether it keeps its own font.
+         *
+         *     `why` says how an approximate span would come back unlike itself, in no
+         *     language: its sentence is in the reply's `copy`, under `approximate`.
          */
         SpanInfo: {
             /** Id */
@@ -616,6 +623,7 @@ export interface components {
             origin: number[];
             /** Fidelity */
             fidelity: string;
+            why: components["schemas"]["MessageInfo"] | null;
         };
         /** @enum {string} */
         Strategy: "as-is" | "shrink" | "condense";

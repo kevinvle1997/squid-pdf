@@ -38,6 +38,7 @@ const span: SpanInfo = {
   bbox: { x0: 72, y0: 100, x1: 152, y1: 124 },
   origin: [72, 120],
   fidelity: "exact",
+  why: null,
 };
 // Every letter half the size wide: the span's eight are 80 pt at 20 pt.
 const font = {

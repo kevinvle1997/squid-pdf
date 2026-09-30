@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from squidpdf.api.errors.generic import (
     InvalidRequest,
+    MethodNotAllowed,
     NotFound,
     RateLimited,
     RequestTooLarge,
@@ -22,6 +23,7 @@ from squidpdf.api.errors.http import PROBLEM_RESPONSES, ProblemInfo, adopt, inst
 
 __all__ = [
     "InvalidRequest",
+    "MethodNotAllowed",
     "NotFound",
     "PROBLEM_RESPONSES",
     "ProblemInfo",

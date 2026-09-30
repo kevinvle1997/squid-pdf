@@ -12,24 +12,25 @@ from squidpdf.editing.apply import (
     log_fits,
     replace_fit,
 )
-from squidpdf.editing.edits import Edit, EditLog, Insert, Redact, Replace
-from squidpdf.editing.errors import BadReference, RedactionFailed
-from squidpdf.editing.export import ExportController
+from squidpdf.editing.edits import Edit, Insert, Redact, Replace
+from squidpdf.editing.errors import BadReference, RedactionConflict, RedactionFailed
+from squidpdf.editing.export import ExportController, save_edited
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
 
 __all__ = [
     "BadReference",
+    "RedactionConflict",
     "RedactionFailed",
     "RedactionController",
     "ExportController",
     "apply",
+    "save_edited",
     "replace_fit",
     "insert_fit",
     "log_fits",
     "Edit",
-    "EditLog",
     "Insert",
     "Redact",
     "Replace",

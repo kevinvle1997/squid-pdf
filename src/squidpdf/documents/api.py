@@ -96,7 +96,7 @@ async def read(
     """The document, in the reader's language, or 304 if the browser has it already."""
     if_none_match = request.headers.get("if-none-match")  # absent on a first read
     reply = await controller.read(doc, said_in=said_in, if_none_match=if_none_match)
-    return Response(reply.json, status_code=reply.status, headers=reply.headers)
+    return Response(reply.body, status_code=reply.status, headers=reply.headers)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -125,7 +125,7 @@ async def page(
 ) -> Response:
     """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
     reply = await controller.page(doc, page=n, scale=scale, build=build)
-    return Response(reply.png, media_type="image/png", headers=reply.headers)
+    return Response(reply.body, media_type="image/png", headers=reply.headers)
 
 
 async def sweep_forever() -> None:

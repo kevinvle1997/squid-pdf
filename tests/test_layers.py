@@ -1,7 +1,7 @@
 """The import rules the docstrings state, checked: which package may import which.
 
 Read from the source, so a rule holds however deep an import hides, even one
-inside a function. test_imports.py checks what's actually loaded at run time.
+inside a function.
 """
 
 from __future__ import annotations
@@ -36,6 +36,9 @@ def _module(path: Path) -> str:
 
 _MODULES = {_module(path): _imports(path) for path in sorted(_SRC.rglob("*.py"))}
 
+# The web layer: the `api` extra is optional, so the CLI and pool work must run without it.
+_WEB = ["squidpdf.api", "squidpdf.documents.api", "squidpdf.editing.api"]
+
 
 def _within(name: str, package: str) -> bool:
     """Whether module `name` is `package` or inside it."""
@@ -46,6 +49,7 @@ def _within(name: str, package: str) -> bool:
     ("importers", "imported", "allowed"),
     [
         ("squidpdf", "pymupdf", ["squidpdf.core.pdf", "squidpdf.core.mupdf"]),
+        ("squidpdf", "fitz", []),
         ("squidpdf", "squidpdf.core.mupdf", ["squidpdf.core"]),
         ("squidpdf", "squidpdf.core.pdf", ["squidpdf.core"]),
         ("squidpdf.core", "squidpdf.editing", []),
@@ -53,14 +57,16 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf.core", "squidpdf.api", []),
         ("squidpdf.core", "squidpdf.cli", []),
         ("squidpdf.documents", "squidpdf.editing", []),
-        (
-            "squidpdf",
-            "squidpdf.api",
-            ["squidpdf.api", "squidpdf.documents.api", "squidpdf.editing.api"],
-        ),
+        ("squidpdf", "squidpdf.api", _WEB),
+        ("squidpdf", "squidpdf.documents.api", _WEB),
+        ("squidpdf", "squidpdf.editing.api", _WEB),
+        ("squidpdf", "fastapi", _WEB),
+        ("squidpdf", "starlette", _WEB),
+        ("squidpdf", "pydantic", _WEB),
     ],
     ids=[
         "only core/pdf.py and core/mupdf.py talk to MuPDF",
+        "nothing reaches MuPDF by its old name, around the rule above",
         "outside core, nothing names the driver: open_pdf is the way in",
         "outside core, nothing reads MuPDF's low-level wrapper",
         "core imports no feature: editing",
@@ -69,6 +75,11 @@ def _within(name: str, package: str) -> bool:
         "core imports no feature: the CLI",
         "editing builds on documents, never the other way",
         "the web layer stays in api/ and each feature's api.py, so the CLI runs without it",
+        "only the web layer imports documents' routes",
+        "only the web layer imports editing's routes",
+        "only the web layer imports FastAPI",
+        "only the web layer imports Starlette",
+        "only the web layer imports Pydantic",
     ],
 )
 def test_the_import_rule_holds(importers, imported, allowed):
@@ -80,3 +91,12 @@ def test_the_import_rule_holds(importers, imported, allowed):
         and any(_within(name, imported) for name in imports)
     ]
     assert_equal(breaking, [], f"modules in {importers} importing {imported}")
+
+
+def test_nothing_inside_imports_the_package_itself():
+    """`squidpdf` re-exports editing for outside callers: core importing it imports a feature.
+
+    The rules above can't see it: `from squidpdf import Edit` names no feature.
+    """
+    breaking = [module for module, imports in _MODULES.items() if "squidpdf" in imports]
+    assert_equal(breaking, [], "modules importing the squidpdf package itself")

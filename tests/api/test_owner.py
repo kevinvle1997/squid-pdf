@@ -25,6 +25,8 @@ def test_another_browsers_document_is_not_found_exactly_like_an_unknown_one(brow
     attempts = [
         theirs.get(base),
         theirs.get(f"{base}/pages/0", params={"scale": 1, "build": doc["build"]}),
+        theirs.post(f"{base}/render", json={"edits": [], "scale": 1, "regions": [{"page": 0}]}),
+        theirs.post(f"{base}/export", json={"edits": []}),
         theirs.delete(base),
     ]
     upload(theirs, pdf_bytes)  # now it has a cookie of its own

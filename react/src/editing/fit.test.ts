@@ -30,6 +30,7 @@ const span: SpanInfo = {
   bbox: { x0: 0, y0: 0, x1: 50, y1: 12 },
   origin: [0, 10],
   fidelity: "exact",
+  why: null,
 };
 const copy = {
   missing: "no {chars} in this font, so the line is drawn in {font}",

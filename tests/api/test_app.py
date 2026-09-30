@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_problem
+from tests.helpers import assert_equal, assert_problem
 
 
 def test_health_answers_once_the_app_has_started():
@@ -18,39 +20,23 @@ def test_health_answers_once_the_app_has_started():
     assert_equal(response.json(), {"status": "ok"}, "health body")
 
 
-def test_the_schema_lives_under_api(browser):
-    schema = browser().get("/api/openapi.json").json()
-    assert_in("/api/health", schema["paths"], "paths in the schema")
-
-
+@pytest.mark.parametrize("sent", ["with its size", "in chunks, size unsaid"])
 def test_an_edit_list_too_large_is_refused_but_an_upload_that_size_is_not(
-    browser, pdf_bytes, monkeypatch
+    browser, pdf_bytes, monkeypatch, sent
 ):
-    """Uploads check their own, larger limit as they stream in."""
+    """Uploads check their own, larger limit as they stream in.
+
+    Sent in chunks, a body states no size up front: it's counted as it comes.
+    """
     monkeypatch.setattr(limits, "MAX_BODY_BYTES", len(pdf_bytes) // 2)
     mine = browser()
 
     uploaded = upload(mine, pdf_bytes)
     regions = [{"page": 0}] * len(pdf_bytes)  # far past the limit once written out
-    body = {"edits": [], "scale": 1, "regions": regions}
-    too_large = mine.post(f"/api/documents/{uploaded.json()['id']}/render", json=body)
+    body = json.dumps({"edits": [], "scale": 1, "regions": regions}).encode()
+    content = body if sent == "with its size" else iter([body[:1024], body[1024:]])
+    url = f"/api/documents/{uploaded.json()['id']}/render"
+    too_large = mine.post(url, content=content, headers={"Content-Type": "application/json"})
 
     assert_equal(uploaded.status_code, 201, f"status of an upload of {len(pdf_bytes)} bytes")
     assert_problem(too_large, "request_too_large", 413)
-
-
-@pytest.mark.parametrize(
-    "declared",
-    ["many", "1_000", "-5", "9" * 5000],
-    ids=["a word", "underscores", "negative", "past what int() reads"],
-)
-def test_a_request_whose_size_isnt_a_whole_number_is_a_bad_request(
-    browser, pdf_bytes, declared
-):
-    """A past bug: the edit list's size check read it with int(), so "many" was a 500."""
-    mine = browser()
-    doc = upload(mine, pdf_bytes).json()
-    body = b'{"edits": [], "scale": 1, "regions": [{"page": 0}]}'
-    headers = {"content-type": "application/json", "content-length": declared}
-    response = mine.post(f"/api/documents/{doc['id']}/render", content=body, headers=headers)
-    assert_problem(response, "invalid_request", 400)

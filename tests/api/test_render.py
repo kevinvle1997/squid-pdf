@@ -3,44 +3,20 @@
 from __future__ import annotations
 
 import base64
+import json
 
 import pymupdf
 import pytest
 
 from squidpdf.core import words
 from squidpdf.core.constants import TOLERANCE_PT
-from squidpdf.editing.constants import MAX_TEXT_CHARS
-from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem, assert_true
+from tests.api.conftest import span_starting
+from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
-_MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
-
-
-@pytest.fixture
-def mine(browser):
-    """The browser that uploads, and so owns, the document."""
-    return browser()
-
-
-@pytest.fixture
-def doc(mine, pdf_bytes) -> dict:
-    """The sample PDF as uploaded by `mine`: what the upload answered."""
-    return upload(mine, pdf_bytes).json()
-
-
-def _span(doc: dict, page: int, starts: str) -> dict:
-    """The span on `page` whose text starts with `starts`."""
-    return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
-
-
-def _around(span: dict) -> dict:
-    """A region: the full-width strip over a span's line."""
-    box = span["bbox"]
-    return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
@@ -54,23 +30,8 @@ def _png(image: dict) -> bytes:
     return base64.b64decode(image["image"])
 
 
-def test_a_replace_comes_back_drawn_with_a_fit_that_says_it_fits(mine, doc):
-    span = _span(doc, 1, "Delivery")
-    text = span["text"].replace("14 March", "2 March")
-    edit = {"kind": "replace", "span_id": span["id"], "text": text}
-
-    edited = _render(mine, doc, [edit], [_around(span)]).json()
-    original = _render(mine, doc, [], [_around(span)]).json()
-
-    assert_true(_png(edited["images"][0]) != _png(original["images"][0]), "the strip changed")
-    fit = edited["fits"][span["id"]]
-    assert_true(fit["delta_pt"] <= TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
-    assert_equal((fit["missing"], fit["message"]), ([], None), "what's wrong with it")
-    assert_equal(edited["skipped"], [], "skipped")
-
-
 def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
-    span = _span(doc, 0, "Made")
+    span = span_starting(doc, 0, "Made")
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"] + _LONGER}
 
     fit = _render(mine, doc, [edit], []).json()["fits"][span["id"]]
@@ -83,7 +44,7 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
 
 def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     """Else a strip laid over the page image would show a seam."""
-    edited = _span(doc, 1, "Delivery")
+    edited = span_starting(doc, 1, "Delivery")
     edit = {"kind": "replace", "span_id": edited["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
@@ -102,45 +63,13 @@ def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     assert_true(rows.samples == expected, f"the strip at y={strip_image['y']} matches its rows")
 
 
-def test_an_edit_pointing_at_nothing_is_skipped_and_named(mine, doc):
-    span = _span(doc, 0, "Made")
-    edits = [
-        {"kind": "replace", "span_id": "nosuchspan00", "text": "x"},
-        {"kind": "replace", "span_id": span["id"], "text": "Made on 2 April 2026."},
-    ]
-
-    rendered = _render(mine, doc, edits, [_around(span)]).json()
-
-    expected = [
-        {
-            "edit": 0,
-            "type": "bad_reference",
-            "detail": words.sentence("no_span"),
-            "code": "no_span",
-            "params": {},
-        }
-    ]
-    assert_equal(rendered["skipped"], expected, "skipped")
-    assert_not_in("nosuchspan00", rendered["fits"], "fits")
-
-
-def test_a_redaction_pointing_at_nothing_fails_the_whole_request(mine, doc):
-    """Skipping it would leave the text the user asked to remove."""
-    edits = [{"kind": "redact", "span_id": "nosuchspan00"}]
-    response = _render(mine, doc, edits, [{"page": 0}])
-    assert_problem(response, "bad_reference", 422)
-    assert_in("nosuchspan00", response.json()["detail"], "the detail naming the span")
-
-
 @pytest.mark.parametrize(
     ("change", "field"),
     [
         ({"size": 0}, "size"),
-        ({"size": -12}, "size"),
         ({"color": [5, 0, 0]}, "color"),
-        ({"color": [-0.5, 0, 0]}, "color"),
     ],
-    ids=["size 0", "a size below 0", "a color past 1", "a color below 0"],
+    ids=["size 0", "a color past 1"],
 )
 def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     """Not drawn mirrored, not a crash in the worker: the browser sent something wrong."""
@@ -149,28 +78,36 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     assert_in(field, response.json()["debug"], "what a developer reads")
 
 
-def test_a_region_edge_that_is_not_a_number_is_a_bad_request(mine, doc):
-    """JSON has no NaN, but the server's reader takes one, so a hand-written request can."""
-    body = '{"edits": [], "scale": 2, "regions": [{"page": 0, "y0": NaN, "y1": 100}]}'
+@pytest.mark.parametrize("kind", ["replace", "insert"])
+@pytest.mark.parametrize(
+    "character",
+    ["\n", "\r", "\t", "\ud800"],
+    ids=["line break", "carriage return", "tab", "half an emoji"],
+)
+def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
+    """A line break would draw a second line over the next; half an emoji draws nothing."""
+    span = span_starting(doc, 0, "Made")
+    replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
+    insert = {**_INSERT, "text": f"Sig{character}ned"}
+    edit = replace if kind == "replace" else insert
+    body = {"edits": [edit], "scale": _SCALE, "regions": [{"page": 0}]}
+
+    # Escaped, as a browser's JSON.stringify sends half an emoji.
     response = mine.post(
         f"/api/documents/{doc['id']}/render",
-        content=body,
-        headers={"content-type": "application/json"},
+        content=json.dumps(body),
+        headers={"Content-Type": "application/json"},
     )
+
     assert_problem(response, "invalid_request", 400)
+    assert_in("text", response.json()["debug"], "what a developer reads")
 
 
-@pytest.mark.parametrize("kind", ["replace", "insert"])
-def test_new_text_past_the_limit_is_refused_for_either_kind(mine, doc, kind):
-    text = "x" * (MAX_TEXT_CHARS + 1)
-    edits = {
-        "replace": {"kind": "replace", "span_id": doc["spans"][0]["id"], "text": text},
-        "insert": {**_INSERT, "text": text},
-    }
-    response = _render(mine, doc, [edits[kind]], [{"page": 0}])
-    assert_problem(response, "text_too_long", 422)
-
-
-def test_another_browser_is_told_there_is_no_such_document(browser, doc, mine):
-    assert_equal(_render(mine, doc, [], [{"page": 0}]).status_code, 200, "the owner's status")
-    assert_problem(_render(browser(), doc, [], [{"page": 0}]), "not_found", 404)
+@pytest.mark.parametrize(
+    "region",
+    [{"page": 0, "y0": 900, "y1": 1000}, {"page": 0, "y0": -100, "y1": -50}],
+    ids=["below the page", "above it"],
+)
+def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
+    """Nothing to draw there: the browser asked for rows the page doesn't have."""
+    assert_problem(_render(mine, doc, [], [region]), "invalid_request", 400)

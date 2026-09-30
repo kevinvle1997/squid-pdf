@@ -17,7 +17,11 @@ from squidpdf.documents.types import (
 
 __all__ = [
     "document_response",
+    "time_of",
 ]
+
+# Every way a span can be approximate: the sentences behind a span's `why` code.
+_APPROXIMATE_KEYS = ("turned_text", "spaced_text", "undrawable_letters")
 
 
 def document_response(
@@ -30,7 +34,7 @@ def document_response(
         "spans": analysis["spans"],
         "fonts": [font_info(font, said_in) for font in analysis["fonts"]],
         "id": doc_id,
-        "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
+        "expires_at": time_of(expires_at),
         "fit": {
             "tolerance_pt": TOLERANCE_PT,
             "condense_limit": CONDENSE_LIMIT,
@@ -39,6 +43,11 @@ def document_response(
         "copy": copy_in(said_in),
         "notices": notices_in(analysis, said_in),
     }
+
+
+def time_of(epoch_seconds: float) -> str:
+    """A moment as the browser reads it: ISO 8601, in UTC."""
+    return datetime.fromtimestamp(epoch_seconds, UTC).isoformat()
 
 
 def font_info(font: FontFacts, said_in: str) -> FontInfo:
@@ -70,6 +79,7 @@ def copy_in(said_in: str) -> Copy:
         "reopened": words.sentence("reopened", said_in),
         "export_left_out": words.sentence("export_left_out", said_in),
         "options": options,
+        "approximate": {key: words.sentence(key, said_in) for key in _APPROXIMATE_KEYS},
     }
 
 

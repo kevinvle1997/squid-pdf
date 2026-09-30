@@ -15,6 +15,7 @@ const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo => ({
   bbox: { x0: 72, y0, x1: 100, y1 },
   origin: [72, y1 - 2],
   fidelity: "exact",
+  why: null,
 });
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>

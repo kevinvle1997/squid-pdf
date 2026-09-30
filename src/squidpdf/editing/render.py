@@ -7,20 +7,29 @@ from __future__ import annotations
 
 import base64
 import math
-from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import BUILD, Engine, InvalidRequest, Page, Rect, Workers, open_pdf, words
+from squidpdf.core import (
+    BUILD,
+    Engine,
+    InvalidRequest,
+    Page,
+    Rect,
+    Reply,
+    Workers,
+    words,
+)
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
+from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply, log_fits
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import ImageInfo, Region, Render, Rendered, RenderReply
+from squidpdf.editing.types import ImageInfo, Region, Render, Rendered
 
 __all__ = [
     "RenderController",
@@ -42,7 +51,7 @@ class RenderController:
         regions: list[Region],
         scale: int,
         said_in: str,
-    ) -> RenderReply:
+    ) -> Reply[Render]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
         Refuses edits over the limits and regions the document lacks. A
@@ -57,32 +66,7 @@ class RenderController:
             doc.folder, edits=edits, regions=regions, scales=scales
         )
         body = reply_body(rendered, doc.expires_at, said_in)
-        return RenderReply(body, words.language_headers(said_in))
-
-    @staticmethod
-    def draw_regions(
-        folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
-    ) -> Rendered:
-        """Apply the edits on the drawn pages, then draw each region.
-
-        Runs in a worker, so it's a staticmethod the worker can import by name.
-        `scales` is each page's pixels per point, the same as its page image.
-        """
-        path = Path(folder)
-        index = store.load_index(path)
-        if index is None:  # only a sweep removes it
-            raise Gone
-        pages = store.load_pages(path)
-
-        with open_pdf(str(path / store.ORIGINAL)) as engine:
-            fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
-            applied = apply(engine, edits, index, pages={region.page for region in regions})
-            images = [
-                draw(engine, region, page=pages[region.page], scale=scales[region.page])
-                for region in regions
-            ]
-
-        return Rendered(images, fits, applied.skipped, applied.notices)
+        return Reply(body, words.language_headers(said_in))
 
     async def _enqueue_draw_regions(
         self,
@@ -94,7 +78,7 @@ class RenderController:
     ) -> Rendered:
         """Draw the regions on a worker."""
         task = partial(
-            RenderController.draw_regions,
+            draw_regions,
             str(folder),
             edits=edits,
             regions=regions,
@@ -103,16 +87,42 @@ class RenderController:
         return await self._workers.run(RENDER_TIMEOUT_S, task)
 
 
+def draw_regions(
+    folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
+) -> Rendered:
+    """Apply the edits on the drawn pages, then draw each region. Runs in a worker.
+
+    `scales` is each page's pixels per point, the same as its page image.
+    """
+    path = Path(folder)
+    index = store.load_index(path)
+    if index is None:  # analysed at upload, so a sweep or a delete removed it
+        raise Gone
+    pages = store.load_pages(path)
+
+    with store.open_original(path) as engine:
+        fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
+        applied = apply(engine, edits, index, pages={region.page for region in regions})
+        images = [
+            draw(engine, region, page=pages[region.page], scale=scales[region.page])
+            for region in regions
+        ]
+
+    return Rendered(images, fits, applied.skipped, applied.notices)
+
+
 def check_regions(regions: list[Region], pages: list[Page]) -> None:
-    """Refuse a region the document can't give: a page it lacks, or a top below its bottom."""
+    """Refuse a region the document can't give: a page it lacks, or no rows of the page."""
     for region in regions:
         if not 0 <= region.page < len(pages):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
-        top = 0.0 if region.y0 is None else region.y0
-        bottom = pages[region.page].height if region.y1 is None else region.y1
+        height = pages[region.page].height
+        # Only the rows the page has: a strip past its edges is cut to them, as draw cuts it.
+        top = 0.0 if region.y0 is None else max(region.y0, 0.0)
+        bottom = height if region.y1 is None else min(region.y1, height)
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
         if not top < bottom:
-            reason = f"regions: y0 must be a number above y1 on page {region.page}"
+            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {height:g}"
             raise InvalidRequest(debug=reason)
 
 
@@ -130,7 +140,7 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
         "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
         "notices": [notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,
-        "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
+        "expires_at": time_of(expires_at),
     }
 
 

@@ -23,6 +23,7 @@ const spanOf = (id: string, font: string): SpanInfo => ({
   bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
   origin: [72, 110],
   fidelity: "exact",
+  why: null,
 });
 const fontOf = (name: string, substitute: string | null): FontInfo =>
   ({ name, substitute, why: null, same_widths: true, glyphs: {} }) as unknown as FontInfo;

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.core import BUILD, FidelityReport, MessageInfo, Span, open_pdf
+from squidpdf.core import BUILD, Fidelity, FidelityReport, MessageInfo, Span
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import Analysis, FontFacts, SpanInfo
@@ -30,10 +30,10 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     more than `max_pages`.
     """
     path = Path(folder)
-    with open_pdf(str(path / store.ORIGINAL)) as eng:
+    with store.open_original(path) as eng:
         index = store.load_index(path)
         if index is None:
-            if len(eng.pages()) > max_pages:
+            if eng.page_count() > max_pages:
                 raise TooManyPages(max_pages)
             index = eng.index()
             store.save_index(path, index)
@@ -47,7 +47,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": why_of(reports[span.id]),
+                "why": why_of(reports[span.id], Fidelity.SUBSTITUTE),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": eng.widths(span),
             }
@@ -67,9 +67,15 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     return analysis
 
 
-def why_of(report: FidelityReport) -> MessageInfo | None:
-    """Why the span's own font can't be used, in no language yet; None when it can."""
-    return None if report.why is None else report.why.as_info()
+def why_of(report: FidelityReport, state: Fidelity) -> MessageInfo | None:
+    """Why the span is `state`, in no language yet; None when it's something else.
+
+    A font's `why` is why a substitute stands in; a span's is how an approximate
+    one would come back unlike itself.
+    """
+    if report.state is not state or report.why is None:
+        return None
+    return report.why.as_info()
 
 
 def span_info(span: Span, report: FidelityReport) -> SpanInfo:
@@ -85,4 +91,5 @@ def span_info(span: Span, report: FidelityReport) -> SpanInfo:
         "bbox": {"x0": box.x0, "y0": box.y0, "x1": box.x1, "y1": box.y1},
         "origin": list(span.origin),
         "fidelity": report.state.value,
+        "why": why_of(report, Fidelity.APPROXIMATE),
     }

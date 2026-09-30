@@ -25,9 +25,6 @@ __all__ = [
     "DocumentNoticeInfo",
     "Document",
     "Loaded",
-    "PageReply",
-    "UploadReply",
-    "ReadReply",
 ]
 
 
@@ -49,7 +46,11 @@ class PageInfo(TypedDict):
 
 
 class SpanInfo(TypedDict):
-    """One editable span and whether it keeps its own font."""
+    """One editable span and whether it keeps its own font.
+
+    `why` says how an approximate span would come back unlike itself, in no
+    language: its sentence is in the reply's `copy`, under `approximate`.
+    """
 
     id: str
     page: int
@@ -60,6 +61,7 @@ class SpanInfo(TypedDict):
     bbox: Box
     origin: list[float]
     fidelity: str
+    why: MessageInfo | None
 
 
 class FontFacts(TypedDict):
@@ -126,6 +128,7 @@ class Copy(TypedDict):
     reopened: str
     export_left_out: str
     options: dict[str, dict[str, str]]
+    approximate: dict[str, str]  # each way a span can be approximate, by its `why` code
 
 
 class DocumentNoticeInfo(MessageInfo):
@@ -158,28 +161,3 @@ class Loaded:
     id: str
     folder: Path
     expires_at: float
-
-
-@dataclass(frozen=True, slots=True)
-class PageReply:
-    """A page image's reply, ready to send: the PNG and its headers."""
-
-    png: bytes
-    headers: dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class UploadReply:
-    """Upload's reply, ready to send: the document and its headers."""
-
-    body: Document
-    headers: dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class ReadReply:
-    """Read's reply, ready to send: the JSON, its status and its headers."""
-
-    json: bytes
-    status: int  # 304, with no JSON, when the browser's copy is current
-    headers: dict[str, str]

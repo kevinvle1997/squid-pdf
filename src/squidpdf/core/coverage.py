@@ -8,11 +8,12 @@ the glyph to draw and checking it produces contours.
 from __future__ import annotations
 
 import io
+import sys
 from collections.abc import Iterable, Mapping
 
-from fontTools.agl import UV2AGL
+from fontTools.agl import toUnicode
 from fontTools.cffLib import CFFFontSet
-from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
@@ -21,24 +22,16 @@ __all__ = [
     "Coverage",
 ]
 
-# Counted as drawable whether the font maps them or not: tabs and line breaks
-# aren't drawn, and the plain space is one text extraction adds between words a
-# font never drew a space for. Any other space (no-break, figure, thin...) draws
-# nothing yet still needs the font to map it: unmapped, it's drawn as .notdef.
-_ALWAYS_DRAWABLE = frozenset({" ", "\t", "\n", "\r"})
+# Counted as drawable whether the font maps it or not: the plain space is one text
+# extraction adds between words a font never drew a space for. Any other space
+# (no-break, figure, thin...) draws nothing yet still needs the font to map it:
+# unmapped, it's drawn as .notdef. Line breaks and tabs aren't text on a line.
+_ALWAYS_DRAWABLE = frozenset({" "})
 
 
 # A bare CFF font program starts with this header (major.minor version 1.0);
 # anything else handed to Coverage is assumed to be a TrueType/OpenType wrapper.
 _BARE_CFF_SIGNATURE = b"\x01\x00"
-
-# The codepoints worth checking for a name-keyed CFF's glyph names: from the
-# first printable ASCII character through the end of Supplemental Punctuation,
-# covering Latin, Greek, Cyrillic and friends. A document needing coverage
-# checked past this is rare enough not to justify scanning the full Unicode
-# space on every font load.
-_CODEPOINT_SCAN_START = 0x20
-_CODEPOINT_SCAN_END = 0x2E00
 
 
 class Coverage:
@@ -63,7 +56,7 @@ class Coverage:
         self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
-        self._listed_letters = frozenset(listed_letters)
+        self._listed_letters = frozenset(filter(is_letter_code, listed_letters))
         # With glyph_ids the font is written by code, and a space with no code can't be.
         self._always = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
         self.usable = False  # True once a parseable font has been loaded
@@ -91,12 +84,12 @@ class Coverage:
     def _load_bare_cff(self, buffer: bytes) -> None:
         """A bare CFF, as CIDFontType0 subsets are embedded.
 
-        There is no cmap here, so characters are matched by glyph name using the
-        standard Adobe names the charset already carries. That only works for
-        name-keyed CFFs; a CID-keyed one carries CID glyph names instead
-        (`cid00034`, not `eacute`), which cannot be mapped back to Unicode from
-        the font bytes alone. Raised so the font is marked unusable rather than
-        silently reporting every character as missing.
+        There is no cmap here, so each glyph's name says its letter: Adobe's
+        names ("eacute", "fi" for the ligature ﬁ) or "uni00E9". That only
+        works for name-keyed CFFs; a CID-keyed one carries CID glyph names
+        instead (`cid00034`, not `eacute`), which cannot be mapped back to
+        Unicode from the font bytes alone. Raised so the font is marked
+        unusable rather than silently reporting every character as missing.
         """
         cff = CFFFontSet()
         cff.decompile(io.BytesIO(buffer), None)
@@ -104,11 +97,11 @@ class Coverage:
         if getattr(font, "ROS", None) is not None:
             raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
         self._glyphs = font.CharStrings
-        names = set(font.getGlyphOrder())
-        for codepoint in range(_CODEPOINT_SCAN_START, _CODEPOINT_SCAN_END):
-            name = adobe_name(codepoint)
-            if name in names:
-                self._glyph_names[Codepoint(codepoint)] = name
+        # The glyph order's: the first shape named for a letter draws it.
+        for name in font.getGlyphOrder():
+            letter = letter_named(name)
+            if letter is not None:
+                self._glyph_names.setdefault(Codepoint(ord(letter)), name)
 
     def covers(self, ch: str) -> bool:
         """True when this font really puts ink on the page for `ch`, or places its space."""
@@ -125,12 +118,16 @@ class Coverage:
         return draws
 
     def _draws(self, ch: str) -> bool:
-        """Ask the glyph itself to draw, and check that it produced any ink."""
+        """Ask the glyph itself to draw, and check that it produced any ink.
+
+        A letter built from others (Á from A and an accent) is drawn through to
+        their outlines: a trimmed font can keep it while emptying its parts.
+        """
         name = self._glyph_names.get(Codepoint(ord(ch)))
         if name is None or self._glyphs is None:
             return False
         try:
-            pen = RecordingPen()
+            pen = DecomposingRecordingPen(self._glyphs)
             self._glyphs[name].draw(pen)
             return bool(pen.value)
         except Exception:  # noqa: BLE001 (a glyph that will not draw is missing)
@@ -167,9 +164,24 @@ def glyph_name_for_each_letter(
     cmap = font.getBestCmap()
     if cmap is None:
         raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
-    return {Codepoint(codepoint): name for codepoint, name in cmap.items()}
+    return {
+        Codepoint(codepoint): name
+        for codepoint, name in cmap.items()
+        if is_letter_code(codepoint)
+    }
 
 
-def adobe_name(codepoint: int) -> str:
-    """Standard Adobe glyph name for a code point, for fonts with no letter table."""
-    return UV2AGL.get(codepoint, f"uni{codepoint:04X}")
+def is_letter_code(codepoint: int) -> bool:
+    """Whether a letter can have this number: a broken font can list one past the last."""
+    return 0 <= codepoint <= sys.maxunicode
+
+
+def letter_named(glyph_name: GlyphName) -> str | None:
+    """The one letter a glyph's name says it draws; None for none, several, or a variant.
+
+    A variant ("a.alt", "T.sc") is another shape for the letter, not its own.
+    """
+    if "." in glyph_name:
+        return None
+    letter = toUnicode(glyph_name)
+    return letter if len(letter) == 1 else None

@@ -51,6 +51,10 @@ class PdfDriver(Protocol):
     says the library couldn't: the engine then falls back rather than crashing.
     """
 
+    def page_count(self) -> int:
+        """How many pages the document has, without reading any of them."""
+        ...
+
     def pages(self) -> list[Page]:
         """Each page's size, unrotated, and the turn it asks for."""
         ...
@@ -69,6 +73,10 @@ class PdfDriver(Protocol):
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
+        ...
+
+    def text_font_name(self, xref: int) -> str | None:
+        """The name text in font `xref` reads, often the font file's own; None if unreadable."""
         ...
 
     def font_bytes(self, xref: int) -> bytes | None:
@@ -95,7 +103,14 @@ class PdfDriver(Protocol):
         ...
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
-        """Delete the text inside these boxes for real. Images and drawings stay."""
+        """Delete the letters whose middle is inside these boxes, for real.
+
+        Images, drawings and links stay.
+        """
+        ...
+
+    def drop_links(self, page: int, boxes: list[Rect]) -> None:
+        """Delete every link whose area overlaps one of `boxes`."""
         ...
 
     def add_font(self, page: int, name: str, font_file: bytes) -> int:
@@ -110,15 +125,16 @@ class PdfDriver(Protocol):
         page: int,
         *,
         runs: Sequence[TextRun],
-        font: str,
         size: float,
         color: tuple[float, float, float],
         opacity: float,
         scale_x: float,
+        turn: int,
     ) -> None:
-        """Write each run from its origin, on top of the page, in the font it calls `font`.
+        """Write each run from its origin, in its font, on top of the page, in order.
 
         `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
+        `turn` turns each run counter-clockwise about its origin: 0, 90, 180 or 270.
         """
         ...
 

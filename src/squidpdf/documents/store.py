@@ -12,18 +12,20 @@ import os
 import re
 import secrets
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 import orjson
 
-from squidpdf.core import SOLID, Fragment, Page, Rect, Span, SpanIndex
+from squidpdf.core import LEVEL, SOLID, Engine, Fragment, Page, Rect, Span, SpanIndex, open_pdf
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 
 __all__ = [
     "ORIGINAL",
+    "open_original",
     "root",
     "create",
     "find",
@@ -74,6 +76,14 @@ def find(doc_id: str) -> tuple[Path, str] | None:
         return None
 
 
+def open_original(folder: Path) -> Engine:
+    """The document's original, open for editing. Raises Gone if it was deleted meanwhile."""
+    try:
+        return open_pdf(str(folder / ORIGINAL))
+    except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
+        raise Gone from exc
+
+
 def touch(folder: Path) -> float:
     """Restart the idle clock; returns when the document now expires, as epoch seconds.
 
@@ -92,20 +102,45 @@ def delete(folder: Path) -> None:
 
 
 def sweep() -> None:
-    """Delete every document left untouched for longer than the idle hour."""
-    cutoff = time.time() - IDLE_S
+    """Delete every document left untouched for longer than the idle hour, and nothing else.
+
+    Only a folder named like a document and holding an owner: the data folder
+    can be shared. A request that loses the race with a delete says Gone.
+    """
     for folder in root().glob("*"):
-        try:
-            idle = folder.is_dir() and folder.stat().st_mtime < cutoff
-        except FileNotFoundError:  # its owner deleted it since the listing
-            continue
-        if idle:
+        is_document = _ID_SHAPE.fullmatch(folder.name) and (folder / _OWNER).is_file()
+        if is_document and idle(folder):
             delete(folder)
+
+
+def idle(folder: Path) -> bool:
+    """Whether the folder has gone untouched past the idle hour; False once it's gone."""
+    try:
+        return folder.stat().st_mtime < time.time() - IDLE_S
+    except FileNotFoundError:  # its owner deleted it since the listing
+        return False
+
+
+def write_whole(path: Path, data: bytes) -> None:
+    """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
+
+    Written beside it, then renamed over it, which the filesystem does at once.
+    A half file (a worker killed mid-write, a full disk) would read as broken
+    JSON on every visit, and every visit restarts the hour, so it would never go.
+    """
+    handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(handle, "wb") as out:
+            out.write(data)
+        os.replace(part, path)
+    except BaseException:  # cut short: the old file stays, and the piece goes
+        Path(part).unlink(missing_ok=True)
+        raise
 
 
 def save_index(folder: Path, index: SpanIndex) -> None:
     """Keep the index, built once from the original, so ids never change."""
-    (folder / _INDEX).write_bytes(orjson.dumps(list(index)))
+    write_whole(folder / _INDEX, orjson.dumps(list(index)))
 
 
 def load_index(folder: Path) -> SpanIndex | None:
@@ -126,6 +161,8 @@ def load_span(saved: dict[str, Any]) -> Span:
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
         "fragments": tuple(load_fragment(fragment) for fragment in saved["fragments"]),
+        # .get: an index saved before spans kept their direction; all were drawn level then.
+        "direction": tuple(saved.get("direction", LEVEL)),
     }
     return Span(**saved | rebuilt)
 
@@ -138,21 +175,21 @@ def load_fragment(saved: dict[str, Any]) -> Fragment:
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
-    (folder / _PAGES).write_bytes(orjson.dumps(pages))
+    write_whole(folder / _PAGES, orjson.dumps(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
     """The saved page list. Raises Gone if the sweep deleted the document meanwhile."""
     try:
         saved = orjson.loads((folder / _PAGES).read_bytes())
-    except FileNotFoundError as exc:  # upload saves it first, so only a sweep removes it
+    except FileNotFoundError as exc:  # upload saves it first: a sweep or a delete removed it
         raise Gone from exc
     return [Page(**page) for page in saved]
 
 
 def save_analysis(folder: Path, build: str, analysis: bytes) -> None:
     """Keep what was worked out under this build; another build works it out again."""
-    (folder / analysis_file(build)).write_bytes(analysis)
+    write_whole(folder / analysis_file(build), analysis)
 
 
 def load_analysis(folder: Path, build: str) -> bytes | None:

@@ -13,6 +13,7 @@ const spanOf = (id: string, page: number, text = `was ${id}`): SpanInfo => ({
   bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
   origin: [72, 110],
   fidelity: "exact",
+  why: null,
 });
 const SPANS = [spanOf("a", 0), spanOf("b", 0), spanOf("c", 1)];
 const replace = (span_id: string, text: string): Edit => ({ kind: "replace", span_id, text });

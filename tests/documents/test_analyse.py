@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import shutil
 
-import orjson
 import pytest
 
-from squidpdf.core import BUILD, Engine, words
+from squidpdf.core import Engine
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import MAX_PAGES
+from squidpdf.documents.errors import TooManyPages
+from tests.conftest import drawn_with
 from tests.helpers import assert_equal, assert_true
 
 
@@ -40,20 +41,28 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
     assert_true(kept is not None, "the later build's analysis wasn't kept")
 
 
-def test_what_is_kept_is_in_no_language_so_any_can_say_it(folder):
-    analyse.analyse(str(folder), MAX_PAGES)
-    kept = store.load_analysis(folder, BUILD)
-    assert_true(kept is not None, "the analysis wasn't kept")
-    fonts = {font["name"]: font for font in orjson.loads(kept or b"")["fonts"]}
-    why = {"code": "font_not_in_file", "params": {}}
-    assert_equal(fonts["Times-Roman"]["why"], why, "why Times' own copy can't be used")
-    assert_true(
-        words.sentence("font_not_in_file").encode() not in (kept or b""),
-        "an English sentence kept",
-    )
+def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usable():
+    _, folder = store.create("owner")
+    drawn_with(str(folder / store.ORIGINAL), setting="1.5 Tc")
+
+    analysis = analyse.analyse(str(folder), MAX_PAGES)
+
+    [span] = analysis["spans"]
+    judged = (span["fidelity"], span["why"])
+    assert_equal(judged, ("approximate", {"code": "spaced_text", "params": {}}), "the span")
+    [font] = analysis["fonts"]
+    assert_equal((font["substitute"], font["why"]), (None, None), "its font: nothing stands in")
 
 
-def test_an_analysis_kept_in_words_is_worked_out_again(folder):
-    """One kept before sentences were codes has English in it, and the edge can't say that."""
-    (folder / f"analysis-{BUILD}.json").write_bytes(b'{"fonts": [{"why": "In English."}]}')
-    assert_true(store.load_analysis(folder, BUILD) is None, "the old analysis was read")
+def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(
+    folder, monkeypatch
+):
+    """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
+
+    def read_pages(self):
+        """Stands in for reading every page's size, to fail if anything does."""
+        raise AssertionError("the pages were read")
+
+    monkeypatch.setattr(Engine, "pages", read_pages)
+    with pytest.raises(TooManyPages):
+        analyse.analyse(str(folder), 1)  # the sample has two

@@ -27,12 +27,16 @@ font_no_letter_list = "This font is stored in the file without saying which shap
 font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
 font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
 
+# Why text in its own font still won't come back as it looks now. One per span.
+turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
+spaced_text = "This text is spaced out or stretched in a way edits don't copy yet, so an edit here will look different."
+undrawable_letters = "No font we have can draw {letters} here, so an edit here leaves them out."
+
 # An edit that went in, but not quite as asked. `{letters}` is space-separated.
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
 left_out = "Left out {letters}: no font we have can draw them."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
-redaction_undone = "Editing this text undid its redaction."
 # Exporting some pages of a tagged file drops its tags.
 tags_dropped = "The tags that tell screen readers how to read this file went with the pages left out, so this file has none."
 
@@ -67,6 +71,7 @@ bad_reference = "A redaction points at text that isn't in this document: {span_i
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 font_mismatch = "This isn't the font the document uses. Its letters are a different width."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."
+method_not_allowed = "Something went wrong sending this to us. Reload the page and try again."
 rate_limited = "Too many files at once. Try again in a minute."
 # support@example.com is a placeholder until there's a real inbox: the same in every language.
 too_slow = "This took too long, so we stopped. Try again, and if it keeps happening, email support@example.com."

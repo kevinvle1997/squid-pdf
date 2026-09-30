@@ -9,7 +9,7 @@ nothing outside `core` learns that MuPDF is underneath.
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import cache
 
 import pymupdf
@@ -17,14 +17,15 @@ import pymupdf
 from squidpdf.core import faces
 from squidpdf.core.constants import LIBRARY_VERSION
 from squidpdf.core.engine import Engine, letter_widths
-from squidpdf.core.errors import Damaged, Encrypted
+from squidpdf.core.errors import Damaged, Encrypted, TooHeavy
 from squidpdf.core.fonts import face_bytes
-from squidpdf.core.pdf import MUPDF_ERRORS, PdfFile
+from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
 from squidpdf.core.types import Face, Page, Rect, TextRun
 
 __all__ = [
     "BUILD",
     "open_pdf",
+    "result_of",
     "face_widths",
     "MuPDFDriver",
     "write_sample",
@@ -53,6 +54,22 @@ BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}"
 def open_pdf(path: str) -> Engine:
     """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
     return Engine(MuPDFDriver(path))
+
+
+def result_of[T](task: Callable[[], T]) -> T:
+    """What `task()` returns, with MuPDF's own failures raised as the Problems they mean.
+
+    A worker runs its task through this: MuPDF's exceptions hold a pointer, so
+    they can't be sent back from another process, and they mean something a
+    person can be told. Past a limit or out of memory is too heavy; anything
+    else MuPDF couldn't do with the file, damaged.
+    """
+    try:
+        return task()
+    except MUPDF_TOO_HEAVY as exc:  # MuPDF ran out of memory, or past a limit of its own
+        raise TooHeavy(debug=f"{type(exc).__name__}: {exc}") from None
+    except MUPDF_OWN_ERRORS as exc:  # MuPDF couldn't make sense of the file
+        raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
 
 
 @cache
@@ -103,16 +120,38 @@ class MuPDFDriver(PdfFile):
         try:
             # Left to sniff, MuPDF opens a PNG as a document.
             doc = pymupdf.open(path, filetype="pdf")
+        except (
+            pymupdf.FileNotFoundError
+        ) as exc:  # gone: Python's own error, which callers catch
+            raise FileNotFoundError(path) from exc
         except pymupdf.FileDataError as exc:  # garbage, truncated or empty
             raise Damaged from exc
         if doc.needs_pass:  # it opens, but every page is locked behind a password
             doc.close()
             raise Encrypted
+        try:
+            page_count = len(doc)
+        except MUPDF_ERRORS as exc:  # its page list can't even be counted
+            doc.close()
+            raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
+        if page_count == 0:  # no page to show or edit: not a document anyone made
+            doc.close()
+            raise Damaged(debug="no pages")
         super().__init__(doc)
 
+    def page_count(self) -> int:
+        """How many pages the document has, without reading any of them."""
+        return len(self._doc)
+
     def pages(self) -> list[Page]:
-        """Each page's size, unrotated like the span boxes, and the turn it asks for."""
-        pages = [self._doc[pno] for pno in range(len(self._doc))]
+        """Each page's size, unrotated like the span boxes, and the turn it asks for.
+
+        Raises Damaged when the file counts pages it doesn't have.
+        """
+        try:
+            pages = [self._doc[pno] for pno in range(len(self._doc))]
+        except (*MUPDF_ERRORS, IndexError) as exc:  # its page list says pages it doesn't hold
+            raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
         return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
@@ -155,15 +194,16 @@ class MuPDFDriver(PdfFile):
         page: int,
         *,
         runs: Sequence[TextRun],
-        font: str,
         size: float,
         color: tuple[float, float, float],
         opacity: float,
         scale_x: float,
+        turn: int,
     ) -> None:
-        """Write each run from its origin, on top of the page, in the font it calls `font`.
+        """Write each run from its origin, in its font, on top of the page, in order.
 
         `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
+        `turn` turns each run counter-clockwise about its origin: 0, 90, 180 or 270.
         """
         shape = self._doc[page].new_shape()
         for run in runs:
@@ -171,10 +211,11 @@ class MuPDFDriver(PdfFile):
             shape.insert_text(
                 at,
                 run.text,
-                fontname=font,
+                fontname=run.font,
                 fontsize=size,
                 color=color,
                 fill_opacity=opacity,
+                rotate=turn,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
         shape.commit(overlay=True)

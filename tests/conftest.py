@@ -57,6 +57,25 @@ def named_only(path: str, base_font: str, flags: int | None = None) -> str:
     return path
 
 
+def drawn_with(path: str, *, setting: str, rotate: int = 0) -> str:
+    """One line in stored, trimmed Times, drawn with `setting` (e.g. "1.5 Tc") and turned.
+
+    `setting` goes in the page's drawing just before its text: letter spacing
+    (Tc) and horizontal scaling (Tz) change where each letter lands, not the
+    letters, so the font still draws every one.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
+    page.insert_text((72, 300), "Terms of payment", fontname="emb", fontsize=12, rotate=rotate)
+    [xref] = page.get_contents()
+    drawing = doc.xref_stream(xref).replace(b"BT", b"BT " + setting.encode(), 1)
+    doc.update_stream(xref, drawing)
+    doc.subset_fonts(verbose=False)
+    doc.save(path)
+    return path
+
+
 @pytest.fixture(scope="module")
 def pdf(tmp_path_factory) -> str:
     """A two-page contract with one kind of font on each page.
@@ -92,18 +111,6 @@ def pdf(tmp_path_factory) -> str:
     )
     doc.subset_fonts(verbose=False)
 
-    doc.save(path)
-    doc.close()
-    return str(path)
-
-
-@pytest.fixture(scope="module")
-def repeated(tmp_path_factory) -> str:
-    """Two pages that open with the same line, as a header on every page does."""
-    path = tmp_path_factory.mktemp("repeated") / "repeated.pdf"
-    doc = pymupdf.open()
-    for _page in range(2):
-        doc.new_page().insert_text((72, 72), "CONFIDENTIAL", fontname="helv", fontsize=10)
     doc.save(path)
     doc.close()
     return str(path)

@@ -15,6 +15,7 @@ const spanOn = (page: number, y0: number): SpanInfo => ({
   bbox: { x0: 72, y0, x1: 100, y1: y0 + 12 },
   origin: [72, y0 + 10],
   fidelity: "exact",
+  why: null,
 });
 const ONE = spanOn(0, 100);
 const TWO = spanOn(1, 100);
