@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import base64
 import math
-from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
@@ -23,6 +22,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
+from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply, log_fits
@@ -140,7 +140,7 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
         "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
         "notices": [notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,
-        "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
+        "expires_at": time_of(expires_at),
     }
 
 

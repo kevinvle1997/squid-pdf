@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pymupdf
@@ -215,3 +216,17 @@ def test_a_document_deleted_while_its_request_runs_is_not_found(
 
     monkeypatch.setattr(store, "touch", touch_then_lose)
     assert_problem(mine.get(f"/api/documents/{doc['id']}{path}"), "not_found", 404)
+
+
+def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
+    """Reading restarts its hour; a 304 has no body to carry expires_at in, so a header does."""
+    url = f"/api/documents/{doc['id']}"
+    first = mine.get(url)
+    again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
+
+    assert_equal(again.status_code, 304, "status of a read the browser has already")
+    expires = datetime.fromisoformat(again.headers["squid-expires-at"])
+    uploaded = datetime.fromisoformat(doc["expires_at"])
+    assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")
+    said_in_body = first.json()["expires_at"]
+    assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
