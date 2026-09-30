@@ -47,8 +47,8 @@ class PageFacts:
     read_as: dict[str, PageFont] | None = None
     # The page's text as it was: None until needed.
     lines: list[list[TextPiece]] | None = None
-    # The page's usual gap for a space, in a font with none of its own, by the font's name.
-    usual_gaps: dict[str, float] = field(default_factory=dict)
+    # The page's usual gap for a space, by the font's name and the font it's measured in.
+    usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -244,13 +244,18 @@ class DocumentFonts:
         return faces.stand_in(self.look_alike(span).face, text)
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
-        """The page's usual gap for a space in the span's font, read once, before any edit."""
+        """The page's usual gap for a space in the span's font, measured in `font`.
+
+        Kept by the font's name and the font measured in, what it's worked out
+        from; the page's text is read once, before any edit.
+        """
         font_name = strip_subset(span.font)
         gaps = self._facts(span.page).usual_gaps
-        if font_name not in gaps:
+        key = (font_name, font)
+        if key not in gaps:
             lines = self.page_lines(span.page)
-            gaps[font_name] = usual_gap(lines, font_name=font_name, font=font)
-        return gaps[font_name]
+            gaps[key] = usual_gap(lines, font_name=font_name, font=font)
+        return gaps[key]
 
     def page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""
