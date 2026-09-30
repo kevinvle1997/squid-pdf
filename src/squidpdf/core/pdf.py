@@ -16,7 +16,16 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.types import FontCode, FontDescriptor, GlyphId, PageFont, Rect, TextPiece
+from squidpdf.core.types import (
+    FontCode,
+    FontDescriptor,
+    FontFileType,
+    FontKind,
+    GlyphId,
+    PageFont,
+    Rect,
+    TextPiece,
+)
 
 __all__ = [
     "MUPDF_ERRORS",
@@ -36,6 +45,23 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
+# A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
+_KINDS: dict[str, FontKind] = {
+    "TrueType": "truetype",
+    "Type0": "type0",
+    "Type1": "type1",
+    "MMType1": "type1",
+    "Type3": "type3",
+}
+# How a font's program is stored, as PyMuPDF names it, in our words. "cid" is a CFF
+# whose shapes are numbered, not named.
+_FILE_TYPES: dict[str, FontFileType] = {
+    "ttf": "truetype",
+    "otf": "opentype",
+    "cff": "cff",
+    "cid": "cff",
+    "pfa": "type1",
+}
 _STRIP_PAD_PT = 0.1  # how far an erased strip reaches past the points it runs through
 # Where an erased strip runs: this share of each letter's height up from its baseline.
 # Every font's glyph boxes reach just above the baseline; few reach the next line's.
@@ -101,8 +127,10 @@ class PdfFile:
             PageFont(
                 xref=xref,
                 name=name,
-                kind=kind,
-                file_type=file_type,
+                # .get: a font with no kind, or one the PDF format has no name for.
+                kind=_KINDS.get(kind, "other"),
+                # .get: "n/a" when only named, or stored in a way MuPDF can't name.
+                file_type=_FILE_TYPES.get(file_type, "none"),
                 resource=resource,
                 encoding=encoding,
                 in_form=referencer != 0,

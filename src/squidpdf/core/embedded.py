@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.driver import FontProgram, PdfDriver
 from squidpdf.core.message import Message
-from squidpdf.core.types import CodedFont, FontCode, PageFont
+from squidpdf.core.types import CodedFont, FontCode, FontKind, PageFont
 
 __all__ = [
     "EmbeddedFont",
@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 # Bytes per code, for the font kinds we can write by code.
-_CODE_BYTES = {"TrueType": 1, "Type0": 2}
+_CODE_BYTES: dict[FontKind, int] = {"truetype": 1, "type0": 2}
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +88,7 @@ def read_by_code(
 ) -> tuple[CodedFont, Coverage]:
     """The font's codes and which letters they really draw. Raises FontUnusable if we can't."""
     # Only a TrueType font the page uses itself, not one inside a form (a reusable drawing).
-    writable = page_font.file_type == "ttf" and not page_font.in_form
+    writable = page_font.file_type == "truetype" and not page_font.in_form
     if not writable:
         raise FontUnusable(Message("font_cant_write"))
     coded = read_coded_font(driver, page_font)
@@ -124,7 +124,7 @@ def read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
 
 def bytes_per_code(font: PageFont) -> int | None:
     """How many bytes each code takes in this font, or None if we can't write it."""
-    if font.kind == "Type0" and font.encoding != "Identity-H":
+    if font.kind == "type0" and font.encoding != "Identity-H":
         return None  # its codes aren't glyph numbers, so we can't work them out
     return _CODE_BYTES.get(font.kind)
 

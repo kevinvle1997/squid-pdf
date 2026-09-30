@@ -20,6 +20,12 @@ type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
 LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
 
+# What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
+# writes each letter as two bytes; "other" is any kind we don't write in.
+type FontKind = Literal["truetype", "type0", "type1", "type3", "other"]
+# How the file stores a font's program, or "none" when it only names the font.
+type FontFileType = Literal["truetype", "opentype", "cff", "type1", "none"]
+
 
 @dataclass(frozen=True, slots=True)
 class Rect:
@@ -92,8 +98,8 @@ class PageFont:
 
     xref: int  # its PDF object
     name: str  # e.g. "ABCDEF+Arial"
-    kind: str  # "TrueType", "Type0", ...
-    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not in the file
+    kind: FontKind
+    file_type: FontFileType
     resource: str  # its name in the page's font resources, e.g. "F1"
     encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
     in_form: bool  # used inside a form (a reusable drawing), not by the page itself
@@ -101,7 +107,7 @@ class PageFont:
     @property
     def is_embedded(self) -> bool:
         """Whether the PDF contains the font, not just its name."""
-        return self.file_type not in ("n/a", "")
+        return self.file_type != "none"
 
 
 @dataclass(frozen=True, slots=True)
