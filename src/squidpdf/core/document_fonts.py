@@ -25,7 +25,6 @@ from squidpdf.core.pooled import (
     font_copy,
     google_copy,
     lacks_a_keyboard_letter,
-    pooled,
 )
 from squidpdf.core.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
@@ -160,7 +159,7 @@ class DocumentFonts:
         own = self._opened(page_font)
         if isinstance(own, FontUnusable):
             raise FontUnusable(own.reason)
-        return pooled(own, partial(self._lenders, page, own))
+        return PooledFont(own, partial(self._lenders, page, own))
 
     def _lenders(
         self, page: int, own: FontCopy, lent: Mapping[str, FontCopy]
@@ -208,26 +207,26 @@ class DocumentFonts:
                 self._cache.copies[font] = problem
         return self._cache.copies[font]
 
-    def _other_copies(self, page: int, own: PageFont) -> list[PageFont]:
+    def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other font in the file by the same name, subset prefix aside.
 
-        This page's first, then the nearest page's: the order a letter is borrowed in.
+        This page's first, then the nearest page's: the order a letter is
+        borrowed in. A page's fonts are read only when the walk reaches it.
         """
         font_name = strip_subset(own.name)
+        # The own copy may be listed under another name, found by the one its text reads.
+        seen = {own.xref}
+        for font in self._fonts_nearest_first(page):
+            other_copy = font.xref not in seen and strip_subset(font.name) == font_name
+            if other_copy:
+                seen.add(font.xref)  # one font object on several pages is one copy
+                yield font
+
+    def _fonts_nearest_first(self, page: int) -> Iterator[PageFont]:
+        """Every page's fonts, this page's, then the nearest page's, each read when reached."""
         page_count = self._driver.page_count()
-        nearest_first = sorted(range(page_count), key=lambda other: (abs(other - page), other))
-        same_name = (
-            font
-            for other in nearest_first
-            for font in self._facts(other).fonts
-            if strip_subset(font.name) == font_name
-        )
-        copies: dict[int, PageFont] = {}
-        for font in same_name:
-            copies.setdefault(font.xref, font)  # one font object on several pages is one copy
-        # .pop: the own copy may be listed under another name, found by the one its text reads.
-        copies.pop(own.xref, None)
-        return list(copies.values())
+        for other in sorted(range(page_count), key=lambda other: (abs(other - page), other)):
+            yield from self._facts(other).fonts
 
     def look_alike(self, span: Span) -> LookAlike:
         """The face we ship that stands in for the span's font, in its style."""

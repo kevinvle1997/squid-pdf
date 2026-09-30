@@ -9,7 +9,7 @@ and opens the copies.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import groupby
 
 from squidpdf.core.constants import (
@@ -32,7 +32,6 @@ __all__ = [
     "google_copy",
     "copy_source",
     "lacks_a_keyboard_letter",
-    "pooled",
 ]
 
 _EM = 1000  # widths are given per 1000 em, as PDF font widths are
@@ -70,18 +69,33 @@ class TurnedAway:
     why: Message
 
 
-@dataclass(frozen=True, slots=True)
 class PooledFont:
-    """The span's own copy of its font, every copy that's the same font, and those turned away.
+    """The span's own copy of its font, and the copies of the same font, taken in as needed.
 
-    Each letter comes from the first copy that really draws it. Implements
+    Each letter comes from the first copy, in the order they lend, that really
+    draws it. A copy is taken in only when a letter the ones so far lack is
+    asked for, so a line the own copy draws opens no other. Implements
     `core.driver.FontProgram`, so it measures like one font.
     """
 
-    own: FontCopy  # the copy the span's page uses
-    letters: dict[str, FontCopy]  # each letter any copy draws, and the copy it comes from
-    # Copies with the font's name that aren't the same font, and why.
-    turned_away: list[TurnedAway] = field(default_factory=list)
+    __slots__ = ("_lenders", "_letters", "_turned_away", "own")
+
+    def __init__(self, own: FontCopy, lenders: Lenders) -> None:
+        """The own copy's letters, and the copies to take in, in order, for any it lacks."""
+        self.own = own  # the copy the span's page uses
+        # Each letter a copy taken in draws, and the copy it comes from.
+        self._letters = dict.fromkeys(own.widths, own)
+        # Copies taken in with the font's name that aren't the same font, and why.
+        self._turned_away: list[TurnedAway] = []
+        # The copies not taken in yet, each opened only when it's reached.
+        self._lenders = iter(lenders(self._letters))
+
+    @property
+    def letters(self) -> dict[str, FontCopy]:
+        """Each letter any copy draws, and the copy it comes from, every copy taken in first."""
+        for other in self._lenders:
+            self._take_in(other)
+        return self._letters
 
     def listed_letters(self) -> list[int]:
         """Every letter some copy really draws."""
@@ -103,8 +117,11 @@ class PooledFont:
 
     def copy_for(self, ch: str) -> FontCopy:
         """The copy that draws `ch`, or the span's own when none does."""
-        # .get: a letter no copy draws is measured in the own copy, as before pooling.
-        return self.letters.get(ch, self.own)
+        lender = self._lender_of(ch)
+        # No copy draws it: it's measured in the own copy, as before pooling.
+        if lender is None:
+            return self.own
+        return lender
 
     def stretches(self, text: str) -> list[tuple[FontCopy, str]]:
         """`text` split where the copy that draws it changes, in order."""
@@ -124,7 +141,7 @@ class PooledFont:
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that no copy draws, in order, deduped."""
-        return [ch for ch in dict.fromkeys(text) if ch not in self.letters]
+        return [ch for ch in dict.fromkeys(text) if self._lender_of(ch) is None]
 
     def why_missing(self, text: str) -> Message:
         """Why the pool can't draw all of `text`.
@@ -132,13 +149,34 @@ class PooledFont:
         A copy turned away that draws a missing letter says why it was; else
         no copy of the font has the letter.
         """
+        # A missing letter took every copy in, so every copy turned away is known.
         missing = self.missing(text)
         turned_away = (
             turned.why
-            for turned in self.turned_away
+            for turned in self._turned_away
             if any(ch in turned.copy.widths for ch in missing)
         )
         return next(turned_away, Message("font_lacks_letters"))
+
+    def _lender_of(self, ch: str) -> FontCopy | None:
+        """The copy that draws `ch`, taking copies in until one does; None when none does."""
+        while ch not in self._letters:
+            other = next(self._lenders, None)
+            # Every copy is in, and none draws it.
+            if other is None:
+                return None
+            self._take_in(other)
+        return self._letters[ch]
+
+    def _take_in(self, other: FontCopy) -> None:
+        """Add the letters `other` draws that the pool lacks, if it's the same font."""
+        why = why_turned_away(other, own=self.own, letters=self._letters)
+        # Only the same name: it lends nothing, and keeps why for the report.
+        if why is not None:
+            self._turned_away.append(TurnedAway(other, why))
+            return
+        for ch in other.widths:
+            self._letters.setdefault(ch, other)  # in lending order: the first to draw it lends
 
 
 def font_copy(font: PageFont, embedded: EmbeddedFont) -> FontCopy:
@@ -181,23 +219,8 @@ def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
     return any(ch not in letters for ch in keyboard)
 
 
-def pooled(own: FontCopy, lenders: Lenders) -> PooledFont:
-    """The own copy's letters, then each same-font copy's, in the order `lenders` gives them."""
-    letters = dict.fromkeys(own.widths, own)
-    turned_away: list[TurnedAway] = []
-    for other in lenders(letters):
-        why = why_turned_away(other, own=own, letters=letters)
-        # Only the same name: it lends nothing, and keeps why for the report.
-        if why is not None:
-            turned_away.append(TurnedAway(other, why))
-            continue
-        for ch in other.widths:
-            letters.setdefault(ch, other)  # nearest first, so the nearest to draw it lends it
-    return PooledFont(own, letters, turned_away)
-
-
 def why_turned_away(
-    other: FontCopy, *, own: FontCopy, letters: dict[str, FontCopy]
+    other: FontCopy, *, own: FontCopy, letters: Mapping[str, FontCopy]
 ) -> Message | None:
     """Why `other` isn't the same font as the pool so far, only the same name; None when it is.
 
