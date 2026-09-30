@@ -1,13 +1,18 @@
-import { useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { pageUrl } from "../../api/client";
-import type { ImageInfo, PageInfo, SpanInfo } from "../../api/types";
+import type { PageInfo, SpanInfo } from "../../api/types";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import { boxOf, points, useEditor } from "./context";
-import { EditField } from "./EditField";
+import { imageFailed } from "../editor";
 import { familyOf, previewFaceOf } from "../faces";
+import { type SpanView, differing } from "../project";
+import { boxOf, points, useEditor, useEditorState } from "./context";
+import { EditField } from "./EditField";
 import { Margin } from "./Margin";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
+
+const NO_SPANS: readonly SpanInfo[] = [];
+const NO_CHANGES: readonly SpanView[] = [];
 
 /**
  * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
@@ -42,26 +47,41 @@ function useSheet(pageHeightPt: number) {
 interface Props {
   index: number;
   info: PageInfo;
-  spans: SpanInfo[];
-  strips: readonly ImageInfo[] | undefined;
 }
 
-/** One page: its box reserved from its size, the image when near, and a mark over every span. */
-export function Page({ index, info, spans, strips }: Props) {
+/**
+ * One page: its box reserved from its size, the image when near, and a mark over every span.
+ * It redraws only when something on it changes: its edits, its strips, or the span being typed in.
+ */
+export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(info.height);
+  const spans = useEditorState((state) => state.layout.pages.get(index)) ?? NO_SPANS;
+  const edits = useEditorState((state) => state.view.pages.get(index));
+  const drawnFrom = useEditorState((state) => state.drawn.from.get(index)?.pages.get(index));
+  const strips = useEditorState((state) => state.drawn.strips.get(index));
+  const src = useEditorState((state) => pageUrl(state.doc, index, state.scale));
+  const typingIn = useEditorState((state) => (state.draft?.page === index ? state.draft.spanId : null));
+  // What every mark on the page shows, selected once here rather than by each mark.
+  const fonts = useEditorState((state) => state.layout.fonts);
+  const copy = useEditorState((state) => state.doc.copy);
+  const fits = useEditorState((state) => state.drawn.fits);
+  const quiet = useEditorState((state) => {
+    const back = state.returnedTo === null ? undefined : state.layout.spans.get(state.returnedTo);
+    return back?.page === index ? back.id : null;
+  });
+  const views = useMemo(() => new Map(edits?.spans.map((view) => [view.span.id, view])), [edits]);
   // The file's /Rotate turns the page with CSS; everything inside stays in unrotated points.
   const turned = info.rotation % 180 !== 0;
   const [wide, tall] = turned ? [info.height, info.width] : [info.width, info.height];
-  const changes = spans.filter((span) => {
-    const now = editor.latest.get(span.id);
-    return now !== undefined && now !== span.text;
-  });
+  const changes = edits?.spans.filter((view) => view.replaced) ?? NO_CHANGES;
+  // Where a span reads other than its strip shows, the browser draws it until the server has.
+  const previews = differing(edits, drawnFrom).filter(({ span }) => span.id !== typingIn);
   const label = `Page ${index + 1}`;
 
   return (
     <section className={styles.page} aria-label={label}>
-      <Margin info={info} spans={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
+      <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <div
         ref={sheet.ref}
         className={styles.sheet}
@@ -75,14 +95,7 @@ export function Page({ index, info, spans, strips }: Props) {
             transform: `translate(-50%, -50%) rotate(${info.rotation}deg)`,
           }}
         >
-          {sheet.near && (
-            <img
-              className={styles.image}
-              src={pageUrl(editor.doc, index, editor.scale)}
-              alt=""
-              onError={editor.imageFailed}
-            />
-          )}
+          {sheet.near && <img className={styles.image} src={src} alt="" onError={() => imageFailed(editor)} />}
           {strips?.map((strip) => (
             <img
               key={strip.y}
@@ -93,31 +106,37 @@ export function Page({ index, info, spans, strips }: Props) {
               style={{ top: `${(strip.y / info.height) * 100}%` }}
             />
           ))}
-          {spans.map((span) => (
-            <Preview key={span.id} span={span} info={info} />
+          {previews.map(({ span, text }) => (
+            <Preview key={span.id} span={span} text={text} info={info} />
           ))}
           {sheet.near &&
             spans.map((span) =>
-              span.id === editor.editing?.spanId ? (
-                <EditField key={span.id} span={span} info={info} text={editor.editing.text} />
+              span.id === typingIn ? (
+                <EditField key={span.id} span={span} info={info} />
               ) : (
-                <SpanMark key={span.id} span={span} info={info} />
+                <SpanMark
+                  key={span.id}
+                  span={span}
+                  info={info}
+                  now={views.get(span.id)}
+                  font={fonts.get(span.font)}
+                  fit={fits[span.id]}
+                  copy={copy}
+                  quiet={quiet === span.id}
+                />
               ),
             )}
         </div>
       </div>
-      <Margin info={info} spans={changes} gapPt={sheet.gapPt} shape="list" label={label} />
+      <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="list" label={label} />
     </section>
   );
-}
+});
 
 /** The browser's drawing of a span's text, while the server's strip under it shows other words. */
-function Preview({ span, info }: { span: SpanInfo; info: PageInfo }) {
-  const editor = useEditor();
-  const font = editor.fonts.get(span.font);
-  const text = editor.latest.get(span.id) ?? span.text;
-  const drawn = editor.shown.get(span.id) ?? span.text;
-  if (text === drawn || font === undefined || editor.editing?.spanId === span.id) return null;
+function Preview({ span, text, info }: { span: SpanInfo; text: string; info: PageInfo }) {
+  const font = useEditorState((state) => state.layout.fonts.get(span.font));
+  if (font === undefined) return null;
   const box = boxOf(span.bbox, info);
   const [red = 0, green = 0, blue = 0] = span.color;
   return (

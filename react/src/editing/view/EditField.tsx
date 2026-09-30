@@ -3,7 +3,9 @@ import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
-import { boxOf, points, useEditor } from "./context";
+import { say } from "../editor";
+import { finish, returnTo, type as typeInto } from "../typing";
+import { boxOf, points, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { familyOf, previewFaceOf } from "../faces";
 import { type Fit, fitOf, troublesOf, widthPt } from "../fit";
@@ -34,11 +36,13 @@ function wordAround(text: string, index: number): [number, number] {
  * It stands where the span's mark stood, so Tab and Shift+Tab go on to the next span unaided.
  * The editor holds what's typed, so an export mid-word takes it too.
  */
-export function EditField({ span, info, text }: { span: SpanInfo; info: PageInfo; text: string }) {
+export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
-  const { fit: rules, copy } = editor.doc;
-  const font = editor.fonts.get(span.font);
-  const start = editor.latest.get(span.id) ?? span.text;
+  const text = useEditorState((state) => state.draft?.text ?? "");
+  const rules = useEditorState((state) => state.doc.fit);
+  const copy = useEditorState((state) => state.doc.copy);
+  const font = useEditorState((state) => state.layout.fonts.get(span.font));
+  const start = useEditorState((state) => state.view.spans.get(span.id)?.text) ?? span.text;
   const face = font === undefined ? "Liberation Serif Regular" : previewFaceOf(font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
@@ -53,10 +57,10 @@ export function EditField({ span, info, text }: { span: SpanInfo; info: PageInfo
     if (placed.current) return;
     placed.current = true;
     const field = event.currentTarget;
-    const at = editor.editing?.atPt;
+    const at = editor.store.get().draft?.atPt;
     if (at == null) field.select();
     else field.setSelectionRange(...wordAround(start, letterAt(start, at, glyphs, span.size)));
-    if (said !== "") editor.say(said);
+    if (said !== "") say(editor, said);
   }
 
   // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
@@ -65,17 +69,17 @@ export function EditField({ span, info, text }: { span: SpanInfo; info: PageInfo
     const now = fitFor(next);
     if (kind(now) !== kind(fitFor(text))) {
       const troubles = troublesIn(now);
-      if (troubles.length > 0) editor.say(troubles.join("; "));
+      if (troubles.length > 0) say(editor, troubles.join("; "));
     }
-    editor.type(next);
+    typeInto(editor, next);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter" && event.key !== "Escape") return;
     event.preventDefault();
     // Back on the span, but its note would cover what was just typed: it waits for the next visit.
-    editor.returnTo(span.id);
-    editor.finish(event.key === "Enter");
+    returnTo(editor, span.id);
+    finish(editor, event.key === "Enter");
   }
 
   const box = boxOf(span.bbox, info);
@@ -92,7 +96,7 @@ export function EditField({ span, info, text }: { span: SpanInfo; info: PageInfo
           spellCheck={false}
           autoComplete="off"
           onKeyDown={onKeyDown}
-          onBlur={() => editor.finish(true)}
+          onBlur={() => finish(editor, true)}
           style={{
             left: box.left,
             top: box.top,

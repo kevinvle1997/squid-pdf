@@ -1,7 +1,5 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ProblemError, exportPdf } from "../../api/client";
-import type { Document, SpanInfo } from "../../api/types";
-import { Reopener } from "../../documents/reopen";
+import { useEffect, useState } from "react";
+import type { Document } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Notice } from "../../ui/Notice";
 import { SkipLink } from "../../ui/SkipLink";
@@ -9,240 +7,112 @@ import { Status } from "../../ui/Status";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { EditorContext, type Editing, type EditorState, focusSpan } from "./context";
-import styles from "./Editor.module.css";
-import { EMPTY_HISTORY, type History, type HistoryAction, entriesOf, historyReducer, touching } from "../history";
-import { project } from "../project";
-import { NOTHING_DRAWN, RenderQueue } from "../render";
-import { Page } from "./Page";
+import { type Editor as OpenDocument, change, changedCount, createEditor, similarCount } from "../editor";
+import { exportNow } from "../export";
 import { counted } from "../words";
+import { EditorContext, useEditor, useEditorState } from "./context";
+import styles from "./Editor.module.css";
+import { Page } from "./Page";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
 const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const COMMAND = APPLE ? "⌘" : "Ctrl ";
 
-interface Said {
-  tone: "plain" | "warn";
-  text: string;
-}
-
-function byPage(spans: readonly SpanInfo[]): Map<number, SpanInfo[]> {
-  const pages = new Map<number, SpanInfo[]>();
-  for (const span of spans) pages.set(span.page, [...(pages.get(span.page) ?? []), span]);
-  return pages;
-}
-
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 }
 
-function download(pdf: Blob, name: string): void {
-  const url = URL.createObjectURL(pdf);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  // Not at once: some browsers are still reading the file when click() returns.
-  window.setTimeout(() => URL.revokeObjectURL(url));
+/** Shortcuts, wherever focus is. */
+function onKey(editor: OpenDocument, event: KeyboardEvent): void {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key === "s") {
+    event.preventDefault();
+    void exportNow(editor);
+    return;
+  }
+  // In a text field, undo and redo are the field's own.
+  if (isTyping(event.target)) return;
+  if (key === "z" || key === "y") {
+    event.preventDefault();
+    change(editor, { kind: key === "y" || event.shiftKey ? "redo" : "undo" });
+  }
 }
 
 /** The open document: every page, every span marked, editable in place. */
 export function Editor({ file, opened }: { file: File; opened: Document }) {
-  const [doc, setDoc] = useState(opened);
-  // The history and the text being typed. Each ref is what handlers read, current the moment
-  // it changes (export reads both straight after finishing the typing); the state redraws.
-  const history = useRef(EMPTY_HISTORY);
-  const [log, setLog] = useState(EMPTY_HISTORY);
-  const view = useMemo(() => project(doc.spans, entriesOf(log)), [doc, log]);
-  const latest = useMemo(() => new Map([...view.spans].map(([id, span]) => [id, span.text])), [view]);
-  const draft = useRef<Editing | null>(null);
-  const [editing, setEditingState] = useState<Editing | null>(null);
-  const setEditing = (next: Editing | null) => {
-    draft.current = next;
-    setEditingState(next);
-  };
-  const [returnedTo, returnTo] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Said | null>(() => {
-    const [first] = opened.notices;
-    return first === undefined ? null : { tone: "warn", text: first.detail };
-  });
-  const [said, setSaid] = useState("");
-  const fonts = useMemo(() => new Map(doc.fonts.map((font) => [font.name, font])), [doc]);
-  const spans = useMemo(() => new Map(doc.spans.map((span) => [span.id, span])), [doc]);
-  const pages = useMemo(() => byPage(doc.spans), [doc]);
-
-  // The hour ran out and the document opened again: the same spans, under a new id.
-  const [reopener] = useState(
-    () =>
-      new Reopener(file, opened, (again) => {
-        setDoc(again);
-        setNotice({ tone: "plain", text: again.copy.reopened });
-      }),
-  );
-
-  const onProblem = (detail: string) => setNotice({ tone: "warn", text: detail });
-  const [drawn, setDrawn] = useState(NOTHING_DRAWN);
-  const [queue] = useState(() => new RenderQueue({ reopener, scale: SCALE, drawn: setDrawn, failed: onProblem }));
-  const { strips, fits } = drawn;
-  // The text each span's strip shows, where its page has been drawn.
-  const shown = useMemo(() => {
-    const texts = new Map<string, string>();
-    for (const [page, from] of drawn.from) {
-      for (const span of from.pages.get(page)?.spans ?? []) texts.set(span.span.id, span.text);
-    }
-    return texts;
-  }, [drawn]);
-
-  // Every change to the history comes through here, and redraws what it changed.
-  function change(action: HistoryAction) {
-    const before = history.current;
-    const after = historyReducer(before, action);
-    if (after === before) return;
-    history.current = after;
-    setLog(after);
-    // A message about the last export or reopening is stale once the user edits again.
-    setNotice((now) => (now?.tone === "plain" ? null : now));
-    queue.draw(viewOf(after));
-  }
-
-  const viewOf = (of: History) => project(doc.spans, entriesOf(of));
-
-  // Typing ends once, however it ends: Enter, Escape, leaving the field, or an export.
-  function finish(keep: boolean) {
-    const typed = draft.current;
-    if (typed === null) return;
-    setEditing(null);
-    const was = viewOf(history.current).spans.get(typed.spanId)?.text ?? spans.get(typed.spanId)?.text;
-    // Emptying a span isn't a replacement: taking text out is redaction's job.
-    if (!keep || typed.text === was || typed.text.trim() === "") return;
-    change({ kind: "add", edits: [{ kind: "replace", span_id: typed.spanId, text: typed.text }] });
-    setSaid(`Changed to ${typed.text}`);
-  }
-
-  function onImageFailed() {
-    reopener.check().catch((error: unknown) => {
-      if (!(error instanceof ProblemError)) throw error;
-      onProblem(error.problem.detail);
-    });
-  }
-
-  const changed = [...latest].filter(([id, text]) => spans.get(id)?.text !== text);
-  const similar = changed.filter(([id]) => {
-    const span = spans.get(id);
-    const inSimilar = span !== undefined && fonts.get(span.font)?.substitute != null;
-    return inSimilar || (fits[id]?.missing.length ?? 0) > 0;
-  });
-
-  const exporting = useRef(false);
-  const [busy, setBusy] = useState(false);
-  async function exportNow() {
-    if (exporting.current) return;
-    exporting.current = true;
-    setBusy(true);
-    // An edit still being typed goes in first.
-    finish(true);
-    const { edits } = viewOf(history.current);
-    try {
-      const exported = await reopener.withDocument((current) => exportPdf(current.id, [...edits]));
-      download(exported.pdf, file.name);
-      const leftOut = exported.skipped.length > 0;
-      const text = leftOut
-        ? doc.copy.export_left_out
-        : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
-      setNotice({ tone: leftOut ? "warn" : "plain", text });
-      setSaid(text);
-    } catch (error) {
-      if (!(error instanceof ProblemError)) throw error;
-      setNotice({ tone: "warn", text: error.problem.detail });
-      setSaid(error.problem.detail);
-    } finally {
-      exporting.current = false;
-      setBusy(false);
-    }
-  }
+  const [editor] = useState(() => createEditor(file, opened, SCALE));
 
   // The one effect, for what happens outside React: shortcuts anywhere, and the connection coming back.
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey)) return;
-    const key = event.key.toLowerCase();
-    if (key === "s") {
-      event.preventDefault();
-      void exportNow();
-      return;
-    }
-    // In a text field, undo and redo are the field's own.
-    if (isTyping(event.target)) return;
-    if (key === "z" || key === "y") {
-      event.preventDefault();
-      change({ kind: key === "y" || event.shiftKey ? "redo" : "undo" });
-    }
-  });
   useEffect(() => {
-    const listen = (event: KeyboardEvent) => onKey(event);
-    const online = () => queue.retry();
-    window.addEventListener("keydown", listen);
+    const key = (event: KeyboardEvent) => onKey(editor, event);
+    const online = () => editor.queue.retry();
+    window.addEventListener("keydown", key);
     window.addEventListener("online", online);
     return () => {
-      window.removeEventListener("keydown", listen);
+      window.removeEventListener("keydown", key);
       window.removeEventListener("online", online);
     };
-  }, [queue]);
-
-  const state: EditorState = {
-    doc,
-    scale: SCALE,
-    fonts,
-    latest,
-    shown,
-    fits,
-    editing,
-    returnedTo,
-    returnTo,
-    edit: (spanId, atPt) => setEditing({ spanId, atPt, text: latest.get(spanId) ?? spans.get(spanId)?.text ?? "" }),
-    type: (text) => {
-      if (draft.current !== null) setEditing({ ...draft.current, text });
-    },
-    finish,
-    revert: (spanId) => {
-      change({ kind: "remove", ids: touching(history.current, spanId) });
-      setSaid(`Put back ${spans.get(spanId)?.text ?? ""}`);
-      focusSpan(spanId);
-    },
-    say: setSaid,
-    imageFailed: onImageFailed,
-  };
+  }, [editor]);
 
   return (
-    <EditorContext.Provider value={state}>
+    <EditorContext.Provider value={editor}>
       <SkipLink to="pages">Skip to the document</SkipLink>
-      <header className={styles.bar}>
-        <Wordmark />
-        <span className={styles.file}>
-          <span className={styles.name}>{file.name}</span>
-          <span className={styles.meta}>{counted(doc.pages.length, { one: "page", other: "pages" })}</span>
-        </span>
-        <span className={styles.grow} />
-        <span className={styles.status}>
-          {changed.length > 0 && counted(changed.length, { one: "change", other: "changes" })}
-          {similar.length > 0 && (
-            <>
-              {" · "}
-              <Warn>{similar.length}</Warn> in a similar font
-            </>
-          )}
-        </span>
-        <Button onPress={() => void exportNow()} isDisabled={busy}>
-          Export <kbd>{COMMAND}S</kbd>
-        </Button>
-      </header>
-      {notice !== null && <Notice tone={notice.tone}>{notice.text}</Notice>}
-      <main id="pages" className={styles.pages} tabIndex={-1}>
-        {doc.pages.map((info, index) => (
-          <Page key={index} index={index} info={info} spans={pages.get(index) ?? []} strips={strips.get(index)} />
-        ))}
-      </main>
-      <Status>{said}</Status>
+      <Bar />
+      <NoticeLine />
+      <Pages />
+      <Said />
     </EditorContext.Provider>
   );
+}
+
+function Bar() {
+  const editor = useEditor();
+  const pages = useEditorState((state) => state.doc.pages.length);
+  const changed = useEditorState(changedCount);
+  const similar = useEditorState(similarCount);
+  const exporting = useEditorState((state) => state.exporting);
+  return (
+    <header className={styles.bar}>
+      <Wordmark />
+      <span className={styles.file}>
+        <span className={styles.name}>{editor.file.name}</span>
+        <span className={styles.meta}>{counted(pages, { one: "page", other: "pages" })}</span>
+      </span>
+      <span className={styles.grow} />
+      <span className={styles.status}>
+        {changed > 0 && counted(changed, { one: "change", other: "changes" })}
+        {similar > 0 && (
+          <>
+            {" · "}
+            <Warn>{similar}</Warn> in a similar font
+          </>
+        )}
+      </span>
+      <Button onPress={() => void exportNow(editor)} isDisabled={exporting}>
+        Export <kbd>{COMMAND}S</kbd>
+      </Button>
+    </header>
+  );
+}
+
+function NoticeLine() {
+  const notice = useEditorState((state) => state.notice);
+  return notice === null ? null : <Notice tone={notice.tone}>{notice.text}</Notice>;
+}
+
+function Pages() {
+  const pages = useEditorState((state) => state.doc.pages);
+  return (
+    <main id="pages" className={styles.pages} tabIndex={-1}>
+      {pages.map((info, index) => (
+        <Page key={index} index={index} info={info} />
+      ))}
+    </main>
+  );
+}
+
+function Said() {
+  return <Status>{useEditorState((state) => state.said)}</Status>;
 }

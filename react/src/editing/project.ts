@@ -52,6 +52,21 @@ export function samePage(a: PageEdits | undefined, b: PageEdits | undefined): bo
 }
 
 /**
+ * The spans that read differently in `now` than in `then`, with what each reads now: the
+ * original's words where `now` has put it back.
+ */
+export function differing(now: PageEdits | undefined, then: PageEdits | undefined): { span: SpanInfo; text: string }[] {
+  const was = new Map(then?.spans.map((view) => [view.span.id, view]));
+  const out: { span: SpanInfo; text: string }[] = [];
+  for (const view of now?.spans ?? []) {
+    if (!sameSpan(view, was.get(view.span.id))) out.push({ span: view.span, text: view.text });
+    was.delete(view.span.id);
+  }
+  for (const view of was.values()) out.push({ span: view.span, text: view.span.text });
+  return out;
+}
+
+/**
  * The document's spans with `entries` made, in the order made. `previous` is the last reading:
  * whatever reads the same is taken from it as it was.
  */

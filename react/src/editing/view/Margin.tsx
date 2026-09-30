@@ -1,11 +1,13 @@
 import { Button } from "react-aria-components";
-import type { PageInfo, SpanInfo } from "../../api/types";
-import { useEditor } from "./context";
+import type { PageInfo } from "../../api/types";
+import { putBack } from "../editor";
+import type { SpanView } from "../project";
+import { focusSpan, useEditor } from "./context";
 import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
-  spans: SpanInfo[]; // the spans changed on this page
+  changes: readonly SpanView[]; // the spans replaced on this page
   gapPt: number; // a note's height in page points, to keep notes a hit area apart
   shape: "margin" | "list";
   label: string;
@@ -15,25 +17,25 @@ interface Props {
  * The user's own changes, each a button that puts the original back. Beside the page on
  * a wide screen, in a list under it on a narrow one; CSS shows one or the other.
  */
-export function Margin({ info, spans, gapPt, shape, label }: Props) {
+export function Margin({ info, changes, gapPt, shape, label }: Props) {
   const editor = useEditor();
-  if (spans.length === 0) return shape === "margin" ? <div className={styles.margin} /> : null;
+  if (changes.length === 0) return shape === "margin" ? <div className={styles.margin} /> : null;
 
-  const notes = spans.map((span) => {
-    const now = editor.latest.get(span.id) ?? span.text;
-    return (
-      <Button
-        key={span.id}
-        className={styles.note}
-        aria-label={`Undo: “${now}” goes back to “${span.text}”`}
-        onPress={() => editor.revert(span.id)}
-      >
-        <span className={styles.old}>{span.text}</span>
-        {shape === "list" && <span className={styles.now}>{now}</span>}
-        <i className={styles.bar} aria-hidden="true" />
-      </Button>
-    );
-  });
+  const notes = changes.map(({ span, text: now }) => (
+    <Button
+      key={span.id}
+      className={styles.note}
+      aria-label={`Undo: “${now}” goes back to “${span.text}”`}
+      onPress={() => {
+        putBack(editor, span.id);
+        focusSpan(span.id);
+      }}
+    >
+      <span className={styles.old}>{span.text}</span>
+      {shape === "list" && <span className={styles.now}>{now}</span>}
+      <i className={styles.bar} aria-hidden="true" />
+    </Button>
+  ));
 
   if (shape === "list") {
     return (
@@ -48,8 +50,8 @@ export function Margin({ info, spans, gapPt, shape, label }: Props) {
   }
 
   // Each note level with its span, nudged down so no two overlap.
-  const order = spans
-    .map((span, index) => ({ index, want: (span.bbox.y0 + span.bbox.y1) / 2 }))
+  const order = changes
+    .map(({ span }, index) => ({ index, want: (span.bbox.y0 + span.bbox.y1) / 2 }))
     .sort((a, b) => a.want - b.want);
   const tops = new Map<number, number>();
   let last = -Infinity;

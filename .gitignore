@@ -35,3 +35,4 @@ dist/
 # Playwright
 /react/test-results/
 /react/playwright-report/
+/react/.vitest/

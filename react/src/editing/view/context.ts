@@ -1,37 +1,25 @@
-// What every part of the open document reads: the document, the edits, and what to do.
-import { createContext, useContext } from "react";
-import type { Document, FitInfo, FontInfo } from "../../api/types";
+// The open document's editor, for what draws it. State is read through a selector, so a
+// component redraws only when what it selected changes; actions take the editor itself,
+// which never changes, so passing it down redraws nothing.
+import { createContext, useContext, useSyncExternalStore } from "react";
+import type { Editor, EditorState } from "../editor";
 
-export interface Editing {
-  spanId: string;
-  atPt: number | null; // where in the span the press was, from its start: the word to select
-  text: string; // what's typed so far, not yet in the history
+export const EditorContext = createContext<Editor | null>(null);
+
+/** The editor, for a handler to act on. */
+export function useEditor(): Editor {
+  const editor = useContext(EditorContext);
+  if (editor === null) throw new Error("useEditor is only for what the editor draws");
+  return editor;
 }
 
-export interface EditorState {
-  doc: Document;
-  scale: number;
-  fonts: ReadonlyMap<string, FontInfo>;
-  latest: ReadonlyMap<string, string>; // each replaced span's text now
-  shown: ReadonlyMap<string, string>; // each span's text as its server-drawn strip shows it
-  fits: Readonly<Record<string, FitInfo>>;
-  editing: Editing | null;
-  returnedTo: string | null; // the span focus went back to after its edit: its note stays shut
-  edit: (spanId: string, atPt: number | null) => void;
-  type: (text: string) => void;
-  finish: (keep: boolean) => void; // keep the typed text, or drop it; once, however it ends
-  returnTo: (spanId: string | null) => void;
-  revert: (spanId: string) => void;
-  say: (text: string) => void;
-  imageFailed: () => void;
-}
-
-export const EditorContext = createContext<EditorState | null>(null);
-
-export function useEditor(): EditorState {
-  const state = useContext(EditorContext);
-  if (state === null) throw new Error("useEditor is only for what the editor draws");
-  return state;
+/**
+ * Part of the editor's state. `select` returns something the state holds, or a string or a
+ * number: a new object from each call would look like a change every time.
+ */
+export function useEditorState<T>(select: (state: EditorState) => T): T {
+  const { store } = useEditor();
+  return useSyncExternalStore(store.subscribe, () => select(store.get()));
 }
 
 /** Put focus on a span's mark, as a keyboard user expects after editing it. */
