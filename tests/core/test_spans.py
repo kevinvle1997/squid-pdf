@@ -1,7 +1,7 @@
 """Merging the pieces a page draws into the spans a person edits, without opening a PDF.
 
 Writers split a line into pieces to adjust letter spacing. Which pieces carry
-on one span is judged by font, size, baseline and gap, against the thresholds
+on one span is judged by font, size, paint, baseline and gap, against the thresholds
 in core/constants.py; these cases sit well clear of them, so tuning one moves none.
 """
 
@@ -25,10 +25,12 @@ def _piece(
     *,
     font: str = "Times-Roman",
     baseline: float = _BASELINE,
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    opacity: float = 1.0,
 ) -> TextPiece:
     """A piece of text from `x0` to `x1` on a baseline, boxed as a font of its size is."""
     box = Rect(x0, baseline - _SIZE * 0.8, x1, baseline + _SIZE * 0.2)
-    return TextPiece(text, font, _SIZE, (0.0, 0.0, 0.0), 1.0, box, (x0, baseline))
+    return TextPiece(text, font, _SIZE, color, opacity, box, (x0, baseline))
 
 
 def _texts(groups: list[list[TextPiece]]) -> list[str]:
@@ -49,12 +51,16 @@ def test_pieces_split_for_spacing_merge_back_into_one_span():
         (_piece("b", _FIRST_ENDS + 10.0, 125), False),
         (_piece("b", _FIRST_ENDS, 125, font="Times-Bold"), False),
         (_piece("b", _FIRST_ENDS, 125, baseline=_BASELINE - 3), False),
+        (_piece("b", _FIRST_ENDS, 125, color=(1.0, 0.0, 0.0)), False),
+        (_piece("b", _FIRST_ENDS, 125, opacity=0.6), False),
     ],
     ids=[
         "a small gap",
         "a gap of most of an em: the next column",
         "another font",
         "a raised baseline: a superscript",
+        "another colour: a redraw paints a span in one",
+        "another opacity",
     ],
 )
 def test_a_piece_carries_on_the_span_only_close_by_and_in_its_style(then, carries_on):
