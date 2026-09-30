@@ -6,8 +6,9 @@ import { SkipLink } from "../../ui/SkipLink";
 import { Status } from "../../ui/Status";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
+import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { change, changedCount, createEditor, type Editor, similarCount } from "../editor";
+import { changedCount, createEditor, similarCount } from "../editor";
 import { exportNow } from "../export";
 import { noticeLines } from "../notices";
 import { counted } from "../words";
@@ -24,30 +25,18 @@ function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 }
 
-/** Shortcuts, wherever focus is. */
-function onKey(editor: Editor, event: KeyboardEvent): void {
-  if (!(event.metaKey || event.ctrlKey)) return;
-  const key = event.key.toLowerCase();
-  if (key === "s") {
-    event.preventDefault();
-    void exportNow(editor);
-    return;
-  }
-  // In a text field, undo and redo are the field's own.
-  if (isTyping(event.target)) return;
-  if (key === "z" || key === "y") {
-    event.preventDefault();
-    change(editor, { kind: key === "y" || event.shiftKey ? "redo" : "undo" });
-  }
-}
-
 /** The open document: every page, every span marked, editable in place, under the bar. */
 export function EditorShell({ file, opened }: { file: File; opened: Document }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
 
   // The one effect, for what happens outside React: shortcuts anywhere, and the connection coming back.
   useEffect(() => {
-    const key = (event: KeyboardEvent) => onKey(editor, event);
+    const key = (event: KeyboardEvent) => {
+      const command = commandFor(event, isTyping(event.target));
+      if (command === undefined) return;
+      event.preventDefault();
+      command.run(editor);
+    };
     const online = () => editor.queue.retry();
     window.addEventListener("keydown", key);
     window.addEventListener("online", online);
