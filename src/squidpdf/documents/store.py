@@ -90,10 +90,11 @@ def find(doc_id: str) -> tuple[Path, str] | None:
 def open_original(folder: Path) -> Engine:
     """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
 
-    Google's copy of a font lends the letters its copies in the file lack.
+    Google's copy of a font lends the letters its copies in the file lack. Its
+    cache sits beside the documents, on the kept disk; the sweep passes over it.
     """
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=google_fonts())
+        return open_pdf(str(folder / ORIGINAL), fetch=google_fonts(folder=root() / "fonts"))
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 

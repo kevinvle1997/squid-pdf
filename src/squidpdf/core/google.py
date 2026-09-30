@@ -354,21 +354,25 @@ def download(url: str) -> bytes:
 
 
 def cache_folder() -> Path:
-    """Where Google's copies are kept: `SQUIDPDF_FONTS`, or `fonts` in the documents' folder.
+    """Where the CLI keeps Google's copies: `SQUIDPDF_FONTS`, or the user's cache folder.
 
-    Public fonts only, shared by every document. In the documents' folder by
-    default, so it's on the server's kept disk; the sweeper passes over
-    anything not named like a document.
+    Public fonts only, shared by every document. The server passes its own.
     """
-    documents = os.environ.get("SQUIDPDF_DATA", "data")  # unset in development
-    return Path(os.environ.get("SQUIDPDF_FONTS", f"{documents}/fonts")).resolve()
+    moved = os.environ.get("SQUIDPDF_FONTS")  # .get: set only to move the cache
+    if moved:
+        return Path(moved).resolve()
+    # .get: set only where the user moved every cache; ~/.cache is the usual place
+    user_caches = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(user_caches, "squidpdf", "fonts").resolve()
 
 
-def google_fonts() -> Fetch | None:
-    """The way to Google's copies: from the cache, else fetched and kept there.
+def google_fonts(*, folder: Path | None = None) -> Fetch | None:
+    """The way to Google's copies: from the cache in `folder`, else fetched and kept there.
 
-    None when SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
+    `folder` is `cache_folder()` unless given, as the server gives its own. None
+    when SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
     """
     if os.environ.get(_NO_FETCH):
         return None
-    return partial(fetched, folder=cache_folder(), download=download, retry_at=_retry_at)
+    cache = cache_folder() if folder is None else folder
+    return partial(fetched, folder=cache, download=download, retry_at=_retry_at)
