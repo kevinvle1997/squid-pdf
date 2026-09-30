@@ -21,13 +21,22 @@ from fastapi import Request
 from pebble import ProcessExpired, ProcessPool
 
 from squidpdf.api import constants
-from squidpdf.api.errors import TooHeavy, TooSlow
-from squidpdf.core import Damaged, result_of
+from squidpdf.api.errors import TooSlow
+from squidpdf.core import Damaged, Problem, TooHeavy, result_of
 
 __all__ = [
     "Pool",
     "current",
 ]
+
+# pebble's failures, and the Problem each one means. In order: the first that matches wins.
+_FAILURES: list[tuple[type[Exception], Callable[[Exception], Problem]]] = [
+    # Out of time, waiting or working: slow, not necessarily broken.
+    (TimeoutError, lambda _failure: TooSlow()),
+    (MemoryError, lambda _failure: TooHeavy()),  # past the memory ceiling
+    (ProcessExpired, lambda _failure: Damaged()),  # the worker died: MuPDF crashed on the file
+]
+_FAILED = tuple(raised for raised, _make in _FAILURES)  # the types alone, for `except`
 
 
 class Pool:
@@ -35,35 +44,42 @@ class Pool:
 
     def __init__(self) -> None:
         """Set the pool up; pebble starts the workers on the first task."""
-        self._pool = ProcessPool(
-            max_tasks=constants.TASKS_PER_WORKER,
-            initializer=limit_memory,
-            # Spawn: a fork of a threaded server can inherit a held lock and hang.
-            # The cast because pebble types `context` as a module; it takes any.
-            context=cast(ModuleType, multiprocessing.get_context("spawn")),
-        )
+        self._pool = process_pool()
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task()` in a worker, killed after `timeout` seconds.
 
         If the request goes away first, the task is cancelled and pebble stops
         the worker running it. The PDF library's own failures come back as the
-        Problems they mean (`core.result_of`).
+        Problems they mean (`core.result_of`), and pebble's by `_FAILURES`.
         """
         future = self._pool.submit(partial(result_of, task), timeout)
         try:
             return await asyncio.wrap_future(future)
-        except TimeoutError as exc:  # out of time: slow, not necessarily broken
-            raise TooSlow() from exc
-        except MemoryError as exc:  # past the memory ceiling
-            raise TooHeavy() from exc
-        except ProcessExpired as exc:  # the worker died: MuPDF crashed on the file
-            raise Damaged() from exc
+        except _FAILED as failure:  # pebble's, listed in _FAILURES
+            raise problem_of(failure) from failure
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
         self._pool.stop()
         self._pool.join()
+
+
+def process_pool() -> ProcessPool:
+    """pebble's pool of worker processes, not started yet."""
+    return ProcessPool(
+        max_workers=constants.WORKERS,
+        max_tasks=constants.TASKS_PER_WORKER,
+        initializer=limit_memory,
+        # Spawn: a fork of a threaded server can inherit a held lock and hang.
+        # The cast because pebble types `context` as a module; it takes any.
+        context=cast(ModuleType, multiprocessing.get_context("spawn")),
+    )
+
+
+def problem_of(failure: Exception) -> Problem:
+    """What one of pebble's failures means: the first row of `_FAILURES` it matches."""
+    return next(make(failure) for raised, make in _FAILURES if isinstance(failure, raised))
 
 
 def current(request: Request) -> Pool:

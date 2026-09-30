@@ -5,6 +5,8 @@ These protect the server, not the business, so no plan or account lifts them.
 
 from __future__ import annotations
 
+import os
+
 _MB = 1024 * 1024
 
 # Page images: the scales a route accepts. The pixel limit is documents' own.
@@ -21,5 +23,6 @@ MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
 # Workers. Each feature's timeouts are in its own constants.py.
+WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
 TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
