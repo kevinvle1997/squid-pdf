@@ -83,21 +83,22 @@ class InvalidRequest(Problem):
     status = 400
 
 
-class Unreadable(Problem):
-    """The engine can't open the file. Catch this for both kinds."""
+class Damaged(Problem):
+    """The engine can't open the file: garbage, truncated or empty; or MuPDF crashed on it."""
 
     type = "damaged"
     status = 422
 
 
-class Encrypted(Unreadable):
-    """It opened, but only a password would let us read it."""
+class Encrypted(Problem):
+    """The engine can't read the file: it opened, but only a password would let us read it."""
 
     type = "encrypted"
+    status = 422
 
 
-class Damaged(Unreadable):
-    """Garbage, truncated or empty; or MuPDF crashed on it."""
+# The engine can't open or read the file, whichever the reason: catch this for both.
+Unreadable = (Damaged, Encrypted)
 
 
 class TooHeavy(Problem):
