@@ -1,20 +1,23 @@
 """What a font can actually draw, as opposed to what it claims.
 
 A subsetted font still lists glyphs it emptied the outlines of: has_glyph and
-valid_codepoints report the claim, not reality. The only honest test is asking
-the glyph to draw and checking it produces contours.
+valid_codepoints report the claim, not reality. The honest test reads the
+glyph's own outline, and those of the parts it's built from.
 """
 
 from __future__ import annotations
 
 import io
+import struct
 import sys
 from collections.abc import Iterable, Mapping
+from typing import Any
 
 from fontTools.agl import toUnicode
 from fontTools.cffLib import CFFFontSet
-from fontTools.pens.recordingPen import DecomposingRecordingPen
+from fontTools.pens.basePen import DecomposingPen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph, table__g_l_y_f
 
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
@@ -32,6 +35,12 @@ _ALWAYS_DRAWABLE = frozenset({" "})
 # A bare CFF font program starts with this header (major.minor version 1.0);
 # anything else handed to Coverage is assumed to be a TrueType/OpenType wrapper.
 _BARE_CFF_SIGNATURE = b"\x01\x00"
+
+# The tables CFF outlines come in, in an OpenType font: version 1 and 2.
+_CFF_TABLES = ("CFF ", "CFF2")
+
+# A TrueType glyph starts with its outline count, a signed 16-bit big-endian number.
+_OUTLINE_COUNT = struct.Struct(">h")
 
 
 class Coverage:
@@ -54,7 +63,8 @@ class Coverage:
     ) -> None:
         """Parse a font's raw bytes; `listed_letters` is what it draws if they won't parse."""
         self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
-        self._glyphs = None  # glyph set to draw from, once loaded
+        self._glyphs: Mapping[GlyphName, Any] = {}  # glyphs to draw from, once loaded
+        self._truetype: table__g_l_y_f | None = None  # TrueType glyphs, read without drawing
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
         self._listed_letters = frozenset(filter(is_letter_code, listed_letters))
         # With glyph_ids the font is written by code, and a space with no code can't be.
@@ -79,7 +89,11 @@ class Coverage:
         """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
         font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
         self._glyph_names = glyph_name_for_each_letter(font, glyph_ids)
-        self._glyphs = font.getGlyphSet()
+        self._glyphs = font.getGlyphSet()  # raises for a font missing a table drawing needs
+        # TrueType outlines are read, not drawn; a font with CFF outlines too draws those.
+        truetype_only = "glyf" in font and not any(table in font for table in _CFF_TABLES)
+        if truetype_only:
+            self._truetype = font["glyf"]
 
     def _load_bare_cff(self, buffer: bytes) -> None:
         """A bare CFF, as CIDFontType0 subsets are embedded.
@@ -118,20 +132,24 @@ class Coverage:
         return draws
 
     def _draws(self, ch: str) -> bool:
-        """Ask the glyph itself to draw, and check that it produced any ink.
+        """Whether the glyph for `ch` has any outline, so puts ink on the page.
 
-        A letter built from others (Á from A and an accent) is drawn through to
+        A letter built from others (Á from A and an accent) counts through to
         their outlines: a trimmed font can keep it while emptying its parts.
         """
-        name = self._glyph_names.get(Codepoint(ord(ch)))
-        if name is None or self._glyphs is None:
+        name = self._glyph_names.get(Codepoint(ord(ch)))  # None: the font doesn't map it
+        if name is None:
             return False
         try:
-            pen = DecomposingRecordingPen(self._glyphs)
-            self._glyphs[name].draw(pen)
-            return bool(pen.value)
-        except Exception:  # noqa: BLE001 (a glyph that will not draw is missing)
+            return self._has_outline(name)
+        except Exception:  # noqa: BLE001 (a glyph that won't read, or is built from itself, is missing)
             return False
+
+    def _has_outline(self, name: GlyphName) -> bool:
+        """Whether the glyph `name` has an outline: read for TrueType, drawn for CFF."""
+        if self._truetype is not None:
+            return truetype_has_outline(self._truetype, name)
+        return cff_has_outline(self._glyphs, name)
 
     def drawable(self) -> list[str]:
         """Every character `covers` says draws, spaces included, in code point order."""
@@ -143,6 +161,61 @@ class Coverage:
         """Characters `text` needs that this font cannot draw, in order, deduped."""
         unique = dict.fromkeys(text)  # drops repeats, keeps first-seen order
         return [ch for ch in unique if not self.covers(ch)]
+
+
+def truetype_has_outline(truetype: table__g_l_y_f, name: GlyphName) -> bool:
+    """Whether a TrueType glyph has outlines of its own, or is built from parts that do."""
+    count = outline_count(truetype.glyphs[name])
+    # A glyph of its own outlines, or of none.
+    if count >= 0:
+        return count > 0
+    # Built from others: a part the font lacks draws nothing, as a drawing skips it.
+    parts = (part.glyphName for part in truetype[name].components if part.glyphName in truetype)
+    return any(truetype_has_outline(truetype, part) for part in parts)
+
+
+def outline_count(glyph: Glyph) -> int:
+    """How many outlines a TrueType glyph has, -1 if it's built from others.
+
+    Read from the glyph's first two bytes, so its points are never unpacked.
+    """
+    # An empty glyph, or one already unpacked (a composite, to list its parts).
+    if not hasattr(glyph, "data"):
+        return glyph.numberOfContours
+    return _OUTLINE_COUNT.unpack_from(glyph.data)[0]
+
+
+def cff_has_outline(glyphs: Mapping[GlyphName, Any], name: GlyphName) -> bool:
+    """Whether a CFF glyph draws anything, drawn only as far as the first point it draws."""
+    try:
+        glyphs[name].draw(InkPen(glyphs))
+    except Inked:  # the glyph began an outline: that's all we asked
+        return True
+    return False
+
+
+class Inked(Exception):
+    """Raised by `InkPen` at the first thing a glyph draws."""
+
+
+class InkPen(DecomposingPen):
+    """A pen that stops the drawing at the first thing drawn, in the glyph or its parts."""
+
+    def moveTo(self, pt: tuple[float, float]) -> None:
+        """The start of an outline: CFF only starts one to draw it."""
+        raise Inked
+
+    def lineTo(self, pt: tuple[float, float]) -> None:
+        """A line: ink."""
+        raise Inked
+
+    def curveTo(self, *points: tuple[float, float]) -> None:
+        """A curve: ink."""
+        raise Inked
+
+    def qCurveTo(self, *points: tuple[float, float] | None) -> None:
+        """A TrueType curve: ink."""
+        raise Inked
 
 
 def glyph_name_for_each_letter(
