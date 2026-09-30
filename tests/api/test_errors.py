@@ -15,6 +15,12 @@ def test_an_unknown_path_is_not_found(browser):
     assert_problem(browser().get("/api/nothing-here"), "not_found", 404)
 
 
+def test_a_method_a_path_doesnt_take_says_which_it_does(browser):
+    response = browser().put("/api/documents")
+    assert_problem(response, "method_not_allowed", 405)
+    assert_equal(response.headers.get("allow"), "POST", "the methods it takes")
+
+
 def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
     mine = browser()
     doc = upload(mine, pdf_bytes).json()

@@ -6,6 +6,7 @@ from squidpdf.core import InvalidRequest, NotFound, Problem, TooHeavy
 
 __all__ = [
     "InvalidRequest",  # core's, so controllers can raise it too
+    "MethodNotAllowed",
     "NotFound",  # core's, so a feature's own errors can build on it
     "RateLimited",
     "RequestTooLarge",
@@ -13,6 +14,13 @@ __all__ = [
     "TooHeavy",  # core's, so a worker can raise it too
     "TooSlow",
 ]
+
+
+class MethodNotAllowed(Problem):
+    """A path asked with a method it doesn't take: a browser bug, said as one."""
+
+    type = "method_not_allowed"
+    status = 405
 
 
 class RequestTooLarge(Problem):
