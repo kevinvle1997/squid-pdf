@@ -37,6 +37,7 @@ from squidpdf.core.types import (
 
 __all__ = [
     "letter_widths",
+    "DrawPlan",
     "PageNames",
     "AddedFaces",
     "Engine",
@@ -51,6 +52,19 @@ _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
     """Each letter's width in `font`, per 1000 em, as the browser gets it."""
     return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
+
+
+@dataclass(frozen=True, slots=True)
+class DrawPlan:
+    """How a line is drawn: the font that draws it, and the line as it comes out.
+
+    Worked out once, and read alike by measuring, judging and drawing, so what
+    the fit says is what `draw` does.
+    """
+
+    drawn_in: PooledFont | Face  # the file's own copies of the font, pooled, or a face we ship
+    text: str  # the line as drawn, without the letters left out
+    left_out: list[str]  # letters no font we have can draw, each once, in the order typed
 
 
 @dataclass(slots=True)
@@ -107,26 +121,26 @@ class Engine:
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
         """Judge every span in the index as exact or substitute.
 
-        Exact only if the file's copies of the span's font draw its text: `draw`
-        swaps the run otherwise, so a redraw of it would be in the substitute.
+        Exact only if the span's own font draws its own text: `draw` swaps the
+        run otherwise, so a redraw of it would be in the substitute.
         """
         return [self._assess_one(span) for span in index]
 
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact or substitute, for one span."""
-        in_file = self._fonts.own(span) is not None
-        exact = in_file and not self.missing(span, span.text)
-        if exact:
+        drawn_in = self._plan(span, span.text).drawn_in
+        # The file's own font redraws its own text.
+        if isinstance(drawn_in, PooledFont):
             return FidelityReport(span.id, Fidelity.EXACT, span.font)
+        in_file = self._fonts.own(span) is not None
         match = self._fonts.look_alike(span)
-        drawn_in = self._fonts.stand_in(span, span.text)
         return FidelityReport(
             span.id,
             Fidelity.SUBSTITUTE,
             span.font,
-            substitute=drawn_in.face.name,
+            substitute=drawn_in.name,
             why=self._fonts.why_not(span) if not in_file else Message("font_lacks_letters"),
-            same_widths=match.same_widths and drawn_in.face == match.face,
+            same_widths=match.same_widths and drawn_in == match.face,
         )
 
     def widths(self, span: Span) -> dict[str, float]:
@@ -156,11 +170,13 @@ class Engine:
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
-        by_code = self._coded_for(span, text)
+        plan = self._plan(span, text)
+        by_code = coded_in(plan)
+        # Written by code: widths come from each copy's width list.
         if by_code is not None:
-            return sum(by_code.letters[ch].widths[ch] for ch in text) * span.size / _EM
-        font, text = self._run(span, text)
-        _words, width = self._words(span, text, font=font, size=span.size)
+            return sum(by_code.letters[ch].widths[ch] for ch in plan.text) * span.size / _EM
+        font = self._program(plan)
+        _words, width = self._words(span, plan.text, font=font, size=span.size)
         return width
 
     def missing(self, span: Span, text: str) -> list[str]:
@@ -178,9 +194,7 @@ class Engine:
 
     def left_out(self, span: Span, text: str) -> list[str]:
         """Characters no font we have can draw here, so a redraw leaves them out."""
-        if not self.missing(span, text):
-            return []
-        return self._fonts.stand_in(span, text).left_out
+        return self._plan(span, text).left_out
 
     def stand_in(self, span: Span, text: str) -> str:
         """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
@@ -222,47 +236,43 @@ class Engine:
         into words; empty when nothing did.
         """
         font_size = span.size if size is None else size
+        plan = self._plan(span, text)
+        drawn_in = plan.drawn_in
 
-        # A font written by code gets codes, as the original did.
-        by_code = self._coded_for(span, text)
-        if by_code is not None:
-            self._draw_codes(span, by_code, text=text, size=font_size, scale_x=scale_x)
+        # A face we ship draws the whole line, less what even it can't draw.
+        if isinstance(drawn_in, Face):
+            return self._draw_in_face(
+                span,
+                drawn_in,
+                text=plan.text,
+                left_out=plan.left_out,
+                size=font_size,
+                scale_x=scale_x,
+            )
+
+        # The file's own font, written by code as the original was.
+        if drawn_in.own.embedded.coded is not None:
+            self._draw_codes(span, drawn_in, text=plan.text, size=font_size, scale_x=scale_x)
             return []
 
-        # Written by letter, in the file's own copies when they have every letter.
-        notices: list[Message] = []
-        pool = self._fonts.own(span)
-        if pool is not None and not pool.missing(text):
-            try:
-                aliases = self._aliases(span.page, pool, text)
-            except FontUnusable as problem:  # the page wouldn't take a copy of the font
-                notices.append(problem.reason)
-            else:
-                self._write(
-                    span,
-                    text,
-                    font=pool,
-                    aliases=aliases,
-                    size=font_size,
-                    scale_x=scale_x,
-                )
-                return notices
-
-        # Otherwise the stand-in draws the whole run, less what even it can't draw.
-        drawn_in = self._fonts.stand_in(span, text)
-        if drawn_in.left_out:
-            notices.append(Message("left_out", {"letters": list(drawn_in.left_out)}))
-        alias = self._face_alias(span.page, drawn_in.face)
-        self._added.drawn.setdefault(drawn_in.face, set()).update(drawn_in.text)
+        # The file's own copies of the font, by letter, once the page has them.
+        try:
+            aliases = self._aliases(span.page, drawn_in, plan.text)
+        except FontUnusable as problem:  # the page wouldn't take a copy of the font after all
+            stand_in = self._fonts.stand_in(span, text)
+            drawn = self._draw_in_face(
+                span,
+                stand_in.face,
+                text=stand_in.text,
+                left_out=stand_in.left_out,
+                size=font_size,
+                scale_x=scale_x,
+            )
+            return [problem.reason, *drawn]
         self._write(
-            span,
-            drawn_in.text,
-            font=self._driver.face_font(drawn_in.face),
-            aliases=dict.fromkeys(drawn_in.text, alias),
-            size=font_size,
-            scale_x=scale_x,
+            span, plan.text, font=drawn_in, aliases=aliases, size=font_size, scale_x=scale_x
         )
-        return notices
+        return []
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.
@@ -338,17 +348,24 @@ class Engine:
 
     # What draws a line.
 
-    def _run(self, span: Span, text: str) -> tuple[FontProgram, str]:
-        """The font `text` is drawn in, and the text as it can be drawn.
+    def _plan(self, span: Span, text: str) -> DrawPlan:
+        """How `text` is drawn at this span: the one answer measuring and drawing share.
 
-        The file's copies of the span's font if they draw every character;
-        otherwise the whole run in the stand-in, less what even that can't draw.
+        In the file's copies of the span's font if they draw every character;
+        otherwise the whole line in the stand-in, less what even that can't draw.
         """
-        pool = self._fonts.own(span)
-        if pool is not None and not pool.missing(text):
-            return pool, text
-        drawn_in = self._fonts.stand_in(span, text)
-        return self._driver.face_font(drawn_in.face), drawn_in.text
+        own = self._fonts.own(span)
+        if own is not None and not own.missing(text):
+            return DrawPlan(own, text, [])
+        stand_in = self._fonts.stand_in(span, text)
+        return DrawPlan(stand_in.face, stand_in.text, stand_in.left_out)
+
+    def _program(self, plan: DrawPlan) -> FontProgram:
+        """The font program that measures and draws `plan`'s line."""
+        drawn_in = plan.drawn_in
+        if isinstance(drawn_in, PooledFont):
+            return drawn_in
+        return self._driver.face_font(drawn_in)
 
     # Drawing.
 
@@ -362,6 +379,30 @@ class Engine:
         # No space to draw: each word goes where the file's gaps put it.
         gaps, usual = span_gaps(span, font), self._fonts.usual_gap(span, font)
         return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
+
+    def _draw_in_face(
+        self,
+        span: Span,
+        face: Face,
+        *,
+        text: str,
+        left_out: list[str],
+        size: float,
+        scale_x: float,
+    ) -> list[Message]:
+        """Write `text` at the span's baseline in a face we ship, and say what was left out."""
+        alias = self._face_alias(span.page, face)
+        self._added.drawn.setdefault(face, set()).update(text)
+        font = self._driver.face_font(face)
+        self._write(
+            span,
+            text,
+            font=font,
+            aliases=dict.fromkeys(text, alias),
+            size=size,
+            scale_x=scale_x,
+        )
+        return [Message("left_out", {"letters": list(left_out)})] if left_out else []
 
     def _write(
         self,
@@ -394,13 +435,6 @@ class Engine:
             opacity=span.opacity,
             scale_x=scale_x,
         )
-
-    def _coded_for(self, span: Span, text: str) -> PooledFont | None:
-        """The span's font pooled, if it's written by code and can draw all of `text`."""
-        pool = self._fonts.own(span)
-        if pool is None or pool.own.embedded.coded is None or pool.missing(text):
-            return None
-        return pool
 
     def _draw_codes(
         self, span: Span, pool: PooledFont, *, text: str, size: float, scale_x: float
@@ -527,3 +561,12 @@ def hex_codes(coded: CodedFont, text: str) -> str:
 def unspaced(text: str) -> str:
     """`text` with every space, tab and line break taken out."""
     return "".join(text.split())
+
+
+def coded_in(plan: DrawPlan) -> PooledFont | None:
+    """The file's own copies of the font, when they draw `plan`'s line by code."""
+    drawn_in = plan.drawn_in
+    # A face we ship, or the file's copies written by letter: no codes.
+    if isinstance(drawn_in, Face) or drawn_in.own.embedded.coded is None:
+        return None
+    return drawn_in
