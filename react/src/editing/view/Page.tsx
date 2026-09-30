@@ -1,13 +1,13 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { pageUrl } from "../../api/client";
-import type { Copy, FontInfo, ImageInfo, PageInfo, SpanInfo } from "../../api/types";
+import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import { type EditorState, type FocusTo, imageFailed } from "../editor";
 import { previewFaceOf } from "../faces";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
-import type { PageFits } from "../render";
+import type { PageFits, Strip } from "../render";
 import { shallowEqual } from "../store";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
@@ -56,7 +56,7 @@ interface PageState {
   readonly spans: readonly SpanInfo[]; // its text, in the document's order
   readonly edits: PageEdits | undefined; // what the history reads as, here
   readonly drawnFrom: PageEdits | undefined; // what its strips were drawn from
-  readonly strips: readonly ImageInfo[] | undefined;
+  readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
   readonly src: string; // the page image
   readonly typingIn: string | null; // the span being typed into, when it's here
@@ -109,7 +109,7 @@ export const Page = memo(function Page({ index, info }: Props) {
           <img
             key={strip.y}
             className={styles.strip}
-            src={`data:image/png;base64,${strip.image}`}
+            src={strip.src}
             alt=""
             data-strip=""
             style={{ top: `${(strip.y / info.height) * 100}%` }}

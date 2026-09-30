@@ -45,9 +45,12 @@ beforeEach(() => {
     scale: 2,
     drawn: (now) => drawn.push(now),
     render: fake.render,
-    decode: async () => undefined,
+    // A strip's address is its image as sent: these tests don't paint.
+    load: async (image) => image.image,
   });
 });
+
+const shown = (page: number) => ({ page, y: 98, src: `page ${page}` });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 
@@ -61,7 +64,7 @@ describe("the render queue", () => {
 
     fake.asked[0]?.answer(aReply({ images: [stripFor(0)], fits: { [ONE.id]: aFit() } }));
     await settle();
-    expect(queue.drawn.strips.get(0)).toEqual([stripFor(0)]);
+    expect(queue.drawn.strips.get(0)).toEqual([shown(0)]);
     expect(queue.drawn.from.get(0)).toBe(reading);
     expect(queue.drawn.fits.get(0)).toEqual({ [ONE.id]: aFit() });
   });
@@ -103,7 +106,10 @@ describe("the render queue", () => {
       scale: 2,
       drawn: (now) => drawn.push(now),
       render: fake.render,
-      decode: () => decoding,
+      load: async (image) => {
+        await decoding;
+        return image.image;
+      },
     });
     queue.draw(readingOf(replace(ONE)));
     await settle();

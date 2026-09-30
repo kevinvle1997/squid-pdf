@@ -10,11 +10,18 @@ import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
 import { regionsFor, stalePages } from "./strips";
 
+/** A strip of a page the server drew, ready to paint: its top in points, and its image's address. */
+export interface Strip {
+  readonly page: number;
+  readonly y: number;
+  readonly src: string;
+}
+
 /** The server's fit for each replaced span on one page, by span id. */
 export type PageFits = Readonly<Record<string, FitInfo>>;
 
 export interface Drawn {
-  readonly strips: ReadonlyMap<number, readonly ImageInfo[]>; // by page
+  readonly strips: ReadonlyMap<number, readonly Strip[]>; // by page
   readonly from: ReadonlyMap<number, Reading>; // by page: the reading its strips were drawn from
   // What a reply says of a page comes and goes with its strips: a page the reply didn't draw keeps its objects, so it isn't drawn again.
   readonly fits: ReadonlyMap<number, PageFits>; // by page: the server's fit for each replaced span on it
@@ -64,14 +71,20 @@ interface Options {
   scale: number; // pixels per point, as the page images are drawn
   drawn: (drawn: Drawn) => void; // strips went in or came out, or a render failed
   render?: typeof renderOnServer;
-  decode?: (image: ImageInfo) => Promise<void>;
+  load?: (image: ImageInfo) => Promise<string>; // its address, once it can paint
 }
 
-function decoded(image: ImageInfo): Promise<void> {
+/**
+ * The PNG the server sent, as the address the page's `<img>` shows it at: written once, not on
+ * every draw of its page, and decoded before it goes in, so the swap never flickers.
+ */
+async function loaded(image: ImageInfo): Promise<string> {
+  const src = `data:image/png;base64,${image.image}`;
   const element = new Image();
-  element.src = `data:image/png;base64,${image.image}`;
+  element.src = src;
   // A strip that can't decode still goes in: it shows as missing, not as a stale preview.
-  return element.decode().catch(() => undefined);
+  await element.decode().catch(() => undefined);
+  return src;
 }
 
 export class RenderQueue {
@@ -81,7 +94,7 @@ export class RenderQueue {
   readonly #options: Required<Options>;
 
   constructor(options: Options) {
-    this.#options = { render: renderOnServer, decode: decoded, ...options };
+    this.#options = { render: renderOnServer, load: loaded, ...options };
   }
 
   get drawn(): Drawn {
@@ -107,7 +120,7 @@ export class RenderQueue {
   }
 
   async #draw(reading: Reading): Promise<void> {
-    const { reopener, scale, render, decode } = this.#options;
+    const { reopener, scale, render, load } = this.#options;
     // A newer reading takes over what an older request was still drawing: those pages are still stale.
     this.#asking?.abort();
     this.#asking = null;
@@ -135,10 +148,11 @@ export class RenderQueue {
       const reply = await reopener.withDocument((doc) =>
         render(doc.id, { edits: [...reading.edits], scale, regions }, ask.signal),
       );
-      await Promise.all(reply.images.map(decode));
+      const srcs = await Promise.all(reply.images.map(load));
+      const strips = reply.images.map(({ page, y }, index) => ({ page, y, src: srcs[index] ?? "" }));
       if (ask.signal.aborted) return;
       this.#asking = null;
-      this.#landed(reading, drawing, reply.images, reply);
+      this.#landed(reading, drawing, strips, reply);
     } catch (error) {
       if (ask.signal.aborted) return;
       this.#asking = null;
@@ -148,15 +162,15 @@ export class RenderQueue {
     }
   }
 
-  /** `pages` now show `reading`, in `images`; `said` is the server's reply, or null for pages it wasn't asked about. */
-  #landed(reading: Reading, pages: readonly number[], images: readonly ImageInfo[], said: Said | null) {
+  /** `pages` now show `reading`, in `landing`; `said` is the server's reply, or null for pages it wasn't asked about. */
+  #landed(reading: Reading, pages: readonly number[], landing: readonly Strip[], said: Said | null) {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);
     const notices = new Map(this.#drawn.notices);
     const landed = byPage(reading, said ?? { fits: {}, notices: [], skipped: [] }, pages);
     for (const page of pages) {
-      const onPage = images.filter((image) => image.page === page);
+      const onPage = landing.filter((strip) => strip.page === page);
       if (onPage.length > 0) strips.set(page, onPage);
       else strips.delete(page);
       from.set(page, reading);
