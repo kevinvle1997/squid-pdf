@@ -10,11 +10,12 @@ import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._c_m_a_p import cmap_format_12
 from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 
 from squidpdf.core import open_pdf
 from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import CATALOG, face_bytes
+from squidpdf.core.fonts import CATALOG, FACES, face_bytes
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
@@ -22,6 +23,7 @@ _EM = 1000  # glyph advances are per 1000 em
 _WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
 _NOWHERE = "中"  # a letter no face we ship draws: none of them has Chinese
 _FAMILY, _STYLE = 1, 2  # a font's name table entries for its family and style
+_PAST_UNICODE = 0x110041  # one past U+10FFFF, the last code point, plus "A"
 
 
 def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
@@ -129,3 +131,17 @@ def _built_of_parts(*, parts_drawn: bool) -> bytes:
 def test_a_letter_built_from_other_shapes_draws_only_if_they_do(parts_drawn):
     coverage = Coverage(_built_of_parts(parts_drawn=parts_drawn))
     assert_equal(coverage.covers("Á"), parts_drawn, "whether Á draws")
+
+
+def test_a_letter_table_past_unicode_is_passed_over_not_a_crash():
+    """A broken font can map a code past U+10FFFF, the last there is: no letter is there."""
+    font = TTFont(io.BytesIO(face_bytes(FACES["Liberation Sans Regular"])))
+    table = cmap_format_12(12)
+    table.platformID, table.platEncID, table.language = 3, 10, 0  # Windows, full Unicode
+    table.cmap = {ord("A"): "A", _PAST_UNICODE: "A"}  # "A" is the A's shape's name
+    font["cmap"].tables = [table]
+    font_file = io.BytesIO()
+    font.save(font_file)
+
+    coverage = Coverage(font_file.getvalue())
+    assert_equal(coverage.drawable(), [" ", "A"], "what it draws")

@@ -8,6 +8,7 @@ the glyph to draw and checking it produces contours.
 from __future__ import annotations
 
 import io
+import sys
 from collections.abc import Iterable, Mapping
 
 from fontTools.agl import toUnicode
@@ -55,7 +56,7 @@ class Coverage:
         self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
         self._glyphs = None  # glyph set to draw from, once loaded
         self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
-        self._listed_letters = frozenset(listed_letters)
+        self._listed_letters = frozenset(filter(is_letter_code, listed_letters))
         # With glyph_ids the font is written by code, and a space with no code can't be.
         self._always = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
         self.usable = False  # True once a parseable font has been loaded
@@ -163,7 +164,16 @@ def glyph_name_for_each_letter(
     cmap = font.getBestCmap()
     if cmap is None:
         raise ValueError("no Unicode cmap: characters can't be matched to glyphs")
-    return {Codepoint(codepoint): name for codepoint, name in cmap.items()}
+    return {
+        Codepoint(codepoint): name
+        for codepoint, name in cmap.items()
+        if is_letter_code(codepoint)
+    }
+
+
+def is_letter_code(codepoint: int) -> bool:
+    """Whether a letter can have this number: a broken font can list one past the last."""
+    return 0 <= codepoint <= sys.maxunicode
 
 
 def letter_named(glyph_name: GlyphName) -> str | None:
