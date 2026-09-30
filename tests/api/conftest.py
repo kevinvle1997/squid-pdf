@@ -1,4 +1,4 @@
-"""The real app with its workers running, and browsers to call it with."""
+"""The real app with its workers running, one for the whole run, and browsers to call it."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from squidpdf.api import constants as api_constants
 from squidpdf.api.app import create_app
 
 # The owner cookie is Secure, so a browser only sends it back over https.
@@ -27,15 +28,37 @@ def _crashes() -> APIRouter:
     return router
 
 
-@pytest.fixture(scope="module")
-def app(tmp_path_factory) -> Iterator[FastAPI]:
-    """One app per test module, workers started, documents kept in a fresh folder."""
+# Every test uploads from one address, far more often than a browser may: plenty for the suite.
+_SUITE_UPLOADS_PER_MINUTE = 10_000
+
+
+@pytest.fixture(scope="session")
+def session_app(tmp_path_factory) -> Iterator[FastAPI]:
+    """One app for the whole run, workers started once: a pool's first task costs a second.
+
+    Under xdist each worker is its own session, so each has one. A test that kills a
+    worker or changes the app for good builds its own pool or app, never this one.
+    """
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_DATA", str(tmp_path_factory.mktemp("data")))
+        # The per-address upload limit reads this when each upload comes in.
+        env.setattr(api_constants, "UPLOADS_PER_MINUTE", _SUITE_UPLOADS_PER_MINUTE)
         app = create_app()
         app.include_router(_crashes())
         with TestClient(app):  # runs the lifespan: the pool and the sweeper
             yield app
+
+
+@pytest.fixture(scope="module")
+def app(session_app: FastAPI, tmp_path_factory) -> Iterator[FastAPI]:
+    """The run's app, with this module's documents kept in a fresh folder of their own.
+
+    The folder is read on each request, and work goes to the pool by absolute path,
+    so the workers started for an earlier module find this one's documents.
+    """
+    with pytest.MonkeyPatch.context() as env:
+        env.setenv("SQUIDPDF_DATA", str(tmp_path_factory.mktemp("data")))
+        yield session_app
 
 
 @pytest.fixture
