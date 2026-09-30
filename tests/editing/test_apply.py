@@ -112,8 +112,13 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
 
     verified = RedactionController.from_edits(engine, edits, index).verdicts(engine)
     assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
-    text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "redacted.pdf").pages())
+    saved = pymupdf.open(tmp_path / "redacted.pdf")
+    text = "".join(page.get_text() for page in saved.pages())
     assert_not_in(span.text, text, "the saved page after a redact")
+    # Not only the whole line: nothing at all is left where it was.
+    box = pymupdf.Rect(span.bbox.x0, span.bbox.y0, span.bbox.x1, span.bbox.y1)
+    left = "".join(saved[span.page].get_textbox(box).split())
+    assert_equal(left, "", "letters left in the redacted span's box")
 
     # Editing it afterwards is refused: the order of a list must never bring it back.
     # The browser undoes a redaction by taking it out of the list.
