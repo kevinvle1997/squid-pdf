@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
-import { ProblemError, upload } from "../../api/client";
-import type { Document } from "../../api/types";
-import { reportBug } from "../../bugs";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { QUIET_MS } from "../constants";
+import { type Opened, openFile } from "../open";
 import styles from "./Drop.module.css";
-
-export interface Opened {
-  file: File;
-  doc: Document;
-}
 
 type State =
   | { kind: "waiting" }
@@ -31,15 +24,11 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
     if (state.kind === "opening") return;
     onOpening();
     setState({ kind: "opening", name: file.name, sent: 0, total: file.size });
-    try {
-      const doc = await upload(file, (sent, total) =>
-        setState((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
-      );
-      onOpened({ file, doc });
-    } catch (error) {
-      const detail = error instanceof ProblemError ? error.problem.detail : reportBug(error);
-      setState({ kind: "failed", detail });
-    }
+    const opening = await openFile(file, (sent, total) =>
+      setState((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
+    );
+    if ("opened" in opening) onOpened(opening.opened);
+    else setState({ kind: "failed", detail: opening.failed });
   }
 
   return (

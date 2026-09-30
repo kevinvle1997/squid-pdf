@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import styles from "./App.module.css";
-import { Drop, type Opened } from "./documents/view/Drop";
+import type { Opened } from "./documents/open";
+import { Drop } from "./documents/view/Drop";
 import { Button } from "./ui/Button";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { Wordmark } from "./ui/Wordmark";
