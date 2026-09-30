@@ -41,7 +41,17 @@
   --dur-settle: 400ms; /* the render replacing the preview: the one authored moment */
 
   --hit: 24px; /* the smallest target */
+  --bar-height: 44px;
+  --margin-width: 104px; /* beside a page, where its changes are noted */
+
+  /* What sits over what, by role: the field and its chip over the page, the bar over both. */
+  --z-field: 30;
+  --z-chip: 40;
+  --z-bar: 60;
+  --z-skip: 100;
 }
+/* A media query can't read a variable: every narrow layout is `@media (max-width: 820px)`, and
+   stylesheets.test.ts keeps them the same, as it keeps the two dark blocks below the same. */
 @media (pointer: coarse) {
   :root { --hit: 44px; }
 }

@@ -1,7 +1,7 @@
 .bar {
-  position: sticky; top: 0; z-index: 60;
+  position: sticky; top: 0; z-index: var(--z-bar);
   display: flex; align-items: center; gap: var(--s4);
-  min-height: 44px; padding: var(--s1) var(--s4);
+  min-height: var(--bar-height); padding: var(--s1) var(--s4);
   background: var(--strip);
   border-bottom: 1px solid var(--rule);
 }

@@ -2,10 +2,10 @@
    --sheet-width is the page's printed width, set on each page: pages in one file needn't match. */
 .page {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-columns: var(--margin-width) minmax(0, 1fr);
   gap: var(--s4);
   width: 100%;
-  max-width: calc(104px + var(--s4) + var(--sheet-width));
+  max-width: calc(var(--margin-width) + var(--s4) + var(--sheet-width));
   margin: 0 auto var(--s7);
 }
 .sheet {
