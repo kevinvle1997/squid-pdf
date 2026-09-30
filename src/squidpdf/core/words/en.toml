@@ -92,8 +92,10 @@ server_error = "Something went wrong on our side. Try again."
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
+# A list whose placeholder has no join_<its name> here is joined as items.
 join_chars = " or "
 join_letters = " "
+join_items = ", "
 join_parts = "; "
 
 # What sets a number's fraction apart: "3.1" in English, "3,1" in French.

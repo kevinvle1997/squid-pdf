@@ -101,9 +101,9 @@ def language_headers(language: str) -> dict[str, str]:
 def written_out(name: str, value: Param, language: str) -> str:
     """One fact as it reads in a sentence: a list joined, a fraction to one decimal place."""
     if isinstance(value, list):
-        return sentence(f"join_{name}", language).join(
-            visible(item, language) for item in value
-        )
+        # A list's own joiner, or the one every list without one takes.
+        joiner = sentence(f"join_{name}", language, default=sentence("join_items", language))
+        return joiner.join(visible(item, language) for item in value)
     if isinstance(value, float):
         return f"{value:.1f}".replace(".", sentence("decimal_separator", language))
     return str(value)

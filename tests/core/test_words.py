@@ -65,6 +65,12 @@ def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeyp
     assert_equal(said, pseudo_sentence("3,1 pt too long"), "a fraction in another language")
 
 
+def test_a_list_with_no_joiner_of_its_own_is_joined_as_items():
+    """Only `chars` and `letters` have their own; a new list must not fail when it's said."""
+    said = words.fill("{fonts}", {"fonts": ["Carlito Bold", "Arimo Regular"]})
+    assert_equal(said, "Carlito Bold, Arimo Regular", "a list with no join_fonts")
+
+
 @pytest.mark.parametrize(
     ("character", "said"),
     [
