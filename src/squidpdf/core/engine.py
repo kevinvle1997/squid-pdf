@@ -69,7 +69,8 @@ class DrawPlan:
     """
 
     drawn_in: PooledFont | Face  # the file's own copies of the font, pooled, or a face we ship
-    text: str  # the line as drawn, without the letters left out
+    text: str  # the line as drawn: spelled as that font has it, less the letters left out
+    missing: list[str]  # letters the span's own font lacks: its look-alike's, when it has none
     left_out: list[str]  # letters no font we have can draw, each once, in the order typed
 
 
@@ -170,7 +171,7 @@ class Engine:
 
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact, approximate or substitute, for one span."""
-        plan = self._plan(span, span.text)
+        plan = self.plan_for(span, span.text)
         drawn_in = plan.drawn_in
         # The file's own font redraws its own text, as it is or not quite.
         if isinstance(drawn_in, PooledFont):
@@ -239,7 +240,7 @@ class Engine:
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
-        return self._width(span, self._plan(span, text), size=span.size)
+        return self._width(span, self.plan_for(span, text), size=span.size)
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters no copy of this span's font in the file can actually draw.
@@ -248,20 +249,19 @@ class Engine:
         trimmed (subset) font still lists letters whose shapes were emptied. A
         font not in the file is checked against its look-alike, the real file we ship.
         """
-        text = self._spelled(span, text)
-        pool = self._fonts.own(span)
-        # Not in the file: the look-alike draws it.
-        if pool is None:
-            return faces.face_coverage(self._fonts.look_alike(span).face).missing(text)
-        return pool.missing(text)
+        return self.plan_for(span, text).missing
 
     def left_out(self, span: Span, text: str) -> list[str]:
         """Characters no font we have can draw here, so a redraw leaves them out."""
-        return self._plan(span, text).left_out
+        return self.plan_for(span, text).left_out
 
     def stand_in(self, span: Span, text: str) -> str:
         """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
-        return self._fonts.stand_in(span, text).face.name
+        drawn_in = self.plan_for(span, text).drawn_in
+        # The own font draws it: the face that would if the page wouldn't take the font.
+        if isinstance(drawn_in, PooledFont):
+            return self._stand_in_for(span, text).face.name
+        return drawn_in.name
 
     # Changing it.
 
@@ -316,7 +316,7 @@ class Engine:
         reads upright as the page is shown.
         """
         setting = Setting(span.size if size is None else size, scale_x, turn)
-        plan = self._plan(span, text)
+        plan = self.plan_for(span, text)
         drawn_in = plan.drawn_in
 
         # A face we ship draws the whole line, less what even it can't draw.
@@ -335,7 +335,7 @@ class Engine:
         try:
             aliases = self._aliases(span.page, drawn_in, plan.text)
         except FontUnusable as problem:  # the page wouldn't take a copy of the font after all
-            stand_in = self._fonts.stand_in(span, text)
+            stand_in = self._stand_in_for(span, text)
             drawn = self._draw_in_face(
                 span,
                 stand_in.face,
@@ -422,8 +422,8 @@ class Engine:
 
     # What draws a line.
 
-    def _plan(self, span: Span, text: str) -> DrawPlan:
-        """How `text` is drawn at this span: the one answer measuring and drawing share.
+    def plan_for(self, span: Span, text: str) -> DrawPlan:
+        """How `text` is drawn at this span: the one answer the fit and the draw share.
 
         In the file's copies of the span's font if they draw every character;
         otherwise the whole line in the stand-in, less what even that can't
@@ -431,17 +431,29 @@ class Engine:
         draws, switching would draw none of them, so the own font keeps the
         line without them.
         """
-        text = self._spelled(span, text)
         own = self._fonts.own(span)
-        missing = [] if own is None else own.missing(text)
-        if own is not None and not missing:
-            return DrawPlan(own, text, [])
+        # Not in the file, or unusable: a face we ship draws it, less what even it lacks.
+        if own is None:
+            composed = unicodedata.normalize("NFC", text)
+            look_alike = self._fonts.look_alike(span).face
+            missing = faces.face_coverage(look_alike).missing(composed)
+            stand_in = faces.stand_in(look_alike, composed)
+            return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+        text = spelled(own, text)
+        missing = own.missing(text)
+        if not missing:
+            return DrawPlan(own, text, [], [])
         stand_in = self._fonts.stand_in(span, text)
-        undrawable = own is not None and set(missing) <= set(stand_in.left_out)
-        if own is not None and undrawable:
+        undrawable = set(missing) <= set(stand_in.left_out)
+        if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
-            return DrawPlan(own, kept, missing)
-        return DrawPlan(stand_in.face, stand_in.text, stand_in.left_out)
+            return DrawPlan(own, kept, missing, missing)
+        return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+
+    def _stand_in_for(self, span: Span, text: str) -> faces.StandIn:
+        """The face that draws `text` when the span's own font can't, as `plan_for` picks it."""
+        composed = unicodedata.normalize("NFC", text)
+        return faces.stand_in(self._fonts.look_alike(span).face, composed)
 
     def _width(self, span: Span, plan: DrawPlan, *, size: float) -> float:
         """How wide `plan`'s line is, placed as `draw` places it, at `size` points."""
@@ -455,23 +467,6 @@ class Engine:
         font = self._program(plan)
         _words, width = self._words(span, plan.text, font=font, size=size)
         return width
-
-    def _spelled(self, span: Span, text: str) -> str:
-        """`text` spelled as the span's own font has it: as typed, composed or in pieces.
-
-        é can be one letter or e and an accent. A trimmed font keeps whichever
-        its document used, and macOS pastes in pieces. With none whole in the
-        font, composed: the faces we ship draw it that way.
-        """
-        composed = unicodedata.normalize("NFC", text)
-        own = self._fonts.own(span)
-        if own is None:
-            return composed
-        in_pieces = unicodedata.normalize("NFD", text)
-        whole = (
-            spelling for spelling in (text, composed, in_pieces) if not own.missing(spelling)
-        )
-        return next(whole, composed)
 
     def _program(self, plan: DrawPlan) -> FontProgram:
         """The font program that measures and draws `plan`'s line."""
@@ -707,6 +702,19 @@ def hex_codes(coded: CodedFont, text: str) -> str:
     """`text` as the font's codes, in hex, each as many bytes wide as the font's."""
     hex_digits = coded.code_bytes * 2
     return "".join(f"{coded.letters[ch].value:0{hex_digits}x}" for ch in text)
+
+
+def spelled(own: PooledFont, text: str) -> str:
+    """`text` spelled as the span's own font has it: as typed, composed or in pieces.
+
+    é can be one letter or e and an accent. A trimmed font keeps whichever
+    its document used, and macOS pastes in pieces. With none whole in the
+    font, composed: the faces we ship draw it that way.
+    """
+    composed = unicodedata.normalize("NFC", text)
+    in_pieces = unicodedata.normalize("NFD", text)
+    whole = (spelling for spelling in (text, composed, in_pieces) if not own.missing(spelling))
+    return next(whole, composed)
 
 
 def unspaced(text: str) -> str:
