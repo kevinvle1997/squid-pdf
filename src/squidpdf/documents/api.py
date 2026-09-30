@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
-from squidpdf.api import owner
+from squidpdf.api import owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.controllers import controller, response_of
 from squidpdf.api.language import ReaderLanguage
@@ -53,7 +53,13 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
+# Counted before anything else, so a flood is refused before any of it is read.
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=Document,
+    dependencies=[Depends(rate.admit_upload)],
+)
 async def upload(
     request: Request,
     *,
