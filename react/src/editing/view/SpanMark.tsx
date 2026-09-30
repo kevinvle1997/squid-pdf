@@ -86,7 +86,11 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}
       onHoverStart={(event) => showNote(event.target, "hover")}
-      onHoverEnd={() => notes.hide(span.id)}
+      onHoverEnd={(event) => {
+        notes.hide(span.id);
+        // Still focused: its note stays for the keyboard, as the one focus showed.
+        if (event.target === document.activeElement) showNote(event.target, "focus");
+      }}
       onFocus={(event) => showNote(event.target, "focus")}
       onBlur={() => {
         notes.hide(span.id);

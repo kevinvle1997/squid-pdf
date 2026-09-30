@@ -1,4 +1,5 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useFocusVisible } from "react-aria";
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
@@ -194,6 +195,8 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
 function PageNote(props: { notes: Notes; id: string; page: PageState; readings: ReadonlyMap<string, SpanReading> }) {
   const { notes, id, page, readings } = props;
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
+  // Focus shows the note only when it's the keyboard's: a click's focus leaves it to the click.
+  const { isFocusVisible } = useFocusVisible();
   const span = last === null ? undefined : page.spans.find((each) => each.id === last.spanId);
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
@@ -208,7 +211,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
       key={last.spanId}
       id={id}
       triggerRef={{ current: last.anchor }}
-      isOpen={shown !== null}
+      isOpen={shown !== null && (shown.via !== "focus" || isFocusVisible)}
       onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
       heading={note.said}
       warn={note.warn}

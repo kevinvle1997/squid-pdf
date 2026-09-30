@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
-const FRAMEWORK = ["react", "react-dom", "react-dom/client", "react-aria-components"];
+const FRAMEWORK = ["react", "react-dom", "react-dom/client", "react-aria", "react-aria-components"];
 const IMPORTS = /(?:^|\n)\s*(?:import|export)\b[^"';]*?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
 interface Source {

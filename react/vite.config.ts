@@ -18,6 +18,7 @@ export default defineConfig({
       "react",
       "react-dom",
       "react-dom/client",
+      "react-aria",
       "react-aria-components",
       "use-sync-external-store/with-selector",
       "vitest-browser-react",

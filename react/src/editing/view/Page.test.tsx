@@ -133,13 +133,15 @@ describe("a page", () => {
     expect(sheet?.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
 
-  test("a span in a similar font shares the page's note: focus shows it, Escape closes it, Enter still edits", async () => {
+  test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
     const similar = aSpan({ id: "s3", text: "in Arial", font: "Arial", bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     const standIn = aFont("Arial", { substitute: "Liberation Sans Regular", same_widths: false, why: "Not embedded." });
     editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [similar], fonts: [standIn] }), 2);
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "in Arial" });
     await expect.element(mark).toBeInTheDocument();
+    // Focus from the keyboard: a key pressed first, as Tab would be.
+    await userEvent.keyboard("{Shift}");
     mark.element().focus();
     const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
     await expect.element(note).toBeVisible();
@@ -149,5 +151,22 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
     await expect.element(screen.getByRole("textbox", { name: "Change “in Arial”" })).toHaveFocus();
+  });
+
+  test("a click shows a span's note; a click's focus alone doesn't", async () => {
+    const similar = aSpan({ id: "s3", text: "in Arial", font: "Arial", bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    const standIn = aFont("Arial", { substitute: "Liberation Sans Regular" });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [similar], fonts: [standIn] }), 2);
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "in Arial" });
+    await expect.element(mark).toBeInTheDocument();
+    const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
+    // A pointer was used last: focus that comes without a press is a click's, not the keyboard's.
+    await userEvent.click(screen.getByRole("region", { name: "Page 1" }), { position: { x: 1, y: 1 } });
+    mark.element().focus();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect.element(note).not.toBeInTheDocument();
+    await mark.click();
+    await expect.element(note).toBeVisible();
   });
 });
