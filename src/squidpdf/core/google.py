@@ -53,6 +53,7 @@ _RAW = "https://raw.githubusercontent.com/google/fonts"
 _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
+_HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 
 # A weight word in a font's name, and the weight it means; compound words first,
 # so "SemiBold" isn't read as "Bold".
@@ -127,7 +128,8 @@ class GoogleFontController:
     def _open(self, file: GoogleFile) -> EmbeddedFont | None:
         """`file`, fetched and opened; None when it can't be had or opened."""
         font_file = self._fetch(file)
-        if font_file is None:
+        # None, or empty: MuPDF would quietly open a font of its own for no bytes.
+        if not font_file:
             return None
         try:
             program = self._driver.open_font(font_file)
@@ -207,8 +209,9 @@ def fetched(file: GoogleFile, *, folder: Path, download: Download) -> bytes | No
     is logged, not raised, and not remembered: the next analysis tries again.
     """
     ready = folder / GOOGLE_FONTS_COMMIT / file.source
-    if ready.exists():
-        return ready.read_bytes()
+    cached = from_cache(ready, file)
+    if cached is not None:
+        return cached
     try:
         whole = download(raw_url(file.path))
     except Exception:  # a network fails in many ways; logged, and the stand-in draws
@@ -219,7 +222,33 @@ def fetched(file: GoogleFile, *, folder: Path, download: Download) -> bytes | No
         return None
     font_file = whole if file.weight is None else cut(whole, file.weight)
     kept(ready, font_file)
+    # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
+    if file.weight is not None:
+        kept(hash_beside(ready), blob_hash(font_file).encode())
     return font_file
+
+
+def from_cache(ready: Path, file: GoogleFile) -> bytes | None:
+    """The cached copy of `file` at `ready`; None when there's none, or it's gone bad.
+
+    Checked on every read: a copy cut short (a crash before the disk caught up)
+    would otherwise be trusted for good. A bad one is deleted, to be fetched again.
+    """
+    try:
+        font_file = ready.read_bytes()
+        sound = file.blob if file.weight is None else hash_beside(ready).read_text()
+    except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
+        return None
+    if blob_hash(font_file) == sound:
+        return font_file
+    _logger.warning("Google's copy of %s in the cache is damaged: deleted", file.source)
+    ready.unlink(missing_ok=True)
+    return None
+
+
+def hash_beside(ready: Path) -> Path:
+    """Where a cut copy's own hash is kept: beside it, under the same name."""
+    return ready.with_name(f"{ready.name}{_HASH_SUFFIX}")
 
 
 def cut(variable_font: bytes, weight: int) -> bytes:

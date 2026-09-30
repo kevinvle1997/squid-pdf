@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import io
 import logging
 import os
 import time
@@ -10,6 +11,11 @@ from collections.abc import Callable
 
 import pymupdf
 import pytest
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph
+from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
 from squidpdf.core import Fidelity, google, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
@@ -28,6 +34,9 @@ from tests.helpers import assert_equal, assert_false, assert_true
 
 _WANTED = "Yearly Hello"  # Y, a and y aren't in the file's copy of Poppins
 _LACKED = ["Y", "a", "y"]
+_POPPINS_PATH = "ofl/poppins/Poppins-Regular.ttf"
+_EM = 1000
+_WIDE = 200  # how much wider the made-up variable font's A is at its heaviest
 _DEADLINE_S = 0.1  # the whole-fetch deadline in the hang test
 _HANG_S = 2.0  # how long its fake connection hangs: far past the deadline
 
@@ -134,9 +143,79 @@ def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
     with caplog.at_level(logging.WARNING):
         got = fetched(file, folder=tmp_path, download=_returning(poppins))
 
-    assert_equal(got, poppins, "what the checked download gives")
+    assert_true(got == poppins, "the checked download was handed back")
     assert_true("not cached" in caplog.text, "the failure was logged")
     assert_equal([path for path in tmp_path.rglob("*") if path.is_file()], [], "files left")
+
+
+def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, caplog):
+    """An empty file, as a crash between writing and flushing leaves, is never trusted."""
+    poppins = POPPINS.read_bytes()
+    file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    cached = tmp_path / GOOGLE_FONTS_COMMIT / file.source
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"")
+
+    with caplog.at_level(logging.WARNING):
+        got = fetched(file, folder=tmp_path, download=_returning(poppins))
+
+    assert_true(got == poppins, "Google's copy was handed back")
+    assert_true("damaged" in caplog.text, "the bad copy was logged")
+    assert_true(cached.read_bytes() == poppins, "the cache holds Google's copy after")
+
+
+def _square(width: int) -> Glyph:
+    """A plain filled box `width` wide: the test only measures how wide A is."""
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 0))
+    pen.lineTo((0, 700))
+    pen.lineTo((width, 700))
+    pen.lineTo((width, 0))
+    pen.closePath()
+    return pen.glyph()
+
+
+def _variable_font() -> bytes:
+    """A made-up variable font with one letter, A: 500 wide at weight 400, wider when bolder.
+
+    The weight axis runs 100 to 900, default 400. Its one variation moves A's
+    right edge and its advance (the third, fourth and sixth points: two corners,
+    then the right side's phantom point) out by _WIDE at 900, so A is 620 wide
+    at 700.
+    """
+    fb = FontBuilder(_EM, isTTF=True)
+    fb.setupGlyphOrder([".notdef", "A"])
+    fb.setupCharacterMap({ord("A"): "A"})
+    fb.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "A": _square(500)})
+    fb.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 0)})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Madeup", "styleName": "Regular"})
+    fb.setupOS2()
+    fb.setupPost()
+    fb.setupFvar(axes=[("wght", 100, 400, 900, "Weight")], instances=[])
+    moved = [(0, 0), (0, 0), (_WIDE, 0), (_WIDE, 0), (0, 0), (_WIDE, 0), (0, 0), (0, 0)]
+    fb.setupGvar({"A": [TupleVariation({"wght": (0, 1, 1)}, moved)]})
+    out = io.BytesIO()
+    fb.save(out)
+    return out.getvalue()
+
+
+def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(tmp_path):
+    """Cut once and cached; a cached cut that's gone bad is deleted, not drawn with."""
+    variable = _variable_font()
+    file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
+
+    got = fetched(file, folder=tmp_path, download=_returning(variable))
+    if got is None:
+        pytest.fail("no copy was had")
+    cut = TTFont(io.BytesIO(got))
+    assert_false("fvar" in cut, "the cut still varies")
+    assert_equal(cut["hmtx"]["A"][0], 620, "A's width at weight 700")
+    again = fetched(file, folder=tmp_path, download=_failing)
+    assert_true(again == got, "the cut is read back from the cache")
+
+    (tmp_path / GOOGLE_FONTS_COMMIT / file.source).write_bytes(got[:-1])
+    assert_equal(fetched(file, folder=tmp_path, download=_failing), None, "a cut gone bad")
 
 
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
