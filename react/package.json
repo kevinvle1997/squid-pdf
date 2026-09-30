@@ -1,0 +1,42 @@
+{
+  "name": "squidpdf-web",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "types": "scripts/types.sh",
+    "types:check": "scripts/types.sh && git diff --exit-code -- src/api/schema.d.ts",
+    "e2e": "playwright test",
+    "perf": "PERF=1 playwright test perf --reporter=list"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/schibsted-grotesk": "5.3.0",
+    "react": "19.3.0",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitest/browser-playwright": "5.0.2",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2",
+    "vitest-browser-react": "2.3.0"
+  },
+  "overrides": {
+    "playwright-core": "$@playwright/test"
+  }
+}

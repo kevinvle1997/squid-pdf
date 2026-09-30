@@ -1,0 +1,36 @@
+// The edited document, downloaded under its own name. An edit still being typed goes in first.
+import { ProblemError, exportPdf } from "../api/client";
+import type { Editor } from "./editor";
+import { finish } from "./typing";
+
+function download(pdf: Blob, name: string): void {
+  const url = URL.createObjectURL(pdf);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  // Not at once: some browsers are still reading the file when click() returns.
+  setTimeout(() => URL.revokeObjectURL(url));
+}
+
+export async function exportNow(editor: Editor): Promise<void> {
+  const { store, reopener, file } = editor;
+  if (store.get().exporting) return;
+  store.set({ exporting: true });
+  finish(editor, true);
+  const { edits } = store.get().view;
+  try {
+    const exported = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits]));
+    download(exported.pdf, file.name);
+    const leftOut = exported.skipped.length > 0;
+    const text = leftOut
+      ? store.get().doc.copy.export_left_out
+      : (exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
+    store.set({ notice: { tone: leftOut ? "warn" : "plain", text }, said: text });
+  } catch (error) {
+    if (!(error instanceof ProblemError)) throw error;
+    store.set({ notice: { tone: "warn", text: error.problem.detail }, said: error.problem.detail });
+  } finally {
+    store.set({ exporting: false });
+  }
+}

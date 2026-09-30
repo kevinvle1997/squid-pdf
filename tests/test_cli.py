@@ -191,6 +191,33 @@ def test_fixture_writes_a_pdf_the_other_commands_can_read(tmp_path, capsys):
     assert_equal(main(["spans", str(out_pdf)]), 0, "exit code of `squidpdf spans` on it")
 
 
+def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
+    """The browser's performance probe opens it: every page as full as a contract's."""
+    out_pdf = tmp_path / "dense.pdf"
+
+    code = main(["fixture", str(out_pdf), "--pages", "3"])
+
+    assert_equal(code, 0, "exit code of `squidpdf fixture --pages`")
+    with open_pdf(str(out_pdf)) as eng:
+        spans = eng.index()
+    assert_equal({span.page for span in spans}, {0, 1, 2}, "the pages the spans are on")
+    assert_true(len(spans) > 3 * 40, f"a contract's page is full, got {len(spans)} spans")
+    assert_in("This agreement is made on 14 March 2026 between", _text(out_pdf), "page 1")
+
+
+def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkeypatch, capsys):
+    """The tests read fixtures/sample.pdf, so a long contract must be saved elsewhere."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "fixtures").mkdir()
+
+    with pytest.raises(SystemExit) as exc:
+        main(["fixture", "--pages", "2"])
+
+    assert_equal(exc.value.code, 2, "exit code of `squidpdf fixture --pages` with no file")
+    assert_in("--pages would replace", capsys.readouterr().err, "the usage error")
+    assert_false((tmp_path / "fixtures" / "sample.pdf").exists(), "the sample, untouched")
+
+
 def test_a_pdf_that_is_not_there_is_a_usage_error_not_a_crash(tmp_path, capsys):
     missing = str(tmp_path / "missing.pdf")
 

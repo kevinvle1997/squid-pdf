@@ -1,0 +1,33 @@
+/* A page and its margin: the margin sits left of the text, as corrections do on a proof. */
+.page {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: var(--s4);
+  width: 100%;
+  max-width: calc(104px + var(--s4) + 794px);
+  margin: 0 auto var(--s7);
+}
+.sheet {
+  position: relative;
+  width: 100%;
+  background: var(--sheet);
+  box-shadow: var(--sheet-shadow);
+  overflow: hidden;
+}
+/* The page in its own points: a size container, so a length in points is a cqw. */
+.layer {
+  position: absolute; left: 50%; top: 50%;
+  container-type: inline-size;
+}
+.image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
+.image { top: 0; height: 100%; }
+/* The page never themes: the marks and previews on it use the page's own tokens. */
+.preview {
+  position: absolute;
+  background: var(--sheet);
+  white-space: pre;
+  pointer-events: none;
+}
+@media (max-width: 820px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+}

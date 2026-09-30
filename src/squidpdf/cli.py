@@ -6,6 +6,7 @@ squidpdf edit    file.pdf ID "text" -o out.pdf
 squidpdf redact  file.pdf ID -o out.pdf
 squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
+squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 """
 
 # Speaks English only: everything it tells a person goes through core/words/.
@@ -29,6 +30,7 @@ from squidpdf.core import (
     open_pdf,
     result_of,
     words,
+    write_dense,
     write_sample,
 )
 from squidpdf.editing import (
@@ -66,6 +68,7 @@ _MARKS = {
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
 _NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
 _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
+_SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
 
 
 def cmd_spans(args: argparse.Namespace) -> int:
@@ -227,7 +230,14 @@ def rate_colour(rate: float) -> str:
 
 
 def cmd_fixture(args: argparse.Namespace) -> int:
-    """Two pages: one whose fonts are only referenced, one where they are embedded."""
+    """Two pages: one whose fonts are only referenced, one where they are embedded.
+
+    With `--pages`, a long contract of made-up clauses instead, every page full.
+    """
+    if args.pages is not None:
+        write_dense(args.out, pages=args.pages)
+        print(f"  wrote {args.out} {DIM}· {args.pages} full pages, fonts not embedded{OFF}")
+        return 0
     write_sample(args.out)
     print(f"  wrote {args.out} {DIM}· page 1 not embedded, page 2 embedded{OFF}")
     return 0
@@ -313,7 +323,8 @@ def main(argv: list[str] | None = None) -> int:
     command.set_defaults(fn=cmd_report)
 
     command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default="fixtures/sample.pdf", type=new_file)
+    command.add_argument("out", nargs="?", default=_SAMPLE, type=new_file)
+    command.add_argument("--pages", type=int, help="a long contract of this many pages")
     command.set_defaults(fn=cmd_fixture)
 
     args = parser.parse_args(argv)
@@ -321,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     overwrites = args.cmd in ("edit", "redact") and same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
+    # The tests read the committed sample, so a long contract never lands on it.
+    if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
+        parser.error(f"--pages would replace {_SAMPLE}; name another file")
     try:
         # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
         return result_of(partial(args.fn, args))

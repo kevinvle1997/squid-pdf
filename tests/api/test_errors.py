@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from squidpdf.api.app import create_app
 from squidpdf.api.errors import ServerError
 from squidpdf.core import Damaged, NotFound, Problem, Unreadable, words
 from squidpdf.documents.errors import Gone
@@ -63,3 +64,27 @@ def test_every_problem_has_its_own_wire_type_and_an_english_sentence(app):
         owner = seen.setdefault(cls.type, cls)
         if owner is not cls:
             assert_equal(shared.get(cls), owner, f"{cls.__name__} reuses {cls.type!r}")
+
+
+def test_every_route_says_it_can_answer_with_a_problem():
+    # The browser's types come from the OpenAPI, so a Problem must be in it.
+    # A fresh app, not the fixture's: that one has a test-only route.
+    spec = TestClient(create_app(), base_url=BASE_URL).get("/api/openapi.json").json()
+    problem = spec["components"]["schemas"]["ProblemInfo"]
+    assert_equal(
+        sorted(problem["required"]),
+        ["code", "detail", "params", "status", "type"],
+        "what every Problem carries",
+    )
+    for path, methods in spec["paths"].items():
+        if path == "/api/health":
+            continue
+        for method, operation in methods.items():
+            listed = operation["responses"].get("default", {})
+            schema = listed.get("content", {}).get("application/problem+json", {}).get("schema")
+            assert_equal(
+                schema,
+                {"$ref": "#/components/schemas/ProblemInfo"},
+                f"{method.upper()} {path} answers a Problem",
+            )
+            assert_not_in("422", operation["responses"], f"{method.upper()} {path}'s 422")

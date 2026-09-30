@@ -21,8 +21,15 @@ from squidpdf.core.errors import (
 from squidpdf.core.fidelity import Fidelity, FidelityReport, green_rate
 from squidpdf.core.message import Message, MessageInfo, Param
 
-# The one line that names the driver: another PDF library is swapped in here.
-from squidpdf.core.mupdf import BUILD, face_widths, open_pdf, result_of, write_sample
+# The one import that names the driver: another PDF library is swapped in here.
+from squidpdf.core.mupdf import (
+    BUILD,
+    face_widths,
+    open_pdf,
+    result_of,
+    write_dense,
+    write_sample,
+)
 from squidpdf.core.reply import Reply
 from squidpdf.core.types import LEVEL, SOLID, Fragment, Page, Rect, Span, SpanIndex, new_text
 from squidpdf.core.workers import Workers
@@ -33,6 +40,7 @@ __all__ = [
     "open_pdf",
     "result_of",
     "write_sample",
+    "write_dense",
     "Message",
     "MessageInfo",
     "Param",

@@ -1,0 +1,9 @@
+# The web image needs the app's source and the fonts it previews in, nothing else.
+*
+!react/package.json
+!react/package-lock.json
+!react/index.html
+!react/tsconfig.json
+!react/vite.config.ts
+!react/src/
+!src/squidpdf/fonts/

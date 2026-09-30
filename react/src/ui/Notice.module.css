@@ -1,0 +1,6 @@
+.notice {
+  margin: 0; padding: var(--s2) var(--s4);
+  background: var(--strip); border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-sm); color: var(--ink-lo);
+  animation: fade var(--dur-move) var(--ease-out);
+}

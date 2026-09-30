@@ -47,9 +47,9 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     errors.install(app)
-    app.include_router(documents.router)
-    app.include_router(editing.router)
-    app.include_router(editing.fonts_router)
+    app.include_router(documents.router, responses=errors.PROBLEM_RESPONSES)
+    app.include_router(editing.router, responses=errors.PROBLEM_RESPONSES)
+    app.include_router(editing.fonts_router, responses=errors.PROBLEM_RESPONSES)
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     uploads = app.url_path_for(documents.upload.__name__)
     app.add_middleware(BodyLimit, streamed=[uploads])

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -18,13 +18,42 @@ from squidpdf.api.errors.generic import (
     ServerError,
 )
 from squidpdf.api.language import language_of
-from squidpdf.core import Problem, words
+from squidpdf.core import Param, Problem, words
 
 __all__ = [
+    "ProblemInfo",
+    "PROBLEM_RESPONSES",
     "adopt",
     "response",
     "install",
 ]
+
+
+class ProblemInfo(TypedDict):
+    """A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
+
+    `detail` is shown verbatim; `code` is always `type`, and `params` fill it.
+    """
+
+    type: str
+    status: int
+    detail: str
+    code: str
+    params: dict[str, Param]
+    debug: NotRequired[str]  # for a developer: what exactly was wrong with the request
+
+
+# Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
+# `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
+PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
+    "default": {
+        "model": ProblemInfo,
+        "description": "Problem Details: what went wrong, in the reader's words",
+        "content": {
+            "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemInfo"}}
+        },
+    },
+}
 
 
 def from_validation(exc: Exception) -> Problem:
@@ -73,7 +102,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
     `code` and `params` are its Message, so the browser can say it in its own words;
     `code` is always `type`.
     """
-    body: dict[str, object] = {
+    body: ProblemInfo = {
         "type": problem.type,
         "status": problem.status,
         "detail": problem.said_in(language),

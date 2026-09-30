@@ -16,5 +16,18 @@
 	}
 
 	# No body cap or wait limit by default: the app enforces its own, and must see them.
-	reverse_proxy app:8000
+	handle /api/* {
+		reverse_proxy app:8000
+	}
+
+	# The rest of the host is the browser app, built into this image (react/Dockerfile).
+	handle {
+		root * /srv
+		# Built files carry a hash of their contents in their name, so they never change.
+		@built path /assets/*
+		header @built Cache-Control "max-age=31536000, immutable"
+		# Any other path is the app's one page.
+		try_files {path} /index.html
+		file_server
+	}
 }

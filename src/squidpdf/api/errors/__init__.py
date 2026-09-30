@@ -19,12 +19,14 @@ from squidpdf.api.errors.generic import (
     TooHeavy,
     TooSlow,
 )
-from squidpdf.api.errors.http import adopt, install, response
+from squidpdf.api.errors.http import PROBLEM_RESPONSES, ProblemInfo, adopt, install, response
 
 __all__ = [
     "InvalidRequest",
     "MethodNotAllowed",
     "NotFound",
+    "PROBLEM_RESPONSES",
+    "ProblemInfo",
     "RateLimited",
     "RequestTooLarge",
     "ServerError",

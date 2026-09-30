@@ -31,3 +31,8 @@ dist/
 # private working rules, symlinked from .workspace/
 /CLAUDE.md
 /.claude/
+
+# Playwright
+/react/test-results/
+/react/playwright-report/
+/react/.vitest/

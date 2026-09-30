@@ -125,6 +125,8 @@ class Copy(TypedDict):
     stand_in: str  # when the substitute's letters may be another width
     stand_in_same_widths: str  # when they are exactly as wide: `same_widths` on the font
     undo_redaction: str
+    reopened: str
+    export_left_out: str
     options: dict[str, dict[str, str]]
     approximate: dict[str, str]  # each way a span can be approximate, by its `why` code
 
