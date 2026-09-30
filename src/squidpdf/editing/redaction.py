@@ -32,7 +32,7 @@ class RedactionController:
         A Replace after a Redact undoes it. A redaction pointing at nothing
         raises BadReference: skipping it would leak.
         """
-        span_edits, _inserts, _skipped = resolve(engine, edits, index)
+        span_edits = resolve(engine, edits, index).span_edits
         return cls([span for edit, span in span_edits if isinstance(edit, Redact)])
 
     def verdicts(self, engine: Engine) -> dict[str, bool]:

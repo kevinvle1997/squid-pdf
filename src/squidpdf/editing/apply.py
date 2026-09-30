@@ -8,6 +8,7 @@ is this module's whole job.
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 
 from squidpdf.core import Message
 from squidpdf.core.engine import Engine
@@ -23,10 +24,23 @@ __all__ = [
     "log_fits",
     "insert_fit",
     "replace_fit",
+    "Resolved",
     "resolve",
 ]
 
 _BAD_REFERENCE = "bad_reference"
+
+
+@dataclass(frozen=True, slots=True)
+class Resolved:
+    """An edit list checked against the document: what each edit points at."""
+
+    # The last edit to each span, with the span, in the order spans were first edited.
+    span_edits: list[tuple[Replace | Redact, Span]]
+    # Each insert on a page the document has, with its place in the list.
+    inserts: list[tuple[int, Insert]]
+    # Edits that point at nothing, left out and said why.
+    skipped: list[Skipped]
 
 
 def collapse(edits: Sequence[Replace | Redact]) -> list[Replace | Redact]:
@@ -57,13 +71,10 @@ def undone_redactions(edits: Sequence[Edit]) -> list[str]:
     return list(undone)
 
 
-def resolve(
-    engine: Engine, edits: Sequence[Edit], index: SpanIndex
-) -> tuple[list[tuple[Replace | Redact, Span]], list[tuple[int, Insert]], list[Skipped]]:
-    """The log collapsed, each span edit with its span, each insert with its place, and what
-    points at nothing.
+def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
+    """The list checked against the document: each edit with what it points at.
 
-    A redaction that points at nothing raises BadReference instead.
+    A redaction that points at nothing raises BadReference instead of being skipped.
     """
     # Only inserts need the page count, so skip reading the pages without one.
     has_inserts = any(isinstance(e, Insert) for e in edits)
@@ -92,8 +103,8 @@ def resolve(
             continue
         spans[span.id] = span
         kept.append(edit)
-    span_edits = collapse(kept)
-    return [(e, spans[e.span_id]) for e in span_edits], inserts, skipped
+    span_edits = [(edit, spans[edit.span_id]) for edit in collapse(kept)]
+    return Resolved(span_edits, inserts, skipped)
 
 
 def apply(
@@ -111,11 +122,11 @@ def apply(
     redactions per page, and a redaction applied after a redraw would erase the
     new text.
     """
-    span_edits, inserts, skipped = resolve(engine, edits, index)
+    resolved = resolve(engine, edits, index)
 
     to_remove: list[Span] = []
     to_draw: list[tuple[Span, str, float | None, float]] = []
-    for edit, span in span_edits:
+    for edit, span in resolved.span_edits:
         off_screen = pages is not None and span.page not in pages
         if off_screen:
             continue
@@ -132,12 +143,12 @@ def apply(
     for span, text, size, scale_x in to_draw:
         for said in engine.draw(span, text, size=size, scale_x=scale_x):
             notices.append(Notice(span.id, said))
-    for position, insert in inserts:
+    for position, insert in resolved.inserts:
         on_screen = pages is None or insert.page in pages
         if on_screen:
             for said in engine.draw(insert_span(insert), insert.text):
                 notices.append(Notice(None, said, edit=position))
-    return Applied(skipped, notices)
+    return Applied(resolved.skipped, notices)
 
 
 def insert_span(insert: Insert) -> Span:
@@ -175,14 +186,14 @@ def log_fits(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> LogFits
 
     Measurement only.
     """
-    span_edits, inserts, _skipped = resolve(engine, edits, index)
+    resolved = resolve(engine, edits, index)
     return LogFits(
         replaces={
             span.id: replace_fit(engine, span, edit.text, strategy=edit.strategy)
-            for edit, span in span_edits
+            for edit, span in resolved.span_edits
             if isinstance(edit, Replace)
         },
-        inserts={position: insert_fit(engine, insert) for position, insert in inserts},
+        inserts={position: insert_fit(engine, insert) for position, insert in resolved.inserts},
     )
 
 
