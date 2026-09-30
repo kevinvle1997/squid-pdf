@@ -12,6 +12,7 @@ import time
 
 from starlette.types import Message, Receive, Scope, Send
 
+from squidpdf.api.app import create_app
 from squidpdf.api.disconnect import CancelOnDisconnect
 from tests.helpers import assert_at_most, assert_equal, assert_true
 
@@ -80,3 +81,34 @@ def test_an_answer_already_begun_runs_to_its_end():
     )
 
     assert_equal(sent, ["http.response.start", "http.response.body"], "what was sent")
+
+
+def test_a_get_whose_browser_left_is_stopped(tmp_path, monkeypatch):
+    """Through the whole app: its route reads no body, so the app's own read starts it."""
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
+    app = create_app()
+    stopped = False
+
+    async def slow_get() -> None:
+        """Works far longer than the browser waits, as a page image could on a heavy page."""
+        nonlocal stopped
+        try:
+            await asyncio.sleep(_WORK_S)
+        except asyncio.CancelledError:  # raised by the watcher once the browser has left
+            stopped = True
+            raise
+
+    app.add_api_route("/api/slow", slow_get)
+    get: Scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/slow",
+        "headers": [],
+        "query_string": b"",
+    }
+    started = time.monotonic()
+    asyncio.run(app(get, _browser_that_leaves(), _nowhere))
+
+    assert_true(stopped, "the GET for a browser that left was stopped")
+    took = time.monotonic() - started
+    assert_at_most(took, _ENOUGH_S, "seconds it took to stop")
