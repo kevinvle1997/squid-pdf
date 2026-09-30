@@ -317,16 +317,18 @@ MERGED_TEXTS = ("Hello there", "Yearly quiz")
 _MERGED_SIZE = 14.0
 
 
-def _merged(path: str, fonts: tuple[bytes, bytes]) -> str:
+def _merged(
+    path: str, fonts: tuple[bytes, bytes], texts: tuple[str, str] = MERGED_TEXTS
+) -> str:
     """Two one-page PDFs, each with its own trimmed copy of a font, joined into one.
 
     As merging two documents leaves them: every page keeps the copy it came
     with, trimmed (subset) to that page's letters, under the same name with a
-    different subset prefix. Page 0 draws MERGED_TEXTS[0] in fonts[0], page 1
-    MERGED_TEXTS[1] in fonts[1].
+    different subset prefix. Page 0 draws texts[0] in fonts[0], page 1
+    texts[1] in fonts[1].
     """
     merged = pymupdf.open()
-    for text, font in zip(MERGED_TEXTS, fonts, strict=True):
+    for text, font in zip(texts, fonts, strict=True):
         single = pymupdf.open()
         page = single.new_page()
         # "own" is only the name the page files the font under.
@@ -362,6 +364,17 @@ def merged_coded(tmp_path_factory) -> str:
     """
     sans = face_bytes(FACES["Liberation Sans Regular"])
     return _merged(str(tmp_path_factory.mktemp("merged") / "codes.pdf"), (sans, sans))
+
+
+@pytest.fixture(scope="module")
+def merged_apart(tmp_path_factory) -> str:
+    """The merged file, but page 1 draws only "Yak": no letter in common with page 0.
+
+    Nothing to check its widths against, so nothing says it's the same font.
+    """
+    times = pymupdf.Font("tiro").buffer
+    path = str(tmp_path_factory.mktemp("merged") / "apart.pdf")
+    return _merged(path, (times, times), texts=(MERGED_TEXTS[0], "Yak"))
 
 
 @pytest.fixture(scope="module")

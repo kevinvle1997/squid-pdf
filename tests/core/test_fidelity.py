@@ -288,6 +288,14 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_not_in("Y", listed, "letters the browser is told Times draws")
 
 
+def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
+    """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
+    with open_pdf(merged_apart) as eng:
+        missing = eng.missing(_first_span(eng), "Yak Hello")
+
+    assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
+
+
 def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
     """The browser's live fit reads widths(), the server measure(): pooled, they must agree."""
     with open_pdf(merged) as eng:

@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import groupby
 
-from squidpdf.core.constants import SAME_WIDTH
+from squidpdf.core.constants import SAME_FONT_SHARED, SAME_WIDTH
 from squidpdf.core.embedded import EmbeddedFont
 from squidpdf.core.types import PageFont
 
@@ -102,9 +102,11 @@ def pooled(own: FontCopy, others: Iterable[FontCopy]) -> PooledFont:
 def agrees(other: FontCopy, *, own: FontCopy, letters: dict[str, FontCopy]) -> bool:
     """Whether `other` is the same font as the pool so far, not only the same name.
 
-    The same kind, written the same way (by letter or by code), and every
-    letter both draw as wide within SAME_WIDTH. A space isn't compared: a copy
-    that never drew one gives its empty glyph's width instead.
+    The same kind, written the same way (by letter or by code), sharing at
+    least SAME_FONT_SHARED letters, and every letter both draw as wide within
+    SAME_WIDTH. With too few in common there's nothing to vouch for it, so it
+    lends nothing and the edit is warned about as before. A space isn't
+    compared: a copy that never drew one gives its empty glyph's width instead.
     """
     same_kind = other.font.kind == own.font.kind
     same_way = (other.embedded.coded is None) == (own.embedded.coded is None)
@@ -112,4 +114,5 @@ def agrees(other: FontCopy, *, own: FontCopy, letters: dict[str, FontCopy]) -> b
     same_widths = all(
         abs(other.widths[ch] - letters[ch].widths[ch]) <= SAME_WIDTH for ch in shared
     )
-    return same_kind and same_way and same_widths
+    enough_shared = len(shared) >= SAME_FONT_SHARED
+    return same_kind and same_way and enough_shared and same_widths
