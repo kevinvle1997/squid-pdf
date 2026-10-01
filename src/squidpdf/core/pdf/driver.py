@@ -123,9 +123,10 @@ class PdfDriver(Protocol):
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Images, drawings and links stay, and so does every font `add_font` put
-        on the page, under the same resource name. A font of the file's own
-        that no text on the page uses any more may go.
+        Images, drawings and links stay, and so does every font the driver named
+        on the page, under the same resource name: each `add_font` put there, and
+        each of the file's own a `write_codes` named again. Any other font of the
+        file's own that no text on the page uses any more may go.
         """
         ...
 

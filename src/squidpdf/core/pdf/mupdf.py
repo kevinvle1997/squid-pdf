@@ -211,9 +211,10 @@ class MuPDFDriver:
             raise Damaged(debug="no pages")
         self._doc = doc
         self._file = PdfFile(doc)
-        # The fonts add_font put on each page, by resource name, for erase_text to keep.
+        # The fonts this driver named on each page, by resource name, for erase_text to
+        # keep: those add_font added, and the file's own a code write named again.
         # By the page's own object, whose number stays when the pages are renumbered.
-        self._added: dict[int, dict[str, int]] = {}
+        self._named: dict[int, dict[str, int]] = {}
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -373,8 +374,12 @@ class MuPDFDriver:
             xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._added.setdefault(pdf_page.xref, {})[free_name] = xref
+        self._keep_named(page, free_name, xref)
         return FontResource(free_name, xref)
+
+    def _keep_named(self, page: int, resource: str, xref: int) -> None:
+        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
+        self._named.setdefault(self._doc[page].xref, {})[resource] = xref
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside each box, for real.
@@ -387,7 +392,8 @@ class MuPDFDriver:
         don't reach. A box that still has letters afterwards (a font whose boxes
         sit oddly) is erased whole, so old text is never left under new. MuPDF
         also deletes any link a redaction touches, and any font no text on the
-        page uses any more: the links go back, and so do the fonts `add_font` added.
+        page uses any more: the links go back, and so do the fonts this driver
+        named on the page.
         """
         links = self._doc[page].get_links()
         letters = self._letters(page)
@@ -399,7 +405,7 @@ class MuPDFDriver:
             self._file.redact(page, missed)
         self._restore_links(page, links)
         # .get: a page nothing was added to.
-        for resource, xref in self._added.get(self._doc[page].xref, {}).items():
+        for resource, xref in self._named.get(self._doc[page].xref, {}).items():
             self._file.restore_font(page, resource, xref)
 
     def _restore_links(self, page: int, links: list[dict]) -> None:
@@ -467,6 +473,7 @@ class MuPDFDriver:
         for xref in sorted(xrefs - named.keys()):
             resource = self._free_name(page, f"C{xref}")
             self._file.restore_font(page, resource, xref)
+            self._keep_named(page, resource, xref)
             named[xref] = resource
         return named
 
