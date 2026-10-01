@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from itertools import groupby
+from itertools import chain, groupby
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
@@ -20,7 +20,7 @@ from squidpdf.core.constants import (
     SAME_FONT_SHARED,
     SAME_WIDTH,
 )
-from squidpdf.core.fonts.embedded import EmbeddedFont
+from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
@@ -44,8 +44,9 @@ _GOOGLE_COPIES_KEPT = 32
 _google_widths: dict[bytes, dict[str, float]] = {}
 
 # The copies that may lend the own copy letters, in the order they lend, given the
-# letters lent so far: whether a later one is worth opening can depend on them.
-type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy]]
+# letters lent so far: whether a later one is worth opening can depend on them. A
+# copy from outside the file that can't be had comes as why, to be said.
+type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +101,7 @@ class PooledFont:
     `core.pdf.driver.FontProgram`, so it measures like one font.
     """
 
-    __slots__ = ("_lenders", "_letters", "_turned_away", "own")
+    __slots__ = ("_lenders", "_letters", "_not_lent", "_turned_away", "own")
 
     def __init__(self, own: FontCopy, lenders: Lenders) -> None:
         """The own copy's letters, and the copies to take in, in order, for any it lacks."""
@@ -109,6 +110,8 @@ class PooledFont:
         self._letters = dict.fromkeys(own.widths, own)
         # Copies taken in with the font's name that aren't the same font, and why.
         self._turned_away: list[TurnedAway] = []
+        # Why each copy from outside the file asked for couldn't be had, in order.
+        self._not_lent: list[Message] = []
         # The copies not taken in yet, each opened only when it's reached.
         self._lenders = iter(lenders(self._letters))
 
@@ -168,8 +171,10 @@ class PooledFont:
     def why_missing(self, text: str) -> Message:
         """Why the pool can't draw all of `text`.
 
-        A copy turned away that draws a missing letter says why it was; else
-        no copy of the font has the letter.
+        A copy turned away that draws a missing letter says why it was; else a
+        copy from outside the file that couldn't be had says why, after the
+        file's own reason (Google's `google_*` sentences); else no copy of the
+        font has the letter.
         """
         # A missing letter took every copy in, so every copy turned away is known.
         missing = self.missing(text)
@@ -178,7 +183,7 @@ class PooledFont:
             for turned in self._turned_away
             if any(ch in turned.copy.widths for ch in missing)
         )
-        return next(turned_away, Message("font_lacks_letters"))
+        return next(chain(turned_away, self._not_lent, [Message("font_lacks_letters")]))
 
     def _lender_of(self, ch: str) -> FontCopy | None:
         """The copy that draws `ch`, taking copies in until one does; None when none does."""
@@ -190,8 +195,15 @@ class PooledFont:
             self._take_in(other)
         return self._letters[ch]
 
-    def _take_in(self, other: FontCopy) -> None:
-        """Add the letters `other` draws that the pool lacks, if it's the same font."""
+    def _take_in(self, other: FontCopy | FontUnusable) -> None:
+        """Add the letters `other` draws that the pool lacks, if it's the same font.
+
+        A copy from outside the file that couldn't be had lends nothing: why is kept.
+        """
+        # No copy to be had: it lends nothing, and keeps why for the report.
+        if isinstance(other, FontUnusable):
+            self._not_lent.append(other.reason)
+            return
         why = why_turned_away(other, own=self.own, letters=self._letters)
         # Only the same name: it lends nothing, and keeps why for the report.
         if why is not None:
