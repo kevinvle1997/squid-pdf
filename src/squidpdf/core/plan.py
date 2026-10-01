@@ -1,0 +1,199 @@
+"""What draws a line: the one plan the fit and the draw share, and the widths it gives.
+
+Read-only: nothing here changes the document. `core.engine` judges and fits
+with it, and `core.writer` draws what it says, so the fit's words describe
+exactly what's drawn.
+"""
+
+from __future__ import annotations
+
+import unicodedata
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import assert_never
+
+from squidpdf.core import faces
+from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
+from squidpdf.core.document_fonts import DocumentFonts
+from squidpdf.core.driver import FontProgram, PdfDriver
+from squidpdf.core.message import Message
+from squidpdf.core.pooled import CodedStretch, PooledFont
+from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps
+from squidpdf.core.types import Face, Span
+
+__all__ = [
+    "letter_widths",
+    "DrawPlan",
+    "LinePlanner",
+    "coded_in",
+]
+
+_EM = 1000  # widths are given per 1000 em, as PDF font widths are
+_WIDTH_DP = 2  # finer than any page can show
+
+
+def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
+    """Each letter's width in `font`, per 1000 em, as the browser gets it."""
+    return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
+
+
+@dataclass(frozen=True, slots=True)
+class DrawPlan:
+    """How a line is drawn: the font that draws it, and the line as it comes out.
+
+    Worked out once, and read alike by measuring, judging and drawing, so what
+    the fit says is what `draw` does.
+    """
+
+    drawn_in: PooledFont | Face  # the file's own copies of the font, pooled, or a face we ship
+    text: str  # the line as drawn: spelled as that font has it, less the letters left out
+    missing: list[str]  # letters the span's own font lacks: its look-alike's, when it has none
+    left_out: list[str]  # letters no font we have can draw, each once, in the order typed
+
+
+@dataclass(frozen=True, slots=True)
+class LinePlanner:
+    """Answers what draws a line at a span, and how wide it comes out, for one document."""
+
+    fonts: DocumentFonts
+    driver: PdfDriver  # opens the faces we ship to measure with
+
+    def plan_for(self, span: Span, text: str) -> DrawPlan:
+        """How `text` is drawn at this span: the one answer the fit and the draw share.
+
+        In the file's copies of the span's font if they draw every character;
+        otherwise the whole line in the stand-in, less what even that can't
+        draw. When the only letters the own font lacks are ones no font we have
+        draws, switching would draw none of them, so the own font keeps the
+        line without them.
+        """
+        own = self.fonts.own(span)
+        # Not in the file, or unusable: a face we ship draws it, less what even it lacks.
+        if own is None:
+            composed = unicodedata.normalize("NFC", text)
+            look_alike = self.fonts.look_alike(span).face
+            missing = faces.face_coverage(look_alike).missing(composed)
+            stand_in = self.stand_in_for(span, composed)
+            return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+        text = spelled(own, text)
+        missing = own.missing(text)
+        # The own font draws every letter.
+        if not missing:
+            return DrawPlan(own, text, [], [])
+        stand_in = self.fonts.stand_in(span, text)
+        # Nothing we have draws what it lacks: switching would gain nothing.
+        undrawable = set(missing) <= set(stand_in.left_out)
+        if undrawable:
+            kept = "".join(ch for ch in text if ch not in missing)
+            return DrawPlan(own, kept, missing, missing)
+        return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+
+    def stand_in_for(self, span: Span, text: str) -> faces.StandIn:
+        """The face that draws `text` if the page won't take the span's own font after all."""
+        return self.fonts.stand_in(span, unicodedata.normalize("NFC", text))
+
+    def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
+        """How a redraw of the span's own text in its own font looks unlike it; None if not."""
+        # Turned on the page: redraws are level.
+        _horizontal, vertical = span.direction
+        if abs(vertical) > TURN_TOLERANCE:
+            return Message("turned_text")
+        # Letters no font we have draws: a redraw leaves them out.
+        if plan.left_out:
+            return Message("undrawable_letters", {"letters": list(plan.left_out)})
+        # New text: its box is only nominal, so there's no spacing of its own to keep.
+        if not span.fragments:
+            return None
+        # Spaced or stretched (letter spacing, scaling, a justified line): redraws close it up.
+        redrawn = self.width_of(span, plan, size=span.size)
+        if abs(span.bbox.width - redrawn) > TOLERANCE_PT:
+            return Message("spaced_text")
+        return None
+
+    def width_of(self, span: Span, plan: DrawPlan, *, size: float) -> float:
+        """How wide `plan`'s line is, placed as `draw` places it, at `size` points."""
+        by_code = coded_in(plan)
+        # Written by code: widths come from each copy's width list.
+        if by_code is not None:
+            widths = (
+                stretch.coded.letters[ch].width for stretch in by_code for ch in stretch.text
+            )
+            return sum(widths) * size / _EM
+        _words, width = self.words_of(span, plan.text, font=self.program_of(plan), size=size)
+        return width
+
+    def program_of(self, plan: DrawPlan) -> FontProgram:
+        """The font program that measures and draws `plan`'s line."""
+        drawn_in = plan.drawn_in
+        # The file's own copies, pooled: they measure as one font.
+        if isinstance(drawn_in, PooledFont):
+            return drawn_in
+        # A face we ship, opened to measure with.
+        if isinstance(drawn_in, Face):
+            return self.driver.face_font(drawn_in)
+        assert_never(drawn_in)
+
+    def words_of(
+        self, span: Span, text: str, *, font: FontProgram, size: float
+    ) -> tuple[list[Word], float]:
+        """`text` as `draw` places it in `font`, and where the pen ends: its width."""
+        one_run = not lacks_space(font) or " " not in text
+        if one_run:
+            return [Word(text, 0.0)], font.width(text, size)
+        # No space to draw: each word goes where the file's gaps put it.
+        gaps, usual = span_gaps(span, font), self.fonts.usual_gap(span, font)
+        return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
+
+    def widths(self, span: Span) -> dict[str, float]:
+        """Each letter the span's font really draws, and its width per 1000 em.
+
+        The same font `measure` uses, so the browser's sum agrees with it, except
+        in a font with no space: a space here is the page's usual gap, where
+        `measure` keeps the line's own, so a justified line can differ.
+        """
+        pooled = self.fonts.own(span)
+
+        # Not in the file: the look-alike draws it, its list kept to GLYPH_LIST_RANGES.
+        if pooled is None:
+            face = self.fonts.look_alike(span).face
+            return letter_widths(self.driver.face_font(face), faces.face_letters(face))
+
+        # Each from the copy that draws it: its width list if written by code, else the font.
+        letters = sorted(pooled.letters.items())
+        widths = {ch: round(copy.widths[ch], _WIDTH_DP) for ch, copy in letters}
+        # Written by letter, with no space of its own: a space is the page's usual gap.
+        spaceless = pooled.own.embedded.coded is None and lacks_space(pooled)
+        if spaceless:
+            widths[" "] = round(self.fonts.usual_gap(span, pooled) * _EM, _WIDTH_DP)
+        return widths
+
+
+def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
+    """`plan`'s line in the codes of the file's copies of its font, a stretch per copy.
+
+    None unless they draw it by code.
+    """
+    drawn_in = plan.drawn_in
+    # A face we ship: no codes.
+    if isinstance(drawn_in, Face):
+        return None
+    # The file's copies, written by letter: no codes.
+    if isinstance(drawn_in, PooledFont) and drawn_in.own.embedded.coded is None:
+        return None
+    # The file's copies, written by code: the line in their codes.
+    if isinstance(drawn_in, PooledFont):
+        return drawn_in.coded_stretches(plan.text)
+    assert_never(drawn_in)
+
+
+def spelled(own: PooledFont, text: str) -> str:
+    """`text` spelled as the span's own font has it: as typed, composed or in pieces.
+
+    é can be one letter or e and an accent. A trimmed font keeps whichever
+    its document used, and macOS pastes in pieces. With none whole in the
+    font, composed: the faces we ship draw it that way.
+    """
+    composed = unicodedata.normalize("NFC", text)
+    in_pieces = unicodedata.normalize("NFD", text)
+    whole = (spelling for spelling in (text, composed, in_pieces) if not own.missing(spelling))
+    return next(whole, composed)

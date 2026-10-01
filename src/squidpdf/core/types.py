@@ -19,6 +19,15 @@ GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty
 type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
 LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
+# Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
+QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
+
+# What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
+# writes each letter as two bytes; "other" is any kind not named here.
+type FontKind = Literal["truetype", "type0", "type1", "type3", "other"]
+# How the file stores a font's program; "none" when it only names the font, or
+# stores it in a way we can't tell.
+type FontFileType = Literal["truetype", "opentype", "cff", "type1", "none"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,12 +87,39 @@ class TextPiece:
 
 
 @dataclass(frozen=True, slots=True)
+class FontResource:
+    """A font as a page names it, and the font itself.
+
+    A page's drawing never names a font by its own name: it uses a short name
+    the page lists in its resources, such as "F1", its resource name.
+    """
+
+    resource: str  # its resource name on the page, e.g. "F1"
+    xref: int  # its PDF object
+
+
+@dataclass(frozen=True, slots=True)
 class TextRun:
     """Text written in one go from a point on its baseline, in one font."""
 
     text: str
     origin: tuple[float, float]
-    font: str  # the page's name for the font it's written in
+    resource: str  # the resource name of the font it's written in
+
+
+@dataclass(frozen=True, slots=True)
+class CodeRun:
+    """Codes written in one go in one font.
+
+    A code is what a page writes to pick a shape from a font: one or two bytes,
+    as many as that font's codes take, not a letter. Most fonts look up a
+    letter's code themselves; a font with no letters of its own can only be
+    written in its codes. A line's runs follow each other: each starts where the
+    one before left the pen.
+    """
+
+    codes: bytes
+    xref: int  # its font's PDF object: the page may know it by another resource name
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,16 +128,16 @@ class PageFont:
 
     xref: int  # its PDF object
     name: str  # e.g. "ABCDEF+Arial"
-    kind: str  # "TrueType", "Type0", ...
-    file_type: str  # "ttf", "cff", ...; "" or "n/a" when not in the file
-    resource: str  # its name in the page's font resources, e.g. "F1"
+    kind: FontKind
+    file_type: FontFileType
+    resource: str  # its resource name on the page, e.g. "F1"
     encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
     in_form: bool  # used inside a form (a reusable drawing), not by the page itself
 
     @property
     def is_embedded(self) -> bool:
         """Whether the PDF contains the font, not just its name."""
-        return self.file_type not in ("n/a", "")
+        return self.file_type != "none"
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,8 +203,6 @@ class CodedFont:
     code is which letter.
     """
 
-    resource: str  # its name in the page's font resources, e.g. "F1"
-    xref: int  # its PDF object
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
     letters: dict[str, FontCode]  # each letter it can write, and the code for it
 

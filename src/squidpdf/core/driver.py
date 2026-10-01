@@ -11,16 +11,34 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+from squidpdf.core.message import Message
 from squidpdf.core.types import (
+    CodeRun,
     Face,
     FontCode,
     FontDescriptor,
+    FontResource,
     Page,
     PageFont,
     Rect,
     TextPiece,
     TextRun,
 )
+
+
+class DriverError(ValueError):
+    """The library couldn't do what was asked with a font, and why, for the edge to say.
+
+    One error for every way a font fails in the driver, as `FontUnusable` is in
+    the engine. A ValueError so callers written when the driver raised those
+    still catch it, until they catch this by name.
+    """
+
+    def __init__(self, reason: Message, *, debug: str = "") -> None:
+        """`reason` names a sentence in `core.words`; `debug` is the library's own words."""
+        super().__init__(reason, debug)
+        self.reason = reason
+        self.debug = debug
 
 
 class FontProgram(Protocol):
@@ -47,8 +65,9 @@ class PdfDriver(Protocol):
     """A PDF open in a library. `core.mupdf.MuPDFDriver` is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the
-    page unrotated. Where a method says it raises ValueError, that is how it
-    says the library couldn't: the engine then falls back rather than crashing.
+    page unrotated. A font the library can't use raises DriverError, saying
+    why, and the engine falls back rather than crashing. Anything else the
+    library raises goes up to `result_of`, which says what it means.
     """
 
     def page_count(self) -> int:
@@ -79,8 +98,8 @@ class PdfDriver(Protocol):
         """The name text in font `xref` reads, often the font file's own; None if unreadable."""
         ...
 
-    def font_bytes(self, xref: int) -> bytes | None:
-        """The font file stored in the PDF, or None if the library can't read it out."""
+    def font_bytes(self, xref: int) -> bytes:
+        """The font file stored in the PDF. Raises DriverError when it can't be read out."""
         ...
 
     def font_descriptor(self, xref: int) -> FontDescriptor | None:
@@ -90,12 +109,12 @@ class PdfDriver(Protocol):
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first; None without a letter list.
 
-        Raises ValueError when the library can't load the font.
+        Raises DriverError when the library can't load the font.
         """
         ...
 
     def open_font(self, font_file: bytes) -> FontProgram:
-        """Open a font file to measure with. Raises ValueError when the library can't."""
+        """Open a font file to measure with. Raises DriverError when it isn't one."""
         ...
 
     def face_font(self, face: Face) -> FontProgram:
@@ -105,7 +124,9 @@ class PdfDriver(Protocol):
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Images, drawings and links stay.
+        Images, drawings and links stay, and so does every font `add_font` put
+        on the page, under the same resource name. A font of the file's own
+        that no text on the page uses any more may go.
         """
         ...
 
@@ -113,10 +134,11 @@ class PdfDriver(Protocol):
         """Delete every link whose area overlaps one of `boxes`."""
         ...
 
-    def add_font(self, page: int, name: str, font_file: bytes) -> int:
-        """Add a font to the page under `name`; returns its object number.
+    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
+        """Add a font to the page under the resource name `resource`, or one like it if taken.
 
-        Raises ValueError when the library won't add it.
+        Returns the resource name it went under, and its PDF object. Raises
+        DriverError when the library won't add it.
         """
         ...
 
@@ -138,24 +160,31 @@ class PdfDriver(Protocol):
         """
         ...
 
-    def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Point the page's font name `resource` back at font `xref`."""
-        ...
+    def write_codes(
+        self,
+        page: int,
+        *,
+        origin: tuple[float, float],
+        runs: Sequence[CodeRun],
+        size: float,
+        color: tuple[float, float, float],
+        opacity: float,
+        scale_x: float,
+        turn: int,
+    ) -> None:
+        """Write each run's codes in its font, from `origin` on, on top of the page.
 
-    def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
-        """Turn a point on the page as you see it into the PDF's own coordinates."""
-        ...
-
-    def add_opacity(self, page: int, opacity: float) -> str:
-        """The page's name for painting at `opacity`; writing it again changes nothing."""
-        ...
-
-    def add_content(self, page: int, stream: bytes) -> None:
-        """Draw a content stream on top of everything on the page."""
+        For a font that has no letters of its own, only codes (`CodeRun` says
+        what a code is). Each run starts where the last left the pen, moved on
+        by that font's own widths. The rest is as for `write_text`.
+        """
         ...
 
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
-        """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
+        """Swap in a new file for font `xref`. It must keep each glyph at its old number.
+
+        Raises DriverError when the font's file can't be found to swap.
+        """
         ...
 
     def has_tags(self) -> bool:
