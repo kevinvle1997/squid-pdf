@@ -10,7 +10,7 @@ from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
 from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import store
-from tests.api.conftest import BASE_URL, upload
+from tests.api.conftest import browser_on, upload
 from tests.helpers import assert_equal, assert_false, assert_problem, assert_true
 
 # Refused as not a PDF before any work: the count is all these tests look at.
@@ -27,9 +27,9 @@ def test_an_address_past_its_uploads_a_minute_is_told_to_wait_and_others_are_not
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     monkeypatch.setattr(limits, "UPLOADS_PER_MINUTE", 1)
     app = create_app()
-    with TestClient(app):  # runs the lifespan: the pool and the sweeper
-        first = TestClient(app, base_url=BASE_URL, client=(_ONE, 1))
-        other = TestClient(app, base_url=BASE_URL, client=(_OTHER, 1))
+    with TestClient(app) as server:  # runs the lifespan: the pool and the sweeper
+        first = browser_on(server, client=(_ONE, 1))
+        other = browser_on(server, client=(_OTHER, 1))
         assert_problem(upload(first, _NOT_A_PDF), "not_a_pdf", 415)
         assert_problem(upload(first, b"%PDF-" + _NOT_A_PDF), "rate_limited", 429)
         assert_problem(upload(other, _NOT_A_PDF), "not_a_pdf", 415)

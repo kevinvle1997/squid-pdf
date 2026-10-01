@@ -11,6 +11,7 @@ from unittest import mock
 
 import pymupdf
 import pytest
+from fastapi.testclient import TestClient
 from fontTools.subset import Subsetter
 
 from squidpdf.api.pool import WorkerPool
@@ -58,11 +59,13 @@ def _make_pdf_stalling_once_open(
 
 
 @pytest.fixture
-def own_pool() -> Iterator[WorkerPool]:
-    """Workers of the test's own, since it kills one; shut down after."""
-    pool = WorkerPool()
+def own_pool(server: TestClient) -> Iterator[WorkerPool]:
+    """Workers of the test's own, since it kills one, made in the app's loop; closed after."""
+    if server.portal is None:
+        pytest.fail("the app isn't started")
+    pool = server.portal.call(WorkerPool)
     yield pool
-    pool.close()
+    server.portal.call(pool.close)
 
 
 @pytest.fixture(scope="module")

@@ -9,7 +9,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from functools import partial
 from pathlib import Path
 
@@ -41,11 +41,33 @@ _POLL_S = 0.05
 
 
 @pytest.fixture(scope="module")
-def pool():
-    """One pool of workers for the module, shut down after."""
-    pool = WorkerPool()
+def runner() -> Iterator[asyncio.Runner]:
+    """One event loop for the module's tests: a pool works only in the loop it was made in."""
+    with asyncio.Runner() as runner:
+        yield runner
+
+
+@pytest.fixture(scope="module")
+def pool(runner: asyncio.Runner) -> Iterator[WorkerPool]:
+    """One pool of workers for the module, made in its loop, shut down after."""
+    pool = runner.run(_new_pool())
     yield pool
     pool.close()
+
+
+async def _new_pool() -> WorkerPool:
+    """A pool made in the running loop, as the app's lifespan makes one."""
+    return WorkerPool()
+
+
+@contextlib.asynccontextmanager
+async def _own_pool() -> AsyncIterator[WorkerPool]:
+    """A pool of the test's own, made in the running loop and closed after."""
+    pool = WorkerPool()
+    try:
+        yield pool
+    finally:
+        pool.close()
 
 
 def _hang() -> None:
@@ -63,9 +85,9 @@ def _die() -> None:
     os._exit(1)
 
 
-def test_a_worker_that_dies_says_the_file_is_damaged(pool):
+def test_a_worker_that_dies_says_the_file_is_damaged(runner, pool):
     with pytest.raises(Problem) as caught:
-        asyncio.run(pool.run(_ENOUGH_S, _die))
+        runner.run(pool.run(_ENOUGH_S, _die))
     assert_equal(caught.value.type, "damaged", "problem for a worker that died")
 
 
@@ -74,26 +96,26 @@ def _read_a_broken_font() -> None:
     pymupdf.Font(fontbuffer=b"not a font")
 
 
-def test_a_failure_inside_the_pdf_library_comes_back_as_what_it_means(pool):
+def test_a_failure_inside_the_pdf_library_comes_back_as_what_it_means(runner, pool):
     """Not a server error: MuPDF's own exception can't be sent back, its meaning can."""
     with pytest.raises(Problem) as caught:
-        asyncio.run(pool.run(_ENOUGH_S, _read_a_broken_font))
+        runner.run(pool.run(_ENOUGH_S, _read_a_broken_font))
     assert_equal(caught.value.type, "damaged", "problem for work MuPDF couldn't do")
 
 
-def test_work_past_its_timeout_is_killed_and_called_too_slow(pool):
+def test_work_past_its_timeout_is_killed_and_called_too_slow(runner, pool):
     started = time.monotonic()
     with pytest.raises(Problem) as caught:
-        asyncio.run(pool.run(_TIMEOUT_S, _hang))
+        runner.run(pool.run(_TIMEOUT_S, _hang))
     waited = time.monotonic() - started
     assert_equal(caught.value.type, "too_slow", "problem for a task that hung")
     assert_at_most(waited, _ENOUGH_S, f"seconds waited for a {_TIMEOUT_S} s timeout")
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="the memory ceiling is Linux only")
-def test_work_past_the_memory_ceiling_is_called_too_heavy(pool):
+def test_work_past_the_memory_ceiling_is_called_too_heavy(runner, pool):
     with pytest.raises(Problem) as caught:
-        asyncio.run(pool.run(_ENOUGH_S, _overeat))
+        runner.run(pool.run(_ENOUGH_S, _overeat))
     assert_equal(caught.value.type, "too_heavy", "problem for a task past the memory ceiling")
 
 
@@ -116,9 +138,14 @@ def _is_gone(pid: int) -> bool:
     return False
 
 
-def _kill_idle_worker(pool: WorkerPool) -> None:
-    """Kill a worker between tasks, as the kernel's out-of-memory killer might."""
-    idle_pid = asyncio.run(pool.run(_ENOUGH_S, os.getpid))
+def _kill_idle_worker(client: TestClient, pool: WorkerPool) -> None:
+    """Kill a worker between tasks, as the kernel's out-of-memory killer might.
+
+    `client` started the app: its task runs in the app's loop, where the pool was made.
+    """
+    if client.portal is None:
+        pytest.fail("the client hasn't started the app")
+    idle_pid = client.portal.call(pool.run, _ENOUGH_S, os.getpid)
     os.kill(idle_pid, signal.SIGKILL)
     _wait_until(lambda: _is_gone(idle_pid), _ENOUGH_S)
 
@@ -129,7 +156,7 @@ def test_the_api_works_on_after_an_idle_worker_is_killed(tmp_path, monkeypatch, 
     app = create_app()
     with TestClient(app, base_url=BASE_URL) as client:
         doc = upload(client, pdf_bytes).json()
-        _kill_idle_worker(app.state.pool)
+        _kill_idle_worker(client, app.state.pool)
         page = client.get(
             f"/api/documents/{doc['id']}/pages/0", params={"scale": 1, "build": doc["build"]}
         )
@@ -149,7 +176,7 @@ def test_health_says_so_when_no_worker_can_start(tmp_path, monkeypatch):
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     app = create_app()
     with TestClient(app, base_url=BASE_URL) as client:
-        _kill_idle_worker(app.state.pool)
+        _kill_idle_worker(client, app.state.pool)
         with monkeypatch.context() as machine:
             machine.setattr(pebble.pool.process, "launch_process", _cannot_start)
             broken = client.get("/api/health")
@@ -163,35 +190,41 @@ def _noop() -> None:
     """Work that takes no time at all."""
 
 
+def test_a_pool_works_only_in_the_event_loop_it_was_made_in(pool):
+    """As the server runs one: asyncio ties a lock to the first loop that waits on it."""
+    with pytest.raises(RuntimeError, match="no running event loop"):
+        WorkerPool()
+    with pytest.raises(RuntimeError, match="the event loop it was made in"):
+        asyncio.run(pool.run(_ENOUGH_S, os.getpid))  # a loop of its own, not the pool's
+
+
 def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
     """Waiting behind other tasks is the caller's time, so it counts."""
 
-    async def queued_behind_busy_workers(pool: WorkerPool) -> None:
-        busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
-        await asyncio.sleep(0)  # they take every worker first
-        await pool.run(_TIMEOUT_S, _noop)
-        for task in busy:
-            task.cancel()
+    async def queued_behind_busy_workers() -> None:
+        async with _own_pool() as pool:  # its own: this one fills every worker
+            busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
+            await asyncio.sleep(0)  # they take every worker first
+            await pool.run(_TIMEOUT_S, _noop)
+            for task in busy:
+                task.cancel()
 
-    pool = WorkerPool()  # its own: this one fills every worker
     started = time.monotonic()
-    try:
-        with pytest.raises(Problem) as caught:
-            asyncio.run(queued_behind_busy_workers(pool))
-        waited = time.monotonic() - started
-    finally:
-        pool.close()
+    with pytest.raises(Problem) as caught:
+        asyncio.run(queued_behind_busy_workers())
+    waited = time.monotonic() - started
     assert_equal(caught.value.type, "too_slow", "problem for a task that never got a worker")
     assert_at_most(waited, _BUSY_S, "seconds waited, which the busy workers would have taken")
 
 
 def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     """Starting a worker is the server's time: a quick task on a new pool isn't too slow."""
-    pool = WorkerPool()  # its own: no worker started yet
-    try:
-        worker_pid = asyncio.run(pool.run(_TIMEOUT_S, os.getpid))
-    finally:
-        pool.close()
+
+    async def first_task() -> int:
+        async with _own_pool() as pool:  # its own: no worker started yet
+            return await pool.run(_TIMEOUT_S, os.getpid)
+
+    worker_pid = asyncio.run(first_task())
     assert_true(worker_pid != os.getpid(), "the task ran in a worker")
 
 
@@ -202,7 +235,9 @@ def _note_pid_then_work(folder: Path) -> None:
     (folder / "done").touch()
 
 
-def _leave_while_it_works(pool: WorkerPool, folder: Path, timeout: float) -> int:
+def _leave_while_it_works(
+    runner: asyncio.Runner, pool: WorkerPool, folder: Path, timeout: float
+) -> int:
     """Start a task, leave once it's working, and wait until it's done or its worker gone.
 
     Returns the worker's process id.
@@ -225,20 +260,20 @@ def _leave_while_it_works(pool: WorkerPool, folder: Path, timeout: float) -> int
         await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
         return worker_pid
 
-    return asyncio.run(leave())
+    return runner.run(leave())
 
 
-def test_a_render_whose_browser_left_finishes_and_keeps_its_worker(pool, tmp_path):
+def test_a_render_whose_browser_left_finishes_and_keeps_its_worker(runner, pool, tmp_path):
     """Stopping it would kill its worker, and the next task would wait for a new one."""
-    worker_pid = _leave_while_it_works(pool, tmp_path, RENDER_TIMEOUT_S)
+    worker_pid = _leave_while_it_works(runner, pool, tmp_path, RENDER_TIMEOUT_S)
 
     assert_true((tmp_path / "done").exists(), "the render finished its work")
     assert_false(_is_gone(worker_pid), "the render's worker is still alive")
 
 
-def test_an_export_whose_browser_left_is_stopped(pool, tmp_path):
+def test_an_export_whose_browser_left_is_stopped(runner, pool, tmp_path):
     """Long enough that stopping it is worth a new worker."""
-    worker_pid = _leave_while_it_works(pool, tmp_path, EXPORT_TIMEOUT_S)
+    worker_pid = _leave_while_it_works(runner, pool, tmp_path, EXPORT_TIMEOUT_S)
 
     assert_true(_is_gone(worker_pid), "the export's worker was stopped")
     assert_false((tmp_path / "done").exists(), "the export didn't run to its end")
@@ -277,7 +312,9 @@ def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [record.getMessage() for record in caplog.records if record.name == "asyncio"]
 
 
-def test_a_render_that_crashes_after_its_browser_left_logs_no_error(pool, tmp_path, caplog):
+def test_a_render_that_crashes_after_its_browser_left_logs_no_error(
+    runner, pool, tmp_path, caplog
+):
     """Nobody waits for its answer, and a crash is a file's doing: a log would be noise."""
 
     async def leave() -> None:
@@ -285,19 +322,21 @@ def test_a_render_that_crashes_after_its_browser_left_logs_no_error(pool, tmp_pa
         await asyncio.to_thread(_wait_until, lambda: _is_gone(worker_pid), _ENOUGH_S)
         await asyncio.sleep(_WORK_S)  # for pebble to see it die and say so
 
-    asyncio.run(leave())
+    runner.run(leave())
 
     assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")
 
 
-def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(pool, tmp_path, caplog):
+def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(
+    runner, pool, tmp_path, caplog
+):
     """Nobody waits for its answer, but a bug in our own code must still show in the log."""
 
     async def leave() -> None:
         await _start_then_leave(pool, tmp_path, _note_pid_then_raise)
         await asyncio.to_thread(_wait_until, lambda: bool(_asyncio_errors(caplog)), _ENOUGH_S)
 
-    asyncio.run(leave())
+    runner.run(leave())
 
     assert_equal(len(_asyncio_errors(caplog)), 1, "errors asyncio logged")
 
@@ -305,12 +344,12 @@ def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(pool, tmp_pat
 def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_path, caplog):
     """The server stopping: nobody waits for that render's answer now."""
 
-    async def leave_then_close(pool: WorkerPool) -> None:
+    async def leave_then_close() -> None:
+        pool = WorkerPool()  # its own: this closes it
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
         pool.close()
         await asyncio.sleep(_WORK_S)  # for the render's end to come back
 
-    pool = WorkerPool()  # its own: this closes it
-    asyncio.run(leave_then_close(pool))
+    asyncio.run(leave_then_close())
 
     assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")
