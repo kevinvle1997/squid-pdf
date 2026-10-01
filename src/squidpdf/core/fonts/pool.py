@@ -84,7 +84,6 @@ class CodedRun:
     text: str
     copy: FontCopy
     coded: CodedFont
-    own: bool  # the span's own copy, whose name on the page is kept
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,8 +161,7 @@ class PooledFont:
             # Written by letter: there are no codes to write it in.
             if coded is None:
                 return None
-            own = run.copy.font.xref == self.own.font.xref
-            runs.append(CodedRun(run.text, run.copy, coded, own))
+            runs.append(CodedRun(run.text, run.copy, coded))
         return runs
 
     def missing(self, text: str) -> list[str]:
