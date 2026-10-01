@@ -162,13 +162,13 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"  {DIM}{span.font} {span.size}pt{OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
 
-        problem = words.render_all(fit.describe())
+        described = words.render_all(fit.describe())
         # It fits: nothing to choose between.
-        if not problem:
+        if not described:
             print(f"  {GREEN}fits in place{OFF}\n")
             return 0
         # It doesn't: say why and list the ways out.
-        print(f"  {RED}{problem}{OFF}")
+        print(f"  {RED}{described}{OFF}")
         for option in fit.options:
             label, detail = words.render(option.label), words.render(option.detail)
             print(f"    {DIM}{option.name:<9}{OFF} {label}{DIM}: {detail}{OFF}")
