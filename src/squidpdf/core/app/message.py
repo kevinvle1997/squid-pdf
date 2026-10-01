@@ -23,6 +23,12 @@ class MessageInfo(TypedDict):
     params: dict[str, Param]
 
 
+class SaidInfo(MessageInfo):
+    """A Message said to a reader: `detail` in their words, and `code` and `params` unsaid."""
+
+    detail: str
+
+
 @dataclass(frozen=True, slots=True)
 class Message:
     """Which sentence to tell a person, and the facts its placeholders take.

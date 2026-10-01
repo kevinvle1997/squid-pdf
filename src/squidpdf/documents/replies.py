@@ -98,5 +98,4 @@ def notices_in(*, has_text: bool, said_in: str) -> list[DocumentNoticeInfo]:
     # A scan has no text layer: say so, rather than show a page nothing on can be edited.
     if has_text:
         return []
-    no_text = Message("no_text")
-    return [{"type": "no_text", "detail": words.render(no_text, said_in), **no_text.as_info()}]
+    return [{"type": "no_text", **words.said(Message("no_text"), said_in)}]

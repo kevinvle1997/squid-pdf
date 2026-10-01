@@ -112,9 +112,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
     body: ProblemInfo = {
         "type": problem.type,
         "status": problem.status,
-        "detail": problem.said_in(language),
-        "code": problem.type,
-        "params": problem.fill,
+        **words.said(problem.message, language),
     }
     if problem.debug is not None:
         body["debug"] = problem.debug
