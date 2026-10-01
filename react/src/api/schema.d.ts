@@ -153,6 +153,23 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ApproximateInfo
+         * @description How an approximate span would come back unlike itself, in no language.
+         *
+         *     `code` names the reason, and its sentence: `copy.approximate[code]`. `params` fill it.
+         */
+        ApproximateInfo: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "turned_text" | "spaced_text" | "undrawable_letters";
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+        };
+        /**
          * Box
          * @description A box on the page in points, top-left origin.
          */
@@ -656,7 +673,7 @@ export interface components {
              * @enum {string}
              */
             fidelity: "exact" | "approximate" | "substitute";
-            why: components["schemas"]["MessageInfo"] | null;
+            why: components["schemas"]["ApproximateInfo"] | null;
         };
         /**
          * SpanNoticeInfo

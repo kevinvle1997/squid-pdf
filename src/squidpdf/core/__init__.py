@@ -38,7 +38,14 @@ from squidpdf.core.fonts.google import google_fonts
 # The one import that names the driver: another PDF library is swapped in here.
 from squidpdf.core.pdf.mupdf import BUILD, CORE_ERRORS, face_widths, open_pdf, result_of
 from squidpdf.core.pdf.samples import write_dense, write_sample
-from squidpdf.core.text.fidelity import Fidelity, FidelityReport, green_rate
+from squidpdf.core.text.fidelity import (
+    APPROXIMATE_REASONS,
+    ApproximateReason,
+    Fidelity,
+    FidelityReport,
+    green_rate,
+    reason_of,
+)
 from squidpdf.core.types import (
     LEVEL,
     SOLID,
@@ -80,6 +87,9 @@ __all__ = [
     "face_widths",
     "Fidelity",
     "FidelityReport",
+    "ApproximateReason",
+    "APPROXIMATE_REASONS",
+    "reason_of",
     "green_rate",
     "GREEN_RATE_TARGET",
     "GREEN_RATE_WARN",

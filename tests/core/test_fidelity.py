@@ -8,6 +8,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core import (
+    APPROXIMATE_REASONS,
     Engine,
     FidelityReport,
     LineToDraw,
@@ -22,7 +23,14 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
-from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
+from tests.helpers import (
+    assert_all,
+    assert_at_most,
+    assert_close,
+    assert_equal,
+    assert_in,
+    assert_not_in,
+)
 
 _EM = 1000
 _SIZE = 12
@@ -357,6 +365,12 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
 
     assert_all(reports, lambda r: r.state == "exact", lambda r: r.span_id)
     assert_equal(len(opened), 1, "times the shared font was opened")
+
+
+def test_every_way_a_span_can_be_approximate_has_its_sentence():
+    """The browser says a span's `why` from `copy.approximate`, keyed by its reason."""
+    for reason in APPROXIMATE_REASONS:
+        assert_in(reason, words.ENGLISH_SENTENCES, "the ways a span can be approximate")
 
 
 @pytest.mark.parametrize(
