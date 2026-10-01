@@ -1,4 +1,4 @@
-"""Which face we ship stands in when a document's own font can't be used.
+"""A document font's look-alike: the face we ship we'd use when its own can't be.
 
 A PDF usually embeds only the glyphs the document actually used, so whether an
 edit is possible in the original face depends on what the user types. When it
@@ -115,7 +115,7 @@ def by_family() -> dict[str, dict[Style, Face]]:
 
 
 def pinned() -> dict[str, Face]:
-    """Document fonts only one face stands in for, like CMBX10, by bare name."""
+    """Document fonts only one face is the look-alike for, like CMBX10, by bare name."""
     faces_by_name: dict[str, list[Face]] = {}
     for face in CATALOG:
         for name in face.same_widths_as:
@@ -128,7 +128,7 @@ _PINNED = pinned()
 
 
 def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike:
-    """The face that stands in for a document font, in its style.
+    """A document font's look-alike, in its style: the face we ship we'd use for it.
 
     A face we ship by its exact name is itself, and so is one a document font's
     name pins, cut and all (CMBX10). A family we know gets the face with the

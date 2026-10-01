@@ -1,4 +1,4 @@
-"""The document's fonts: each span's own, pooled, the face that stands in for it, and its gaps.
+"""The document's fonts: each span's own, pooled, its look-alike, and its gaps.
 
 What the engine knows about fonts, read through the driver once and kept. A
 copy of a font is opened once per listing, not once per page, so a font every
@@ -83,12 +83,12 @@ class FontCache:
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
     # A span's font with its other copies, by its page and its page's copy.
     pools: dict[tuple[int, PageFont], PooledFont | FontUnusable] = field(default_factory=dict)
-    # The face that stands in for each font, by its name and object (None: not on the page).
+    # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
 
 
 class DocumentFonts:
-    """The fonts a document's spans are written in, and the faces we ship that stand in."""
+    """The fonts a document's spans are written in, and the look-alike we ship for each."""
 
     def __init__(self, driver: PdfDriver, *, google: GoogleFontController | None) -> None:
         """Read through `driver`, with nothing looked up yet.
@@ -245,7 +245,7 @@ class DocumentFonts:
             yield from self._facts(other_page).fonts
 
     def look_alike(self, span: Span) -> LookAlike:
-        """The face we ship that stands in for the span's font, in its style."""
+        """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self.page_font(span)
         xref = None if page_font is None else page_font.xref
         key = (strip_subset(span.font), xref)

@@ -1,8 +1,8 @@
 """The fonts we ship: every face, named and filed, and its file.
 
 Data about files in `squidpdf/fonts/`, not tuning: where each came from and its
-version is `fonts/README.md`. Which one draws for a document's font is
-`look_alike.py`'s.
+version is `fonts/README.md`. Which one is a document font's look-alike is
+`look_alike.py`'s, and which one draws in its place, `substitute.py`'s.
 """
 
 from __future__ import annotations

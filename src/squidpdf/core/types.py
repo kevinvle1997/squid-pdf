@@ -239,7 +239,7 @@ class Face:
 
 @dataclass(frozen=True, slots=True)
 class LookAlike:
-    """The face that stands in for a document's font, and whether nothing on the page moves."""
+    """A document font's look-alike, and whether nothing on the page moves if it draws."""
 
     face: Face
     same_widths: bool  # False when it's only the same kind of font (a serif for a serif)
