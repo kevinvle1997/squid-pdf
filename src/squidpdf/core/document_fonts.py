@@ -162,12 +162,12 @@ class DocumentFonts:
         return PooledFont(own, partial(self._lenders, page, own))
 
     def _lenders(
-        self, page: int, own: FontCopy, lent: Mapping[str, FontCopy]
+        self, page: int, own: FontCopy, letters: Mapping[str, FontCopy]
     ) -> Iterator[FontCopy]:
         """Every copy that may lend the own copy letters, in the order they lend: the chain.
 
         The file's other copies, nearest page first; then copies from outside
-        the file, only while `lent`, the letters the pool has so far, lacks one
+        the file, only while `letters`, those the pool has so far, lacks one
         someone could type. A face we ship is the engine's last resort, not a lender.
         """
         opened = (self._opened(font) for font in self._other_copies(page, own.font))
@@ -176,11 +176,11 @@ class DocumentFonts:
         # From outside the file, in order. The user's own copy of a font, once
         # they can attach one, goes before Google's.
         from_outside = (self._google_copy,)
-        for outside_copy in from_outside:
+        for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
-            if not lacks_a_keyboard_letter(lent):
+            if not lacks_a_keyboard_letter(letters):
                 return
-            copy = outside_copy(own)
+            copy = copy_from(own)
             # None: no copy of this font to be had there.
             if copy is not None:
                 yield copy
@@ -217,16 +217,19 @@ class DocumentFonts:
         # The own copy may be listed under another name, found by the one its text reads.
         seen = {own.xref}
         for font in self._fonts_nearest_first(page):
-            other_copy = font.xref not in seen and strip_subset(font.name) == font_name
-            if other_copy:
+            is_other_copy = font.xref not in seen and strip_subset(font.name) == font_name
+            if is_other_copy:
                 seen.add(font.xref)  # one font object on several pages is one copy
                 yield font
 
     def _fonts_nearest_first(self, page: int) -> Iterator[PageFont]:
         """Every page's fonts, this page's, then the nearest page's, each read when reached."""
         page_count = self._driver.page_count()
-        for other in sorted(range(page_count), key=lambda other: (abs(other - page), other)):
-            yield from self._facts(other).fonts
+        nearest_first = sorted(
+            range(page_count), key=lambda other_page: (abs(other_page - page), other_page)
+        )
+        for other_page in nearest_first:
+            yield from self._facts(other_page).fonts
 
     def look_alike(self, span: Span) -> LookAlike:
         """The face we ship that stands in for the span's font, in its style."""

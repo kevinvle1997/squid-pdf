@@ -106,11 +106,13 @@ def _missing_with_google(path: str, font_file: bytes) -> list[str]:
 
 def test_googles_copy_is_measured_by_its_bytes_not_its_name(poppins_subset):
     """A process keeps what Google's copies draw, and must not answer for other bytes."""
-    lent = _missing_with_google(poppins_subset, POPPINS.read_bytes())
+    missing_with_google = _missing_with_google(poppins_subset, POPPINS.read_bytes())
     # Liberation Sans handed back under Poppins' name: other widths, so it lends nothing.
-    impostor = _missing_with_google(
+    missing_with_impostor = _missing_with_google(
         poppins_subset, face_bytes(FACES["Liberation Sans Regular"])
     )
 
-    assert_equal(lent, [], "letters Google's Poppins leaves missing")
-    assert_equal(impostor, ["Y", "a", "y"], "letters another font by its name leaves")
+    assert_equal(missing_with_google, [], "letters Google's Poppins leaves missing")
+    assert_equal(
+        missing_with_impostor, ["Y", "a", "y"], "letters another font by its name leaves"
+    )
