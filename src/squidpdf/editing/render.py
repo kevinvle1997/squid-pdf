@@ -31,7 +31,15 @@ from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import DrawnPage, ImageInfo, Notice, Region, Render, Rendered
+from squidpdf.editing.types import (
+    DrawnPage,
+    ImageInfo,
+    Notice,
+    Region,
+    Render,
+    Rendered,
+    SpanNotice,
+)
 
 __all__ = [
     "RenderController",
@@ -128,7 +136,7 @@ def said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
     redacted = [step.span for step in steps if isinstance(step, Erase)]
     verdicts = RedactionController(redacted).verdicts(engine)
     return [
-        Notice(span_id, Message("form_field_not_redacted"))
+        SpanNotice(span_id, Message("form_field_not_redacted"))
         for span_id, gone in verdicts.items()
         if not gone
     ]

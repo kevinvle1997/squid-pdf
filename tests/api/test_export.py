@@ -135,9 +135,8 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     font = "Liberation Serif Regular"
     expected = [
         {
-            "span_id": None,
+            "kind": "file",
             "detail": f"{font} ENTIÈRE",
-            "edit": None,
             "code": "face_not_trimmed",
             "params": {"font": font},
         }
@@ -238,8 +237,8 @@ def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(min
     response = _export(mine, doc, [], pages=[0])
 
     said = json.loads(response.headers[_NOTICES])
-    expected = [(None, "tags_dropped", words.sentence("tags_dropped"), None)]
-    got = [(n["span_id"], n["code"], n["detail"], n["edit"]) for n in said]
+    expected = [("file", "tags_dropped", words.sentence("tags_dropped"))]
+    got = [(n["kind"], n["code"], n["detail"]) for n in said]
     assert_equal(got, expected, "what came out other than asked")
     assert_equal(_opened(response).page_count, 1, "pages in the file")
 

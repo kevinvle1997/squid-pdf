@@ -281,6 +281,27 @@ export interface components {
             faces: components["schemas"]["FaceInfo"][];
         };
         /**
+         * FileNoticeInfo
+         * @description What saving did to the whole file other than asked, and why.
+         *
+         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+         */
+        FileNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "file";
+            /** Detail */
+            detail: string;
+        };
+        /**
          * FitInfo
          * @description Whether a replacement fits, the ways out if not, and which one was drawn.
          */
@@ -425,6 +446,29 @@ export interface components {
             edit: number;
         };
         /**
+         * InsertNoticeInfo
+         * @description An insert drawn other than asked, by its place in the list the browser sent, and why.
+         *
+         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+         */
+        InsertNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "insert";
+            /** Edit */
+            edit: number;
+            /** Detail */
+            detail: string;
+        };
+        /**
          * MessageInfo
          * @description A Message as JSON: the sentence's key as `code`, and the facts that fill it.
          */
@@ -435,26 +479,6 @@ export interface components {
             params: {
                 [key: string]: components["schemas"]["Param"];
             };
-        };
-        /**
-         * NoticeInfo
-         * @description An edit drawn other than asked, by its span or its place in the list, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-         */
-        NoticeInfo: {
-            /** Code */
-            code: string;
-            /** Params */
-            params: {
-                [key: string]: components["schemas"]["Param"];
-            };
-            /** Span Id */
-            span_id: string | null;
-            /** Detail */
-            detail: string;
-            /** Edit */
-            edit: number | null;
         };
         /**
          * PageInfo
@@ -546,7 +570,7 @@ export interface components {
             /** Skipped */
             skipped: components["schemas"]["SkippedInfo"][];
             /** Notices */
-            notices: components["schemas"]["NoticeInfo"][];
+            notices: (components["schemas"]["SpanNoticeInfo"] | components["schemas"]["InsertNoticeInfo"] | components["schemas"]["FileNoticeInfo"])[];
             /** Build */
             build: string;
             /** Expires At */
@@ -630,6 +654,29 @@ export interface components {
              */
             fidelity: "exact" | "approximate" | "substitute";
             why: components["schemas"]["MessageInfo"] | null;
+        };
+        /**
+         * SpanNoticeInfo
+         * @description A replace or a redaction drawn other than asked, by its span, and why.
+         *
+         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+         */
+        SpanNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "span";
+            /** Span Id */
+            span_id: string;
+            /** Detail */
+            detail: string;
         };
         /** @enum {string} */
         Strategy: "as-is" | "shrink" | "condense";

@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from typing import assert_never
+
 from squidpdf.core import words
 from squidpdf.editing.fit import FitReport
-from squidpdf.editing.types import FitInfo, Notice, NoticeInfo, Skipped, SkippedInfo
+from squidpdf.editing.types import (
+    FileNotice,
+    FitInfo,
+    InsertNotice,
+    Notice,
+    NoticeInfo,
+    Skipped,
+    SkippedInfo,
+    SpanNotice,
+)
 
 __all__ = [
     "fit_info",
@@ -33,9 +44,18 @@ def skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:
 
 
 def notice_info(notice: Notice, said_in: str) -> NoticeInfo:
-    """An edit drawn other than asked, as the browser gets it: why, in words and unsaid."""
-    return {
-        "span_id": notice.span_id,
-        "edit": notice.edit,
-        **words.said(notice.detail, said_in),
-    }
+    """What came out other than asked, as the browser gets it: why, in words and unsaid.
+
+    `kind` says what it's about, so the browser knows which name to read.
+    """
+    said = words.said(notice.detail, said_in)
+    # A replace or a redaction: named by its span.
+    if isinstance(notice, SpanNotice):
+        return {"kind": "span", "span_id": notice.span_id, **said}
+    # An insert, which has no span: named by its place in the list the browser sent.
+    if isinstance(notice, InsertNotice):
+        return {"kind": "insert", "edit": notice.edit, **said}
+    # The whole file: nothing to name.
+    if isinstance(notice, FileNotice):
+        return {"kind": "file", **said}
+    assert_never(notice)

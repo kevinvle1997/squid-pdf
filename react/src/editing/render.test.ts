@@ -149,7 +149,7 @@ describe("the render queue", () => {
   });
 
   test("what a reply says of a page goes with its strips; what it left out is of the whole list", async () => {
-    const drewOtherwise = aNotice("Drawn in Liberation Serif.", { span_id: ONE.id });
+    const drewOtherwise = aNotice("Drawn in Liberation Serif.", ONE.id);
     const leftOut = aSkipped(0, "An edit points at nothing.");
     queue.draw(readingOf(replace(ONE)));
     await settle();

@@ -30,7 +30,7 @@ from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
-from squidpdf.editing.types import Applied, Notice, Skipped, Strategy
+from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice, Strategy
 
 __all__ = [
     "Resolved",
@@ -354,15 +354,15 @@ def finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]:
         return []
     # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
     if isinstance(step, Redraw) and step.span.id in stuck:
-        return [Notice(step.span.id, Message("form_field_not_edited"))]
+        return [SpanNotice(step.span.id, Message("form_field_not_edited"))]
     # A replace: the new text drawn where the old was.
     if isinstance(step, Redraw):
         drawn = engine.draw(step.span, step.text, size=step.size, scale_x=step.scale_x)
-        return [Notice(step.span.id, said) for said in drawn]
+        return [SpanNotice(step.span.id, said) for said in drawn]
     # An insert: new text drawn where there was none.
     if isinstance(step, Place):
         drawn = engine.draw(step.span, step.span.text, turn=step.turn)
-        return [Notice(None, said, edit=step.position) for said in drawn]
+        return [InsertNotice(step.position, said) for said in drawn]
     assert_never(step)
 
 
