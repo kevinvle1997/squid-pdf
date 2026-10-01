@@ -2,13 +2,14 @@
 
 Every feature's controller is built the same way, with the app's workers (the
 pool of processes PDF work runs in), and every Reply goes out the same way: its
-status, its headers, and the media type the route names.
+status, its headers, and the media type the route names. A header of our own
+is listed in the route's `responses`, so the OpenAPI says it's there.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 import orjson
 from fastapi import Depends, Response
@@ -19,6 +20,7 @@ from squidpdf.core import Reply, Workers
 __all__ = [
     "controller_with_workers",
     "response_of",
+    "listed_header",
 ]
 
 
@@ -54,3 +56,8 @@ def response_of[T](
     if set_by is not None:
         response.raw_headers.extend(set_by.raw_headers)
     return response
+
+
+def listed_header(says: str) -> dict[str, Any]:
+    """A header a reply carries, as a route's `responses` lists it in the OpenAPI: text."""
+    return {"description": says, "schema": {"type": "string"}}

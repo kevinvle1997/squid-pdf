@@ -122,5 +122,5 @@ export function aSkipped(edit: number, detail: string): SkippedInfo {
 
 /** A Problem the server answered with. */
 export function aProblem(status: number, detail = "said"): ProblemInfo {
-  return { type: "problem", status, detail, code: "problem", params: {} };
+  return { type: "server_error", status, detail, code: "server_error", params: {} };
 }

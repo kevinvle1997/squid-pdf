@@ -22,4 +22,6 @@ export type FitInfo = Schemas["FitInfo"];
 export type NoticeInfo = Schemas["NoticeInfo"];
 export type SkippedInfo = Schemas["SkippedInfo"];
 export type ProblemInfo = Schemas["ProblemInfo"];
+/** What went wrong: a Problem the server sent, or the browser's own when nothing answered. */
+export type Problem = Omit<ProblemInfo, "type"> & { type: ProblemInfo["type"] | "unreachable" };
 export type Strategy = Schemas["Strategy"];

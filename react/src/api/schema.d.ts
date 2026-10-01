@@ -476,8 +476,11 @@ export interface components {
          *     `detail` is shown verbatim; `code` is always `type`, and `params` fill it.
          */
         ProblemInfo: {
-            /** Type */
-            type: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "invalid_request" | "method_not_allowed" | "no_such_page" | "not_a_pdf" | "not_found" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -682,6 +685,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description When the document now expires, in ISO 8601 and UTC; a 304 says it too */
+                    "Squid-Expires-At"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -820,6 +825,10 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Each edit left out, by its place in the list sent, joined by commas */
+                    "Squid-Skipped-Edits"?: string;
+                    /** @description What saving did to the whole file, as a JSON list of notices */
+                    "Squid-Notices"?: string;
                     [name: string]: unknown;
                 };
                 content: {

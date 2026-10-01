@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, NotRequired, TypedDict, cast
+from collections.abc import Iterator
+from typing import Annotated, Any, NotRequired, TypedDict, cast
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import Field
+from pydantic.json_schema import JsonDict
 from starlette import status
 from starlette.exceptions import HTTPException
 
@@ -31,13 +34,30 @@ __all__ = [
 ]
 
 
+def each_kind_of(problem: type[Problem]) -> Iterator[type[Problem]]:
+    """`problem` and every subclass under it, however deep."""
+    yield problem
+    for child in problem.__subclasses__():
+        yield from each_kind_of(child)
+
+
+def listing_every_type(schema: JsonDict) -> None:
+    """ProblemInfo's `type` in the OpenAPI: one of every Problem's, so the browser knows each.
+
+    Worked out when the OpenAPI is first asked for, once the app has imported
+    every feature, and so every Problem.
+    """
+    # Unpacked into a new list, which mypy reads as JSON: a list[str] is not one.
+    schema["enum"] = [*sorted({kind.type for kind in each_kind_of(Problem)})]
+
+
 class ProblemInfo(TypedDict):
     """A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
 
     `detail` is shown verbatim; `code` is always `type`, and `params` fill it.
     """
 
-    type: str
+    type: Annotated[str, Field(json_schema_extra=listing_every_type)]
     status: int
     detail: str
     code: str
