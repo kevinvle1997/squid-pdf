@@ -40,6 +40,7 @@ class Engine:
         self._driver = driver
         self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
         self._fonts = DocumentFonts(driver, google=self._google)
+        # Which font draws a line and what comes out: one answer the fit and the draw share.
         self._plans = LinePlanner(self._fonts, driver)
         self._writer = PageWriter(driver)
 

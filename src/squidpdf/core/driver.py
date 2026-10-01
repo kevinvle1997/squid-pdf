@@ -174,9 +174,9 @@ class PdfDriver(Protocol):
     ) -> None:
         """Write each run's codes in its font, from `origin` on, on top of the page.
 
-        For a font that has no letters of its own, only codes. Each run starts
-        where the last left the pen, moved on by that font's own widths. The
-        rest is as for `write_text`.
+        For a font that has no letters of its own, only codes (`CodeRun` says
+        what a code is). Each run starts where the last left the pen, moved on
+        by that font's own widths. The rest is as for `write_text`.
         """
         ...
 

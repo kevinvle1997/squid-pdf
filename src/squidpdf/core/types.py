@@ -109,9 +109,13 @@ class TextRun:
 
 @dataclass(frozen=True, slots=True)
 class CodeRun:
-    """Codes written in one go in one font, each as many bytes as that font's codes take.
+    """Codes written in one go in one font.
 
-    A line's runs follow each other: each starts where the one before left the pen.
+    A code is what a page writes to pick a shape from a font: one or two bytes,
+    as many as that font's codes take, not a letter. Most fonts look up a
+    letter's code themselves; a font with no letters of its own can only be
+    written in its codes. A line's runs follow each other: each starts where the
+    one before left the pen.
     """
 
     codes: bytes
