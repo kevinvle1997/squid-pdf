@@ -36,6 +36,7 @@ from squidpdf.documents.errors import Gone
 
 __all__ = [
     "ORIGINAL",
+    "open_to_analyse",
     "open_original",
     "root",
     "create",
@@ -87,13 +88,29 @@ def find(doc_id: str) -> tuple[Path, str] | None:
         return None
 
 
+def open_to_analyse(folder: Path) -> Engine:
+    """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
+
+    The one open that downloads Google's copies of its fonts, into the cache
+    beside the documents (the sweep passes over it). Every other open reads
+    that cache alone, so it lends what the analysis fetched and never waits.
+    """
+    fetch = google_fonts(folder=root() / "fonts")
+    try:
+        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
+    except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
+        raise Gone from exc
+
+
 def open_original(folder: Path) -> Engine:
     """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
 
-    Google's copy of a font lends the letters its copies in the file lack.
+    Google's copy of a font lends the letters its copies in the file lack, from
+    the cache the analysis filled: a render never waits on the network.
     """
+    fetch = google_fonts(folder=root() / "fonts", cache_only=True)
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=google_fonts())
+        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 

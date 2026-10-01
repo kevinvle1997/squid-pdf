@@ -30,15 +30,15 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     more than `max_pages`.
     """
     path = Path(folder)
-    with store.open_original(path) as eng:
+    with store.open_to_analyse(path) as engine:
         index = store.load_index(path)
         if index is None:
-            if eng.page_count() > max_pages:
+            if engine.page_count() > max_pages:
                 raise TooManyPages(max_pages)
-            index = eng.index()
+            index = engine.index()
             store.save_index(path, index)
-            store.save_pages(path, eng.pages())
-        reports = {report.span_id: report for report in eng.assess(index)}
+            store.save_pages(path, engine.pages())
+        reports = {report.span_id: report for report in engine.assess(index)}
         # Index order: the first span in each font speaks for it.
         first_span_of_font: dict[str, Span] = {}
         for span in index:
@@ -49,7 +49,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
                 "substitute": reports[span.id].substitute,
                 "why": why_of(reports[span.id], Fidelity.SUBSTITUTE),
                 "same_widths": reports[span.id].same_widths,
-                "glyphs": eng.widths(span),
+                "glyphs": engine.widths(span),
             }
             for span in first_span_of_font.values()
         ]
