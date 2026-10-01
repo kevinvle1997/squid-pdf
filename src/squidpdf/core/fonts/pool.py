@@ -22,9 +22,11 @@ from squidpdf.core.constants import (
 )
 from squidpdf.core.fonts.embedded import EmbeddedFont
 from squidpdf.core.fonts.google import GoogleFile
+from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
+    "Lent",
     "FontCopy",
     "CopyRun",
     "CodedRun",
@@ -50,13 +52,21 @@ type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy]]
 
 
 @dataclass(frozen=True, slots=True)
+class Lent:
+    """Where a copy lent from outside the file came from, and what the reader calls it."""
+
+    source: str  # what it's cached and added to a page as, e.g. Google's path and weight
+    name: str  # the font's own name, "Poppins-Bold", for a sentence that names it
+
+
+@dataclass(frozen=True, slots=True)
 class FontCopy:
     """One copy of a font in the file, opened, and each letter it really draws."""
 
     font: PageFont  # where the file keeps it
     embedded: EmbeddedFont
     widths: dict[str, float]  # each letter it really draws, and its width per 1000 em
-    google: GoogleFile | None = None  # set when it's Google's copy, not one in the file
+    lent: Lent | None = None  # set when it's lent from outside the file, as Google's copy is
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +222,8 @@ def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> Font
 
     Stands for the same font as the own copy, so it's checked like any other copy.
     """
-    return FontCopy(own.font, embedded, google_widths(embedded), file)
+    lent = Lent(file.source, strip_subset(own.font.name))
+    return FontCopy(own.font, embedded, google_widths(embedded), lent)
 
 
 def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
@@ -241,9 +252,9 @@ def in_glyph_list(ch: str) -> bool:
 
 
 def copy_source(copy: FontCopy) -> str:
-    """What tells one copy from another: Google's file, or its object and name in the file."""
-    if copy.google is not None:
-        return copy.google.source
+    """What tells one copy from another: where it was lent from, or its object and name."""
+    if copy.lent is not None:
+        return copy.lent.source
     return f"{copy.font.xref} {copy.font.name}"
 
 

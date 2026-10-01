@@ -20,7 +20,6 @@ from fontTools.ttLib import TTFont
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.embedded import FontUnusable
-from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import LinePlanner, coded_in
@@ -56,7 +55,7 @@ class PageNames:
 
 @dataclass(slots=True)
 class AddedFont:
-    """A font we added to the document whole, a face we ship or Google's copy of one.
+    """A font we added to the document whole: a face we ship, or a copy lent from outside.
 
     Cut down on save to the letters drawn in it.
     """
@@ -115,7 +114,7 @@ class PageWriter:
                     span, stand_in.face, text=stand_in.text, plans=plans, setting=setting
                 )
                 return [problem.reason, *said_left_out(stand_in.left_out)]
-            self._note_google_letters(drawn_in, plan.text)
+            self._note_lent_letters(drawn_in, plan.text)
             self._write(
                 span,
                 plan.text,
@@ -243,7 +242,8 @@ class PageWriter:
     def _add_copy(self, page: int, copy: FontCopy) -> str | FontUnusable:
         """Add a copy of a font to a page, and return its resource name, or why it failed.
 
-        Google's copy goes in whole, to be cut down on save like a face we ship.
+        A copy lent from outside the file goes in whole, to be cut down on save like a
+        face we ship.
         """
         # Named by its source, so copies of one font are told apart.
         resource = resource_name("F", copy_source(copy))
@@ -251,17 +251,17 @@ class PageWriter:
             font_resource = self._driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the stand-in draws instead
             return FontUnusable(problem.reason)
-        if copy.google is not None:
-            added_font = AddedFont(lent_name(copy), copy.embedded.file)
-            self._keep_whole(copy.google.source, added_font, xref=font_resource.xref)
+        if copy.lent is not None:
+            added_font = AddedFont(copy.lent.name, copy.embedded.file)
+            self._keep_whole(copy.lent.source, added_font, xref=font_resource.xref)
         return font_resource.resource
 
-    def _note_google_letters(self, own: PooledFont, text: str) -> None:
-        """Keep the letters Google's copy draws in `text`, for `save` to cut it down to."""
+    def _note_lent_letters(self, own: PooledFont, text: str) -> None:
+        """Keep the letters a lent copy draws in `text`, for `save` to cut it down to."""
         for ch in text:
             copy = own.copy_for(ch)
-            if copy.google is not None:
-                self._added[copy.google.source].drawn.add(ch)
+            if copy.lent is not None:
+                self._added[copy.lent.source].drawn.add(ch)
 
     def _face_resource(self, page: int, face: Face) -> str:
         """The resource name of a face we ship, added to the page on first use.
@@ -295,11 +295,6 @@ def resource_name(kind: str, source: str) -> str:
     """
     digest = hashlib.blake2s(source.encode(), digest_size=_NAME_DIGEST_SIZE)
     return kind + digest.hexdigest()
-
-
-def lent_name(copy: FontCopy) -> str:
-    """What the user reads for Google's copy of a font: the font's own name, "Poppins-Bold"."""
-    return strip_subset(copy.font.name)
 
 
 def runs_in(
