@@ -82,7 +82,7 @@ def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Expo
         saved = save_edited(engine, index, edits=edits, pages=pages, to=str(out))
         skipped = [skip.edit for skip in saved.applied.skipped]
         # Only the file's own notices: render already said apply's.
-        return Exported(out.read_bytes(), skipped, saved.notices)
+        return Exported(out.read_bytes(), skipped_edits=skipped, file_notices=saved.notices)
 
 
 def save_edited(
@@ -112,9 +112,9 @@ def save_edited(
 
 def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
     """What export says besides the file: edits left out, notices, and the language."""
-    said = [notice_info(Notice(None, message), said_in) for message in exported.notices]
+    said = [notice_info(Notice(None, message), said_in) for message in exported.file_notices]
     return {
-        _SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped),
+        _SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
         # ASCII only, so a header in any language stays valid.
         _NOTICES_HEADER: json.dumps(said, ensure_ascii=True),
         **words.language_headers(said_in),

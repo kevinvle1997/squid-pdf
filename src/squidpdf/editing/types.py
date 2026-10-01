@@ -18,6 +18,9 @@ if TYPE_CHECKING:  # fit.py imports this module for Strategy
 # How a too-long replacement is drawn; the names the user's options go by.
 type Strategy = Literal["as-is", "shrink", "condense"]
 
+# Why an edit was left out: what it points at isn't in the document.
+type SkipReason = Literal["bad_reference"]
+
 
 @dataclass(frozen=True, slots=True)
 class Skipped:
@@ -27,7 +30,7 @@ class Skipped:
     """
 
     edit: int
-    type: str
+    type: SkipReason
     detail: Message
 
 
@@ -78,13 +81,13 @@ class Rendered:
 class Exported:
     """What export made: the file, the edits it left out, and what else saving did.
 
-    `skipped` are places in the browser's edit list. `notices` are about the
-    whole file, so they name no span.
+    `skipped_edits` are places in the browser's edit list. `file_notices` are
+    about the whole file, so they name no span.
     """
 
     pdf: bytes
-    skipped: list[int]
-    notices: list[Message]
+    skipped_edits: list[int]
+    file_notices: list[Message]
 
 
 @dataclass(frozen=True, slots=True)
