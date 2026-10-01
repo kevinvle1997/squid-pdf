@@ -164,9 +164,8 @@ class Copy(TypedDict):
     reopened: str
     export_left_out: str
     options: dict[str, dict[str, str]]
-    approximate: dict[
-        ApproximateReason, str
-    ]  # each way a span can be approximate, by its `why` code
+    # Each way a span can be approximate, by its `why` code.
+    approximate: dict[ApproximateReason, str]
 
 
 class DocumentNoticeInfo(MessageInfo):
