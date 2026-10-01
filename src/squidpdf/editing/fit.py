@@ -55,8 +55,8 @@ class FitReport:
         parts: list[Message] = []
         # New text in a font that can't be used here: all of it is in the stand-in.
         if self.unavailable:
-            chosen: dict[str, Param] = {"chosen": self.unavailable, "font": self.stand_in}
-            parts.append(Message("chosen_unavailable", chosen))
+            params: dict[str, Param] = {"chosen": self.unavailable, "font": self.stand_in}
+            parts.append(Message("chosen_unavailable", params))
         # Letters its own font lacks but the stand-in has: the whole line switches.
         switched = [ch for ch in self.missing if ch not in self.left_out]
         if switched:
