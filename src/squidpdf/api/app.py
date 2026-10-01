@@ -14,9 +14,9 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Response
 from starlette import status
 
-from squidpdf.api import errors
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
+from squidpdf.api.errors.http import PROBLEM_RESPONSES, install
 from squidpdf.api.pool import WorkerPool, current
 from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import api as documents
@@ -51,10 +51,10 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url=None,
     )
-    errors.install(app)
-    app.include_router(documents.router, responses=errors.PROBLEM_RESPONSES)
-    app.include_router(editing.router, responses=errors.PROBLEM_RESPONSES)
-    app.include_router(editing.fonts_router, responses=errors.PROBLEM_RESPONSES)
+    install(app)
+    app.include_router(documents.router, responses=PROBLEM_RESPONSES)
+    app.include_router(editing.router, responses=PROBLEM_RESPONSES)
+    app.include_router(editing.fonts_router, responses=PROBLEM_RESPONSES)
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     upload_path = app.url_path_for(documents.upload.__name__)
     app.add_middleware(BodyLimit, streamed=[upload_path])

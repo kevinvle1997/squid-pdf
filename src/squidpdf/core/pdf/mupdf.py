@@ -20,9 +20,9 @@ from squidpdf.core.app.errors import (
     Damaged,
     Encrypted,
     ErrorController,
+    Failure,
     TooHeavy,
     machine_failure,
-    problem_maker,
 )
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
@@ -58,6 +58,7 @@ from squidpdf.core.types import (
 
 __all__ = [
     "BUILD",
+    "CORE_ERRORS",
     "open_pdf",
     "result_of",
     "face_widths",
@@ -102,6 +103,17 @@ _STRIP_LIFTS = (0.05, 0.2)
 _TAGS_KEY = "StructTreeRoot"
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 
+# MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
+# errors all derive from one, so the narrower ones go first.
+MUPDF_FAILURES = (
+    Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
+    # Out of memory, or a file it can't open: only its words tell which.
+    Failure(raised=MUPDF_SYSTEM_ERRORS, problem=machine_failure),
+    Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
+)
+# Core's own: every failure below the API, said as the Problem it means.
+CORE_ERRORS = ErrorController(MUPDF_FAILURES)
+
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 # Google's copies are part of it: a new pin lends other letters.
 _GOOGLE = GOOGLE_FONTS_COMMIT[:7]
@@ -121,17 +133,10 @@ def result_of[T](task: Callable[[], T]) -> T:
 
     A worker runs its task through this: MuPDF's exceptions hold a pointer, so
     they can't be sent back from another process, and they mean something a
-    person can be told. The ErrorController's MuPDF rows say what; anything
-    else goes up as it is.
+    person can be told. `MUPDF_FAILURES` says what; anything else goes up as
+    it is.
     """
-    mupdf_errors = ErrorController(
-        (
-            (MUPDF_TOO_HEAVY, problem_maker(TooHeavy)),  # past a limit of MuPDF's own
-            (MUPDF_SYSTEM_ERRORS, machine_failure),  # out of memory, or a file it can't open
-            (MUPDF_OWN_ERRORS, problem_maker(Damaged)),  # anything else it couldn't make out
-        )
-    )
-    return mupdf_errors.result_of(task)
+    return CORE_ERRORS.result_of(task)
 
 
 @cache

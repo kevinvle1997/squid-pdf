@@ -26,7 +26,8 @@ from pebble import ProcessPool
 
 from squidpdf.api import constants
 from squidpdf.api.errors import TooSlow
-from squidpdf.core import Problem, result_of
+from squidpdf.api.errors.http import API_ERRORS
+from squidpdf.core import result_of
 
 __all__ = [
     "WorkerPool",
@@ -56,7 +57,7 @@ class WorkerPool:
         is stopped. A short one finishes: stopping it would kill its worker, and
         the next task would wait for a new one. The PDF library's own failures
         come back as the Problems they mean (`core.result_of`), and pebble's by
-        `constants.WORKER_FAILURES`.
+        `API_ERRORS`, which holds `constants.WORKER_FAILURES`.
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -81,10 +82,8 @@ class WorkerPool:
                 job.cancel()  # does nothing to a task that has finished
             job.add_done_callback(log_unexpected)
             raise
-        try:
-            return job.result()
-        except constants.WORKER_FAILURE_TYPES as failure:  # raised by pebble, one per row
-            raise problem_of(failure) from failure
+        # pebble's failures as the Problems they mean; a bug goes up as it is, to be logged.
+        return API_ERRORS.result_of(job.result)
 
     def _given_back[T](self, job: asyncio.Task[T]) -> None:
         """A task is done, however it ended: its worker is free for the next."""
@@ -143,15 +142,6 @@ def log_unexpected[T](job: asyncio.Task[T]) -> None:
     message = "a task whose caller left failed"
     job.get_loop().call_exception_handler(
         {"message": message, "exception": failure, "task": job}
-    )
-
-
-def problem_of(failure: Exception) -> Problem:
-    """What one of pebble's failures means: the first row of `WORKER_FAILURES` it matches."""
-    return next(
-        worker_failure.problem()
-        for worker_failure in constants.WORKER_FAILURES
-        if isinstance(failure, worker_failure.raised)
     )
 
 

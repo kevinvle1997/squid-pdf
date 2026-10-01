@@ -13,6 +13,7 @@ from squidpdf.core.app.errors import (
     Damaged,
     Encrypted,
     ErrorController,
+    Failure,
     InvalidRequest,
     NotFound,
     Problem,
@@ -35,7 +36,7 @@ from squidpdf.core.fonts.catalog import CATALOG, FACES
 from squidpdf.core.fonts.google import google_fonts
 
 # The one import that names the driver: another PDF library is swapped in here.
-from squidpdf.core.pdf.mupdf import BUILD, face_widths, open_pdf, result_of
+from squidpdf.core.pdf.mupdf import BUILD, CORE_ERRORS, face_widths, open_pdf, result_of
 from squidpdf.core.pdf.samples import write_dense, write_sample
 from squidpdf.core.text.fidelity import Fidelity, FidelityReport, green_rate
 from squidpdf.core.types import (
@@ -71,6 +72,8 @@ __all__ = [
     "Damaged",
     "TooHeavy",
     "ErrorController",
+    "Failure",
+    "CORE_ERRORS",
     "face_widths",
     "Fidelity",
     "FidelityReport",

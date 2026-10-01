@@ -9,7 +9,15 @@ from functools import partial
 
 import pytest
 
-from squidpdf.core import ErrorController, InvalidRequest, NotFound, Problem, result_of, words
+from squidpdf.core import (
+    ErrorController,
+    Failure,
+    InvalidRequest,
+    NotFound,
+    Problem,
+    result_of,
+    words,
+)
 from tests.helpers import assert_equal, assert_in, assert_true
 
 
@@ -30,19 +38,11 @@ def test_a_problem_survives_the_trip_from_a_worker():
     assert_equal(back.detail, said, "the sentence after a pickle round trip")
 
 
-def _not_found(exc: Exception) -> Problem:
-    """A row's Problem, for a test: not found."""
-    return NotFound(debug=str(exc))
-
-
-def _invalid(exc: Exception) -> Problem:
-    """A row's Problem, for a test: a bad request."""
-    return InvalidRequest(debug=str(exc))
-
-
 def test_the_error_controller_asks_its_rows_in_order_and_a_layer_above_adds_its_own():
-    core_errors = ErrorController(((KeyError, _not_found),))
-    above = core_errors.with_rows((LookupError, _invalid), (KeyError, _invalid))
+    core_errors = ErrorController((Failure(KeyError, NotFound),))
+    above = core_errors.with_rows(
+        Failure(LookupError, InvalidRequest), Failure(KeyError, InvalidRequest)
+    )
     said = [
         (core_errors.problem_of(KeyError("k")).type, "core's own row"),
         (above.problem_of(KeyError("k")).type, "core's row, asked before the ones added"),
@@ -65,7 +65,7 @@ def test_the_error_controller_asks_its_rows_in_order_and_a_layer_above_adds_its_
 
 def test_a_failure_no_row_claims_goes_up_as_it_is_and_the_top_calls_it_a_server_error():
     """A worker sends it back as itself: a layer above may claim it, or log it as a bug."""
-    controller = ErrorController(((KeyError, _not_found),))
+    controller = ErrorController((Failure(KeyError, NotFound),))
     with pytest.raises(ZeroDivisionError):
         controller.result_of(partial(divmod, 1, 0))
     problem = controller.problem_of(ZeroDivisionError("a bug"))
