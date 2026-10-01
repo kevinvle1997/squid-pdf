@@ -12,7 +12,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Span, SpanIndex, new_text, open_pdf, words
+from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
@@ -24,12 +24,14 @@ from squidpdf.editing import (
     Redact,
     RedactionConflict,
     RedactionController,
+    RedactionFailed,
     Replace,
     apply_edits,
     insert_fit,
     replace_fit,
     resolve,
 )
+from squidpdf.editing.apply import page_order, redacted_in
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
 from tests.helpers import (
     assert_at_least,
@@ -127,7 +129,8 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     _apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    verified = RedactionController.from_edits(engine, edits, index).verdicts(engine)
+    redacted = redacted_in(resolve(engine, edits, index))
+    verified = RedactionController(redacted).verdicts(engine)
     assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())
@@ -635,3 +638,35 @@ def test_an_edit_of_a_kind_nothing_handles_fails_loudly(engine):
 
     with pytest.raises(AssertionError):
         _apply(engine, [restyle], engine.index())
+
+
+def _three_pages(path: str) -> str:
+    """Three pages, one line each; the middle one's line is the one to redact."""
+    doc = pymupdf.open()
+    for line in ("Cover page", "SECRET 4111 2222", "Appendix"):
+        doc.new_page().insert_text((72, 96), line, fontname="helv", fontsize=12)
+    doc.save(path)
+    return path
+
+
+def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_path, monkeypatch):
+    """Whoever renumbers the pages, the check reads the order worked out once.
+
+    The erase is what's broken here: the text really is still in the file, one
+    page earlier than it was, so reading it on its old page would pass.
+    """
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
+    path, out = _three_pages(str(tmp_path / "three.pdf")), str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [secret] = [span for span in index if span.text.startswith("SECRET")]
+        resolved = resolve(engine, [Redact(secret.id)], index)
+        order = page_order(resolved, [1, 2])  # the cover page left out
+        apply_edits(engine, resolved)
+        engine.keep_pages(order)
+        engine.save(out)
+
+    with pytest.raises(RedactionFailed) as failed:
+        RedactionController(redacted_in(resolved)).check_saved(out, pages=order)
+    said = words.sentence("redaction_failed").format(text=secret.text, page=2)
+    assert_equal(failed.value.detail, said, "what the user reads, naming its original page")

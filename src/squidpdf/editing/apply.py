@@ -30,6 +30,8 @@ __all__ = [
     "Erase",
     "Step",
     "resolve",
+    "page_order",
+    "redacted_in",
     "log_fits",
     "plan",
     "run",
@@ -148,6 +150,20 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
             case _:
                 assert_never(edit)
     return Resolved(list(latest.values()), inserts, skipped, page_count)
+
+
+def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
+    """The pages the saved file has, in order, by their numbers in the original.
+
+    Worked out once, so the pages kept and the redaction check read the same
+    order: `pages` when the request names them, else every page where it was.
+    """
+    return list(range(resolved.page_count)) if pages is None else list(pages)
+
+
+def redacted_in(resolved: Resolved) -> list[Span]:
+    """Every span whose last edit is a redaction, numbered as in the original."""
+    return [edited.span for edited in resolved.span_edits if isinstance(edited.edit, Redact)]
 
 
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:

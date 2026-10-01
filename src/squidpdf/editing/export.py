@@ -10,11 +10,11 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import Engine, InvalidRequest, Reply, SpanIndex, Workers, words
+from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply_edits, resolve
+from squidpdf.editing.apply import apply_edits, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
@@ -98,12 +98,18 @@ def save_edited(
     Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
     The same save and check whether a browser downloads the file or the CLI writes it.
     """
-    redactions = RedactionController.from_edits(engine, edits, index)
-    applied = apply_edits(engine, resolve(engine, edits, index))
-    notices = [] if pages is None else redactions.keep_pages(engine, pages)
+    resolved = resolve(engine, edits, index)
+    order = page_order(resolved, pages)
+    redactions = RedactionController(redacted_in(resolved))
+    applied = apply_edits(engine, resolved)
+    notices: list[Message] = []
+    # Pages left out or moved: renumbered after the last draw, in the order the check reads.
+    renumbered = order != list(range(resolved.page_count))
+    if renumbered:
+        notices += engine.keep_pages(order)
     notices += engine.save(to)
     try:
-        redactions.check_saved(to)
+        redactions.check_saved(to, pages=order)
     except RedactionFailed:  # the text is still in the file: never leave it lying around
         Path(to).unlink()
         raise
