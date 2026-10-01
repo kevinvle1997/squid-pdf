@@ -165,11 +165,11 @@ class MuPDFDriver(PdfFile):
 
         The clip is mapped into the rotated page, where MuPDF clips.
         """
-        pg = self._doc[page]
+        pdf_page = self._doc[page]
         box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
-        pix = pg.get_pixmap(
-            matrix=pg.derotation_matrix * pymupdf.Matrix(scale, scale),
-            clip=None if box is None else box * pg.rotation_matrix,
+        pix = pdf_page.get_pixmap(
+            matrix=pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale),
+            clip=None if box is None else box * pdf_page.rotation_matrix,
             alpha=False,
         )
         return pix.tobytes("png")

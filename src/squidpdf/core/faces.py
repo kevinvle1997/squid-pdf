@@ -60,8 +60,9 @@ def stand_in(look_alike: Face, text: str) -> StandIn:
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    runs = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
-    return min(runs, key=lambda run: len(run.left_out))  # min keeps the first of a tie
+    stand_ins = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
+    # min keeps the first of a tie
+    return min(stand_ins, key=lambda stand_in: len(stand_in.left_out))
 
 
 def try_face(face: Face, text: str) -> StandIn:

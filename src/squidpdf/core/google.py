@@ -180,8 +180,8 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | No
 def weight_of(font: str, descriptor: FontDescriptor | None) -> int:
     """A font's weight, 100 to 900: from its name, else its description, else regular."""
     _family, style_words = family_and_style(font)
-    words = style_words.replace(" ", "").lower()
-    named = next((weight for word, weight in _WEIGHT_WORDS if word in words), None)
+    style_text = style_words.replace(" ", "").lower()
+    named = next((weight for word, weight in _WEIGHT_WORDS if word in style_text), None)
     if named is not None:
         return named
     if descriptor is not None and descriptor.weight is not None:

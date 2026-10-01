@@ -55,8 +55,8 @@ def gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list[
     spaces = text.count(" ")
     if not spaces:
         return []
-    letters = font.width(text.replace(" ", ""), size)
-    return [(width - letters) / spaces / size] * spaces
+    letters_width = font.width(text.replace(" ", ""), size)
+    return [(width - letters_width) / spaces / size] * spaces
 
 
 def span_gaps(span: Span, font: FontProgram) -> list[float]:
@@ -93,9 +93,9 @@ def placed_words(
     each_gap = chain(gaps, repeat(usual))
     words: list[Word] = []
     pen = 0.0
-    for k, word in enumerate(text.split(" ")):
+    for position, word in enumerate(text.split(" ")):
         # Every piece after the first had a space before it.
-        if k:
+        if position:
             pen += next(each_gap) * size
         # Two spaces in a row leave an empty piece: nothing to draw.
         if word:
