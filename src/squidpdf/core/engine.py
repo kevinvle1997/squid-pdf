@@ -19,7 +19,7 @@ from squidpdf.core.fonts.document import DocumentFonts, FontSources
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.pdf.driver import PdfDriver
-from squidpdf.core.plan import DrawPlanner
+from squidpdf.core.plan import DrawPlan, DrawPlanner
 from squidpdf.core.text.fidelity import Fidelity, FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
@@ -115,9 +115,21 @@ class Engine:
         """Each letter the span's font really draws, and its width per 1000 em."""
         return self._plans.widths(span)
 
+    def plan_for(self, span: Span, text: str) -> DrawPlan:
+        """How `text` is drawn at this span: worked out once, for a fit to ask all it needs of.
+
+        Its `missing` and `left_out` are the letters a fit names; `width_of` and
+        `substitute` read it too. The askers below each work out a plan of their own.
+        """
+        return self._plans.plan_for(span, text)
+
+    def width_of(self, span: Span, plan: DrawPlan) -> float:
+        """How wide `plan`'s line renders, placed as `draw` places it, at this span's size."""
+        return self._plans.width_of(span, plan, size=span.size)
+
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
-        return self._plans.width_of(span, self._plans.plan_for(span, text), size=span.size)
+        return self.width_of(span, self.plan_for(span, text))
 
     def missing(self, span: Span, text: str) -> list[str]:
         """Characters no copy of this span's font in the file can actually draw.
@@ -132,9 +144,12 @@ class Engine:
         """Characters no font we have can draw here, so a redraw leaves them out."""
         return self._plans.plan_for(span, text).left_out
 
-    def substitute(self, span: Span, text: str) -> str:
-        """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
-        drawn_in = self._plans.plan_for(span, text).drawn_in
+    def substitute(self, span: Span, text: str, *, plan: DrawPlan | None = None) -> str:
+        """The face we ship that draws `text` when the span's own font can't: "Carlito Bold".
+
+        `plan` is `text`'s, when the caller has worked it out already.
+        """
+        drawn_in = (self.plan_for(span, text) if plan is None else plan).drawn_in
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
             return self._plans.substitute_for(span, text).face.name

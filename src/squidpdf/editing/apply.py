@@ -381,11 +381,12 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     # One that only lacks a letter can: the substitute draws that line, as for a replace.
     unusable = not shipped and not report.in_file
+    plan = engine.plan_for(span, insert.text)
     return FitReport(
         delta_pt=0.0,
-        missing=[] if unusable else engine.missing(span, insert.text),
-        left_out=engine.left_out(span, insert.text),
-        substitute=engine.substitute(span, insert.text),
+        missing=[] if unusable else plan.missing,
+        left_out=plan.left_out,
+        substitute=engine.substitute(span, insert.text, plan=plan),
         unavailable=insert.font if unusable else "",
     )
 
@@ -397,17 +398,18 @@ def replace_fit(
 
     `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
     """
-    missing = engine.missing(span, text)
+    # One plan for what's typed, asked everything the fit says; the original's is its own.
+    plan = engine.plan_for(span, text)
     original_width = engine.measure(span, span.text)
-    typed_width = engine.measure(span, text)
+    typed_width = engine.width_of(span, plan)
     delta_pt = typed_width - original_width
     options = options_for(delta_pt, original_width)
     return FitReport(
         delta_pt=round(delta_pt, 2),
-        missing=missing,
+        missing=plan.missing,
         options=options,
         strategy=strategy_drawn(strategy, options),
-        left_out=engine.left_out(span, text),
-        substitute=engine.substitute(span, text),
+        left_out=plan.left_out,
+        substitute=engine.substitute(span, text, plan=plan),
         asked=strategy,
     )
