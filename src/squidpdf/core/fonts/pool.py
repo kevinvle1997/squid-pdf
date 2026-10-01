@@ -22,7 +22,7 @@ from squidpdf.core.constants import (
 )
 from squidpdf.core.fonts.embedded import EmbeddedFont
 from squidpdf.core.fonts.google import GoogleFile
-from squidpdf.core.types import CodedFont, PageFont
+from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
     "FontCopy",
@@ -35,7 +35,6 @@ __all__ = [
     "lacks_a_keyboard_letter",
 ]
 
-_EM = 1000  # widths are given per 1000 em, as PDF font widths are
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.
 _GOOGLE_COPIES_KEPT = 32
 
@@ -196,7 +195,7 @@ def font_copy(font: PageFont, embedded: EmbeddedFont) -> FontCopy:
     if coded is not None:
         return FontCopy(font, embedded, {ch: coded.letters[ch].width for ch in letters})
     program = embedded.program
-    return FontCopy(font, embedded, {ch: program.advance(ch) * _EM for ch in letters})
+    return FontCopy(font, embedded, {ch: program.advance(ch) * EM for ch in letters})
 
 
 def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> FontCopy:
@@ -222,7 +221,7 @@ def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
         del _google_widths[next(iter(_google_widths))]
     program = embedded.program
     letters = [ch for ch in embedded.coverage.drawable() if in_glyph_list(ch)]
-    widths = {ch: program.advance(ch) * _EM for ch in letters}
+    widths = {ch: program.advance(ch) * EM for ch in letters}
     _google_widths[digest] = widths
     return widths
 

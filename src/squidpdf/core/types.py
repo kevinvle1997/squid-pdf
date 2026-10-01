@@ -185,6 +185,9 @@ class Span:
         return len(self.fragments) > 1
 
 
+EM = 1000  # widths are given per 1000 em, as PDF font widths are
+
+
 @dataclass(frozen=True, slots=True)
 class FontCode:
     """One code in a font, and what it draws."""

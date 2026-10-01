@@ -19,7 +19,7 @@ from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import CodedStretch, PooledFont
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
-from squidpdf.core.types import Face, Span
+from squidpdf.core.types import EM, Face, Span
 
 __all__ = [
     "letter_widths",
@@ -28,13 +28,12 @@ __all__ = [
     "coded_in",
 ]
 
-_EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
     """Each letter's width in `font`, per 1000 em, as the browser gets it."""
-    return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
+    return {ch: round(font.advance(ch) * EM, _WIDTH_DP) for ch in letters}
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +117,7 @@ class LinePlanner:
             widths = (
                 stretch.coded.letters[ch].width for stretch in by_code for ch in stretch.text
             )
-            return sum(widths) * size / _EM
+            return sum(widths) * size / EM
         _words, width = self.words_of(span, plan.text, font=self.program_of(plan), size=size)
         return width
 
@@ -164,7 +163,7 @@ class LinePlanner:
         # Written by letter, with no space of its own: a space is the page's usual gap.
         spaceless = pooled.own.embedded.coded is None and lacks_space(pooled)
         if spaceless:
-            widths[" "] = round(self.fonts.usual_gap(span, pooled) * _EM, _WIDTH_DP)
+            widths[" "] = round(self.fonts.usual_gap(span, pooled) * EM, _WIDTH_DP)
         return widths
 
 
