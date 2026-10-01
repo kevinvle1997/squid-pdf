@@ -25,6 +25,9 @@ from tests.helpers import assert_equal
 
 _SRC = Path(__file__).parents[2] / "src"
 _NOT_A_FACT = "debug"  # a Problem's technical why, for a developer: never in the sentence
+# What makes a Message of a key and its facts: Message itself, and the one maker that types
+# its key, as an approximate span's reason.
+_MESSAGE_MAKERS = ("Message", "why_approximate")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +82,7 @@ def _option_keys(node: ast.expr) -> list[str]:
 
 
 def _messages(where: str, tree: ast.Module) -> Iterator[_Said]:
-    """Every `Message(...)` in a module, and every `words.sentence("key", ...)`."""
+    """Every `Message(...)` in a module, or a maker's, and every `words.sentence("key")`."""
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and node.args):
             continue
@@ -87,7 +90,7 @@ def _messages(where: str, tree: ast.Module) -> Iterator[_Said]:
         first = node.args[0]
         if called == "sentence" and _text(first) is not None:  # sent unfilled, or printed
             yield _Said(str(_text(first)), None, where)
-        if called != "Message":
+        if called not in _MESSAGE_MAKERS:
             continue
         keys = [_text(first)] if _text(first) is not None else _option_keys(first)
         facts = _dict_keys(node.args[1]) if len(node.args) > 1 else frozenset()
