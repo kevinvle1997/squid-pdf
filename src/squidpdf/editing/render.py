@@ -25,7 +25,7 @@ from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply, log_fits
+from squidpdf.editing.apply import log_fits, plan, resolve, run
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
@@ -101,14 +101,15 @@ def draw_regions(
     pages = store.load_pages(path)
 
     with store.open_original(path) as engine:
-        fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
-        applied = apply(engine, edits, index, pages={region.page for region in regions})
+        resolved = resolve(engine, edits, index)
+        fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+        notices = run(engine, plan(engine, resolved, pages={region.page for region in regions}))
         images = [
             draw(engine, region, page=pages[region.page], scale=scales[region.page])
             for region in regions
         ]
 
-    return Rendered(images, fits, applied.skipped, applied.notices)
+    return Rendered(images, fits, resolved.skipped, notices)
 
 
 def check_regions(regions: list[Region], pages: list[Page]) -> None:

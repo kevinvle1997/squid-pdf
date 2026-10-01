@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 from squidpdf.core import words
-from squidpdf.editing import replace_fit
+from squidpdf.editing import Strategy, replace_fit
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 
@@ -55,3 +57,8 @@ def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
         words.render_all(fit.describe()) or "",
         "why the choice wasn't used",
     )
+
+
+def test_every_way_out_has_its_sentences():
+    """The browser sends a strategy by name, and its label and detail are keyed by it."""
+    assert_equal(set(get_args(Strategy.__value__)), set(words.OPTION_KEYS), "the ways out")

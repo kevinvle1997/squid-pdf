@@ -103,6 +103,16 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
     assert_in("text", response.json()["debug"], "what a developer reads")
 
 
+def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
+    """Never guessed as a replace: `kind` is what tells the edits apart."""
+    span = span_starting(doc, 0, "Made")
+
+    response = _render(mine, doc, [{"span_id": span["id"], "text": "x"}], [{"page": 0}])
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("kind", response.json()["debug"], "what a developer reads")
+
+
 @pytest.mark.parametrize(
     "region",
     [{"page": 0, "y0": 900, "y1": 1000}, {"page": 0, "y0": -100, "y1": -50}],

@@ -14,7 +14,7 @@ from squidpdf.core import Engine, InvalidRequest, Reply, SpanIndex, Workers, wor
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply
+from squidpdf.editing.apply import apply_edits, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
@@ -99,7 +99,7 @@ def save_edited(
     The same save and check whether a browser downloads the file or the CLI writes it.
     """
     redactions = RedactionController.from_edits(engine, edits, index)
-    applied = apply(engine, edits, index)
+    applied = apply_edits(engine, resolve(engine, edits, index))
     notices = [] if pages is None else redactions.keep_pages(engine, pages)
     notices += engine.save(to)
     try:

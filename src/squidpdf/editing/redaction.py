@@ -33,7 +33,7 @@ class RedactionController:
         redaction pointing at nothing raises BadReference: skipping it would leak.
         """
         span_edits = resolve(engine, edits, index).span_edits
-        return cls([span for edit, span in span_edits if isinstance(edit, Redact)])
+        return cls([edited.span for edited in span_edits if isinstance(edited.edit, Redact)])
 
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's text is gone from the document in memory, by span id.

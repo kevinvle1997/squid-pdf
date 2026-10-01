@@ -38,8 +38,9 @@ from squidpdf.editing import (
     Redact,
     RedactionFailed,
     Replace,
-    apply,
+    apply_edits,
     replace_fit,
+    resolve,
     save_edited,
 )
 from squidpdf.editing.edits import check_text
@@ -157,7 +158,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
             print(refusal, file=sys.stderr)
             return 1
 
-        applied = apply(engine, [Replace(span.id, args.text)], index)
+        applied = apply_edits(engine, resolve(engine, [Replace(span.id, args.text)], index))
         saved = engine.save(args.out)
         print(f"\n  {span.text!r} -> {args.text!r}")
         for said in [notice.detail for notice in applied.notices] + saved:

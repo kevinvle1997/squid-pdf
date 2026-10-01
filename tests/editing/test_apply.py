@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
+from typing import Literal, cast
 
 import pymupdf
 import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Span, new_text, open_pdf, words
+from squidpdf.core import Span, SpanIndex, new_text, open_pdf, words
 from squidpdf.core.coverage import Coverage
 from squidpdf.core.fonts import FACES, face_bytes, strip_subset
 from squidpdf.editing import (
+    Applied,
     BadReference,
     Edit,
     Insert,
@@ -22,9 +25,10 @@ from squidpdf.editing import (
     RedactionConflict,
     RedactionController,
     Replace,
-    apply,
+    apply_edits,
     insert_fit,
     replace_fit,
+    resolve,
 )
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
 from tests.helpers import (
@@ -45,6 +49,11 @@ _SAME_WIDTH_PT = 0.25  # how far a same-width redraw's ends may move: far below 
 _ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to the file
 # A TrueType font's hinting: code that snaps letters to the screen's pixels.
 _HINTING = ("fpgm", "prep", "cvt ")
+
+
+def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
+    """Apply `edits` on every page in memory, as export does before it saves."""
+    return apply_edits(engine, resolve(engine, edits, index))
 
 
 def _each_span(blocks: list[dict]) -> Iterator[dict]:
@@ -115,7 +124,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     span = next(s for s in index if s.page == 1)
     edits = [Redact(span.id)]
 
-    apply(engine, edits, index)
+    _apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
     verified = RedactionController.from_edits(engine, edits, index).verdicts(engine)
@@ -131,7 +140,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     # Editing it afterwards is refused: the order of a list must never bring it back.
     # The browser undoes a redaction by taking it out of the list.
     with pytest.raises(RedactionConflict):
-        apply(engine, [*edits, Replace(span.id, "Services")], index)
+        _apply(engine, [*edits, Replace(span.id, "Services")], index)
 
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
@@ -156,7 +165,7 @@ def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
     embedded = [s for s in index if s.page == EMBEDDED_PAGE]
     assert_at_least(len(embedded), 2, "spans in one font on page 2")
 
-    apply(engine, [Replace(s.id, s.text) for s in embedded], index)
+    _apply(engine, [Replace(s.id, s.text) for s in embedded], index)
     engine.save(str(tmp_path / "redrawn.pdf"))
 
     fonts = pymupdf.open(tmp_path / "redrawn.pdf")[EMBEDDED_PAGE].get_fonts()
@@ -176,7 +185,7 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
 
     with open_pdf(str(path)) as eng:
         index = eng.index()
-        apply(eng, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
+        _apply(eng, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
         eng.save(str(out))
 
     edited = pymupdf.open(out)[0]
@@ -197,7 +206,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
     span = next(s for s in index if s.page == EMBEDDED_PAGE and "14 March" in s.text)
     out, unedited = tmp_path / "accented.pdf", tmp_path / "unedited.pdf"
 
-    applied = apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026中")], index)
+    applied = _apply(engine, [Replace(span.id, "Delivery begins 14 Février 2026中")], index)
     said_on_save = engine.save(str(out))
     with open_pdf(pdf) as plain:
         plain.save(str(unedited))
@@ -232,7 +241,7 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
     span = _substituted(engine)
     out = tmp_path / "same.pdf"
 
-    apply(engine, [Replace(span.id, span.text)], index)
+    _apply(engine, [Replace(span.id, span.text)], index)
     said_on_save = engine.save(str(out))
 
     said = words.sentence("face_not_trimmed").format(font="Liberation Serif Regular")
@@ -255,7 +264,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
         index = eng.index()
         span = next(iter(index))
         fit = replace_fit(eng, span, "Hi Ωμέγα")
-        applied = apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
+        applied = _apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
         eng.save(out)
 
     greek = "Ω or μ or έ or γ or α"  # noqa: RUF001 (Greek on purpose: Caladea has none)
@@ -296,7 +305,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 12.0, font)
 
     fit = insert_fit(engine, insert)
-    apply(engine, [insert], engine.index())
+    _apply(engine, [insert], engine.index())
     engine.save(str(out))
 
     assert_equal(words.render_all(fit.describe()), said, "what the fit says")
@@ -315,7 +324,7 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
 
     fit = insert_fit(engine, insert)
     measured = engine.measure(_insert_as_span(insert), text)
-    apply(engine, [insert], engine.index())
+    _apply(engine, [insert], engine.index())
     engine.save(str(out))
 
     assert_equal(fit.missing, ["\u202f"], "what the fit says the face lacks")
@@ -337,11 +346,11 @@ def test_a_fitting_strategy_ends_the_run_where_the_original_did(
     span = _substituted(engine)
     out, as_is = tmp_path / f"{strategy}.pdf", tmp_path / "as-is.pdf"
 
-    apply(engine, [Replace(span.id, span.text + _LONGER, strategy)], index)
+    _apply(engine, [Replace(span.id, span.text + _LONGER, strategy)], index)
     engine.save(str(out))
     # The same text left long, for its height: the look-alike's box, not the original's.
     with open_pdf(pdf) as plain:
-        apply(plain, [Replace(span.id, span.text + _LONGER)], plain.index())
+        _apply(plain, [Replace(span.id, span.text + _LONGER)], plain.index())
         plain.save(str(as_is))
 
     drawn = _drawn(out, REFERENCED_PAGE, _LONGER)
@@ -359,7 +368,7 @@ def test_a_strategy_not_offered_is_drawn_as_is(engine, tmp_path):
     span = _substituted(engine)
     out = tmp_path / "long.pdf"
 
-    apply(engine, [Replace(span.id, span.text + _FAR_LONGER, "condense")], index)
+    _apply(engine, [Replace(span.id, span.text + _FAR_LONGER, "condense")], index)
     engine.save(str(out))
 
     drawn = _drawn(out, REFERENCED_PAGE, _FAR_LONGER)
@@ -381,7 +390,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
         signed,
     ]
     fit = insert_fit(engine, signed)
-    applied = apply(engine, edits, index)
+    applied = _apply(engine, edits, index)
     engine.save(str(out))
 
     skipped = [(s.edit, s.type, words.render(s.detail)) for s in applied.skipped]
@@ -400,7 +409,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
 def test_a_redaction_pointing_at_nothing_is_an_error(engine):
     """Skipping it would leave the text the user asked to remove."""
     with pytest.raises(BadReference):
-        apply(engine, [Redact("nosuchid")], engine.index())
+        _apply(engine, [Redact("nosuchid")], engine.index())
 
 
 def _three_lines(path: str, *, spacing: float, font: str) -> str:
@@ -437,7 +446,7 @@ def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, sp
             if edit == "replace"
             else Redact(middle.id)
         )
-        apply(engine, [change], index)
+        _apply(engine, [change], index)
         engine.save(out)
 
     left = pymupdf.open(out)[0].get_text()
@@ -459,7 +468,7 @@ def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
     with open_pdf(path) as engine:
         index = engine.index()
         [name] = [span for span in index if span.text == "Jones"]
-        apply(engine, [Redact(name.id)], index)
+        _apply(engine, [Redact(name.id)], index)
         engine.save(out)
 
     left = pymupdf.open(out)[0].get_text()
@@ -480,7 +489,7 @@ def test_an_edit_to_turned_text_leaves_the_lines_beside_it_alone(tmp_path):
     with open_pdf(path) as engine:
         index = engine.index()
         [middle] = [span for span in index if span.text == _LINES[1]]
-        apply(engine, [Redact(middle.id)], index)
+        _apply(engine, [Redact(middle.id)], index)
         engine.save(out)
 
     left = pymupdf.open(out)[0].get_text()
@@ -510,11 +519,11 @@ def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
     with open_pdf(pdf) as engine:
         index = engine.index()
         [made] = [s for s in index if s.text.startswith("Made on")]
-        apply(engine, [Replace(made.id, _ROUND_ONE)], index)
+        _apply(engine, [Replace(made.id, _ROUND_ONE)], index)
         engine.save(first)
     with open_pdf(first) as engine:
         signed = Insert(REFERENCED_PAGE, (72, 200), _ROUND_TWO, size=11, font=_ROUND_FACE)
-        apply(engine, [signed], engine.index())
+        _apply(engine, [signed], engine.index())
         engine.save(second)
 
     lines = pymupdf.open(second)[REFERENCED_PAGE].get_text().splitlines()
@@ -532,7 +541,7 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     out = tmp_path / "out.pdf"
 
     fit = replace_fit(engine, span, text)
-    applied = apply(engine, [Replace(span.id, text)], index)
+    applied = _apply(engine, [Replace(span.id, text)], index)
     engine.save(str(out))
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Invoices")
@@ -579,7 +588,7 @@ def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
             if edit == "replace"
             else Redact(line.id)
         )
-        apply(engine, [change], index)
+        _apply(engine, [change], index)
         engine.save(out)
 
     left = [link["uri"] for link in pymupdf.open(out)[0].get_links()]
@@ -595,7 +604,7 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, rotation):
     doc.save(path)
     with open_pdf(path) as engine:
         signed = Insert(0, (200, 400), "Signed", size=12, font="Liberation Sans Regular")
-        apply(engine, [signed], engine.index())
+        _apply(engine, [signed], engine.index())
         engine.save(out)
 
     page = pymupdf.open(out)[0]
@@ -605,3 +614,24 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, rotation):
     assert_equal(
         (round(shown.x, 2), round(shown.y, 2)), (1.0, 0.0), "the way it reads, as shown"
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Restyle:
+    """An edit kind the code doesn't know: a span restyled. The browser can't send it."""
+
+    span_id: str
+    text: str
+    kind: Literal["restyle"] = "restyle"
+
+
+def test_an_edit_of_a_kind_nothing_handles_fails_loudly(engine):
+    """It used to be erased and never redrawn, and nothing said so.
+
+    mypy names every place a new kind must be handled; this is the same, at run time.
+    """
+    span = _substituted(engine)
+    restyle = cast(Edit, _Restyle(span.id, span.text))
+
+    with pytest.raises(AssertionError):
+        _apply(engine, [restyle], engine.index())

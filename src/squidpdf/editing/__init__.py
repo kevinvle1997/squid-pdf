@@ -7,12 +7,13 @@ module owns both.
 from __future__ import annotations
 
 from squidpdf.editing.apply import (
-    apply,
+    apply_edits,
     insert_fit,
     log_fits,
     replace_fit,
+    resolve,
 )
-from squidpdf.editing.edits import Edit, Insert, Redact, Replace
+from squidpdf.editing.edits import Edit, Insert, PageEdit, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict, RedactionFailed
 from squidpdf.editing.export import ExportController, save_edited
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
@@ -25,12 +26,15 @@ __all__ = [
     "RedactionFailed",
     "RedactionController",
     "ExportController",
-    "apply",
+    "resolve",
+    "apply_edits",
     "save_edited",
     "replace_fit",
     "insert_fit",
     "log_fits",
     "Edit",
+    "SpanEdit",
+    "PageEdit",
     "Insert",
     "Redact",
     "Replace",
