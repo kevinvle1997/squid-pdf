@@ -12,14 +12,16 @@ is this module's whole job:
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import assert_never
 
 from squidpdf.core import Message
+from squidpdf.core.constants import TURN_TOLERANCE
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import FACES
-from squidpdf.core.types import Span, SpanIndex, new_text
+from squidpdf.core.types import Rect, Span, SpanIndex, new_text
+from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
@@ -202,17 +204,19 @@ def fit_of(engine: Engine, edited: EditedSpan) -> FitReport | None:
 
 
 def plan(
-    engine: Engine, resolved: Resolved, *, pages: Collection[int] | None = None
+    engine: Engine, resolved: Resolved, *, strips: Mapping[int, list[Rect]] | None = None
 ) -> list[Step]:
-    """The steps the edits on `pages` take, worked out before anything is erased.
+    """The steps the edits shown take, worked out before anything is erased.
 
-    Every page's edits when `pages` is None.
+    `strips` are the rows drawn, by page, or None to draw every edit. A span
+    edit shows where its rows meet a strip; turned text, whose redraw is level,
+    and inserts show anywhere on a drawn page.
     """
     shown = [
-        edited for edited in resolved.span_edits if pages is None or edited.span.page in pages
+        edited for edited in resolved.span_edits if strips is None or shows(strips, edited.span)
     ]
     placed = [
-        listed for listed in resolved.inserts if pages is None or listed.insert.page in pages
+        listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
     ]
     # New text reads upright as the page is shown: turned by its page's own turn.
     turns = [page.rotation for page in engine.pages()] if placed else []
@@ -223,6 +227,21 @@ def plan(
             for listed in placed
         ),
     ]
+
+
+def shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
+    """Whether an edit to `span` shows in the strips drawn on its page."""
+    # .get: a page with no strip drawn on it shows no edit.
+    on_page = strips.get(span.page, [])
+    # Turned text is redrawn level, so its box says little of where: anywhere on a drawn page.
+    _along, rise = span.direction
+    turned = abs(rise) > TURN_TOLERANCE
+    if on_page and turned:
+        return True
+    # Letters drawn at the span's size can reach a little past its box: an accent, a tail.
+    reach = span.size * REDRAW_REACH_EM
+    top, bottom = span.bbox.y0 - reach, span.bbox.y1 + reach
+    return any(strip.y0 < bottom and top < strip.y1 for strip in on_page)
 
 
 def step_for(engine: Engine, edited: EditedSpan) -> Step:

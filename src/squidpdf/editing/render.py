@@ -92,7 +92,7 @@ class RenderController:
 def draw_regions(
     folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
 ) -> Rendered:
-    """Apply the edits on the drawn pages, then draw each region. Runs in a worker.
+    """Apply the edits the regions show, then draw each region. Runs in a worker.
 
     `scales` is each page's pixels per point, the same as its page image.
     """
@@ -101,11 +101,14 @@ def draw_regions(
     if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
     pages = store.load_pages(path)
+    strips: dict[int, list[Rect]] = {}
+    for region in regions:
+        strips.setdefault(region.page, []).append(strip_of(region, pages[region.page]))
 
     with store.open_original(path) as engine:
         resolved = resolve(engine, edits, index)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
-        steps = plan(engine, resolved, pages={region.page for region in regions})
+        steps = plan(engine, resolved, strips=strips)
         notices = run(engine, steps) + said_unredacted(engine, steps)
         images = [
             draw(engine, region, page=pages[region.page], scale=scales[region.page])
