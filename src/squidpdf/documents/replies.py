@@ -36,12 +36,12 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
     server. The rest is read as usual: the pages' sizes and the fonts, small
     beside them.
     """
-    analysis: AnalysisFacts = orjson.loads(kept.facts)
+    facts: AnalysisFacts = orjson.loads(kept.facts)
     body: Document = {
-        "build": analysis["build"],
-        "pages": analysis["pages"],
+        "build": facts["build"],
+        "pages": facts["pages"],
         "spans": [],  # sent as kept, below
-        "fonts": [font_info(font, said_in) for font in analysis["fonts"]],
+        "fonts": [font_info(font, said_in) for font in facts["fonts"]],
         "id": doc_id,
         "expires_at": time_of(expires_at),
         "fit": {

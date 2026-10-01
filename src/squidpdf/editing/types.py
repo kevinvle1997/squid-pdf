@@ -65,9 +65,9 @@ class Region:
 
 @dataclass(frozen=True, slots=True)
 class DrawnPage:
-    """A page render draws on: its size, and its pixels per point, its page image's."""
+    """A page render draws on, and its pixels per point, its page image's."""
 
-    size: Page
+    page: Page
     scale: float
 
 

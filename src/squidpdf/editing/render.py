@@ -64,9 +64,9 @@ class RenderController:
         check_regions(regions, pages)
         # Only the pages drawn go to the worker, so it needn't read the page list again,
         # each at its page image's scale, so a strip and the image line up.
-        sizes = {region.page: pages[region.page] for region in regions}
         drawn_pages = {
-            page: DrawnPage(size, page_scale(size, scale)) for page, size in sizes.items()
+            region.page: DrawnPage(pages[region.page], page_scale(pages[region.page], scale))
+            for region in regions
         }
         rendered = await self._enqueue_draw_regions(
             doc.folder, edits=edits, regions=regions, drawn_pages=drawn_pages
@@ -105,7 +105,7 @@ def draw_regions(
     strips: dict[int, list[Rect]] = {}
     for region in regions:
         strips.setdefault(region.page, []).append(
-            strip_of(region, drawn_pages[region.page].size)
+            strip_of(region, drawn_pages[region.page].page)
         )
 
     with store.open_original(path) as engine:
@@ -175,7 +175,7 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
 
 def draw(engine: Engine, region: Region, *, drawn_page: DrawnPage) -> ImageInfo:
     """One region as a base64 PNG: the whole page, or a full-width strip of it."""
-    page, scale = drawn_page.size, drawn_page.scale
+    page, scale = drawn_page.page, drawn_page.scale
     whole_page = region.y0 is None and region.y1 is None
     if whole_page:
         png = engine.page_image(region.page, scale)
