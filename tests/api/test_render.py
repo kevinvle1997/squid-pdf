@@ -52,8 +52,8 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
 
 def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     """Else a strip laid over the page image would show a seam."""
-    edited = span_starting(doc, 1, "Delivery")
-    edit = {"kind": "replace", "span_id": edited["id"], "text": "Delivery begins 2 March"}
+    delivery = span_starting(doc, 1, "Delivery")
+    edit = {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
     rendered = _render(mine, doc, [edit], [strip, {"page": 0}]).json()["images"]

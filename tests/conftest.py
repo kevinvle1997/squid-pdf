@@ -171,8 +171,8 @@ def _new_object(doc: pymupdf.Document, source: str = "<<>>") -> int:
 @pytest.fixture
 def engine(pdf):
     """The sample, open in the engine for one test."""
-    with open_pdf(pdf) as eng:
-        yield eng
+    with open_pdf(pdf) as engine:
+        yield engine
 
 
 PSEUDO = "qps"  # a tag for local use: no real language will ever have it

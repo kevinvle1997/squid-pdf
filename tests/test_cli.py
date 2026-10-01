@@ -20,8 +20,8 @@ from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, 
 
 def _span_id(pdf: str, needle: str) -> str:
     """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
-    with open_pdf(pdf) as eng:
-        return next(s.id for s in eng.index() if needle in s.text)
+    with open_pdf(pdf) as engine:
+        return next(s.id for s in engine.index() if needle in s.text)
 
 
 def _text(path) -> str:
@@ -172,11 +172,11 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
 def test_an_unknown_span_id_fails_and_points_at_spans(pdf, capsys):
     code = main(["edit", pdf, "nope", "text"])
 
-    out = capsys.readouterr().err
+    err = capsys.readouterr().err
     assert_equal(code, 1, "exit code of `squidpdf edit` with an unknown span id")
-    assert_in(words.sentence("no_span"), out, "the unknown-span error")
-    assert_in("nope", out, "the unknown-span error names the id")
-    assert_in("squidpdf spans", out, "the unknown-span error names the command to run")
+    assert_in(words.sentence("no_span"), err, "the unknown-span error")
+    assert_in("nope", err, "the unknown-span error names the id")
+    assert_in("squidpdf spans", err, "the unknown-span error names the command to run")
 
 
 def test_report_rates_each_file_and_carries_on_past_a_bad_one(pdf, tmp_path, capsys):
@@ -211,8 +211,8 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
     code = main(["fixture", str(out_pdf), "--pages", "3"])
 
     assert_equal(code, 0, "exit code of `squidpdf fixture --pages`")
-    with open_pdf(str(out_pdf)) as eng:
-        spans = eng.index()
+    with open_pdf(str(out_pdf)) as engine:
+        spans = engine.index()
     assert_equal({span.page for span in spans}, {0, 1, 2}, "the pages the spans are on")
     assert_true(len(spans) > 3 * 40, f"a contract's page is full, got {len(spans)} spans")
     assert_in("This agreement is made on 14 March 2026 between", _text(out_pdf), "page 1")

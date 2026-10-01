@@ -115,13 +115,13 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
     out = str(tmp_path / "redrawn.pdf")
     # Drawn with nothing asked first: remove() must read the font before erasing it.
-    with open_pdf(path) as eng:
-        span = next(iter(eng.index()))
-        eng.remove([span])
-        eng.draw(span, "Hello again")
-        eng.save(out)
-    with open_pdf(path) as eng:
-        [report] = eng.assess(eng.index())
+    with open_pdf(path) as engine:
+        span = next(iter(engine.index()))
+        engine.remove([span])
+        engine.draw(span, "Hello again")
+        engine.save(out)
+    with open_pdf(path) as engine:
+        [report] = engine.assess(engine.index())
 
     assert_equal((report.substitute, report.same_widths), (face, same_widths), "the report")
     [drawn] = _drawn(out)
@@ -132,12 +132,12 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
 def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_path):
     """Called exact, every redraw in it came out as empty boxes."""
     out = tmp_path / "redrawn.pdf"
-    with open_pdf(symbolic) as eng:
-        span = next(iter(eng.index()))
-        [report] = eng.assess(eng.index())
-        eng.remove([span])
-        eng.draw(span, "ABBA")
-        eng.save(str(out))
+    with open_pdf(symbolic) as engine:
+        span = next(iter(engine.index()))
+        [report] = engine.assess(engine.index())
+        engine.remove([span])
+        engine.draw(span, "ABBA")
+        engine.save(str(out))
 
     assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
     assert_equal(
@@ -152,12 +152,12 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
 def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path):
     """Its program is garbage. Judging the page crashed, and took the whole upload with it."""
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(corrupt) as eng:
-        span = next(iter(eng.index()))
-        [report] = eng.assess(eng.index())
-        eng.remove([span])
-        eng.draw(span, "ABBA")
-        eng.save(out)
+    with open_pdf(corrupt) as engine:
+        span = next(iter(engine.index()))
+        [report] = engine.assess(engine.index())
+        engine.remove([span])
+        engine.draw(span, "ABBA")
+        engine.save(out)
 
     expected = (Fidelity.SUBSTITUTE, words.sentence("font_unreadable"))
     assert_equal((report.state, _said(report)), expected, "fidelity, and why")
@@ -172,12 +172,12 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     the Type0, turned; and the old text is gone from the saved file (Rule 4).
     """
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(coded) as eng:
-        span = next(iter(eng.index()))
-        [report] = eng.assess(eng.index())
-        eng.remove([span])
-        eng.draw(span, "BA AB")
-        eng.save(out)
+    with open_pdf(coded) as engine:
+        span = next(iter(engine.index()))
+        [report] = engine.assess(engine.index())
+        engine.remove([span])
+        engine.draw(span, "BA AB")
+        engine.save(out)
 
     assert_equal(report.state, Fidelity.EXACT, "fidelity of a span its own font draws by code")
     [before] = _drawn(coded)
@@ -195,22 +195,22 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
 
 def test_widths_by_code_come_from_the_font_dict(coded):
     """The browser's live check reads widths(), the server measure(); both read /Widths, /W."""
-    with open_pdf(coded) as eng:
-        span = next(iter(eng.index()))
-        assert_equal(eng.widths(span), _ADVANCES, "letters it draws, to their advances")
+    with open_pdf(coded) as engine:
+        span = next(iter(engine.index()))
+        assert_equal(engine.widths(span), _ADVANCES, "letters it draws, to their advances")
         width = sum(_ADVANCES[ch] for ch in "BA AB") * _SIZE / _EM
-        assert_equal(round(eng.measure(span, "BA AB"), 4), width, "measured width")
+        assert_equal(round(engine.measure(span, "BA AB"), 4), width, "measured width")
 
 
 def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_path):
     """C's outline was emptied and D has no code: the fit says so, and nothing mixes faces."""
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(coded) as eng:
-        span = next(iter(eng.index()))
-        missing = eng.missing(span, "ABCD")
-        eng.remove([span])
-        eng.draw(span, "ABC")
-        eng.save(out)
+    with open_pdf(coded) as engine:
+        span = next(iter(engine.index()))
+        missing = engine.missing(span, "ABCD")
+        engine.remove([span])
+        engine.draw(span, "ABC")
+        engine.save(out)
 
     assert_equal(missing, ["C", "D"], "letters it can't draw")
     [drawn] = _drawn(out)
@@ -249,14 +249,14 @@ def _inked(page: pymupdf.Page, box: pymupdf.Rect) -> bool:
 
 def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     """Redraw page 0's line as _POOLED: what the fit says is missing, and new text's state."""
-    with open_pdf(path) as eng:
-        span = _first_span(eng)
-        missing = eng.missing(span, _POOLED)
+    with open_pdf(path) as engine:
+        span = _first_span(engine)
+        missing = engine.missing(span, _POOLED)
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
-        [report] = eng.assess(SpanIndex([new]))
-        eng.remove([span])
-        eng.draw(span, _POOLED)
-        eng.save(out)
+        [report] = engine.assess(SpanIndex([new]))
+        engine.remove([span])
+        engine.draw(span, _POOLED)
+        engine.save(out)
     return missing, report
 
 
@@ -294,11 +294,11 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     fonts = doc[0].get_fonts() + doc[1].get_fonts()
     names = {strip_subset(name) for _xref, _ext, _kind, name, *_ in fonts}
     assert_equal(len(names), 1, "names the fixture's two copies go by, prefix aside")
-    with open_pdf(merged_unlike) as eng:
-        span = _first_span(eng)
-        missing = eng.missing(span, _POOLED)
-        listed = eng.widths(span)
-        why = _why_new(eng, span, _POOLED)
+    with open_pdf(merged_unlike) as engine:
+        span = _first_span(engine)
+        missing = engine.missing(span, _POOLED)
+        listed = engine.widths(span)
+        why = _why_new(engine, span, _POOLED)
 
     assert_equal(missing, ["Y", "a", "y"], "letters Times lacks")
     assert_not_in("Y", listed, "letters the browser is told Times draws")
@@ -307,10 +307,10 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
 
 def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
-    with open_pdf(merged_apart) as eng:
-        span = _first_span(eng)
-        missing = eng.missing(span, "Yak Hello")
-        why = _why_new(eng, span, "Yak Hello")
+    with open_pdf(merged_apart) as engine:
+        span = _first_span(engine)
+        missing = engine.missing(span, "Yak Hello")
+        why = _why_new(engine, span, "Yak Hello")
 
     assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
     assert_equal(why, "copy_too_few_shared", "why new text in it is a substitute")
@@ -318,10 +318,10 @@ def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
 
 def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
     """The browser's live fit reads widths(), the server measure(): pooled, they must agree."""
-    with open_pdf(merged) as eng:
-        own, other = list(eng.index())
-        widths, others = eng.widths(own), eng.widths(other)
-        measured = eng.measure(own, _POOLED)
+    with open_pdf(merged) as engine:
+        own, other = list(engine.index())
+        widths, others = engine.widths(own), engine.widths(other)
+        measured = engine.measure(own, _POOLED)
 
     every_letter = set("".join(MERGED_TEXTS))
     assert_equal(every_letter - widths.keys(), set(), "letters the pooled list leaves out")

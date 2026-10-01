@@ -148,18 +148,20 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     """What verified redaction is for: covered text is still in the file."""
-    with open_pdf(pdf) as eng:
-        span = next(iter(eng.index()))
+    with open_pdf(pdf) as engine:
+        span = next(iter(engine.index()))
     covered = tmp_path / "covered.pdf"
     doc = pymupdf.open(pdf)
     box = span.bbox
     doc[span.page].draw_rect(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1), fill=(0, 0, 0))
     doc.save(covered)
 
-    with open_pdf(str(covered)) as eng:
-        assert_equal(eng.still_there([span]), [span], "text under a black box, still there")
-        eng.remove([span])
-        assert_equal(eng.still_there([span]), [], "the same text really removed, still there")
+    with open_pdf(str(covered)) as engine:
+        assert_equal(engine.still_there([span]), [span], "text under a black box, still there")
+        engine.remove([span])
+        assert_equal(
+            engine.still_there([span]), [], "the same text really removed, still there"
+        )
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
@@ -398,8 +400,8 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
 
     skipped = [(s.edit, s.type, words.render(s.detail)) for s in applied.skipped]
     assert_equal(skipped, [(0, "bad_reference", words.sentence("no_span"))], "skipped")
-    edited = pymupdf.open(out)[REFERENCED_PAGE].get_text()
-    assert_in("2 April 2026", edited, "the edit that was good")
+    edited_text = pymupdf.open(out)[REFERENCED_PAGE].get_text()
+    assert_in("2 April 2026", edited_text, "the edit that was good")
     # What the fit promised is what was drawn: Caveat, 中 left out and said so.
     left_out = words.sentence("left_out").format(letters="中")
     assert_equal(_said(applied.notices), [(None, left_out, 2)], "what render says")
