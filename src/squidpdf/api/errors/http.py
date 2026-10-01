@@ -73,10 +73,10 @@ def from_http(exc: Exception) -> Problem:
     """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
     failure = cast(HTTPException, exc)  # _ADOPT hands it only these
     # .get: most of Starlette's failures are the browser's, said as a bad request.
-    problem = _HTTP_PROBLEMS.get(failure.status_code)
-    if problem is None:
+    problem_type = _HTTP_PROBLEMS.get(failure.status_code)
+    if problem_type is None:
         return InvalidRequest(debug=str(failure.detail))
-    return problem()
+    return problem_type()
 
 
 # Exceptions from outside our code, and the Problem each one means.

@@ -84,7 +84,7 @@ def test_what_is_measured_is_what_is_drawn(gapped, tmp_path, line, text):
     drawn_to = _letters(out, span)[-1][2] - span.origin[0]
     assert_close(drawn_to, measured, _SAME_PT, "where it was drawn to, against the measure")
     words = text.split()
-    letters = sum(len(word) for word in words)
-    expected = (letters * _ADVANCE_EM + (len(words) - 1) * GAP_EM) * GAPPED_SIZE
+    letter_count = sum(len(word) for word in words)
+    expected = (letter_count * _ADVANCE_EM + (len(words) - 1) * GAP_EM) * GAPPED_SIZE
     assert_close(measured, expected, _SAME_PT, "the measure")
     assert_equal(widths[" "], GAP_EM * _EM, "a space's width, as the browser checks with it")

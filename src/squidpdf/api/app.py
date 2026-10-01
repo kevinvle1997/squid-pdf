@@ -51,8 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(editing.router, responses=errors.PROBLEM_RESPONSES)
     app.include_router(editing.fonts_router, responses=errors.PROBLEM_RESPONSES)
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
-    uploads = app.url_path_for(documents.upload.__name__)
-    app.add_middleware(BodyLimit, streamed=[uploads])
+    upload_path = app.url_path_for(documents.upload.__name__)
+    app.add_middleware(BodyLimit, streamed=[upload_path])
     # Outermost, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 

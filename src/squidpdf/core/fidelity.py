@@ -50,5 +50,5 @@ def green_rate(reports: list[FidelityReport]) -> float:
     """
     if not reports:
         return 0.0
-    exact = sum(1 for report in reports if report.state is Fidelity.EXACT)
-    return exact / len(reports)
+    exact_count = sum(1 for report in reports if report.state is Fidelity.EXACT)
+    return exact_count / len(reports)

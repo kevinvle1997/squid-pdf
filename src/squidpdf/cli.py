@@ -109,14 +109,14 @@ def cmd_spans(args: argparse.Namespace) -> int:
 def summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
-    count = {state: 0 for state in Fidelity}
+    counts = {state: 0 for state in Fidelity}
     for report in reports:
-        count[report.state] += 1
+        counts[report.state] += 1
     colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
     print(
-        f"\n  {len(reports)} spans · {count[Fidelity.EXACT]} exact"
-        f" · {count[Fidelity.APPROXIMATE]} approximate"
-        f" · {count[Fidelity.SUBSTITUTE]} substitute"
+        f"\n  {len(reports)} spans · {counts[Fidelity.EXACT]} exact"
+        f" · {counts[Fidelity.APPROXIMATE]} approximate"
+        f" · {counts[Fidelity.SUBSTITUTE]} substitute"
         f" · {colour}{rate:.0%} keep the original font{OFF}"
     )
 
@@ -225,7 +225,7 @@ def cmd_redact(args: argparse.Namespace) -> int:
 def cmd_report(args: argparse.Namespace) -> int:
     """Green rate across a corpus. Below 80% the promise inverts into an apology."""
     rows: list[tuple[str, float | None, str]] = []
-    total = exact = 0
+    total = exact_count = 0
     for path in args.pdfs:
         try:
             with open_pdf(path, fetch=google_fonts()) as engine:
@@ -236,7 +236,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
             rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
             continue
-        exact += sum(1 for report in reports if report.state is Fidelity.EXACT)
+        exact_count += sum(1 for report in reports if report.state is Fidelity.EXACT)
         total += len(reports)
         rows.append((path, green_rate(reports), f"{len(reports)} spans"))
 
@@ -250,7 +250,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         colour = rate_colour(rate)
         print(f"  {colour}{rate:>5.0%}{OFF}    {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
     if total:
-        overall = exact / total
+        overall = exact_count / total
         colour = GREEN if overall >= GREEN_RATE_TARGET else YELLOW
         print(f"\n  {colour}{overall:.0%}{OFF} of {total} spans keep the original font\n")
     return 0

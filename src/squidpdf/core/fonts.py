@@ -453,10 +453,10 @@ def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]
     family we know still has other letter widths than the face we ship.
     """
     _family_name, style_words = family_and_style(font)
-    words = style_words.lower()
-    bold = any(word in words for word in _BOLD_WORDS)
-    italic = any(word in words for word in _ITALIC_WORDS)
-    usual_cut = not any(word in words for word in _OTHER_CUT_WORDS)
+    style_text = style_words.lower()
+    bold = any(word in style_text for word in _BOLD_WORDS)
+    italic = any(word in style_text for word in _ITALIC_WORDS)
+    usual_cut = not any(word in style_text for word in _OTHER_CUT_WORDS)
     if descriptor is not None:
         heavy = descriptor.weight is not None and descriptor.weight >= _BOLD_WEIGHT
         bold = bold or bool(descriptor.flags & _FORCE_BOLD) or heavy

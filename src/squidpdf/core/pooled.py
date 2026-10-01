@@ -94,7 +94,8 @@ class PooledFont:
     def width(self, text: str, size: float) -> float:
         """How wide `text` is at `size` points, each stretch measured in its own copy."""
         return sum(
-            copy.embedded.program.width(stretch, size) for copy, stretch in self.stretches(text)
+            copy.embedded.program.width(stretch_text, size)
+            for copy, stretch_text in self.stretches(text)
         )
 
     def copy_for(self, ch: str) -> FontCopy:
@@ -109,13 +110,13 @@ class PooledFont:
     def coded_stretches(self, text: str) -> list[CodedStretch] | None:
         """`text` split by copy, each with its codes; None when a copy is written by letter."""
         stretches: list[CodedStretch] = []
-        for copy, stretch in self.stretches(text):
+        for copy, stretch_text in self.stretches(text):
             coded = copy.embedded.coded
             # Written by letter: there are no codes to write it in.
             if coded is None:
                 return None
             own = copy.font.xref == self.own.font.xref
-            stretches.append(CodedStretch(stretch, copy, coded, own))
+            stretches.append(CodedStretch(stretch_text, copy, coded, own))
         return stretches
 
     def missing(self, text: str) -> list[str]:
@@ -211,10 +212,10 @@ def why_turned_away(
     # Too few in common: nothing to vouch for it, so it lends nothing.
     if len(shared) < SAME_FONT_SHARED:
         return Message("copy_too_few_shared")
-    other_widths = any(
+    widths_differ = any(
         abs(other.widths[ch] - letters[ch].widths[ch]) > SAME_WIDTH for ch in shared
     )
     # A letter both draw is another width: a different font under the same name.
-    if other_widths:
+    if widths_differ:
         return Message("copy_other_widths")
     return None

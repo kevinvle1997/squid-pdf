@@ -56,13 +56,13 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     """The file's Poppins has no Y; Google's has, as wide: exact, and drawn from it."""
     fetch, asked = _google(POPPINS.read_bytes())
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(poppins_subset, fetch=fetch) as eng:
-        span = next(iter(eng.index()))
-        missing = eng.missing(span, _WANTED)
-        [report] = eng.assess(eng.index())
-        eng.remove([span])
-        eng.draw(span, _WANTED)
-        eng.save(out)
+    with open_pdf(poppins_subset, fetch=fetch) as engine:
+        span = next(iter(engine.index()))
+        missing = engine.missing(span, _WANTED)
+        [report] = engine.assess(engine.index())
+        engine.remove([span])
+        engine.draw(span, _WANTED)
+        engine.save(out)
 
     assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
     assert_equal([file.path for file in asked], ["ofl/poppins/Poppins-Regular.ttf"], "fetched")
@@ -113,9 +113,9 @@ def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())
-    with open_pdf(pdf, fetch=fetch) as eng:
-        for span in eng.index():
-            eng.missing(span, "Ωxyzq")
+    with open_pdf(pdf, fetch=fetch) as engine:
+        for span in engine.index():
+            engine.missing(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
 
 

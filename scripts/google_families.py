@@ -68,8 +68,8 @@ def blobs_in(listing: str) -> dict[str, str]:
     """Each path in a `git ls-tree -r` listing, and its blob hash."""
     blobs: dict[str, str] = {}
     for line in listing.splitlines():
-        about, path = line.split("\t", 1)
-        _mode, kind, blob = about.split()
+        mode_kind_blob, path = line.split("\t", 1)
+        _mode, kind, blob = mode_kind_blob.split()
         if kind == "blob":
             blobs[path] = blob
     return blobs

@@ -70,24 +70,24 @@ def _truetype(
     `cmap` is its own letter lookup: a (3,0) symbol one, a Unicode one when
     `symbol` is False, or none at all.
     """
-    fb = FontBuilder(_EM, isTTF=True)
-    fb.setupGlyphOrder(_GLYPHS)
-    fb.setupCharacterMap(cmap or {})
+    builder = FontBuilder(_EM, isTTF=True)
+    builder.setupGlyphOrder(_GLYPHS)
+    builder.setupCharacterMap(cmap or {})
     square, empty = _square(), TTGlyphPen(None).glyph()
-    fb.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
-    fb.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
-    fb.setupHorizontalHeader(ascent=800, descent=-200)
-    fb.setupNameTable({"familyName": family, "styleName": "Regular"})
-    fb.setupOS2()
-    fb.setupPost()
+    builder.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
+    builder.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupOS2()
+    builder.setupPost()
     if cmap is None:
-        del fb.font["cmap"]
+        del builder.font["cmap"]
     elif symbol:
-        table = fb.font["cmap"]
+        table = builder.font["cmap"]
         table.tables = table.tables[:1]
         table.tables[0].platformID, table.tables[0].platEncID = 3, 0
     out = io.BytesIO()
-    fb.save(out)
+    builder.save(out)
     return out.getvalue()
 
 
@@ -425,9 +425,9 @@ def poppins_subset(tmp_path_factory) -> str:
     page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
     page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_MERGED_SIZE)
     [(xref, *_)] = page.get_fonts()
-    _kind, inner = doc.xref_get_key(xref, "DescendantFonts")
-    for named in (xref, int(inner.strip("[]").split()[0])):
-        doc.xref_set_key(named, "BaseFont", "/ABCDEF+Poppins-Regular")
+    _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
+    for font_xref in (xref, int(descendants.strip("[]").split()[0])):
+        doc.xref_set_key(font_xref, "BaseFont", "/ABCDEF+Poppins-Regular")
     path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
     doc.save(path)
     return path

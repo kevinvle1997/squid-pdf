@@ -98,9 +98,9 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
 
     pdf = pymupdf.open(stream=response.content, filetype="pdf")
     assert_equal(pdf.page_count, 2, "pages in the file")
-    edited = pdf[1].get_text()
-    assert_in(text, edited, "the edited page's text")
-    assert_not_in("14 March", edited, "the edited page's text")
+    edited_text = pdf[1].get_text()
+    assert_in(text, edited_text, "the edited page's text")
+    assert_not_in("14 March", edited_text, "the edited page's text")
     everything = "".join(page.get_text() for page in pdf.pages())
     assert_not_in(invoices["text"], everything, "the file's text after the redaction")
     # Not only the whole line: nothing at all is left where it was.

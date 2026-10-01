@@ -41,9 +41,9 @@ def _page_lines(path: str) -> list[str]:
 def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_path):
     """A reorder leaves nothing out, so a screen reader's tags stay."""
     out = str(tmp_path / "reordered.pdf")
-    with open_pdf(tagged) as eng:
-        said = eng.keep_pages([1, 0])
-        eng.save(out)
+    with open_pdf(tagged) as engine:
+        said = engine.keep_pages([1, 0])
+        engine.save(out)
 
     assert_equal(said, [], "what keeping every page came out with")
     assert_equal(_page_lines(out), TAGGED_LINES[::-1], "each page's text, in order")
@@ -54,9 +54,9 @@ def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_pat
 def test_a_page_left_out_is_gone_from_the_file_even_when_tags_point_at_it(tagged, tmp_path):
     """Kept by its tags, the page's text would still be in the file, unseen but readable."""
     out = str(tmp_path / "first.pdf")
-    with open_pdf(tagged) as eng:
-        said = eng.keep_pages([0])
-        eng.save(out)
+    with open_pdf(tagged) as engine:
+        said = engine.keep_pages([0])
+        engine.save(out)
 
     assert_equal(said, [Message("tags_dropped")], "what leaving a page out came out with")
     assert_equal(_page_lines(out), TAGGED_LINES[:1], "each page's text")
@@ -75,9 +75,9 @@ def test_a_page_image_is_a_white_png_at_the_asked_scale(engine):
 
 def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
     """The browser turns it; everything the server sends stays in one system."""
-    with open_pdf(turned) as eng:
-        pages = eng.pages()
-        pix = pymupdf.Pixmap(eng.page_image(0, _SCALE))
+    with open_pdf(turned) as engine:
+        pages = engine.pages()
+        pix = pymupdf.Pixmap(engine.page_image(0, _SCALE))
     assert_equal(pages, [Page(_A4_WIDTH, _A4_HEIGHT, 90)], "a quarter-turned page")
     expected = (_A4_WIDTH * _SCALE, _A4_HEIGHT * _SCALE)
     assert_equal((pix.width, pix.height), expected, "pixels of a turned page, unrotated")
@@ -85,8 +85,8 @@ def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
 
 def test_on_a_turned_page_the_span_box_covers_its_ink(turned):
     """A box that misses its text would show fidelity on the wrong words."""
-    with open_pdf(turned) as eng:
-        box = next(iter(eng.index())).bbox
-        pix = pymupdf.Pixmap(eng.page_image(0, _SCALE, box))
+    with open_pdf(turned) as engine:
+        box = next(iter(engine.index())).bbox
+        pix = pymupdf.Pixmap(engine.page_image(0, _SCALE, box))
     darkest = min(pix.samples)
     assert_true(darkest < _INK, f"darkest channel inside the span box is {darkest}")

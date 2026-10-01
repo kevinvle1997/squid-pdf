@@ -53,8 +53,8 @@ class BodyLimit:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Answer too large or a bad size; otherwise hand the app the body, read whole."""
-        streams = scope["type"] == "http" and scope["method"] == "POST"
-        if scope["type"] != "http" or (streams and scope["path"] in self.streamed):
+        is_post = scope["type"] == "http" and scope["method"] == "POST"
+        if scope["type"] != "http" or (is_post and scope["path"] in self.streamed):
             await self.app(scope, receive, send)
             return
         request = Request(scope)
