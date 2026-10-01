@@ -517,7 +517,8 @@ export interface components {
          * ProblemInfo
          * @description A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
          *
-         *     `detail` is shown verbatim; `code` is always `type`, and `params` fill it.
+         *     `type` is one of every Problem's, which the OpenAPI lists. `detail` is shown
+         *     verbatim; `code` is always `type`, and `params` fill it.
          */
         ProblemInfo: {
             /**
