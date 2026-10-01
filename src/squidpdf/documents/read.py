@@ -14,7 +14,7 @@ from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
-from squidpdf.documents.info import document_response, time_of
+from squidpdf.documents.info import document_json, time_of
 from squidpdf.documents.types import Analysis, Loaded
 
 __all__ = [
@@ -69,14 +69,11 @@ def answer(
         _EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
     }
-    # The browser's copy is current: a 304 carries no body, so no body's type.
+    # The browser's copy is current: a 304 carries no body.
     if if_none_match == headers["ETag"]:
         return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
-    body = document_response(
-        doc.id, expires_at=doc.expires_at, analysis=orjson.loads(saved), said_in=said_in
-    )
-    typed = headers | {"Content-Type": "application/json"}
-    return Reply(orjson.dumps(body), typed)
+    body = document_json(doc.id, expires_at=doc.expires_at, saved=saved, said_in=said_in)
+    return Reply(body, headers)
 
 
 def etag_of(saved: bytes, said_in: str) -> str:

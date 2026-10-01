@@ -34,6 +34,13 @@ class TooManyPages(Problem):
         super().__init__(pages=pages)
 
 
+class ServerFull(Problem):
+    """Too little disk is left to keep another upload: refused before any is written."""
+
+    type = "server_full"
+    status = 503
+
+
 class NoSuchPage(Problem):
     """A page the document doesn't have. Not 404, which tells the browser to re-upload."""
 

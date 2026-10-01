@@ -17,7 +17,13 @@ from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_problem, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_equal,
+    assert_not_in,
+    assert_problem,
+    assert_true,
+)
 
 _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
@@ -169,6 +175,23 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
+def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, monkeypatch):
+    """The server says so and keeps nothing, rather than fill the disk every document is on."""
+    whole_disk = shutil.disk_usage(store.root()).total
+    monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
+    before = _kept()
+    assert_problem(upload(mine, pdf_bytes), "server_full", 503)
+    assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
+def test_the_first_upload_makes_the_folder_documents_are_kept_in(
+    mine, pdf_bytes, monkeypatch, tmp_path
+):
+    """As on a server's first start, before anything was kept."""
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "not made yet"))
+    assert_equal(upload(mine, pdf_bytes).status_code, 201, "status of the first upload")
+
+
 @pytest.mark.parametrize(
     "path", ["/api/documents", "/api/documents/any/render"], ids=["an upload", "an edit list"]
 )
@@ -216,9 +239,18 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     first = mine.get(url)
     again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
 
+    assert_equal(first.headers["content-type"], "application/json", "the body's type")
     assert_equal(again.status_code, 304, "status of a read the browser has already")
+    assert_not_in("content-type", again.headers, "the type of a body a 304 doesn't have")
     expires = datetime.fromisoformat(again.headers["squid-expires-at"])
     uploaded = datetime.fromisoformat(doc["expires_at"])
     assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")
     said_in_body = first.json()["expires_at"]
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
+
+
+def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
+    """Both send the spans as the analysis kept them, spliced in unread."""
+    read = mine.get(f"/api/documents/{doc['id']}").json()
+    assert_equal(read | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read")
+    assert_at_least(len(doc["spans"]), 1, "spans in the sample")

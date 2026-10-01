@@ -14,10 +14,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from squidpdf.api import constants as limits
-from squidpdf.api import owner, pool
+from squidpdf.api import owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
-from squidpdf.api.pool import Pool
+from squidpdf.api.routing import controller_with_workers, response_of
 from squidpdf.core import NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
@@ -29,12 +29,9 @@ from squidpdf.documents.upload import UploadController
 __all__ = [
     "router",
     "load",
-    "upload_controller",
     "upload",
-    "read_controller",
     "read",
     "delete",
-    "page_controller",
     "page",
     "sweep_forever",
 ]
@@ -42,6 +39,8 @@ __all__ = [
 router = APIRouter(prefix="/api/documents")
 
 _logger = logging.getLogger(__name__)
+
+_JSON = "application/json"
 
 
 def load(doc_id: str, request: Request) -> Loaded:
@@ -54,35 +53,31 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
-def upload_controller(workers: Annotated[Pool, Depends(pool.current)]) -> UploadController:
-    """Upload's controller, on the app's workers."""
-    return UploadController(workers)
-
-
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=Document)
+# Counted before anything else, so a flood is refused before any of it is read.
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=Document,
+    dependencies=[Depends(rate.admit_upload)],
+)
 async def upload(
     request: Request,
     *,
     token: Annotated[str, Depends(owner.token)],
-    controller: Annotated[UploadController, Depends(upload_controller)],
+    upload_controller: Annotated[
+        UploadController, Depends(controller_with_workers(UploadController))
+    ],
     said_in: ReaderLanguage,
     response: Response,
-) -> Document:
+) -> Response:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
-    reply = await controller.upload(
+    reply = await upload_controller.upload(
         owner.digest(token),
         declared=declared_size(request),
         chunks=request.stream(),
         said_in=said_in,
     )
-    # Data, not a Response: FastAPI adds the new owner cookie only to a reply it makes.
-    response.headers.update(reply.headers)
-    return reply.body
-
-
-def read_controller(workers: Annotated[Pool, Depends(pool.current)]) -> ReadController:
-    """Read's controller, on the app's workers."""
-    return ReadController(workers)
+    return response_of(reply, media_type=_JSON, set_by=response)
 
 
 @router.get("/{doc_id}", response_model=Document)
@@ -90,24 +85,21 @@ async def read(
     doc: Annotated[Loaded, Depends(load)],
     *,
     request: Request,
-    controller: Annotated[ReadController, Depends(read_controller)],
+    read_controller: Annotated[
+        ReadController, Depends(controller_with_workers(ReadController))
+    ],
     said_in: ReaderLanguage,
 ) -> Response:
     """The document, in the reader's language, or 304 if the browser has it already."""
     if_none_match = request.headers.get("if-none-match")  # absent on a first read
-    reply = await controller.read(doc, said_in=said_in, if_none_match=if_none_match)
-    return Response(reply.body, status_code=reply.status, headers=reply.headers)
+    reply = await read_controller.read(doc, said_in=said_in, if_none_match=if_none_match)
+    return response_of(reply, media_type=_JSON)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     """The document and everything worked out from it, now rather than in an hour."""
     store.delete(doc.folder)
-
-
-def page_controller(workers: Annotated[Pool, Depends(pool.current)]) -> PageController:
-    """The page image's controller, on the app's workers."""
-    return PageController(workers)
 
 
 @router.get(
@@ -121,11 +113,13 @@ async def page(
     n: int,
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
-    controller: Annotated[PageController, Depends(page_controller)],
+    page_controller: Annotated[
+        PageController, Depends(controller_with_workers(PageController))
+    ],
 ) -> Response:
     """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
-    reply = await controller.page(doc, page=n, scale=scale, build=build)
-    return Response(reply.body, media_type="image/png", headers=reply.headers)
+    reply = await page_controller.page(doc, page=n, scale=scale, build=build)
+    return response_of(reply, media_type="image/png")
 
 
 async def sweep_forever() -> None:
