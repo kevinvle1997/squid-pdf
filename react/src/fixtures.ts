@@ -15,7 +15,7 @@ import type {
 } from "./api/types";
 
 /** An A4 page, upright, in points. */
-export const A4: PageInfo = { width: 595, height: 842, rotation: 0 };
+export const A4: PageInfo = { width: 595, height: 842, turn_cw: 0 };
 
 /** The server's thresholds, as core/constants.py sets them. */
 export const RULES: FitRules = { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 };

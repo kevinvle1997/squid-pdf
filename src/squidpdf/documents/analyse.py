@@ -64,7 +64,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     analysis: Analysis = {
         "build": BUILD,
         "pages": [
-            {"width": page.width, "height": page.height, "rotation": page.rotation}
+            {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(path)
         ],
         "spans": [span_info(span, reports[span.id]) for span in index],
