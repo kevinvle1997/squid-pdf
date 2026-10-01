@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 
+import pytest
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
@@ -20,20 +22,43 @@ _OTHER = "198.51.100.7"
 _MINUTE_S = 60.0
 
 
-def test_an_address_past_its_uploads_a_minute_is_told_to_wait_and_others_are_not(
-    tmp_path, monkeypatch
-):
-    """On an app of its own: every other test uploads from the one test address."""
+@pytest.fixture
+def one_upload_a_minute(tmp_path, monkeypatch) -> Iterator[TestClient]:
+    """An app of its own, started, taking one upload a minute from each address.
+
+    Its own: every other test uploads from the one test address.
+    """
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     monkeypatch.setattr(limits, "UPLOADS_PER_MINUTE", 1)
-    app = create_app()
-    with TestClient(app) as server:  # runs the lifespan: the pool and the sweeper
-        first = browser_on(server, client=(_ONE, 1))
-        other = browser_on(server, client=(_OTHER, 1))
-        assert_problem(upload(first, _NOT_A_PDF), "not_a_pdf", 415)
-        assert_problem(upload(first, b"%PDF-" + _NOT_A_PDF), "rate_limited", 429)
-        assert_problem(upload(other, _NOT_A_PDF), "not_a_pdf", 415)
+    with TestClient(create_app()) as server:  # runs the lifespan: the pool and the sweeper
+        yield server
+
+
+def test_an_address_past_its_uploads_a_minute_is_told_to_wait_and_others_are_not(
+    one_upload_a_minute,
+):
+    first = browser_on(one_upload_a_minute, client=(_ONE, 1))
+    other = browser_on(one_upload_a_minute, client=(_OTHER, 1))
+    assert_problem(upload(first, _NOT_A_PDF), "not_a_pdf", 415)
+    assert_problem(upload(first, b"%PDF-" + _NOT_A_PDF), "rate_limited", 429)
+    assert_problem(upload(other, _NOT_A_PDF), "not_a_pdf", 415)
     assert_equal(os.listdir(store.root()), [], "documents on disk")
+
+
+def test_an_ipv6_address_counts_with_the_rest_of_its_64(one_upload_a_minute):
+    """One home or machine gets a whole /64: counted apart, each address could flood."""
+    first, neighbour, elsewhere = (
+        browser_on(one_upload_a_minute, client=(address, 1))
+        # Addresses kept for documentation, as above: two in one /64, one in the next.
+        for address in ("2001:db8:1:2::1", "2001:db8:1:2::ff", "2001:db8:1:3::1")
+    )
+    assert_problem(upload(first, _NOT_A_PDF), "not_a_pdf", 415)
+    assert_problem(upload(neighbour, _NOT_A_PDF), "rate_limited", 429)
+    assert_problem(upload(elsewhere, _NOT_A_PDF), "not_a_pdf", 415)
+    # IPv4 written as IPv6, as a server listening on both sees it: by its own address.
+    for address in (f"::ffff:{_ONE}", f"::ffff:{_OTHER}"):
+        browser = browser_on(one_upload_a_minute, client=(address, 1))
+        assert_problem(upload(browser, _NOT_A_PDF), "not_a_pdf", 415)
 
 
 def test_an_address_may_upload_again_a_minute_after_its_first():
