@@ -103,7 +103,7 @@ class TextRun:
 
     text: str
     origin: tuple[float, float]
-    font: str  # the resource name of the font it's written in
+    resource: str  # the resource name of the font it's written in
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +114,7 @@ class CodeRun:
     """
 
     codes: bytes
-    font: int  # the font's PDF object: the page may know it by another resource name
+    xref: int  # its font's PDF object: the page may know it by another resource name
 
 
 @dataclass(frozen=True, slots=True)

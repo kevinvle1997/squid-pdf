@@ -247,9 +247,9 @@ class PageWriter:
         Google's copy goes in whole, to be cut down on save like a face we ship.
         """
         # Named by its source, so copies of one font are told apart.
-        name = resource_name("F", copy_source(copy))
+        resource = resource_name("F", copy_source(copy))
         try:
-            added = self._driver.add_font(page, copy.embedded.file, name=name)
+            added = self._driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the stand-in draws instead
             return FontUnusable(problem.reason)
         if copy.google is not None:
@@ -272,7 +272,9 @@ class PageWriter:
         key = (page, face.file)
         if key not in self._names.faces:
             font_file = face_bytes(face)
-            added = self._driver.add_font(page, font_file, name=resource_name("S", face.file))
+            added = self._driver.add_font(
+                page, font_file, resource=resource_name("S", face.file)
+            )
             self._names.faces[key] = added.resource
             self._keep_whole(face.file, AddedFont(face.name, font_file), xref=added.xref)
         return self._names.faces[key]

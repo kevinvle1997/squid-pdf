@@ -356,21 +356,21 @@ class MuPDFDriver:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
         return open_face(face)
 
-    def add_font(self, page: int, font_file: bytes, *, name: str) -> FontResource:
-        """Add a font to the page, as `name` unless the page already has a font by it.
+    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
+        """Add a font to the page under the resource name `resource`, or one like it if taken.
 
-        Then as `name` numbered past any the page has: MuPDF, given a name the
+        Then `resource` numbered past any the page has: MuPDF, given a name the
         page uses, hands back the font already there. Raises DriverError when
         MuPDF won't add it.
         """
-        resource = self._free_name(page, name)
+        free = self._free_name(page, resource)
         pg = self._doc[page]
         try:
-            xref = pg.insert_font(fontname=resource, fontbuffer=font_file)
+            xref = pg.insert_font(fontname=free, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._added.setdefault(pg.xref, {})[resource] = xref
-        return FontResource(resource, xref)
+        self._added.setdefault(pg.xref, {})[free] = xref
+        return FontResource(free, xref)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside each box, for real.
@@ -434,7 +434,7 @@ class MuPDFDriver:
         """
         x, y = self._file.to_pdf_space(page, origin)
         shown = " ".join(
-            f"/{self._resource_of(page, run.font)} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            f"/{self._resource_of(page, run.xref)} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
@@ -456,7 +456,7 @@ class MuPDFDriver:
         """
         on_page = (font for font in self.fonts(page) if not font.in_form)
         listed = (font.resource for font in on_page if font.xref == xref)
-        # The first name the page lists it under, in MuPDF's order.
+        # The first resource name the page lists it under, in MuPDF's order.
         resource = next(listed, None)
         if resource is not None:
             return resource
@@ -492,7 +492,7 @@ class MuPDFDriver:
             shape.insert_text(
                 at,
                 run.text,
-                fontname=run.font,
+                fontname=run.resource,
                 fontsize=size,
                 color=color,
                 fill_opacity=opacity,

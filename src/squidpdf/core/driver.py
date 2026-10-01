@@ -134,8 +134,8 @@ class PdfDriver(Protocol):
         """Delete every link whose area overlaps one of `boxes`."""
         ...
 
-    def add_font(self, page: int, font_file: bytes, *, name: str) -> FontResource:
-        """Add a font to the page, as `name` unless the page already has a font by it.
+    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
+        """Add a font to the page under the resource name `resource`, or one like it if taken.
 
         Returns the resource name it went under, and its PDF object. Raises
         DriverError when the library won't add it.

@@ -31,7 +31,7 @@ def test_a_font_added_to_a_page_keeps_its_name_when_its_text_is_erased(pdf):
     """MuPDF drops a font no text uses any more; the engine keeps drawing by that name."""
     driver = MuPDFDriver(pdf)
     try:
-        added = driver.add_font(0, face_bytes(FACES["Carlito Regular"]), name="S1")
+        added = driver.add_font(0, face_bytes(FACES["Carlito Regular"]), resource="S1")
         run = TextRun("Added", _ADDED_AT, added.resource)
         driver.write_text(0, runs=[run], size=12, color=_BLACK, opacity=1, scale_x=1, turn=0)
         x, y = _ADDED_AT
