@@ -74,12 +74,12 @@ class Pool:
                 await self._free.acquire()
         except TimeoutError as waited:  # no worker came free in time
             raise TooSlow() from waited
-        left = deadline - loop.time()
-        if left <= 0:  # free just as time ran out; pebble reads 0 as no timeout at all
+        time_left = deadline - loop.time()
+        if time_left <= 0:  # free just as time ran out; pebble reads 0 as no timeout at all
             self._free.release()
             raise TooSlow()
         # Created at once, and the worker given back when it's done, however it ends.
-        job = asyncio.create_task(self._in_worker(left, task))
+        job = asyncio.create_task(self._in_worker(time_left, task))
         self._jobs.add(job)
         job.add_done_callback(self._given_back)
         try:

@@ -112,9 +112,9 @@ def _is_gone(pid: int) -> bool:
 
 def _kill_idle_worker(pool: Pool) -> None:
     """Kill a worker between tasks, as the kernel's out-of-memory killer might."""
-    idle = asyncio.run(pool.run(_ENOUGH_S, os.getpid))
-    os.kill(idle, signal.SIGKILL)
-    _wait_until(lambda: _is_gone(idle), _ENOUGH_S)
+    idle_pid = asyncio.run(pool.run(_ENOUGH_S, os.getpid))
+    os.kill(idle_pid, signal.SIGKILL)
+    _wait_until(lambda: _is_gone(idle_pid), _ENOUGH_S)
 
 
 def test_the_api_works_on_after_an_idle_worker_is_killed(tmp_path, monkeypatch, pdf_bytes):
@@ -184,10 +184,10 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     """Starting a worker is the server's time: a quick task on a new pool isn't too slow."""
     pool = Pool()  # its own: no worker started yet
     try:
-        worker = asyncio.run(pool.run(_TIMEOUT_S, os.getpid))
+        worker_pid = asyncio.run(pool.run(_TIMEOUT_S, os.getpid))
     finally:
         pool.close()
-    assert_true(worker != os.getpid(), "the task ran in a worker")
+    assert_true(worker_pid != os.getpid(), "the task ran in a worker")
 
 
 def _note_pid_then_work(folder: Path) -> None:
@@ -211,31 +211,31 @@ def _leave_while_it_works(pool: Pool, folder: Path, timeout: float) -> int:
         caller.cancel()
         with contextlib.suppress(asyncio.CancelledError):  # raised: we cancelled it
             await caller
-        worker = int((folder / "pid").read_text())
+        worker_pid = int((folder / "pid").read_text())
 
         def ended() -> bool:
-            return (folder / "done").exists() or _is_gone(worker)
+            return (folder / "done").exists() or _is_gone(worker_pid)
 
         # Inside the loop: when it ends, anything still running is cancelled.
         await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
-        return worker
+        return worker_pid
 
     return asyncio.run(leave())
 
 
 def test_a_render_whose_browser_left_finishes_and_keeps_its_worker(pool, tmp_path):
     """Stopping it would kill its worker, and the next task would wait for a new one."""
-    worker = _leave_while_it_works(pool, tmp_path, RENDER_TIMEOUT_S)
+    worker_pid = _leave_while_it_works(pool, tmp_path, RENDER_TIMEOUT_S)
 
     assert_true((tmp_path / "done").exists(), "the render finished its work")
-    assert_false(_is_gone(worker), "the render's worker is still alive")
+    assert_false(_is_gone(worker_pid), "the render's worker is still alive")
 
 
 def test_an_export_whose_browser_left_is_stopped(pool, tmp_path):
     """Long enough that stopping it is worth a new worker."""
-    worker = _leave_while_it_works(pool, tmp_path, EXPORT_TIMEOUT_S)
+    worker_pid = _leave_while_it_works(pool, tmp_path, EXPORT_TIMEOUT_S)
 
-    assert_true(_is_gone(worker), "the export's worker was stopped")
+    assert_true(_is_gone(worker_pid), "the export's worker was stopped")
     assert_false((tmp_path / "done").exists(), "the export didn't run to its end")
 
 
@@ -274,8 +274,8 @@ def test_a_render_that_crashes_after_its_browser_left_logs_no_error(pool, tmp_pa
     """Nobody waits for its answer, and a crash is a file's doing: a log would be noise."""
 
     async def leave() -> None:
-        worker = await _start_then_leave(pool, tmp_path, _note_pid_then_die)
-        await asyncio.to_thread(_wait_until, lambda: _is_gone(worker), _ENOUGH_S)
+        worker_pid = await _start_then_leave(pool, tmp_path, _note_pid_then_die)
+        await asyncio.to_thread(_wait_until, lambda: _is_gone(worker_pid), _ENOUGH_S)
         await asyncio.sleep(_WORK_S)  # for pebble to see it die and say so
 
     asyncio.run(leave())
