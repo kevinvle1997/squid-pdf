@@ -19,11 +19,12 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import Fidelity, google, open_pdf
+from squidpdf.core import Fidelity, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.google import (
+from squidpdf.core.fonts import google
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.google import (
     Download,
     Fetch,
     GoogleFile,

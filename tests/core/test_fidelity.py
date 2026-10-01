@@ -18,8 +18,8 @@ from squidpdf.core import (
     open_pdf,
     words,
 )
-from squidpdf.core.fonts import strip_subset
-from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
+from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
 from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in

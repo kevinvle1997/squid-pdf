@@ -13,7 +13,7 @@ from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
-from squidpdf.core.fonts import FACES, face_bytes
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000

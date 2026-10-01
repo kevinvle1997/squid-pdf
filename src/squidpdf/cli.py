@@ -9,7 +9,7 @@ squidpdf fixture out.pdf               a sample document to try it on
 squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 """
 
-# Speaks English only: everything it tells a person goes through core/words/.
+# Speaks English only: everything it tells a person goes through core/app/words/.
 
 from __future__ import annotations
 

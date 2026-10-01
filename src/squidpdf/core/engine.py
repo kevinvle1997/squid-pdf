@@ -1,6 +1,6 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The product's own logic, written against a `core.driver.PdfDriver`'s primitives,
+The product's own logic, written against a `core.pdf.driver.PdfDriver`'s primitives,
 so it's the same over any PDF library. Open one with `core.open_pdf`.
 
 The engine speaks only in primitives (remove, draw), so it never learns what a
@@ -14,15 +14,15 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import assert_never
 
-from squidpdf.core.document_fonts import DocumentFonts
-from squidpdf.core.driver import PdfDriver
-from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.google import Fetch, GoogleFontController
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.document import DocumentFonts
+from squidpdf.core.fonts.google import Fetch, GoogleFontController
+from squidpdf.core.fonts.pool import PooledFont
+from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.plan import LinePlanner
-from squidpdf.core.pooled import PooledFont
-from squidpdf.core.spacing import lacks_space
-from squidpdf.core.spans import build_index
+from squidpdf.core.text.fidelity import Fidelity, FidelityReport
+from squidpdf.core.text.spacing import lacks_space
+from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, Page, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 

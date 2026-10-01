@@ -1,4 +1,4 @@
-"""The reader's language: which catalog in `core.words` an answer is written in.
+"""The reader's language: which catalog in `core.app.words` an answer is written in.
 
 Chosen from the browser's Accept-Language, English when nothing it asks for is
 here. Only the edge knows it: below the API everything is a Message.

@@ -8,9 +8,9 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass
 
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.driver import DriverError, FontProgram, PdfDriver
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.types import CodedFont, FontCode, FontKind, PageFont
 
 __all__ = [
@@ -37,7 +37,7 @@ class FontUnusable(Exception):
     """Why the file's own copy of a font can't be used, so a similar font draws instead."""
 
     def __init__(self, reason: Message) -> None:
-        """`reason` names a sentence in `core.words`, for the edge to put into words."""
+        """`reason` names a sentence in `core.app.words`, for the edge to put into words."""
         super().__init__(reason)
         self.reason = reason
 

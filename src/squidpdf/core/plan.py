@@ -12,13 +12,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import assert_never
 
-from squidpdf.core import faces
+from squidpdf.core.app.message import Message
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
-from squidpdf.core.document_fonts import DocumentFonts
-from squidpdf.core.driver import FontProgram, PdfDriver
-from squidpdf.core.message import Message
-from squidpdf.core.pooled import CodedStretch, PooledFont
-from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps
+from squidpdf.core.fonts import substitute
+from squidpdf.core.fonts.document import DocumentFonts
+from squidpdf.core.fonts.pool import CodedStretch, PooledFont
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.types import Face, Span
 
 __all__ = [
@@ -72,7 +72,7 @@ class LinePlanner:
         if own is None:
             composed = unicodedata.normalize("NFC", text)
             look_alike = self.fonts.look_alike(span).face
-            missing = faces.face_coverage(look_alike).missing(composed)
+            missing = substitute.face_coverage(look_alike).missing(composed)
             stand_in = self.stand_in_for(span, composed)
             return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
         text = spelled(own, text)
@@ -88,7 +88,7 @@ class LinePlanner:
             return DrawPlan(own, kept, missing, missing)
         return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
 
-    def stand_in_for(self, span: Span, text: str) -> faces.StandIn:
+    def stand_in_for(self, span: Span, text: str) -> substitute.StandIn:
         """The face that draws `text` if the page won't take the span's own font after all."""
         return self.fonts.stand_in(span, unicodedata.normalize("NFC", text))
 
@@ -156,7 +156,7 @@ class LinePlanner:
         # Not in the file: the look-alike draws it, its list kept to GLYPH_LIST_RANGES.
         if pooled is None:
             face = self.fonts.look_alike(span).face
-            return letter_widths(self.driver.face_font(face), faces.face_letters(face))
+            return letter_widths(self.driver.face_font(face), substitute.face_letters(face))
 
         # Each from the copy that draws it: its width list if written by code, else the font.
         letters = sorted(pooled.letters.items())

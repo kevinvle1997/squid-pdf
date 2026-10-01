@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from squidpdf.core.spans import build_index, merge
+from squidpdf.core.text.spans import build_index, merge
 from squidpdf.core.types import Rect, TextPiece
 from tests.helpers import assert_equal, assert_true
 

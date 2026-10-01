@@ -29,10 +29,10 @@ from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.driver import PdfDriver
-from squidpdf.core.embedded import EmbeddedFont
-from squidpdf.core.fonts import bare_name, family_and_style, style_of
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.embedded import EmbeddedFont
+from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
+from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
 __all__ = [

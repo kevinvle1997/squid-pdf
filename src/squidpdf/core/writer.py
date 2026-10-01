@@ -8,18 +8,23 @@ there uses that name.
 from __future__ import annotations
 
 import hashlib
+import io
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import groupby
 from typing import assert_never
 
-from squidpdf.core.driver import DriverError, FontProgram, PdfDriver
-from squidpdf.core.embedded import FontUnusable
-from squidpdf.core.fonts import face_bytes, strip_subset, trimmed
-from squidpdf.core.message import Message
+from fontTools.subset import Options, Subsetter
+from fontTools.ttLib import TTFont
+
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.catalog import face_bytes
+from squidpdf.core.fonts.embedded import FontUnusable
+from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.fonts.pool import CodedStretch, FontCopy, PooledFont, copy_source
+from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import LinePlanner, coded_in
-from squidpdf.core.pooled import CodedStretch, FontCopy, PooledFont, copy_source
-from squidpdf.core.spacing import Word
+from squidpdf.core.text.spacing import Word
 from squidpdf.core.types import QUARTER_TURNS, CodedFont, CodeRun, Face, Span, TextRun
 
 __all__ = [
@@ -339,3 +344,21 @@ def codes_for(coded: CodedFont, text: str) -> bytes:
 def said_left_out(letters: list[str]) -> list[Message]:
     """The notice a draw gives for letters it left out; none when it left none."""
     return [Message("left_out", {"letters": list(letters)})] if letters else []
+
+
+def trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
+    """A font file we added whole, cut down to `letters`."""
+    options = Options(
+        hinting=True,  # keeps small text crisp on screen, for a few KB
+        layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
+        retain_gids=True,  # text already on the page points at its glyphs by number
+        # FontForge's timestamps: nothing draws with them, and fontTools can't cut them.
+        drop_tables=[*Options().drop_tables, "FFTM"],
+    )
+    subsetter = Subsetter(options)
+    subsetter.populate(unicodes=[ord(ch) for ch in letters])
+    font = TTFont(io.BytesIO(font_file))
+    subsetter.subset(font)
+    cut = io.BytesIO()
+    font.save(cut)
+    return cut.getvalue()

@@ -7,9 +7,8 @@ tests/test_layers.py checks both.
 
 from __future__ import annotations
 
-from squidpdf.core.constants import GREEN_RATE_TARGET, GREEN_RATE_WARN
-from squidpdf.core.engine import Engine
-from squidpdf.core.errors import (
+from squidpdf.core.app import words
+from squidpdf.core.app.errors import (
     Damaged,
     Encrypted,
     ErrorController,
@@ -19,22 +18,18 @@ from squidpdf.core.errors import (
     TooHeavy,
     Unreadable,
 )
-from squidpdf.core.fidelity import Fidelity, FidelityReport, green_rate
-from squidpdf.core.google import google_fonts
-from squidpdf.core.message import Message, MessageInfo, Param
+from squidpdf.core.app.message import Message, MessageInfo, Param
+from squidpdf.core.app.reply import Reply
+from squidpdf.core.app.workers import Workers
+from squidpdf.core.constants import GREEN_RATE_TARGET, GREEN_RATE_WARN
+from squidpdf.core.engine import Engine
+from squidpdf.core.fonts.google import google_fonts
 
 # The one import that names the driver: another PDF library is swapped in here.
-from squidpdf.core.mupdf import (
-    BUILD,
-    face_widths,
-    open_pdf,
-    result_of,
-    write_dense,
-    write_sample,
-)
-from squidpdf.core.reply import Reply
+from squidpdf.core.pdf.mupdf import BUILD, face_widths, open_pdf, result_of
+from squidpdf.core.pdf.samples import write_dense, write_sample
+from squidpdf.core.text.fidelity import Fidelity, FidelityReport, green_rate
 from squidpdf.core.types import LEVEL, SOLID, Fragment, Page, Rect, Span, SpanIndex, new_text
-from squidpdf.core.workers import Workers
 
 __all__ = [
     "BUILD",
@@ -71,4 +66,5 @@ __all__ = [
     "SpanIndex",
     "new_text",
     "Workers",
+    "words",
 ]

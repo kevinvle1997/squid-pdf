@@ -8,9 +8,9 @@ from collections.abc import Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core.driver import FontProgram
-from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.mupdf import MuPDFDriver
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.pdf.driver import FontProgram
+from squidpdf.core.pdf.mupdf import MuPDFDriver
 from tests.conftest import EMBEDDED_PAGE
 from tests.helpers import assert_close
 

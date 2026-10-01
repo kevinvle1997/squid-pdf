@@ -16,7 +16,7 @@ from collections.abc import Iterable, Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 
-from squidpdf.core.message import Message, Param
+from squidpdf.core.app.message import Message, Param
 
 __all__ = [
     "ENGLISH",

@@ -363,7 +363,7 @@ export interface components {
          * Insert
          * @description Draw new text where the document has none: a signature, an annotation.
          *
-         *     `font` names a face we ship (`core.fonts.FACES`, e.g. "Caveat Bold") or a
+         *     `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a
          *     font the document uses on this page. Anything else is drawn in a look-alike,
          *     and its fit says so: the fit always says what will really be drawn.
          */

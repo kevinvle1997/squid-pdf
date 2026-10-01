@@ -12,7 +12,7 @@ import pytest
 
 from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, face_widths, words
-from squidpdf.core.fonts import FACES
+from squidpdf.core.fonts.catalog import FACES
 from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.editing.constants import FONT_LIST_CACHE

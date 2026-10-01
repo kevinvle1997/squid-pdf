@@ -2,7 +2,7 @@
 
 A PDF stores only the letters it used, per copy of a font, and one file can
 hold several copies of one face: merged documents, or a copy per page, and
-Google's copy of it can join them. `core.document_fonts` finds and opens the
+Google's copy of it can join them. `core.fonts.document` finds and opens the
 copies; the pool takes each in only when a letter needs it.
 """
 
@@ -13,15 +13,15 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from itertools import groupby
 
+from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     GLYPH_LIST_RANGES,
     KEYBOARD_RANGES,
     SAME_FONT_SHARED,
     SAME_WIDTH,
 )
-from squidpdf.core.embedded import EmbeddedFont
-from squidpdf.core.google import GoogleFile
-from squidpdf.core.message import Message
+from squidpdf.core.fonts.embedded import EmbeddedFont
+from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.types import CodedFont, PageFont
 
 __all__ = [
@@ -83,7 +83,7 @@ class PooledFont:
     Each letter comes from the first copy, in the order they lend, that really
     draws it. A copy is taken in only when a letter the ones so far lack is
     asked for, so a line the own copy draws opens no other. Implements
-    `core.driver.FontProgram`, so it measures like one font.
+    `core.pdf.driver.FontProgram`, so it measures like one font.
     """
 
     __slots__ = ("_lenders", "_letters", "_turned_away", "own")

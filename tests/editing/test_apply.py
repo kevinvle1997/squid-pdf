@@ -13,8 +13,9 @@ from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
 from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf, words
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import FACES, face_bytes, strip_subset
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.editing import (
     Applied,
     BadReference,

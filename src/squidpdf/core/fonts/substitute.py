@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from functools import cache
 
 from squidpdf.core.constants import GLYPH_LIST_RANGES
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import broadest, face_bytes
+from squidpdf.core.fonts.catalog import face_bytes
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.look_alike import broadest
 from squidpdf.core.types import Face
 
 __all__ = [

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
 from squidpdf.core.types import (
     CodeRun,
     Face,
@@ -35,7 +35,7 @@ class DriverError(ValueError):
     """
 
     def __init__(self, reason: Message, *, debug: str = "") -> None:
-        """`reason` names a sentence in `core.words`; `debug` is the library's own words."""
+        """`reason` names a sentence in `core.app.words`; `debug` is the library's own words."""
         super().__init__(reason, debug)
         self.reason = reason
         self.debug = debug
@@ -62,7 +62,7 @@ class FontProgram(Protocol):
 
 
 class PdfDriver(Protocol):
-    """A PDF open in a library. `core.mupdf.MuPDFDriver` is the one there is.
+    """A PDF open in a library. `core.pdf.mupdf.MuPDFDriver` is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the
     page unrotated. A font the library can't use raises DriverError, saying

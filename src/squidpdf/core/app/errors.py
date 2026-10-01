@@ -12,8 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from squidpdf.core import words
-from squidpdf.core.message import Message, Param
+from squidpdf.core.app import words
+from squidpdf.core.app.message import Message, Param
 
 __all__ = [
     "Problem",
@@ -32,7 +32,7 @@ __all__ = [
 class Problem(Exception):
     """Subclass it and set `type` and `status`; `fill` fills the sentence.
 
-    A Message like any other: `type` is its sentence's key in `core.words`, and
+    A Message like any other: `type` is its sentence's key in `core.app.words`, and
     `fill` holds the facts. `debug` is the technical why, for a developer: sent
     beside `detail`, never in it.
     """

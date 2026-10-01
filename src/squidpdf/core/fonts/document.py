@@ -3,7 +3,7 @@
 What the engine knows about fonts, read through the driver once and kept. A
 copy of a font is opened once per listing, not once per page, so a font every
 page shares is read and parsed once. A span's font is its page's copy pooled
-with every other copy of it in the file (`core.pooled`), so a letter one copy
+with every other copy of it in the file (`core.fonts.pool`), so a letter one copy
 lacks can come from another, and last with Google's copy, if it has one.
 """
 
@@ -13,20 +13,20 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 
-from squidpdf.core import faces
-from squidpdf.core.driver import FontProgram, PdfDriver
-from squidpdf.core.embedded import FontUnusable, open_embedded
-from squidpdf.core.fonts import look_alike, strip_subset
-from squidpdf.core.google import GoogleFontController
-from squidpdf.core.message import Message
-from squidpdf.core.pooled import (
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts import substitute
+from squidpdf.core.fonts.embedded import FontUnusable, open_embedded
+from squidpdf.core.fonts.google import GoogleFontController
+from squidpdf.core.fonts.look_alike import look_alike, strip_subset
+from squidpdf.core.fonts.pool import (
     FontCopy,
     PooledFont,
     font_copy,
     google_copy,
     lacks_a_keyboard_letter,
 )
-from squidpdf.core.spacing import usual_gap
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
 __all__ = [
@@ -242,9 +242,9 @@ class DocumentFonts:
             self._cache.look_alikes[key] = look_alike(span.font, descriptor)
         return self._cache.look_alikes[key]
 
-    def stand_in(self, span: Span, text: str) -> faces.StandIn:
+    def stand_in(self, span: Span, text: str) -> substitute.StandIn:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
-        return faces.stand_in(self.look_alike(span).face, text)
+        return substitute.stand_in(self.look_alike(span).face, text)
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.

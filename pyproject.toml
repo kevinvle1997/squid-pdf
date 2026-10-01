@@ -57,7 +57,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 # BLE: a broad except says why. D1: docstrings everywhere. RUF100: no stale noqa.
-# TID: only core/pdf.py talks to MuPDF's low-level API.
+# TID: only core/pdf/lowlevel.py talks to MuPDF's low-level API.
 # RUF001-3: no invisible or look-alike characters in strings, docstrings or comments.
 # PLR0917: past three parameters, the rest are keyword-only, so every call names them.
 # S101: no bare assert; a failure says what it expected (tests/helpers.py). RET505/506: no
@@ -79,7 +79,7 @@ ignore = ["ASYNC109"]
 "tests/**" = ["D1", "PLR0917", "PLR2004", "ASYNC110"]
 # The one place a bare assert belongs: the helpers every other check goes through.
 "tests/helpers.py" = ["S101"]
-"src/squidpdf/core/pdf.py" = ["TID251"]
+"src/squidpdf/core/pdf/lowlevel.py" = ["TID251"]
 
 [tool.ruff.lint.pylint]
 max-positional-args = 3
@@ -89,7 +89,7 @@ max-positional-args = 3
 ban-relative-imports = "all"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"pymupdf.mupdf".msg = "MuPDF's low-level API lives in core/pdf.py; add a PdfFile method there."
+"pymupdf.mupdf".msg = "MuPDF's low-level API lives in core/pdf/lowlevel.py; add a PdfFile method there."
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

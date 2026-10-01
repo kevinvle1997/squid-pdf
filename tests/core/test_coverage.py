@@ -15,8 +15,8 @@ from fontTools.ttLib.tables._c_m_a_p import cmap_format_12
 from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 
 from squidpdf.core import open_pdf
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import CATALOG, FACES, face_bytes
+from squidpdf.core.fonts.catalog import CATALOG, FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 

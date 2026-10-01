@@ -6,9 +6,9 @@ import pymupdf
 import pytest
 
 from squidpdf.core import open_pdf
-from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.google import GoogleFile
-from squidpdf.core.mupdf import MuPDFDriver
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.google import GoogleFile
+from squidpdf.core.pdf.mupdf import MuPDFDriver
 from squidpdf.core.types import PageFont
 from tests.core.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in

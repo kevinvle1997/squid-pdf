@@ -34,7 +34,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def _module(path: Path) -> str:
-    """`src/squidpdf/core/pdf.py` -> `squidpdf.core.pdf`."""
+    """`src/squidpdf/core/pdf/lowlevel.py` -> `squidpdf.core.pdf.lowlevel`."""
     parts = path.relative_to(_SRC).with_suffix("").parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 
@@ -53,10 +53,10 @@ def _within(name: str, package: str) -> bool:
 @pytest.mark.parametrize(
     ("importers", "imported", "allowed"),
     [
-        ("squidpdf", "pymupdf", ["squidpdf.core.pdf", "squidpdf.core.mupdf"]),
+        ("squidpdf", "pymupdf", ["squidpdf.core.pdf"]),
         ("squidpdf", "fitz", []),
-        ("squidpdf", "squidpdf.core.mupdf", ["squidpdf.core"]),
-        ("squidpdf", "squidpdf.core.pdf", ["squidpdf.core"]),
+        ("squidpdf", "squidpdf.core.pdf.mupdf", ["squidpdf.core"]),
+        ("squidpdf", "squidpdf.core.pdf.lowlevel", ["squidpdf.core"]),
         ("squidpdf.core", "squidpdf.editing", []),
         ("squidpdf.core", "squidpdf.documents", []),
         ("squidpdf.core", "squidpdf.api", []),
@@ -70,7 +70,7 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf", "pydantic", _WEB),
     ],
     ids=[
-        "only core/pdf.py and core/mupdf.py talk to MuPDF",
+        "only core/pdf/ talks to MuPDF",
         "nothing reaches MuPDF by its old name, around the rule above",
         "outside core, nothing names the driver: open_pdf is the way in",
         "outside core, nothing reads MuPDF's low-level wrapper",

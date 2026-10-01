@@ -8,7 +8,7 @@ import orjson
 
 # Not through `Engine`: these are our own files, with no document to open.
 from squidpdf.core import BUILD, Reply, Workers, face_widths
-from squidpdf.core.fonts import CATALOG
+from squidpdf.core.fonts.catalog import CATALOG
 from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
 from squidpdf.editing.types import FamilyInfo, FontList
 

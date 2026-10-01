@@ -12,9 +12,10 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Engine, google
+from squidpdf.core import Engine
 from squidpdf.core.constants import FETCH_TIMEOUT_S
-from squidpdf.core.google import Download
+from squidpdf.core.fonts import google
+from squidpdf.core.fonts.google import Download
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages

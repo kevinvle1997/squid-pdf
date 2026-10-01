@@ -1,7 +1,7 @@
 """What the app tells a person, before it's put into anyone's words.
 
 Below the API nothing writes a sentence: it says what happened as a Message,
-the key of a sentence in `core.words` and the facts that fill it, and the edge
+the key of a sentence in `core.app.words` and the facts that fill it, and the edge
 puts that into the reader's language. Plain data, so a worker can pickle it
 back and the analysis can keep it on disk.
 """
@@ -27,7 +27,7 @@ class MessageInfo(TypedDict):
 class Message:
     """Which sentence to tell a person, and the facts its placeholders take.
 
-    `key` names the sentence in `core.words` and is never renamed: the browser
+    `key` names the sentence in `core.app.words` and is never renamed: the browser
     can branch on it, as it does on a Problem's type.
     """
 

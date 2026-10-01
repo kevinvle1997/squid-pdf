@@ -20,7 +20,7 @@ export const A4: PageInfo = { width: 595, height: 842, rotation: 0 };
 /** The server's thresholds, as core/constants.py sets them. */
 export const RULES: FitRules = { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 };
 
-/** The server's sentences, as core/words/en.toml writes them. */
+/** The server's sentences, as core/app/words/en.toml writes them. */
 export const COPY: Copy = {
   missing: "no {chars} in this font, so the line is drawn in {font}",
   too_long: "{delta_pt} pt too long",

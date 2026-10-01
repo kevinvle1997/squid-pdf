@@ -3,7 +3,7 @@
 A Span holds what the file states and nothing we concluded. Whether an edit here
 will look identical depends on the font library we happen to ship, which is a
 judgement that can change without the document changing, so it lives in
-`core.fidelity`, not here.
+`core.text.fidelity`, not here.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ import math
 import pymupdf
 
 from squidpdf.core.constants import TOLERANCE_PT
-from squidpdf.core.fonts import strip_subset
+from squidpdf.core.fonts.look_alike import strip_subset
 from tests.api.conftest import span_starting, upload
 from tests.helpers import assert_at_most, assert_equal, assert_in, assert_not_in, assert_true
 

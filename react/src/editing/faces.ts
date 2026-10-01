@@ -5,7 +5,7 @@ import type { FontInfo } from "../api/types";
 // Longest first, so "Bold Italic" isn't read as "Italic".
 const STYLES = ["Bold Italic", "Bold", "Italic", "Regular"];
 
-/** A face's file, named as core/fonts.py names it: "Liberation Serif Bold" is LiberationSerif-Bold.ttf. */
+/** A face's file, named as core/fonts/catalog.py names it: "Liberation Serif Bold" is LiberationSerif-Bold.ttf. */
 export function fileOf(face: string): string {
   const style = STYLES.find((name) => face.endsWith(` ${name}`)) ?? "Regular";
   const family = face.endsWith(` ${style}`) ? face.slice(0, -style.length - 1) : face;
