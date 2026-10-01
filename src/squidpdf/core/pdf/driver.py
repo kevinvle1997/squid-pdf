@@ -26,12 +26,11 @@ from squidpdf.core.types import (
 )
 
 
-class DriverError(ValueError):
+class DriverError(Exception):
     """The library couldn't do what was asked with a font, and why, for the edge to say.
 
     One error for every way a font fails in the driver, as `FontUnusable` is in
-    the engine. A ValueError so callers written when the driver raised those
-    still catch it, until they catch this by name.
+    the engine. Caught by name.
     """
 
     def __init__(self, reason: Message, *, debug: str = "") -> None:

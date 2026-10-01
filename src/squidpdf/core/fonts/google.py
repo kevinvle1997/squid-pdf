@@ -32,7 +32,7 @@ from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS
 from squidpdf.core.fonts.coverage import Coverage
 from squidpdf.core.fonts.embedded import EmbeddedFont
 from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
-from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
 __all__ = [
@@ -143,7 +143,7 @@ class GoogleFontController:
             return None
         try:
             program = self._driver.open_font(font_file)
-        except ValueError:  # the library can't read it, though git vouched for the bytes
+        except DriverError:  # the library can't read it, though git vouched for the bytes
             return None
         return EmbeddedFont(program, font_file, Coverage(font_file), None)
 
