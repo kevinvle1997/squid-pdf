@@ -22,25 +22,16 @@ from types import ModuleType
 from typing import cast
 
 from fastapi import Request
-from pebble import ProcessExpired, ProcessPool
+from pebble import ProcessPool
 
 from squidpdf.api import constants
 from squidpdf.api.errors import TooSlow
-from squidpdf.core import Damaged, Problem, TooHeavy, result_of
+from squidpdf.core import Problem, result_of
 
 __all__ = [
     "Pool",
     "current",
 ]
-
-# pebble's failures, and the Problem each one means. In order: the first that matches wins.
-_FAILURES: list[tuple[type[Exception], Callable[[Exception], Problem]]] = [
-    # Out of time, waiting or working: slow, not necessarily broken.
-    (TimeoutError, lambda _failure: TooSlow()),
-    (MemoryError, lambda _failure: TooHeavy()),  # past the memory ceiling
-    (ProcessExpired, lambda _failure: Damaged()),  # the worker died: MuPDF crashed on the file
-]
-_FAILED = tuple(raised for raised, _make in _FAILURES)  # the types alone, for `except`
 
 
 class Pool:
@@ -65,7 +56,7 @@ class Pool:
         is stopped. A short one finishes: stopping it would kill its worker, and
         the next task would wait for a new one. The PDF library's own failures
         come back as the Problems they mean (`core.result_of`), and pebble's by
-        `_FAILURES`.
+        `constants.WORKER_FAILURES`.
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -92,7 +83,7 @@ class Pool:
             raise
         try:
             return job.result()
-        except _FAILED as failure:  # pebble's, listed in _FAILURES
+        except constants.WORKER_FAILURE_TYPES as failure:  # raised by pebble, one per row
             raise problem_of(failure) from failure
 
     def _given_back[T](self, job: asyncio.Task[T]) -> None:
@@ -146,7 +137,7 @@ def log_unexpected[T](job: asyncio.Task[T]) -> None:
     if job.cancelled():
         return
     failure = job.exception()  # read here, so asyncio doesn't log it as never read
-    expected = failure is None or isinstance(failure, _FAILED)
+    expected = failure is None or isinstance(failure, constants.WORKER_FAILURE_TYPES)
     if expected:
         return
     message = "a task whose caller left failed"
@@ -156,8 +147,12 @@ def log_unexpected[T](job: asyncio.Task[T]) -> None:
 
 
 def problem_of(failure: Exception) -> Problem:
-    """What one of pebble's failures means: the first row of `_FAILURES` it matches."""
-    return next(make(failure) for raised, make in _FAILURES if isinstance(failure, raised))
+    """What one of pebble's failures means: the first row of `WORKER_FAILURES` it matches."""
+    return next(
+        worker_failure.problem()
+        for worker_failure in constants.WORKER_FAILURES
+        if isinstance(failure, worker_failure.raised)
+    )
 
 
 def current(request: Request) -> Pool:
