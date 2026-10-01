@@ -265,12 +265,12 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     """Caladea has no Greek, so the line goes to Noto Serif, whole, and the fit said so."""
     path = named_only(str(tmp_path / "cambria.pdf"), "Cambria")
     out = str(tmp_path / "greek.pdf")
-    with open_pdf(path) as eng:
-        index = eng.index()
+    with open_pdf(path) as engine:
+        index = engine.index()
         span = next(iter(index))
-        fit = replace_fit(eng, span, "Hi Ωμέγα")
-        applied = _apply(eng, [Replace(span.id, "Hi Ωμέγα")], index)
-        eng.save(out)
+        fit = replace_fit(engine, span, "Hi Ωμέγα")
+        applied = _apply(engine, [Replace(span.id, "Hi Ωμέγα")], index)
+        engine.save(out)
 
     greek = "Ω or μ or έ or γ or α"  # noqa: RUF001 (Greek on purpose: Caladea has none)
     said = words.sentence("missing").format(chars=greek, font="Noto Serif Regular")
