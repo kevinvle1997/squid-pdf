@@ -59,9 +59,9 @@ _PAGES = "pages.json"
 _ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
-_ID_SHAPE = re.compile(r"[A-Za-z0-9_-]{22}")
+_DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
 _TRASH = ".trash-"  # a deleted document's folder, moved aside while it's emptied
-_TRASHED_SHAPE = re.compile(re.escape(_TRASH) + _ID_SHAPE.pattern)
+_TRASHED_FOLDER_PATTERN = re.compile(re.escape(_TRASH) + _DOCUMENT_ID_PATTERN.pattern)
 
 
 def root() -> Path:
@@ -81,7 +81,7 @@ def create(owner_digest: str) -> tuple[str, Path]:
 
 def find(doc_id: str) -> tuple[Path, str] | None:
     """The document's folder and its owner's hash, or None if there's no such document."""
-    if not _ID_SHAPE.fullmatch(doc_id):
+    if not _DOCUMENT_ID_PATTERN.fullmatch(doc_id):
         return None
     folder = root() / doc_id
     try:
@@ -125,7 +125,8 @@ def delete(folder: Path) -> None:
         folder.rename(trash)
     except FileNotFoundError:  # the sweep or another delete got there first
         return
-    shutil.rmtree(trash, ignore_errors=True)  # the sweep may be emptying it too
+    # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
+    shutil.rmtree(trash, ignore_errors=True)
 
 
 def sweep() -> None:
@@ -135,11 +136,12 @@ def sweep() -> None:
     folder can be shared. A request that loses the race with a delete says Gone.
     """
     for folder in root().glob("*"):
-        if _TRASHED_SHAPE.fullmatch(folder.name):  # a delete cut short: nothing reads it now
+        # A delete cut short: nothing reads it now.
+        if _TRASHED_FOLDER_PATTERN.fullmatch(folder.name):
             shutil.rmtree(folder, ignore_errors=True)  # its delete may be emptying it too
             continue
         # With or without its owner: one emptied by a delete from before they moved aside.
-        is_document = _ID_SHAPE.fullmatch(folder.name) and folder.is_dir()
+        is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
         if is_document and idle(folder):
             delete(folder)
 
