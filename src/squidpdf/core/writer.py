@@ -221,12 +221,12 @@ class PageWriter:
             turn=setting.turn,
         )
 
-    def _resources(self, page: int, pool: PooledFont, text: str) -> dict[str, str]:
+    def _resources(self, page: int, own: PooledFont, text: str) -> dict[str, str]:
         """The resource name of the copy each letter of `text` is drawn in.
 
         Raises FontUnusable when the library won't add one of them.
         """
-        return {ch: self._copy_resource(page, pool.copy_for(ch)) for ch in dict.fromkeys(text)}
+        return {ch: self._copy_resource(page, own.copy_for(ch)) for ch in dict.fromkeys(text)}
 
     def _copy_resource(self, page: int, copy: FontCopy) -> str:
         """The resource name of a copy of a font, added to the page on first use.
@@ -250,18 +250,18 @@ class PageWriter:
         # Named by its source, so copies of one font are told apart.
         resource = resource_name("F", copy_source(copy))
         try:
-            added = self._driver.add_font(page, copy.embedded.file, resource=resource)
+            font_resource = self._driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the stand-in draws instead
             return FontUnusable(problem.reason)
         if copy.google is not None:
-            whole = AddedFont(lent_name(copy), copy.embedded.file)
-            self._keep_whole(copy.google.source, whole, xref=added.xref)
-        return added.resource
+            added_font = AddedFont(lent_name(copy), copy.embedded.file)
+            self._keep_whole(copy.google.source, added_font, xref=font_resource.xref)
+        return font_resource.resource
 
-    def _note_google_letters(self, pool: PooledFont, text: str) -> None:
+    def _note_google_letters(self, own: PooledFont, text: str) -> None:
         """Keep the letters Google's copy draws in `text`, for `save` to cut it down to."""
         for ch in text:
-            copy = pool.copy_for(ch)
+            copy = own.copy_for(ch)
             if copy.google is not None:
                 self._added[copy.google.source].drawn.add(ch)
 
@@ -273,11 +273,12 @@ class PageWriter:
         key = (page, face.file)
         if key not in self._names.faces:
             font_file = face_bytes(face)
-            added = self._driver.add_font(
+            font_resource = self._driver.add_font(
                 page, font_file, resource=resource_name("S", face.file)
             )
-            self._names.faces[key] = added.resource
-            self._keep_whole(face.file, AddedFont(face.name, font_file), xref=added.xref)
+            self._names.faces[key] = font_resource.resource
+            added_font = AddedFont(face.name, font_file)
+            self._keep_whole(face.file, added_font, xref=font_resource.xref)
         return self._names.faces[key]
 
     def _keep_whole(self, source: str, font: AddedFont, *, xref: int) -> None:

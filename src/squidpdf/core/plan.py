@@ -10,6 +10,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import assert_never
 
 from squidpdf.core import faces
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
@@ -94,8 +95,8 @@ class LinePlanner:
     def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
         """How a redraw of the span's own text in its own font looks unlike it; None if not."""
         # Turned on the page: redraws are level.
-        _along, rise = span.direction
-        if abs(rise) > TURN_TOLERANCE:
+        _horizontal, vertical = span.direction
+        if abs(vertical) > TURN_TOLERANCE:
             return Message("turned_text")
         # Letters no font we have draws: a redraw leaves them out.
         if plan.left_out:
@@ -124,9 +125,13 @@ class LinePlanner:
     def program_of(self, plan: DrawPlan) -> FontProgram:
         """The font program that measures and draws `plan`'s line."""
         drawn_in = plan.drawn_in
+        # The file's own copies, pooled: they measure as one font.
         if isinstance(drawn_in, PooledFont):
             return drawn_in
-        return self.driver.face_font(drawn_in)
+        # A face we ship, opened to measure with.
+        if isinstance(drawn_in, Face):
+            return self.driver.face_font(drawn_in)
+        assert_never(drawn_in)
 
     def words_of(
         self, span: Span, text: str, *, font: FontProgram, size: float
@@ -146,20 +151,20 @@ class LinePlanner:
         in a font with no space: a space here is the page's usual gap, where
         `measure` keeps the line's own, so a justified line can differ.
         """
-        pool = self.fonts.own(span)
+        pooled = self.fonts.own(span)
 
         # Not in the file: the look-alike draws it, its list kept to GLYPH_LIST_RANGES.
-        if pool is None:
+        if pooled is None:
             face = self.fonts.look_alike(span).face
             return letter_widths(self.driver.face_font(face), faces.face_letters(face))
 
         # Each from the copy that draws it: its width list if written by code, else the font.
-        letters = sorted(pool.letters.items())
+        letters = sorted(pooled.letters.items())
         widths = {ch: round(copy.widths[ch], _WIDTH_DP) for ch, copy in letters}
         # Written by letter, with no space of its own: a space is the page's usual gap.
-        spaceless = pool.own.embedded.coded is None and lacks_space(pool)
+        spaceless = pooled.own.embedded.coded is None and lacks_space(pooled)
         if spaceless:
-            widths[" "] = round(self.fonts.usual_gap(span, pool) * _EM, _WIDTH_DP)
+            widths[" "] = round(self.fonts.usual_gap(span, pooled) * _EM, _WIDTH_DP)
         return widths
 
 
@@ -169,10 +174,16 @@ def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
     None unless they draw it by code.
     """
     drawn_in = plan.drawn_in
-    # A face we ship, or the file's copies written by letter: no codes.
-    if isinstance(drawn_in, Face) or drawn_in.own.embedded.coded is None:
+    # A face we ship: no codes.
+    if isinstance(drawn_in, Face):
         return None
-    return drawn_in.coded_stretches(plan.text)
+    # The file's copies, written by letter: no codes.
+    if isinstance(drawn_in, PooledFont) and drawn_in.own.embedded.coded is None:
+        return None
+    # The file's copies, written by code: the line in their codes.
+    if isinstance(drawn_in, PooledFont):
+        return drawn_in.coded_stretches(plan.text)
+    assert_never(drawn_in)
 
 
 def spelled(own: PooledFont, text: str) -> str:

@@ -299,8 +299,8 @@ class MuPDFDriver:
         owner = self._describing_font(xref)
         if owner is None:
             return None
-        kind, _value = self._doc.xref_get_key(owner, "FontDescriptor")
-        if kind == "null":
+        value_type, _value = self._doc.xref_get_key(owner, "FontDescriptor")
+        if value_type == "null":
             return None
         flags = self._number(owner, "FontDescriptor/Flags")
         angle = self._number(owner, "FontDescriptor/ItalicAngle")
@@ -312,9 +312,9 @@ class MuPDFDriver:
 
     def _describing_font(self, xref: int) -> int | None:
         """Where the font's description lives: the font itself, or a Type0's inner font."""
-        kind, value = self._doc.xref_get_key(xref, "DescendantFonts")
+        value_type, value = self._doc.xref_get_key(xref, "DescendantFonts")
         # A simple font describes itself.
-        if kind != "array":
+        if value_type != "array":
             return xref
         inner = _FIRST_REFERENCE.match(value)
         # None when written out in place: rare, and not worth it.
@@ -322,8 +322,8 @@ class MuPDFDriver:
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
-        kind, value = self._doc.xref_get_key(xref, key)
-        if kind not in ("int", "real"):
+        value_type, value = self._doc.xref_get_key(xref, key)
+        if value_type not in ("int", "real"):
             return None
         return float(value)
 
@@ -363,14 +363,14 @@ class MuPDFDriver:
         page uses, hands back the font already there. Raises DriverError when
         MuPDF won't add it.
         """
-        free = self._free_name(page, resource)
-        pg = self._doc[page]
+        free_name = self._free_name(page, resource)
+        pdf_page = self._doc[page]
         try:
-            xref = pg.insert_font(fontname=free, fontbuffer=font_file)
+            xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._added.setdefault(pg.xref, {})[free] = xref
-        return FontResource(free, xref)
+        self._added.setdefault(pdf_page.xref, {})[free_name] = xref
+        return FontResource(free_name, xref)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside each box, for real.
@@ -400,19 +400,19 @@ class MuPDFDriver:
 
     def _restore_links(self, page: int, links: list[dict]) -> None:
         """Add back any of `links`, as get_links read them, that the page no longer has."""
-        pg = self._doc[page]
-        kept = {link_key(link) for link in pg.get_links()}
+        pdf_page = self._doc[page]
+        kept = {link_key(link) for link in pdf_page.get_links()}
         for link in links:
             if link_key(link) not in kept:
-                pg.insert_link(link)
+                pdf_page.insert_link(link)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
         """Delete every link whose area overlaps one of `boxes`."""
-        pg = self._doc[page]
+        pdf_page = self._doc[page]
         areas = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
-        for link in pg.get_links():
+        for link in pdf_page.get_links():
             if any(pymupdf.Rect(link["from"]).intersects(area) for area in areas):
-                pg.delete_link(link)
+                pdf_page.delete_link(link)
 
     def write_codes(
         self,
@@ -444,10 +444,10 @@ class MuPDFDriver:
         cos, sin = QUARTER_TURNS[turn]
         matrix = [scale_x * cos, scale_x * sin, -sin, cos, x, y]
         placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
-        rgb = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
+        color_operands = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
         # Save the page's settings, set color, place the text, write each run in
         # its font and size, then put the settings back.
-        stream = f"q{paint} BT {rgb} rg {placed} Tm {shown} ET Q"
+        stream = f"q{paint} BT {color_operands} rg {placed} Tm {shown} ET Q"
         self._add_content(page, stream.encode())
 
     def _resources_of(self, page: int, xrefs: set[int]) -> dict[int, str]:
@@ -521,12 +521,12 @@ class MuPDFDriver:
         owner = self._describing_font(xref)
         # Its inner font written out in place: MuPDF never adds one so, so it's someone else's.
         if owner is None:
-            _kind, base_font = self._doc.xref_get_key(xref, "BaseFont")
+            _value_type, base_font = self._doc.xref_get_key(xref, "BaseFont")
             said = Message("face_not_trimmed", {"font": base_font.lstrip("/")})
             raise DriverError(said, debug=f"font {xref} has its inner font in place")
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self._doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
-        value = next(value for kind, value in stored if kind == "xref")
+        value = next(value for value_type, value in stored if value_type == "xref")
         file_xref = int(value.split()[0])  # "7 0 R" -> 7
         self._doc.update_stream(file_xref, font_file)
         # A TrueType file states its size before compression, too.
@@ -535,8 +535,8 @@ class MuPDFDriver:
     def has_tags(self) -> bool:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
         catalog = self._doc.pdf_catalog()  # the file's root entry, where the tags are listed
-        kind, _value = self._doc.xref_get_key(xref=catalog, key=_TAGS_KEY)
-        return kind != _PDF_NULL
+        value_type, _value = self._doc.xref_get_key(xref=catalog, key=_TAGS_KEY)
+        return value_type != _PDF_NULL
 
     def drop_tags(self) -> None:
         """Remove the file's tags. Saving then drops every page only they pointed at."""
@@ -549,15 +549,15 @@ class MuPDFDriver:
         The page's own drawing is wrapped first, so its settings (color,
         position) can't leak into ours.
         """
-        pg = self._doc[page]
-        if not pg.is_wrapped:
-            pg.wrap_contents()
+        pdf_page = self._doc[page]
+        if not pdf_page.is_wrapped:
+            pdf_page.wrap_contents()
         xref = self._doc.get_new_xref()
         self._doc.update_object(xref, "<<>>")
         self._doc.update_stream(xref, stream)
-        parts = [*pg.get_contents(), xref]
+        parts = [*pdf_page.get_contents(), xref]
         self._doc.xref_set_key(
-            pg.xref, "Contents", "[" + " ".join(f"{p} 0 R" for p in parts) + "]"
+            pdf_page.xref, "Contents", "[" + " ".join(f"{p} 0 R" for p in parts) + "]"
         )
 
 

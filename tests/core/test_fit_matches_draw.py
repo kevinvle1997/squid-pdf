@@ -37,9 +37,9 @@ def _own_font_file(path: str) -> str:
     doc.subset_fonts(verbose=False)
     [(xref, *_)] = page.get_fonts()
     # A two-byte font names itself twice: on the font and on the one inside it.
-    _kind, inner = doc.xref_get_key(xref, "DescendantFonts")
-    for named in (xref, int(inner.strip("[]").split()[0])):
-        doc.xref_set_key(named, "BaseFont", f"/{_CALIBRI}")
+    _value_type, descendants = doc.xref_get_key(xref, "DescendantFonts")
+    for font_xref in (xref, int(descendants.strip("[]").split()[0])):
+        doc.xref_set_key(font_xref, "BaseFont", f"/{_CALIBRI}")
     doc.save(path)
     return path
 

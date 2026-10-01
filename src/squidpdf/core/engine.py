@@ -12,6 +12,7 @@ engine asks both.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import assert_never
 
 from squidpdf.core.document_fonts import DocumentFonts
 from squidpdf.core.driver import PdfDriver
@@ -22,7 +23,7 @@ from squidpdf.core.plan import LinePlanner
 from squidpdf.core.pooled import PooledFont
 from squidpdf.core.spacing import lacks_space
 from squidpdf.core.spans import build_index
-from squidpdf.core.types import Page, Rect, Span, SpanIndex
+from squidpdf.core.types import Face, Page, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 
 __all__ = ["Engine"]
@@ -89,6 +90,13 @@ class Engine:
             return FidelityReport(
                 span.id, Fidelity.APPROXIMATE, span.font, in_file=True, why=unlike
             )
+        # A face we ship draws it in the font's place.
+        if isinstance(drawn_in, Face):
+            return self._substitute(span, drawn_in)
+        assert_never(drawn_in)
+
+    def _substitute(self, span: Span, drawn_in: Face) -> FidelityReport:
+        """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
         own = self._fonts.own(span)
         match = self._fonts.look_alike(span)
         return FidelityReport(
@@ -128,7 +136,10 @@ class Engine:
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
             return self._plans.stand_in_for(span, text).face.name
-        return drawn_in.name
+        # A face we ship draws it.
+        if isinstance(drawn_in, Face):
+            return drawn_in.name
+        assert_never(drawn_in)
 
     # Changing it.
 
@@ -150,10 +161,10 @@ class Engine:
         space is measured against.
         """
         for span in spans:
-            pool = self._fonts.own(span)
+            own = self._fonts.own(span)
             self._fonts.look_alike(span)
-            if pool is not None and lacks_space(pool):
-                self._fonts.usual_gap(span, pool)
+            if own is not None and lacks_space(own):
+                self._fonts.usual_gap(span, own)
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
