@@ -11,11 +11,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Response
-from starlette import status
+from fastapi import Depends, FastAPI
 
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
+from squidpdf.api.errors import NoWorkers
 from squidpdf.api.errors.http import PROBLEM_RESPONSES, install
 from squidpdf.api.pool import WorkerPool, current
 from squidpdf.api.rate import RecentUploads
@@ -61,16 +61,13 @@ def create_app() -> FastAPI:
     # Outermost, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
-    @app.get("/api/health")
-    async def health(
-        response: Response, pool: Annotated[WorkerPool, Depends(current)]
-    ) -> dict[str, str]:
+    @app.get("/api/health", responses=PROBLEM_RESPONSES)
+    async def health(pool: Annotated[WorkerPool, Depends(current)]) -> dict[str, str]:
         """Up and answering."""
         # The docstring stays: it's the schema's description, which the browser's types copy.
-        # Up: a worker can take a task. A broken pool is replaced first; 503: none can start.
+        # Up: a worker can take a task. A broken pool is replaced first; none can start: 503.
         if not await pool.ready():
-            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-            return {"status": "no_workers"}
+            raise NoWorkers()
         return {"status": "ok"}
 
     return app

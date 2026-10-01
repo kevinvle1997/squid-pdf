@@ -24,7 +24,13 @@ from squidpdf.api.pool import WorkerPool
 from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
-from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
+from tests.helpers import (
+    assert_at_most,
+    assert_equal,
+    assert_false,
+    assert_problem,
+    assert_true,
+)
 
 _HANG_S = 60
 _TIMEOUT_S = 0.5
@@ -149,8 +155,7 @@ def test_health_says_so_when_no_worker_can_start(tmp_path, monkeypatch):
             broken = client.get("/api/health")
         healed = client.get("/api/health")
 
-    assert_equal(broken.status_code, 503, "health status while no worker can start")
-    assert_equal(broken.json(), {"status": "no_workers"}, "health while no worker can start")
+    assert_problem(broken, "no_workers", 503)
     assert_equal(healed.json(), {"status": "ok"}, "health once workers can start again")
 
 
