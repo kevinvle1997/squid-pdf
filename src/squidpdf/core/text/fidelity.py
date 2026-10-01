@@ -15,11 +15,12 @@ from typing import Literal, get_args
 
 from squidpdf.core.app.message import Message, Param
 
-# The ways an edit can turn out, in terms of the original font, as the browser gets them:
-# "exact", the document's own font is in the file and covers it; "approximate", the file's
-# own font draws it, but not as the page shows it now (`why` says how); "substitute", the
-# file's own copy can't be used, so another face draws. A plain alias: pydantic reads it.
-Fidelity = Literal["exact", "approximate", "substitute"]
+# The ways an edit can turn out, in terms of the original font. Pydantic reads it: no `type`.
+Fidelity = Literal[
+    "exact",  # the document's own font is in the file and covers it
+    "approximate",  # the file's own font draws it, but not as the page shows it: `why` says how
+    "substitute",  # the file's own copy can't be used, so another face draws
+]
 
 # Each way the file's own font draws an edit unlike the page, by the key of the sentence
 # that says it: an approximate span's `why`. A plain alias: pydantic reads it.
