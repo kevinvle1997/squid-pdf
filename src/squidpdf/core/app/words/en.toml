@@ -30,6 +30,11 @@ font_cant_write = "This font is stored in the file in a way we can't write new t
 copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
 copy_too_few_shared = "Another copy of this font has the letters needed here, but too few letters in common with this one to be sure it's the same font, so a similar font stands in for it."
 copy_other_widths = "Another font by this name has the letters needed here, but its letters are a different width, so a similar font stands in for it."
+# Why Google Fonts can't lend a font the letters its copy in the file lacks. Not said yet.
+google_not_listed = "Google Fonts has no font by this name, so it can't lend the letters missing here."
+google_no_cut = "Google Fonts has this font, but not in this weight and style, so it can't lend the letters missing here."
+google_name_reserved = "Google Fonts has this font only in a form we'd have to change, and its licence keeps its name for the original, so it can't lend the letters missing here."
+google_not_fetched = "Google's copy of this font couldn't be fetched, so it can't lend the letters missing here."
 
 # Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."

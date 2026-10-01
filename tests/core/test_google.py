@@ -24,16 +24,20 @@ from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Download,
     Fetch,
     GoogleFile,
+    GoogleFontController,
     RetryAt,
     blob_hash,
     family_list,
     fetched,
+    google_file,
     google_fonts,
 )
+from squidpdf.core.pdf.mupdf import MuPDFDriver
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
@@ -44,6 +48,20 @@ _EM = 1000
 _WIDE = 200  # how much wider the made-up variable font's A is at its heaviest
 _DEADLINE_S = 0.1  # the whole-fetch deadline in the hang test
 _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
+
+
+# Fonts Google has no file to lend for, and why: not a family of its, no cut in this
+# weight and slant (Aclonica has no italic), a variable font whose name is reserved.
+_NOT_GOOGLES = {
+    "Arial": "google_not_listed",
+    "Aclonica-Italic": "google_no_cut",
+    "Assistant-Bold": "google_name_reserved",
+}
+
+
+def _why_none(found: object) -> str:
+    """Why Google lends nothing, by its sentence's key; "lends" when it does lend."""
+    return found.reason.key if isinstance(found, FontUnusable) else "lends"
 
 
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
@@ -122,6 +140,10 @@ def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
         got = _fetched(file, tmp_path, _failing)
     assert_equal(got, None, "what a failed fetch hands back")
     assert_true("fetch failed" in caplog.text, "the failure was logged")
+    driver = MuPDFDriver(poppins_subset)
+    lent = GoogleFontController(driver, fetch=fetch).opened(file)
+    driver.close()
+    assert_equal(_why_none(lent), "google_not_fetched", "why Google's copy lends nothing")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
@@ -313,6 +335,8 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
         for span in engine.index():
             engine.missing(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
+    whys = [_why_none(google_file(font, None)) for font in _NOT_GOOGLES]
+    assert_equal(whys, list(_NOT_GOOGLES.values()), "why Google has no file for each")
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():

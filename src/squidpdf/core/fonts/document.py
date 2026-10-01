@@ -174,28 +174,31 @@ class DocumentFonts:
         # A copy we can't open lends no letters; the span's own still draws what it can.
         yield from (copy for copy in opened if isinstance(copy, FontCopy))
         # From outside the file, in order. The user's own copy of a font, once
-        # they can attach one, goes before Google's.
-        from_outside = (self._google_copy,)
+        # they can attach one, goes before Google's. Without Google, there are none.
+        from_outside = (
+            () if self._google is None else (partial(self._google_copy, self._google),)
+        )
         for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
                 return
             copy = copy_from(own)
-            # None: no copy of this font to be had there.
-            if copy is not None:
+            # No copy of this font to be had there, and why: it lends nothing, as above.
+            if isinstance(copy, FontCopy):
                 yield copy
 
-    def _google_copy(self, own: FontCopy) -> FontCopy | None:
-        """Google's copy of the own copy's font; None when it has none, or it can't be had."""
-        if self._google is None:
-            return None
-        file = self._google.file_for(own.font)
+    def _google_copy(
+        self, google: GoogleFontController, own: FontCopy
+    ) -> FontCopy | FontUnusable:
+        """Google's copy of the own copy's font, or why it has none, or it can't be had."""
+        file = google.file_for(own.font)
         # Not one of Google's families, or a cut it may not make.
-        if file is None:
-            return None
-        embedded = self._google.opened(file)
-        if embedded is None:
-            return None
+        if isinstance(file, FontUnusable):
+            return file
+        embedded = google.opened(file)
+        # Not fetched, or not readable.
+        if isinstance(embedded, FontUnusable):
+            return embedded
         return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
