@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core import Category, Message, MessageInfo, Page, Style
+from squidpdf.core import Category, Message, MessageInfo, Page, SaidInfo, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
     from squidpdf.editing.fit import LogFits
@@ -162,36 +162,24 @@ class SkippedInfo(MessageInfo):
     detail: str
 
 
-class SpanNoticeInfo(MessageInfo):
-    """A replace or a redaction drawn other than asked, by its span, and why.
-
-    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-    """
+class SpanNoticeInfo(SaidInfo):
+    """A replace or a redaction drawn other than asked, by its span, and why."""
 
     kind: Literal["span"]
     span_id: str
-    detail: str
 
 
-class InsertNoticeInfo(MessageInfo):
-    """An insert drawn other than asked, by its place in the list the browser sent, and why.
-
-    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-    """
+class InsertNoticeInfo(SaidInfo):
+    """An insert drawn other than asked, by its place in the list the browser sent, and why."""
 
     kind: Literal["insert"]
     edit: int
-    detail: str
 
 
-class FileNoticeInfo(MessageInfo):
-    """What saving did to the whole file other than asked, and why.
-
-    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-    """
+class FileNoticeInfo(SaidInfo):
+    """What saving did to the whole file other than asked, and why."""
 
     kind: Literal["file"]
-    detail: str
 
 
 # A notice as the browser gets it, told apart by `kind`. A plain alias: pydantic reads it.

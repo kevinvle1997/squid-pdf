@@ -300,8 +300,6 @@ export interface components {
         /**
          * FileNoticeInfo
          * @description What saving did to the whole file other than asked, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
          */
         FileNoticeInfo: {
             /** Code */
@@ -310,13 +308,13 @@ export interface components {
             params: {
                 [key: string]: components["schemas"]["Param"];
             };
+            /** Detail */
+            detail: string;
             /**
              * Kind
              * @constant
              */
             kind: "file";
-            /** Detail */
-            detail: string;
         };
         /**
          * FitInfo
@@ -465,8 +463,6 @@ export interface components {
         /**
          * InsertNoticeInfo
          * @description An insert drawn other than asked, by its place in the list the browser sent, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
          */
         InsertNoticeInfo: {
             /** Code */
@@ -475,6 +471,8 @@ export interface components {
             params: {
                 [key: string]: components["schemas"]["Param"];
             };
+            /** Detail */
+            detail: string;
             /**
              * Kind
              * @constant
@@ -482,8 +480,6 @@ export interface components {
             kind: "insert";
             /** Edit */
             edit: number;
-            /** Detail */
-            detail: string;
         };
         /**
          * MessageInfo
@@ -679,8 +675,6 @@ export interface components {
         /**
          * SpanNoticeInfo
          * @description A replace or a redaction drawn other than asked, by its span, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
          */
         SpanNoticeInfo: {
             /** Code */
@@ -689,6 +683,8 @@ export interface components {
             params: {
                 [key: string]: components["schemas"]["Param"];
             };
+            /** Detail */
+            detail: string;
             /**
              * Kind
              * @constant
@@ -696,8 +692,6 @@ export interface components {
             kind: "span";
             /** Span Id */
             span_id: string;
-            /** Detail */
-            detail: string;
         };
         /** @enum {string} */
         Strategy: "as-is" | "shrink" | "condense";

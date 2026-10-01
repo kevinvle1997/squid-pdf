@@ -111,7 +111,7 @@ export function aReply(fields: Partial<Render> = {}): Render {
 }
 
 /** A span's edit the server drew other than asked, in its words. */
-export function aNotice(detail: string, spanId = "span"): SpanNoticeInfo {
+export function aSpanNotice(detail: string, spanId = "span"): SpanNoticeInfo {
   return { kind: "span", span_id: spanId, code: "notice", params: {}, detail };
 }
 
