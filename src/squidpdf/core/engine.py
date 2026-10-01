@@ -24,7 +24,7 @@ from squidpdf.core.plan import DrawPlan, DrawPlanner
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
-from squidpdf.core.types import Face, Page, QuarterTurn, Rect, Span, SpanIndex
+from squidpdf.core.types import Face, FormField, Page, QuarterTurn, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 
 __all__ = [
@@ -79,6 +79,27 @@ class Engine:
         Unrotated, so the image lines up with the span boxes; the browser turns it.
         """
         return self._driver.page_image(page, scale, clip)
+
+    def in_form_fields(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans a form field draws, not the page, so an edit can't change them yet.
+
+        A field draws a span when the span sits inside it and its words are part
+        of the value the field shows: text the page draws there, a hint printed
+        in an empty field, say, is the page's, and an edit changes it.
+        """
+        return [
+            span
+            for page, on_page in by_page(spans).items()
+            for span in self._in_fields_on(page, on_page)
+        ]
+
+    def _in_fields_on(self, page: int, spans: list[Span]) -> list[Span]:
+        """Those of `spans`, all on `page`, that a form field draws."""
+        fields = self._driver.form_fields(page)
+        # A page with no field showing text: nothing to find, so no span is looked at.
+        if not fields:
+            return []
+        return [span for span in spans if any(field_draws(field, span) for field in fields)]
 
     # What we can promise about it.
 
@@ -289,6 +310,19 @@ def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
     for span in spans:
         grouped.setdefault(span.page, []).append(span)
     return grouped
+
+
+def field_draws(field: FormField, span: Span) -> bool:
+    """Whether `field` draws `span`: it sits inside, and its words are part of the value."""
+    words = " ".join(span.text.split())
+    shown = " ".join(field.value.split())
+    return bool(words) and words in shown and middle_inside(span.bbox, field.box)
+
+
+def middle_inside(box: Rect, area: Rect) -> bool:
+    """Whether the middle of `box` lies inside `area`."""
+    x, y = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
+    return area.x0 <= x <= area.x1 and area.y0 <= y <= area.y1
 
 
 def any_word_left(text: str, left: str) -> bool:

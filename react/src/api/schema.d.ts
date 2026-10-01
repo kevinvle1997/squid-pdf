@@ -204,6 +204,8 @@ export interface components {
             reopened: string;
             /** Export Left Out */
             export_left_out: string;
+            /** Form Field Not Edited */
+            form_field_not_edited: string;
             /** Options */
             options: {
                 [key: string]: {
@@ -648,6 +650,8 @@ export interface components {
          *
          *     `why` says how an approximate span would come back unlike itself, in no
          *     language: its sentence is in the reply's `copy`, under `approximate`.
+         *     `form_field` is true when a form field draws the text, not the page: an
+         *     edit to it is left out, and `copy`'s `form_field_not_edited` says so.
          */
         SpanInfo: {
             /** Id */
@@ -671,6 +675,8 @@ export interface components {
              */
             fidelity: "exact" | "approximate" | "substitute";
             why: components["schemas"]["ApproximateInfo"] | null;
+            /** Form Field */
+            form_field: boolean;
         };
         /**
          * SpanNoticeInfo

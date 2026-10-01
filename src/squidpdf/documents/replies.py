@@ -92,6 +92,7 @@ def copy_in(said_in: str) -> Copy:
         "undo_redaction": words.sentence("undo_redaction", said_in),
         "reopened": words.sentence("reopened", said_in),
         "export_left_out": words.sentence("export_left_out", said_in),
+        "form_field_not_edited": words.sentence("form_field_not_edited", said_in),
         "options": options,
         # Every way a span can be approximate: the sentences behind a span's `why` code.
         "approximate": {

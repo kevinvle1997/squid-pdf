@@ -193,6 +193,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
   const span = last === null ? undefined : page.spans.find((each) => each.id === last.spanId);
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
+    formField: span.form_field,
     font: page.fonts.get(span.font),
     edited: readings.get(span.id),
     fit: page.fits[span.id],

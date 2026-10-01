@@ -20,6 +20,8 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   const font = span === undefined ? undefined : state.layout.fonts.get(span.font);
   if (span === undefined || font === undefined) return { said: [], kind: "" };
   const { fit: rules, copy } = state.doc;
+  // A form field draws it, not the page: whatever is typed, the edit is left out.
+  if (span.form_field) return { said: [copy.form_field_not_edited], kind: "form field" };
   const fit = fitOf(span, font, text, rules);
   const substitute = font.substitute ?? previewFaceOf(font);
   return { said: troublesOf(fit, rules, copy, substitute), kind: troubleKindOf(fit, rules) };

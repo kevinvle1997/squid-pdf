@@ -29,6 +29,7 @@ export const COPY: Copy = {
   undo_redaction: "This text is redacted. Editing it undoes the redaction. Edit it anyway?",
   reopened: "This document's hour ran out, so it was opened again from this browser.",
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
+  form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   options: {},
   approximate: {},
 };
@@ -45,6 +46,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     origin: [72, 110],
     fidelity: "exact",
     why: null,
+    form_field: false,
     ...fields,
   };
 }

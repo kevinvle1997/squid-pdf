@@ -5,7 +5,7 @@ import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { change, changedCount, createEditor, type Editor, putBack, substitutedCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
-import { edit, finish, typeInto } from "./typing";
+import { edit, finish, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -60,6 +60,16 @@ describe("an edit", () => {
     expect(editor.store.get().said).toBe("10.0 pt too long");
     typeInto(editor, "ababac");
     expect(editor.store.get().said).toContain("no c in this font");
+  });
+
+  test("typing into text a form field draws says at once that an edit here is left out", () => {
+    editor = createEditor(
+      FILE,
+      aDoc({ spans: [aSpan({ id: "field", form_field: true })], fonts: [aFont("Times-Roman")] }),
+      2,
+    );
+    edit(editor, "field", null);
+    expect(troublesIn(editor.store.get(), "was field").said).toEqual([COPY.form_field_not_edited]);
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {

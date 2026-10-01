@@ -14,32 +14,37 @@ export interface Note {
 /** Each is a line under the span, drawn by what's true of it. */
 export interface Look {
   readonly substituted: boolean; // a substitute draws in place of the file's own font: "a similar font"
+  readonly formField: boolean; // a form field draws it, not the page: an edit here is left out
   readonly changed: boolean; // the user changed its words
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
   readonly note: Note | null; // nothing for a span that keeps its font and went in as typed
 }
 
 interface Facts {
+  formField: boolean; // a form field draws it, not the page: an edit here is left out
   font: FontInfo | undefined;
   edited: SpanReading | undefined; // what it reads now, if an edit changed it
   fit: FitInfo | undefined; // the server's verdict on its last drawn edit
   copy: Copy;
 }
 
-export function lookOf({ font, edited, fit, copy }: Facts): Look {
+export function lookOf({ formField, font, edited, fit, copy }: Facts): Look {
   const changed = edited?.replaced ?? false;
   // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
   const verdict = changed ? fit?.message : null;
   return {
     substituted: font?.substitute != null,
+    formField,
     changed,
     trouble: Boolean(verdict),
-    note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote(font, copy),
+    note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote(formField, font, copy),
   };
 }
 
-/** What a span's font means for an edit, before one is made. */
-function fidelityNote(font: FontInfo | undefined, copy: Copy): Note | null {
+/** What an edit here will come to, before one is made: kept as it was, or drawn in what font. */
+function fidelityNote(formField: boolean, font: FontInfo | undefined, copy: Copy): Note | null {
+  // A form field draws it: no edit changes it yet, whatever its font.
+  if (formField) return { warn: true, said: copy.form_field_not_edited, why: null };
   if (font?.substitute == null) return null;
   const sentence = font.same_widths ? copy.substitute_same_widths : copy.substitute;
   return { warn: !font.same_widths, said: fill(sentence, { font: font.substitute }), why: font.why };

@@ -5,7 +5,7 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
-import { A4, aDoc, aFit, aFont, aReply, aSpan } from "../../fixtures";
+import { A4, aDoc, aFit, aFont, aReply, aSpan, COPY } from "../../fixtures";
 import { createEditor, type Editor } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
@@ -164,6 +164,22 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
     await expect.element(screen.getByRole("textbox", { name: "Change “in Arial”" })).toHaveFocus();
+  });
+
+  test("text a form field draws has the dashed warning line, and its note says an edit is left out", async () => {
+    const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
+      2,
+    );
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(mark).toBeInTheDocument();
+    const line = getComputedStyle(mark.element(), "::after");
+    expect(line.backgroundImage).toContain("repeating-linear-gradient");
+    await mark.hover();
+    await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });
 
   test("a click shows a span's note; a click's focus alone doesn't", async () => {

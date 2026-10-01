@@ -18,6 +18,7 @@ from squidpdf.core.types import (
     FontCode,
     FontDescriptor,
     FontResource,
+    FormField,
     Page,
     PageFont,
     QuarterTurn,
@@ -88,6 +89,14 @@ class PdfDriver(Protocol):
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
         """The letters inside each box on the page, in reading order."""
+        ...
+
+    def form_fields(self, page: int) -> list[FormField]:
+        """Each form field on the page that shows text, and the value it shows.
+
+        A field draws its value itself, not the page. A check box, a button, a
+        signature or an empty field shows no value, so it isn't listed.
+        """
         ...
 
     def fonts(self, page: int) -> list[PageFont]:

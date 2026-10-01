@@ -49,6 +49,7 @@ from squidpdf.core.types import (
     FontFileType,
     FontKind,
     FontResource,
+    FormField,
     Page,
     PageFont,
     QuarterTurn,
@@ -94,6 +95,9 @@ _FILE_TYPES: dict[str, FontFileType] = {
     "cid": "cff",
     "pfa": "type1",
 }
+
+# The kinds of form field that show their value as text, as PyMuPDF names them.
+_TEXT_FIELD_KINDS = ("Text", "ComboBox", "ListBox")
 
 _STRIP_PAD_PT = 0.1  # how far an erased strip reaches past the points it runs through
 # Where an erased strip runs: this share of each letter's height up from its baseline.
@@ -262,6 +266,21 @@ class MuPDFDriver:
         """
         letters = self._letters(page)
         return [letters_inside(letters, box) for box in boxes]
+
+    def form_fields(self, page: int) -> list[FormField]:
+        """Each form field on the page that shows text, and the value it shows.
+
+        A field draws its value itself, not the page. A check box, a button, a
+        signature or an empty field shows no value, so it isn't listed.
+        """
+        # No form in the file at all, as in most: no page need be asked.
+        if not self._doc.is_form_pdf:
+            return []
+        return [
+            FormField(Rect(*field.rect), field.field_value)
+            for field in self._doc[page].widgets()
+            if shows_text(field.field_type_string, field.field_value)
+        ]
 
     def _letters(self, page: int) -> list[Letter]:
         """Every letter on the page, in reading order."""
@@ -616,6 +635,11 @@ def text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
         origin=(raw["origin"][0], raw["origin"][1]),
         direction=(direction[0], direction[1]),
     )
+
+
+def shows_text(kind: str, value: object) -> bool:
+    """Whether a form field of `kind`, as PyMuPDF names it, shows `value` as text."""
+    return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
 def letters_inside(letters: list[Letter], box: Rect) -> str:

@@ -46,7 +46,7 @@ undrawable_letters = "No font we have can draw {letters} here, so an edit here l
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
 left_out = "Left out {letters}: no font we have can draw them."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
-form_field_not_edited = "This text is a form field, which can't be edited yet, so it's left as it was."
+form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
 form_field_not_redacted = "This text is a form field, which can't be redacted yet, so the file can't be downloaded with this redaction."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."

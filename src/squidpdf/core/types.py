@@ -97,6 +97,17 @@ class TextPiece:
 
 
 @dataclass(frozen=True, slots=True)
+class FormField:
+    """A form field that shows text: where it sits, and the value it shows.
+
+    The field draws its value itself, not the page, so erasing the page's text can't reach it.
+    """
+
+    box: Rect
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
 class FontResource:
     """A font as a page names it, and the font itself.
 

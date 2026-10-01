@@ -9,7 +9,7 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.mupdf import MuPDFDriver
 from squidpdf.core.types import TextRun
-from tests.conftest import FORM_FIELD_VALUE
+from tests.conftest import FORM_FIELD_VALUE, FORM_LINE
 from tests.helpers import assert_equal
 
 _ADDED_AT = (72.0, 400.0)  # clear of the sample's own lines
@@ -55,8 +55,8 @@ def test_an_erase_says_what_it_could_not_clear_as_a_form_fields_value(form, tmp_
     path.write_bytes(form)
     driver = MuPDFDriver(str(path))
     try:
-        [line], [field] = driver.text_lines(0)  # one piece each
-        left = driver.erase_text(0, [line.box, field.box])
+        boxes = {piece.text: piece.box for [piece] in driver.text_lines(0)}  # one piece each
+        left = driver.erase_text(0, [boxes[FORM_LINE], boxes[FORM_FIELD_VALUE]])
     finally:
         driver.close()
 
