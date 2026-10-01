@@ -20,12 +20,13 @@ import pymupdf
 from squidpdf.core import faces
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.driver import DriverError
-from squidpdf.core.engine import Engine, letter_widths
+from squidpdf.core.engine import Engine
 from squidpdf.core.errors import Damaged, Encrypted, TooHeavy
 from squidpdf.core.fonts import face_bytes
 from squidpdf.core.google import Fetch
 from squidpdf.core.message import Message
 from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
+from squidpdf.core.plan import letter_widths
 from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
