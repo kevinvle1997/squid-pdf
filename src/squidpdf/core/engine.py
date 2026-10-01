@@ -251,6 +251,11 @@ def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
 
 
 def any_word_left(text: str, left: str) -> bool:
-    """Whether any word of `text` is in `left`, with every space taken out of `left`."""
+    """Whether any word of `text`, or all of it, is in `left`, spaces aside.
+
+    A word of one letter doesn't count alone: "A" is in most labels drawn over
+    a redaction, such as "[REDACTED]".
+    """
     leftover = "".join(left.split())
-    return any(word in leftover for word in text.split())
+    words = [word for word in text.split() if len(word) > 1]
+    return any(word in leftover for word in [*words, "".join(text.split())])
