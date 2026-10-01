@@ -1,9 +1,8 @@
 """Drawing a line in the font its plan names, and cutting the fonts we added down on save.
 
-A page's drawing never names a font by its own name. It uses a short name the
-page lists in its resources ("F1"): the font's resource name. A font is added
-to a page once, under a resource name made from what it is, and every line
-drawn in it there uses that name.
+A font is added to a page once, under a resource name (see
+`core.types.FontResource`) made from what it is, and every line drawn in it
+there uses that name.
 """
 
 from __future__ import annotations
@@ -24,8 +23,6 @@ from squidpdf.core.types import QUARTER_TURNS, CodedFont, CodeRun, Face, Span, T
 
 __all__ = [
     "Setting",
-    "PageNames",
-    "AddedFont",
     "PageWriter",
 ]
 

@@ -23,9 +23,10 @@ LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
 QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
 
 # What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
-# writes each letter as two bytes; "other" is any kind we don't write in.
+# writes each letter as two bytes; "other" is any kind not named here.
 type FontKind = Literal["truetype", "type0", "type1", "type3", "other"]
-# How the file stores a font's program, or "none" when it only names the font.
+# How the file stores a font's program; "none" when it only names the font, or
+# stores it in a way we can't tell.
 type FontFileType = Literal["truetype", "opentype", "cff", "type1", "none"]
 
 
