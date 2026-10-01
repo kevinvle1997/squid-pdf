@@ -56,15 +56,13 @@ class UploadController:
             await save_original(chunks, to=folder / store.ORIGINAL)
             await self._enqueue_analyse(folder)
             # Sent as kept, as a read sends it: writing it out again takes a while.
-            saved = await asyncio.to_thread(store.load_analysis, folder, BUILD)
+            kept = await asyncio.to_thread(store.load_analysis, folder, BUILD)
         except BaseException:  # refused, damaged, or the browser left: keep nothing
             await asyncio.to_thread(store.delete, folder)
             raise
-        if saved is None:  # deleted since it was analysed
+        if kept is None:  # deleted since it was analysed
             raise Gone()
-        body = document_json(
-            doc_id, expires_at=store.touch(folder), saved=saved, said_in=said_in
-        )
+        body = document_json(doc_id, expires_at=store.touch(folder), kept=kept, said_in=said_in)
         return Reply(body, words.language_headers(said_in), HTTPStatus.CREATED)
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:

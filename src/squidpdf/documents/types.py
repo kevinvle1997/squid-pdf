@@ -7,7 +7,7 @@ ending in Info is JSON the browser gets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
@@ -20,6 +20,8 @@ __all__ = [
     "FontFacts",
     "FontInfo",
     "Analysis",
+    "AnalysisFacts",
+    "KeptAnalysis",
     "FitRules",
     "Copy",
     "DocumentNoticeInfo",
@@ -107,6 +109,26 @@ class Analysis(Analysed):
 
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
+
+
+class AnalysisFacts(TypedDict):
+    """The analysis less its spans, as kept beside them: read on every visit."""
+
+    build: str
+    pages: list[PageInfo]
+    fonts: list[FontFacts]
+
+
+@dataclass(frozen=True, slots=True)
+class KeptAnalysis:
+    """An analysis as kept: the facts, read when sent, and the spans, sent as they are.
+
+    Two files, so a read needn't find the spans inside the rest: on a long
+    document they're nearly all of it, and parsing them held up the server.
+    """
+
+    facts: bytes  # AnalysisFacts, as JSON
+    spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
 
 
 class FitRules(TypedDict):

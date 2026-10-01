@@ -12,10 +12,10 @@ import xxhash
 
 from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
-from squidpdf.documents.analyse import analyse
+from squidpdf.documents.analyse import analyse, kept_analysis
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
 from squidpdf.documents.info import document_json, time_of
-from squidpdf.documents.types import Analysis, Loaded
+from squidpdf.documents.types import Analysis, KeptAnalysis, Loaded
 
 __all__ = [
     "ReadController",
@@ -40,18 +40,18 @@ class ReadController:
         Either way with when it now expires, which the ETag leaves out: it moves
         on every visit, and a 304's browser keeps the body it had.
         """
-        saved = await self._saved_analysis(doc)
+        kept = await self._saved_analysis(doc)
         # A thousand pages' analysis takes a while to hash and write: off the server's thread.
         return await asyncio.to_thread(
-            answer, doc, saved=saved, said_in=said_in, if_none_match=if_none_match
+            answer, doc, kept=kept, said_in=said_in, if_none_match=if_none_match
         )
 
-    async def _saved_analysis(self, doc: Loaded) -> bytes:
+    async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
         """The analysis kept under this build, worked out first if the build is new."""
-        saved = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
-        if saved is None:  # a new build: worked out again over the saved index
-            saved = orjson.dumps(await self._enqueue_analyse(doc.folder))
-        return saved
+        kept = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
+        if kept is None:  # a new build: worked out again over the saved index
+            kept = kept_analysis(await self._enqueue_analyse(doc.folder))
+        return kept
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""
@@ -60,11 +60,11 @@ class ReadController:
 
 
 def answer(
-    doc: Loaded, *, saved: bytes, said_in: str, if_none_match: str | None
+    doc: Loaded, *, kept: KeptAnalysis, said_in: str, if_none_match: str | None
 ) -> Reply[bytes]:
     """The analysis kept, as the browser gets it: the JSON with its ETag, or a 304."""
     headers = {
-        "ETag": etag_of(saved, said_in),
+        "ETag": etag_of(kept, said_in),
         "Cache-Control": DOCUMENT_CACHE,
         _EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
@@ -72,15 +72,15 @@ def answer(
     # The browser's copy is current: a 304 carries no body.
     if if_none_match == headers["ETag"]:
         return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
-    body = document_json(doc.id, expires_at=doc.expires_at, saved=saved, said_in=said_in)
+    body = document_json(doc.id, expires_at=doc.expires_at, kept=kept, said_in=said_in)
     return Reply(body, headers)
 
 
-def etag_of(saved: bytes, said_in: str) -> str:
+def etag_of(kept: KeptAnalysis, said_in: str) -> str:
     """The document's ETag: over the analysis as kept and the words it's said in.
 
     Not `expires_at`, which moves on every visit. Another language, or a
     sentence reworded since, is another body.
     """
     said = orjson.dumps([said_in, words.catalog(said_in)])
-    return f'"{xxhash.xxh3_64_hexdigest(saved + said)}"'
+    return f'"{xxhash.xxh3_64_hexdigest(kept.facts + kept.spans + said)}"'

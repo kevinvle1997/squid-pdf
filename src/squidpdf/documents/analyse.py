@@ -13,10 +13,17 @@ import orjson
 from squidpdf.core import BUILD, Fidelity, FidelityReport, MessageInfo, Span
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.types import Analysis, FontFacts, SpanInfo
+from squidpdf.documents.types import (
+    Analysis,
+    AnalysisFacts,
+    FontFacts,
+    KeptAnalysis,
+    SpanInfo,
+)
 
 __all__ = [
     "analyse",
+    "kept_analysis",
 ]
 
 
@@ -63,8 +70,18 @@ def analyse(folder: str, max_pages: int) -> Analysis:
         "spans": [span_info(span, reports[span.id]) for span in index],
         "fonts": fonts,
     }
-    store.save_analysis(path, BUILD, orjson.dumps(analysis))
+    store.save_analysis(path, BUILD, kept_analysis(analysis))
     return analysis
+
+
+def kept_analysis(analysis: Analysis) -> KeptAnalysis:
+    """The analysis as it's kept and sent: its spans apart from the rest."""
+    facts: AnalysisFacts = {
+        "build": analysis["build"],
+        "pages": analysis["pages"],
+        "fonts": analysis["fonts"],
+    }
+    return KeptAnalysis(orjson.dumps(facts), orjson.dumps(analysis["spans"]))
 
 
 def why_of(report: FidelityReport, state: Fidelity) -> MessageInfo | None:

@@ -8,12 +8,13 @@ import orjson
 
 from squidpdf.core import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT, Message, words
 from squidpdf.documents.types import (
-    Analysis,
+    AnalysisFacts,
     Copy,
     Document,
     DocumentNoticeInfo,
     FontFacts,
     FontInfo,
+    KeptAnalysis,
 )
 
 __all__ = [
@@ -24,25 +25,18 @@ __all__ = [
 # Every way a span can be approximate: the sentences behind a span's `why` code.
 _APPROXIMATE_KEYS = ("turned_text", "spaced_text", "undrawable_letters")
 
-# Where the spans are in the kept analysis: after the build and the pages, before the fonts.
-_SPANS_KEY = b'"spans":'
-_FONTS_KEY = b',"fonts":'
-_NO_SPANS = b"[]"
+_NO_SPANS = b"[]"  # the spans kept for a file with no text, as a scan
 
 
-def document_json(doc_id: str, *, expires_at: float, saved: bytes, said_in: str) -> bytes:
+def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in: str) -> bytes:
     """The document as the browser gets it, as JSON: the kept analysis, said in `said_in`.
 
     The spans go out exactly as kept, never read: on a long document they are
     nearly all of it, and reading them and writing them out again held up the
-    server for a fifth of a second.
+    server. The rest is read as usual: the pages' sizes and the fonts, small
+    beside them.
     """
-    spans_start = saved.index(_SPANS_KEY) + len(_SPANS_KEY)
-    # From the end, as the fonts come last: nothing inside them is named "fonts".
-    spans_end = saved.rindex(_FONTS_KEY)
-    spans_json = saved[spans_start:spans_end]
-    # The rest is read as usual: the pages' sizes and the fonts, small beside the spans.
-    analysis: Analysis = orjson.loads(saved[:spans_start] + _NO_SPANS + saved[spans_end:])
+    analysis: AnalysisFacts = orjson.loads(kept.facts)
     body: Document = {
         "build": analysis["build"],
         "pages": analysis["pages"],
@@ -56,9 +50,9 @@ def document_json(doc_id: str, *, expires_at: float, saved: bytes, said_in: str)
             "shrink_floor": SHRINK_FLOOR,
         },
         "copy": copy_in(said_in),
-        "notices": notices_in(has_text=spans_json != _NO_SPANS, said_in=said_in),
+        "notices": notices_in(has_text=kept.spans != _NO_SPANS, said_in=said_in),
     }
-    return orjson.dumps({**body, "spans": orjson.Fragment(spans_json)})
+    return orjson.dumps({**body, "spans": orjson.Fragment(kept.spans)})
 
 
 def time_of(epoch_seconds: float) -> str:
