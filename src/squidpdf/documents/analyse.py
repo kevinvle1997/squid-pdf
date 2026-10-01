@@ -54,7 +54,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": why_of(reports[span.id], Fidelity.SUBSTITUTE),
+                "why": why_of(reports[span.id], "substitute"),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": engine.widths(span),
             }
@@ -90,7 +90,7 @@ def why_of(report: FidelityReport, state: Fidelity) -> MessageInfo | None:
     A font's `why` is why a substitute stands in; a span's is how an approximate
     one would come back unlike itself.
     """
-    if report.state is not state or report.why is None:
+    if report.state != state or report.why is None:
         return None
     return report.why.as_info()
 
@@ -107,6 +107,6 @@ def span_info(span: Span, report: FidelityReport) -> SpanInfo:
         "color": list(span.color),
         "bbox": {"x0": box.x0, "y0": box.y0, "x1": box.x1, "y1": box.y1},
         "origin": list(span.origin),
-        "fidelity": report.state.value,
-        "why": why_of(report, Fidelity.APPROXIMATE),
+        "fidelity": report.state,
+        "why": why_of(report, "approximate"),
     }

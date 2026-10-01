@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core import MessageInfo, Param
+from squidpdf.core import Fidelity, MessageInfo, Param
 
 __all__ = [
     "Box",
@@ -62,7 +62,7 @@ class SpanInfo(TypedDict):
     color: list[float]
     bbox: Box
     origin: list[float]
-    fidelity: str
+    fidelity: Fidelity
     why: MessageInfo | None
 
 
