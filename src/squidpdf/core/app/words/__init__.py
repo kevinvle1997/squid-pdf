@@ -5,7 +5,7 @@ the API names a sentence by its key in a Message; the edge says it in the
 reader's language with `render`.
 
 Placeholders are bare `{name}`, so the browser can fill them too. A key is
-never renamed: the browser can branch on it.
+renamed only with the browser, in the same change: the browser can branch on it.
 """
 
 from __future__ import annotations

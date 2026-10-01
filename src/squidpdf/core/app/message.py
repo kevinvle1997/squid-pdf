@@ -33,8 +33,8 @@ class SaidInfo(MessageInfo):
 class Message:
     """Which sentence to tell a person, and the facts its placeholders take.
 
-    `key` names the sentence in `core.app.words` and is never renamed: the browser
-    can branch on it, as it does on a Problem's type.
+    `key` names the sentence in `core.app.words`, and is renamed only with the
+    browser, which can branch on it, as it does on a Problem's type.
     """
 
     key: str  # snake_case, e.g. "font_not_in_file"

@@ -245,7 +245,8 @@ def load_index(folder: Path) -> SpanIndex | None:
 def require_index(folder: Path) -> SpanIndex:
     """The saved index of a document analysed at upload. Raises Gone if it was deleted since.
 
-    So `load_index` returning None has one meaning: not analysed yet.
+    For work after upload, where a missing index can only mean a delete; analysis
+    reads `load_index`'s None as "not analysed yet".
     """
     index = load_index(folder)
     if index is None:  # analysed at upload, so a sweep or a delete removed it

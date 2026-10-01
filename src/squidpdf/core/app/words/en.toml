@@ -2,7 +2,8 @@
 #
 # Another language is another file like this one, named by its tag (fr.toml,
 # pt-br.toml), with the same keys and the same {placeholders}. A key it leaves
-# out is said in English. Keys are never renamed: the browser branches on them.
+# out is said in English. A key is renamed only with the browser, in the same change:
+# the browser branches on it.
 
 # What's wrong with a replacement.
 # `{font}` is the face that draws the line instead.

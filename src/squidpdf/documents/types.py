@@ -97,7 +97,10 @@ class FontInfo(TypedDict):
 
 
 class Analysed(TypedDict):
-    """What every form of the analysis has."""
+    """What the analysis and the Document the browser gets have alike: build, pages, spans.
+
+    `AnalysisFacts`, the analysis as kept beside its spans, is the rest of it.
+    """
 
     build: str
     pages: list[PageInfo]

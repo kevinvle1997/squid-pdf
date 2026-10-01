@@ -404,7 +404,7 @@ class MuPDFDriver:
         if missed:
             self._file.redact(page, missed)
         self._restore_links(page, links)
-        # .get: a page nothing was added to.
+        # .get: a page the driver named no font on.
         for resource, xref in self._named.get(self._doc[page].xref, {}).items():
             self._file.restore_font(page, resource, xref)
 
