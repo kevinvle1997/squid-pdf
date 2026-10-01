@@ -57,6 +57,8 @@ _REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 _EVERY_FILE = "*"  # in a RetryAt: a download got no answer, so the network is down
+# One INFO line per cache miss, worded the same every time so a grep counts them.
+_CACHE_MISS = "Google cache miss: %s (%s)"
 # This process's record of what failed to come: each worker learns on its own.
 _retry_at: RetryAt = {}
 
@@ -222,9 +224,16 @@ def fetched(
     every file: the network failed, not the file, and each would wait as long.
     """
     cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
-    cached = from_cache(cached_path, file)
-    if cached is not None:
-        return cached
+    try:
+        cached_copy = read_cached_copy(cached_path, file)
+    except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
+        # Counted by grep: how often the cache is empty, and whether this call may download.
+        next_step = "cache only" if download is None else "may download"
+        _logger.info(_CACHE_MISS, file.source, next_step)
+        cached_copy = None
+    # In the cache and sound: nothing to download. A damaged copy is logged where it's read.
+    if cached_copy is not None:
+        return cached_copy
     # The cache alone: render and export lend what analysis fetched, and never wait.
     if download is None:
         return None
@@ -236,7 +245,7 @@ def fetched(
         return None
     fetching = Fetching(cached_path=cached_path, download=download, retry_at=retry_at)
     # A daemon: one still hanging never keeps the worker from exiting.
-    threading.Thread(target=fetch_into, args=(file, fetching), daemon=True).start()
+    threading.Thread(target=download_and_cache, args=(file, fetching), daemon=True).start()
     try:
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
@@ -263,24 +272,29 @@ class Fetching:
     answered: threading.Event = field(default_factory=threading.Event)
 
 
-def fetch_into(file: GoogleFile, fetching: Fetching) -> None:
-    """Download `file`, check it, cut it if variable and cache it; then hand it, or None, on.
+def download_and_cache(file: GoogleFile, fetching: Fetching) -> None:
+    """On its own thread: download `file` and cache it, then hand the copy, or None, on.
 
     The one waiting may have given up; what's cached is there for the next analysis.
     """
-    font_file = checked_and_cut(file, fetching)
-    # Nothing to keep: the failure is logged.
-    if font_file is None:
-        fetching.answer.put(None)
-        return
-    kept(fetching.cached_path, font_file)
-    # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
-    if file.weight is not None:
-        kept(hash_beside(fetching.cached_path), blob_hash(font_file).encode())
+    font_file = download_checked_and_cut(file, fetching)
+    # A failure has nothing to cache, and is logged where it happened.
+    if font_file is not None:
+        cache_copy(fetching.cached_path, file, font_file)
     fetching.answer.put(font_file)
 
 
-def checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
+def cache_copy(cached_path: Path, file: GoogleFile, font_file: bytes) -> None:
+    """Keep `font_file` at `cached_path`, and for a cut, its own hash beside it."""
+    kept(cached_path, font_file)
+    # A fixed file is checked by git's hash, which `file` carries.
+    if file.weight is None:
+        return
+    # A cut isn't the file git hashed, so it's checked by its own.
+    kept(hash_beside(cached_path), blob_hash(font_file).encode())
+
+
+def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
@@ -301,20 +315,16 @@ def checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
         return None
 
 
-def from_cache(cached_path: Path, file: GoogleFile) -> bytes | None:
-    """The cached copy of `file` at `cached_path`; None when there's none, or it's gone bad.
+def read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
+    """The cached copy of `file` at `cached_path`; None when it's gone bad.
 
+    Raises FileNotFoundError when it isn't cached, so the caller can count the miss.
     Checked on every read: a copy cut short (a crash before the disk caught up)
     would otherwise be trusted for good. A bad one is deleted where the disk
     allows, and fetched again.
     """
-    try:
-        font_file = cached_path.read_bytes()
-        expected_hash = (
-            file.blob if file.weight is None else hash_beside(cached_path).read_text()
-        )
-    except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
-        return None
+    font_file = cached_path.read_bytes()
+    expected_hash = file.blob if file.weight is None else hash_beside(cached_path).read_text()
     if blob_hash(font_file) == expected_hash:
         return font_file
     _logger.warning("Google's copy of %s in the cache is damaged: fetched again", file.source)

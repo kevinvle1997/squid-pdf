@@ -138,6 +138,31 @@ def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
     assert_equal(_fetched(file, tmp_path, _failing), poppins, "from the cache")
 
 
+def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
+    """One INFO line per miss, saying whether the call may download; counted by grep."""
+    poppins = POPPINS.read_bytes()
+    file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+
+    with caplog.at_level(logging.INFO, logger=google.__name__):
+        fetched(file, folder=tmp_path, download=None, retry_at={})
+        _fetched(file, tmp_path, _returning(poppins))
+    lines = [record.getMessage() for record in caplog.records]
+    misses = [line for line in lines if "Google cache miss" in line]
+    assert_equal(
+        misses,
+        [
+            f"Google cache miss: {file.source} (cache only)",
+            f"Google cache miss: {file.source} (may download)",
+        ],
+        "one line per miss, render's then analysis's",
+    )
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger=google.__name__):
+        _fetched(file, tmp_path, _failing)
+    assert_equal(caplog.records, [], "what a hit logs")
+
+
 def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
     tmp_path, monkeypatch, caplog
 ):
@@ -165,11 +190,12 @@ def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, cap
     cached.parent.mkdir(parents=True)
     cached.write_bytes(b"")
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO, logger=google.__name__):
         got = _fetched(file, tmp_path, _returning(poppins))
 
     assert_true(got == poppins, "Google's copy was handed back")
     assert_true("damaged" in caplog.text, "the bad copy was logged")
+    assert_false("cache miss" in caplog.text, "a damaged copy logged as a miss too")
     assert_true(cached.read_bytes() == poppins, "the cache holds Google's copy after")
 
 
