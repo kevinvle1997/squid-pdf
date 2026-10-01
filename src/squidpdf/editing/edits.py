@@ -116,10 +116,10 @@ def check_edits(edits: list[Edit]) -> None:
 
 def typed_in(edit: Edit) -> str:
     """The new text an edit carries: empty for a redaction, which draws none."""
-    match edit:
-        case Replace(text=text) | Insert(text=text):
-            return text
-        case Redact():
-            return ""
-        case _:
-            assert_never(edit)
+    # A replace or an insert: the text it draws.
+    if isinstance(edit, Replace | Insert):
+        return edit.text
+    # A redaction: it draws none.
+    if isinstance(edit, Redact):
+        return ""
+    assert_never(edit)
