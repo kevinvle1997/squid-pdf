@@ -383,19 +383,20 @@ class MuPDFDriver:
         """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
         self._named.setdefault(self._doc[page].xref, {})[resource] = xref
 
-    def erase_text(self, page: int, boxes: list[Rect]) -> None:
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside each box, for real.
 
-        The same letters `text_in` reads, so what's erased is what's checked.
-        MuPDF deletes every letter whose box a redaction touches, and a letter's
-        box runs from its font's ascender to its descender: at usual line spacing
-        it reaches the lines above and below. So each box is erased as a thin
-        strip just above its own letters' baselines, which other lines' boxes
-        don't reach. A box that still has letters afterwards (a font whose boxes
-        sit oddly) is erased whole, so old text is never left under new. MuPDF
-        also deletes any link a redaction touches, and any font no text on the
-        page uses any more: the links go back, and so do the fonts this driver
-        named on the page.
+        The same letters `text_in` reads, so what's erased is what's checked, and
+        what's returned is what's left in each box: letters no erase reaches, as a
+        form field's. MuPDF deletes every letter whose box a redaction touches,
+        and a letter's box runs from its font's ascender to its descender: at
+        usual line spacing it reaches the lines above and below. So each box is
+        erased as a thin strip just above its own letters' baselines, which other
+        lines' boxes don't reach. A box that still has letters afterwards (a font
+        whose boxes sit oddly) is erased whole, so old text is never left under
+        new. MuPDF also deletes any link a redaction touches, and any font no text
+        on the page uses any more: the links go back, and so do the fonts this
+        driver named on the page.
         """
         links = self._doc[page].get_links()
         letters = self._letters(page)
@@ -403,12 +404,15 @@ class MuPDFDriver:
         self._file.redact(page, [strip_through(letters, box) or box for box in boxes])
         left = self.text_in(page, boxes)
         missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
+        # Read again only after a second erase: most boxes are clear after the first.
         if missed:
             self._file.redact(page, missed)
+            left = self.text_in(page, boxes)
         self._restore_links(page, links)
         # .get: a page the driver named no font on.
         for resource, xref in self._named.get(self._doc[page].xref, {}).items():
             self._file.restore_font(page, resource, xref)
+        return left
 
     def _restore_links(self, page: int, links: list[dict]) -> None:
         """Add back any of `links`, as get_links read them, that the page no longer has."""

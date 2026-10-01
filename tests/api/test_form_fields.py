@@ -3,38 +3,13 @@
 from __future__ import annotations
 
 import pymupdf
-import pytest
 
 from squidpdf.core import words
 from tests.api.conftest import around, span_starting, upload
+from tests.conftest import FORM_FIELD_VALUE
 from tests.helpers import assert_equal, assert_problem
 
 _SCALE = 2
-_FIELD_VALUE = "SSN 078-05-1120"
-_LINE = "Name: Ada Byron"
-# PyMuPDF's PDF_WIDGET_TYPE_TEXT, a text field: set at import, so type checkers can't see it.
-_TEXT_FIELD = 7
-
-
-@pytest.fixture(scope="module")
-def form() -> bytes:
-    """One page: a line of the page's own text, and below it a filled-in text field.
-
-    The field's value is drawn by the field itself (a widget), not by the page,
-    so it's read as a span like any other, but erasing the page's text can't
-    reach it. That's how a filled-in PDF form comes.
-    """
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_text((72, 96), _LINE, fontname="helv", fontsize=12)
-    field = pymupdf.Widget()
-    field.field_type = _TEXT_FIELD
-    field.field_name = "ssn"
-    field.field_value = _FIELD_VALUE
-    field.rect = pymupdf.Rect(72, 120, 300, 140)
-    field.text_fontsize = 12
-    page.add_widget(field)
-    return doc.tobytes()
 
 
 def _said(rendered: dict) -> list[tuple[str, str, str, str]]:
@@ -60,7 +35,7 @@ def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
     assert_equal(_said(rendered), expected, "what render tells the user")
     lines = pymupdf.open(stream=exported.content, filetype="pdf")[0].get_text().splitlines()
     assert_equal(
-        sorted(lines), sorted(["Name: Ada Lovelace", _FIELD_VALUE]), "the file's lines"
+        sorted(lines), sorted(["Name: Ada Lovelace", FORM_FIELD_VALUE]), "the file's lines"
     )
 
 

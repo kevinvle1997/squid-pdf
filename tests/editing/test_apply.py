@@ -665,7 +665,7 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
     The erase is what's broken here: the text really is still in the file, one
     page earlier than it was, so reading it on its old page would pass.
     """
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: None)
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
     path, out = _three_pages(str(tmp_path / "three.pdf")), str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
         index = engine.index()

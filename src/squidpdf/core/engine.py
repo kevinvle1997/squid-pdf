@@ -160,17 +160,25 @@ class Engine:
 
     # Changing it.
 
-    def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> None:
+    def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> list[Span]:
         """Delete these spans' text for real, not by covering it with a box.
 
-        `then_drawn` are the lines `draw` will draw after: what they need is read
-        first, while the page still has it. One box per span, not per fragment:
-        the cost grows with the box count, and a span's box covers its fragments.
-        Lines, underlines and links stay.
+        Returns the spans with any word of their text still in their box, as
+        `still_there` says it: the erase couldn't reach it, as a form field draws
+        its value, not the page. `then_drawn` are the lines `draw` will draw
+        after: what they need is read first, while the page still has it. One
+        box per span, not per fragment: the cost grows with the box count, and a
+        span's box covers its fragments. Lines, underlines and links stay.
         """
         self._read_before_erasing(spans, then_drawn)
-        for page, on_page in by_page(spans).items():
-            self._driver.erase_text(page, [span.bbox for span in on_page])
+        left = (self._erased_on(page, on_page) for page, on_page in by_page(spans).items())
+        return [span for on_page in left for span in on_page]
+
+    def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
+        """Erase `spans`, all on `page`; returns those with any word of their text left."""
+        texts = self._driver.erase_text(page, [span.bbox for span in spans])
+        pairs = zip(spans, texts, strict=True)
+        return [span for span, left in pairs if any_word_left(span.text, left)]
 
     def _read_before_erasing(self, spans: list[Span], lines: Sequence[LineToDraw]) -> None:
         """Read what `draw` needs while the page still has it.

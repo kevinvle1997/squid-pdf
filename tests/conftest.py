@@ -143,6 +143,33 @@ def pdf(tmp_path_factory) -> str:
     return str(path)
 
 
+# The form fixture's facts: its page's own line, and the value its text field shows.
+FORM_LINE = "Name: Ada Byron"
+FORM_FIELD_VALUE = "SSN 078-05-1120"
+_TEXT_FIELD = 7  # PyMuPDF's PDF_WIDGET_TYPE_TEXT, set at import, so type checkers can't see it
+
+
+@pytest.fixture(scope="module")
+def form() -> bytes:
+    """One page: a line of the page's own text, and below it a filled-in text field.
+
+    The field's value is drawn by the field itself (a widget), not by the page,
+    so it's read as a span like any other, but erasing the page's text can't
+    reach it. That's how a filled-in PDF form comes.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 96), FORM_LINE, fontname="helv", fontsize=12)
+    field = pymupdf.Widget()
+    field.field_type = _TEXT_FIELD
+    field.field_name = "ssn"
+    field.field_value = FORM_FIELD_VALUE
+    field.rect = pymupdf.Rect(72, 120, 300, 140)
+    field.text_fontsize = 12
+    page.add_widget(field)
+    return doc.tobytes()
+
+
 @pytest.fixture
 def tagged(tmp_path) -> str:
     """Two pages tagged for screen readers, as Word and browsers save them.
