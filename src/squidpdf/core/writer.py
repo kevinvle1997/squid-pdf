@@ -26,7 +26,6 @@ __all__ = [
     "Setting",
     "PageNames",
     "AddedFont",
-    "AddedFonts",
     "PageWriter",
 ]
 
@@ -52,22 +51,17 @@ class PageNames:
     faces: dict[tuple[int, str], str] = field(default_factory=dict)
 
 
-@dataclass(frozen=True, slots=True)
-class AddedFont:
-    """A font we added to the document whole: a face we ship, or Google's copy of one."""
-
-    name: str  # what the user reads, and what its drawn letters are kept under
-    file: bytes  # the whole font, to cut down on save
-
-
 @dataclass(slots=True)
-class AddedFonts:
-    """The fonts added to the document whole, for `save` to cut down."""
+class AddedFont:
+    """A font we added to the document whole, a face we ship or Google's copy of one.
 
-    # By font object: pages share one per font.
-    by_xref: dict[int, AddedFont] = field(default_factory=dict)
-    # Every letter drawn in each, over all pages, by its name.
-    drawn: dict[str, set[str]] = field(default_factory=dict)
+    Cut down on save to the letters drawn in it.
+    """
+
+    name: str  # what the user reads it as
+    file: bytes  # the whole font
+    xrefs: set[int] = field(default_factory=set)  # its PDF objects; pages usually share one
+    drawn: set[str] = field(default_factory=set)  # every letter drawn in it, over all pages
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,14 +76,16 @@ class Stretch:
 class PageWriter:
     """Draws lines onto a document's pages, adding each font a page needs once.
 
-    Keeps the fonts added whole, for `save` to cut down.
+    Keeps the fonts added whole, by where each file came from, for `save` to
+    cut down.
     """
 
     def __init__(self, driver: PdfDriver) -> None:
         """Write through `driver`, with nothing added yet."""
         self._driver = driver
         self._names = PageNames()
-        self._added = AddedFonts()
+        # By the face's file, or Google's source for its copy: one font file each.
+        self._added: dict[str, AddedFont] = {}
 
     def draw(
         self, span: Span, text: str, *, plans: LinePlanner, setting: Setting
@@ -136,17 +132,18 @@ class PageWriter:
         anything that came out other than asked, for the edge to put into words.
         """
         notices: list[Message] = []
-        for xref, added in self._added.by_xref.items():
+        for added in self._added.values():
             try:
-                font_file = trimmed(added.file, self._added.drawn[added.name])
+                font_file = trimmed(added.file, added.drawn)
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = added.file
                 notices.append(Message("face_not_trimmed", {"font": added.name}))
-            try:
-                self._driver.replace_font_file(xref, font_file)
-            except DriverError as problem:  # its file can't be swapped: it stays whole
-                notices.append(problem.reason)
+            for xref in sorted(added.xrefs):
+                try:
+                    self._driver.replace_font_file(xref, font_file)
+                except DriverError as problem:  # its file can't be swapped: it stays whole
+                    notices.append(problem.reason)
         self._driver.save(path)
         return notices
 
@@ -155,7 +152,7 @@ class PageWriter:
     ) -> None:
         """Write `text` at the span's baseline in a face we ship."""
         resource = self._face_resource(span.page, face)
-        self._added.drawn.setdefault(face.name, set()).update(text)
+        self._added[face.file].drawn.update(text)
         font = plans.driver.face_font(face)
         resources = dict.fromkeys(text, resource)
         self._write(span, text, font=font, resources=resources, plans=plans, setting=setting)
@@ -256,7 +253,8 @@ class PageWriter:
         except DriverError as problem:  # the page won't take it: the stand-in draws instead
             return FontUnusable(problem.reason)
         if copy.google is not None:
-            self._added.by_xref[added.xref] = AddedFont(lent_name(copy), copy.embedded.file)
+            whole = AddedFont(lent_name(copy), copy.embedded.file)
+            self._keep_whole(copy.google.source, whole, xref=added.xref)
         return added.resource
 
     def _note_google_letters(self, pool: PooledFont, text: str) -> None:
@@ -264,7 +262,7 @@ class PageWriter:
         for ch in text:
             copy = pool.copy_for(ch)
             if copy.google is not None:
-                self._added.drawn.setdefault(lent_name(copy), set()).add(ch)
+                self._added[copy.google.source].drawn.add(ch)
 
     def _face_resource(self, page: int, face: Face) -> str:
         """The resource name of a face we ship, added to the page on first use.
@@ -276,8 +274,16 @@ class PageWriter:
             font_file = face_bytes(face)
             added = self._driver.add_font(page, font_file, name=resource_name("S", face.file))
             self._names.faces[key] = added.resource
-            self._added.by_xref[added.xref] = AddedFont(face.name, font_file)
+            self._keep_whole(face.file, AddedFont(face.name, font_file), xref=added.xref)
         return self._names.faces[key]
+
+    def _keep_whole(self, source: str, font: AddedFont, *, xref: int) -> None:
+        """Note a font added whole as font `xref`, for `save` to cut down.
+
+        `source` tells one font file from another: two can share a name.
+        """
+        # The first time a file is added makes its record; later pages add their object.
+        self._added.setdefault(source, font).xrefs.add(xref)
 
 
 def resource_name(kind: str, source: str) -> str:
