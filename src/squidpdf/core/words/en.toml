@@ -93,6 +93,48 @@ server_full = "We can't take new files right now. Try again in a few minutes."
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
+# A list whose placeholder has no join_<its name> here is joined as items.
 join_chars = " or "
 join_letters = " "
+join_items = ", "
 join_parts = "; "
+
+# What sets a number's fraction apart: "3.1" in English, "3,1" in French.
+decimal_separator = "."
+
+# A character that draws nothing on its own, named so a person can tell which it is:
+# a space, an invisible mark, or an accent typed alone. The key is its code point,
+# char_u202f for U+202F. One not here is said by Unicode's name, lower case.
+char_u0009 = "tab"
+char_u0020 = "space"
+char_u00a0 = "no-break space"
+char_u00ad = "optional hyphen"
+char_u2002 = "en space"
+char_u2003 = "em space"
+char_u2007 = "figure space"
+char_u2009 = "thin space"
+char_u200a = "hair space"
+char_u200b = "zero-width space"
+char_u200c = "zero-width non-joiner"
+char_u200d = "zero-width joiner"
+char_u200e = "left-to-right mark"
+char_u200f = "right-to-left mark"
+char_u2028 = "line separator"
+char_u2029 = "paragraph separator"
+char_u202f = "narrow no-break space"
+char_u2060 = "word joiner"
+char_u3000 = "full-width space"
+char_ufeff = "zero-width no-break space"
+char_u0300 = "grave accent"
+char_u0301 = "acute accent"
+char_u0302 = "circumflex"
+char_u0303 = "tilde"
+char_u0304 = "macron"
+char_u0306 = "breve"
+char_u0307 = "dot above"
+char_u0308 = "umlaut"
+char_u030a = "ring above"
+char_u030b = "double acute accent"
+char_u030c = "caron"
+char_u0327 = "cedilla"
+char_u0328 = "ogonek"

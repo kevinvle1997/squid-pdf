@@ -37,8 +37,10 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 MUPDF_ERRORS = (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError)
 # MuPDF's own errors alone, which hold a pointer, so they can't cross between processes.
 MUPDF_OWN_ERRORS = pymupdf.mupdf.FzErrorBase
-# Those of them that mean the work was too big, not the file broken: a limit, or memory.
-MUPDF_TOO_HEAVY = (pymupdf.mupdf.FzErrorLimit, pymupdf.mupdf.FzErrorSystem)
+# The one of them that means the work was too big, not the file broken: past MuPDF's limit.
+MUPDF_TOO_HEAVY = pymupdf.mupdf.FzErrorLimit
+# The one that means the machine failed, not the file: out of memory, or a file it can't open.
+MUPDF_SYSTEM_ERRORS = pymupdf.mupdf.FzErrorSystem
 
 
 class PdfFile:

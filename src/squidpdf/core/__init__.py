@@ -12,6 +12,7 @@ from squidpdf.core.engine import Engine
 from squidpdf.core.errors import (
     Damaged,
     Encrypted,
+    ErrorController,
     InvalidRequest,
     NotFound,
     Problem,
@@ -54,6 +55,7 @@ __all__ = [
     "Encrypted",
     "Damaged",
     "TooHeavy",
+    "ErrorController",
     "face_widths",
     "Fidelity",
     "FidelityReport",

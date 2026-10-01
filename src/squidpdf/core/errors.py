@@ -7,6 +7,9 @@ feature keeps its own subclasses in its own `errors.py`.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from squidpdf.core import words
@@ -20,6 +23,9 @@ __all__ = [
     "Encrypted",
     "Damaged",
     "TooHeavy",
+    "ErrorController",
+    "problem_maker",
+    "machine_failure",
 ]
 
 
@@ -33,8 +39,6 @@ class Problem(Exception):
 
     type: ClassVar[str] = "server_error"  # what the browser branches on: never renamed
     status: ClassVar[int] = 500
-    # Its own sentence, only for a type no catalog has: the catalogs say the rest.
-    sentence: ClassVar[str | None] = None
 
     def __init__(self, debug: str | None = None, **fill: Param) -> None:
         """Keep what the sentence needs, and the developer's why."""
@@ -48,9 +52,8 @@ class Problem(Exception):
         return Message(self.type, dict(self.fill))
 
     def said_in(self, language: str) -> str:
-        """The sentence the user reads, in `language`, placeholders filled."""
-        template = words.sentence(self.type, language, default=self.sentence)
-        return words.fill(template, self.fill, language)
+        """The sentence the user reads, in `language`: its Message, said as any other is."""
+        return words.render(self.message, language)
 
     @property
     def detail(self) -> str:
@@ -83,21 +86,22 @@ class InvalidRequest(Problem):
     status = 400
 
 
-class Unreadable(Problem):
-    """The engine can't open the file. Catch this for both kinds."""
+class Damaged(Problem):
+    """The engine can't open the file: garbage, truncated or empty; or MuPDF crashed on it."""
 
     type = "damaged"
     status = 422
 
 
-class Encrypted(Unreadable):
-    """It opened, but only a password would let us read it."""
+class Encrypted(Problem):
+    """The engine can't read the file: it opened, but only a password would let us read it."""
 
     type = "encrypted"
+    status = 422
 
 
-class Damaged(Unreadable):
-    """Garbage, truncated or empty; or MuPDF crashed on it."""
+# The engine can't open or read the file, whichever the reason: catch this for both.
+Unreadable = (Damaged, Encrypted)
 
 
 class TooHeavy(Problem):
@@ -105,3 +109,92 @@ class TooHeavy(Problem):
 
     type = "too_heavy"
     status = 422
+
+
+# One foreign exception, and how to make the Problem it means from it.
+type Row = tuple[type[Exception], Callable[[Exception], Problem]]
+
+
+@dataclass(frozen=True, slots=True)
+class ErrorController:
+    """The one place a failure becomes the Problem it means: one row per foreign exception.
+
+    Rows are asked in order, and the first whose exception matches makes the
+    Problem. A layer above adds its own library's rows with `with_rows`, after
+    the ones below it.
+    """
+
+    rows: tuple[Row, ...]
+
+    def with_rows(self, *rows: Row) -> ErrorController:
+        """A controller that asks this one's rows first, then `rows`."""
+        return ErrorController((*self.rows, *rows))
+
+    def problem_of(self, exc: Exception) -> Problem:
+        """`exc` as the Problem it means; a server error, with its text, if no row claims it."""
+        if isinstance(exc, Problem):  # ours already: it means what it says
+            return exc
+        claimed = self._claimed(exc)
+        if claimed is None:  # a bug: nothing here knows what it means
+            return Problem(debug=described(exc))
+        return claimed
+
+    def _claimed(self, exc: Exception) -> Problem | None:
+        """The Problem the first row that claims `exc` makes of it; None when no row does."""
+        makers = (make for raised, make in self.rows if isinstance(exc, raised))
+        make = next(makers, None)  # None: no row claims it
+        if make is None:
+            return None
+        return make(exc)
+
+    def result_of[T](self, task: Callable[[], T]) -> T:
+        """What `task()` returns, or the Problem a row says its failure means.
+
+        A worker runs its task through this: a library's exception may hold a
+        pointer, so it can't be sent back from another process, but its meaning
+        can. A failure no row claims goes up as it is, for a layer above to
+        claim or to log as the bug it is.
+        """
+        try:
+            return task()
+        except Problem:  # ours already: it crosses as it is
+            raise
+        except Exception as exc:  # whatever else the task raised: a row may say what it means
+            claimed = self._claimed(exc)
+            if claimed is None:  # no row here claims it
+                raise
+            raise claimed from exc
+
+
+def described(exc: Exception) -> str:
+    """An exception as a developer reads it: its type and its text."""
+    return f"{type(exc).__name__}: {exc}"
+
+
+def problem_maker(cls: type[Problem]) -> Callable[[Exception], Problem]:
+    """A row's maker: the Problem `cls`, which takes no facts, with the exception's text."""
+
+    def make(exc: Exception) -> Problem:
+        """`cls`, and `exc` as a developer reads it."""
+        return cls(debug=described(exc))
+
+    return make
+
+
+# How a C library words a failed allocation, e.g. MuPDF's "malloc (468750000 bytes) failed",
+# or the system's own "Cannot allocate memory".
+_OUT_OF_MEMORY = re.compile(
+    r"\b(?:malloc|calloc|realloc)\b|\bout of memory\b|\bcannot allocate memory\b", re.IGNORECASE
+)
+
+
+def machine_failure(exc: Exception) -> Problem:
+    """The machine failed, not the file: out of memory is too heavy, anything else ours.
+
+    MuPDF raises the same error for both, so only its words tell them apart.
+    A file it couldn't open, such as one deleted mid-export, is a server error.
+    """
+    out_of_memory = _OUT_OF_MEMORY.search(str(exc)) is not None
+    if out_of_memory:
+        return TooHeavy(debug=described(exc))
+    return Problem(debug=described(exc))
