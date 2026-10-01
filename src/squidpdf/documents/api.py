@@ -17,12 +17,12 @@ from squidpdf.api import constants as limits
 from squidpdf.api import owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
-from squidpdf.api.routing import controller_with_workers, response_of
+from squidpdf.api.routing import controller_with_workers, listed_header, response_of
 from squidpdf.core import NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.page_image import PageController
-from squidpdf.documents.read import ReadController
+from squidpdf.documents.read import EXPIRES_HEADER, ReadController
 from squidpdf.documents.types import Document, Loaded
 from squidpdf.documents.upload import UploadController
 
@@ -80,7 +80,19 @@ async def upload(
     return response_of(reply, media_type=_JSON, set_by=response)
 
 
-@router.get("/{doc_id}", response_model=Document)
+@router.get(
+    "/{doc_id}",
+    response_model=Document,
+    responses={
+        200: {
+            "headers": {
+                EXPIRES_HEADER: listed_header(
+                    "When the document now expires, in ISO 8601 and UTC; a 304 says it too"
+                )
+            }
+        }
+    },
+)
 async def read(
     doc: Annotated[Loaded, Depends(load)],
     *,

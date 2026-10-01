@@ -19,10 +19,12 @@ from squidpdf.documents.types import Analysis, KeptAnalysis, Loaded
 
 __all__ = [
     "ReadController",
+    "EXPIRES_HEADER",
 ]
 
 # When the document now expires: a 304 carries no body, and reading restarted the hour.
-_EXPIRES_HEADER = "Squid-Expires-At"
+# The route lists it in the OpenAPI.
+EXPIRES_HEADER = "Squid-Expires-At"
 
 
 class ReadController:
@@ -66,7 +68,7 @@ def answer(
     headers = {
         "ETag": etag_of(kept, said_in),
         "Cache-Control": DOCUMENT_CACHE,
-        _EXPIRES_HEADER: time_of(doc.expires_at),
+        EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
     }
     # The browser's copy is current: a 304 carries no body.

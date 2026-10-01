@@ -14,11 +14,11 @@ from pydantic import BaseModel, Field
 
 from squidpdf.api import constants as limits
 from squidpdf.api.language import ReaderLanguage
-from squidpdf.api.routing import controller_with_workers, response_of
+from squidpdf.api.routing import controller_with_workers, listed_header, response_of
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.edits import Edit
-from squidpdf.editing.export import ExportController
+from squidpdf.editing.export import NOTICES_HEADER, SKIPPED_HEADER, ExportController
 from squidpdf.editing.font_list import FontListController
 from squidpdf.editing.render import RenderController
 from squidpdf.editing.types import FontList, Region, Render
@@ -89,7 +89,19 @@ async def render(
 @router.post(
     "/{doc_id}/export",
     response_class=Response,
-    responses={200: {"content": {"application/pdf": {}}}},
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "headers": {
+                SKIPPED_HEADER: listed_header(
+                    "Each edit left out, by its place in the list sent, joined by commas"
+                ),
+                NOTICES_HEADER: listed_header(
+                    "What saving did to the whole file, as a JSON list of notices"
+                ),
+            },
+        }
+    },
 )
 async def export(
     doc: Annotated[Loaded, Depends(documents.load)],
