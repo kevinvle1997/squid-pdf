@@ -57,6 +57,8 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
 _PAGES = "pages.json"
+# Google's copies of fonts, cached beside the documents: no document id looks like it.
+_GOOGLE_FONTS = "fonts"
 _ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
@@ -98,7 +100,7 @@ def open_to_analyse(folder: Path) -> Engine:
     beside the documents (the sweep passes over it). Every other open reads
     that cache alone, so it lends what the analysis fetched and never waits.
     """
-    fetch = google_fonts(folder=root() / "fonts")
+    fetch = google_fonts(folder=root() / _GOOGLE_FONTS)
     try:
         return open_pdf(str(folder / ORIGINAL), fetch=fetch)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
@@ -111,7 +113,7 @@ def open_original(folder: Path) -> Engine:
     Google's copy of a font lends the letters its copies in the file lack, from
     the cache the analysis filled: a render never waits on the network.
     """
-    fetch = google_fonts(folder=root() / "fonts", cache_only=True)
+    fetch = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
     try:
         return open_pdf(str(folder / ORIGINAL), fetch=fetch)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
