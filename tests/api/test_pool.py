@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
+import multiprocessing
 import os
 import signal
 import sys
@@ -28,6 +29,7 @@ from tests.helpers import (
     assert_at_most,
     assert_equal,
     assert_false,
+    assert_not_in,
     assert_problem,
     assert_true,
 )
@@ -164,6 +166,28 @@ def test_the_api_works_on_after_an_idle_worker_is_killed(tmp_path, monkeypatch, 
 
     assert_equal(page.status_code, 200, "page image status after a worker was killed")
     assert_equal(health.json(), {"status": "ok"}, "health after a worker was killed")
+
+
+def test_a_task_sent_as_every_worker_dies_goes_again_on_a_new_pool():
+    """pebble gives up on the pool while the task waits for a worker: it did no work yet.
+
+    Every worker is killed and the task sent at once, before pebble looks: it
+    looks a few times a second, and gives up on the pool when it finds a dead worker.
+    """
+
+    async def sent_as_every_worker_dies() -> tuple[set[int | None], int]:
+        async with _own_pool() as pool:  # its own: this breaks it
+            others = set(multiprocessing.active_children())
+            await pool.run(_ENOUGH_S, _noop)  # every worker started
+            workers = set(multiprocessing.active_children()) - others
+            for worker in workers:
+                worker.kill()
+            return {worker.pid for worker in workers}, await pool.run(_ENOUGH_S, os.getpid)
+
+    killed, worker_pid = asyncio.run(sent_as_every_worker_dies())
+
+    assert_equal(len(killed), WORKERS, "workers killed")
+    assert_not_in(worker_pid, killed, "the worker that ran the task")
 
 
 def _cannot_start(*_args: object) -> None:

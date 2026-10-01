@@ -7,17 +7,23 @@ the cap fails in the worker, not the server, and a crash takes only its
 worker; each comes back as the Problem that says which.
 
 pebble gives up on the whole pool when a worker dies between tasks (the kernel
-killed it, say), so the pool is replaced when that happens.
+killed it, say), so the pool is replaced when that happens. A task it gave up
+on goes again, once, on the new pool, but only if no worker had started it:
+each try notes its start in a file of its own, read once the old workers are gone.
 """
 
 from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import shutil
 import sys
+import tempfile
+import uuid
 from collections.abc import Callable
 from concurrent.futures.process import BrokenProcessPool
 from functools import partial
+from pathlib import Path
 from types import ModuleType
 from typing import cast
 
@@ -33,6 +39,10 @@ __all__ = [
     "WorkerPool",
     "current",
 ]
+
+
+class NeverStarted(Exception):
+    """The pool broke before any worker started the task, so the task did no work."""
 
 
 class WorkerPool:
@@ -52,6 +62,8 @@ class WorkerPool:
         # tied to the loop it's made in, another loop is refused on its first task.
         self._loop = asyncio.get_running_loop()
         self._pool = process_pool()
+        # Where each try of a task notes that a worker started it; removed with the pool.
+        self._starts = Path(tempfile.mkdtemp(prefix="squidpdf-starts-"))
         # One replacement at a time: two tasks that find the pool broken build one new pool.
         self._replacing = asyncio.Lock()
         # Tasks wait for a worker here, not in pebble's queue: leaving from here costs nothing.
@@ -63,7 +75,9 @@ class WorkerPool:
         """`task()` in a worker, given `timeout` seconds from this call.
 
         Time spent waiting for a free worker counts; a new worker's start doesn't,
-        since that's the server's time, not the task's. If the caller goes away
+        since that's the server's time, not the task's. A task the pool broke under
+        before any worker started it goes again, once, on a new pool, to the same
+        deadline; one a worker started never does. If the caller goes away
         first, a task still waiting is dropped, and a long one (`STOP_WHEN_LEFT_S`)
         is stopped. A short one finishes: stopping it would kill its worker, and
         the next task would wait for a new one. The PDF library's own failures
@@ -77,12 +91,8 @@ class WorkerPool:
                 await self._free.acquire()
         except TimeoutError as waited:  # no worker came free in time
             raise TooSlow() from waited
-        time_left = deadline - self._loop.time()
-        if time_left <= 0:  # free just as time ran out; pebble reads 0 as no timeout at all
-            self._free.release()
-            raise TooSlow()
         # Created at once, and the worker given back when it's done, however it ends.
-        job = asyncio.create_task(self._in_worker(time_left, task))
+        job = asyncio.create_task(self._in_worker(deadline, task))
         self._jobs.add(job)
         job.add_done_callback(self._given_back)
         try:
@@ -123,10 +133,42 @@ class WorkerPool:
                 await asyncio.to_thread(broken.join)  # waits for pebble's own threads
             return self._pool
 
-    async def _in_worker[T](self, timeout: float, task: Callable[[], T]) -> T:
-        """`task()` on a worker set aside for it, killed by pebble `timeout` seconds in."""
+    async def _in_worker[T](self, deadline: float, task: Callable[[], T]) -> T:
+        """`task()` on a worker set aside for it, killed by pebble at `deadline`.
+
+        Sent a second time, on a new pool, if the pool broke before any worker
+        started it: it did no work, so nothing runs twice. Never a third.
+        """
+        try:
+            return await self._sent(deadline, task)
+        except NeverStarted:  # raised when the pool broke before a worker started the task
+            return await self._sent(deadline, task)
+
+    async def _sent[T](self, deadline: float, task: Callable[[], T]) -> T:
+        """`task()` sent to the pool, a new one if it broke, killed by pebble at `deadline`.
+
+        Raises NeverStarted when the pool breaks before any worker starts it.
+        """
+        # Worked out before a broken pool is replaced: that's the server's time, not the task's.
+        time_left = deadline - self._loop.time()
+        if time_left <= 0:  # out of time already; pebble reads 0 as no timeout at all
+            raise TooSlow()
         pool = await self._running()
-        return await asyncio.wrap_future(pool.submit(partial(result_of, task), timeout))
+        start = self._starts / uuid.uuid4().hex  # this try's own: the worker makes it
+        try:
+            future = pool.submit(partial(noted_start, str(start), task), time_left)
+        except RuntimeError as refused:  # raised by pebble when the pool broke since `_running`
+            raise NeverStarted() from refused
+        try:
+            return await asyncio.wrap_future(future)
+        except BrokenProcessPool as broke:  # raised by pebble when it gives up on the pool
+            # Its workers stopped first, so none can still start the task once it's looked at.
+            await self._running()
+            if not has_started(start):
+                raise NeverStarted() from broke
+            raise
+        finally:
+            forget_start(start)
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
@@ -134,6 +176,26 @@ class WorkerPool:
             job.cancel()
         self._pool.stop()
         self._pool.join()
+        shutil.rmtree(self._starts, ignore_errors=True)
+
+
+def noted_start[T](start: str, task: Callable[[], T]) -> T:
+    """In a worker: note that it started `task` by making the file `start`, then run it.
+
+    The library's failures come back as the Problems they mean (`core.result_of`).
+    """
+    Path(start).touch()
+    return result_of(task)
+
+
+def has_started(start: Path) -> bool:
+    """Whether a worker made the file a try's `noted_start` was given."""
+    return start.exists()
+
+
+def forget_start(start: Path) -> None:
+    """Remove a try's start file, made or not: the try is over."""
+    start.unlink(missing_ok=True)
 
 
 def process_pool() -> ProcessPool:
