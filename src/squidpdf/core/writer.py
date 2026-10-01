@@ -11,6 +11,7 @@ import hashlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import groupby
+from typing import assert_never
 
 from squidpdf.core.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.embedded import FontUnusable
@@ -90,33 +91,36 @@ class PageWriter:
         """Draw `text` at the span's baseline as planned, and say what came out otherwise."""
         plan = plans.plan_for(span, text)
         by_code = coded_in(plan)
-        match plan.drawn_in:
-            # A face we ship draws the whole line, less what even it can't draw.
-            case Face() as face:
-                self._write_in_face(span, face, text=plan.text, plans=plans, setting=setting)
-            # The file's own font, written by code as the original was.
-            case PooledFont() if by_code is not None:
-                self._write_codes(span, by_code, setting=setting)
-            # The file's own copies of the font, by letter, once the page has them.
-            case PooledFont() as pool:
-                try:
-                    resources = self._resources(span.page, pool, plan.text)
-                except FontUnusable as problem:  # the page wouldn't take a copy after all
-                    stand_in = plans.stand_in_for(span, text)
-                    self._write_in_face(
-                        span, stand_in.face, text=stand_in.text, plans=plans, setting=setting
-                    )
-                    return [problem.reason, *said_left_out(stand_in.left_out)]
-                self._note_google_letters(pool, plan.text)
-                self._write(
-                    span,
-                    plan.text,
-                    font=pool,
-                    resources=resources,
-                    plans=plans,
-                    setting=setting,
+        drawn_in = plan.drawn_in
+        # A face we ship draws the whole line, less what even it can't draw.
+        if isinstance(drawn_in, Face):
+            self._write_in_face(span, drawn_in, text=plan.text, plans=plans, setting=setting)
+            return said_left_out(plan.left_out)
+        # The file's own font, written by code as the original was.
+        if isinstance(drawn_in, PooledFont) and by_code is not None:
+            self._write_codes(span, by_code, setting=setting)
+            return said_left_out(plan.left_out)
+        # The file's own copies of the font, by letter, once the page has them.
+        if isinstance(drawn_in, PooledFont):
+            try:
+                resources = self._resources(span.page, drawn_in, plan.text)
+            except FontUnusable as problem:  # the page wouldn't take a copy after all
+                stand_in = plans.stand_in_for(span, text)
+                self._write_in_face(
+                    span, stand_in.face, text=stand_in.text, plans=plans, setting=setting
                 )
-        return said_left_out(plan.left_out)
+                return [problem.reason, *said_left_out(stand_in.left_out)]
+            self._note_google_letters(drawn_in, plan.text)
+            self._write(
+                span,
+                plan.text,
+                font=drawn_in,
+                resources=resources,
+                plans=plans,
+                setting=setting,
+            )
+            return said_left_out(plan.left_out)
+        assert_never(drawn_in)
 
     def forget_pages(self) -> None:
         """Forget each page's resource names: the pages were just renumbered."""
