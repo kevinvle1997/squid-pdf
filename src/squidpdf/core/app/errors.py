@@ -148,12 +148,12 @@ class ErrorController:
         """`exc` as the Problem it means; a server error, with its text, if no row claims it."""
         if isinstance(exc, Problem):  # ours already: it means what it says
             return exc
-        claimed = self.claimed(exc)
+        claimed = self.problem_if_claimed(exc)
         if claimed is None:  # a bug: nothing here knows what it means
             return Problem(debug=described(exc))
         return claimed
 
-    def claimed(self, exc: Exception) -> Problem | None:
+    def problem_if_claimed(self, exc: Exception) -> Problem | None:
         """The Problem the first row that claims `exc` makes of it; None when no row does."""
         claiming = (row for row in self.rows if isinstance(exc, row.raised))
         row = next(claiming, None)  # None: no row claims it
@@ -174,7 +174,7 @@ class ErrorController:
         except Problem:  # ours already: it crosses as it is
             raise
         except Exception as exc:  # whatever else the task raised: a row may say what it means
-            claimed = self.claimed(exc)
+            claimed = self.problem_if_claimed(exc)
             if claimed is None:  # no row here claims it
                 raise
             raise claimed from exc

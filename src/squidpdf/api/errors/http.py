@@ -96,7 +96,7 @@ def adopt(exc: Exception) -> Problem:
     """Any exception as the Problem `API_ERRORS` says it means; a bug if nothing claims it."""
     if isinstance(exc, Problem):
         return exc
-    claimed = API_ERRORS.claimed(exc)
+    claimed = API_ERRORS.problem_if_claimed(exc)
     # A bug: said without its text, which is for the log. Starlette logs the traceback after.
     if claimed is None:
         return ServerError()
