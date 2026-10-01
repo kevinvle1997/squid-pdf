@@ -34,6 +34,7 @@ _PARALLEL = 32  # requests at once: minutes one by one, seconds this way
 
 # The folders families live in, one per licence. Only the OFL's text is read.
 _LICENCE_FOLDERS = ("ofl", "apache", "ufl")
+_FAMILY_DEPTH = 2  # slashes in a family's own file: `ofl/lato/METADATA.pb`, not one below
 _OFL = "OFL.txt"
 
 # Families Google renamed: the old name, as a document names the font, to the new family.
@@ -163,7 +164,7 @@ def main() -> int:
         path.rsplit("/", 1)[0]
         for path in blobs
         if path.split("/")[0] in _LICENCE_FOLDERS
-        and path.count("/") == 2
+        and path.count("/") == _FAMILY_DEPTH
         and path.endswith("/METADATA.pb")
     )
     every = [f"{folder}/{name}" for folder in folders for name in ("METADATA.pb", _OFL)]

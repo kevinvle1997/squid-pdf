@@ -24,13 +24,13 @@ jobs:
         uses: ./.github/actions/uv
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Format
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
 
       - name: Types (mypy)
-        run: uv run mypy src tests
+        run: uv run mypy src tests scripts
 
       - name: Types (ty)
         run: uv run ty check
@@ -176,13 +176,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The CLI as a user installs it: no `api` extra and no dev tools, so it proves it runs
+      # without them. `uv run --no-dev` keeps them out, where plain `uv run` would add the tools.
       - name: Install
         uses: ./.github/actions/uv
+        with:
+          sync: --no-dev
 
       - name: Green rate
         run: |
-          uv run squidpdf fixture /tmp/sample.pdf
-          uv run squidpdf report /tmp/sample.pdf | tee /tmp/report.txt
+          uv run --no-dev squidpdf fixture /tmp/sample.pdf
+          uv run --no-dev squidpdf report /tmp/sample.pdf | tee /tmp/report.txt
           {
             echo '### Green rate'
             echo '```'

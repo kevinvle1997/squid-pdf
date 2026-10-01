@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, cast
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -58,8 +58,8 @@ PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 def from_validation(exc: Exception) -> Problem:
     """FastAPI's list of what was wrong, kept for a developer."""
-    assert isinstance(exc, RequestValidationError)
-    return InvalidRequest(debug="; ".join(describe(item) for item in exc.errors()))
+    invalid = cast(RequestValidationError, exc)  # _ADOPT hands it only these
+    return InvalidRequest(debug="; ".join(describe(item) for item in invalid.errors()))
 
 
 # Starlette's own failures a Problem keeps the status of; any other is a bad request.
@@ -71,11 +71,11 @@ _HTTP_PROBLEMS: dict[int, type[Problem]] = {
 
 def from_http(exc: Exception) -> Problem:
     """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
-    assert isinstance(exc, HTTPException)
+    failure = cast(HTTPException, exc)  # _ADOPT hands it only these
     # .get: most of Starlette's failures are the browser's, said as a bad request.
-    problem = _HTTP_PROBLEMS.get(exc.status_code)
+    problem = _HTTP_PROBLEMS.get(failure.status_code)
     if problem is None:
-        return InvalidRequest(debug=str(exc.detail))
+        return InvalidRequest(debug=str(failure.detail))
     return problem()
 
 

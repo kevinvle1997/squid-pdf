@@ -7,13 +7,18 @@ inside a function.
 from __future__ import annotations
 
 import ast
+import re
+import subprocess
+import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from tests.helpers import assert_equal
 
-_SRC = Path(__file__).parents[1] / "src"
+_ROOT = Path(__file__).parents[1]
+_SRC = _ROOT / "src"
 
 
 def _imports(path: Path) -> set[str]:
@@ -100,3 +105,38 @@ def test_nothing_inside_imports_the_package_itself():
     """
     breaking = [module for module, imports in _MODULES.items() if "squidpdf" in imports]
     assert_equal(breaking, [], "modules importing the squidpdf package itself")
+
+
+# Where a requirement's name ends: its extras, version, or environment marker begin.
+_NAME_ENDS = re.compile(r"[\[<>=~!; ]")
+
+
+def _api_extra() -> list[str]:
+    """What the `api` extra installs, by import name: `uvicorn[standard]>=0.32` is `uvicorn`."""
+    pyproject = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = pyproject["project"]["optional-dependencies"]["api"]
+    return [_NAME_ENDS.split(requirement, maxsplit=1)[0] for requirement in requirements]
+
+
+# FastAPI's own two: they come with it, so the extra doesn't name them.
+_WEB_FRAMEWORK = ["starlette", "pydantic"]
+
+# Run in a fresh interpreter, so nothing the suite imported already hides a missing package.
+# A module set to None in sys.modules raises ImportError when anything imports it.
+_IMPORT_BLOCKED = """
+import sys
+sys.modules.update(dict.fromkeys(sys.argv[1:]))
+import squidpdf.cli
+"""
+
+
+def test_the_cli_runs_without_the_api_extra():
+    """The rules above read the source; this imports it, so a package they don't name counts."""
+    blocked = _api_extra() + _WEB_FRAMEWORK
+    ran = subprocess.run(
+        [sys.executable, "-c", _IMPORT_BLOCKED, *blocked],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert_equal(ran.stderr, "", f"importing the CLI with {', '.join(blocked)} blocked")
