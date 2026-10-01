@@ -50,14 +50,11 @@ async def admit_upload(request: Request) -> None:
     A dependency of the upload route, so it runs before any of the body is
     read. Async, so it runs on the event loop and two uploads never count at once.
     """
-    state = request.app.state
-    # Kept per app, so each app (a test's too) counts its own; made on the first upload.
-    if not hasattr(state, "recent_uploads"):
-        state.recent_uploads = RecentUploads()
+    recent_uploads: RecentUploads = request.app.state.recent_uploads  # made in the lifespan
     # None only under a server that doesn't say who's calling; they then share one count.
     address = request.client.host if request.client is not None else ""
     # Read as a module attribute, so a test can change the limit.
-    admitted = state.recent_uploads.admit(
+    admitted = recent_uploads.admit(
         address, now=time.monotonic(), limit=constants.UPLOADS_PER_MINUTE
     )
     if not admitted:

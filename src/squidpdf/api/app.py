@@ -18,6 +18,7 @@ from squidpdf.api import errors
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.pool import WorkerPool, current
+from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
@@ -30,6 +31,8 @@ __all__ = [
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
     app.state.pool = WorkerPool()
+    # Uploads by address, kept per app, so each app (a test's too) counts its own.
+    app.state.recent_uploads = RecentUploads()
     sweeper = asyncio.create_task(documents.sweep_forever())
     try:
         yield
