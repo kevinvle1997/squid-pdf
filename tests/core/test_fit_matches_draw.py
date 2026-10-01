@@ -8,13 +8,12 @@ Carlito in the file.
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator
 
 import pymupdf
 import pytest
 
 from squidpdf.core import Engine, LineToDraw, Span, SpanIndex, new_text, open_pdf
-from tests.conftest import named_only, saved_as
+from tests.conftest import each_span, named_only, saved_as
 from tests.helpers import assert_equal
 
 # The own font: MuPDF's Nimbus Sans, stored trimmed and renamed Calibri, so its
@@ -44,20 +43,12 @@ def _own_font_file(path: str) -> str:
     return path
 
 
-def _each_drawn(path: str) -> Iterator[dict]:
-    """Every piece of text on the saved file's first page, as MuPDF reads it back."""
-    for block in pymupdf.open(path)[0].get_text("dict")["blocks"]:
-        # .get: an image block has no lines.
-        for line in block.get("lines", []):
-            yield from line["spans"]
-
-
 def _font_drawing(path: str, text: str) -> str:
     """The font the saved file draws `text` in, read back from its first page."""
     wanted = unicodedata.normalize("NFC", text)
     [font] = {
         piece["font"]
-        for piece in _each_drawn(path)
+        for piece in each_span(pymupdf.open(path)[0].get_text("dict")["blocks"])
         if wanted in unicodedata.normalize("NFC", piece["text"])
     }
     return font

@@ -12,7 +12,7 @@ from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
 
 
-def test_every_language_has_every_sentence_with_the_sameplaceholders(pseudo):
+def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
     english = words.ENGLISH_SENTENCES
     for language, catalog in words.CATALOGS.items():
         assert_equal(set(catalog), set(english), f"the keys {language!r} has")
