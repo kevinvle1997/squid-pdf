@@ -393,11 +393,12 @@ def replace_fit(
     `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
     """
     missing = engine.missing(span, text)
-    original = engine.measure(span, span.text)
-    delta = engine.measure(span, text) - original
-    options = options_for(delta, original)
+    original_width = engine.measure(span, span.text)
+    typed_width = engine.measure(span, text)
+    delta_pt = typed_width - original_width
+    options = options_for(delta_pt, original_width)
     return FitReport(
-        delta_pt=round(delta, 2),
+        delta_pt=round(delta_pt, 2),
         missing=missing,
         options=options,
         strategy=strategy_drawn(strategy, options),

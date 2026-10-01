@@ -186,15 +186,15 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     page.draw_line((73, 101.5), (148, 101.5))  # just under the baseline, inside the text's box
     doc.save(path)
 
-    with open_pdf(str(path)) as eng:
-        index = eng.index()
-        _apply(eng, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
-        eng.save(str(out))
+    with open_pdf(str(path)) as engine:
+        index = engine.index()
+        _apply(engine, [Replace(next(iter(index)).id, "Total due: 49,500")], index)
+        engine.save(str(out))
 
-    edited = pymupdf.open(out)[0]
-    assert_equal(len(edited.get_drawings()), 1, "lines left under the replaced text")
-    assert_not_in("48,500", edited.get_text(), "the saved page after a replace")
-    assert_in("49,500", edited.get_text(), "the saved page after a replace")
+    edited_page = pymupdf.open(out)[0]
+    assert_equal(len(edited_page.get_drawings()), 1, "lines left under the replaced text")
+    assert_not_in("48,500", edited_page.get_text(), "the saved page after a replace")
+    assert_in("49,500", edited_page.get_text(), "the saved page after a replace")
 
 
 def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(

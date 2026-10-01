@@ -189,8 +189,8 @@ def cmd_edit(args: argparse.Namespace) -> int:
         fitted = not fit.missing and fit.strategy != "as-is"
         refused = not (fit.ok or fitted or args.force)
         if refused:
-            problem = words.render_all(fit.describe())
-            refusal = f"  {RED}{problem}{OFF} {DIM}(pass --force to do it anyway){OFF}"
+            described = words.render_all(fit.describe())
+            refusal = f"  {RED}{described}{OFF} {DIM}(pass --force to do it anyway){OFF}"
             print(refusal, file=sys.stderr)
             return 1
 

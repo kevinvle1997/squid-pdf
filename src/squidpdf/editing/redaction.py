@@ -51,7 +51,7 @@ def as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:
     by_page: dict[int, list[Span]] = {}
     for span in redacted:
         by_page.setdefault(span.page, []).append(span)
-    for place, original in enumerate(pages):
+    for saved_page, original_page in enumerate(pages):
         # .get: most pages have no redaction on them.
-        for span in by_page.get(original, []):
-            yield dataclasses.replace(span, page=place)
+        for span in by_page.get(original_page, []):
+            yield dataclasses.replace(span, page=saved_page)

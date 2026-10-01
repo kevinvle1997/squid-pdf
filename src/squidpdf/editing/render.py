@@ -150,8 +150,8 @@ def check_regions(regions: list[Region], pages: list[Page]) -> None:
         strip = strip_of(region, page)
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
         if not strip.y0 < strip.y1:
-            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
-            raise InvalidRequest(debug=reason)
+            debug = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
+            raise InvalidRequest(debug=debug)
 
 
 def strip_of(region: Region, page: Page) -> Rect:
