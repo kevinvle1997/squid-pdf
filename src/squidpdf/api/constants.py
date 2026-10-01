@@ -24,7 +24,7 @@ UPLOADS_PER_MINUTE = 20  # per IP
 # Every request body but an upload, which checks its own size.
 MAX_BODY_BYTES = 5 * _MB
 
-# Attached fonts.
+# Attached fonts: read by font attach (#52) when it's built.
 MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
