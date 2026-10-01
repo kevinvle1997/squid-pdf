@@ -6,6 +6,7 @@ from squidpdf.core import Problem
 
 __all__ = [
     "MethodNotAllowed",
+    "NoWorkers",
     "RateLimited",
     "RequestTooLarge",
     "ServerError",
@@ -31,6 +32,13 @@ class TooSlow(Problem):
     """The worker ran out of time: slow, not necessarily broken."""
 
     type = "too_slow"
+    status = 503
+
+
+class NoWorkers(Problem):
+    """No worker can start, so no PDF work can be done: what the health check answers."""
+
+    type = "no_workers"
     status = 503
 
 

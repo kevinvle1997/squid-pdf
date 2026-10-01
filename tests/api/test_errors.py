@@ -93,8 +93,6 @@ def test_every_route_says_it_can_answer_with_a_problem():
         "what every Problem carries",
     )
     for path, methods in spec["paths"].items():
-        if path == "/api/health":
-            continue
         for method, operation in methods.items():
             listed = operation["responses"].get("default", {})
             schema = listed.get("content", {}).get("application/problem+json", {}).get("schema")
