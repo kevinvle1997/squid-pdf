@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
+from pathlib import Path
 
 import pytest
 
+from squidpdf.core import SpanIndex
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
@@ -15,6 +18,8 @@ from squidpdf.documents.errors import Gone
 from tests.helpers import assert_at_least, assert_equal, assert_false, assert_in, assert_true
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
+_RACES = 20  # deletes raced against a writer; before the fix, most left a folder
+_WRITER_HEAD_START_S = 0.001  # lets the writer be mid-write when the delete starts
 
 
 def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
@@ -29,16 +34,19 @@ def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = store.create("owner")
     _, fresh = store.create("owner")
-    # Not a document: a folder of someone else's that shares the data folder.
+    # Not documents: folders of someone else's that share the data folder.
     other = store.root() / "backups"
     other.mkdir()
+    others_trash = store.root() / ".trash-backups"
+    others_trash.mkdir()
     past = time.time() - IDLE_S - 1
-    for folder in (idle, other):
+    for folder in (idle, other, others_trash):
         os.utime(folder, (past, past))
     store.sweep()
     assert_false(idle.exists(), "a document idle past the hour is still on disk")
     assert_true(fresh.exists(), "a document in use was swept")
     assert_true(other.exists(), "a folder that isn't a document was swept")
+    assert_true(others_trash.exists(), "a folder named like trash, not a document's, was swept")
 
 
 def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
@@ -94,3 +102,85 @@ def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
     store.delete(folder)
     with pytest.raises(Gone):
         store.touch(folder)
+
+
+def test_a_document_deleted_while_a_worker_writes_leaves_nothing_behind():
+    """A cancelled upload's worker can still be writing when the folder is deleted.
+
+    A file landing mid-delete used to keep the folder on disk, its owner file gone.
+    """
+    for _ in range(_RACES):
+        _, folder = store.create("owner")
+        writing = threading.Event()
+        stop = threading.Event()
+        writer = threading.Thread(target=_write_until_gone, args=(folder, writing, stop))
+        writer.start()
+        writing.wait()
+        time.sleep(_WRITER_HEAD_START_S)
+        store.delete(folder)
+        stop.set()
+        writer.join()
+    assert_equal(sorted(store.root().iterdir()), [], "folders left in the store")
+
+
+def _write_until_gone(folder: Path, writing: threading.Event, stop: threading.Event) -> None:
+    """Save the index over and over, as analysis does, until the folder goes."""
+    writing.set()
+    while not stop.is_set():
+        try:
+            store.save_index(folder, SpanIndex([]))
+        except Gone:  # deleted under it: the worker's request ends there
+            return
+
+
+def test_the_sweeper_clears_what_a_delete_cut_short_left():
+    """A delete moves the folder aside, then empties it; a crash between leaves it there.
+
+    So does a delete from before they were moved aside: a folder named like a
+    document with no owner file, which the sweep takes once it is idle too.
+    """
+    _, trashed = store.create("owner")
+    cut_short = store.root() / f".trash-{trashed.name}"
+    trashed.rename(cut_short)
+    _, emptied = store.create("owner")
+    (emptied / "owner").unlink()
+    _, being_made = store.create("owner")
+    (being_made / "owner").unlink()  # as create leaves it, before it writes the owner
+    past = time.time() - IDLE_S - 1
+    os.utime(emptied, (past, past))
+    store.sweep()
+    assert_false(cut_short.exists(), "a delete cut short is still on disk")
+    assert_false(emptied.exists(), "a folder a delete emptied is still on disk")
+    assert_true(being_made.exists(), "a document being made was swept")
+
+
+def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
+    """A worker found it, then its owner deleted it: analysis ends Gone, not a 500."""
+    _, folder = store.create("owner")
+    store.delete(folder)
+    with pytest.raises(Gone):
+        store.save_index(folder, engine.index())
+    with pytest.raises(Gone):
+        store.save_analysis(folder, "a-build", b"{}")
+
+
+def test_a_worker_reads_an_index_once(engine):
+    """Every render and export needs it, and parsing it was most of a render's time."""
+    _, folder = store.create("owner")
+    store.save_index(folder, engine.index())
+    first = store.load_index(folder)
+    assert_true(store.load_index(folder) is first, "the index was read from disk again")
+
+
+def test_a_kept_index_never_outlives_its_file(engine):
+    """Saved again, the new one is read; deleted, there is none."""
+    _, folder = store.create("owner")
+    store.save_index(folder, engine.index())
+    store.load_index(folder)
+    first_span = SpanIndex(list(engine.index())[:1])
+    store.save_index(folder, first_span)  # at once: the file's clock may not have moved
+    again = store.load_index(folder)
+    read = [span.id for span in again or ()]
+    assert_equal(read, [span.id for span in first_span], "spans in the index read again")
+    store.delete(folder)
+    assert_equal(store.load_index(folder), None, "the index of a deleted document")

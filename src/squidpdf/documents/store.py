@@ -14,6 +14,7 @@ import secrets
 import shutil
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +60,9 @@ _PAGES = "pages.json"
 _ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
-_ID_SHAPE = re.compile(r"[A-Za-z0-9_-]{22}")
+_DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
+_TRASH = ".trash-"  # a deleted document's folder, moved aside while it's emptied
+_TRASHED_FOLDER_PATTERN = re.compile(re.escape(_TRASH) + _DOCUMENT_ID_PATTERN.pattern)
 
 
 def root() -> Path:
@@ -79,7 +82,7 @@ def create(owner_digest: str) -> tuple[str, Path]:
 
 def find(doc_id: str) -> tuple[Path, str] | None:
     """The document's folder and its owner's hash, or None if there's no such document."""
-    if not _ID_SHAPE.fullmatch(doc_id):
+    if not _DOCUMENT_ID_PATTERN.fullmatch(doc_id):
         return None
     folder = root() / doc_id
     try:
@@ -128,18 +131,34 @@ def touch(folder: Path) -> float:
 
 
 def delete(folder: Path) -> None:
-    """The document and everything worked out from it."""
-    shutil.rmtree(folder, ignore_errors=True)  # the sweeper may have got there first
+    """The document and everything worked out from it, gone for every request at once.
+
+    Moved aside first, in one step, so its id stops resolving before any file
+    goes: a worker still writing finds it Gone, instead of adding a file to a
+    folder being emptied, which would stop the folder going.
+    """
+    trash = folder.with_name(f"{_TRASH}{folder.name}")
+    try:
+        folder.rename(trash)
+    except FileNotFoundError:  # the sweep or another delete got there first
+        return
+    # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
+    shutil.rmtree(trash, ignore_errors=True)
 
 
 def sweep() -> None:
     """Delete every document left untouched for longer than the idle hour, and nothing else.
 
-    Only a folder named like a document and holding an owner: the data folder
-    can be shared. A request that loses the race with a delete says Gone.
+    Only a folder named like a document, or one a delete moved aside: the data
+    folder can be shared. A request that loses the race with a delete says Gone.
     """
     for folder in root().glob("*"):
-        is_document = _ID_SHAPE.fullmatch(folder.name) and (folder / _OWNER).is_file()
+        # A delete cut short: nothing reads it now.
+        if _TRASHED_FOLDER_PATTERN.fullmatch(folder.name):
+            shutil.rmtree(folder, ignore_errors=True)  # its delete may be emptying it too
+            continue
+        # With or without its owner: one emptied by a delete from before they moved aside.
+        is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
         if is_document and idle(folder):
             delete(folder)
 
@@ -158,12 +177,19 @@ def write_whole(path: Path, data: bytes) -> None:
     Written beside it, then renamed over it, which the filesystem does at once.
     A half file (a worker killed mid-write, a full disk) would read as broken
     JSON on every visit, and every visit restarts the hour, so it would never go.
+    Raises Gone if the document was deleted meanwhile, by its owner or the sweep.
     """
-    handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    except FileNotFoundError as exc:  # its folder was deleted since it was found
+        raise Gone from exc
     try:
         with os.fdopen(handle, "wb") as out:
             out.write(data)
         os.replace(part, path)
+    except FileNotFoundError as exc:  # its folder was deleted mid-write
+        Path(part).unlink(missing_ok=True)  # most likely gone with the folder already
+        raise Gone from exc
     except BaseException:  # cut short: the old file stays, and the piece goes
         Path(part).unlink(missing_ok=True)
         raise
@@ -174,13 +200,39 @@ def save_index(folder: Path, index: SpanIndex) -> None:
     write_whole(folder / _INDEX, orjson.dumps(list(index)))
 
 
+@dataclass(slots=True)
+class KeptIndex:
+    """The last index this worker read, and which file it read it from."""
+
+    file_identity: tuple[Path, int, int] | None = None  # folder, mtime and inode
+    index: SpanIndex | None = None
+
+
+kept_index = KeptIndex()  # per worker process: each has its own
+
+
 def load_index(folder: Path) -> SpanIndex | None:
-    """The saved index, or None before the first analysis."""
+    """The saved index, or None before the first analysis.
+
+    Read once per worker: parsing a large one was most of a render. Kept while
+    its file is the same file, so an index saved again or deleted is never served.
+    """
     try:
-        raw = orjson.loads((folder / _INDEX).read_bytes())
-    except FileNotFoundError:  # not analysed yet
+        index_file = (folder / _INDEX).open("rb")
+    except FileNotFoundError:  # not analysed yet, or deleted since
         return None
-    return SpanIndex([load_span(span) for span in raw])
+    with index_file:
+        # Mtime and inode: each save is a new file, but the clock may not have moved.
+        index_stat = os.fstat(index_file.fileno())
+        file_identity = (folder, index_stat.st_mtime_ns, index_stat.st_ino)
+        if file_identity == kept_index.file_identity:
+            return kept_index.index
+        # Dropped before the next is read, so two never share the worker's memory cap.
+        kept_index.file_identity, kept_index.index = None, None
+        raw = orjson.loads(index_file.read())
+    kept_index.index = SpanIndex([load_span(span) for span in raw])
+    kept_index.file_identity = file_identity
+    return kept_index.index
 
 
 def load_span(saved: dict[str, Any]) -> Span:
