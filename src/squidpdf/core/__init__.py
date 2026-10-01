@@ -20,7 +20,7 @@ from squidpdf.core.app.errors import (
     TooHeavy,
     Unreadable,
 )
-from squidpdf.core.app.message import Message, MessageInfo, Param
+from squidpdf.core.app.message import Message, MessageInfo, Param, SaidInfo
 from squidpdf.core.app.reply import Reply
 from squidpdf.core.app.workers import Workers
 from squidpdf.core.constants import (
@@ -72,6 +72,7 @@ __all__ = [
     "write_dense",
     "Message",
     "MessageInfo",
+    "SaidInfo",
     "Param",
     "Problem",
     "Reply",

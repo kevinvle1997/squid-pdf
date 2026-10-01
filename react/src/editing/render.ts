@@ -56,6 +56,8 @@ function pageOfNotice(reading: Reading, notice: NoticeInfo): number | undefined 
     }
     case "file":
       return undefined;
+    default:
+      return notice satisfies never;
   }
 }
 
