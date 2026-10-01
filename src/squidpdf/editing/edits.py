@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 import unicodedata
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, assert_never
 
 from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
@@ -93,7 +93,14 @@ class Insert:
         check_text(self.text)
 
 
-type Edit = Replace | Redact | Insert
+# Plain aliases, not `type` statements: pydantic gives those a schema, changing the wire's.
+# An edit to text the document has, named by its span.
+SpanEdit = Replace | Redact
+# An edit to a page as a whole, named by its page.
+PageEdit = Insert
+# Every edit the browser can send. Each place that treats kinds differently ends in
+# `assert_never`, so a new kind is a type error until every one handles it.
+Edit = SpanEdit | PageEdit
 
 
 def check_edits(edits: list[Edit]) -> None:
@@ -102,6 +109,17 @@ def check_edits(edits: list[Edit]) -> None:
     if len(edits) > constants.MAX_EDITS:
         raise TooManyEdits(constants.MAX_EDITS)
     longest = constants.MAX_TEXT_CHARS
-    too_long = any(isinstance(e, Replace | Insert) and len(e.text) > longest for e in edits)
+    too_long = any(len(typed_in(edit)) > longest for edit in edits)
     if too_long:
         raise TextTooLong(longest)
+
+
+def typed_in(edit: Edit) -> str:
+    """The new text an edit carries: empty for a redaction, which draws none."""
+    # A replace or an insert: the text it draws.
+    if isinstance(edit, Replace | Insert):
+        return edit.text
+    # A redaction: it draws none.
+    if isinstance(edit, Redact):
+        return ""
+    assert_never(edit)

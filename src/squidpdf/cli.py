@@ -2,7 +2,7 @@
 
 squidpdf spans   file.pdf              what is editable, and how it would edit
 squidpdf check   file.pdf ID "text"    what would happen if you typed that
-squidpdf edit    file.pdf ID "text" -o out.pdf
+squidpdf edit    file.pdf ID "text" -o out.pdf [--strategy shrink]
 squidpdf redact  file.pdf ID -o out.pdf
 squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
@@ -17,15 +17,22 @@ import argparse
 import os
 import posixpath
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import get_args
 
 from squidpdf.core import (
     GREEN_RATE_TARGET,
     GREEN_RATE_WARN,
+    Engine,
     Fidelity,
     FidelityReport,
     Problem,
+    Span,
+    SpanIndex,
     google_fonts,
     green_rate,
     open_pdf,
@@ -38,7 +45,7 @@ from squidpdf.editing import (
     Redact,
     RedactionFailed,
     Replace,
-    apply,
+    Strategy,
     replace_fit,
     save_edited,
 )
@@ -114,26 +121,54 @@ def summary(reports: list[FidelityReport]) -> None:
     )
 
 
+class UnknownSpan(Exception):
+    """The PDF has no span by the id typed."""
+
+    def __init__(self, span_id: str) -> None:
+        """Name the id typed."""
+        super().__init__(span_id)
+        self.span_id = span_id
+
+
+@dataclass(frozen=True, slots=True)
+class Opened:
+    """A PDF open in the engine, its spans, and the one a command was given."""
+
+    engine: Engine
+    index: SpanIndex
+    span: Span
+
+
+@contextmanager
+def opened_at(pdf: str, span_id: str) -> Iterator[Opened]:
+    """The PDF open for as long as the `with` lasts, at the span `span_id` names.
+
+    Raises UnknownSpan, which `main` says as a hint, if it has no such span.
+    """
+    with open_pdf(pdf, fetch=google_fonts()) as engine:
+        index = engine.index()
+        span = index.get(span_id)
+        if span is None:
+            raise UnknownSpan(span_id)
+        yield Opened(engine, index, span)
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
-    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
-        index = engine.index()
-        span = index.get(args.span_id)
-        if span is None:
-            return no_span(args.span_id)
-
-        fit = replace_fit(engine, span, args.text)
+    with opened_at(args.pdf, args.span_id) as opened:
+        span = opened.span
+        fit = replace_fit(opened.engine, span, args.text)
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {DIM}{span.font} {span.size}pt{OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
 
-        problem = words.render_all(fit.describe())
+        described = words.render_all(fit.describe())
         # It fits: nothing to choose between.
-        if not problem:
+        if not described:
             print(f"  {GREEN}fits in place{OFF}\n")
             return 0
         # It doesn't: say why and list the ways out.
-        print(f"  {RED}{problem}{OFF}")
+        print(f"  {RED}{described}{OFF}")
         for option in fit.options:
             label, detail = words.render(option.label), words.render(option.detail)
             print(f"    {DIM}{option.name:<9}{OFF} {label}{DIM}: {detail}{OFF}")
@@ -142,41 +177,41 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_edit(args: argparse.Namespace) -> int:
-    """Replace a span's text and save. Refuses if it will not fit, unless --force."""
-    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
-        index = engine.index()
-        span = index.get(args.span_id)
-        if span is None:
-            return no_span(args.span_id)
+    """Replace a span's text and save. Refuses if it will not fit, unless --force.
 
-        fit = replace_fit(engine, span, args.text)
-        refused = not fit.ok and not args.force
+    `--strategy` takes a way out `check` offered: shrink or condense, to fit.
+    """
+    with opened_at(args.pdf, args.span_id) as opened:
+        span = opened.span
+        replace = Replace(span.id, args.text, strategy=args.strategy)
+        fit = replace_fit(opened.engine, span, replace.text, strategy=replace.strategy)
+        # A way out that was offered makes a long line fit; missing letters still don't.
+        fitted = not fit.missing and fit.strategy != "as-is"
+        refused = not (fit.ok or fitted or args.force)
         if refused:
-            problem = words.render_all(fit.describe())
-            refusal = f"  {RED}{problem}{OFF} {DIM}(pass --force to do it anyway){OFF}"
+            described = words.render_all(fit.describe())
+            refusal = f"  {RED}{described}{OFF} {DIM}(pass --force to do it anyway){OFF}"
             print(refusal, file=sys.stderr)
             return 1
 
-        applied = apply(engine, [Replace(span.id, args.text)], index)
-        saved = engine.save(args.out)
-        print(f"\n  {span.text!r} -> {args.text!r}")
-        for said in [notice.detail for notice in applied.notices] + saved:
-            print(f"  {YELLOW}{words.render(said)}{OFF}")
-        print(f"  {GREEN}saved{OFF} {args.out}\n")
+        # The same save a download gets.
+        saved = save_edited(opened.engine, opened.index, edits=[replace], to=args.out)
+    print(f"\n  {span.text!r} -> {args.text!r}")
+    for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
+        print(f"  {YELLOW}{words.render(said)}{OFF}")
+    print(f"  {GREEN}saved{OFF} {args.out}\n")
     return 0
 
 
 def cmd_redact(args: argparse.Namespace) -> int:
     """Remove a span, save, and verify by re-reading the output that it is gone."""
-    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
-        index = engine.index()
-        span = index.get(args.span_id)
-        if span is None:
-            return no_span(args.span_id)
-
+    with opened_at(args.pdf, args.span_id) as opened:
+        span = opened.span
         # The same save and check a download gets.
         try:
-            saved = save_edited(engine, index, edits=[Redact(span.id)], to=args.out)
+            saved = save_edited(
+                opened.engine, opened.index, edits=[Redact(span.id)], to=args.out
+            )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             print(f"  {RED}{failed.detail}{OFF}", file=sys.stderr)
             return 1
@@ -310,6 +345,12 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("text", type=one_line)
     command.add_argument("-o", "--out", default="out.pdf", type=new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
+    command.add_argument(
+        "--strategy",
+        choices=get_args(Strategy.__value__),
+        default="as-is",
+        help="a way out `check` offers: shrink or condense, to fit",
+    )
     command.set_defaults(fn=cmd_edit)
 
     command = commands.add_parser("redact", help="remove a span and verify it is gone")
@@ -339,6 +380,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
         return result_of(partial(args.fn, args))
+    except UnknownSpan as unknown:  # the span id typed isn't in the PDF
+        return no_span(unknown.span_id)
     except Problem as exc:  # e.g. the one PDF a command was given won't open
         print(f"  {RED}{exc.detail}{OFF}", file=sys.stderr)
         return 1

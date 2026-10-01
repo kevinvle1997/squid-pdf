@@ -14,6 +14,7 @@ from squidpdf.core import (
     BUILD,
     Engine,
     InvalidRequest,
+    Message,
     Page,
     Rect,
     Reply,
@@ -25,11 +26,12 @@ from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply, log_fits
+from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve, run
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import ImageInfo, Region, Render, Rendered
+from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.types import ImageInfo, Notice, Region, Render, Rendered
 
 __all__ = [
     "RenderController",
@@ -60,10 +62,12 @@ class RenderController:
         check_edits(edits)
         pages = store.load_pages(doc.folder)
         check_regions(regions, pages)
+        # Only the pages drawn go to the worker, so it needn't read the page list again.
+        drawn = {region.page: pages[region.page] for region in regions}
         # Each strip at its page image's scale, so the two line up.
-        scales = {region.page: page_scale(pages[region.page], scale) for region in regions}
+        scales = {page: page_scale(size, scale) for page, size in drawn.items()}
         rendered = await self._enqueue_draw_regions(
-            doc.folder, edits=edits, regions=regions, scales=scales
+            doc.folder, edits=edits, regions=regions, pages=drawn, scales=scales
         )
         body = reply_body(rendered, doc.expires_at, said_in)
         return Reply(body, words.language_headers(said_in))
@@ -74,6 +78,7 @@ class RenderController:
         *,
         edits: list[Edit],
         regions: list[Region],
+        pages: dict[int, Page],
         scales: dict[int, float],
     ) -> Rendered:
         """Draw the regions on a worker."""
@@ -82,48 +87,78 @@ class RenderController:
             str(folder),
             edits=edits,
             regions=regions,
+            pages=pages,
             scales=scales,
         )
         return await self._workers.run(RENDER_TIMEOUT_S, task)
 
 
 def draw_regions(
-    folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
+    folder: str,
+    *,
+    edits: list[Edit],
+    regions: list[Region],
+    pages: dict[int, Page],
+    scales: dict[int, float],
 ) -> Rendered:
-    """Apply the edits on the drawn pages, then draw each region. Runs in a worker.
+    """Apply the edits the regions show, then draw each region. Runs in a worker.
 
-    `scales` is each page's pixels per point, the same as its page image.
+    `pages` are the drawn pages' sizes, and `scales` each one's pixels per
+    point, the same as its page image.
     """
     path = Path(folder)
     index = store.load_index(path)
     if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
-    pages = store.load_pages(path)
+    strips: dict[int, list[Rect]] = {}
+    for region in regions:
+        strips.setdefault(region.page, []).append(strip_of(region, pages[region.page]))
 
     with store.open_original(path) as engine:
-        fits = log_fits(engine, edits, index)  # before apply: remove() can drop the fonts
-        applied = apply(engine, edits, index, pages={region.page for region in regions})
+        resolved = resolve(engine, edits, index)
+        fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+        steps = plan(engine, resolved, strips=strips)
+        notices = run(engine, steps) + said_unredacted(engine, steps)
         images = [
             draw(engine, region, page=pages[region.page], scale=scales[region.page])
             for region in regions
         ]
 
-    return Rendered(images, fits, applied.skipped, applied.notices)
+    return Rendered(images, fits, resolved.skipped, notices)
+
+
+def said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
+    """A notice for each redaction drawn whose text is still there, as a form field's is.
+
+    Said now, while the user can still undo it: export refuses the file.
+    """
+    redacted = [step.span for step in steps if isinstance(step, Erase)]
+    verdicts = RedactionController(redacted).verdicts(engine)
+    return [
+        Notice(span_id, Message("form_field_not_redacted"))
+        for span_id, gone in verdicts.items()
+        if not gone
+    ]
 
 
 def check_regions(regions: list[Region], pages: list[Page]) -> None:
     """Refuse a region the document can't give: a page it lacks, or no rows of the page."""
     for region in regions:
-        if not 0 <= region.page < len(pages):
+        if not is_page(region.page, len(pages)):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
-        height = pages[region.page].height
-        # Only the rows the page has: a strip past its edges is cut to them, as draw cuts it.
-        top = 0.0 if region.y0 is None else max(region.y0, 0.0)
-        bottom = height if region.y1 is None else min(region.y1, height)
+        page = pages[region.page]
+        strip = strip_of(region, page)
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
-        if not top < bottom:
-            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {height:g}"
-            raise InvalidRequest(debug=reason)
+        if not strip.y0 < strip.y1:
+            debug = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
+            raise InvalidRequest(debug=debug)
+
+
+def strip_of(region: Region, page: Page) -> Rect:
+    """The rows a region asks for, full width, cut to the page's own."""
+    top = 0.0 if region.y0 is None else max(region.y0, 0.0)
+    bottom = page.height if region.y1 is None else min(region.y1, page.height)
+    return Rect(0.0, top, page.width, bottom)
 
 
 def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
@@ -136,7 +171,8 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
             {**fit_info(fit, said_in), "edit": position}
             for position, fit in fits.inserts.items()
         ],
-        "redactions": [],  # verdicts come with export
+        # Its shape comes with partial redaction; a redaction left in place is a notice now.
+        "redactions": [],
         "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
         "notices": [notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,
@@ -151,9 +187,8 @@ def draw(engine: Engine, region: Region, *, page: Page, scale: float) -> ImageIn
         png = engine.page_image(region.page, scale)
         return {"page": region.page, "y": 0.0, "image": base64.b64encode(png).decode()}
     # A strip, out to whole pixels so its rows are the page image's rows.
-    y0 = 0.0 if region.y0 is None else max(region.y0, 0.0)
-    top = math.floor(y0 * scale) / scale
-    y1 = page.height if region.y1 is None else min(region.y1, page.height)
-    bottom = math.ceil(y1 * scale) / scale
+    strip = strip_of(region, page)
+    top = math.floor(strip.y0 * scale) / scale
+    bottom = math.ceil(strip.y1 * scale) / scale
     png = engine.page_image(region.page, scale, Rect(0, top, page.width, bottom))
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}

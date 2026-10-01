@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import json
+import tempfile
+import time
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pymupdf
 import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
+from squidpdf.api.pool import Pool
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
+from squidpdf.editing import Edit, export
 from squidpdf.editing import constants as editing_constants
+from squidpdf.editing.types import Exported
 from tests.api.conftest import span_starting, upload
-from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
+from tests.helpers import assert_equal, assert_false, assert_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
 _NOTICES = "Squid-Notices"
@@ -27,6 +34,32 @@ class _InProcess:
 
     async def run(self, _timeout, task):
         return task()
+
+
+_STALL_S = 60  # far past any export timeout here
+_STALLED_TIMEOUT_S = 3  # long enough to start the export, short enough to wait for
+_make_pdf = export.make_pdf  # the real one, kept before a test swaps it
+
+
+def _stall(*_args: object, **_kwargs: object) -> None:
+    """Hangs, as MuPDF can on a hostile file."""
+    time.sleep(_STALL_S)
+
+
+def _make_pdf_stalling_once_open(
+    folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
+) -> Exported:
+    """`make_pdf`, hanging where it opens the original. Runs in a worker, the patch with it."""
+    with mock.patch.object(store, "open_original", _stall):
+        return _make_pdf(folder, scratch, edits=edits, pages=pages)
+
+
+@pytest.fixture
+def own_pool() -> Iterator[Pool]:
+    """Workers of the test's own, since it kills one; shut down after."""
+    pool = Pool()
+    yield pool
+    pool.close()
 
 
 def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
@@ -137,27 +170,51 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     assert_equal(_files(doc), kept, "the document's files after the export")
 
 
-def test_what_an_export_saves_is_in_its_document_so_the_sweep_takes_it(
-    app, mine, doc, monkeypatch
-):
-    """A worker killed mid-export can't clean up; what it saved must go with the document."""
+def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc, monkeypatch):
+    """Its owner's DELETE, or the sweep, takes the folder once the original is open.
+
+    The export used to save into that folder, so the save failed and the
+    browser was told the file needs more memory.
+    """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    saved: list[Path] = []
-    save = Engine.save
+    opened = store.open_original
 
-    def noting_where(engine: Engine, path: str) -> list:
-        saved.append(Path(path))
-        return save(engine, path)
+    def deleted_once_open(folder: Path, *args, **kwargs) -> Engine:
+        engine = opened(folder, *args, **kwargs)
+        store.delete(folder)
+        return engine
 
-    monkeypatch.setattr(Engine, "save", noting_where)
-    kept = _files(doc)
+    monkeypatch.setattr(store, "open_original", deleted_once_open)
+    span = span_starting(doc, 1, "Invoices")
+    ninety = span["text"].replace("thirty", "ninety")
 
-    _opened(_export(mine, doc, []))
+    response = _export(mine, doc, [{"kind": "replace", "span_id": span["id"], "text": ninety}])
 
-    folder = store.root() / doc["id"]
-    assert_equal(len(saved), 1, "files the export saved")
-    assert_true(saved[0].is_relative_to(folder), f"{saved[0]} is in {folder}")
-    assert_equal(_files(doc), kept, "the document's files after the export")
+    assert_in("ninety days", _opened(response)[1].get_text(), "the downloaded page")
+    assert_false((store.root() / doc["id"]).exists(), "the document's folder is still there")
+
+
+def test_an_export_killed_at_its_timeout_leaves_nothing_in_the_temp_folder(
+    app, mine, doc, monkeypatch, own_pool, tmp_path
+):
+    """The edited file is the user's, and nothing of a document is kept past the hour.
+
+    A killed worker runs no cleanup of its own, so the server makes and removes
+    the folder the export saves into.
+    """
+    monkeypatch.setenv(
+        "TMPDIR", str(tmp_path)
+    )  # the workers' temp folder, read when they start
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))  # and the server's
+    monkeypatch.setattr(app.state, "pool", own_pool)
+    monkeypatch.setattr(export, "make_pdf", _make_pdf_stalling_once_open)
+    monkeypatch.setattr(export, "EXPORT_TIMEOUT_S", _STALLED_TIMEOUT_S)
+    span = span_starting(doc, 1, "Invoices")
+
+    response = _export(mine, doc, [{"kind": "replace", "span_id": span["id"], "text": "x"}])
+
+    assert_problem(response, "too_slow", 503)
+    assert_equal(sorted(tmp_path.iterdir()), [], "left in the temp folder")
 
 
 def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(mine, three):

@@ -117,6 +117,19 @@ def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys
     assert_true(not out_pdf.exists(), "no file is written when the edit is refused")
 
 
+def test_edit_takes_a_way_out_check_offered_without_force(pdf, tmp_path, capsys):
+    """`check` offers shrink for a line a little too long; `edit` can take it."""
+    span_id = _span_id(pdf, "Made on")
+    out_pdf = tmp_path / "shrunk.pdf"
+    longer = "Made on 14 March 2026 between Wescott and Rowe!!"
+
+    code = main(["edit", pdf, span_id, longer, "-o", str(out_pdf), "--strategy", "shrink"])
+
+    assert_equal(code, 0, "exit code of `squidpdf edit --strategy shrink`")
+    assert_in("saved", capsys.readouterr().out, "the edit output")
+    assert_in("Rowe!!", _text(out_pdf), "the saved PDF after a shrunk edit")
+
+
 def test_edit_with_force_saves_what_will_not_fit(pdf, tmp_path):
     span_id = _span_id(pdf, "Invoices")
     out_pdf = tmp_path / "edited.pdf"

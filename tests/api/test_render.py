@@ -8,8 +8,9 @@ import json
 import pymupdf
 import pytest
 
-from squidpdf.core import words
+from squidpdf.core import Engine, words
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.documents import store
 from tests.api.conftest import span_starting
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
@@ -17,6 +18,13 @@ _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
+
+
+class _InProcess:
+    """Runs pool work in the test's own process, where a monkeypatch reaches it."""
+
+    async def run(self, _timeout, task):
+        return task()
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
@@ -103,6 +111,16 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
     assert_in("text", response.json()["debug"], "what a developer reads")
 
 
+def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
+    """Never guessed as a replace: `kind` is what tells the edits apart."""
+    span = span_starting(doc, 0, "Made")
+
+    response = _render(mine, doc, [{"span_id": span["id"], "text": "x"}], [{"page": 0}])
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("kind", response.json()["debug"], "what a developer reads")
+
+
 @pytest.mark.parametrize(
     "region",
     [{"page": 0, "y0": 900, "y1": 1000}, {"page": 0, "y0": -100, "y1": -50}],
@@ -111,3 +129,49 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
 def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
     """Nothing to draw there: the browser asked for rows the page doesn't have."""
     assert_problem(_render(mine, doc, [], [region]), "invalid_request", 400)
+
+
+def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkeypatch):
+    """A strip over one line of a page with others edited: redrawing them all was most of it.
+
+    Every replace still gets its fit: that's measurement, not drawing.
+    """
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    redrawn: list[str] = []
+    draw = Engine.draw
+
+    def noting_what(engine: Engine, span, text: str, **setting) -> list:
+        redrawn.append(text)
+        return draw(engine, span, text, **setting)
+
+    monkeypatch.setattr(Engine, "draw", noting_what)
+    delivery, invoices = span_starting(doc, 1, "Delivery"), span_starting(doc, 1, "Invoices")
+    edits = [
+        {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"},
+        {"kind": "replace", "span_id": invoices["id"], "text": "Invoices are due at once."},
+    ]
+    box = invoices["bbox"]
+    strip = {"page": 1, "y0": box["y0"] - 4, "y1": box["y1"] + 4}
+
+    fits = _render(mine, doc, edits, [strip]).json()["fits"]
+
+    assert_equal(redrawn, ["Invoices are due at once."], "the lines redrawn")
+    assert_equal(set(fits), {delivery["id"], invoices["id"]}, "the replaces with a fit")
+
+
+def test_render_reads_the_page_list_once(app, mine, doc, monkeypatch):
+    """The request reads it to check the regions, and hands the work the pages it draws."""
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the worker's reads are counted
+    reads: list[object] = []
+    load_pages = store.load_pages
+
+    def counted(folder, *args, **kwargs) -> list:
+        reads.append(folder)
+        return load_pages(folder, *args, **kwargs)
+
+    monkeypatch.setattr(store, "load_pages", counted)
+
+    response = _render(mine, doc, [], [{"page": 0}])
+
+    assert_equal(response.status_code, 200, "render status")
+    assert_equal(len(reads), 1, "times the page list was read")
