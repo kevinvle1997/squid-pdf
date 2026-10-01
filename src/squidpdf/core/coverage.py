@@ -165,31 +165,29 @@ class Coverage:
 
 def truetype_has_outline(truetype: table__g_l_y_f, name: GlyphName) -> bool:
     """Whether a TrueType glyph has outlines of its own, or is built from parts that do."""
-    count = outline_count(truetype.glyphs[name])
-    # A glyph of its own outlines, or of none.
-    if count >= 0:
-        return count > 0
-    # Built from others: a part the font lacks draws nothing, as a drawing skips it.
-    components = truetype[name].components
-    part_names = (
-        component.glyphName for component in components if component.glyphName in truetype
-    )
-    return any(truetype_has_outline(truetype, part_name) for part_name in part_names)
+    glyph = truetype.glyphs[name]
+    # Built from other glyphs (Á from A and an accent): it draws if one of its parts does.
+    if glyph.isComposite():
+        # A part the font lacks draws nothing, as a drawing skips it.
+        parts = [part.glyphName for part in truetype[name].components]
+        return any(truetype_has_outline(truetype, part) for part in parts if part in truetype)
+    # Its own outlines: an emptied glyph, as a trimmed font leaves it, has none.
+    return outline_count(glyph) > 0
 
 
 def outline_count(glyph: Glyph) -> int:
-    """How many outlines a TrueType glyph has, -1 if it's built from others.
+    """How many outlines a glyph that isn't built from others has.
 
     Read from the glyph's first two bytes, so its points are never unpacked.
     """
-    # An empty glyph, or one already unpacked (a composite, to list its parts).
+    # An empty glyph has no bytes, and one fontTools has unpacked keeps its count.
     if not hasattr(glyph, "data"):
         return glyph.numberOfContours
     return _OUTLINE_COUNT.unpack_from(glyph.data)[0]
 
 
 def cff_has_outline(glyphs: Mapping[GlyphName, Any], name: GlyphName) -> bool:
-    """Whether a CFF glyph draws anything, drawn only as far as the first point it draws."""
+    """Whether a CFF glyph draws anything, drawn only as far as its first outline's start."""
     try:
         glyphs[name].draw(InkPen(glyphs))
     except Inked:  # the glyph began an outline: that's all we asked
@@ -198,26 +196,18 @@ def cff_has_outline(glyphs: Mapping[GlyphName, Any], name: GlyphName) -> bool:
 
 
 class Inked(Exception):
-    """Raised by `InkPen` at the first thing a glyph draws."""
+    """Raised by `InkPen` where a glyph starts its first outline."""
 
 
 class InkPen(DecomposingPen):
-    """A pen that stops the drawing at the first thing drawn, in the glyph or its parts."""
+    """A pen that stops the drawing where the first outline starts, in the glyph or its parts.
+
+    Every CFF outline starts with a move, so a move is the first thing a pen
+    sees of one: fontTools adds it when the glyph's own code leaves it out.
+    """
 
     def moveTo(self, pt: tuple[float, float]) -> None:
-        """The start of an outline: CFF only starts one to draw it."""
-        raise Inked
-
-    def lineTo(self, pt: tuple[float, float]) -> None:
-        """A line: ink."""
-        raise Inked
-
-    def curveTo(self, *points: tuple[float, float]) -> None:
-        """A curve: ink."""
-        raise Inked
-
-    def qCurveTo(self, *points: tuple[float, float] | None) -> None:
-        """A TrueType curve: ink."""
+        """An outline starts: the glyph draws."""
         raise Inked
 
 
