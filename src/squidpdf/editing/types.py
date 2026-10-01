@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core import Category, Message, MessageInfo, Style
+from squidpdf.core import Category, Message, MessageInfo, Page, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
     from squidpdf.editing.fit import LogFits
@@ -61,6 +61,14 @@ class Region:
     page: int
     y0: float | None = None
     y1: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DrawnPage:
+    """A page render draws on: its size, and its pixels per point, its page image's."""
+
+    size: Page
+    scale: float
 
 
 @dataclass(frozen=True, slots=True)

@@ -31,7 +31,7 @@ from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import ImageInfo, Notice, Region, Render, Rendered
+from squidpdf.editing.types import DrawnPage, ImageInfo, Notice, Region, Render, Rendered
 
 __all__ = [
     "RenderController",
@@ -62,12 +62,14 @@ class RenderController:
         check_edits(edits)
         pages = store.load_pages(doc.folder)
         check_regions(regions, pages)
-        # Only the pages drawn go to the worker, so it needn't read the page list again.
-        drawn = {region.page: pages[region.page] for region in regions}
-        # Each strip at its page image's scale, so the two line up.
-        scales = {page: page_scale(size, scale) for page, size in drawn.items()}
+        # Only the pages drawn go to the worker, so it needn't read the page list again,
+        # each at its page image's scale, so a strip and the image line up.
+        sizes = {region.page: pages[region.page] for region in regions}
+        drawn_pages = {
+            page: DrawnPage(size, page_scale(size, scale)) for page, size in sizes.items()
+        }
         rendered = await self._enqueue_draw_regions(
-            doc.folder, edits=edits, regions=regions, pages=drawn, scales=scales
+            doc.folder, edits=edits, regions=regions, drawn_pages=drawn_pages
         )
         body = reply_body(rendered, doc.expires_at, said_in)
         return Reply(body, words.language_headers(said_in))
@@ -78,17 +80,11 @@ class RenderController:
         *,
         edits: list[Edit],
         regions: list[Region],
-        pages: dict[int, Page],
-        scales: dict[int, float],
+        drawn_pages: dict[int, DrawnPage],
     ) -> Rendered:
         """Draw the regions on a worker."""
         task = partial(
-            draw_regions,
-            str(folder),
-            edits=edits,
-            regions=regions,
-            pages=pages,
-            scales=scales,
+            draw_regions, str(folder), edits=edits, regions=regions, drawn_pages=drawn_pages
         )
         return await self._workers.run(RENDER_TIMEOUT_S, task)
 
@@ -98,19 +94,19 @@ def draw_regions(
     *,
     edits: list[Edit],
     regions: list[Region],
-    pages: dict[int, Page],
-    scales: dict[int, float],
+    drawn_pages: dict[int, DrawnPage],
 ) -> Rendered:
     """Apply the edits the regions show, then draw each region. Runs in a worker.
 
-    `pages` are the drawn pages' sizes, and `scales` each one's pixels per
-    point, the same as its page image.
+    `drawn_pages` are the pages the regions are on, by number.
     """
     path = Path(folder)
     index = store.require_index(path)
     strips: dict[int, list[Rect]] = {}
     for region in regions:
-        strips.setdefault(region.page, []).append(strip_of(region, pages[region.page]))
+        strips.setdefault(region.page, []).append(
+            strip_of(region, drawn_pages[region.page].size)
+        )
 
     with store.open_original(path) as engine:
         resolved = resolve(engine, edits, index)
@@ -118,8 +114,7 @@ def draw_regions(
         steps = plan(engine, resolved, strips=strips)
         notices = run(engine, steps) + said_unredacted(engine, steps)
         images = [
-            draw(engine, region, page=pages[region.page], scale=scales[region.page])
-            for region in regions
+            draw(engine, region, drawn_page=drawn_pages[region.page]) for region in regions
         ]
 
     return Rendered(images, fits, resolved.skipped, notices)
@@ -178,8 +173,9 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
     }
 
 
-def draw(engine: Engine, region: Region, *, page: Page, scale: float) -> ImageInfo:
+def draw(engine: Engine, region: Region, *, drawn_page: DrawnPage) -> ImageInfo:
     """One region as a base64 PNG: the whole page, or a full-width strip of it."""
+    page, scale = drawn_page.size, drawn_page.scale
     whole_page = region.y0 is None and region.y1 is None
     if whole_page:
         png = engine.page_image(region.page, scale)
