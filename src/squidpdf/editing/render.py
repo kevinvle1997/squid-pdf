@@ -23,14 +23,14 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
-from squidpdf.documents.info import time_of
-from squidpdf.documents.pages import page_scale
+from squidpdf.documents.page_image import page_scale
+from squidpdf.documents.replies import time_of
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve, run
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
-from squidpdf.editing.info import fit_info, notice_info, skipped_info
 from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.replies import fit_info, notice_info, skipped_info
 from squidpdf.editing.types import ImageInfo, Notice, Region, Render, Rendered
 
 __all__ = [

@@ -14,7 +14,7 @@ from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse, kept_analysis
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
-from squidpdf.documents.info import document_json, time_of
+from squidpdf.documents.replies import document_json, time_of
 from squidpdf.documents.types import Analysis, KeptAnalysis, Loaded
 
 __all__ = [

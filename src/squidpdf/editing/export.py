@@ -20,8 +20,8 @@ from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
-from squidpdf.editing.info import notice_info
 from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, Notice, Saved
 
 __all__ = [

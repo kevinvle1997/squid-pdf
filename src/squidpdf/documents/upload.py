@@ -13,7 +13,7 @@ from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.errors import Gone, NotAPdf, ServerFull, TooLarge
-from squidpdf.documents.info import document_json
+from squidpdf.documents.replies import document_json
 from squidpdf.documents.types import Analysis
 
 __all__ = [

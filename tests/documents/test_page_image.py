@@ -8,7 +8,7 @@ import pytest
 
 from squidpdf.core import Page
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
-from squidpdf.documents.pages import page_scale
+from squidpdf.documents.page_image import page_scale
 from tests.helpers import assert_at_most, assert_equal, assert_true
 
 _ASKED = 4  # pixels per point, the most a route accepts

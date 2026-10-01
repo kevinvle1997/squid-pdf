@@ -21,7 +21,7 @@ from squidpdf.api.routing import controller_with_workers, response_of
 from squidpdf.core import NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
-from squidpdf.documents.pages import PageController
+from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import ReadController
 from squidpdf.documents.types import Document, Loaded
 from squidpdf.documents.upload import UploadController
