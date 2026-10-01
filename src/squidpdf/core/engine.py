@@ -11,7 +11,8 @@ engine asks both.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
@@ -26,7 +27,18 @@ from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, Page, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 
-__all__ = ["Engine"]
+__all__ = [
+    "Engine",
+    "LineToDraw",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class LineToDraw:
+    """A line `draw` will draw once the erasing is done: the span it's at, and its text."""
+
+    span: Span
+    text: str
 
 
 class Engine:
@@ -160,28 +172,33 @@ class Engine:
 
     # Changing it.
 
-    def remove(self, spans: list[Span]) -> None:
+    def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> None:
         """Delete these spans' text for real, not by covering it with a box.
 
-        One box per span, not per fragment: the cost grows with the box count,
-        and a span's box covers its fragments. Lines, underlines and links stay.
+        `then_drawn` are the lines `draw` will draw after: what they need is read
+        first, while the page still has it. One box per span, not per fragment:
+        the cost grows with the box count, and a span's box covers its fragments.
+        Lines, underlines and links stay.
         """
-        self._read_before_erasing(spans)
+        self._read_before_erasing(spans, then_drawn)
         for page, on_page in by_page(spans).items():
             self._driver.erase_text(page, [span.bbox for span in on_page])
 
-    def _read_before_erasing(self, spans: list[Span]) -> None:
-        """Read what `draw` needs about each span while the page still has it.
+    def _read_before_erasing(self, spans: list[Span], lines: Sequence[LineToDraw]) -> None:
+        """Read what `draw` needs while the page still has it.
 
-        Erasing can delete a font no text on the page uses any more, so each
+        Erasing can delete a font no text on the page uses any more. So each
         span's font and look-alike are read first, and the page's gaps a new
-        space is measured against.
+        space is measured against; and each line to draw is planned, which takes
+        in every copy of a font it borrows a letter from.
         """
         for span in spans:
             own = self._fonts.own(span)
             self._fonts.look_alike(span)
             if own is not None and lacks_space(own):
                 self._fonts.usual_gap(span, own)
+        for line in lines:
+            self._plans.plan_for(line.span, line.text)
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""

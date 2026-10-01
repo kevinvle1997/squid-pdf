@@ -19,6 +19,7 @@ from typing import assert_never
 from squidpdf.core import (
     FACES,
     Engine,
+    LineToDraw,
     Message,
     Rect,
     Span,
@@ -307,7 +308,8 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     time, and an erase after a redraw would take the new text too.
     """
     erased = [span for span in map(erased_by, steps) if span is not None]
-    engine.remove(erased)
+    drawn = [line for line in map(drawn_by, steps) if line is not None]
+    engine.remove(erased, then_drawn=drawn)
     # A redaction's links go too, as one can carry the text it's on (a mailto:).
     engine.unlink([step.span for step in steps if isinstance(step, Erase)])
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
@@ -325,6 +327,20 @@ def erased_by(step: Step) -> Span | None:
     # An insert: there was no text there.
     if isinstance(step, Place):
         return None
+    assert_never(step)
+
+
+def drawn_by(step: Step) -> LineToDraw | None:
+    """The line a step draws once the erasing is done; None for one that only erases."""
+    # A redaction: nothing drawn.
+    if isinstance(step, Erase):
+        return None
+    # A replace: its new text, where the old was.
+    if isinstance(step, Redraw):
+        return LineToDraw(step.span, step.text)
+    # An insert: its text, where there was none.
+    if isinstance(step, Place):
+        return LineToDraw(step.span, step.span.text)
     assert_never(step)
 
 

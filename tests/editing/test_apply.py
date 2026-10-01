@@ -154,7 +154,7 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
 
     with open_pdf(str(covered)) as engine:
         assert_equal(engine.still_there([span]), [span], "text under a black box, still there")
-        engine.remove([span])
+        engine.remove([span], then_drawn=[])
         assert_equal(
             engine.still_there([span]), [], "the same text really removed, still there"
         )
@@ -653,7 +653,7 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
     The erase is what's broken here: the text really is still in the file, one
     page earlier than it was, so reading it on its old page would pass.
     """
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: None)
     path, out = _three_pages(str(tmp_path / "three.pdf")), str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
         index = engine.index()

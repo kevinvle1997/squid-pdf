@@ -10,7 +10,7 @@ from collections.abc import Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core import Span, open_pdf
+from squidpdf.core import LineToDraw, Span, open_pdf
 from tests.core.conftest import GAP_EM, GAPPED_SIZE
 from tests.helpers import assert_at_most, assert_close, assert_equal
 
@@ -43,8 +43,9 @@ def _redraw(path: str, out: str, line: int, text: str | None = None) -> Span:
     """One of the fixture's lines redrawn as `text` (its own, if None) and saved to `out`."""
     with open_pdf(path) as engine:
         span = list(engine.index())[line]
-        engine.remove([span])
-        engine.draw(span, span.text if text is None else text)
+        drawn = span.text if text is None else text
+        engine.remove([span], then_drawn=[LineToDraw(span, drawn)])
+        engine.draw(span, drawn)
         engine.save(out)
     return span
 

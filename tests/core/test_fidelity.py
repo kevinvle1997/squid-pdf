@@ -11,6 +11,7 @@ from squidpdf.core import (
     Engine,
     Fidelity,
     FidelityReport,
+    LineToDraw,
     Span,
     SpanIndex,
     green_rate,
@@ -109,7 +110,7 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     # Drawn with nothing asked first: remove() must read the font before erasing it.
     with open_pdf(path) as engine:
         span = next(iter(engine.index()))
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "Hello again")])
         engine.draw(span, "Hello again")
         engine.save(out)
     with open_pdf(path) as engine:
@@ -127,7 +128,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
     with open_pdf(symbolic) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABBA")])
         engine.draw(span, "ABBA")
         engine.save(str(out))
 
@@ -147,7 +148,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
     with open_pdf(corrupt) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABBA")])
         engine.draw(span, "ABBA")
         engine.save(out)
 
@@ -167,7 +168,7 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
         engine.draw(span, "BA AB")
         engine.save(out)
 
@@ -200,7 +201,7 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
         missing = engine.missing(span, "ABCD")
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
         engine.draw(span, "ABC")
         engine.save(out)
 
@@ -246,7 +247,7 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
         missing = engine.missing(span, _POOLED)
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
         [report] = engine.assess(SpanIndex([new]))
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
         engine.draw(span, _POOLED)
         engine.save(out)
     return missing, report
@@ -390,8 +391,9 @@ def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path)
     with open_pdf(pdf) as engine:
         index = engine.index()
         [line] = [span for span in index if span.text.startswith("Invoices")]
-        engine.remove([line])
-        engine.draw(line, "Invoices are due within ten days.")
+        typed = "Invoices are due within ten days."
+        engine.remove([line], then_drawn=[LineToDraw(line, typed)])
+        engine.draw(line, typed)
         engine.save(out)
 
     with open_pdf(out) as again:

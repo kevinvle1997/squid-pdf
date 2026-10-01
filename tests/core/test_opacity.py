@@ -7,7 +7,7 @@ from collections.abc import Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core import open_pdf
+from squidpdf.core import LineToDraw, open_pdf
 from tests.core.conftest import TRANSLUCENT
 from tests.helpers import assert_equal
 
@@ -36,7 +36,7 @@ def test_a_redraw_keeps_the_originals_opacity(request, tmp_path, fixture, text, 
     with open_pdf(request.getfixturevalue(fixture)) as engine:
         [span] = engine.index()
         missing = engine.missing(span, text)
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, text)])
         engine.draw(span, text)
         engine.save(out)
 

@@ -30,7 +30,7 @@ from squidpdf.core.constants import (
     SHRINK_FLOOR,
     TOLERANCE_PT,
 )
-from squidpdf.core.engine import Engine
+from squidpdf.core.engine import Engine, LineToDraw
 from squidpdf.core.fonts.catalog import CATALOG, FACES
 from squidpdf.core.fonts.document import FontSources
 from squidpdf.core.fonts.google import google_fonts
@@ -55,6 +55,7 @@ from squidpdf.core.types import (
 __all__ = [
     "BUILD",
     "Engine",
+    "LineToDraw",
     "open_pdf",
     "FontSources",
     "result_of",

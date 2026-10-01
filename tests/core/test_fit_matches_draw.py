@@ -13,7 +13,7 @@ from collections.abc import Iterator
 import pymupdf
 import pytest
 
-from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf
+from squidpdf.core import Engine, LineToDraw, Span, SpanIndex, new_text, open_pdf
 from tests.conftest import named_only, saved_as
 from tests.helpers import assert_equal
 
@@ -86,7 +86,7 @@ def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:
             span = new_text(0, origin=_INSERT_AT, text=text, size=_SIZE, font="Calibri")
         named = _named_by_fit(engine, span, text)
         if not insert:
-            engine.remove([span])
+            engine.remove([span], then_drawn=[LineToDraw(span, text)])
         engine.draw(span, text)
         engine.save(out)
     return named

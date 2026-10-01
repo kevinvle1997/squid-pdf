@@ -153,7 +153,7 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     in the file, and the check reads it where its page went.
     """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans: None)
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: None)
     span = span_starting(doc, 1, "Invoices")
     kept = _files(doc)
 
