@@ -264,7 +264,11 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     engine.remove(erased)
     # A redaction's links go too, as one can carry the text it's on (a mailto:).
     engine.unlink([step.span for step in steps if isinstance(step, Erase)])
-    return [notice for step in steps for notice in finish_step(engine, step)]
+    # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
+    # Only a redraw's: a redaction's is checked where it's said, by RedactionController.
+    redrawn = [step.span for step in steps if isinstance(step, Redraw)]
+    stuck = {span.id for span in engine.still_there(redrawn)}
+    return [notice for step in steps for notice in finish_step(engine, step, stuck=stuck)]
 
 
 def erased_by(step: Step) -> Span | None:
@@ -278,12 +282,18 @@ def erased_by(step: Step) -> Span | None:
             assert_never(step)
 
 
-def finish_step(engine: Engine, step: Step) -> list[Notice]:
-    """Do what a step does once the erasing is done; returns what came out other than asked."""
+def finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]:
+    """Do what a step does once the erasing is done; returns what came out other than asked.
+
+    `stuck` are the spans whose text the erase couldn't clear.
+    """
     match step:
         # A redaction: nothing to draw.
         case Erase():
             return []
+        # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
+        case Redraw(span=span) if span.id in stuck:
+            return [Notice(span.id, Message("form_field_not_edited"))]
         case Redraw(span=span, text=text, size=size, scale_x=scale_x):
             drawn = engine.draw(span, text, size=size, scale_x=scale_x)
             return [Notice(span.id, said) for said in drawn]

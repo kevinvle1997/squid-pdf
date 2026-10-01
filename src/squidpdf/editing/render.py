@@ -14,6 +14,7 @@ from squidpdf.core import (
     BUILD,
     Engine,
     InvalidRequest,
+    Message,
     Page,
     Rect,
     Reply,
@@ -25,11 +26,12 @@ from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import log_fits, plan, resolve, run
+from squidpdf.editing.apply import Erase, Step, log_fits, plan, resolve, run
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
-from squidpdf.editing.types import ImageInfo, Region, Render, Rendered
+from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.types import ImageInfo, Notice, Region, Render, Rendered
 
 __all__ = [
     "RenderController",
@@ -103,13 +105,28 @@ def draw_regions(
     with store.open_original(path) as engine:
         resolved = resolve(engine, edits, index)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
-        notices = run(engine, plan(engine, resolved, pages={region.page for region in regions}))
+        steps = plan(engine, resolved, pages={region.page for region in regions})
+        notices = run(engine, steps) + said_unredacted(engine, steps)
         images = [
             draw(engine, region, page=pages[region.page], scale=scales[region.page])
             for region in regions
         ]
 
     return Rendered(images, fits, resolved.skipped, notices)
+
+
+def said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
+    """A notice for each redaction drawn whose text is still there, as a form field's is.
+
+    Said now, while the user can still undo it: export refuses the file.
+    """
+    redacted = [step.span for step in steps if isinstance(step, Erase)]
+    verdicts = RedactionController(redacted).verdicts(engine)
+    return [
+        Notice(span_id, Message("form_field_not_redacted"))
+        for span_id, gone in verdicts.items()
+        if not gone
+    ]
 
 
 def check_regions(regions: list[Region], pages: list[Page]) -> None:
@@ -137,7 +154,8 @@ def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
             {**fit_info(fit, said_in), "edit": position}
             for position, fit in fits.inserts.items()
         ],
-        "redactions": [],  # verdicts come with export
+        # Its shape comes with partial redaction; a redaction left in place is a notice now.
+        "redactions": [],
         "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
         "notices": [notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,

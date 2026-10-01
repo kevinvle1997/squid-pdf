@@ -26,8 +26,8 @@ class RedactionController:
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's text is gone from the document in memory, by span id.
 
-        For render's early check, before anything is saved: render's
-        `redactions` reply, which phase 5 builds. Nothing calls it yet.
+        Render's early check, before anything is saved, on pages still numbered
+        as in the original.
         """
         left = {span.id for span in engine.still_there(self._redacted)}
         return {span.id: span.id not in left for span in self._redacted}
