@@ -34,16 +34,33 @@ class Skipped:
 
 
 @dataclass(frozen=True, slots=True)
-class Notice:
-    """An edit that went in, but not quite as asked, and why.
+class SpanNotice:
+    """A replace or a redaction that went in, but not quite as asked: its span, and why."""
 
-    A replace is named by its span; an insert, which has none, by its place in
-    the list the browser sent, as Skipped does.
+    span_id: str
+    detail: Message
+
+
+@dataclass(frozen=True, slots=True)
+class InsertNotice:
+    """An insert that went in, but not quite as asked, and why.
+
+    It has no span, so it's named by its place in the list the browser sent, as Skipped is.
     """
 
-    span_id: str | None
+    edit: int
     detail: Message
-    edit: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FileNotice:
+    """What saving did to the whole file other than asked, such as drop its tags, and why."""
+
+    detail: Message
+
+
+# What came out other than asked: about a span, an insert, or the whole file.
+Notice = SpanNotice | InsertNotice | FileNotice
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,15 +162,40 @@ class SkippedInfo(MessageInfo):
     detail: str
 
 
-class NoticeInfo(MessageInfo):
-    """An edit drawn other than asked, by its span or its place in the list, and why.
+class SpanNoticeInfo(MessageInfo):
+    """A replace or a redaction drawn other than asked, by its span, and why.
 
     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
     """
 
-    span_id: str | None
+    kind: Literal["span"]
+    span_id: str
     detail: str
-    edit: int | None
+
+
+class InsertNoticeInfo(MessageInfo):
+    """An insert drawn other than asked, by its place in the list the browser sent, and why.
+
+    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+    """
+
+    kind: Literal["insert"]
+    edit: int
+    detail: str
+
+
+class FileNoticeInfo(MessageInfo):
+    """What saving did to the whole file other than asked, and why.
+
+    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
+    """
+
+    kind: Literal["file"]
+    detail: str
+
+
+# A notice as the browser gets it, told apart by `kind`. A plain alias: pydantic reads it.
+NoticeInfo = SpanNoticeInfo | InsertNoticeInfo | FileNoticeInfo
 
 
 class FaceInfo(TypedDict):

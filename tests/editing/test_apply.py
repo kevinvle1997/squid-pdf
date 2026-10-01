@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, assert_never, cast
 
 import pymupdf
 import pytest
@@ -33,6 +33,7 @@ from squidpdf.editing import (
     resolve,
 )
 from squidpdf.editing.apply import page_order, redacted_in
+from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
 from tests.conftest import (
     EMBEDDED_PAGE,
     REFERENCED_PAGE,
@@ -76,9 +77,20 @@ def _drawn(path, page: int, needle: str) -> dict:
     raise LookupError(f"nothing drawn on page {page} contains {needle!r}")
 
 
-def _said(notices: list[Notice]) -> list[tuple[str | None, str, int | None]]:
-    """Each notice as the user reads it in English, with the edit it's about."""
-    return [(notice.span_id, words.render(notice.detail), notice.edit) for notice in notices]
+def _said(notices: list[Notice]) -> list[tuple[str | int | None, str]]:
+    """Each notice as the user reads it in English, with what it's about."""
+    return [(_about(notice), words.render(notice.detail)) for notice in notices]
+
+
+def _about(notice: Notice) -> str | int | None:
+    """What a notice names: its span, an insert's place in the list, or nothing for the file."""
+    if isinstance(notice, SpanNotice):
+        return notice.span_id
+    if isinstance(notice, InsertNotice):
+        return notice.edit
+    if isinstance(notice, FileNotice):
+        return None
+    assert_never(notice)
 
 
 def _assert_cut(path, page: int, face: str, text: str) -> None:
@@ -214,7 +226,7 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Février")
     assert_equal(drawn["font"], saved_as("Liberation Serif Regular"), "the font that drew it")
-    left_out = (span.id, words.sentence("left_out").format(letters="中"), None)
+    left_out = (span.id, words.sentence("left_out").format(letters="中"))
     assert_equal(_said(applied.notices), [left_out], "what render tells the user")
     assert_equal(said_on_save, [], "what save tells the user")
     _assert_cut(
@@ -400,7 +412,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
     assert_in("2 April 2026", edited_text, "the edit that was good")
     # What the fit promised is what was drawn: Caveat, 中 left out and said so.
     left_out = words.sentence("left_out").format(letters="中")
-    assert_equal(_said(applied.notices), [(None, left_out, 2)], "what render says")
+    assert_equal(_said(applied.notices), [(2, left_out)], "what render says")
     assert_equal(fit.left_out, ["中"], "what the fit said would be left out")
     drawn = _drawn(out, REFERENCED_PAGE, "Signed")
     expected = ("Signed: Zoë", saved_as("Caveat Regular"))
@@ -550,7 +562,7 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     assert_equal(_squashed(drawn["font"]), _squashed(span.font), "the font that drew it")
     left_out = words.sentence("will_leave_out").format(letters="中")
     assert_equal([words.render(part) for part in fit.describe()], [left_out], "the fit")
-    notice = (span.id, words.sentence("left_out").format(letters="中"), None)
+    notice = (span.id, words.sentence("left_out").format(letters="中"))
     assert_equal(_said(applied.notices), [notice], "what render tells the user")
 
 

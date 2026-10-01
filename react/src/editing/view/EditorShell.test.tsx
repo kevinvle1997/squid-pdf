@@ -35,7 +35,7 @@ describe("the editor", () => {
     const drewOtherwise = "This page wouldn't take Times, so the line is drawn in Liberation Serif.";
     const leftOut = "An edit points at text that isn't in this document, so it was left out.";
     vi.mocked(renderOnServer).mockResolvedValue(
-      aReply({ notices: [aNotice(drewOtherwise, { span_id: span.id })], skipped: [aSkipped(0, leftOut)] }),
+      aReply({ notices: [aNotice(drewOtherwise, span.id)], skipped: [aSkipped(0, leftOut)] }),
     );
     const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
     await change(screen, "is here");

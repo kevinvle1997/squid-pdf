@@ -19,7 +19,10 @@ export type RenderBody = Schemas["RenderBody"];
 export type Render = Schemas["Render"];
 export type ImageInfo = Schemas["ImageInfo"];
 export type FitInfo = Schemas["FitInfo"];
-export type NoticeInfo = Schemas["NoticeInfo"];
+export type SpanNoticeInfo = Schemas["SpanNoticeInfo"];
+export type InsertNoticeInfo = Schemas["InsertNoticeInfo"];
+export type FileNoticeInfo = Schemas["FileNoticeInfo"];
+export type NoticeInfo = SpanNoticeInfo | InsertNoticeInfo | FileNoticeInfo;
 export type SkippedInfo = Schemas["SkippedInfo"];
 export type ProblemInfo = Schemas["ProblemInfo"];
 /** What went wrong: a Problem the server sent, or the browser's own when nothing answered. */

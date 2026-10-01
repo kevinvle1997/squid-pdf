@@ -37,9 +37,9 @@ def form() -> bytes:
     return doc.tobytes()
 
 
-def _said(rendered: dict) -> list[tuple[str | None, str, str]]:
-    """Render's notices: the span each is about, its sentence's key, and the sentence."""
-    return [(n["span_id"], n["code"], n["detail"]) for n in rendered["notices"]]
+def _said(rendered: dict) -> list[tuple[str, str, str, str]]:
+    """Render's notices: each one's kind, its span, its sentence's key, and the sentence."""
+    return [(n["kind"], n["span_id"], n["code"], n["detail"]) for n in rendered["notices"]]
 
 
 def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
@@ -56,7 +56,7 @@ def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
 
     key = "form_field_not_edited"
-    expected = [(field["id"], key, words.sentence(key))]
+    expected = [("span", field["id"], key, words.sentence(key))]
     assert_equal(_said(rendered), expected, "what render tells the user")
     lines = pymupdf.open(stream=exported.content, filetype="pdf")[0].get_text().splitlines()
     assert_equal(
@@ -75,6 +75,6 @@ def test_a_redaction_in_a_form_field_is_warned_at_render_and_refused_at_export(m
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
 
     key = "form_field_not_redacted"
-    expected = [(field["id"], key, words.sentence(key))]
+    expected = [("span", field["id"], key, words.sentence(key))]
     assert_equal(_said(rendered), expected, "what render tells the user")
     assert_problem(exported, "redaction_failed", 422)

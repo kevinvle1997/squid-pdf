@@ -45,12 +45,18 @@ export const NOTHING_DRAWN: Drawn = {
  */
 type Said = Pick<Render, "fits" | "notices" | "skipped">;
 
-/** The page a notice is about: its span's, or its edit's. */
+/** The page a notice is about: its span's, or its insert's. A notice about the whole file names none. */
 function pageOfNotice(reading: Reading, notice: NoticeInfo): number | undefined {
-  const edit = notice.edit === null ? undefined : reading.edits[notice.edit];
-  if (edit?.kind === "insert") return edit.page;
-  const spanId = notice.span_id ?? edit?.span_id;
-  return spanId === undefined ? undefined : reading.spans.get(spanId)?.span.page;
+  switch (notice.kind) {
+    case "span":
+      return reading.spans.get(notice.span_id)?.span.page;
+    case "insert": {
+      const edit = reading.edits[notice.edit];
+      return edit?.kind === "insert" ? edit.page : undefined;
+    }
+    case "file":
+      return undefined;
+  }
 }
 
 /** A reply's fits and notices, by the page each is about. The server sends a fit for every replaced span. */
@@ -62,7 +68,7 @@ function byPage(reading: Reading, said: Said, drawing: readonly number[]) {
   }
   const notices = new Map<number, NoticeInfo[]>();
   for (const notice of said.notices) {
-    // One that names neither span nor edit came from drawing these pages all the same: it goes with the first.
+    // One that names no page came from drawing these pages all the same: it goes with the first.
     const page = pageOfNotice(reading, notice) ?? drawing[0];
     if (page !== undefined) notices.set(page, [...(notices.get(page) ?? []), notice]);
   }

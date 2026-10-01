@@ -22,7 +22,7 @@ from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import notice_info
-from squidpdf.editing.types import Exported, Notice, Saved
+from squidpdf.editing.types import Exported, FileNotice, Saved
 
 __all__ = [
     "ExportController",
@@ -131,7 +131,7 @@ def save_edited(
 
 def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
     """What export says besides the file: edits left out, notices, and the language."""
-    notices = [notice_info(Notice(None, message), said_in) for message in exported.file_notices]
+    notices = [notice_info(FileNotice(message), said_in) for message in exported.file_notices]
     return {
         SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
         # ASCII only, so a header in any language stays valid.
