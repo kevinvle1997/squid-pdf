@@ -95,9 +95,9 @@ def open_to_analyse(folder: Path) -> Engine:
     beside the documents (the sweep passes over it). Every other open reads
     that cache alone, so it lends what the analysis fetched and never waits.
     """
-    fonts = google_fonts(folder=root() / "fonts")
+    fetch = google_fonts(folder=root() / "fonts")
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fonts)
+        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 
@@ -108,9 +108,9 @@ def open_original(folder: Path) -> Engine:
     Google's copy of a font lends the letters its copies in the file lack, from
     the cache the analysis filled: a render never waits on the network.
     """
-    fonts = google_fonts(folder=root() / "fonts", cache_only=True)
+    fetch = google_fonts(folder=root() / "fonts", cache_only=True)
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fonts)
+        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 

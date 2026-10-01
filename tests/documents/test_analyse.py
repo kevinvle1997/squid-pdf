@@ -53,9 +53,9 @@ def in_google_families():
         page.insert_text((72, 96 + 20 * number), line, fontname=f"f{number}", fontsize=12)
     for (xref, *_), family in zip(page.get_fonts(), _FAMILIES, strict=True):
         # The font, and the one inside it, as a real trimmed copy is named.
-        _kind, inner = doc.xref_get_key(xref, "DescendantFonts")
-        for named in (xref, int(inner.strip("[]").split()[0])):
-            doc.xref_set_key(named, "BaseFont", f"/ABCDEF+{family}")
+        _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
+        for font_xref in (xref, int(descendants.strip("[]").split()[0])):
+            doc.xref_set_key(font_xref, "BaseFont", f"/ABCDEF+{family}")
     _, folder = store.create("owner")
     doc.save(folder / store.ORIGINAL)
     return folder
@@ -89,9 +89,9 @@ def _google_through(monkeypatch, download: Download) -> list[str]:
 
 def _render_fit(folder: Path, family: str) -> list[str]:
     """What a render's fit says the line in `family` can't draw of _WANTED."""
-    with store.open_original(folder) as eng:
-        span = next(span for span in eng.index() if span.font.endswith(family))
-        return eng.missing(span, _WANTED)
+    with store.open_original(folder) as engine:
+        span = next(span for span in engine.index() if span.font.endswith(family))
+        return engine.missing(span, _WANTED)
 
 
 def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(

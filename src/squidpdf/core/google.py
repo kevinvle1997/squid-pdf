@@ -221,8 +221,8 @@ def fetched(
     on it again for FETCH_RETRY_S. A download that gets no answer holds back
     every file: the network failed, not the file, and each would wait as long.
     """
-    ready = folder / GOOGLE_FONTS_COMMIT / file.source
-    cached = from_cache(ready, file)
+    cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
+    cached = from_cache(cached_path, file)
     if cached is not None:
         return cached
     # The cache alone: render and export lend what analysis fetched, and never wait.
@@ -234,7 +234,7 @@ def fetched(
     # Failed a moment ago: not worth another wait yet.
     if now < held_until:
         return None
-    fetching = Fetching(ready=ready, download=download, retry_at=retry_at)
+    fetching = Fetching(cached_path=cached_path, download=download, retry_at=retry_at)
     # A daemon: one still hanging never keeps the worker from exiting.
     threading.Thread(target=fetch_into, args=(file, fetching), daemon=True).start()
     try:
@@ -254,7 +254,7 @@ def fetched(
 class Fetching:
     """One download under way in the background, and what it tells the one waiting on it."""
 
-    ready: Path  # where it's cached
+    cached_path: Path  # where it's cached
     download: Download
     retry_at: RetryAt  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
@@ -273,10 +273,10 @@ def fetch_into(file: GoogleFile, fetching: Fetching) -> None:
     if font_file is None:
         fetching.answer.put(None)
         return
-    kept(fetching.ready, font_file)
+    kept(fetching.cached_path, font_file)
     # A cut isn't the file git hashed, so its own hash is kept beside it to check it by.
     if file.weight is not None:
-        kept(hash_beside(fetching.ready), blob_hash(font_file).encode())
+        kept(hash_beside(fetching.cached_path), blob_hash(font_file).encode())
     fetching.answer.put(font_file)
 
 
@@ -301,31 +301,33 @@ def checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
         return None
 
 
-def from_cache(ready: Path, file: GoogleFile) -> bytes | None:
-    """The cached copy of `file` at `ready`; None when there's none, or it's gone bad.
+def from_cache(cached_path: Path, file: GoogleFile) -> bytes | None:
+    """The cached copy of `file` at `cached_path`; None when there's none, or it's gone bad.
 
     Checked on every read: a copy cut short (a crash before the disk caught up)
     would otherwise be trusted for good. A bad one is deleted where the disk
     allows, and fetched again.
     """
     try:
-        font_file = ready.read_bytes()
-        sound = file.blob if file.weight is None else hash_beside(ready).read_text()
+        font_file = cached_path.read_bytes()
+        expected_hash = (
+            file.blob if file.weight is None else hash_beside(cached_path).read_text()
+        )
     except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
         return None
-    if blob_hash(font_file) == sound:
+    if blob_hash(font_file) == expected_hash:
         return font_file
     _logger.warning("Google's copy of %s in the cache is damaged: fetched again", file.source)
     try:
-        ready.unlink(missing_ok=True)
+        cached_path.unlink(missing_ok=True)
     except OSError:  # a read-only disk: the bad copy stays, and is passed over each time
         _logger.warning("Damaged copy of %s can't be deleted", file.source, exc_info=True)
     return None
 
 
-def hash_beside(ready: Path) -> Path:
+def hash_beside(cached_path: Path) -> Path:
     """Where a cut copy's own hash is kept: beside it, under the same name."""
-    return ready.with_name(f"{ready.name}{_HASH_SUFFIX}")
+    return cached_path.with_name(f"{cached_path.name}{_HASH_SUFFIX}")
 
 
 def cut(variable_font: bytes, weight: int) -> bytes:
@@ -382,9 +384,9 @@ def cache_folder() -> Path:
 
     Public fonts only, shared by every document. The server passes its own.
     """
-    moved = os.environ.get("SQUIDPDF_FONTS")  # .get: set only to move the cache
-    if moved:
-        return Path(moved).resolve()
+    fonts_folder = os.environ.get("SQUIDPDF_FONTS")  # .get: set only to move the cache
+    if fonts_folder:
+        return Path(fonts_folder).resolve()
     # .get: set only where the user moved every cache; ~/.cache is the usual place
     user_caches = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
     return Path(user_caches, "squidpdf", "fonts").resolve()
@@ -400,5 +402,5 @@ def google_fonts(*, folder: Path | None = None, cache_only: bool = False) -> Fet
     if os.environ.get(_NO_FETCH):
         return None
     cache = cache_folder() if folder is None else folder
-    way_out = None if cache_only else download
-    return partial(fetched, folder=cache, download=way_out, retry_at=_retry_at)
+    github_download = None if cache_only else download
+    return partial(fetched, folder=cache, download=github_download, retry_at=_retry_at)
