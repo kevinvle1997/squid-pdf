@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
-import type { Render } from "../../api/types";
+import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aReply, aSpan } from "../../fixtures";
 import { createEditor, type Editor } from "../editor";
 import { edit, finish, typeInto } from "../typing";
@@ -126,7 +126,7 @@ describe("a page", () => {
 
   test("a page wider than A4 shows at its printed size too", async () => {
     await page.viewport(1400, 900);
-    const letter = { width: 612, height: 792, rotation: 0 };
+    const letter: PageInfo = { width: 612, height: 792, turn_cw: 0 };
     const screen = await draw(0, letter);
     const sheet = screen.getByRole("region", { name: "Page 1" }).element().children[1];
     // 612 pt at 96 dpi is 816 px.

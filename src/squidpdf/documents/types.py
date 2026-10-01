@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core import Fidelity, MessageInfo, Param
+from squidpdf.core import Fidelity, MessageInfo, Param, QuarterTurn
 
 __all__ = [
     "Box",
@@ -40,11 +40,11 @@ class Box(TypedDict):
 
 
 class PageInfo(TypedDict):
-    """A page unrotated, and the turn the browser gives it."""
+    """A page unrotated, and the turn the browser gives it: clockwise, as the file asks."""
 
     width: float
     height: float
-    rotation: int
+    turn_cw: QuarterTurn
 
 
 class SpanInfo(TypedDict):

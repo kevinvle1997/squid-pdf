@@ -482,15 +482,18 @@ export interface components {
         };
         /**
          * PageInfo
-         * @description A page unrotated, and the turn the browser gives it.
+         * @description A page unrotated, and the turn the browser gives it: clockwise, as the file asks.
          */
         PageInfo: {
             /** Width */
             width: number;
             /** Height */
             height: number;
-            /** Rotation */
-            rotation: number;
+            /**
+             * Turn Cw
+             * @enum {integer}
+             */
+            turn_cw: 0 | 90 | 180 | 270;
         };
         Param: string | number | string[];
         /**

@@ -21,6 +21,7 @@ from squidpdf.core import (
     Engine,
     LineToDraw,
     Message,
+    QuarterTurn,
     Rect,
     Span,
     SpanIndex,
@@ -104,7 +105,7 @@ class Place:
 
     position: int
     span: Span
-    turn: int
+    turn_ccw: QuarterTurn
 
 
 # What happens to the page for one edit.
@@ -236,12 +237,16 @@ def plan(
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
     ]
-    # New text reads upright as the page is shown: turned by its page's own turn.
-    turns = [page.rotation for page in engine.pages()] if placed else []
+    # New text reads upright as the page is shown: turned back as far as its page turns.
+    turns_cw = [page.turn_cw for page in engine.pages()] if placed else []
     return [
         *(step_for(engine, edited_span) for edited_span in shown),
         *(
-            Place(listed.position, insert_span(listed.insert), turn=turns[listed.insert.page])
+            Place(
+                listed.position,
+                insert_span(listed.insert),
+                turn_ccw=turns_cw[listed.insert.page],
+            )
             for listed in placed
         ),
     ]
@@ -361,7 +366,7 @@ def finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]:
         return [SpanNotice(step.span.id, said) for said in drawn]
     # An insert: new text drawn where there was none.
     if isinstance(step, Place):
-        drawn = engine.draw(step.span, step.span.text, turn=step.turn)
+        drawn = engine.draw(step.span, step.span.text, turn_ccw=step.turn_ccw)
         return [InsertNotice(step.position, said) for said in drawn]
     assert_never(step)
 
