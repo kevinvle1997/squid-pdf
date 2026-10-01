@@ -1,4 +1,4 @@
-"""Pool work for documents: what the browser needs before the first edit.
+"""Work the worker pool runs for documents: what the browser needs before the first edit.
 
 Framework-free and handed only paths and numbers, so the pool can pickle it and
 a test can call it directly.

@@ -14,7 +14,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.api.pool import Pool
+from squidpdf.api.pool import WorkerPool
 from squidpdf.core import Engine, words
 from squidpdf.documents import store
 from squidpdf.editing import Edit, export
@@ -55,9 +55,9 @@ def _make_pdf_stalling_once_open(
 
 
 @pytest.fixture
-def own_pool() -> Iterator[Pool]:
+def own_pool() -> Iterator[WorkerPool]:
     """Workers of the test's own, since it kills one; shut down after."""
-    pool = Pool()
+    pool = WorkerPool()
     yield pool
     pool.close()
 

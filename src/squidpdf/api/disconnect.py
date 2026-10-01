@@ -1,9 +1,14 @@
-"""A request whose browser leaves before its answer stops, and so does its PDF work.
+"""A request whose browser leaves before its answer stops, and its long PDF work with it.
 
-Uvicorn doesn't stop a request's handler when the browser goes: a render or an
-upload's analysis would run on in a worker for its whole timeout, answering no
-one, and a browser could queue many and leave. Cancelling the handler cancels
-the pool's future, and pebble stops the worker running it.
+Uvicorn doesn't stop a request's handler when the browser goes: an upload's
+analysis would run on in a worker for its whole timeout, answering no one, and
+a browser could queue many tasks and leave. Cancelling the handler cancels its
+wait for the pool (`api/pool.py`): a task still waiting for a worker is
+dropped, and a long one is stopped. A short one, a render or a page image,
+finishes in its worker, since stopping it would kill the worker.
+
+The watch begins once the request's body is in. `BodyLimit` reads every body
+but an upload's, a GET's empty one included, so GETs are watched too.
 """
 
 from __future__ import annotations

@@ -9,13 +9,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Response
+from starlette import status
 
 from squidpdf.api import errors
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
-from squidpdf.api.pool import Pool
+from squidpdf.api.pool import WorkerPool, current
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
@@ -27,7 +29,7 @@ __all__ = [
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
-    app.state.pool = Pool()
+    app.state.pool = WorkerPool()
     sweeper = asyncio.create_task(documents.sweep_forever())
     try:
         yield
@@ -57,8 +59,15 @@ def create_app() -> FastAPI:
     app.add_middleware(CancelOnDisconnect)
 
     @app.get("/api/health")
-    async def health() -> dict[str, str]:
+    async def health(
+        response: Response, pool: Annotated[WorkerPool, Depends(current)]
+    ) -> dict[str, str]:
         """Up and answering."""
+        # The docstring stays: it's the schema's description, which the browser's types copy.
+        # Up: a worker can take a task. A broken pool is replaced first; 503: none can start.
+        if not await pool.ready():
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"status": "no_workers"}
         return {"status": "ok"}
 
     return app

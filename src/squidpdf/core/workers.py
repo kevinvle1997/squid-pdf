@@ -1,6 +1,7 @@
 """What runs PDF work off the server's own thread.
 
-A Protocol, so controllers can use it without the web framework. `api/pool.py`'s Pool fits it.
+A Protocol, so controllers can use it without the web framework. `api/pool.py`'s
+WorkerPool fits it.
 """
 
 from __future__ import annotations

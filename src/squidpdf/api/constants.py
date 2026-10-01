@@ -1,9 +1,18 @@
-"""What the server will accept and how hard it works. Starting values, not findings.
+"""What the server will accept, how hard it works, and what a worker's failure means.
 
-These protect the server, not the business, so no plan or account lifts them.
+The numbers are starting values, not findings. They protect the server, not the
+business, so no plan or account lifts them.
 """
 
 from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+from pebble import ProcessExpired
+
+from squidpdf.api.errors import TooSlow
+from squidpdf.core import Damaged, Problem, TooHeavy
 
 _MB = 1024 * 1024
 
@@ -21,5 +30,31 @@ MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
 # Workers. Each feature's timeouts are in its own constants.py.
+WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
 TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
+# A task allowed this long (an export, an analysis) is stopped when its caller leaves.
+# A shorter one (a render, a page image) finishes: stopping it kills its worker.
+STOP_WHEN_LEFT_S = 30
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerFailure:
+    """One way pebble says a worker failed, and the Problem the user is told."""
+
+    raised: type[Exception]  # what pebble raises, or a subclass of it
+    problem: type[Problem]  # made with no arguments: these say nothing about the file
+
+
+# Worker failures, matched in order with `isinstance`, and the first match wins.
+# `isinstance`, not a dict keyed by type: a subclass of a row's type must find it.
+# The order, because a new row could overlap one above it: the narrower goes first.
+WORKER_FAILURES = (
+    # Out of time, waiting or working: slow, not necessarily broken.
+    WorkerFailure(raised=TimeoutError, problem=TooSlow),
+    WorkerFailure(raised=MemoryError, problem=TooHeavy),  # past the memory ceiling
+    # The worker died: MuPDF crashed on the file.
+    WorkerFailure(raised=ProcessExpired, problem=Damaged),
+)
+# The types alone, for an `except` or an `isinstance`.
+WORKER_FAILURE_TYPES = tuple(worker_failure.raised for worker_failure in WORKER_FAILURES)
