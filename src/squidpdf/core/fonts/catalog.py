@@ -136,13 +136,15 @@ CATALOG: tuple[Face, ...] = (
         license=_FREEFONT,
         cuts=(
             Cut("regular", "Regular", "FreeSans.ttf"),
-            Cut("bold", "Bold", "FreeSansBold.ttf", ("FreeSansBold",)),
-            Cut("italic", "Oblique", "FreeSansOblique.ttf", ("FreeSansOblique",)),
+            Cut("bold", "Bold", "FreeSansBold.ttf", same_widths_as=("FreeSansBold",)),
+            Cut(
+                "italic", "Oblique", "FreeSansOblique.ttf", same_widths_as=("FreeSansOblique",)
+            ),
             Cut(
                 "bold-italic",
                 "Bold Oblique",
                 "FreeSansBoldOblique.ttf",
-                ("FreeSansBoldOblique",),
+                same_widths_as=("FreeSansBoldOblique",),
             ),
         ),
     ),
@@ -152,13 +154,13 @@ CATALOG: tuple[Face, ...] = (
         license=_FREEFONT,
         cuts=(
             Cut("regular", "Regular", "FreeSerif.ttf"),
-            Cut("bold", "Bold", "FreeSerifBold.ttf", ("FreeSerifBold",)),
-            Cut("italic", "Italic", "FreeSerifItalic.ttf", ("FreeSerifItalic",)),
+            Cut("bold", "Bold", "FreeSerifBold.ttf", same_widths_as=("FreeSerifBold",)),
+            Cut("italic", "Italic", "FreeSerifItalic.ttf", same_widths_as=("FreeSerifItalic",)),
             Cut(
                 "bold-italic",
                 "Bold Italic",
                 "FreeSerifBoldItalic.ttf",
-                ("FreeSerifBoldItalic",),
+                same_widths_as=("FreeSerifBoldItalic",),
             ),
         ),
     ),
@@ -170,14 +172,24 @@ CATALOG: tuple[Face, ...] = (
         license=_GUST,
         same_widths_as=("LMRoman10",),
         cuts=(
-            Cut("regular", "Regular", "lmroman10-regular.otf", ("CMR10", "SFRM1000")),
-            Cut("bold", "Bold", "lmroman10-bold.otf", ("CMBX10", "SFBX1000")),
-            Cut("italic", "Italic", "lmroman10-italic.otf", ("CMTI10", "SFTI1000")),
+            Cut(
+                "regular",
+                "Regular",
+                "lmroman10-regular.otf",
+                same_widths_as=("CMR10", "SFRM1000"),
+            ),
+            Cut("bold", "Bold", "lmroman10-bold.otf", same_widths_as=("CMBX10", "SFBX1000")),
+            Cut(
+                "italic",
+                "Italic",
+                "lmroman10-italic.otf",
+                same_widths_as=("CMTI10", "SFTI1000"),
+            ),
             Cut(
                 "bold-italic",
                 "Bold Italic",
                 "lmroman10-bolditalic.otf",
-                ("CMBXTI10", "SFBI1000"),
+                same_widths_as=("CMBXTI10", "SFBI1000"),
             ),
         ),
     ),
@@ -187,9 +199,19 @@ CATALOG: tuple[Face, ...] = (
         license=_GUST,
         same_widths_as=("LMRoman12",),
         cuts=(
-            Cut("regular", "Regular", "lmroman12-regular.otf", ("CMR12", "SFRM1200")),
-            Cut("bold", "Bold", "lmroman12-bold.otf", ("CMBX12", "SFBX1200")),
-            Cut("italic", "Italic", "lmroman12-italic.otf", ("CMTI12", "SFTI1200")),
+            Cut(
+                "regular",
+                "Regular",
+                "lmroman12-regular.otf",
+                same_widths_as=("CMR12", "SFRM1200"),
+            ),
+            Cut("bold", "Bold", "lmroman12-bold.otf", same_widths_as=("CMBX12", "SFBX1200")),
+            Cut(
+                "italic",
+                "Italic",
+                "lmroman12-italic.otf",
+                same_widths_as=("CMTI12", "SFTI1200"),
+            ),
         ),
     ),
     *cut_faces(
@@ -197,14 +219,28 @@ CATALOG: tuple[Face, ...] = (
         "serif",
         license=_GUST,
         same_widths_as=("LMRoman17",),
-        cuts=(Cut("regular", "Regular", "lmroman17-regular.otf", ("CMR17", "SFRM1728")),),
+        cuts=(
+            Cut(
+                "regular",
+                "Regular",
+                "lmroman17-regular.otf",
+                same_widths_as=("CMR17", "SFRM1728"),
+            ),
+        ),
     ),
     *cut_faces(
         "Latin Modern Roman Caps 10",
         "serif",
         license=_GUST,
         same_widths_as=("LMRomanCaps10",),
-        cuts=(Cut("regular", "Regular", "lmromancaps10-regular.otf", ("CMCSC10", "SFCC1000")),),
+        cuts=(
+            Cut(
+                "regular",
+                "Regular",
+                "lmromancaps10-regular.otf",
+                same_widths_as=("CMCSC10", "SFCC1000"),
+            ),
+        ),
     ),
     *cut_faces(
         "Latin Modern Mono 10",
@@ -212,8 +248,18 @@ CATALOG: tuple[Face, ...] = (
         license=_GUST,
         same_widths_as=("LMMono10",),
         cuts=(
-            Cut("regular", "Regular", "lmmono10-regular.otf", ("CMTT10", "SFTT1000")),
-            Cut("italic", "Italic", "lmmono10-italic.otf", ("CMITT10", "SFIT1000")),
+            Cut(
+                "regular",
+                "Regular",
+                "lmmono10-regular.otf",
+                same_widths_as=("CMTT10", "SFTT1000"),
+            ),
+            Cut(
+                "italic",
+                "Italic",
+                "lmmono10-italic.otf",
+                same_widths_as=("CMITT10", "SFIT1000"),
+            ),
         ),
     ),
     # More choice for new text.

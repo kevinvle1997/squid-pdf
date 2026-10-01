@@ -13,7 +13,7 @@ from tests.helpers import assert_equal
 
 _SRC = Path(__file__).parents[1] / "src"
 
-# Kept before what reads them is built, each with what will, as rules/code.md asks.
+# Kept before what reads them is built, each with what will read it.
 _NOT_READ_YET = {
     "MAX_FONT_BYTES": "font attach, #52",
     "MAX_FONTS": "font attach, #52",

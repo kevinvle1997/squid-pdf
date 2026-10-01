@@ -80,9 +80,14 @@ _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
 _SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
 
 
+def opened(pdf: str) -> Engine:
+    """`pdf`, open for editing, with Google's copies of its fonts to lend, downloaded."""
+    return open_pdf(pdf, sources=FontSources(google=google_fonts()))
+
+
 def cmd_spans(args: argparse.Namespace) -> int:
     """List every editable span and whether it would keep its own font."""
-    with open_pdf(args.pdf, sources=FontSources(google=google_fonts())) as engine:
+    with opened(args.pdf) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
@@ -146,7 +151,7 @@ def opened_at(pdf: str, span_id: str) -> Iterator[Opened]:
 
     Raises UnknownSpan, which `main` says as a hint, if it has no such span.
     """
-    with open_pdf(pdf, sources=FontSources(google=google_fonts())) as engine:
+    with opened(pdf) as engine:
         index = engine.index()
         span = index.get(span_id)
         if span is None:
@@ -229,7 +234,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     total = exact_count = 0
     for path in args.pdfs:
         try:
-            with open_pdf(path, sources=FontSources(google=google_fonts())) as engine:
+            with opened(path) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))
