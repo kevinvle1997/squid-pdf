@@ -29,12 +29,12 @@ from squidpdf.api.errors import TooSlow
 from squidpdf.core import Problem, result_of
 
 __all__ = [
-    "Pool",
+    "WorkerPool",
     "current",
 ]
 
 
-class Pool:
+class WorkerPool:
     """Workers for PDF work. Tasks take file paths: an open document doesn't pickle."""
 
     def __init__(self) -> None:
@@ -155,7 +155,7 @@ def problem_of(failure: Exception) -> Problem:
     )
 
 
-def current(request: Request) -> Pool:
+def current(request: Request) -> WorkerPool:
     """The app's pool, started with it. A route's dependency."""
     return request.app.state.pool
 

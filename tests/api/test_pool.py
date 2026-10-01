@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
-from squidpdf.api.pool import Pool
+from squidpdf.api.pool import WorkerPool
 from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
@@ -37,7 +37,7 @@ _POLL_S = 0.05
 @pytest.fixture(scope="module")
 def pool():
     """One pool of workers for the module, shut down after."""
-    pool = Pool()
+    pool = WorkerPool()
     yield pool
     pool.close()
 
@@ -110,7 +110,7 @@ def _is_gone(pid: int) -> bool:
     return False
 
 
-def _kill_idle_worker(pool: Pool) -> None:
+def _kill_idle_worker(pool: WorkerPool) -> None:
     """Kill a worker between tasks, as the kernel's out-of-memory killer might."""
     idle_pid = asyncio.run(pool.run(_ENOUGH_S, os.getpid))
     os.kill(idle_pid, signal.SIGKILL)
@@ -161,14 +161,14 @@ def _noop() -> None:
 def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
     """Waiting behind other tasks is the caller's time, so it counts."""
 
-    async def queued_behind_busy_workers(pool: Pool) -> None:
+    async def queued_behind_busy_workers(pool: WorkerPool) -> None:
         busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
         await asyncio.sleep(0)  # they take every worker first
         await pool.run(_TIMEOUT_S, _noop)
         for task in busy:
             task.cancel()
 
-    pool = Pool()  # its own: this one fills every worker
+    pool = WorkerPool()  # its own: this one fills every worker
     started = time.monotonic()
     try:
         with pytest.raises(Problem) as caught:
@@ -182,7 +182,7 @@ def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
 
 def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     """Starting a worker is the server's time: a quick task on a new pool isn't too slow."""
-    pool = Pool()  # its own: no worker started yet
+    pool = WorkerPool()  # its own: no worker started yet
     try:
         worker_pid = asyncio.run(pool.run(_TIMEOUT_S, os.getpid))
     finally:
@@ -197,7 +197,7 @@ def _note_pid_then_work(folder: Path) -> None:
     (folder / "done").touch()
 
 
-def _leave_while_it_works(pool: Pool, folder: Path, timeout: float) -> int:
+def _leave_while_it_works(pool: WorkerPool, folder: Path, timeout: float) -> int:
     """Start a task, leave once it's working, and wait until it's done or its worker gone.
 
     Returns the worker's process id.
@@ -253,7 +253,9 @@ def _note_pid_then_raise(folder: Path) -> None:
     raise ValueError("a bug in our own code")
 
 
-async def _start_then_leave(pool: Pool, folder: Path, task: Callable[[Path], None]) -> int:
+async def _start_then_leave(
+    pool: WorkerPool, folder: Path, task: Callable[[Path], None]
+) -> int:
     """Start `task` as a render and leave once it's working. Returns its worker's process id."""
     caller = asyncio.ensure_future(pool.run(RENDER_TIMEOUT_S, partial(task, folder)))
     while not (folder / "pid").exists():
@@ -298,12 +300,12 @@ def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(pool, tmp_pat
 def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_path, caplog):
     """The server stopping: nobody waits for that render's answer now."""
 
-    async def leave_then_close(pool: Pool) -> None:
+    async def leave_then_close(pool: WorkerPool) -> None:
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
         pool.close()
         await asyncio.sleep(_WORK_S)  # for the render's end to come back
 
-    pool = Pool()  # its own: this closes it
+    pool = WorkerPool()  # its own: this closes it
     asyncio.run(leave_then_close(pool))
 
     assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")

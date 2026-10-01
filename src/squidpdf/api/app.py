@@ -17,7 +17,7 @@ from starlette import status
 from squidpdf.api import errors
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
-from squidpdf.api.pool import Pool, current
+from squidpdf.api.pool import WorkerPool, current
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
@@ -29,7 +29,7 @@ __all__ = [
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
-    app.state.pool = Pool()
+    app.state.pool = WorkerPool()
     sweeper = asyncio.create_task(documents.sweep_forever())
     try:
         yield
@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health(
-        response: Response, pool: Annotated[Pool, Depends(current)]
+        response: Response, pool: Annotated[WorkerPool, Depends(current)]
     ) -> dict[str, str]:
         """Up and answering."""
         # The docstring stays: it's the schema's description, which the browser's types copy.
