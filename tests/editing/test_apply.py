@@ -608,11 +608,11 @@ def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
     assert_equal(sorted(left), sorted(links), "the page's links")
 
 
-@pytest.mark.parametrize("rotation", [90, 180, 270])
-def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, rotation):
+@pytest.mark.parametrize("turn_cw", [90, 180, 270])
+def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, turn_cw):
     """Page boxes are unrotated; new text is turned back, so it reads as the page is shown."""
     doc = pymupdf.open()
-    doc.new_page().set_rotation(rotation)
+    doc.new_page().set_rotation(turn_cw)
     path, out = str(tmp_path / "turned.pdf"), str(tmp_path / "out.pdf")
     doc.save(path)
     with open_pdf(path) as engine:

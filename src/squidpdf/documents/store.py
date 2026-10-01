@@ -61,7 +61,8 @@ __all__ = [
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
-# Named for its shape: one kept before a page's turn said its way reads as gone.
+# Renamed with `turn_cw`: a document kept before it reads as gone, and the browser
+# uploads it again.
 _PAGES = "pages.turn_cw.json"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"

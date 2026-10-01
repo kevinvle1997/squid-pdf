@@ -93,7 +93,10 @@ def substitute_why(report: FidelityReport) -> MessageInfo | None:
 
 
 def approximate_why(report: FidelityReport) -> ApproximateInfo | None:
-    """How an approximate span would come back unlike itself, in no language; None if exact."""
+    """How an approximate span would come back unlike itself, in no language.
+
+    None when it isn't approximate.
+    """
     if report.state != "approximate" or report.why is None:
         return None
     return {"code": reason_of(report.why), "params": report.why.params}
