@@ -19,7 +19,7 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import Fidelity, open_pdf
+from squidpdf.core import Fidelity, FontSources, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
@@ -77,7 +77,7 @@ def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
 
 def _missing(path: str, fetch: Fetch) -> list[str]:
     """What the fit says the first span can't draw of _WANTED, with `fetch` to Google."""
-    with open_pdf(path, fetch=fetch) as eng:
+    with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
         return eng.missing(span, _WANTED)
 
@@ -103,7 +103,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     """The file's Poppins has no Y; Google's has, as wide: exact, and drawn from it."""
     fetch, asked = _google(POPPINS.read_bytes())
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(poppins_subset, fetch=fetch) as engine:
+    with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
         missing = engine.missing(span, _WANTED)
         [report] = engine.assess(engine.index())
@@ -331,7 +331,7 @@ def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())
-    with open_pdf(pdf, fetch=fetch) as engine:
+    with open_pdf(pdf, sources=FontSources(google=fetch)) as engine:
         for span in engine.index():
             engine.missing(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")

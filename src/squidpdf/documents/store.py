@@ -24,6 +24,7 @@ from squidpdf.core import (
     LEVEL,
     SOLID,
     Engine,
+    FontSources,
     Fragment,
     Page,
     Rect,
@@ -104,9 +105,9 @@ def open_to_analyse(folder: Path) -> Engine:
     beside the documents (the sweep passes over it). Every other open reads
     that cache alone, so it lends what the analysis fetched and never waits.
     """
-    fetch = google_fonts(folder=root() / _GOOGLE_FONTS)
+    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS))
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
+        return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 
@@ -117,9 +118,9 @@ def open_original(folder: Path) -> Engine:
     Google's copy of a font lends the letters its copies in the file lack, from
     the cache the analysis filled: a render never waits on the network.
     """
-    fetch = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
+    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True))
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
+        return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 

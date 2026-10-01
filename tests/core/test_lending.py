@@ -5,7 +5,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.core import open_pdf
+from squidpdf.core import FontSources, open_pdf
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.pdf.mupdf import MuPDFDriver
@@ -99,7 +99,7 @@ def _missing_with_google(path: str, font_file: bytes) -> list[str]:
     def fetch(_file: GoogleFile) -> bytes:
         return font_file
 
-    with open_pdf(path, fetch=fetch) as engine:
+    with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
         return engine.missing(span, "Yearly Hello")
 

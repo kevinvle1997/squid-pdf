@@ -15,7 +15,7 @@ from functools import partial
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.embedded import FontUnusable, open_embedded, remembered
-from squidpdf.core.fonts.google import GoogleFontController
+from squidpdf.core.fonts.google import Fetch, GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike, strip_subset
 from squidpdf.core.fonts.pool import (
     FontCopy,
@@ -30,9 +30,26 @@ from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
 __all__ = [
+    "FontSources",
+    "NO_SOURCES",
     "FontCache",
     "DocumentFonts",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class FontSources:
+    """Where a document's fonts may borrow letters from outside the file, chosen at the edge.
+
+    One record from `open_pdf` down, so a new source is one more field here, not
+    another keyword through every signature on the way.
+    """
+
+    google: Fetch | None = None  # Google's copies, fetched or read from the cache
+
+
+# None: only the file's own copies lend.
+NO_SOURCES = FontSources()
 
 
 @dataclass(slots=True)

@@ -33,6 +33,7 @@ from squidpdf.core.constants import (
 )
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts.catalog import CATALOG, FACES
+from squidpdf.core.fonts.document import FontSources
 from squidpdf.core.fonts.google import google_fonts
 
 # The one import that names the driver: another PDF library is swapped in here.
@@ -56,6 +57,7 @@ __all__ = [
     "BUILD",
     "Engine",
     "open_pdf",
+    "FontSources",
     "result_of",
     "google_fonts",
     "write_sample",

@@ -30,6 +30,7 @@ from squidpdf.core import (
     Engine,
     Fidelity,
     FidelityReport,
+    FontSources,
     Problem,
     Span,
     SpanIndex,
@@ -81,7 +82,7 @@ _SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
 
 def cmd_spans(args: argparse.Namespace) -> int:
     """List every editable span and whether it would keep its own font."""
-    with open_pdf(args.pdf, fetch=google_fonts()) as engine:
+    with open_pdf(args.pdf, sources=FontSources(google=google_fonts())) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
@@ -145,7 +146,7 @@ def opened_at(pdf: str, span_id: str) -> Iterator[Opened]:
 
     Raises UnknownSpan, which `main` says as a hint, if it has no such span.
     """
-    with open_pdf(pdf, fetch=google_fonts()) as engine:
+    with open_pdf(pdf, sources=FontSources(google=google_fonts())) as engine:
         index = engine.index()
         span = index.get(span_id)
         if span is None:
@@ -228,7 +229,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     total = exact_count = 0
     for path in args.pdfs:
         try:
-            with open_pdf(path, fetch=google_fonts()) as engine:
+            with open_pdf(path, sources=FontSources(google=google_fonts())) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))

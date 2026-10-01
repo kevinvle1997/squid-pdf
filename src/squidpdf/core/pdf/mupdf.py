@@ -28,7 +28,7 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.google import Fetch
+from squidpdf.core.fonts.document import NO_SOURCES, FontSources
 from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.lowlevel import (
@@ -120,12 +120,12 @@ _GOOGLE = GOOGLE_FONTS_COMMIT[:7]
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
-def open_pdf(path: str, *, fetch: Fetch | None = None) -> Engine:
+def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
     """The PDF at `path`, open for editing. Use it in a `with`, or close it.
 
-    `fetch` gets Google's copy of a font the file's copies can't draw all of.
+    `sources` lend a font the letters its copies in the file lack: Google's copy.
     """
-    return Engine(MuPDFDriver(path), fetch=fetch)
+    return Engine(MuPDFDriver(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:

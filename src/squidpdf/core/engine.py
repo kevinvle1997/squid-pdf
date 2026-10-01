@@ -15,8 +15,8 @@ from collections.abc import Iterable
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.document import DocumentFonts
-from squidpdf.core.fonts.google import Fetch, GoogleFontController
+from squidpdf.core.fonts.document import DocumentFonts, FontSources
+from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.plan import DrawPlanner
@@ -32,13 +32,14 @@ __all__ = ["Engine"]
 class Engine:
     """A PDF open for editing. Use it in a `with`, or close it."""
 
-    def __init__(self, driver: PdfDriver, *, fetch: Fetch | None = None) -> None:
+    def __init__(self, driver: PdfDriver, *, sources: FontSources) -> None:
         """Take over an open document, with nothing looked up or added yet.
 
-        `fetch` gets Google's copy of a font; without one, only the file's copies lend.
+        `sources` are where a font may borrow the letters its copies in the file lack.
         """
         self._driver = driver
-        self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
+        google = sources.google
+        self._google = None if google is None else GoogleFontController(driver, fetch=google)
         self._fonts = DocumentFonts(driver, google=self._google)
         # Which font draws a line and what comes out: one answer the fit and the draw share.
         self._plans = DrawPlanner(self._fonts, driver)
