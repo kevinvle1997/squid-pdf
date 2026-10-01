@@ -48,6 +48,7 @@ __all__ = [
     "sweep",
     "save_index",
     "load_index",
+    "require_index",
     "save_pages",
     "load_pages",
     "save_analysis",
@@ -238,6 +239,17 @@ def load_index(folder: Path) -> SpanIndex | None:
     kept_index.index = SpanIndex([load_span(span) for span in raw])
     kept_index.file_identity = file_identity
     return kept_index.index
+
+
+def require_index(folder: Path) -> SpanIndex:
+    """The saved index of a document analysed at upload. Raises Gone if it was deleted since.
+
+    So `load_index` returning None has one meaning: not analysed yet.
+    """
+    index = load_index(folder)
+    if index is None:  # analysed at upload, so a sweep or a delete removed it
+        raise Gone
+    return index
 
 
 def load_span(saved: dict[str, Any]) -> Span:

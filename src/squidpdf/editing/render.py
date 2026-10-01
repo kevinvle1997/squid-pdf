@@ -22,7 +22,7 @@ from squidpdf.core import (
     words,
 )
 from squidpdf.documents import store
-from squidpdf.documents.errors import Gone, NoSuchPage
+from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
 from squidpdf.documents.types import Loaded
@@ -107,9 +107,7 @@ def draw_regions(
     point, the same as its page image.
     """
     path = Path(folder)
-    index = store.load_index(path)
-    if index is None:  # analysed at upload, so a sweep or a delete removed it
-        raise Gone
+    index = store.require_index(path)
     strips: dict[int, list[Rect]] = {}
     for region in regions:
         strips.setdefault(region.page, []).append(strip_of(region, pages[region.page]))
