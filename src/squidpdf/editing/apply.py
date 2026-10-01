@@ -175,7 +175,11 @@ def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
 
 def redacted_in(resolved: Resolved) -> list[Span]:
     """Every span whose last edit is a redaction, numbered as in the original."""
-    return [edited.span for edited in resolved.span_edits if isinstance(edited.edit, Redact)]
+    return [
+        edited_span.span
+        for edited_span in resolved.span_edits
+        if isinstance(edited_span.edit, Redact)
+    ]
 
 
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
@@ -183,7 +187,9 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
 
     Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
     """
-    fits = {edited.span.id: fit_of(engine, edited) for edited in resolved.span_edits}
+    fits = {
+        edited_span.span.id: fit_of(engine, edited_span) for edited_span in resolved.span_edits
+    }
     return LogFits(
         replaces={span_id: fit for span_id, fit in fits.items() if fit is not None},
         inserts={
@@ -192,15 +198,15 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     )
 
 
-def fit_of(engine: Engine, edited: EditedSpan) -> FitReport | None:
+def fit_of(engine: Engine, edited_span: EditedSpan) -> FitReport | None:
     """What a span edit will look like; None for one that draws nothing to fit."""
-    match edited.edit:
+    match edited_span.edit:
         case Replace(text=text, strategy=strategy):
-            return replace_fit(engine, edited.span, text, strategy=strategy)
+            return replace_fit(engine, edited_span.span, text, strategy=strategy)
         case Redact():
             return None
         case _:
-            assert_never(edited.edit)
+            assert_never(edited_span.edit)
 
 
 def plan(
@@ -213,7 +219,9 @@ def plan(
     and inserts show anywhere on a drawn page.
     """
     shown = [
-        edited for edited in resolved.span_edits if strips is None or shows(strips, edited.span)
+        edited_span
+        for edited_span in resolved.span_edits
+        if strips is None or shows(strips, edited_span.span)
     ]
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
@@ -221,7 +229,7 @@ def plan(
     # New text reads upright as the page is shown: turned by its page's own turn.
     turns = [page.rotation for page in engine.pages()] if placed else []
     return [
-        *(step_for(engine, edited) for edited in shown),
+        *(step_for(engine, edited_span) for edited_span in shown),
         *(
             Place(listed.position, insert_span(listed.insert), turn=turns[listed.insert.page])
             for listed in placed
@@ -234,8 +242,8 @@ def shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     # .get: a page with no strip drawn on it shows no edit.
     on_page = strips.get(span.page, [])
     # Turned text is redrawn level, so its box says little of where: anywhere on a drawn page.
-    _along, rise = span.direction
-    turned = abs(rise) > TURN_TOLERANCE
+    _horizontal, vertical = span.direction
+    turned = abs(vertical) > TURN_TOLERANCE
     if on_page and turned:
         return True
     # Letters drawn at the span's size can reach a little past its box: an accent, a tail.
@@ -244,15 +252,15 @@ def shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     return any(strip.y0 < bottom and top < strip.y1 for strip in on_page)
 
 
-def step_for(engine: Engine, edited: EditedSpan) -> Step:
+def step_for(engine: Engine, edited_span: EditedSpan) -> Step:
     """What one span edit does to the page."""
-    match edited.edit:
+    match edited_span.edit:
         case Redact():
-            return Erase(edited.span)
+            return Erase(edited_span.span)
         case Replace() as replace:
-            return redraw_of(engine, edited.span, replace)
+            return redraw_of(engine, edited_span.span, replace)
         case _:
-            assert_never(edited.edit)
+            assert_never(edited_span.edit)
 
 
 def redraw_of(engine: Engine, span: Span, replace: Replace) -> Redraw:
@@ -260,19 +268,22 @@ def redraw_of(engine: Engine, span: Span, replace: Replace) -> Redraw:
 
     The edit's strategy counts only if it was offered, as its fit says.
     """
-    original = engine.measure(span, span.text)
-    typed = engine.measure(span, replace.text)
-    strategy = strategy_drawn(replace.strategy, options_for(typed - original, original))
+    original_width = engine.measure(span, span.text)
+    typed_width = engine.measure(span, replace.text)
+    delta_pt = typed_width - original_width
+    strategy = strategy_drawn(replace.strategy, options_for(delta_pt, original_width))
     match strategy:
         # Drawn as typed: the span's size, no stretch.
         case "as-is":
             return Redraw(span, replace.text, size=None, scale_x=1.0)
         # Smaller letters, same shape: width goes with size, so it ends where the original did.
         case "shrink":
-            return Redraw(span, replace.text, size=span.size * original / typed, scale_x=1.0)
+            return Redraw(
+                span, replace.text, size=span.size * original_width / typed_width, scale_x=1.0
+            )
         # The same size, letters squeezed narrower, to the same end.
         case "condense":
-            return Redraw(span, replace.text, size=None, scale_x=original / typed)
+            return Redraw(span, replace.text, size=None, scale_x=original_width / typed_width)
         case _:
             assert_never(strategy)
 
