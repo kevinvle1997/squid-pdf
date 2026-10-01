@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import orjson
 
 # Not through `Engine`: these are our own files, with no document to open.
@@ -14,8 +16,9 @@ __all__ = [
     "FontListController",
 ]
 
-# The same for everyone under a build, and 5 s of pool work (measured): made once per server.
-_font_lists: dict[str, bytes] = {}
+# The same for everyone under a build, and seconds of pool work: made once per server. The
+# running task, not its result, so a request that comes while it runs waits for that one.
+_font_list_tasks: dict[str, asyncio.Task[bytes]] = {}
 
 
 class FontListController:
@@ -27,15 +30,30 @@ class FontListController:
 
     async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
-        json = _font_lists.get(BUILD)  # None until the first ask since the server started
-        if json is None:
-            json = _font_lists[BUILD] = orjson.dumps(await self._enqueue_measure_faces())
+        # None until the first ask since the server started, or since the last one failed.
+        measuring = _font_list_tasks.get(BUILD)
+        if measuring is None:
+            measuring = _font_list_tasks[BUILD] = asyncio.create_task(self._font_list_json())
+            measuring.add_done_callback(forget_if_failed)
+        # Shielded: a browser that leaves doesn't stop the measuring others wait for.
+        font_list_json = await asyncio.shield(measuring)
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
-        return Reply(json, {"Cache-Control": cache})
+        return Reply(font_list_json, {"Cache-Control": cache})
+
+    async def _font_list_json(self) -> bytes:
+        """The font list, measured on a worker, as the JSON every browser gets."""
+        return orjson.dumps(await self._enqueue_measure_faces())
 
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
         return await self._workers.run(FONT_LIST_TIMEOUT_S, measure_faces)
+
+
+def forget_if_failed(measuring: asyncio.Task[bytes]) -> None:
+    """Drop a measurement that failed, so the next request tries again."""
+    failed = measuring.cancelled() or measuring.exception() is not None
+    if failed:
+        del _font_list_tasks[BUILD]
 
 
 def measure_faces() -> FontList:
