@@ -26,11 +26,8 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
-    "Lent",
     "FontCopy",
-    "CopyRun",
     "CodedRun",
-    "TurnedAway",
     "PooledFont",
     "font_copy",
     "google_copy",

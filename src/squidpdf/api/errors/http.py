@@ -24,10 +24,8 @@ from squidpdf.core import (
 )
 
 __all__ = [
-    "ProblemInfo",
     "PROBLEM_RESPONSES",
     "API_ERRORS",
-    "adopt",
     "response",
     "install",
 ]

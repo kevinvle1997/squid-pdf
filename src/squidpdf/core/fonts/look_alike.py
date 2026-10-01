@@ -19,7 +19,9 @@ from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
 __all__ = [
     "strip_subset",
+    "family_and_style",
     "bare_name",
+    "style_of",
     "look_alike",
     "broadest",
 ]
