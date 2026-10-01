@@ -433,8 +433,9 @@ class MuPDFDriver:
         out here.
         """
         x, y = self._file.to_pdf_space(page, origin)
+        resources = self._resources_of(page, {run.xref for run in runs})
         shown = " ".join(
-            f"/{self._resource_of(page, run.xref)} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            f"/{resources[run.xref]} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
@@ -449,20 +450,21 @@ class MuPDFDriver:
         stream = f"q{paint} BT {rgb} rg {placed} Tm {shown} ET Q"
         self._add_content(page, stream.encode())
 
-    def _resource_of(self, page: int, xref: int) -> str:
-        """The page's resource name for font `xref`, giving it one when the page has none.
+    def _resources_of(self, page: int, xrefs: set[int]) -> dict[int, str]:
+        """The page's resource name for each font in `xrefs`, giving one to any it lacks.
 
-        It has none when erasing dropped the font, or when it's another page's copy.
+        It lacks one when erasing dropped the font, or when it's another page's copy.
         """
-        on_page = (font for font in self.fonts(page) if not font.in_form)
-        listed = (font.resource for font in on_page if font.xref == xref)
-        # The first resource name the page lists it under, in MuPDF's order.
-        resource = next(listed, None)
-        if resource is not None:
-            return resource
-        resource = self._free_name(page, f"C{xref}")
-        self._file.restore_font(page, resource, xref)
-        return resource
+        named: dict[int, str] = {}
+        for font in self.fonts(page):
+            # The first resource name the page lists a font under, in MuPDF's order.
+            if not font.in_form:
+                named.setdefault(font.xref, font.resource)
+        for xref in sorted(xrefs - named.keys()):
+            resource = self._free_name(page, f"C{xref}")
+            self._file.restore_font(page, resource, xref)
+            named[xref] = resource
+        return named
 
     def _free_name(self, page: int, name: str) -> str:
         """`name`, or `name` numbered past any resource name the page already uses."""
