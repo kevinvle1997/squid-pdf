@@ -53,6 +53,8 @@ class Pool:
         self._replacing = asyncio.Lock()
         # Tasks wait for a worker here, not in pebble's queue: leaving from here costs nothing.
         self._free = asyncio.Semaphore(constants.WORKERS)
+        # Tasks at work, held: asyncio keeps only a weak reference to one nobody awaits.
+        self._jobs: set[asyncio.Task[object]] = set()
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task()` in a worker, given `timeout` seconds from this call.
@@ -78,15 +80,25 @@ class Pool:
             raise TooSlow()
         # Created at once, and the worker given back when it's done, however it ends.
         job = asyncio.create_task(self._in_worker(left, task))
-        job.add_done_callback(lambda _job: self._free.release())
+        self._jobs.add(job)
+        job.add_done_callback(self._given_back)
         try:
-            return await asyncio.shield(job)
-        except _FAILED as failure:  # pebble's, listed in _FAILURES
-            raise problem_of(failure) from failure
-        finally:
-            # The caller left: a long task stops; pebble holds a short one to its time.
+            await asyncio.wait([job])  # unlike awaiting the job, leaving here doesn't cancel it
+        except asyncio.CancelledError:  # raised when the caller leaves before the answer
+            # A long task stops; pebble holds a short one to its time.
             if timeout >= constants.STOP_WHEN_LEFT_S:
                 job.cancel()  # does nothing to a task that has finished
+            job.add_done_callback(log_unexpected)
+            raise
+        try:
+            return job.result()
+        except _FAILED as failure:  # pebble's, listed in _FAILURES
+            raise problem_of(failure) from failure
+
+    def _given_back[T](self, job: asyncio.Task[T]) -> None:
+        """A task is done, however it ended: its worker is free for the next."""
+        self._free.release()
+        self._jobs.discard(job)
 
     async def ready(self) -> bool:
         """Whether workers can take a task, replacing them first if the pool broke."""
@@ -111,6 +123,8 @@ class Pool:
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
+        for job in self._jobs:  # a task whose caller left: it ends as cancelled, not as failed
+            job.cancel()
         self._pool.stop()
         self._pool.join()
 
@@ -124,6 +138,20 @@ def process_pool() -> ProcessPool:
         # Spawn: a fork of a threaded server can inherit a held lock and hang.
         # The cast because pebble types `context` as a module; it takes any.
         context=cast(ModuleType, multiprocessing.get_context("spawn")),
+    )
+
+
+def log_unexpected[T](job: asyncio.Task[T]) -> None:
+    """Log how a task nobody waits for now failed, unless pebble's usual failures say it."""
+    if job.cancelled():
+        return
+    failure = job.exception()  # read here, so asyncio doesn't log it as never read
+    expected = failure is None or isinstance(failure, _FAILED)
+    if expected:
+        return
+    message = "a task whose caller left failed"
+    job.get_loop().call_exception_handler(
+        {"message": message, "exception": failure, "task": job}
     )
 
 

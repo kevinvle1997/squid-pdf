@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
 import os
 import signal
 import sys
@@ -236,3 +237,73 @@ def test_an_export_whose_browser_left_is_stopped(pool, tmp_path):
 
     assert_true(_is_gone(worker), "the export's worker was stopped")
     assert_false((tmp_path / "done").exists(), "the export didn't run to its end")
+
+
+def _note_pid_then_die(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then crashes its worker."""
+    (folder / "pid").write_text(str(os.getpid()))
+    time.sleep(_WORK_S)
+    os._exit(1)
+
+
+def _note_pid_then_raise(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then fails as a bug of ours would."""
+    (folder / "pid").write_text(str(os.getpid()))
+    time.sleep(_WORK_S)
+    raise ValueError("a bug in our own code")
+
+
+async def _start_then_leave(pool: Pool, folder: Path, task: Callable[[Path], None]) -> int:
+    """Start `task` as a render and leave once it's working. Returns its worker's process id."""
+    caller = asyncio.ensure_future(pool.run(RENDER_TIMEOUT_S, partial(task, folder)))
+    while not (folder / "pid").exists():
+        await asyncio.sleep(_POLL_S)
+    caller.cancel()
+    with contextlib.suppress(asyncio.CancelledError):  # raised: we cancelled it
+        await caller
+    return int((folder / "pid").read_text())
+
+
+def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """What asyncio logged, once every finished task has been collected."""
+    gc.collect()  # a task's unread error is logged when the task is collected
+    return [record.getMessage() for record in caplog.records if record.name == "asyncio"]
+
+
+def test_a_render_that_crashes_after_its_browser_left_logs_no_error(pool, tmp_path, caplog):
+    """Nobody waits for its answer, and a crash is a file's doing: a log would be noise."""
+
+    async def leave() -> None:
+        worker = await _start_then_leave(pool, tmp_path, _note_pid_then_die)
+        await asyncio.to_thread(_wait_until, lambda: _is_gone(worker), _ENOUGH_S)
+        await asyncio.sleep(_WORK_S)  # for pebble to see it die and say so
+
+    asyncio.run(leave())
+
+    assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")
+
+
+def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(pool, tmp_path, caplog):
+    """Nobody waits for its answer, but a bug in our own code must still show in the log."""
+
+    async def leave() -> None:
+        await _start_then_leave(pool, tmp_path, _note_pid_then_raise)
+        await asyncio.to_thread(_wait_until, lambda: bool(_asyncio_errors(caplog)), _ENOUGH_S)
+
+    asyncio.run(leave())
+
+    assert_equal(len(_asyncio_errors(caplog)), 1, "errors asyncio logged")
+
+
+def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_path, caplog):
+    """The server stopping: nobody waits for that render's answer now."""
+
+    async def leave_then_close(pool: Pool) -> None:
+        await _start_then_leave(pool, tmp_path, _note_pid_then_work)
+        pool.close()
+        await asyncio.sleep(_WORK_S)  # for the render's end to come back
+
+    pool = Pool()  # its own: this closes it
+    asyncio.run(leave_then_close(pool))
+
+    assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")
