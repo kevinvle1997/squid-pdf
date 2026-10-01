@@ -135,7 +135,7 @@ test("Cmd+S while still typing exports the edit being typed", async ({ page }) =
   await downloading;
 });
 
-test("typing previews in the substitute, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
+test("typing previews in a similar font, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
   await open(page);
   // Held, so the browser's preview stays up to be looked at.
   let release: () => void = () => undefined;

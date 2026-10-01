@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { change, changedCount, createEditor, type Editor, putBack, substituteCount } from "./editor";
+import { change, changedCount, createEditor, type Editor, putBack, substitutedCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
@@ -97,7 +97,7 @@ describe("an edit", () => {
     typed("substituted", "now");
     const state = editor.store.get();
     expect(changedCount(state)).toBe(2);
-    expect(substituteCount(state)).toBe(1);
+    expect(substitutedCount(state)).toBe(1);
   });
 });
 

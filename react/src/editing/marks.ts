@@ -13,7 +13,7 @@ export interface Note {
 
 /** Each is a line under the span, drawn by what's true of it. */
 export interface Look {
-  readonly substitute: boolean; // a substitute draws in place of the file's own font
+  readonly substituted: boolean; // a substitute draws in place of the file's own font: "a similar font"
   readonly changed: boolean; // the user changed its words
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
   readonly note: Note | null; // nothing for a span that keeps its font and went in as typed
@@ -31,7 +31,7 @@ export function lookOf({ font, edited, fit, copy }: Facts): Look {
   // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
   const verdict = changed ? fit?.message : null;
   return {
-    substitute: font?.substitute != null,
+    substituted: font?.substitute != null,
     changed,
     trouble: Boolean(verdict),
     note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote(font, copy),

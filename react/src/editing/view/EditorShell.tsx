@@ -8,7 +8,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { changedCount, closeEditor, createEditor, substituteCount } from "../editor";
+import { changedCount, closeEditor, createEditor, substitutedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { noticeLines } from "../notices";
@@ -65,7 +65,7 @@ function Bar() {
   const editor = useEditor();
   const pages = useEditorState((state) => state.doc.pages.length);
   const changed = useEditorState(changedCount);
-  const substituted = useEditorState(substituteCount);
+  const substituted = useEditorState(substitutedCount);
   const exporting = useEditorState((state) => state.exporting);
   return (
     <header className={styles.bar}>
