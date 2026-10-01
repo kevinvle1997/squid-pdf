@@ -54,7 +54,7 @@ __all__ = [
     "write_dense",
 ]
 
-_GARBAGE_COLLECT_MAX = 3  # PyMuPDF's highest level: dedupe + drop unused objects
+_GARBAGE_COLLECT = 2  # drop unused objects; 3 also merges copies, taking pages-squared time
 
 # The long fixture's page: a contract's body text, set the way a word processor sets it.
 _DENSE_SIZE = 10.5  # points
@@ -153,6 +153,8 @@ class MuPDFFont:
     def __init__(self, font: pymupdf.Font) -> None:
         """Wrap a font MuPDF has opened."""
         self._font = font
+        # A fit check measures the same few letters thousands of times: read each once.
+        self._width_in_ems = cache(font.glyph_advance)
 
     def listed_letters(self) -> list[int]:
         """Every code point MuPDF says the font maps; a trimmed font lists more."""
@@ -160,15 +162,15 @@ class MuPDFFont:
 
     def advance(self, ch: str) -> float:
         """How far `ch` moves the pen, in ems."""
-        return self._font.glyph_advance(ord(ch))
+        return self._width_in_ems(ord(ch))
 
     def maps(self, ch: str) -> bool:
         """Whether the font has a glyph of its own for `ch`, even an empty one."""
         return self._font.has_glyph(ord(ch)) != 0  # 0 is .notdef: MuPDF found none
 
     def width(self, text: str, size: float) -> float:
-        """How wide `text` is at `size` points."""
-        return self._font.text_length(text, fontsize=size)
+        """How wide `text` is at `size` points: what MuPDF's `text_length` says, quicker."""
+        return sum(map(self._width_in_ems, map(ord, text))) * size
 
 
 @cache
@@ -510,7 +512,7 @@ class MuPDFDriver:
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
         # Object streams compress the plain objects too: a face's width list is most of it.
-        self._doc.save(path, garbage=_GARBAGE_COLLECT_MAX, deflate=True, use_objstms=True)
+        self._doc.save(path, garbage=_GARBAGE_COLLECT, deflate=True, use_objstms=True)
 
     def close(self) -> None:
         """Release the open document."""
