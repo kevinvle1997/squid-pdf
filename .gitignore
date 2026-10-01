@@ -1,5 +1,6 @@
-# private working repo — design decisions, research, agent config
-.workspace/
+# private working repo: design decisions, research, agent config.
+# No trailing slash, so it also matches a link to it (a workspace cloned beside the app).
+/.workspace
 
 # Python
 __pycache__/
