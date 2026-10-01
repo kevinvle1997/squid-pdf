@@ -1,8 +1,8 @@
 """How a route gets its controller, and sends what the controller hands back.
 
-Every feature's controller is built the same way, on the app's workers, and
-every Reply goes out the same way: its status, its headers, and the media type
-the route names.
+Every feature's controller is built the same way, with the app's workers (the
+pool of processes PDF work runs in), and every Reply goes out the same way: its
+status, its headers, and the media type the route names.
 """
 
 from __future__ import annotations
@@ -14,26 +14,26 @@ import orjson
 from fastapi import Depends, Response
 
 from squidpdf.api import pool
-from squidpdf.api.pool import Pool
 from squidpdf.core import Reply, Workers
 
 __all__ = [
-    "controller",
+    "controller_with_workers",
     "response_of",
 ]
 
 
-def controller[C](cls: Callable[[Workers], C]) -> Callable[[Pool], C]:
-    """A route's dependency that builds `cls` on the app's workers.
+def controller_with_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers], C]:
+    """A route's dependency: a new `cls` for each request, built with the app's workers.
 
-    Used as `Depends(controller(RenderController))`.
+    Used as `Depends(controller_with_workers(RenderController))`. Made once, when
+    the route is defined; FastAPI calls what it returns on every request.
     """
 
-    def on_the_apps_workers(workers: Annotated[Pool, Depends(pool.current)]) -> C:
-        """The controller, on the app's workers."""
+    def with_the_apps_workers(workers: Annotated[Workers, Depends(pool.current)]) -> C:
+        """The controller, built with the app's workers."""
         return cls(workers)
 
-    return on_the_apps_workers
+    return with_the_apps_workers
 
 
 def response_of[T](

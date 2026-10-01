@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from squidpdf.api import constants as limits
 from squidpdf.api import owner, rate
 from squidpdf.api.body import declared_size
-from squidpdf.api.controllers import controller, response_of
 from squidpdf.api.language import ReaderLanguage
+from squidpdf.api.routing import controller_with_workers, response_of
 from squidpdf.core import NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
@@ -64,12 +64,14 @@ async def upload(
     request: Request,
     *,
     token: Annotated[str, Depends(owner.token)],
-    controller: Annotated[UploadController, Depends(controller(UploadController))],
+    upload_controller: Annotated[
+        UploadController, Depends(controller_with_workers(UploadController))
+    ],
     said_in: ReaderLanguage,
     response: Response,
 ) -> Response:
     """A raw PDF body, no multipart and no filename. Answers with every span judged."""
-    reply = await controller.upload(
+    reply = await upload_controller.upload(
         owner.digest(token),
         declared=declared_size(request),
         chunks=request.stream(),
@@ -83,12 +85,14 @@ async def read(
     doc: Annotated[Loaded, Depends(load)],
     *,
     request: Request,
-    controller: Annotated[ReadController, Depends(controller(ReadController))],
+    read_controller: Annotated[
+        ReadController, Depends(controller_with_workers(ReadController))
+    ],
     said_in: ReaderLanguage,
 ) -> Response:
     """The document, in the reader's language, or 304 if the browser has it already."""
     if_none_match = request.headers.get("if-none-match")  # absent on a first read
-    reply = await controller.read(doc, said_in=said_in, if_none_match=if_none_match)
+    reply = await read_controller.read(doc, said_in=said_in, if_none_match=if_none_match)
     return response_of(reply, media_type=_JSON)
 
 
@@ -109,10 +113,12 @@ async def page(
     n: int,
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
-    controller: Annotated[PageController, Depends(controller(PageController))],
+    page_controller: Annotated[
+        PageController, Depends(controller_with_workers(PageController))
+    ],
 ) -> Response:
     """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
-    reply = await controller.page(doc, page=n, scale=scale, build=build)
+    reply = await page_controller.page(doc, page=n, scale=scale, build=build)
     return response_of(reply, media_type="image/png")
 
 
