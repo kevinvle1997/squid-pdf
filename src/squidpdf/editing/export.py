@@ -5,7 +5,9 @@ No web framework here, so a worker can import it.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import shutil
 import tempfile
 from functools import partial
 from pathlib import Path
@@ -52,32 +54,43 @@ class ExportController:
         check_edits(edits)
         if pages is not None:
             check_pages(pages, len(store.load_pages(doc.folder)))
-        exported = await self._enqueue_make_pdf(doc.folder, edits=edits, pages=pages)
+        # The server's folder, not the worker's: a worker killed at its timeout
+        # runs no cleanup, and the edited file must not outlive the document.
+        # Made here on the loop, one mkdir: an await could be cancelled after it
+        # exists and before the `try` that removes it.
+        scratch = Path(tempfile.mkdtemp())
+        try:
+            exported = await self._enqueue_make_pdf(
+                doc.folder, scratch, edits=edits, pages=pages
+            )
+        finally:
+            # In a thread: it may hold the whole file. The thread finishes even if the
+            # request is cancelled again. Nothing to keep, so a failure is ignored.
+            await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
         return Reply(exported.pdf, reply_headers(exported, said_in))
 
     async def _enqueue_make_pdf(
-        self, folder: Path, *, edits: list[Edit], pages: list[int] | None
+        self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
         """Make the PDF on a worker."""
-        task = partial(make_pdf, str(folder), edits=edits, pages=pages)
+        task = partial(make_pdf, str(folder), str(scratch), edits=edits, pages=pages)
         return await self._workers.run(EXPORT_TIMEOUT_S, task)
 
 
-def make_pdf(folder: str, *, edits: list[Edit], pages: list[int] | None) -> Exported:
+def make_pdf(
+    folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
+) -> Exported:
     """The document in `folder` with the edits applied and checked, as PDF bytes.
 
-    Runs in a worker.
+    Saves into `scratch`, which the server makes and removes. Runs in a worker.
     """
     path = Path(folder)
     index = store.load_index(path)
     if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
 
-    # In the document's folder, so a killed worker's file is swept with it.
-    with (
-        tempfile.TemporaryDirectory(dir=path) as scratch,
-        store.open_original(path) as engine,
-    ):
+    with store.open_original(path) as engine:
+        # Outside the document's folder: deleting it while the file is open can't take the save.
         out = Path(scratch) / _EXPORTED
         saved = save_edited(engine, index, edits=edits, pages=pages, to=str(out))
         skipped = [skip.edit for skip in saved.applied.skipped]
