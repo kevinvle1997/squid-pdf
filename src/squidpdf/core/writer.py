@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import io
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import groupby
@@ -52,6 +52,10 @@ class PageNames:
     own: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
     # The faces we ship, by (page, face file).
     faces: dict[tuple[int, str], str] = field(default_factory=dict)
+
+    def own_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str | FontUnusable:
+        """The resource name of a copy of a font on a page, added on first use, or why not."""
+        return remembered(self.own, key, add)
 
 
 @dataclass(slots=True)
@@ -233,7 +237,7 @@ class PageWriter:
         redraw. Raises FontUnusable when the library won't add it.
         """
         key = (page, copy_source(copy))
-        found = remembered(self._names.own, key, partial(self._add_copy, page, copy))
+        found = self._names.own_resource(key, partial(self._add_copy, page, copy))
         if isinstance(found, FontUnusable):
             raise FontUnusable(found.reason)
         return found

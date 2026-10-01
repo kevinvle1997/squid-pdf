@@ -50,8 +50,8 @@ class Engine:
         `sources` are where a font may borrow the letters its copies in the file lack.
         """
         self._driver = driver
-        google = sources.google
-        self._google = None if google is None else GoogleFontController(driver, fetch=google)
+        fetch = sources.google
+        self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
         self._fonts = DocumentFonts(driver, google=self._google)
         # Which font draws a line and what comes out: one answer the fit and the draw share.
         self._plans = DrawPlanner(self._fonts, driver)

@@ -9,7 +9,7 @@ lacks can come from another, and last with Google's copy, if it has one.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 
@@ -48,7 +48,7 @@ class FontSources:
     google: Fetch | None = None  # Google's copies, fetched or read from the cache
 
 
-# None: only the file's own copies lend.
+# No sources: only the file's own copies lend.
 NO_SOURCES = FontSources()
 
 
@@ -86,6 +86,16 @@ class FontCache:
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
 
+    def pool(
+        self, key: tuple[int, PageFont], make: Callable[[], PooledFont]
+    ) -> PooledFont | FontUnusable:
+        """A span's font pooled with its other copies, made on first use, or why it can't be."""
+        return remembered(self.pools, key, make)
+
+    def copy(self, font: PageFont, make: Callable[[], FontCopy]) -> FontCopy | FontUnusable:
+        """One copy of a font in the file, opened on first use, or why it can't be used."""
+        return remembered(self.copies, font, make)
+
 
 class DocumentFonts:
     """The fonts a document's spans are written in, and the look-alike we ship for each."""
@@ -106,7 +116,7 @@ class DocumentFonts:
         if page_font is None:
             return FontUnusable(Message("font_not_in_file"))
         make_pool = partial(self._pool, span.page, page_font)
-        return remembered(self._cache.pools, (span.page, page_font), make_pool)
+        return self._cache.pool((span.page, page_font), make_pool)
 
     def own(self, span: Span) -> PooledFont | None:
         """The span's font, pooled with its other copies in the file; None when we can't use it.
@@ -215,10 +225,14 @@ class DocumentFonts:
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
-        # Raises FontUnusable when it isn't stored, is unreadable, or can't be written to.
-        return remembered(
-            self._cache.copies, font, lambda: font_copy(font, open_embedded(self._driver, font))
-        )
+        return self._cache.copy(font, partial(self._open_copy, font))
+
+    def _open_copy(self, font: PageFont) -> FontCopy:
+        """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't.
+
+        It may not be stored, be unreadable, or have no way to be written to.
+        """
+        return font_copy(font, open_embedded(self._driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other font in the file by the same name, subset prefix aside.
