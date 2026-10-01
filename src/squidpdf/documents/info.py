@@ -38,12 +38,12 @@ def document_json(doc_id: str, *, expires_at: float, saved: bytes, said_in: str)
     nearly all of it, and reading them and writing them out again held up the
     server for a fifth of a second.
     """
-    start = saved.index(_SPANS_KEY) + len(_SPANS_KEY)
+    spans_start = saved.index(_SPANS_KEY) + len(_SPANS_KEY)
     # From the end, as the fonts come last: nothing inside them is named "fonts".
-    end = saved.rindex(_FONTS_KEY)
-    spans = saved[start:end]
+    spans_end = saved.rindex(_FONTS_KEY)
+    spans_json = saved[spans_start:spans_end]
     # The rest is read as usual: the pages' sizes and the fonts, small beside the spans.
-    analysis: Analysis = orjson.loads(saved[:start] + _NO_SPANS + saved[end:])
+    analysis: Analysis = orjson.loads(saved[:spans_start] + _NO_SPANS + saved[spans_end:])
     body: Document = {
         "build": analysis["build"],
         "pages": analysis["pages"],
@@ -57,9 +57,9 @@ def document_json(doc_id: str, *, expires_at: float, saved: bytes, said_in: str)
             "shrink_floor": SHRINK_FLOOR,
         },
         "copy": copy_in(said_in),
-        "notices": notices_in(has_text=spans != _NO_SPANS, said_in=said_in),
+        "notices": notices_in(has_text=spans_json != _NO_SPANS, said_in=said_in),
     }
-    return orjson.dumps({**body, "spans": orjson.Fragment(spans)})
+    return orjson.dumps({**body, "spans": orjson.Fragment(spans_json)})
 
 
 def time_of(epoch_seconds: float) -> str:

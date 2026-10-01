@@ -47,8 +47,10 @@ def response_of[T](
     """
     body = reply.body if isinstance(reply.body, bytes) else orjson.dumps(reply.body)
     # No body, no body's type: a 304 says the browser's copy is current.
-    typed = media_type if body else None
-    response = Response(body, status_code=reply.status, headers=reply.headers, media_type=typed)
+    body_type = media_type if body else None
+    response = Response(
+        body, status_code=reply.status, headers=reply.headers, media_type=body_type
+    )
     if set_by is not None:
         response.raw_headers.extend(set_by.raw_headers)
     return response
