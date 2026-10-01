@@ -24,7 +24,7 @@ from squidpdf.core.types import EM, Face, Span
 __all__ = [
     "letter_widths",
     "DrawPlan",
-    "LinePlanner",
+    "DrawPlanner",
     "coded_in",
 ]
 
@@ -51,7 +51,7 @@ class DrawPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class LinePlanner:
+class DrawPlanner:
     """Answers what draws a line at a span, and how wide it comes out, for one document."""
 
     fonts: DocumentFonts

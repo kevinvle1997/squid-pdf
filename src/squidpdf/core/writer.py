@@ -22,7 +22,7 @@ from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
-from squidpdf.core.plan import LinePlanner, coded_in
+from squidpdf.core.plan import DrawPlanner, coded_in
 from squidpdf.core.text.spacing import Word
 from squidpdf.core.types import QUARTER_TURNS, CodedFont, CodeRun, Face, Span, TextRun
 
@@ -90,7 +90,7 @@ class PageWriter:
         self._added: dict[str, AddedFont] = {}
 
     def draw(
-        self, span: Span, text: str, *, plans: LinePlanner, setting: Setting
+        self, span: Span, text: str, *, plans: DrawPlanner, setting: Setting
     ) -> list[Message]:
         """Draw `text` at the span's baseline as planned, and say what came out otherwise."""
         plan = plans.plan_for(span, text)
@@ -153,7 +153,7 @@ class PageWriter:
         return notices
 
     def _write_in_face(
-        self, span: Span, face: Face, *, text: str, plans: LinePlanner, setting: Setting
+        self, span: Span, face: Face, *, text: str, plans: DrawPlanner, setting: Setting
     ) -> None:
         """Write `text` at the span's baseline in a face we ship."""
         resource = self._face_resource(span.page, face)
@@ -169,7 +169,7 @@ class PageWriter:
         *,
         font: FontProgram,
         resources: Mapping[str, str],
-        plans: LinePlanner,
+        plans: DrawPlanner,
         setting: Setting,
     ) -> None:
         """Write `text` at the span's baseline, placed by `font`'s widths.

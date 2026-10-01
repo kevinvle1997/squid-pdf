@@ -19,7 +19,7 @@ from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.pdf.driver import PdfDriver
-from squidpdf.core.plan import LinePlanner
+from squidpdf.core.plan import DrawPlanner
 from squidpdf.core.text.fidelity import Fidelity, FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
@@ -41,7 +41,7 @@ class Engine:
         self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
         self._fonts = DocumentFonts(driver, google=self._google)
         # Which font draws a line and what comes out: one answer the fit and the draw share.
-        self._plans = LinePlanner(self._fonts, driver)
+        self._plans = DrawPlanner(self._fonts, driver)
         self._writer = PageWriter(driver)
 
     # What the document says.
@@ -203,7 +203,7 @@ class Engine:
         self._driver.keep_pages(pages)
         # Looked up and named by page number, and those just changed.
         self._fonts = DocumentFonts(self._driver, google=self._google)
-        self._plans = LinePlanner(self._fonts, self._driver)
+        self._plans = DrawPlanner(self._fonts, self._driver)
         self._writer.forget_pages()
         return said
 
