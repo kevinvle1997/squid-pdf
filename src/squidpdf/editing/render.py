@@ -26,7 +26,7 @@ from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.info import time_of
 from squidpdf.documents.pages import page_scale
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import Erase, Step, log_fits, plan, resolve, run
+from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve, run
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.info import fit_info, notice_info, skipped_info
@@ -132,16 +132,21 @@ def said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
 def check_regions(regions: list[Region], pages: list[Page]) -> None:
     """Refuse a region the document can't give: a page it lacks, or no rows of the page."""
     for region in regions:
-        if not 0 <= region.page < len(pages):
+        if not is_page(region.page, len(pages)):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
-        height = pages[region.page].height
-        # Only the rows the page has: a strip past its edges is cut to them, as draw cuts it.
-        top = 0.0 if region.y0 is None else max(region.y0, 0.0)
-        bottom = height if region.y1 is None else min(region.y1, height)
+        page = pages[region.page]
+        strip = strip_of(region, page)
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
-        if not top < bottom:
-            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {height:g}"
+        if not strip.y0 < strip.y1:
+            reason = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
             raise InvalidRequest(debug=reason)
+
+
+def strip_of(region: Region, page: Page) -> Rect:
+    """The rows a region asks for, full width, cut to the page's own."""
+    top = 0.0 if region.y0 is None else max(region.y0, 0.0)
+    bottom = page.height if region.y1 is None else min(region.y1, page.height)
+    return Rect(0.0, top, page.width, bottom)
 
 
 def reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
@@ -170,9 +175,8 @@ def draw(engine: Engine, region: Region, *, page: Page, scale: float) -> ImageIn
         png = engine.page_image(region.page, scale)
         return {"page": region.page, "y": 0.0, "image": base64.b64encode(png).decode()}
     # A strip, out to whole pixels so its rows are the page image's rows.
-    y0 = 0.0 if region.y0 is None else max(region.y0, 0.0)
-    top = math.floor(y0 * scale) / scale
-    y1 = page.height if region.y1 is None else min(region.y1, page.height)
-    bottom = math.ceil(y1 * scale) / scale
+    strip = strip_of(region, page)
+    top = math.floor(strip.y0 * scale) / scale
+    bottom = math.ceil(strip.y1 * scale) / scale
     png = engine.page_image(region.page, scale, Rect(0, top, page.width, bottom))
     return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}

@@ -16,7 +16,7 @@ from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Wor
 from squidpdf.documents import store
 from squidpdf.documents.errors import Gone, NoSuchPage
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply_edits, page_order, redacted_in, resolve
+from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
@@ -144,7 +144,7 @@ def check_pages(pages: list[int], page_count: int) -> None:
     """Refuse a page list export can't give: none, one the document lacks, or one twice."""
     if not pages:
         raise InvalidRequest(debug="pages: empty; leave it out for every page")
-    outside = [page for page in pages if not 0 <= page < page_count]
+    outside = [page for page in pages if not is_page(page, page_count)]
     if outside:
         raise NoSuchPage(debug=f"pages: no page {outside[0]}")
     if len(set(pages)) != len(pages):

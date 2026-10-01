@@ -30,6 +30,7 @@ __all__ = [
     "Erase",
     "Step",
     "resolve",
+    "is_page",
     "page_order",
     "redacted_in",
     "log_fits",
@@ -103,6 +104,15 @@ class Place:
 type Step = Erase | Redraw | Place
 
 
+def is_page(page: int, page_count: int) -> bool:
+    """Whether the document has a page numbered `page`, counting from 0.
+
+    Every edit, region and page list that names a page asks this. Where the
+    answer is no, a bad edit is skipped and a request's own pages are refused.
+    """
+    return 0 <= page < page_count
+
+
 def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
@@ -124,7 +134,7 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
         # .get below: the browser can send a span id this document doesn't have.
         match edit:
             # An insert on a page the document has.
-            case Insert(page=page) if 0 <= page < page_count:
+            case Insert(page=page) if is_page(page, page_count):
                 inserts.append(ListedInsert(position, edit))
             # An insert on a page it doesn't have.
             case Insert():
