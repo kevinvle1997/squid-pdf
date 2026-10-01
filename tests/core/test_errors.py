@@ -41,14 +41,17 @@ def _invalid(exc: Exception) -> Problem:
 
 
 def test_the_error_controller_asks_its_rows_in_order_and_a_layer_above_adds_its_own():
-    core = ErrorController(((KeyError, _not_found),))
-    above = core.with_rows((LookupError, _invalid), (KeyError, _invalid))
+    core_errors = ErrorController(((KeyError, _not_found),))
+    above = core_errors.with_rows((LookupError, _invalid), (KeyError, _invalid))
     said = [
-        (core.problem_of(KeyError("k")).type, "core's own row"),
+        (core_errors.problem_of(KeyError("k")).type, "core's own row"),
         (above.problem_of(KeyError("k")).type, "core's row, asked before the ones added"),
         (above.problem_of(IndexError("i")).type, "a row added above"),
-        (core.problem_of(IndexError("i")).type, "core, unchanged by what was added above"),
-        (core.problem_of(NotFound()).type, "a Problem, as it was raised"),
+        (
+            core_errors.problem_of(IndexError("i")).type,
+            "core, unchanged by what was added above",
+        ),
+        (core_errors.problem_of(NotFound()).type, "a Problem, as it was raised"),
     ]
     expected = [
         ("not_found", "core's own row"),
@@ -99,6 +102,6 @@ except Problem as problem:
 @pytest.mark.skipif(sys.platform != "linux", reason="the memory cap is Linux only")
 def test_mupdf_running_out_of_memory_is_too_heavy(pdf):
     """MuPDF raises the same error for a file it couldn't open: its words tell them apart."""
-    run = [sys.executable, "-c", _OUT_OF_MEMORY, pdf]
-    said = subprocess.run(run, capture_output=True, text=True, check=True).stdout
+    command = [sys.executable, "-c", _OUT_OF_MEMORY, pdf]
+    said = subprocess.run(command, capture_output=True, text=True, check=True).stdout
     assert_in("too_heavy FzErrorSystem", said, "a page image past the memory cap")

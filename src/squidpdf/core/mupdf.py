@@ -74,14 +74,14 @@ def result_of[T](task: Callable[[], T]) -> T:
     from squidpdf.core.errors import ErrorController, machine_failure, problem_maker
     from squidpdf.core.pdf import MUPDF_SYSTEM_ERRORS
 
-    mupdf = ErrorController(
+    mupdf_errors = ErrorController(
         (
             (MUPDF_TOO_HEAVY, problem_maker(TooHeavy)),  # past a limit of MuPDF's own
             (MUPDF_SYSTEM_ERRORS, machine_failure),  # out of memory, or a file it can't open
             (MUPDF_OWN_ERRORS, problem_maker(Damaged)),  # anything else it couldn't make out
         )
     )
-    return mupdf.result_of(task)
+    return mupdf_errors.result_of(task)
 
 
 @cache
