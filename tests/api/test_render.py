@@ -10,6 +10,7 @@ import pytest
 
 from squidpdf.core import Engine, words
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.documents import store
 from tests.api.conftest import span_starting
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
@@ -156,3 +157,21 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
 
     assert_equal(redrawn, ["Invoices are due at once."], "the lines redrawn")
     assert_equal(set(fits), {delivery["id"], invoices["id"]}, "the replaces with a fit")
+
+
+def test_render_reads_the_page_list_once(app, mine, doc, monkeypatch):
+    """The request reads it to check the regions, and hands the work the pages it draws."""
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the worker's reads are counted
+    reads: list[object] = []
+    load_pages = store.load_pages
+
+    def counted(folder, *args, **kwargs) -> list:
+        reads.append(folder)
+        return load_pages(folder, *args, **kwargs)
+
+    monkeypatch.setattr(store, "load_pages", counted)
+
+    response = _render(mine, doc, [], [{"page": 0}])
+
+    assert_equal(response.status_code, 200, "render status")
+    assert_equal(len(reads), 1, "times the page list was read")

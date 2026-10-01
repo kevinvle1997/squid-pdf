@@ -62,10 +62,12 @@ class RenderController:
         check_edits(edits)
         pages = store.load_pages(doc.folder)
         check_regions(regions, pages)
+        # Only the pages drawn go to the worker, so it needn't read the page list again.
+        drawn = {region.page: pages[region.page] for region in regions}
         # Each strip at its page image's scale, so the two line up.
-        scales = {region.page: page_scale(pages[region.page], scale) for region in regions}
+        scales = {page: page_scale(size, scale) for page, size in drawn.items()}
         rendered = await self._enqueue_draw_regions(
-            doc.folder, edits=edits, regions=regions, scales=scales
+            doc.folder, edits=edits, regions=regions, pages=drawn, scales=scales
         )
         body = reply_body(rendered, doc.expires_at, said_in)
         return Reply(body, words.language_headers(said_in))
@@ -76,6 +78,7 @@ class RenderController:
         *,
         edits: list[Edit],
         regions: list[Region],
+        pages: dict[int, Page],
         scales: dict[int, float],
     ) -> Rendered:
         """Draw the regions on a worker."""
@@ -84,23 +87,29 @@ class RenderController:
             str(folder),
             edits=edits,
             regions=regions,
+            pages=pages,
             scales=scales,
         )
         return await self._workers.run(RENDER_TIMEOUT_S, task)
 
 
 def draw_regions(
-    folder: str, *, edits: list[Edit], regions: list[Region], scales: dict[int, float]
+    folder: str,
+    *,
+    edits: list[Edit],
+    regions: list[Region],
+    pages: dict[int, Page],
+    scales: dict[int, float],
 ) -> Rendered:
     """Apply the edits the regions show, then draw each region. Runs in a worker.
 
-    `scales` is each page's pixels per point, the same as its page image.
+    `pages` are the drawn pages' sizes, and `scales` each one's pixels per
+    point, the same as its page image.
     """
     path = Path(folder)
     index = store.load_index(path)
     if index is None:  # analysed at upload, so a sweep or a delete removed it
         raise Gone
-    pages = store.load_pages(path)
     strips: dict[int, list[Rect]] = {}
     for region in regions:
         strips.setdefault(region.page, []).append(strip_of(region, pages[region.page]))
