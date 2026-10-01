@@ -14,7 +14,8 @@ import pytest
 from fontTools.subset import Subsetter
 
 from squidpdf.api.pool import WorkerPool
-from squidpdf.core import Engine, words
+from squidpdf.core import Engine, words, write_dense
+from squidpdf.documents import constants as documents_constants
 from squidpdf.documents import store
 from squidpdf.editing import Edit, export
 from squidpdf.editing import constants as editing_constants
@@ -27,6 +28,8 @@ _SKIPPED = "Squid-Skipped-Edits"
 _NOTICES = "Squid-Notices"
 _HEADER = "CONFIDENTIAL"
 _LINES = ["First page", "Second page", "Third page"]
+_OPENING = "This agreement is made on"  # how the long fixture's first line starts
+_UNTIMED_S = 600  # time enough for any analysis: an upload isn't what's timed here
 
 
 class _InProcess:
@@ -318,3 +321,34 @@ def test_an_edit_list_past_a_limit_is_refused(mine, doc, monkeypatch, limit, mad
     monkeypatch.setattr(editing_constants, limit, _LOWERED)
     edits = made(doc["spans"][0])
     assert_problem(_export(mine, doc, edits), problem, 422)
+
+
+@pytest.fixture(scope="module")
+def longest(tmp_path_factory) -> bytes:
+    """The longest document an upload takes: MAX_PAGES copies of one full contract page.
+
+    Copied rather than drawn page by page, so it builds quickly; each copy is
+    its own objects, as a real long file's pages are.
+    """
+    one_page = tmp_path_factory.mktemp("longest") / "one.pdf"
+    write_dense(str(one_page), pages=1)
+    longest = pymupdf.open()
+    with pymupdf.open(one_page) as one:
+        for _ in range(documents_constants.MAX_PAGES):
+            longest.insert_pdf(one)
+    return longest.tobytes()
+
+
+def test_the_longest_document_exports_within_the_export_timeout(mine, longest, monkeypatch):
+    """The whole way, through the API: #35 held only how a save grows with its pages."""
+    monkeypatch.setattr(documents_constants, "ANALYSE_TIMEOUT_S", _UNTIMED_S)
+    doc = upload(mine, longest).json()
+    last_page = documents_constants.MAX_PAGES - 1
+    line = span_starting(doc, last_page, _OPENING)
+    edit = {"kind": "replace", "span_id": line["id"], "text": f"{_OPENING} 15 March 2026"}
+
+    # Within EXPORT_TIMEOUT_S, or the pool stops it and the reply is too_slow.
+    exported = _opened(_export(mine, doc, [edit]))
+
+    assert_equal(exported.page_count, documents_constants.MAX_PAGES, "pages exported")
+    assert_in(edit["text"], exported[last_page].get_text(), "the edit, on the last page")
