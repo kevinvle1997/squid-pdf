@@ -18,7 +18,6 @@ from typing import assert_never
 
 from squidpdf.core import (
     FACES,
-    TURN_TOLERANCE,
     Engine,
     Message,
     Rect,
@@ -252,9 +251,7 @@ def shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     # .get: a page with no strip drawn on it shows no edit.
     on_page = strips.get(span.page, [])
     # Turned text is redrawn level, so its box says little of where: anywhere on a drawn page.
-    _horizontal, vertical = span.direction
-    turned = abs(vertical) > TURN_TOLERANCE
-    if on_page and turned:
+    if on_page and span.turned:
         return True
     # Letters drawn at the span's size can reach a little past its box: an accent, a tail.
     reach = span.size * REDRAW_REACH_EM

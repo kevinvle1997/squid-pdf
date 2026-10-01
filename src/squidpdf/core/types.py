@@ -13,6 +13,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, NewType
 
+from squidpdf.core.constants import TURN_TOLERANCE
+
 # Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
 Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
 GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty .notdef
@@ -183,6 +185,12 @@ class Span:
     def merged(self) -> bool:
         """True when this span is stitched from more than one fragment."""
         return len(self.fragments) > 1
+
+    @property
+    def turned(self) -> bool:
+        """True when its line is turned on the page past TURN_TOLERANCE: redraws are level."""
+        _horizontal, vertical = self.direction
+        return abs(vertical) > TURN_TOLERANCE
 
 
 EM = 1000  # widths are given per 1000 em, as PDF font widths are

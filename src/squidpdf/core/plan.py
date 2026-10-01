@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
+from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import CodedRun, PooledFont
 from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_letters
@@ -94,8 +94,7 @@ class DrawPlanner:
     def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
         """How a redraw of the span's own text in its own font looks unlike it; None if not."""
         # Turned on the page: redraws are level.
-        _horizontal, vertical = span.direction
-        if abs(vertical) > TURN_TOLERANCE:
+        if span.turned:
             return Message("turned_text")
         # Letters no font we have draws: a redraw leaves them out.
         if plan.left_out:

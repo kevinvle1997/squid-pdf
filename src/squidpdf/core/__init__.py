@@ -29,7 +29,6 @@ from squidpdf.core.constants import (
     GREEN_RATE_WARN,
     SHRINK_FLOOR,
     TOLERANCE_PT,
-    TURN_TOLERANCE,
 )
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts.catalog import CATALOG, FACES
@@ -83,7 +82,6 @@ __all__ = [
     "GREEN_RATE_TARGET",
     "GREEN_RATE_WARN",
     "TOLERANCE_PT",
-    "TURN_TOLERANCE",
     "CONDENSE_LIMIT",
     "SHRINK_FLOOR",
     "CATALOG",
