@@ -92,7 +92,7 @@ def _render_fit(folder: Path, family: str) -> list[str]:
     """What a render's fit says the line in `family` can't draw of _WANTED."""
     with store.open_original(folder) as engine:
         span = next(span for span in engine.index() if span.font.endswith(family))
-        return engine.missing(span, _WANTED)
+        return engine.plan_for(span, _WANTED).missing
 
 
 def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(

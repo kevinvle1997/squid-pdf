@@ -76,10 +76,10 @@ def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path, noted):
         read_out.clear()
         listed.clear()
         # Page 0's own copy draws every letter: no other page or copy is looked at.
-        own_only = engine.missing(span, "Hello other")
+        own_only = engine.plan_for(span, "Hello other").missing
         after_own = (list(read_out), list(listed))
         # Y, a and y come from page 1's copy, the nearest that has them: page 2's stays shut.
-        borrowed = engine.missing(span, "Yearly Hello")
+        borrowed = engine.plan_for(span, "Yearly Hello").missing
         after_borrowing = (list(read_out), list(listed))
         # The browser's list of letters is the whole pool, page 2's J with it.
         widths = engine.widths(span)
@@ -101,7 +101,7 @@ def _missing_with_google(path: str, font_file: bytes) -> list[str]:
 
     with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        return engine.missing(span, "Yearly Hello")
+        return engine.plan_for(span, "Yearly Hello").missing
 
 
 def test_googles_copy_is_measured_by_its_bytes_not_its_name(poppins_subset):

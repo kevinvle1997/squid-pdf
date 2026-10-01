@@ -130,8 +130,11 @@ class Engine:
     def plan_for(self, span: Span, text: str) -> DrawPlan:
         """How `text` is drawn at this span: worked out once, for a fit to ask all it needs of.
 
-        Its `missing` and `left_out` are the letters a fit names; `width_of` and
-        `substitute` read it too. The askers below each work out a plan of their own.
+        Its `missing` are the letters no copy of the span's font in the file really
+        draws: each is checked for a shape, since a trimmed (subset) font still lists
+        letters whose shapes were emptied; a font not in the file is checked against
+        its look-alike. Its `left_out` are those no font we have draws. `width_of`
+        and `substitute` read it too.
         """
         return self._plans.plan_for(span, text)
 
@@ -143,25 +146,12 @@ class Engine:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
         return self.width_of(span, self.plan_for(span, text))
 
-    def missing(self, span: Span, text: str) -> list[str]:
-        """Characters no copy of this span's font in the file can actually draw.
-
-        Checks each letter draws a shape rather than trusting the font's list: a
-        trimmed (subset) font still lists letters whose shapes were emptied. A
-        font not in the file is checked against its look-alike, the real file we ship.
-        """
-        return self._plans.plan_for(span, text).missing
-
-    def left_out(self, span: Span, text: str) -> list[str]:
-        """Characters no font we have can draw here, so a redraw leaves them out."""
-        return self._plans.plan_for(span, text).left_out
-
-    def substitute(self, span: Span, text: str, *, plan: DrawPlan | None = None) -> str:
+    def substitute(self, span: Span, text: str, *, plan: DrawPlan) -> str:
         """The face we ship that draws `text` when the span's own font can't: "Carlito Bold".
 
-        `plan` is `text`'s, when the caller has worked it out already.
+        `plan` is `text`'s, from `plan_for`.
         """
-        drawn_in = (self.plan_for(span, text) if plan is None else plan).drawn_in
+        drawn_in = plan.drawn_in
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
             return self._plans.substitute_for(span, text).face.name

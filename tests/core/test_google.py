@@ -79,7 +79,7 @@ def _missing(path: str, fetch: Fetch) -> list[str]:
     """What the fit says the first span can't draw of _WANTED, with `fetch` to Google."""
     with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
-        return eng.missing(span, _WANTED)
+        return eng.plan_for(span, _WANTED).missing
 
 
 def _fetched(file: GoogleFile, folder: Path, download: Download) -> bytes | None:
@@ -105,7 +105,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        missing = engine.missing(span, _WANTED)
+        missing = engine.plan_for(span, _WANTED).missing
         [report] = engine.assess(engine.index())
         engine.remove([span], then_drawn=[LineToDraw(span, _WANTED)])
         engine.draw(span, _WANTED)
@@ -333,7 +333,7 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     fetch, asked = _google(POPPINS.read_bytes())
     with open_pdf(pdf, sources=FontSources(google=fetch)) as engine:
         for span in engine.index():
-            engine.missing(span, "Ωxyzq")
+            engine.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
     whys = [_why_none(google_file(font, None)) for font in _NOT_GOOGLES]
     assert_equal(whys, list(_NOT_GOOGLES.values()), "why Google has no file for each")

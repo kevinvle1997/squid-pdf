@@ -61,9 +61,10 @@ def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
     switches: the own font lacks a letter that a face we ship has.
     """
     [report] = engine.assess(SpanIndex([span]))
-    left_out = engine.left_out(span, text)
-    switches = [ch for ch in engine.missing(span, text) if ch not in left_out]
-    return engine.substitute(span, text) if switches or not report.in_file else None
+    plan = engine.plan_for(span, text)
+    switches = [ch for ch in plan.missing if ch not in plan.left_out]
+    named = switches or not report.in_file
+    return engine.substitute(span, text, plan=plan) if named else None
 
 
 def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:

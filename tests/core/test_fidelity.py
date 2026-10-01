@@ -200,7 +200,7 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
-        missing = engine.missing(span, "ABCD")
+        missing = engine.plan_for(span, "ABCD").missing
         engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
         engine.draw(span, "ABC")
         engine.save(out)
@@ -244,7 +244,7 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     """Redraw page 0's line as _POOLED: what the fit says is missing, and new text's state."""
     with open_pdf(path) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, _POOLED)
+        missing = engine.plan_for(span, _POOLED).missing
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
         [report] = engine.assess(SpanIndex([new]))
         engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
@@ -289,7 +289,7 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_equal(len(names), 1, "names the fixture's two copies go by, prefix aside")
     with open_pdf(merged_unlike) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, _POOLED)
+        missing = engine.plan_for(span, _POOLED).missing
         listed = engine.widths(span)
         why = _why_new(engine, span, _POOLED)
 
@@ -302,7 +302,7 @@ def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
     with open_pdf(merged_apart) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, "Yak Hello")
+        missing = engine.plan_for(span, "Yak Hello").missing
         why = _why_new(engine, span, "Yak Hello")
 
     assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
