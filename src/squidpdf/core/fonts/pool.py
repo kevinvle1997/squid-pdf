@@ -26,7 +26,8 @@ from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
     "FontCopy",
-    "CodedStretch",
+    "CopyRun",
+    "CodedRun",
     "TurnedAway",
     "PooledFont",
     "font_copy",
@@ -59,8 +60,16 @@ class FontCopy:
 
 
 @dataclass(frozen=True, slots=True)
-class CodedStretch:
-    """Letters drawn in one copy of a font written by code, and the codes it's written in."""
+class CopyRun:
+    """A run of a line: letters drawn in one copy of a font."""
+
+    text: str
+    copy: FontCopy
+
+
+@dataclass(frozen=True, slots=True)
+class CodedRun:
+    """A run of a line in one copy of a font written by code, and the codes it's written in."""
 
     text: str
     copy: FontCopy
@@ -117,11 +126,8 @@ class PooledFont:
         return self.copy_for(ch).embedded.program.maps(ch)
 
     def width(self, text: str, size: float) -> float:
-        """How wide `text` is at `size` points, each stretch measured in its own copy."""
-        return sum(
-            copy.embedded.program.width(stretch_text, size)
-            for copy, stretch_text in self.stretches(text)
-        )
+        """How wide `text` is at `size` points, each run measured in its own copy."""
+        return sum(run.copy.embedded.program.width(run.text, size) for run in self.runs(text))
 
     def copy_for(self, ch: str) -> FontCopy:
         """The copy that draws `ch`, or the span's own when none does."""
@@ -131,21 +137,24 @@ class PooledFont:
             return self.own
         return lender
 
-    def stretches(self, text: str) -> list[tuple[FontCopy, str]]:
+    def runs(self, text: str) -> list[CopyRun]:
         """`text` split where the copy that draws it changes, in order."""
-        return [(copy, "".join(letters)) for copy, letters in groupby(text, key=self.copy_for)]
+        return [
+            CopyRun("".join(letters), copy)
+            for copy, letters in groupby(text, key=self.copy_for)
+        ]
 
-    def coded_stretches(self, text: str) -> list[CodedStretch] | None:
+    def coded_runs(self, text: str) -> list[CodedRun] | None:
         """`text` split by copy, each with its codes; None when a copy is written by letter."""
-        stretches: list[CodedStretch] = []
-        for copy, stretch_text in self.stretches(text):
-            coded = copy.embedded.coded
+        runs: list[CodedRun] = []
+        for run in self.runs(text):
+            coded = run.copy.embedded.coded
             # Written by letter: there are no codes to write it in.
             if coded is None:
                 return None
-            own = copy.font.xref == self.own.font.xref
-            stretches.append(CodedStretch(stretch_text, copy, coded, own))
-        return stretches
+            own = run.copy.font.xref == self.own.font.xref
+            runs.append(CodedRun(run.text, run.copy, coded, own))
+        return runs
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that no copy draws, in order, deduped."""

@@ -100,7 +100,7 @@ class FontResource:
 
 @dataclass(frozen=True, slots=True)
 class TextRun:
-    """Text written in one go from a point on its baseline, in one font."""
+    """A run of a line as the driver writes it: text from a point on its baseline, one font."""
 
     text: str
     origin: tuple[float, float]
@@ -109,7 +109,7 @@ class TextRun:
 
 @dataclass(frozen=True, slots=True)
 class CodeRun:
-    """Codes written in one go in one font.
+    """A run of a line as the driver writes it in codes: codes in one font, written in one go.
 
     A code is what a page writes to pick a shape from a font: one or two bytes,
     as many as that font's codes take, not a letter. Most fonts look up a

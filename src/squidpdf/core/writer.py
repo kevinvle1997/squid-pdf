@@ -21,7 +21,7 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.look_alike import strip_subset
-from squidpdf.core.fonts.pool import CodedStretch, FontCopy, PooledFont, copy_source
+from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import LinePlanner, coded_in
 from squidpdf.core.text.spacing import Word
@@ -68,8 +68,8 @@ class AddedFont:
 
 
 @dataclass(frozen=True, slots=True)
-class Stretch:
-    """Letters of one word drawn in one font, and where on the line they start."""
+class OffsetRun:
+    """A run of a line: letters of one word drawn in one font, and where on it they start."""
 
     text: str
     offset: float  # from the line's start, in points
@@ -176,22 +176,18 @@ class PageWriter:
         """Write `text` at the span's baseline, placed by `font`'s widths.
 
         `resources` is the resource name of the font each letter is drawn in. A
-        run per stretch in one font, each where one font would have put it, in
-        reading order, so the text reads back as written.
+        run per font change, each where one font would have put it, in reading
+        order, so the text reads back as written.
         """
         x, y = span.origin
         cos, sin = QUARTER_TURNS[setting.turn]
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         words, _width = plans.words_of(span, text, font=font, size=setting.size)
-        stretches = stretches_in(words, resources=resources, font=font, size=setting.size)
+        offset_runs = runs_in(words, resources=resources, font=font, size=setting.size)
         runs = [
-            TextRun(
-                stretch.text,
-                (x + step_x * stretch.offset, y + step_y * stretch.offset),
-                stretch.resource,
-            )
-            for stretch in stretches
+            TextRun(run.text, (x + step_x * run.offset, y + step_y * run.offset), run.resource)
+            for run in offset_runs
         ]
         self._driver.write_text(
             span.page,
@@ -203,17 +199,14 @@ class PageWriter:
             turn=setting.turn,
         )
 
-    def _write_codes(
-        self, span: Span, stretches: list[CodedStretch], *, setting: Setting
-    ) -> None:
+    def _write_codes(self, span: Span, coded_runs: list[CodedRun], *, setting: Setting) -> None:
         """Write the line as codes in the file's own copies of its font, on top of the page.
 
-        Each stretch in its copy, the pen moving on by that copy's widths, which
+        Each run in its copy, the pen moving on by that copy's widths, which
         agree with the others'.
         """
         runs = [
-            CodeRun(codes_for(stretch.coded, stretch.text), stretch.copy.font.xref)
-            for stretch in stretches
+            CodeRun(codes_for(run.coded, run.text), run.copy.font.xref) for run in coded_runs
         ]
         self._driver.write_codes(
             span.page,
@@ -309,31 +302,31 @@ def lent_name(copy: FontCopy) -> str:
     return strip_subset(copy.font.name)
 
 
-def stretches_in(
+def runs_in(
     words: Iterable[Word], *, resources: Mapping[str, str], font: FontProgram, size: float
-) -> list[Stretch]:
+) -> list[OffsetRun]:
     """Each word split where the font its letters are drawn in changes, in order.
 
     `resources` is the resource name of the font each letter is drawn in.
     """
     return [
-        stretch
+        run
         for word in words
-        for stretch in word_stretches(word, resources=resources, font=font, size=size)
+        for run in word_runs(word, resources=resources, font=font, size=size)
     ]
 
 
-def word_stretches(
+def word_runs(
     word: Word, *, resources: Mapping[str, str], font: FontProgram, size: float
-) -> list[Stretch]:
-    """One word split where its font changes, each stretch starting where the last ends."""
-    stretches: list[Stretch] = []
+) -> list[OffsetRun]:
+    """One word split where its font changes, each run starting where the last ends."""
+    runs: list[OffsetRun] = []
     start = word.offset
     for resource, letters in groupby(word.text, key=lambda ch: resources[ch]):
         text = "".join(letters)
-        stretches.append(Stretch(text, start, resource))
+        runs.append(OffsetRun(text, start, resource))
         start += font.width(text, size)
-    return stretches
+    return runs
 
 
 def codes_for(coded: CodedFont, text: str) -> bytes:

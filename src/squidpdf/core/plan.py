@@ -16,7 +16,7 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
 from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.document import DocumentFonts
-from squidpdf.core.fonts.pool import CodedStretch, PooledFont
+from squidpdf.core.fonts.pool import CodedRun, PooledFont
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.types import EM, Face, Span
@@ -114,9 +114,7 @@ class LinePlanner:
         by_code = coded_in(plan)
         # Written by code: widths come from each copy's width list.
         if by_code is not None:
-            widths = (
-                stretch.coded.letters[ch].width for stretch in by_code for ch in stretch.text
-            )
+            widths = (run.coded.letters[ch].width for run in by_code for ch in run.text)
             return sum(widths) * size / EM
         _words, width = self.words_of(span, plan.text, font=self.program_of(plan), size=size)
         return width
@@ -167,8 +165,8 @@ class LinePlanner:
         return widths
 
 
-def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
-    """`plan`'s line in the codes of the file's copies of its font, a stretch per copy.
+def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
+    """`plan`'s line in the codes of the file's copies of its font, a run per copy.
 
     None unless they draw it by code.
     """
@@ -181,7 +179,7 @@ def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
         return None
     # The file's copies, written by code: the line in their codes.
     if isinstance(drawn_in, PooledFont):
-        return drawn_in.coded_stretches(plan.text)
+        return drawn_in.coded_runs(plan.text)
     assert_never(drawn_in)
 
 
