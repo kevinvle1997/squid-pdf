@@ -1,8 +1,9 @@
 """What the PDF says, and what we can promise about changing it.
 
-Imported by every feature. Nothing here may import a feature, and nothing
-outside `core` names the PDF library: open a PDF with `open_pdf`.
-tests/test_layers.py checks both.
+Imported by every feature, through this module only: nothing outside `core`
+imports one of its modules, so what a feature uses is exported here on purpose,
+and nothing outside names the PDF library (open a PDF with `open_pdf`). Nothing
+here may import a feature. tests/test_layers.py checks all three.
 """
 
 from __future__ import annotations
@@ -21,15 +22,34 @@ from squidpdf.core.app.errors import (
 from squidpdf.core.app.message import Message, MessageInfo, Param
 from squidpdf.core.app.reply import Reply
 from squidpdf.core.app.workers import Workers
-from squidpdf.core.constants import GREEN_RATE_TARGET, GREEN_RATE_WARN
+from squidpdf.core.constants import (
+    CONDENSE_LIMIT,
+    GREEN_RATE_TARGET,
+    GREEN_RATE_WARN,
+    SHRINK_FLOOR,
+    TOLERANCE_PT,
+    TURN_TOLERANCE,
+)
 from squidpdf.core.engine import Engine
+from squidpdf.core.fonts.catalog import CATALOG, FACES
 from squidpdf.core.fonts.google import google_fonts
 
 # The one import that names the driver: another PDF library is swapped in here.
 from squidpdf.core.pdf.mupdf import BUILD, face_widths, open_pdf, result_of
 from squidpdf.core.pdf.samples import write_dense, write_sample
 from squidpdf.core.text.fidelity import Fidelity, FidelityReport, green_rate
-from squidpdf.core.types import LEVEL, SOLID, Fragment, Page, Rect, Span, SpanIndex, new_text
+from squidpdf.core.types import (
+    LEVEL,
+    SOLID,
+    Category,
+    Fragment,
+    Page,
+    Rect,
+    Span,
+    SpanIndex,
+    Style,
+    new_text,
+)
 
 __all__ = [
     "BUILD",
@@ -57,6 +77,14 @@ __all__ = [
     "green_rate",
     "GREEN_RATE_TARGET",
     "GREEN_RATE_WARN",
+    "TOLERANCE_PT",
+    "TURN_TOLERANCE",
+    "CONDENSE_LIMIT",
+    "SHRINK_FLOOR",
+    "CATALOG",
+    "FACES",
+    "Category",
+    "Style",
     "Fragment",
     "Page",
     "LEVEL",

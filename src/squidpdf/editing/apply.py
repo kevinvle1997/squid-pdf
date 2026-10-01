@@ -16,11 +16,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import assert_never
 
-from squidpdf.core import Message
-from squidpdf.core.constants import TURN_TOLERANCE
-from squidpdf.core.engine import Engine
-from squidpdf.core.fonts.catalog import FACES
-from squidpdf.core.types import Rect, Span, SpanIndex, new_text
+from squidpdf.core import (
+    FACES,
+    TURN_TOLERANCE,
+    Engine,
+    Message,
+    Rect,
+    Span,
+    SpanIndex,
+    new_text,
+)
 from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict

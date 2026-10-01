@@ -9,8 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from squidpdf.core import Message, Param, words
-from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.core import (
+    CONDENSE_LIMIT,
+    SHRINK_FLOOR,
+    TOLERANCE_PT,
+    Message,
+    Param,
+    words,
+)
 from squidpdf.editing.types import Strategy
 
 

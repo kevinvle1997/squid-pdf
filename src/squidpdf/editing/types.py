@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core.app.message import Message, MessageInfo
-from squidpdf.core.types import Category, Style
+from squidpdf.core import Category, Message, MessageInfo, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
     from squidpdf.editing.fit import LogFits

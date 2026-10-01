@@ -6,8 +6,7 @@ from datetime import UTC, datetime
 
 import orjson
 
-from squidpdf.core import Message, words
-from squidpdf.core.constants import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT
+from squidpdf.core import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT, Message, words
 from squidpdf.documents.types import (
     Analysis,
     Copy,

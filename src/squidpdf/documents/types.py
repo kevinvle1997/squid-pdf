@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core.app.message import MessageInfo, Param
+from squidpdf.core import MessageInfo, Param
 
 __all__ = [
     "Box",
