@@ -30,6 +30,10 @@ TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
+# How hard a save cleans the file: MuPDF's garbage level. 2 drops unused objects;
+# 3 also merges copies, which takes time in the square of the pages.
+GARBAGE_COLLECT = 2
+
 # Half of `build`: bump it when the fonts we ship change, so browsers refetch.
 # 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
 # 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.

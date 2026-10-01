@@ -18,7 +18,7 @@ import pymupdf
 
 from squidpdf.core.app.errors import Damaged, Encrypted, TooHeavy
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
+from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine
 from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.catalog import face_bytes
@@ -50,8 +50,6 @@ __all__ = [
     "face_widths",
     "MuPDFDriver",
 ]
-
-_GARBAGE_COLLECT = 2  # drop unused objects; 3 also merges copies, taking pages-squared time
 
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
@@ -502,7 +500,7 @@ class MuPDFDriver:
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
         # Object streams compress the plain objects too: a face's width list is most of it.
-        self._doc.save(path, garbage=_GARBAGE_COLLECT, deflate=True, use_objstms=True)
+        self._doc.save(path, garbage=GARBAGE_COLLECT, deflate=True, use_objstms=True)
 
     def close(self) -> None:
         """Release the open document."""
