@@ -11,14 +11,17 @@ from starlette import status
 from starlette.exceptions import HTTPException
 
 from squidpdf.api.constants import WORKER_FAILURES
-from squidpdf.api.errors.generic import (
-    InvalidRequest,
-    MethodNotAllowed,
-    NotFound,
-    ServerError,
-)
+from squidpdf.api.errors.generic import MethodNotAllowed, ServerError
 from squidpdf.api.language import language_of
-from squidpdf.core import CORE_ERRORS, Failure, Param, Problem, words
+from squidpdf.core import (
+    CORE_ERRORS,
+    Failure,
+    InvalidRequest,
+    NotFound,
+    Param,
+    Problem,
+    words,
+)
 
 __all__ = [
     "ProblemInfo",
