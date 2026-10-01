@@ -170,8 +170,11 @@ def truetype_has_outline(truetype: table__g_l_y_f, name: GlyphName) -> bool:
     if count >= 0:
         return count > 0
     # Built from others: a part the font lacks draws nothing, as a drawing skips it.
-    parts = (part.glyphName for part in truetype[name].components if part.glyphName in truetype)
-    return any(truetype_has_outline(truetype, part) for part in parts)
+    components = truetype[name].components
+    part_names = (
+        component.glyphName for component in components if component.glyphName in truetype
+    )
+    return any(truetype_has_outline(truetype, part_name) for part_name in part_names)
 
 
 def outline_count(glyph: Glyph) -> int:
