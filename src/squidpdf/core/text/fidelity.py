@@ -11,19 +11,15 @@ reason that has nothing to do with the document.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from typing import Literal
 
 from squidpdf.core.app.message import Message
 
-
-class Fidelity(StrEnum):
-    """The ways an edit can turn out, in terms of the original font."""
-
-    EXACT = "exact"  # the document's own font is in the file and covers it
-    # The file's own font draws it, but not as the page shows it now: `why` says how.
-    APPROXIMATE = "approximate"
-    SUBSTITUTE = "substitute"  # the file's own copy can't be used; another face draws
-    IMAGE = "image"  # no text layer here at all
+# The ways an edit can turn out, in terms of the original font, as the browser gets them:
+# "exact", the document's own font is in the file and covers it; "approximate", the file's
+# own font draws it, but not as the page shows it now (`why` says how); "substitute", the
+# file's own copy can't be used, so another face draws. A plain alias: pydantic reads it.
+Fidelity = Literal["exact", "approximate", "substitute"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,5 +46,5 @@ def green_rate(reports: list[FidelityReport]) -> float:
     """
     if not reports:
         return 0.0
-    exact_count = sum(1 for report in reports if report.state is Fidelity.EXACT)
+    exact_count = sum(1 for report in reports if report.state == "exact")
     return exact_count / len(reports)

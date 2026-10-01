@@ -624,8 +624,11 @@ export interface components {
             bbox: components["schemas"]["Box"];
             /** Origin */
             origin: number[];
-            /** Fidelity */
-            fidelity: string;
+            /**
+             * Fidelity
+             * @enum {string}
+             */
+            fidelity: "exact" | "approximate" | "substitute";
             why: components["schemas"]["MessageInfo"] | null;
         };
         /** @enum {string} */

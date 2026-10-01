@@ -21,7 +21,7 @@ from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.plan import DrawPlan, DrawPlanner
-from squidpdf.core.text.fidelity import Fidelity, FidelityReport
+from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, Page, Rect, Span, SpanIndex
@@ -100,10 +100,8 @@ class Engine:
         if isinstance(drawn_in, PooledFont):
             unlike = self._plans.unlike(span, plan)
             if unlike is None:
-                return FidelityReport(span.id, Fidelity.EXACT, span.font, in_file=True)
-            return FidelityReport(
-                span.id, Fidelity.APPROXIMATE, span.font, in_file=True, why=unlike
-            )
+                return FidelityReport(span.id, "exact", span.font, in_file=True)
+            return FidelityReport(span.id, "approximate", span.font, in_file=True, why=unlike)
         # A face we ship draws it in the font's place.
         if isinstance(drawn_in, Face):
             return self._substitute_report(span, drawn_in)
@@ -115,7 +113,7 @@ class Engine:
         match = self._fonts.look_alike(span)
         return FidelityReport(
             span.id,
-            Fidelity.SUBSTITUTE,
+            "substitute",
             span.font,
             in_file=own is not None,
             substitute=drawn_in.name,
