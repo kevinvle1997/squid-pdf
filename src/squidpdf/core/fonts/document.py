@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.embedded import FontUnusable, open_embedded
+from squidpdf.core.fonts.embedded import FontUnusable, open_embedded, remembered
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike, strip_subset
 from squidpdf.core.fonts.pool import (
@@ -88,13 +88,8 @@ class DocumentFonts:
         # Not on the page: new text in a font it doesn't have.
         if page_font is None:
             return FontUnusable(Message("font_not_in_file"))
-        key = (span.page, page_font)
-        if key not in self._cache.pools:
-            try:
-                self._cache.pools[key] = self._pool(span.page, page_font)
-            except FontUnusable as problem:  # no copy of the font we can use, and why
-                self._cache.pools[key] = problem
-        return self._cache.pools[key]
+        make_pool = partial(self._pool, span.page, page_font)
+        return remembered(self._cache.pools, (span.page, page_font), make_pool)
 
     def own(self, span: Span) -> PooledFont | None:
         """The span's font, pooled with its other copies in the file; None when we can't use it.
@@ -203,12 +198,10 @@ class DocumentFonts:
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
-        if font not in self._cache.copies:
-            try:
-                self._cache.copies[font] = font_copy(font, open_embedded(self._driver, font))
-            except FontUnusable as problem:  # not stored, unreadable, or no way to write it
-                self._cache.copies[font] = problem
-        return self._cache.copies[font]
+        # Raises FontUnusable when it isn't stored, is unreadable, or can't be written to.
+        return remembered(
+            self._cache.copies, font, lambda: font_copy(font, open_embedded(self._driver, font))
+        )
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other font in the file by the same name, subset prefix aside.

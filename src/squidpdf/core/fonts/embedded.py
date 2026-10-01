@@ -6,6 +6,7 @@ Read through the driver, so it's the same whatever library is underneath.
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from squidpdf.core.app.message import Message
@@ -17,6 +18,7 @@ __all__ = [
     "EmbeddedFont",
     "FontUnusable",
     "open_embedded",
+    "remembered",
 ]
 
 # Bytes per code, for the font kinds we can write by code.
@@ -40,6 +42,21 @@ class FontUnusable(Exception):
         """`reason` names a sentence in `core.app.words`, for the edge to put into words."""
         super().__init__(reason)
         self.reason = reason
+
+
+def remembered[K, V](
+    memo: dict[K, V | FontUnusable], key: K, make: Callable[[], V]
+) -> V | FontUnusable:
+    """What `make()` made for `key` the first time, or why it couldn't: made once per key.
+
+    A second ask gets the same answer, so a reason is said the same way each time.
+    """
+    if key not in memo:
+        try:
+            memo[key] = make()
+        except FontUnusable as problem:  # `make` couldn't, and says why
+            memo[key] = problem
+    return memo[key]
 
 
 def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:

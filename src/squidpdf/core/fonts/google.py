@@ -31,7 +31,7 @@ from fontTools.varLib.instancer import instantiateVariableFont
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts.coverage import Coverage
-from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
+from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
 from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
@@ -132,20 +132,18 @@ class GoogleFontController:
 
     def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
         """`file`, fetched and opened once, or why it can't be had or opened."""
-        if file.source not in self._fonts:
-            self._fonts[file.source] = self._open(file)
-        return self._fonts[file.source]
+        return remembered(self._fonts, file.source, partial(self._open, file))
 
-    def _open(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
-        """`file`, fetched and opened, or why it can't be had or opened."""
+    def _open(self, file: GoogleFile) -> EmbeddedFont:
+        """`file`, fetched and opened. Raises FontUnusable when it can't be had or opened."""
         font_file = self._fetch(file)
         # None, or empty: MuPDF would quietly open a font of its own for no bytes.
         if not font_file:
-            return FontUnusable(Message("google_not_fetched"))
+            raise FontUnusable(Message("google_not_fetched"))
         try:
             program = self._driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it, though git vouched for it
-            return FontUnusable(problem.reason)
+            raise FontUnusable(problem.reason) from problem
         return EmbeddedFont(program, font_file, Coverage(font_file), None)
 
 

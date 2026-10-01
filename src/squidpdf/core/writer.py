@@ -11,6 +11,7 @@ import hashlib
 import io
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from itertools import groupby
 from typing import assert_never
 
@@ -19,7 +20,7 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.embedded import FontUnusable
+from squidpdf.core.fonts.embedded import FontUnusable, remembered
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import DrawPlanner, coded_in
@@ -232,25 +233,23 @@ class PageWriter:
         redraw. Raises FontUnusable when the library won't add it.
         """
         key = (page, copy_source(copy))
-        if key not in self._names.own:
-            self._names.own[key] = self._add_copy(page, copy)
-        found = self._names.own[key]
+        found = remembered(self._names.own, key, partial(self._add_copy, page, copy))
         if isinstance(found, FontUnusable):
             raise FontUnusable(found.reason)
         return found
 
-    def _add_copy(self, page: int, copy: FontCopy) -> str | FontUnusable:
-        """Add a copy of a font to a page, and return its resource name, or why it failed.
+    def _add_copy(self, page: int, copy: FontCopy) -> str:
+        """Add a copy of a font to a page, and return its resource name.
 
-        A copy lent from outside the file goes in whole, to be cut down on save like a
-        face we ship.
+        Raises FontUnusable when the page won't take it. A copy lent from outside
+        the file goes in whole, to be cut down on save like a face we ship.
         """
         # Named by its source, so copies of one font are told apart.
         resource = resource_name("F", copy_source(copy))
         try:
             font_resource = self._driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the substitute draws instead
-            return FontUnusable(problem.reason)
+            raise FontUnusable(problem.reason) from problem
         if copy.lent is not None:
             added_font = AddedFont(copy.lent.name, copy.embedded.file)
             self._keep_whole(copy.lent.source, added_font, xref=font_resource.xref)
