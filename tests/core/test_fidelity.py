@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 
 import pymupdf
 import pytest
@@ -20,7 +20,7 @@ from squidpdf.core import (
 )
 from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
-from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
+from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
 
@@ -40,18 +40,10 @@ _INK_LEVEL = 128  # a pixel darker than mid-grey is ink on the white page
 _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
 
 
-def _each_span(blocks: list[dict]) -> Iterator[dict]:
-    """Every span of text in get_text's blocks, in reading order."""
-    for block in blocks:
-        # .get: an image block has no lines.
-        for line in block.get("lines", []):
-            yield from line["spans"]
-
-
 def _drawn(path: str) -> list[dict]:
     """Every span of text on the saved file's first page, re-read."""
     blocks = pymupdf.open(path)[0].get_text("rawdict")["blocks"]
-    return list(_each_span(blocks))
+    return list(each_span(blocks))
 
 
 def _text(span: dict) -> str:
@@ -231,7 +223,7 @@ def _font_files(doc: pymupdf.Document, page: int) -> set[bytes]:
 def _blank_letters(page: pymupdf.Page) -> list[str]:
     """The letters on a page that put no ink down, in order."""
     blocks = page.get_text("rawdict")["blocks"]
-    letters = [char for span in _each_span(blocks) for char in span["chars"]]
+    letters = [char for span in each_span(blocks) for char in span["chars"]]
     return [
         char["c"]
         for char in letters

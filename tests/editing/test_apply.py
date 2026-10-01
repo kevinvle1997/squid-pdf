@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -33,7 +33,15 @@ from squidpdf.editing import (
     resolve,
 )
 from squidpdf.editing.apply import page_order, redacted_in
-from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, named_only, saved_as, stored_file
+from tests.conftest import (
+    EMBEDDED_PAGE,
+    REFERENCED_PAGE,
+    cannot_cut,
+    each_span,
+    named_only,
+    saved_as,
+    stored_file,
+)
 from tests.helpers import (
     assert_at_least,
     assert_at_most,
@@ -59,18 +67,10 @@ def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
     return apply_edits(engine, resolve(engine, edits, index))
 
 
-def _each_span(blocks: list[dict]) -> Iterator[dict]:
-    """Every span of text in get_text's blocks, in reading order."""
-    for block in blocks:
-        # .get: an image block has no lines.
-        for line in block.get("lines", []):
-            yield from line["spans"]
-
-
 def _drawn(path, page: int, needle: str) -> dict:
     """The span on a saved page whose text contains `needle`, as MuPDF reads it back."""
     blocks = pymupdf.open(path)[page].get_text("dict")["blocks"]
-    for span in _each_span(blocks):
+    for span in each_span(blocks):
         if needle in span["text"]:
             return span
     raise LookupError(f"nothing drawn on page {page} contains {needle!r}")
@@ -95,11 +95,6 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
 def _squashed(font: str) -> str:
     """A font's name, subset prefix aside, in lower case with only letters and digits."""
     return "".join(ch for ch in strip_subset(font).lower() if ch.isalnum())
-
-
-def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
-    """Fails, as fontTools can on an odd font."""
-    raise ValueError("fontTools can't cut this font")
 
 
 def _insert_as_span(insert: Insert) -> Span:
@@ -242,7 +237,7 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
 
     Here the face can't be cut, so it goes in whole, and save says so.
     """
-    monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
+    monkeypatch.setattr(Subsetter, "subset", cannot_cut)
     index = engine.index()
     span = _substituted(engine)
     out = tmp_path / "same.pdf"

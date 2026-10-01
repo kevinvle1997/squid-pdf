@@ -8,6 +8,7 @@ from collections.abc import Iterator
 
 import pymupdf
 import pytest
+from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
 from squidpdf.core import open_pdf, words
@@ -31,6 +32,19 @@ def no_fetch() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_NO_FETCH", "1")
         yield
+
+
+def each_span(blocks: list[dict]) -> Iterator[dict]:
+    """Every span of text in get_text's blocks, in reading order."""
+    for block in blocks:
+        # .get: an image block has no lines.
+        for line in block.get("lines", []):
+            yield from line["spans"]
+
+
+def cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
+    """Fails, as fontTools can on an odd font: patched over `Subsetter.subset`."""
+    raise ValueError("fontTools can't cut this font")
 
 
 def saved_as(face: str) -> str:

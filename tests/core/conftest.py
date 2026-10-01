@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from string import Formatter
 
 import pymupdf
 import pytest
@@ -431,3 +432,8 @@ def poppins_subset(tmp_path_factory) -> str:
     path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
     doc.save(path)
     return path
+
+
+def placeholders(sentence: str) -> frozenset[str]:
+    """The `{name}`s a sentence takes."""
+    return frozenset(name for _text, name, _spec, _conv in Formatter().parse(sentence) if name)

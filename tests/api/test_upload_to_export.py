@@ -14,11 +14,10 @@ import pymupdf
 
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts.look_alike import strip_subset
-from tests.api.conftest import span_starting, upload
+from tests.api.conftest import around, span_starting, upload
 from tests.helpers import assert_at_most, assert_equal, assert_in, assert_not_in, assert_true
 
 _SCALE = 2
-_MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
 def _rect(box: dict) -> pymupdf.Rect:
@@ -41,15 +40,9 @@ def _drawn_rows(page: pymupdf.Page, region: dict) -> bytes:
     ).samples
 
 
-def _around(span: dict) -> dict:
-    """A region: the full-width strip over a span's line."""
-    box = span["bbox"]
-    return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}
-
-
 def _strip(client, doc: dict, edits: list[dict], span: dict) -> bytes:
     """The strip over `span`'s line, drawn with `edits`, as the browser asks for it."""
-    body = {"edits": edits, "scale": _SCALE, "regions": [_around(span)]}
+    body = {"edits": edits, "scale": _SCALE, "regions": [around(span)]}
     rendered = client.post(f"/api/documents/{doc['id']}/render", json=body).json()
     return base64.b64decode(rendered["images"][0]["image"])
 
@@ -107,7 +100,7 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     left = "".join(pdf[1].get_textbox(_rect(invoices["bbox"])).split())
     assert_equal(left, "", "letters left in the redacted line's box")
     # What you see is what exports (Rule 2): the preview is the file's own rows, exactly.
-    exported = _drawn_rows(pdf[1], _around(delivery))
+    exported = _drawn_rows(pdf[1], around(delivery))
     assert_equal(_pixels(preview), exported, "the preview strip and the exported page's rows")
     # The one number tracked: the fix kept the document's own font, as the check said.
     # A stand-in would be a second font on the page; there's only the one the file had.

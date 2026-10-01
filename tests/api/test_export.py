@@ -12,7 +12,6 @@ from unittest import mock
 import pymupdf
 import pytest
 from fontTools.subset import Subsetter
-from fontTools.ttLib import TTFont
 
 from squidpdf.api.pool import WorkerPool
 from squidpdf.core import Engine, words
@@ -21,6 +20,7 @@ from squidpdf.editing import Edit, export
 from squidpdf.editing import constants as editing_constants
 from squidpdf.editing.types import Exported
 from tests.api.conftest import span_starting, upload
+from tests.conftest import cannot_cut
 from tests.helpers import assert_equal, assert_false, assert_in, assert_problem, assert_true
 
 _SKIPPED = "Squid-Skipped-Edits"
@@ -60,11 +60,6 @@ def own_pool() -> Iterator[WorkerPool]:
     pool = WorkerPool()
     yield pool
     pool.close()
-
-
-def _cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
-    """Fails, as fontTools can on an odd font."""
-    raise ValueError("fontTools can't cut this font")
 
 
 @pytest.fixture(scope="module")
@@ -124,7 +119,7 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
 ):
     """The file is only larger, but it's said, in the reader's words and in ASCII."""
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Subsetter, "subset", _cannot_cut)
+    monkeypatch.setattr(Subsetter, "subset", cannot_cut)
     monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
     span = span_starting(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"]}

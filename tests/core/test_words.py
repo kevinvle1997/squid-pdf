@@ -8,21 +8,17 @@ import pytest
 
 from squidpdf.core import Message, words
 from tests.conftest import pseudo_sentence
+from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
 
 
-def _placeholders(sentence: str) -> set[str]:
-    """The `{name}`s a sentence takes."""
-    return {name for _text, name, _spec, _conv in Formatter().parse(sentence) if name}
-
-
-def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
+def test_every_language_has_every_sentence_with_the_sameplaceholders(pseudo):
     english = words.ENGLISH_SENTENCES
     for language, catalog in words.CATALOGS.items():
         assert_equal(set(catalog), set(english), f"the keys {language!r} has")
         for key, said in catalog.items():
-            wants = _placeholders(english[key])
-            assert_equal(_placeholders(said), wants, f"{language!r} {key!r} placeholders")
+            wants = placeholders(english[key])
+            assert_equal(placeholders(said), wants, f"{language!r} {key!r} placeholders")
 
 
 def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
