@@ -16,7 +16,14 @@ from itertools import chain, count
 
 import pymupdf
 
-from squidpdf.core.app.errors import Damaged, Encrypted, TooHeavy
+from squidpdf.core.app.errors import (
+    Damaged,
+    Encrypted,
+    ErrorController,
+    TooHeavy,
+    machine_failure,
+    problem_maker,
+)
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine
@@ -24,7 +31,13 @@ from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.google import Fetch
 from squidpdf.core.pdf.driver import DriverError
-from squidpdf.core.pdf.lowlevel import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
+from squidpdf.core.pdf.lowlevel import (
+    MUPDF_ERRORS,
+    MUPDF_OWN_ERRORS,
+    MUPDF_SYSTEM_ERRORS,
+    MUPDF_TOO_HEAVY,
+    PdfFile,
+)
 from squidpdf.core.plan import letter_widths
 from squidpdf.core.types import (
     QUARTER_TURNS,
@@ -111,10 +124,6 @@ def result_of[T](task: Callable[[], T]) -> T:
     person can be told. The ErrorController's MuPDF rows say what; anything
     else goes up as it is.
     """
-    # Imported here: the imports above are the driver's to change, and wave 2 lifts these.
-    from squidpdf.core.app.errors import ErrorController, machine_failure, problem_maker
-    from squidpdf.core.pdf.lowlevel import MUPDF_SYSTEM_ERRORS
-
     mupdf_errors = ErrorController(
         (
             (MUPDF_TOO_HEAVY, problem_maker(TooHeavy)),  # past a limit of MuPDF's own

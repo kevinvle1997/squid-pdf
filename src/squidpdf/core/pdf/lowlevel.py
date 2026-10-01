@@ -23,6 +23,7 @@ __all__ = [
     "MUPDF_ERRORS",
     "MUPDF_OWN_ERRORS",
     "MUPDF_TOO_HEAVY",
+    "MUPDF_SYSTEM_ERRORS",
     "PdfFile",
 ]
 
