@@ -177,10 +177,10 @@ export interface components {
             missing: string;
             /** Too Long */
             too_long: string;
-            /** Stand In */
-            stand_in: string;
-            /** Stand In Same Widths */
-            stand_in_same_widths: string;
+            /** Substitute */
+            substitute: string;
+            /** Substitute Same Widths */
+            substitute_same_widths: string;
             /** Undo Redaction */
             undo_redaction: string;
             /** Reopened */
@@ -525,7 +525,7 @@ export interface components {
          * Render
          * @description Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
          *
-         *     `notices` are edits drawn other than asked, such as in a stand-in font.
+         *     `notices` are edits drawn other than asked, such as in a substitute.
          */
         Render: {
             /** Images */

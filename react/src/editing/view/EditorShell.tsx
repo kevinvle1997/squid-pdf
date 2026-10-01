@@ -8,7 +8,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { changedCount, closeEditor, createEditor, similarCount } from "../editor";
+import { changedCount, closeEditor, createEditor, substituteCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { noticeLines } from "../notices";
@@ -65,7 +65,7 @@ function Bar() {
   const editor = useEditor();
   const pages = useEditorState((state) => state.doc.pages.length);
   const changed = useEditorState(changedCount);
-  const similar = useEditorState(similarCount);
+  const substituted = useEditorState(substituteCount);
   const exporting = useEditorState((state) => state.exporting);
   return (
     <header className={styles.bar}>
@@ -77,10 +77,10 @@ function Bar() {
       <span className={styles.grow} />
       <span className={styles.status}>
         {changed > 0 && counted(changed, { one: "change", other: "changes" })}
-        {similar > 0 && (
+        {substituted > 0 && (
           <>
             {" · "}
-            <Warn>{similar}</Warn> in a similar font
+            <Warn>{substituted}</Warn> in a similar font
           </>
         )}
       </span>

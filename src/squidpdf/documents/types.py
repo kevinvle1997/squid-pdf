@@ -144,8 +144,8 @@ class Copy(TypedDict):
 
     missing: str
     too_long: str
-    stand_in: str  # when the substitute's letters may be another width
-    stand_in_same_widths: str  # when they are exactly as wide: `same_widths` on the font
+    substitute: str  # when the substitute's letters may be another width
+    substitute_same_widths: str  # when they are exactly as wide: `same_widths` on the font
     undo_redaction: str
     reopened: str
     export_left_out: str

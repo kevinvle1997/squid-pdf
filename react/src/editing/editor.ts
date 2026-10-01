@@ -149,13 +149,13 @@ export function changedCount(state: EditorState): number {
   return state.reading.spans.size;
 }
 
-/** How many changed spans are drawn in a similar font, not the file's own. */
-export function similarCount(state: EditorState): number {
+/** How many changed spans are drawn in a substitute (the reader's "similar font"), not the file's own. */
+export function substituteCount(state: EditorState): number {
   let count = 0;
   for (const { span, replaced } of state.reading.spans.values()) {
-    const inSimilar = state.layout.fonts.get(span.font)?.substitute != null;
+    const inSubstitute = state.layout.fonts.get(span.font)?.substitute != null;
     const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
-    if (replaced && (inSimilar || missing.length > 0)) count++;
+    if (replaced && (inSubstitute || missing.length > 0)) count++;
   }
   return count;
 }

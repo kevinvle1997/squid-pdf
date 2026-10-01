@@ -272,7 +272,7 @@ def _assert_drawn_in_both_copies(original: str, out: str) -> None:
 def test_a_letter_only_another_pages_copy_draws_is_exact_and_redraws_in_the_files_font(
     merged, tmp_path
 ):
-    """Page 0's Times has no Y; page 1's has. Before, the whole line went to the stand-in."""
+    """Page 0's Times has no Y; page 1's has. Before, the whole line went to the substitute."""
     out = str(tmp_path / "redrawn.pdf")
     missing, report = _redraw(merged, out)
 

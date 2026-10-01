@@ -21,7 +21,7 @@ pytest.register_assert_rewrite("tests.helpers")
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 
 # The sample's two pages, counted from 0 as spans count them.
-REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a stand-in
+REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
 

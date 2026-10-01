@@ -93,10 +93,10 @@ class Engine:
             )
         # A face we ship draws it in the font's place.
         if isinstance(drawn_in, Face):
-            return self._substitute(span, drawn_in)
+            return self._substitute_report(span, drawn_in)
         assert_never(drawn_in)
 
-    def _substitute(self, span: Span, drawn_in: Face) -> FidelityReport:
+    def _substitute_report(self, span: Span, drawn_in: Face) -> FidelityReport:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
         own = self._fonts.own(span)
         match = self._fonts.look_alike(span)
@@ -131,12 +131,12 @@ class Engine:
         """Characters no font we have can draw here, so a redraw leaves them out."""
         return self._plans.plan_for(span, text).left_out
 
-    def stand_in(self, span: Span, text: str) -> str:
+    def substitute(self, span: Span, text: str) -> str:
         """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
         drawn_in = self._plans.plan_for(span, text).drawn_in
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
-            return self._plans.stand_in_for(span, text).face.name
+            return self._plans.substitute_for(span, text).face.name
         # A face we ship draws it.
         if isinstance(drawn_in, Face):
             return drawn_in.name

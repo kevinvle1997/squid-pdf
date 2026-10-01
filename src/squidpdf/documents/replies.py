@@ -83,8 +83,8 @@ def copy_in(said_in: str) -> Copy:
     return {
         "missing": words.sentence("missing", said_in),
         "too_long": words.sentence("too_long", said_in),
-        "stand_in": words.sentence("stand_in", said_in),
-        "stand_in_same_widths": words.sentence("stand_in_same_widths", said_in),
+        "substitute": words.sentence("substitute", said_in),
+        "substitute_same_widths": words.sentence("substitute_same_widths", said_in),
         "undo_redaction": words.sentence("undo_redaction", said_in),
         "reopened": words.sentence("reopened", said_in),
         "export_left_out": words.sentence("export_left_out", said_in),

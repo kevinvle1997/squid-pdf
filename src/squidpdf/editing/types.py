@@ -67,7 +67,7 @@ class Region:
 class Rendered:
     """What render worked out, in no one's words yet: the strips, the fits, and the skips.
 
-    `notices` are edits drawn other than asked, such as in a stand-in font.
+    `notices` are edits drawn other than asked, such as in a substitute.
     """
 
     images: list[ImageInfo]
@@ -180,7 +180,7 @@ class FontList(TypedDict):
 class Render(TypedDict):
     """Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
 
-    `notices` are edits drawn other than asked, such as in a stand-in font.
+    `notices` are edits drawn other than asked, such as in a substitute.
     """
 
     images: list[ImageInfo]

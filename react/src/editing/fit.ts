@@ -64,9 +64,9 @@ export function troubleKindOf(fit: Fit, rules: FitRules): string {
 }
 
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */
-export function troublesOf(fit: Fit, rules: FitRules, copy: Copy, standIn: string): string[] {
+export function troublesOf(fit: Fit, rules: FitRules, copy: Copy, substitute: string): string[] {
   const troubles: string[] = [];
-  if (fit.missing.length > 0) troubles.push(fill(copy.missing, { chars: fit.missing, font: standIn }));
+  if (fit.missing.length > 0) troubles.push(fill(copy.missing, { chars: fit.missing, font: substitute }));
   if (fit.deltaPt > rules.tolerance_pt) troubles.push(fill(copy.too_long, { delta_pt: fit.deltaPt }));
   return troubles;
 }

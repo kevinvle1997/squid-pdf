@@ -27,9 +27,9 @@ from squidpdf.core.app.errors import (
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine
-from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.google import Fetch
+from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.lowlevel import (
     MUPDF_ERRORS,
@@ -141,7 +141,7 @@ def face_widths(face: Face) -> dict[str, float]:
     For the font list, where there's no document to open: the same widths the
     engine gives a span drawn in the face.
     """
-    return letter_widths(open_face(face), substitute.face_letters(face))
+    return letter_widths(open_face(face), face_letters(face))
 
 
 class MuPDFFont:

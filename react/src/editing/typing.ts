@@ -21,8 +21,8 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   if (span === undefined || font === undefined) return { said: [], kind: "" };
   const { fit: rules, copy } = state.doc;
   const fit = fitOf(span, font, text, rules);
-  const standIn = font.substitute ?? previewFaceOf(font);
-  return { said: troublesOf(fit, rules, copy, standIn), kind: troubleKindOf(fit, rules) };
+  const substitute = font.substitute ?? previewFaceOf(font);
+  return { said: troublesOf(fit, rules, copy, substitute), kind: troubleKindOf(fit, rules) };
 }
 
 export function typeInto(editor: Editor, text: string): void {

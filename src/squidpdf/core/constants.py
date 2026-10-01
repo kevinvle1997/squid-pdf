@@ -48,7 +48,7 @@ LIBRARY_VERSION = "8"
 # list in `fonts/google-families.json` is read from it, and every copy is fetched
 # from it. Part of `build`: a new pin judges every document again.
 GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
-# How long one fetch of Google's copy may take before the line goes to the stand-in.
+# How long one fetch of Google's copy may take before the line goes to the substitute.
 FETCH_TIMEOUT_S = 5.0
 # How long a copy that failed to come is left before it's tried again; a fetch with
 # no answer leaves every copy that long, since each would wait out the timeout too.

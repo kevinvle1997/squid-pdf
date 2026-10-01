@@ -12,9 +12,9 @@ chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"
 too_long = "{delta_pt} pt too long"
 # A font the file doesn't let us use. `{font}` is the face that draws instead.
-stand_in = "Edits here use {font}, which may be a different width from the original."
+substitute = "Edits here use {font}, which may be a different width from the original."
 # The same, when that face's letters are exactly as wide as the original's.
-stand_in_same_widths = "Edits here use {font}, whose letters are the same width as the original's."
+substitute_same_widths = "Edits here use {font}, whose letters are the same width as the original's."
 
 # Why an edit was left out.
 no_span = "This edit points at text that isn't in this document."

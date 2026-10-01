@@ -47,7 +47,7 @@ class FitReport:
     options: list[Option] = field(default_factory=list)
     strategy: Strategy = "as-is"
     left_out: list[str] = field(default_factory=list)  # no font we have draws these
-    stand_in: str = ""  # the face that draws the line when its own font can't
+    substitute: str = ""  # the face that draws the line when its own font can't
     asked: Strategy = "as-is"  # the way out the user chose, offered or not
     unavailable: str = ""  # new text's chosen font, when it can't be used here at all
 
@@ -59,14 +59,14 @@ class FitReport:
     def describe(self) -> list[Message]:
         """Everything that won't come out as typed, in the order it's told; empty if nothing."""
         parts: list[Message] = []
-        # New text in a font that can't be used here: all of it is in the stand-in.
+        # New text in a font that can't be used here: all of it is in the substitute.
         if self.unavailable:
-            params: dict[str, Param] = {"chosen": self.unavailable, "font": self.stand_in}
+            params: dict[str, Param] = {"chosen": self.unavailable, "font": self.substitute}
             parts.append(Message("chosen_unavailable", params))
-        # Letters its own font lacks but the stand-in has: the whole line switches.
+        # Letters its own font lacks but the substitute has: the whole line switches.
         switched = [ch for ch in self.missing if ch not in self.left_out]
         if switched:
-            parts.append(Message("missing", {"chars": switched, "font": self.stand_in}))
+            parts.append(Message("missing", {"chars": switched, "font": self.substitute}))
         # Letters nothing can draw.
         if self.left_out:
             parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))

@@ -298,7 +298,7 @@ def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | No
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
-    except Exception:  # a network fails in many ways; logged, and the stand-in draws
+    except Exception:  # a network fails in many ways; logged, and the substitute draws
         _logger.warning("No Google copy of %s: fetch failed", file.path, exc_info=True)
         return None
     finally:

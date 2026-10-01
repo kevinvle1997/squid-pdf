@@ -1,7 +1,7 @@
 """What the engine asks of a PDF library: the seam another library would fill.
 
 Primitives only: read what the file says, change it, draw on it, save it. What
-to make of it (spans, fidelity, stand-ins, fits) is `core.engine`'s, the same
+to make of it (spans, fidelity, substitutes, fits) is `core.engine`'s, the same
 over any driver. PyMuPDF is AGPL; a permissive rewrite would implement these
 two protocols over pypdfium2 and pikepdf, and nothing else.
 """

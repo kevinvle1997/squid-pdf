@@ -14,9 +14,9 @@ from typing import assert_never
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
-from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import CodedRun, PooledFont
+from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_letters
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.types import EM, Face, Span
@@ -61,7 +61,7 @@ class LinePlanner:
         """How `text` is drawn at this span: the one answer the fit and the draw share.
 
         In the file's copies of the span's font if they draw every character;
-        otherwise the whole line in the stand-in, less what even that can't
+        otherwise the whole line in the substitute, less what even that can't
         draw. When the only letters the own font lacks are ones no font we have
         draws, switching would draw none of them, so the own font keeps the
         line without them.
@@ -71,25 +71,25 @@ class LinePlanner:
         if own is None:
             composed = unicodedata.normalize("NFC", text)
             look_alike = self.fonts.look_alike(span).face
-            missing = substitute.face_coverage(look_alike).missing(composed)
-            stand_in = self.stand_in_for(span, composed)
-            return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+            missing = face_coverage(look_alike).missing(composed)
+            substitute = self.substitute_for(span, composed)
+            return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
         text = spelled(own, text)
         missing = own.missing(text)
         # The own font draws every letter.
         if not missing:
             return DrawPlan(own, text, [], [])
-        stand_in = self.fonts.stand_in(span, text)
+        substitute = self.fonts.substitute(span, text)
         # Nothing we have draws what it lacks: switching would gain nothing.
-        undrawable = set(missing) <= set(stand_in.left_out)
+        undrawable = set(missing) <= set(substitute.left_out)
         if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
             return DrawPlan(own, kept, missing, missing)
-        return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+        return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
 
-    def stand_in_for(self, span: Span, text: str) -> substitute.StandIn:
+    def substitute_for(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` if the page won't take the span's own font after all."""
-        return self.fonts.stand_in(span, unicodedata.normalize("NFC", text))
+        return self.fonts.substitute(span, unicodedata.normalize("NFC", text))
 
     def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
         """How a redraw of the span's own text in its own font looks unlike it; None if not."""
@@ -153,7 +153,7 @@ class LinePlanner:
         # Not in the file: the look-alike draws it, its list kept to GLYPH_LIST_RANGES.
         if pooled is None:
             face = self.fonts.look_alike(span).face
-            return letter_widths(self.driver.face_font(face), substitute.face_letters(face))
+            return letter_widths(self.driver.face_font(face), face_letters(face))
 
         # Each from the copy that draws it: its width list if written by code, else the font.
         letters = sorted(pooled.letters.items())

@@ -379,13 +379,13 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     [report] = engine.assess(SpanIndex([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
-    # One that only lacks a letter can: the stand-in draws that line, as for a replace.
+    # One that only lacks a letter can: the substitute draws that line, as for a replace.
     unusable = not shipped and not report.in_file
     return FitReport(
         delta_pt=0.0,
         missing=[] if unusable else engine.missing(span, insert.text),
         left_out=engine.left_out(span, insert.text),
-        stand_in=engine.stand_in(span, insert.text),
+        substitute=engine.substitute(span, insert.text),
         unavailable=insert.font if unusable else "",
     )
 
@@ -408,6 +408,6 @@ def replace_fit(
         options=options,
         strategy=strategy_drawn(strategy, options),
         left_out=engine.left_out(span, text),
-        stand_in=engine.stand_in(span, text),
+        substitute=engine.substitute(span, text),
         asked=strategy,
     )

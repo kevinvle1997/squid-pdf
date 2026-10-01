@@ -72,7 +72,7 @@ def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
     [report] = engine.assess(SpanIndex([span]))
     left_out = engine.left_out(span, text)
     switches = [ch for ch in engine.missing(span, text) if ch not in left_out]
-    return engine.stand_in(span, text) if switches or not report.in_file else None
+    return engine.substitute(span, text) if switches or not report.in_file else None
 
 
 def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:

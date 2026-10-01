@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts import substitute
 from squidpdf.core.fonts.embedded import FontUnusable, open_embedded
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike, strip_subset
@@ -25,6 +24,7 @@ from squidpdf.core.fonts.pool import (
     google_copy,
     lacks_a_keyboard_letter,
 )
+from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
@@ -242,9 +242,9 @@ class DocumentFonts:
             self._cache.look_alikes[key] = look_alike(span.font, descriptor)
         return self._cache.look_alikes[key]
 
-    def stand_in(self, span: Span, text: str) -> substitute.StandIn:
+    def substitute(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
-        return substitute.stand_in(self.look_alike(span).face, text)
+        return substitute_for(self.look_alike(span).face, text)
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.

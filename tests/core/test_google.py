@@ -110,7 +110,7 @@ def test_a_google_copy_with_other_widths_lends_nothing(poppins_subset):
     assert_equal(_missing(poppins_subset, fetch), _LACKED, "letters Poppins lacks")
 
 
-def test_a_fetch_that_fails_leaves_the_line_to_the_stand_in_and_is_logged(
+def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
     poppins_subset, tmp_path, caplog
 ):
     """No Google copy to be had: the letters stay missing, and nothing is raised."""

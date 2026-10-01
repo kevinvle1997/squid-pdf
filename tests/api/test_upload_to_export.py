@@ -65,8 +65,8 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     assert_in("D", own["glyphs"], "letters the trimmed font draws")
     assert_not_in("é", own["glyphs"], "letters the trimmed font draws")
     times = fonts[made["font"]]
-    stand_in = (times["substitute"], times["same_widths"])
-    assert_equal(stand_in, ("Liberation Serif Regular", True), "the named font's stand-in")
+    substitute = (times["substitute"], times["same_widths"])
+    assert_equal(substitute, ("Liberation Serif Regular", True), "the named font's substitute")
 
     # Check: the browser draws the fix and is told it fits, before anything is saved.
     text = delivery["text"].replace("14 March", "2 March")
@@ -103,6 +103,6 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     exported = _drawn_rows(pdf[1], around(delivery))
     assert_equal(_pixels(preview), exported, "the preview strip and the exported page's rows")
     # The one number tracked: the fix kept the document's own font, as the check said.
-    # A stand-in would be a second font on the page; there's only the one the file had.
+    # A substitute would be a second font on the page; there's only the one the file had.
     on_page = {strip_subset(name) for _xref, _ext, _kind, name, *_ in pdf[1].get_fonts()}
     assert_equal(on_page, {strip_subset(delivery["font"])}, "fonts on the edited page")

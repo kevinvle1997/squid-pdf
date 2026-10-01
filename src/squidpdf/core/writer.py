@@ -109,11 +109,11 @@ class PageWriter:
             try:
                 resources = self._resources(span.page, drawn_in, plan.text)
             except FontUnusable as problem:  # the page wouldn't take a copy after all
-                stand_in = plans.stand_in_for(span, text)
+                substitute = plans.substitute_for(span, text)
                 self._write_in_face(
-                    span, stand_in.face, text=stand_in.text, plans=plans, setting=setting
+                    span, substitute.face, text=substitute.text, plans=plans, setting=setting
                 )
-                return [problem.reason, *said_left_out(stand_in.left_out)]
+                return [problem.reason, *said_left_out(substitute.left_out)]
             self._note_lent_letters(drawn_in, plan.text)
             self._write(
                 span,
@@ -249,7 +249,7 @@ class PageWriter:
         resource = resource_name("F", copy_source(copy))
         try:
             font_resource = self._driver.add_font(page, copy.embedded.file, resource=resource)
-        except DriverError as problem:  # the page won't take it: the stand-in draws instead
+        except DriverError as problem:  # the page won't take it: the substitute draws instead
             return FontUnusable(problem.reason)
         if copy.lent is not None:
             added_font = AddedFont(copy.lent.name, copy.embedded.file)
