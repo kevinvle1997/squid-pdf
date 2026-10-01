@@ -105,6 +105,8 @@ def written_out(name: str, value: Param, language: str) -> str:
         joiner = sentence(f"join_{name}", language, default=sentence("join_items", language))
         return joiner.join(visible(item, language) for item in value)
     if isinstance(value, float):
+        # One decimal place, written with the language's own mark: "6.8", or "6,8" where
+        # a comma is the decimal mark.
         return f"{value:.1f}".replace(".", sentence("decimal_separator", language))
     return str(value)
 
@@ -122,9 +124,18 @@ def visible(character: str, language: str = ENGLISH) -> str:
     shows = not blank and not (alone and unicodedata.combining(character))
     if shows:
         return character
-    key = f"char_u{ord(character):04x}"  # its code point: U+202F is char_u202f
+    # Its name in `language` when the catalog has one, else Unicode's.
+    return sentence(name_key(character), language, default=unicode_name(character))
+
+
+def name_key(character: str) -> str:
+    """The catalog key a character's name is under: U+202F's is `char_u202f`."""
+    return f"char_u{ord(character):04x}"
+
+
+def unicode_name(character: str) -> str:
+    """Unicode's name for a character, lower case; its code point ("U+0001") if it has none."""
     try:
-        unicode_name = unicodedata.name(character).lower()
+        return unicodedata.name(character).lower()
     except ValueError:  # control characters and unassigned code points have no name
-        unicode_name = f"U+{ord(character):04X}"
-    return sentence(key, language, default=unicode_name)
+        return f"U+{ord(character):04X}"
