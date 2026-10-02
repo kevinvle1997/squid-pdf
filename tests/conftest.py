@@ -88,17 +88,26 @@ def named_only(
     return path
 
 
-def drawn_with(path: str, *, setting: str, rotate: int = 0) -> str:
+def drawn_with(
+    path: str,
+    *,
+    setting: str = "",
+    rotate: int = 0,
+    text: str = "Terms of payment",
+    face: str | None = None,
+) -> str:
     """One line in stored, trimmed Times, drawn with `setting` (e.g. "1.5 Tc") and turned.
 
     `setting` goes in the page's drawing just before its text: letter spacing
     (Tc) and horizontal scaling (Tz) change where each letter lands, not the
-    letters, so the font still draws every one.
+    letters, so the font still draws every one. `face`, one we ship, is stored
+    instead of Times, for a `text` with letters Times lacks.
     """
+    font_file = pymupdf.Font("tiro").buffer if face is None else face_bytes(FACES[face])
     doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
-    page.insert_text((72, 300), "Terms of payment", fontname="emb", fontsize=12, rotate=rotate)
+    page.insert_font(fontname="emb", fontbuffer=font_file)
+    page.insert_text((72, 300), text, fontname="emb", fontsize=12, rotate=rotate)
     [xref] = page.get_contents()
     drawing = doc.xref_stream(xref).replace(b"BT", b"BT " + setting.encode(), 1)
     doc.update_stream(xref, drawing)

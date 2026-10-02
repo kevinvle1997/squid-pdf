@@ -45,7 +45,8 @@ GARBAGE_COLLECT = 2
 # 7: text turned, or spaced unlike its font's own widths, is approximate, not exact.
 # 8: Google's copy of a font lends the letters the file's copies lack, so fidelity changed.
 # 9: text upside down is turned, so it's approximate, not exact.
-LIBRARY_VERSION = "9"
+# 10: text in Arabic or Hebrew is approximate, not exact.
+LIBRARY_VERSION = "10"
 
 # Google's font collection (github.com/google/fonts) at this commit: the family
 # list in `fonts/google-families.json` is read from it, and every copy is fetched

@@ -163,7 +163,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "turned_text" | "spaced_text" | "undrawable_letters";
+            code: "turned_text" | "right_to_left_text" | "spaced_text" | "undrawable_letters";
             /** Params */
             params: {
                 [key: string]: components["schemas"]["Param"];

@@ -24,7 +24,9 @@ Fidelity = Literal[
 
 # Each way the file's own font draws an edit unlike the page, by the key of the sentence
 # that says it: an approximate span's `why`. A plain alias: pydantic reads it.
-ApproximateReason = Literal["turned_text", "spaced_text", "undrawable_letters"]
+ApproximateReason = Literal[
+    "turned_text", "right_to_left_text", "spaced_text", "undrawable_letters"
+]
 APPROXIMATE_REASONS: tuple[ApproximateReason, ...] = get_args(ApproximateReason)
 
 

@@ -143,8 +143,9 @@ class Engine:
 
         Exact only if the file's copies of the span's font redraw its own text
         as the page shows it now: `draw` swaps the run otherwise, so a redraw of
-        it would be in the substitute, and it draws level and closed up, so a
-        line turned or spaced out would come back unlike itself.
+        it would be in the substitute, and it draws level, left to right and
+        closed up, so a line turned, in Arabic or Hebrew, or spaced out would
+        come back unlike itself.
         """
         return [self._assess_one(span) for span in index]
 

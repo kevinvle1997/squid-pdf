@@ -41,6 +41,7 @@ google_unreadable = "The file's copy of this font can't draw every letter here, 
 
 # Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
+right_to_left_text = "This text has Arabic or Hebrew in it, and edits are drawn left to right, so an edit here will look different."
 spaced_text = "This text is spaced out or stretched in a way edits don't copy yet, so an edit here will look different."
 undrawable_letters = "No font we have can draw {letters} here, so an edit here leaves them out."
 
