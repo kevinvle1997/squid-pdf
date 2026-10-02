@@ -1,7 +1,7 @@
-"""Changing text, and removing it.
+"""Changing text, removing it, and adding new text.
 
-Replace is remove-then-redraw; Redact is remove-and-stop. Same machinery, so one
-module owns both.
+Replace is remove-then-redraw; Redact is remove-and-stop; Insert draws new text
+where the document has none. Same machinery, so one package owns all three.
 """
 
 from __future__ import annotations
