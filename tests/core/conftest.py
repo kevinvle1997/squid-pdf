@@ -279,6 +279,67 @@ def coded_type0(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="module")
+def type0_listed_apart(tmp_path_factory) -> str:
+    """ABBA in a Type0 whose list of inner fonts is an object of its own, as some writers do.
+
+    Its description says serif (Flags 34) and slanted (ItalicAngle -12), which
+    only a font read through that list learns: a letter it lacks then draws in
+    a serif italic.
+    """
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("coded") / "listed-apart.pdf"),
+        {
+            "file": _truetype(None),
+            "to_unicode": _to_unicode(
+                "<0000> <FFFF>",
+                "1 beginbfrange <0001> <0003> [<0041> <0042> <0020>] endbfrange"
+                " 1 beginbfchar <0004> <0043> endbfchar",
+            ),
+            "content": b"BT /F1 12 Tf 172 700 Td <0001000200020001> Tj ET",
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded")
+            .replace("/Flags 4", "/Flags 34")
+            .replace("/ItalicAngle 0", "/ItalicAngle -12"),
+            "cid": "<</Type/Font/Subtype/CIDFontType2/BaseFont/Coded"
+            "/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+            f"/FontDescriptor {{descriptor}}/DW 1000/W[1[{_WIDTHS}]]/CIDToGIDMap/Identity>>",
+            "inner_fonts": "[{cid}]",
+            "font": "<</Type/Font/Subtype/Type0/BaseFont/Coded/Encoding/Identity-H"
+            "/DescendantFonts {inner_fonts}/ToUnicode {to_unicode}>>",
+        },
+    )
+
+
+@pytest.fixture(
+    scope="module",
+    params=["9999 0 R", "[9999 0 R]"],
+    ids=["its list of inner fonts", "its inner font"],
+)
+def type0_pointing_nowhere(tmp_path_factory, request) -> str:
+    """coded_under's ABBA and BA, with a damaged Type0 of the same name listed first.
+
+    The Type0's list of inner fonts, or the inner font in it, points past the
+    file's last object, as a damaged file can. Listed first under the name the
+    line's font has, it's the font asked for a description.
+    """
+    folder = tmp_path_factory.mktemp("nowhere")
+    doc = pymupdf.open(coded_under(str(folder / "coded.pdf"), "F1"))
+    page = doc[0]
+    _value_type, font = doc.xref_get_key(page.xref, "Resources/Font/F1")
+    damaged = doc.get_new_xref()
+    doc.update_object(
+        damaged,
+        "<</Type/Font/Subtype/Type0/BaseFont/Coded/Encoding/Identity-H"
+        f"/DescendantFonts {request.param}>>",
+    )
+    doc.xref_set_key(page.xref, "Resources/Font", f"<</F0 {damaged} 0 R/F1 {font}>>")
+    path = str(folder / "pointing-nowhere.pdf")
+    doc.save(path)
+    return path
+
+
+@pytest.fixture(scope="module")
 def corrupt(tmp_path_factory) -> str:
     """ABBA in a stored TrueType whose font program is garbage: MuPDF can't open it."""
     return _embed_by_hand(

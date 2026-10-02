@@ -341,14 +341,32 @@ class _MuPDFDriver:
         )
 
     def _describing_font(self, xref: int) -> int | None:
-        """Where the font's description lives: the font itself, or a Type0's inner font."""
+        """Where the font's description lives: the font itself, or a Type0's inner font.
+
+        None when a Type0's inner font isn't an object of its own in the file.
+        """
         value_type, value = self.doc.xref_get_key(xref, "DescendantFonts")
         # A simple font describes itself.
-        if value_type != "array":
+        if value_type not in ("array", "xref"):
             return xref
+        # The list of inner fonts kept as an object of its own ("12 0 R"): read it there.
+        if value_type == "xref":
+            list_xref = _object_number(value)
+            # A damaged file can point past its last object: there's no list to read.
+            if not self._has_object(list_xref):
+                return None
+            value = self.doc.xref_object(list_xref, compressed=True)
         inner = _FIRST_REFERENCE.match(value)
-        # None when written out in place: rare, and not worth it.
-        return int(inner.group(1)) if inner else None
+        # Written out in place: rare, and not worth it.
+        if inner is None:
+            return None
+        inner_xref = int(inner.group(1))
+        # Pointing past the file's last object, as a damaged file can: nothing to describe it.
+        return inner_xref if self._has_object(inner_xref) else None
+
+    def _has_object(self, xref: int) -> bool:
+        """Whether the file has an object numbered `xref`: none is 0, or past its last."""
+        return 0 < xref < self.doc.xref_length()
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
@@ -548,18 +566,28 @@ class _MuPDFDriver:
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         owner = self._describing_font(xref)
-        # Its inner font written out in place: MuPDF never adds one so, so it's someone else's.
+        # Its inner font in place, or nowhere: MuPDF never adds one so, so it's someone else's.
         if owner is None:
-            _value_type, base_font = self.doc.xref_get_key(xref, "BaseFont")
-            said = Message("face_not_trimmed", {"font": base_font.lstrip("/")})
-            raise DriverError(said, debug=f"font {xref} has its inner font in place")
+            raise DriverError(
+                self._why_kept_whole(xref), debug=f"font {xref} has no inner font of its own"
+            )
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self.doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
-        value = next(value for value_type, value in stored if value_type == "xref")
-        file_xref = int(value.split()[0])  # "7 0 R" -> 7
+        value = next((value for value_type, value in stored if value_type == "xref"), None)
+        # No file where MuPDF stores ours: someone else's font.
+        if value is None:
+            raise DriverError(
+                self._why_kept_whole(xref), debug=f"font {xref} has no file to swap"
+            )
+        file_xref = _object_number(value)
         self.doc.update_stream(file_xref, font_file)
-        # A TrueType file states its size before compression, too.
+        # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
+
+    def _why_kept_whole(self, xref: int) -> Message:
+        """Why font `xref` stays whole in the saved file, naming it as the file does."""
+        _value_type, base_font = self.doc.xref_get_key(xref, "BaseFont")
+        return Message("face_not_trimmed", {"font": base_font.lstrip("/")})
 
     def has_tags(self) -> bool:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
@@ -638,6 +666,11 @@ def _shows_text(kind: str, value: object) -> bool:
 def _letters_inside(letters: list[_Letter], box: Rect) -> str:
     """The letters whose middle is inside `box`, in order."""
     return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
+
+
+def _object_number(reference: str) -> int:
+    """The object a reference points at: "7 0 R" -> 7."""
+    return int(reference.split()[0])
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:

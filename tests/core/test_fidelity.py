@@ -240,6 +240,40 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
 
 
+def test_a_type0_whose_inner_font_is_listed_apart_keeps_its_description(
+    type0_listed_apart, tmp_path
+):
+    """Read as a simple font, it showed no description: its serif and slant were lost.
+
+    The list of inner fonts (DescendantFonts) was read only when written in place.
+    """
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(type0_listed_apart) as engine:
+        span = next(iter(engine.index()))
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
+        engine.draw(span, "ABC")
+        engine.save(out)
+
+    [drawn] = _drawn(out)
+    expected = ("ABC", saved_as("Liberation Serif Italic"))
+    assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
+
+
+def test_a_type0_whose_inner_font_points_nowhere_doesnt_stop_an_edit(
+    type0_pointing_nowhere, tmp_path
+):
+    """Asked for its description, the damaged font raised "bad xref": the edit never saved."""
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(type0_pointing_nowhere) as engine:
+        span = next(span for span in engine.index() if span.text == "ABBA")
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
+        engine.draw(span, "BA AB")
+        engine.save(out)
+
+    lines = sorted(_text(drawn) for drawn in _drawn(out))
+    assert_equal(lines, ["BA", "BA AB"], "what each line reads")
+
+
 def _first_span(engine: Engine) -> Span:
     """The first span on page 0: the merged fixtures' one line there."""
     return next(span for span in engine.index() if span.page == 0)
