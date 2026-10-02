@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from itertools import chain, groupby
 
 from squidpdf.core.app.message import Message
@@ -26,6 +27,7 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
+    "KeptWidths",
     "FontCopy",
     "CodedRun",
     "PooledFont",
@@ -39,15 +41,41 @@ __all__ = [
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.
 _GOOGLE_COPIES_KEPT = 32
 
-# Each Google copy's letters and widths, by a digest of the file, oldest first. A
-# process keeps them: finding which letters really draw takes tens of milliseconds
-# a request, and the same bytes always give the same answer.
-_google_widths: dict[bytes, dict[str, float]] = {}
-
 # The copies that may lend the own copy letters, in the order they lend, given the
 # letters lent so far: whether a later one is worth opening can depend on them. A
 # copy from outside the file that can't be had comes as why, to be said.
 type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
+
+
+@dataclass(slots=True)
+class KeptWidths:
+    """Each Google copy's letters and widths, by a digest of the file, oldest first.
+
+    A process keeps them (`kept_widths`): finding which letters really draw is
+    slow, and the same bytes always give the same answer.
+    It keeps the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
+    """
+
+    by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
+
+    def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
+        """The widths of the copy `digest` names, measured on first use."""
+        # Kept already: this process has measured these bytes.
+        if digest in self.by_digest:
+            return self.by_digest[digest]
+        # Full: forget the one kept longest.
+        if len(self.by_digest) >= _GOOGLE_COPIES_KEPT:
+            del self.by_digest[next(iter(self.by_digest))]
+        widths = self.by_digest[digest] = make()
+        return widths
+
+    def forget(self) -> None:
+        """Forget every copy's widths, as a fresh record."""
+        self.by_digest.clear()
+
+
+# This process's widths of Google's copies.
+kept_widths = KeptWidths()
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,21 +279,18 @@ def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> Font
 def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
 
-    Worked out once per process for each file, keeping the latest _GOOGLE_COPIES_KEPT.
-    By the bytes, not the file's name: a test can hand in another font under it.
+    Worked out once per process for each file (`kept_widths`). By the bytes, not
+    the file's name: a test can hand in another font under it.
     """
     digest = hashlib.sha256(embedded.file).digest()
-    # Kept already: this process has measured these bytes.
-    if digest in _google_widths:
-        return _google_widths[digest]
-    # Full: forget the one kept longest, so a long-lived worker stays small.
-    if len(_google_widths) >= _GOOGLE_COPIES_KEPT:
-        del _google_widths[next(iter(_google_widths))]
+    return kept_widths.widths(digest, partial(measured_widths, embedded))
+
+
+def measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter Google's copy draws that the browser can preview, measured in it."""
     program = embedded.program
     letters = [ch for ch in embedded.coverage.drawable() if in_glyph_list(ch)]
-    widths = {ch: program.advance(ch) * EM for ch in letters}
-    _google_widths[digest] = widths
-    return widths
+    return {ch: program.advance(ch) * EM for ch in letters}
 
 
 def in_glyph_list(ch: str) -> bool:
