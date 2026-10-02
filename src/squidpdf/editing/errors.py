@@ -59,11 +59,3 @@ class RedactionConflict(Problem):
 
     type = "redaction_conflict"
     status = 422
-
-
-# Not raised yet: kept for the browser, which already branches on it.
-class _FontMismatch(Problem):
-    """A font that isn't the one the document uses."""
-
-    type = "font_mismatch"
-    status = 422
