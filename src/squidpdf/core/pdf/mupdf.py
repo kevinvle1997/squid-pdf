@@ -60,6 +60,10 @@ from squidpdf.core.types import (
 
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
+# The bytes a PDF name holds as they are: printable, and none that ends a name or
+# starts an escape. Any other is written #xx.
+_PRINTABLE = range(0x21, 0x7F)
+_ENDS_OR_ESCAPES_A_NAME = b"()<>[]{}/%#"
 
 # The object the first entry of an array points at: "[15 0 R]" -> 15.
 _FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
@@ -459,7 +463,7 @@ class _MuPDFDriver:
         x, y = self.file.to_pdf_space(page, origin)
         resources = self._resources_of(page, {run.xref for run in runs})
         shown = " ".join(
-            f"/{resources[run.xref]} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            f"{_written_name(resources[run.xref])} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
@@ -682,6 +686,22 @@ def _lifted(letter: _Letter) -> list[tuple[float, float]]:
         (middle_x + up_x * height * lift, middle_y + up_y * height * lift)
         for lift in _STRIP_LIFTS
     ]
+
+
+def _written_name(resource: str) -> str:
+    """The resource name `resource` as a page's drawing writes it: "/", then each byte, escaped.
+
+    PyMuPDF hands names back decoded ("/F#201" as "F 1"), a byte that isn't
+    UTF-8 as a stand-in character (a surrogate), so the bytes come back exactly.
+    """
+    raw = resource.encode("utf-8", "surrogateescape")
+    plain = (chr(byte) if _is_plain(byte) else f"#{byte:02X}" for byte in raw)
+    return "/" + "".join(plain)
+
+
+def _is_plain(byte: int) -> bool:
+    """Whether a PDF name can hold `byte` as it is."""
+    return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

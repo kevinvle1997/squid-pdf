@@ -23,7 +23,7 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
-from tests.core.conftest import MERGED_TEXTS
+from tests.core.conftest import MERGED_TEXTS, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,
@@ -192,6 +192,27 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     )
     with open_pdf(out) as saved:
         assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
+
+
+@pytest.mark.parametrize(
+    "resource",
+    ["F#201", "F#23AB", "F#E9"],
+    ids=["a space", "a #", "a byte that isn't UTF-8"],
+)
+def test_a_font_whose_resource_name_has_a_space_or_a_hash_redraws_in_itself(tmp_path, resource):
+    """Written as read, "/F 1 12 Tf" broke the page's drawing: the line drew other letters."""
+    path = coded_under(str(tmp_path / "named.pdf"), resource)
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(path) as engine:
+        span = next(span for span in engine.index() if span.text == "ABBA")
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
+        engine.draw(span, "BA AB")
+        engine.save(out)
+
+    lines = sorted((_text(drawn), drawn["font"]) for drawn in _drawn(out))
+    assert_equal(
+        lines, [("BA", "Coded"), ("BA AB", "Coded")], "what each line reads, and in what"
+    )
 
 
 def test_widths_by_code_come_from_the_font_dict(coded):

@@ -113,8 +113,9 @@ def _embed_by_hand(
     box: str | None = None,
     rotate: int = 0,
     resources: str = "",
+    resource: str = "F1",
 ) -> str:
-    """One page drawing streams["content"] with /F1 as dicts["font"].
+    """One page drawing streams["content"] in dicts["font"], filed under the name `resource`.
 
     Each dict names another object as {its key}; the font program is {file}.
     `resources` goes into the page's resources beside the font.
@@ -129,7 +130,9 @@ def _embed_by_hand(
         doc.update_object(xref[name], obj.format(**refs))
     for name, data in streams.items():
         doc.update_stream(xref[name], data)
-    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>{resources}>>")
+    doc.xref_set_key(
+        page.xref, "Resources", f"<</Font<</{resource} {refs['font']}>>{resources}>>"
+    )
     doc.xref_set_key(page.xref, "Contents", refs["content"])
     if box is not None:
         doc.xref_set_key(page.xref, "MediaBox", box)
@@ -176,6 +179,33 @@ def coded_symbol(tmp_path_factory) -> str:
             f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
         },
         box=_OFFSET_BOX,
+    )
+
+
+def coded_under(path: str, resource: str) -> str:
+    """The symbol fixture's ABBA, and BA below it, in a font under the resource name `resource`.
+
+    `resource` is written as a PDF writes a name, a space as #20. Two lines, so
+    that erasing one leaves the font on the page, under that name.
+    """
+    return _embed_by_hand(
+        path,
+        {
+            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
+            "to_unicode": _to_unicode(
+                "<00> <FF>",
+                "1 beginbfrange <20> <21> <0041> endbfrange"
+                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
+            ),
+            "content": f"BT /{resource} 12 Tf 172 700 Td <20212120> Tj ET"
+            f" BT /{resource} 12 Tf 172 600 Td <2120> Tj ET".encode(),
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
+            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
+            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
+        },
+        resource=resource,
     )
 
 
