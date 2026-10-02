@@ -326,7 +326,7 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
 
 
 def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkeypatch, capsys):
-    """The tests read fixtures/sample.pdf, so a long contract must be saved elsewhere."""
+    """deploy/check.sh and the browser's end-to-end test read the sample, so no contract."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "fixtures").mkdir()
 

@@ -76,7 +76,8 @@ _MARKS: dict[Fidelity, str] = {
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
 _NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
 _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
-_SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
+# The committed sample: the browser's end-to-end test and deploy/check.sh read it.
+_SAMPLE = "fixtures/sample.pdf"
 
 
 def _opened(pdf: str) -> Engine:
@@ -409,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
     overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
-    # The tests read the committed sample, so a long contract never lands on it.
+    # The browser's end-to-end test and deploy/check.sh read the sample: no contract over it.
     if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
         parser.error(f"--pages would replace {_SAMPLE}; name another file")
     try:
