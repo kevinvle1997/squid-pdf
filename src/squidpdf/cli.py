@@ -218,8 +218,11 @@ def _cmd_redact(args: argparse.Namespace) -> int:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    """Green rate across a corpus. Below 80% the promise inverts into an apology."""
-    rows: list[tuple[str, float | None, str]] = []
+    """Green rate across a corpus. Below 80% the promise inverts into an apology.
+
+    Exits 1 when it could read no file, so a script sees nothing was measured.
+    """
+    rows: list[tuple[str, float | None, str]] = []  # a file, its green rate, a note
     total = exact_count = 0
     for path in args.pdfs:
         try:
@@ -248,7 +251,9 @@ def _cmd_report(args: argparse.Namespace) -> int:
         overall = exact_count / total
         colour = _GREEN if overall >= GREEN_RATE_TARGET else _YELLOW
         print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
-    return 0
+    # A rate of None is a file that couldn't be read.
+    read_any = any(rate is not None for _path, rate, _note in rows)
+    return 0 if read_any else 1
 
 
 def _rate_colour(rate: float) -> str:

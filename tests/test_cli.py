@@ -199,6 +199,17 @@ def test_report_rates_each_file_and_carries_on_past_a_bad_one(pdf, tmp_path, cap
     assert_in("spans keep the original font", out, "the report's overall line")
 
 
+def test_report_fails_when_it_could_read_no_file(tmp_path, capsys):
+    """A script running it sees that nothing was measured."""
+    broken = tmp_path / "broken.pdf"
+    broken.write_text("not a pdf")
+
+    code = main(["report", str(broken)])
+
+    assert_equal(code, 1, "exit code of `squidpdf report` with no file it could read")
+    assert_in("failed", capsys.readouterr().out, "the report row for the bad file")
+
+
 def test_fixture_writes_a_pdf_the_other_commands_can_read(tmp_path, capsys):
     out_pdf = tmp_path / "sample.pdf"
 
