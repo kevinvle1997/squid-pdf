@@ -438,8 +438,17 @@ def test_every_way_a_span_can_be_approximate_has_its_sentence():
         ("1.5 Tc", 0, "approximate", "spaced_text"),
         ("80 Tz", 0, "approximate", "spaced_text"),
         ("", 90, "approximate", "turned_text"),
+        ("", 180, "approximate", "turned_text"),
+        ("", 270, "approximate", "turned_text"),
     ],
-    ids=["as its font sets it", "letter spacing", "narrowed", "turned to read upward"],
+    ids=[
+        "as its font sets it",
+        "letter spacing",
+        "narrowed",
+        "turned to read upward",
+        "turned upside down",
+        "turned to read downward",
+    ],
 )
 def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(
     tmp_path, setting, rotate, state, why

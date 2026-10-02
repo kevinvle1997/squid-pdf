@@ -44,7 +44,8 @@ GARBAGE_COLLECT = 2
 # 6: more families (Poppins, Open Sans, FreeSans, Latin Modern...), so more look-alikes changed.
 # 7: text turned, or spaced unlike its font's own widths, is approximate, not exact.
 # 8: Google's copy of a font lends the letters the file's copies lack, so fidelity changed.
-LIBRARY_VERSION = "8"
+# 9: text upside down is turned, so it's approximate, not exact.
+LIBRARY_VERSION = "9"
 
 # Google's font collection (github.com/google/fonts) at this commit: the family
 # list in `fonts/google-families.json` is read from it, and every copy is fetched
