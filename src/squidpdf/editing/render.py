@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import math
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
@@ -46,12 +47,11 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class RenderController:
     """Render, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """Draw on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it draws, off the server's own thread
 
     async def render(
         self,
@@ -94,7 +94,7 @@ class RenderController:
         task = partial(
             draw_regions, str(folder), edits=edits, regions=regions, drawn_pages=drawn_pages
         )
-        return await self._workers.run(RENDER_TIMEOUT_S, task)
+        return await self.workers.run(RENDER_TIMEOUT_S, task)
 
 
 def draw_regions(
@@ -133,7 +133,7 @@ def said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
 
     Said now, while the user can still undo it: export refuses the file.
     """
-    redacted = [step.span for step in steps if isinstance(step, Erase)]
+    redacted = tuple(step.span for step in steps if isinstance(step, Erase))
     verdicts = RedactionController(redacted).verdicts(engine)
     return [
         SpanNotice(span_id, Message("form_field_not_redacted"))

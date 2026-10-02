@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
@@ -18,12 +19,11 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class PageController:
     """A page image, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """Draw on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it draws, off the server's own thread
 
     async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> Reply[bytes]:
         """Page `page` as a PNG, at `scale` or less if the page is very large."""
@@ -40,7 +40,7 @@ class PageController:
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
         """Draw the page on a worker."""
         task = partial(draw_page, str(folder), page=page, scale=scale)
-        return await self._workers.run(PAGE_IMAGE_TIMEOUT_S, task)
+        return await self.workers.run(PAGE_IMAGE_TIMEOUT_S, task)
 
 
 def draw_page(folder: str, page: int, scale: float) -> bytes:

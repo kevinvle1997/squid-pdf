@@ -9,6 +9,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
@@ -38,12 +39,11 @@ SKIPPED_HEADER = "Squid-Skipped-Edits"
 NOTICES_HEADER = "Squid-Notices"
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class ExportController:
     """Export, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """Make files on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it makes files, off the server's own thread
 
     async def export(
         self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, said_in: str
@@ -76,7 +76,7 @@ class ExportController:
     ) -> Exported:
         """Make the PDF on a worker."""
         task = partial(make_pdf, str(folder), str(scratch), edits=edits, pages=pages)
-        return await self._workers.run(EXPORT_TIMEOUT_S, task)
+        return await self.workers.run(EXPORT_TIMEOUT_S, task)
 
 
 def make_pdf(

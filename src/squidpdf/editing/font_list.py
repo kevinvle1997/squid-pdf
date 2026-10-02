@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 import orjson
 
@@ -20,12 +21,11 @@ __all__ = [
 _font_list_tasks: dict[str, asyncio.Task[bytes]] = {}
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class FontListController:
     """The font list, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """List the fonts on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it lists the fonts, off the server's own thread
 
     async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
@@ -45,7 +45,7 @@ class FontListController:
 
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
-        return await self._workers.run(FONT_LIST_TIMEOUT_S, measure_faces)
+        return await self.workers.run(FONT_LIST_TIMEOUT_S, measure_faces)
 
 
 def forget_if_failed(measuring: asyncio.Task[bytes]) -> None:
