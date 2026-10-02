@@ -143,7 +143,7 @@ class PdfDriver(Protocol):
         ...
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`."""
+        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
         ...
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:

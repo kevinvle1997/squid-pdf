@@ -566,31 +566,48 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     assert_equal(_said(applied.notices), [notice], "what render tells the user")
 
 
+# What each link on `_linked`'s page does, as the file writes it.
+_LINKS = {
+    # The edited line's.
+    "address": "<</S/URI/URI(mailto:sales@example.com)>>",
+    # The other line's, which no edit touches: a form reset, which PyMuPDF's list of links
+    # leaves out, so a link looked for in that list was never found to delete.
+    "reset": "<</S/ResetForm>>",
+}
+
+
 def _linked(path: str) -> str:
-    """A line whose address is a link, and a link elsewhere on the page."""
+    """A line whose address is a link, and a link on a second line, written as `_LINKS` says."""
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 100), "Contact: sales@example.com", fontname="helv", fontsize=12)
-    page.insert_text((72, 200), "Terms online", fontname="helv", fontsize=12)
-    for text, uri in (
-        ("sales@example.com", "mailto:sales@example.com"),
-        ("Terms", "https://x.test"),
-    ):
-        [area] = page.search_for(text)
-        page.insert_link({"kind": pymupdf.LINK_URI, "from": area, "uri": uri})
+    page.insert_text((72, 200), "Clear the form", fontname="helv", fontsize=12)
+    areas = [page.search_for("sales@example.com")[0], page.search_for("Clear the form")[0]]
+    links = []
+    for action, area in zip(_LINKS.values(), areas, strict=True):
+        x0, y0, x1, y1 = area * page.transformation_matrix  # in the PDF's own coordinates
+        link = doc.get_new_xref()
+        doc.update_object(
+            link, f"<</Type/Annot/Subtype/Link/Rect[{x0} {y0} {x1} {y1}]/A{action}>>"
+        )
+        links.append(f"{link} 0 R")
+    doc.xref_set_key(page.xref, "Annots", "[" + " ".join(links) + "]")
     doc.save(path)
     return path
 
 
+def _actions_on(path: str) -> list[str]:
+    """What each link on the first page does, as the file writes it, sorted."""
+    doc = pymupdf.open(path)
+    return sorted(doc.xref_get_key(xref, "A")[1] for xref, _kind, _name in doc[0].annot_xrefs())
+
+
 @pytest.mark.parametrize(
-    ("edit", "links"),
-    [
-        ("replace", ["mailto:sales@example.com", "https://x.test"]),
-        ("redact", ["https://x.test"]),
-    ],
+    ("edit", "kept"),
+    [("replace", ["address", "reset"]), ("redact", ["reset"])],
     ids=["a replaced line keeps its link", "a redacted one loses it: it can carry the text"],
 )
-def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
+def test_an_edit_keeps_the_links_it_should(tmp_path, edit, kept):
     path = _linked(str(tmp_path / "linked.pdf"))
     out = str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
@@ -604,8 +621,8 @@ def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
         _apply(engine, [change], index)
         engine.save(out)
 
-    left = [link["uri"] for link in pymupdf.open(out)[0].get_links()]
-    assert_equal(sorted(left), sorted(links), "the page's links")
+    expected = sorted(_LINKS[name] for name in kept)
+    assert_equal(_actions_on(out), expected, "what each link on the page does")
 
 
 @pytest.mark.parametrize("turn_cw", [90, 180, 270])

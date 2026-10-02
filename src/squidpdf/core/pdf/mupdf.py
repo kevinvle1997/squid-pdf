@@ -442,12 +442,8 @@ class _MuPDFDriver:
                 pdf_page.insert_link(link)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`."""
-        pdf_page = self.doc[page]
-        areas = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
-        for link in pdf_page.get_links():
-            if any(pymupdf.Rect(link["from"]).intersects(area) for area in areas):
-                pdf_page.delete_link(link)
+        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+        self.file.drop_links(page, boxes)
 
     def write_codes(
         self,
