@@ -134,11 +134,14 @@ class PdfDriver(Protocol):
         """Delete the letters whose middle is inside these boxes, for real.
 
         Returns the letters still inside each box, as `text_in` reads them: those
-        it couldn't reach, as a form field draws its value, not the page. Images,
-        drawings and links stay, and so does every font the driver named on the
-        page, under the same resource name: each `add_font` put there, and each of
-        the file's own a `write_codes` named again. Any other font of the file's
-        own that no text on the page uses any more may go.
+        it couldn't reach, as a form field draws its value, not the page. Images
+        and drawings stay, links stay as they were, and so does every font the
+        driver named on the page, under the same resource name: each `add_font` put
+        there, and each of the file's own a `write_codes` named again. Any other
+        font of the file's own that no text on the page uses any more may go. A
+        comment written on the page over the erased letters (a FreeText) goes with
+        them, whatever it says: it can carry the text, and a redacted word kept in
+        it would stay in the file.
         """
         ...
 

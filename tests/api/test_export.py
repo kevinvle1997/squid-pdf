@@ -231,6 +231,39 @@ def test_a_redaction_on_a_page_left_out_does_not_fail_the_export(mine, three):
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
 
 
+@pytest.fixture(scope="module")
+def filled_in() -> bytes:
+    """A form filled in with a comment: "Name:" on the page, the answer a comment beside it.
+
+    The comment draws its own words, which the upload lists as text like the page's.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Name:", fontname="helv", fontsize=12)
+    page.add_freetext_annot(pymupdf.Rect(120, 88, 260, 104), "Jane Doe", fontsize=12)
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("edit", "lines"),
+    [
+        ({"kind": "redact"}, ["Name:"]),
+        ({"kind": "replace", "text": "John Roe"}, ["Name:", "John Roe"]),
+    ],
+    ids=["a redacted answer goes", "a replaced one reads as typed"],
+)
+def test_an_answer_filled_in_with_a_comment_edits_like_the_page_text(
+    mine, filled_in, edit, lines
+):
+    """The edit takes the comment with the words it draws: it can carry them."""
+    doc = upload(mine, filled_in).json()
+    answer = span_starting(doc, 0, "Jane Doe")
+
+    response = _export(mine, doc, [{**edit, "span_id": answer["id"]}])
+
+    assert_equal(_lines(_opened(response)), [lines], "the page's lines")
+
+
 def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(mine, tagged):
     """The tags point at every page, so leaving one out drops them: never silently."""
     doc = upload(mine, Path(tagged).read_bytes()).json()

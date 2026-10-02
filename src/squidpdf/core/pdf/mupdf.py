@@ -413,33 +413,26 @@ class _MuPDFDriver:
         erased as a thin strip just above its own letters' baselines, which other
         lines' boxes don't reach. A box that still has letters afterwards (a font
         whose boxes sit oddly) is erased whole, so old text is never left under
-        new. MuPDF also deletes any link a redaction touches, and any font no text
-        on the page uses any more: the links go back, and so do the fonts this
-        driver named on the page.
+        new. MuPDF also deletes every link a redaction touches, and any font no
+        text on the page uses any more: the links go back as they were, and so do
+        the fonts this driver named on the page. A comment written on the page over
+        the erased letters (a FreeText) goes with them, whatever it says: it can
+        carry the text.
         """
-        links = self.doc[page].get_links()
         letters = self._letters(page)
-        # No letter's middle inside: erase the whole box, as nothing else would.
-        self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
-        left = self.text_in(page, boxes)
-        missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
-        # Read again only after a second erase: most boxes are clear after the first.
-        if missed:
-            self.file.redact(page, missed)
+        with self.file.links_kept(page):
+            # No letter's middle inside: erase the whole box, as nothing else would.
+            self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
             left = self.text_in(page, boxes)
-        self._restore_links(page, links)
+            missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
+            # Read again only after a second erase: most boxes are clear after the first.
+            if missed:
+                self.file.redact(page, missed)
+                left = self.text_in(page, boxes)
         # .get: a page the driver named no font on.
         for resource, xref in self.named.get(self.doc[page].xref, {}).items():
             self.file.restore_font(page, resource, xref)
         return left
-
-    def _restore_links(self, page: int, links: list[dict]) -> None:
-        """Add back any of `links`, as get_links read them, that the page no longer has."""
-        pdf_page = self.doc[page]
-        kept = {_link_key(link) for link in pdf_page.get_links()}
-        for link in links:
-            if _link_key(link) not in kept:
-                pdf_page.insert_link(link)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
@@ -641,13 +634,6 @@ def _shows_text(kind: str, value: object) -> bool:
 def _letters_inside(letters: list[_Letter], box: Rect) -> str:
     """The letters whose middle is inside `box`, in order."""
     return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
-
-
-def _link_key(link: dict) -> tuple[tuple[str, str], ...]:
-    """What a link from get_links is: where it sits and where it goes, not its object number."""
-    return tuple(
-        sorted((key, repr(value)) for key, value in link.items() if key not in ("xref", "id"))
-    )
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
