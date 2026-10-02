@@ -5,10 +5,13 @@ from __future__ import annotations
 import pickle
 import subprocess
 import sys
+from collections.abc import Iterator
 from functools import partial
+from itertools import product
 
 import pytest
 
+from squidpdf.api.errors.http import API_ERRORS
 from squidpdf.core import (
     ErrorController,
     Failure,
@@ -61,6 +64,32 @@ def test_the_error_controller_asks_its_rows_in_order_and_a_layer_above_adds_its_
         ("not_found", "a Problem, as it was raised"),
     ]
     assert_equal(said, expected, "what each failure means")
+
+
+def _types_in(raised: type[Exception] | tuple[type[Exception], ...]) -> tuple[type, ...]:
+    """The exception types a row claims, whether it names one or several."""
+    if isinstance(raised, tuple):  # several: a row claims each of them
+        return raised
+    return (raised,)
+
+
+def _each_clash(rows: tuple[Failure, ...]) -> Iterator[str]:
+    """Each row that claims a type an earlier row already claims, and the row above it."""
+    for below, later in enumerate(rows):
+        for above, earlier in enumerate(rows[:below]):
+            claims = product(_types_in(later.raised), _types_in(earlier.raised))
+            for claimed, broader in claims:
+                if issubclass(claimed, broader):
+                    yield (
+                        f"row {below} ({claimed.__name__}) "
+                        f"sits below row {above} ({broader.__name__})"
+                    )
+
+
+def test_no_failure_row_sits_below_a_broader_one():
+    """The first row that matches wins: a row below one that claims its type never matches."""
+    shadowed = list(_each_clash(API_ERRORS.rows))
+    assert_equal(shadowed, [], "rows no earlier row already claims")
 
 
 def test_a_failure_no_row_claims_goes_up_as_it_is_and_the_top_calls_it_a_server_error():
