@@ -116,32 +116,31 @@ type Fetch = Callable[[GoogleFile], bytes | None]
 type RetryAt = dict[str, float]
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class GoogleFontController:
     """Google's copy of a document's fonts: matched, fetched and opened, once per file."""
 
-    def __init__(self, driver: PdfDriver, *, fetch: Fetch) -> None:
-        """Match fonts in `driver`'s file, and get each file Google has by `fetch`."""
-        self._driver = driver
-        self._fetch = fetch
-        # Each file, opened, or why it can't be had, by `GoogleFile.source`.
-        self._fonts: dict[str, EmbeddedFont | FontUnusable] = {}
+    driver: PdfDriver  # the document's, whose fonts are matched
+    fetch: Fetch  # how each file Google has is got
+    # Each file, opened, or why it can't be had, by `GoogleFile.source`.
+    fonts: dict[str, EmbeddedFont | FontUnusable] = field(default_factory=dict, repr=False)
 
     def file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
-        return google_file(font.name, self._driver.font_descriptor(font.xref))
+        return google_file(font.name, self.driver.font_descriptor(font.xref))
 
     def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
         """`file`, fetched and opened once, or why it can't be had or opened."""
-        return remembered(self._fonts, file.source, partial(self._open, file))
+        return remembered(self.fonts, file.source, partial(self._open, file))
 
     def _open(self, file: GoogleFile) -> EmbeddedFont:
         """`file`, fetched and opened. Raises FontUnusable when it can't be had or opened."""
-        font_file = self._fetch(file)
+        font_file = self.fetch(file)
         # None, or empty: MuPDF would quietly open a font of its own for no bytes.
         if not font_file:
             raise FontUnusable(Message("google_not_fetched"))
         try:
-            program = self._driver.open_font(font_file)
+            program = self.driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it, though git vouched for it
             raise FontUnusable(Message("google_unreadable")) from problem
         return EmbeddedFont(program, font_file, Coverage(font_file), None)
@@ -259,7 +258,7 @@ def fetched(
     return font_file
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Fetching:
     """One download under way in the background, and what it tells the one waiting on it."""
 

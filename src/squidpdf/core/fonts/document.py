@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.embedded import FontUnusable, open_embedded, remembered
+from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike, strip_subset
 from squidpdf.core.fonts.pool import (
@@ -54,7 +54,10 @@ NO_SOURCES = FontSources()
 
 @dataclass(slots=True)
 class PageFacts:
-    """What one page says about its fonts and text, read when the page is first asked about."""
+    """What one page says about its fonts and text, and what's worked out from them.
+
+    Each read or worked out when the page is first asked for it.
+    """
 
     # The page's fonts, in the library's order, read before an edit can drop one.
     fonts: list[PageFont]
@@ -63,9 +66,31 @@ class PageFacts:
     # Its stored fonts by the name their text reads, where that's another: None until needed.
     read_as: dict[str, PageFont] | None = None
     # The page's text as it was: None until needed.
-    lines: list[list[TextPiece]] | None = None
+    lines: list[list[TextPiece]] | None = field(default=None, repr=False)
     # The page's usual gap for a space, by the font's name and the font it's measured in.
     usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
+    # A span's font with its other copies, by the page's copy of it, or why it can't be.
+    pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
+
+    def fonts_read_as(self, make: Callable[[], dict[str, PageFont]]) -> dict[str, PageFont]:
+        """Its stored fonts by the name their text reads, found on first use."""
+        if self.read_as is None:
+            self.read_as = make()
+        return self.read_as
+
+    def text_lines(self, make: Callable[[], list[list[TextPiece]]]) -> list[list[TextPiece]]:
+        """The page's text as it was, read on first use."""
+        if self.lines is None:
+            self.lines = make()
+        return self.lines
+
+    def usual_gap(self, key: tuple[str, FontProgram], make: Callable[[], float]) -> float:
+        """The usual gap for a space, by font name and the font measured in, on first use."""
+        return made_once(self.usual_gaps, key, make)
+
+    def pool(self, font: PageFont, make: Callable[[], PooledFont]) -> PooledFont | FontUnusable:
+        """A span's font pooled with its other copies, made on first use, or why it can't be."""
+        return remembered(self.pools, font, make)
 
 
 @dataclass(slots=True)
@@ -81,33 +106,46 @@ class FontCache:
     pages: dict[int, PageFacts] = field(default_factory=dict)
     # Each copy of a font in the file, opened, or why it can't be used.
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
-    # A span's font with its other copies, by its page and its page's copy.
-    pools: dict[tuple[int, PageFont], PooledFont | FontUnusable] = field(default_factory=dict)
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
 
-    def pool(
-        self, key: tuple[int, PageFont], make: Callable[[], PooledFont]
-    ) -> PooledFont | FontUnusable:
-        """A span's font pooled with its other copies, made on first use, or why it can't be."""
-        return remembered(self.pools, key, make)
+    def page(self, number: int, make: Callable[[], PageFacts]) -> PageFacts:
+        """What page `number` says, read on first use."""
+        return made_once(self.pages, number, make)
 
     def copy(self, font: PageFont, make: Callable[[], FontCopy]) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened on first use, or why it can't be used."""
         return remembered(self.copies, font, make)
 
+    def look_alike(
+        self, key: tuple[str, int | None], make: Callable[[], LookAlike]
+    ) -> LookAlike:
+        """A font's look-alike, by its name and object, chosen on first use."""
+        return made_once(self.look_alikes, key, make)
 
+    def forget_pages(self) -> None:
+        """Forget everything, as a fresh cache: it was all looked up through page numbers.
+
+        For after the pages are renumbered: a page's facts, and the copies and
+        look-alikes found through them, are read again from the pages as they are.
+        """
+        self.pages.clear()
+        self.copies.clear()
+        self.look_alikes.clear()
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class DocumentFonts:
     """The fonts a document's spans are written in, and the look-alike we ship for each."""
 
-    def __init__(self, driver: PdfDriver, *, google: GoogleFontController | None) -> None:
-        """Read through `driver`, with nothing looked up yet.
+    driver: PdfDriver
+    # Google's copies of the document's fonts. None: only the file's own copies lend.
+    google: GoogleFontController | None
+    cache: FontCache = field(default_factory=FontCache, repr=False)
 
-        Without `google`, only the file's own copies of a font lend it letters.
-        """
-        self._driver = driver
-        self._google = google
-        self._cache = FontCache()
+    def forget_pages(self) -> None:
+        """Forget what was looked up: the pages were just renumbered."""
+        self.cache.forget_pages()
 
     def lookup(self, span: Span) -> PooledFont | FontUnusable:
         """The span's font, pooled with its other copies in the file, or why we can't use it."""
@@ -116,7 +154,7 @@ class DocumentFonts:
         if page_font is None:
             return FontUnusable(Message("font_not_in_file"))
         make_pool = partial(self._pool, span.page, page_font)
-        return self._cache.pool((span.page, page_font), make_pool)
+        return self._facts(span.page).pool(page_font, make_pool)
 
     def own(self, span: Span) -> PooledFont | None:
         """The span's font, pooled with its other copies in the file; None when we can't use it.
@@ -147,14 +185,16 @@ class DocumentFonts:
 
     def _facts(self, page: int) -> PageFacts:
         """What the page says, its fonts read the first time it's asked about."""
-        if page not in self._cache.pages:
-            fonts = self._driver.fonts(page)
-            listed: dict[str, PageFont] = {}
-            # The library's order: the first by a name wins.
-            for font in fonts:
-                listed.setdefault(strip_subset(font.name), font)
-            self._cache.pages[page] = PageFacts(fonts, listed)
-        return self._cache.pages[page]
+        return self.cache.page(page, partial(self._read_facts, page))
+
+    def _read_facts(self, page: int) -> PageFacts:
+        """Read the page's fonts, and list each under its name."""
+        fonts = self.driver.fonts(page)
+        listed: dict[str, PageFont] = {}
+        # The library's order: the first by a name wins.
+        for font in fonts:
+            listed.setdefault(strip_subset(font.name), font)
+        return PageFacts(fonts, listed)
 
     def _listed(self, page: int) -> dict[str, PageFont]:
         """The page's fonts by the name it lists each under."""
@@ -163,15 +203,17 @@ class DocumentFonts:
     def _read_as(self, page: int) -> dict[str, PageFont]:
         """The page's stored fonts by the name their text reads, found when first needed."""
         facts = self._facts(page)
-        if facts.read_as is None:
-            by_name: dict[str, PageFont] = {}
-            # The library's order again: the first by a name wins.
-            for font in facts.fonts:
-                read_as = self._driver.text_font_name(font.xref) if font.is_embedded else None
-                if read_as is not None:
-                    by_name.setdefault(strip_subset(read_as), font)
-            facts.read_as = by_name
-        return facts.read_as
+        return facts.fonts_read_as(partial(self._by_text_name, facts.fonts))
+
+    def _by_text_name(self, fonts: list[PageFont]) -> dict[str, PageFont]:
+        """The stored ones of `fonts` by the name their text reads."""
+        by_name: dict[str, PageFont] = {}
+        # The library's order again: the first by a name wins.
+        for font in fonts:
+            read_as = self.driver.text_font_name(font.xref) if font.is_embedded else None
+            if read_as is not None:
+                by_name.setdefault(strip_subset(read_as), font)
+        return by_name
 
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
         """Open the page's copy of the font, then pool the copies that lend it letters with it.
@@ -198,9 +240,7 @@ class DocumentFonts:
         yield from (copy for copy in opened if isinstance(copy, FontCopy))
         # From outside the file, in order. The user's own copy of a font, once
         # they can attach one, goes before Google's. Without Google, there are none.
-        from_outside = (
-            () if self._google is None else (partial(self._google_copy, self._google),)
-        )
+        from_outside = () if self.google is None else (partial(self._google_copy, self.google),)
         for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
@@ -227,14 +267,14 @@ class DocumentFonts:
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
-        return self._cache.copy(font, partial(self._open_copy, font))
+        return self.cache.copy(font, partial(self._open_copy, font))
 
     def _open_copy(self, font: PageFont) -> FontCopy:
         """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't.
 
         It may not be stored, be unreadable, or have no way to be written to.
         """
-        return font_copy(font, open_embedded(self._driver, font))
+        return font_copy(font, open_embedded(self.driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other font in the file by the same name, subset prefix aside.
@@ -253,7 +293,7 @@ class DocumentFonts:
 
     def _fonts_nearest_first(self, page: int) -> Iterator[PageFont]:
         """Every page's fonts, this page's, then the nearest page's, each read when reached."""
-        page_count = self._driver.page_count()
+        page_count = self.driver.page_count()
         nearest_first = sorted(
             range(page_count), key=lambda other_page: (abs(other_page - page), other_page)
         )
@@ -265,11 +305,13 @@ class DocumentFonts:
         page_font = self.page_font(span)
         xref = None if page_font is None else page_font.xref
         key = (strip_subset(span.font), xref)
-        if key not in self._cache.look_alikes:
-            # New text, or a font the page doesn't list: go by the name alone.
-            descriptor = None if xref is None else self._driver.font_descriptor(xref)
-            self._cache.look_alikes[key] = look_alike(span.font, descriptor)
-        return self._cache.look_alikes[key]
+        return self.cache.look_alike(key, partial(self._look_alike_of, span.font, xref))
+
+    def _look_alike_of(self, font_name: str, xref: int | None) -> LookAlike:
+        """The look-alike for the font named `font_name`, stored as object `xref`, if it is."""
+        # New text, or a font the page doesn't list: go by the name alone.
+        descriptor = None if xref is None else self.driver.font_descriptor(xref)
+        return look_alike(font_name, descriptor)
 
     def substitute(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
@@ -282,16 +324,13 @@ class DocumentFonts:
         from; the page's text is read once, before any edit.
         """
         font_name = strip_subset(span.font)
-        gaps = self._facts(span.page).usual_gaps
-        key = (font_name, font)
-        if key not in gaps:
-            lines = self.page_lines(span.page)
-            gaps[key] = usual_gap(lines, font_name=font_name, font=font)
-        return gaps[key]
+        measure = partial(self._usual_gap_on, span.page, font_name=font_name, font=font)
+        return self._facts(span.page).usual_gap((font_name, font), measure)
+
+    def _usual_gap_on(self, page: int, *, font_name: str, font: FontProgram) -> float:
+        """The page's usual gap for a space in the font `font_name`, measured in `font`."""
+        return usual_gap(self.page_lines(page), font_name=font_name, font=font)
 
     def page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""
-        facts = self._facts(page)
-        if facts.lines is None:
-            facts.lines = self._driver.text_lines(page)
-        return facts.lines
+        return self._facts(page).text_lines(partial(self.driver.text_lines, page))

@@ -19,6 +19,7 @@ __all__ = [
     "FontUnusable",
     "open_embedded",
     "remembered",
+    "made_once",
 ]
 
 # Bytes per code, for the font kinds we can write by code.
@@ -60,6 +61,13 @@ def remembered[K, V](
             memo[key] = make()
         except FontUnusable as problem:  # `make` couldn't, and says why
             memo[key] = problem
+    return memo[key]
+
+
+def made_once[K, V](memo: dict[K, V], key: K, make: Callable[[], V]) -> V:
+    """What `make()` made for `key` the first time: made once per key, then kept."""
+    if key not in memo:
+        memo[key] = make()
     return memo[key]
 
 

@@ -9,8 +9,13 @@ instead, so a failure always says what was expected and what it found.
 from __future__ import annotations
 
 from collections.abc import Callable, Container, Iterable
+from dataclasses import fields
+from typing import TYPE_CHECKING
 
 from httpx import Response
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -57,6 +62,18 @@ def assert_close(actual: float, expected: float, within: float, label: str) -> N
 def assert_between(value: float, low: float, high: float, label: str) -> None:
     """Assert `low < value < high`; name what was being measured."""
     assert low < value < high, f"{label}: {value!r} not between {low!r} and {high!r}"
+
+
+def assert_every_field_filled(holder: DataclassInstance, fresh: object, label: str) -> None:
+    """Assert no field of `holder` is as `fresh` has it; name each one that is.
+
+    A reset test fills every field before it forgets, so a field added later
+    and left unfilled fails here, not silently past the forget it should test.
+    """
+    unfilled = [
+        f.name for f in fields(holder) if getattr(holder, f.name) == getattr(fresh, f.name)
+    ]
+    assert not unfilled, f"{label}: fields still as a fresh one has them: {', '.join(unfilled)}"
 
 
 def assert_all[T](
