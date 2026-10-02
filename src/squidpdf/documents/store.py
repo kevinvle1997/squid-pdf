@@ -161,6 +161,10 @@ def delete(folder: Path) -> None:
         return
     # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
     shutil.rmtree(trash, ignore_errors=True)
+    # Once more: a writer that found the folder just before the move can still drop one
+    # piece in it after the first pass listed it, which stops the folder going.
+    # Its next write finds the document Gone.
+    shutil.rmtree(trash, ignore_errors=True)
 
 
 def sweep() -> None:
