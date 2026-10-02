@@ -6,10 +6,27 @@ eat memory or crash it. A hung worker is killed at its timeout, memory past
 the cap fails in the worker, not the server, and a crash takes only its
 worker; each comes back as the Problem that says which.
 
-pebble gives up on the whole pool when a worker dies between tasks (the kernel
-killed it, say), so the pool is replaced when that happens. A task it gave up
-on goes again, once, on the new pool, but only if no worker had started it:
-each try notes its start in a file of its own, read once the old workers are gone.
+What it guarantees. A change that breaks one changes this list in the same diff.
+
+- Time a task spends waiting for a worker counts toward its timeout, since the
+  wait is the caller's. A new worker's start doesn't: that's the server's.
+- When the caller leaves, a task still waiting is dropped, and a long one
+  (timeout at or past `STOP_WHEN_LEFT_S`) is stopped. A short one finishes in
+  its worker: stopping it would kill the worker, and the next task would wait
+  for a new one.
+- pebble gives up on the whole pool when a worker dies between tasks (the
+  kernel killed it, say). A broken pool is replaced before the next task, under
+  a lock, so two tasks that find it broken build one new pool. `/api/health`
+  goes through the same check (`WorkerPool.ready`).
+- A task the pool broke under before any worker started it goes again, once,
+  on the new pool and to the same deadline. The worker makes the try's start
+  file before running the task, read once the old workers are gone, and only a
+  try without one is retried, so a started task never runs twice.
+- A pool works only in the event loop it was made in (the lifespan's), and
+  refuses any other: its lock and semaphore bind to that loop.
+- pebble's failures become Problems through `constants.WORKER_FAILURES`, asked
+  via `API_ERRORS`, the API's one ErrorController. The PDF library's own come
+  back as the Problems they mean (`core.result_of`).
 """
 
 from __future__ import annotations
@@ -84,15 +101,8 @@ class WorkerPool:
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task()` in a worker, given `timeout` seconds from this call.
 
-        Time spent waiting for a free worker counts; a new worker's start doesn't,
-        since that's the server's time, not the task's. A task the pool broke under
-        before any worker started it goes again, once, on a new pool, to the same
-        deadline; one a worker started never does. If the caller goes away
-        first, a task still waiting is dropped, and a long one (`STOP_WHEN_LEFT_S`)
-        is stopped. A short one finishes: stopping it would kill its worker, and
-        the next task would wait for a new one. The PDF library's own failures
-        come back as the Problems they mean (`core.result_of`), and pebble's by
-        `API_ERRORS`, which holds `constants.WORKER_FAILURES`.
+        What it guarantees (the wait, a caller who leaves, a broken pool, the
+        retry, pebble's failures) is the module's docstring.
         """
         self._require_own_loop()
         deadline = self.loop.time() + timeout
