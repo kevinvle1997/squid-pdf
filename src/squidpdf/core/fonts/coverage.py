@@ -11,6 +11,7 @@ import io
 import struct
 import sys
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from fontTools.agl import toUnicode
@@ -23,6 +24,7 @@ from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
 __all__ = [
     "Coverage",
+    "coverage_of",
 ]
 
 # Counted as drawable whether the font maps it or not: the plain space is one text
@@ -43,8 +45,9 @@ _CFF_TABLES = ("CFF ", "CFF2")
 _OUTLINE_COUNT = struct.Struct(">h")
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class Coverage:
-    """Which characters an embedded font program can really render.
+    """Which characters an embedded font program can really render. Made by `coverage_of`.
 
     Built from the raw bytes as extracted from the PDF, which may be a bare CFF
     (Adobe's compact outline format), a TrueType, or an OpenType wrapper. Bytes
@@ -55,80 +58,30 @@ class Coverage:
     Results are cached per character because the check runs on every keystroke.
     """
 
-    def __init__(
-        self,
-        buffer: bytes,
-        listed_letters: Iterable[int] = (),
-        glyph_ids: Mapping[str, GlyphId] | None = None,
-    ) -> None:
-        """Parse a font's raw bytes; `listed_letters` is what it draws if they won't parse."""
-        self._glyph_names: dict[Codepoint, GlyphName] = {}  # filled once loaded
-        self._glyphs: Mapping[GlyphName, Any] = {}  # glyphs to draw from, once loaded
-        self._truetype: table__g_l_y_f | None = None  # TrueType glyphs, read without drawing
-        self._cache: dict[str, bool] = {}  # per-character result, checked every keystroke
-        self._listed_letters = frozenset(filter(is_letter_code, listed_letters))
-        # With glyph_ids the font is written by code, and a space with no code can't be.
-        self._always = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
-        self.usable = False  # True once a parseable font has been loaded
-        self._load(buffer, glyph_ids)
-
-    def _load(self, buffer: bytes, glyph_ids: Mapping[str, GlyphId] | None) -> None:
-        """Figure out the font's format and parse it, or give up quietly."""
-        if not buffer:
-            return
-        try:
-            if buffer[:2] == _BARE_CFF_SIGNATURE:
-                self._load_bare_cff(buffer)
-            else:
-                self._load_sfnt(buffer, glyph_ids)
-            self.usable = True
-        except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
-            self.usable = False
-
-    def _load_sfnt(self, buffer: bytes, glyph_ids: Mapping[str, GlyphId] | None) -> None:
-        """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
-        font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
-        self._glyph_names = glyph_name_for_each_letter(font, glyph_ids)
-        self._glyphs = font.getGlyphSet()  # raises for a font missing a table drawing needs
-        # TrueType outlines are read, not drawn; a font with CFF outlines too draws those.
-        truetype_only = "glyf" in font and not any(table in font for table in _CFF_TABLES)
-        if truetype_only:
-            self._truetype = font["glyf"]
-
-    def _load_bare_cff(self, buffer: bytes) -> None:
-        """A bare CFF, as CIDFontType0 subsets are embedded.
-
-        There is no cmap here, so each glyph's name says its letter: Adobe's
-        names ("eacute", "fi" for the ligature ﬁ) or "uni00E9". That only
-        works for name-keyed CFFs; a CID-keyed one carries CID glyph names
-        instead (`cid00034`, not `eacute`), which cannot be mapped back to
-        Unicode from the font bytes alone. Raised so the font is marked
-        unusable rather than silently reporting every character as missing.
-        """
-        cff = CFFFontSet()
-        cff.decompile(io.BytesIO(buffer), None)
-        font = cff[cff.fontNames[0]]
-        if getattr(font, "ROS", None) is not None:
-            raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
-        self._glyphs = font.CharStrings
-        # The glyph order's: the first shape named for a letter draws it.
-        for name in font.getGlyphOrder():
-            letter = letter_named(name)
-            if letter is not None:
-                self._glyph_names.setdefault(Codepoint(ord(letter)), name)
+    usable: bool  # its bytes parsed: else only `listed_letters` says what it draws
+    # What the font engine lists, the word left for bytes that won't parse.
+    listed_letters: frozenset[int] = field(repr=False)
+    # Drawable whether mapped or not: the plain space, unless the font is written by code.
+    always_drawable: frozenset[str]
+    # Which shape draws each letter: empty for bytes that won't parse.
+    glyph_names: dict[Codepoint, GlyphName] = field(default_factory=dict, repr=False)
+    glyphs: Mapping[GlyphName, Any] = field(default_factory=dict, repr=False)  # to draw from
+    truetype: table__g_l_y_f | None = None  # TrueType glyphs, read without drawing
+    # Each character's answer, checked every keystroke.
+    cache: dict[str, bool] = field(default_factory=dict, repr=False)
 
     def covers(self, ch: str) -> bool:
         """True when this font really puts ink on the page for `ch`, or places its space."""
-        if ch in self._always:
+        if ch in self.always_drawable:
             return True
         if not self.usable:
-            return ord(ch) in self._listed_letters
+            return ord(ch) in self.listed_letters
         # A space draws no ink, so being mapped is all it takes.
         if ch.isspace():
-            return Codepoint(ord(ch)) in self._glyph_names
-        draws = self._cache.get(ch)
+            return Codepoint(ord(ch)) in self.glyph_names
+        draws = self.cache.get(ch)
         if draws is None:
-            draws = self._cache[ch] = self._draws(ch)
+            draws = self.cache[ch] = self._draws(ch)
         return draws
 
     def _draws(self, ch: str) -> bool:
@@ -137,7 +90,7 @@ class Coverage:
         A letter built from others (Á from A and an accent) counts through to
         their outlines: a trimmed font can keep it while emptying its parts.
         """
-        name = self._glyph_names.get(Codepoint(ord(ch)))  # None: the font doesn't map it
+        name = self.glyph_names.get(Codepoint(ord(ch)))  # None: the font doesn't map it
         if name is None:
             return False
         try:
@@ -147,20 +100,98 @@ class Coverage:
 
     def _has_outline(self, name: GlyphName) -> bool:
         """Whether the glyph `name` has an outline: read for TrueType, drawn for CFF."""
-        if self._truetype is not None:
-            return truetype_has_outline(self._truetype, name)
-        return cff_has_outline(self._glyphs, name)
+        if self.truetype is not None:
+            return truetype_has_outline(self.truetype, name)
+        return cff_has_outline(self.glyphs, name)
 
     def drawable(self) -> list[str]:
         """Every character `covers` says draws, spaces included, in code point order."""
-        codes = self._glyph_names if self.usable else self._listed_letters
+        codes = self.glyph_names if self.usable else self.listed_letters
         chars = (chr(codepoint) for codepoint in codes)
-        return sorted(self._always.union(ch for ch in chars if self.covers(ch)))
+        return sorted(self.always_drawable.union(ch for ch in chars if self.covers(ch)))
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""
         unique = dict.fromkeys(text)  # drops repeats, keeps first-seen order
         return [ch for ch in unique if not self.covers(ch)]
+
+
+def coverage_of(
+    buffer: bytes,
+    listed_letters: Iterable[int] = (),
+    glyph_ids: Mapping[str, GlyphId] | None = None,
+) -> Coverage:
+    """Parse a font's raw bytes; `listed_letters` is what it draws if they won't parse."""
+    listed = frozenset(filter(is_letter_code, listed_letters))
+    # With glyph_ids the font is written by code, and a space with no code can't be.
+    always_drawable = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
+    unparsed = Coverage(usable=False, listed_letters=listed, always_drawable=always_drawable)
+    # No bytes: nothing to parse.
+    if not buffer:
+        return unparsed
+    try:
+        # A bare CFF, as CIDFontType0 subsets are embedded.
+        if buffer[:2] == _BARE_CFF_SIGNATURE:
+            return bare_cff_coverage(buffer, listed=listed, always_drawable=always_drawable)
+        # A TrueType or OpenType file.
+        return sfnt_coverage(buffer, glyph_ids, listed=listed, always_drawable=always_drawable)
+    except Exception:  # noqa: BLE001 (a font we cannot parse is not a crash)
+        return unparsed
+
+
+def sfnt_coverage(
+    buffer: bytes,
+    glyph_ids: Mapping[str, GlyphId] | None,
+    *,
+    listed: frozenset[int],
+    always_drawable: frozenset[str],
+) -> Coverage:
+    """TrueType or OpenType, mapped by its letter table (cmap) or by `glyph_ids`."""
+    font = TTFont(io.BytesIO(buffer), fontNumber=0, lazy=True)
+    glyph_names = glyph_name_for_each_letter(font, glyph_ids)
+    glyphs = font.getGlyphSet()  # raises for a font missing a table drawing needs
+    # TrueType outlines are read, not drawn; a font with CFF outlines too draws those.
+    truetype_only = "glyf" in font and not any(table in font for table in _CFF_TABLES)
+    return Coverage(
+        usable=True,
+        listed_letters=listed,
+        always_drawable=always_drawable,
+        glyph_names=glyph_names,
+        glyphs=glyphs,
+        truetype=font["glyf"] if truetype_only else None,
+    )
+
+
+def bare_cff_coverage(
+    buffer: bytes, *, listed: frozenset[int], always_drawable: frozenset[str]
+) -> Coverage:
+    """A bare CFF, as CIDFontType0 subsets are embedded.
+
+    There is no cmap here, so each glyph's name says its letter: Adobe's
+    names ("eacute", "fi" for the ligature ﬁ) or "uni00E9". That only
+    works for name-keyed CFFs; a CID-keyed one carries CID glyph names
+    instead (`cid00034`, not `eacute`), which cannot be mapped back to
+    Unicode from the font bytes alone. Raised so the font is marked
+    unusable rather than silently reporting every character as missing.
+    """
+    cff = CFFFontSet()
+    cff.decompile(io.BytesIO(buffer), None)
+    font = cff[cff.fontNames[0]]
+    if getattr(font, "ROS", None) is not None:
+        raise ValueError("CID-keyed CFF: no Unicode mapping from bytes alone")
+    glyph_names: dict[Codepoint, GlyphName] = {}
+    # The glyph order's: the first shape named for a letter draws it.
+    for name in font.getGlyphOrder():
+        letter = letter_named(name)
+        if letter is not None:
+            glyph_names.setdefault(Codepoint(ord(letter)), name)
+    return Coverage(
+        usable=True,
+        listed_letters=listed,
+        always_drawable=always_drawable,
+        glyph_names=glyph_names,
+        glyphs=font.CharStrings,
+    )
 
 
 def truetype_has_outline(truetype: table__g_l_y_f, name: GlyphName) -> bool:

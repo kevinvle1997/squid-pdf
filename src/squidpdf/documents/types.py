@@ -144,7 +144,7 @@ class KeptAnalysis:
     document they're nearly all of it, and parsing them held up the server.
     """
 
-    facts: bytes  # AnalysisFacts, as JSON
+    facts: bytes = field(repr=False)  # AnalysisFacts, as JSON
     spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
 
 

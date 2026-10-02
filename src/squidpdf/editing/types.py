@@ -6,7 +6,7 @@ can import them. A name ending in Info is JSON the browser gets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 from squidpdf.core import Category, Message, MessageInfo, Page, SaidInfo, Style
@@ -95,7 +95,7 @@ class Rendered:
     `notices` are edits drawn other than asked, such as in a substitute.
     """
 
-    images: list[ImageInfo]
+    images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
     fits: LogFits
     skipped: list[Skipped]
     notices: list[Notice]
@@ -109,7 +109,7 @@ class Exported:
     about the whole file, so they name no span.
     """
 
-    pdf: bytes
+    pdf: bytes = field(repr=False)  # the whole file
     skipped_edits: list[int]
     file_notices: list[Message]
 

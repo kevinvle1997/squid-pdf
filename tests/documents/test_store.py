@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from squidpdf.core import SpanIndex
+from squidpdf.core import index_of
 from squidpdf.documents import api as documents
 from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
@@ -128,7 +128,7 @@ def _write_until_gone(folder: Path, writing: threading.Event, stop: threading.Ev
     writing.set()
     while not stop.is_set():
         try:
-            store.save_index(folder, SpanIndex([]))
+            store.save_index(folder, index_of([]))
         except Gone:  # deleted under it: the worker's request ends there
             return
 
@@ -177,7 +177,7 @@ def test_a_kept_index_never_outlives_its_file(engine):
     _, folder = store.create("owner")
     store.save_index(folder, engine.index())
     store.load_index(folder)
-    first_span = SpanIndex(list(engine.index())[:1])
+    first_span = index_of(list(engine.index())[:1])
     store.save_index(folder, first_span)  # at once: the file's clock may not have moved
     again = store.load_index(folder)
     read = [span.id for span in again or ()]

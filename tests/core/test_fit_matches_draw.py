@@ -12,7 +12,7 @@ import unicodedata
 import pymupdf
 import pytest
 
-from squidpdf.core import Engine, LineToDraw, Span, SpanIndex, new_text, open_pdf
+from squidpdf.core import Engine, LineToDraw, Span, index_of, new_text, open_pdf
 from tests.conftest import each_span, named_only, saved_as
 from tests.helpers import assert_equal
 
@@ -60,7 +60,7 @@ def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
     It names one when the own font can't be used at all, or when the line
     switches: the own font lacks a letter that a face we ship has.
     """
-    [report] = engine.assess(SpanIndex([span]))
+    [report] = engine.assess(index_of([span]))
     plan = engine.plan_for(span, text)
     switches = [ch for ch in plan.missing if ch not in plan.left_out]
     named = switches or not report.in_file

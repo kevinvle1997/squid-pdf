@@ -9,7 +9,7 @@ from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import coverage_of
 from tests.helpers import assert_equal
 
 # Two of each format we ship: TrueType outlines (the largest and a common one)
@@ -39,4 +39,6 @@ def _drawn_letters(font_file: bytes) -> list[str]:
 @pytest.mark.parametrize("face", _SAMPLED)
 def test_reading_the_outline_finds_the_letters_drawing_does(face):
     font_file = face_bytes(FACES[face])
-    assert_equal(Coverage(font_file).drawable(), _drawn_letters(font_file), f"{face}'s letters")
+    assert_equal(
+        coverage_of(font_file).drawable(), _drawn_letters(font_file), f"{face}'s letters"
+    )

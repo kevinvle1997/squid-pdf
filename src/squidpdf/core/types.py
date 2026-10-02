@@ -9,8 +9,8 @@ judgement that can change without the document changing, so it lives in
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
 from typing import Literal, NewType
 
 from squidpdf.core.constants import TURN_TOLERANCE
@@ -234,7 +234,8 @@ class CodedFont:
     """
 
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
-    letters: dict[str, FontCode]  # each letter it can write, and the code for it
+    # Each letter it can write, and the code for it.
+    letters: dict[str, FontCode] = field(repr=False)
 
 
 SOLID = 1.0  # an opacity that hides what's under it
@@ -302,8 +303,9 @@ def new_text(
     )
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class SpanIndex:
-    """Every editable span in a document, built once and never rebuilt.
+    """Every editable span in a document, built once and never rebuilt. Made by `index_of`.
 
     This is the invariant that keeps span ids stable: the index always describes
     the *original* file. Edits are applied on top when rendering, but the index
@@ -311,22 +313,26 @@ class SpanIndex:
     changes, and every reference the client holds dangles.
     """
 
-    def __init__(self, spans: list[Span]) -> None:
-        """Build the index once from the full list of spans in a document."""
-        self._by_id = {s.id: s for s in spans}
-        self._order = tuple(spans)
+    # Each span by its id, in the order it was extracted: a dict keeps the order it's
+    # filled in, and no two spans share an id, since each carries its place in the order.
+    by_id: dict[str, Span] = field(repr=False)
 
     def __iter__(self) -> Iterator[Span]:
         """Every span, in the order it was extracted."""
-        return iter(self._order)
+        return iter(self.by_id.values())
 
     def __len__(self) -> int:
         """How many spans are in the document."""
-        return len(self._order)
+        return len(self.by_id)
 
     def get(self, span_id: str) -> Span | None:
         """Look up one span by id, or None if it does not exist."""
-        return self._by_id.get(span_id)
+        return self.by_id.get(span_id)
+
+
+def index_of(spans: Iterable[Span]) -> SpanIndex:
+    """The index of a document's spans, given in the order they were extracted."""
+    return SpanIndex({span.id: span for span in spans})
 
 
 # 6 bytes -> 12 hex chars: documents have thousands of spans at most, nowhere

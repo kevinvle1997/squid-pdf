@@ -25,6 +25,7 @@ from squidpdf.core import (
     Rect,
     Span,
     SpanIndex,
+    index_of,
     new_text,
 )
 from squidpdf.editing.constants import REDRAW_REACH_EM
@@ -392,7 +393,7 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     Nothing to fit against, so only the font and the letters are checked.
     """
     span = insert_span(insert)
-    [report] = engine.assess(SpanIndex([span]))
+    [report] = engine.assess(index_of([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     # One that only lacks a letter can: the substitute draws that line, as for a replace.

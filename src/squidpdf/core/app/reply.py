@@ -6,7 +6,7 @@ route turns it into a response in one line.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 
 
@@ -14,6 +14,6 @@ from http import HTTPStatus
 class Reply[T]:
     """A reply ready to send: `body` is the bytes, or the data the framework writes out."""
 
-    body: T
+    body: T = field(repr=False)  # a PNG, a PDF or a whole JSON body
     headers: dict[str, str]
     status: int = HTTPStatus.OK

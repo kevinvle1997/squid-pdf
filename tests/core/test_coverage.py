@@ -16,7 +16,7 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 
 from squidpdf.core import open_pdf
 from squidpdf.core.fonts.catalog import CATALOG, FACES, face_bytes
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import coverage_of
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
@@ -63,7 +63,7 @@ def test_every_face_we_ship_is_the_file_it_names_and_draws():
         names = TTFont(io.BytesIO(buffer))["name"]
         in_file = f"{names.getDebugName(_FAMILY)} {names.getDebugName(_STYLE)}"
         assert_equal(in_file, face.name, f"the face in {face.file}")
-        assert_true(Coverage(buffer).covers("A"), f"{face.name} draws an A")
+        assert_true(coverage_of(buffer).covers("A"), f"{face.name} draws an A")
     shipped = {path.name for path in resources.files("squidpdf").joinpath("fonts").iterdir()}
     font_files = {name for name in shipped if name.endswith((".ttf", ".otf"))}
     assert_equal(font_files, {face.file for face in CATALOG}, "font files, each in the catalog")
@@ -134,7 +134,7 @@ def _built_of_parts(*, parts_drawn: bool) -> bytes:
 
 @pytest.mark.parametrize("parts_drawn", [True, False], ids=["parts kept", "parts emptied"])
 def test_a_letter_built_from_other_shapes_draws_only_if_they_do(parts_drawn):
-    coverage = Coverage(_built_of_parts(parts_drawn=parts_drawn))
+    coverage = coverage_of(_built_of_parts(parts_drawn=parts_drawn))
     assert_equal(coverage.covers("Á"), parts_drawn, "whether Á draws")
 
 
@@ -148,7 +148,7 @@ def test_a_letter_table_past_unicode_is_passed_over_not_a_crash():
     font_file = io.BytesIO()
     font.save(font_file)
 
-    coverage = Coverage(font_file.getvalue())
+    coverage = coverage_of(font_file.getvalue())
     assert_equal(coverage.drawable(), [" ", "A"], "what it draws")
 
 
@@ -171,5 +171,5 @@ def test_a_letter_typed_in_two_pieces_is_the_one_the_font_has(tmp_path):
 
 def test_a_font_coverage_cant_read_draws_what_the_library_lists():
     """Bytes no parser reads (a Type 1 font, say): the library's own list is the best left."""
-    coverage = Coverage(b"not a font program", listed_letters=[ord("A")])
+    coverage = coverage_of(b"not a font program", listed_letters=[ord("A")])
     assert_equal((coverage.covers("A"), coverage.covers("B")), (True, False), "A, then B")

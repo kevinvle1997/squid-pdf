@@ -57,6 +57,7 @@ from squidpdf.core.types import (
     Span,
     SpanIndex,
     Style,
+    index_of,
     new_text,
 )
 
@@ -109,6 +110,7 @@ __all__ = [
     "Rect",
     "Span",
     "SpanIndex",
+    "index_of",
     "new_text",
     "Workers",
     "words",
