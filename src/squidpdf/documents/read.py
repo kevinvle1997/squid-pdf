@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
@@ -27,12 +28,11 @@ __all__ = [
 EXPIRES_HEADER = "Squid-Expires-At"
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class ReadController:
     """Read, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """Analyse on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it analyses, off the server's own thread
 
     async def read(
         self, doc: Loaded, *, said_in: str, if_none_match: str | None
@@ -58,7 +58,7 @@ class ReadController:
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), MAX_PAGES)
-        return await self._workers.run(ANALYSE_TIMEOUT_S, task)
+        return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 
 def answer(

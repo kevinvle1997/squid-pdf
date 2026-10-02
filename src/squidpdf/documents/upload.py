@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from collections.abc import AsyncIterable
+from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
@@ -24,12 +25,11 @@ _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class UploadController:
     """Upload, from request to reply."""
 
-    def __init__(self, workers: Workers) -> None:
-        """Analyse on `workers`, off the server's own thread."""
-        self._workers = workers
+    workers: Workers  # where it analyses, off the server's own thread
 
     async def upload(
         self,
@@ -68,7 +68,7 @@ class UploadController:
     async def _enqueue_analyse(self, folder: Path) -> Analysis:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), constants.MAX_PAGES)
-        return await self._workers.run(constants.ANALYSE_TIMEOUT_S, task)
+        return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
 def disk_nearly_full() -> bool:

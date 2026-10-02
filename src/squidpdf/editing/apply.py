@@ -184,13 +184,13 @@ def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
     return list(range(resolved.page_count)) if pages is None else list(pages)
 
 
-def redacted_in(resolved: Resolved) -> list[Span]:
+def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
     """Every span whose last edit is a redaction, numbered as in the original."""
-    return [
+    return tuple(
         edited_span.span
         for edited_span in resolved.span_edits
         if isinstance(edited_span.edit, Redact)
-    ]
+    )
 
 
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
