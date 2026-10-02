@@ -31,11 +31,13 @@ font_cant_write = "This font is stored in the file in a way we can't write new t
 copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
 copy_too_few_shared = "Another copy of this font has the letters needed here, but too few letters in common with this one to be sure it's the same font, so a similar font stands in for it."
 copy_other_widths = "Another font by this name has the letters needed here, but its letters are a different width, so a similar font stands in for it."
-# Why Google Fonts can't lend a font the letters its copy in the file lacks. Not said yet.
-google_not_listed = "Google Fonts has no font by this name, so it can't lend the letters missing here."
-google_no_cut = "Google Fonts has this font, but not in this weight and style, so it can't lend the letters missing here."
-google_name_reserved = "Google Fonts has this font only in a form we'd have to change, and its licence keeps its name for the original, so it can't lend the letters missing here."
-google_not_fetched = "Google's copy of this font couldn't be fetched, so it can't lend the letters missing here."
+# Why Google Fonts can't lend a font the letters its copy in the file lacks: the file's
+# reason, then Google's. One per font.
+google_not_listed = "The file's copy of this font can't draw every letter here, and Google Fonts has no font by this name to lend them, so a similar font stands in for it."
+google_no_cut = "The file's copy of this font can't draw every letter here, and Google Fonts has this font but not in this weight and style, so a similar font stands in for it."
+google_name_reserved = "The file's copy of this font can't draw every letter here, and Google Fonts has it only in a form we'd have to change, while its licence keeps its name for the original, so a similar font stands in for it."
+google_not_fetched = "The file's copy of this font can't draw every letter here, and Google's copy of it couldn't be fetched, so a similar font stands in for it."
+google_unreadable = "The file's copy of this font can't draw every letter here, and Google's copy of it can't be read, so a similar font stands in for it."
 
 # Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
@@ -46,7 +48,7 @@ undrawable_letters = "No font we have can draw {letters} here, so an edit here l
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
 left_out = "Left out {letters}: no font we have can draw them."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
-form_field_not_edited = "This text is a form field, which can't be edited yet, so it's left as it was."
+form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
 form_field_not_redacted = "This text is a form field, which can't be redacted yet, so the file can't be downloaded with this redaction."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."

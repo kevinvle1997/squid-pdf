@@ -63,6 +63,8 @@ class SpanInfo(TypedDict):
 
     `why` says how an approximate span would come back unlike itself, in no
     language: its sentence is in the reply's `copy`, under `approximate`.
+    `form_field` is true when a form field draws the text, not the page: an
+    edit to it is left out, and `copy`'s `form_field_not_edited` says so.
     """
 
     id: str
@@ -75,6 +77,7 @@ class SpanInfo(TypedDict):
     origin: list[float]
     fidelity: Fidelity
     why: ApproximateInfo | None
+    form_field: bool
 
 
 class FontFacts(TypedDict):
@@ -163,6 +166,7 @@ class Copy(TypedDict):
     undo_redaction: str
     reopened: str
     export_left_out: str
+    form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]

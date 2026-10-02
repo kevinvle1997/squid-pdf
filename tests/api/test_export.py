@@ -11,6 +11,7 @@ from unittest import mock
 
 import pymupdf
 import pytest
+from fastapi.testclient import TestClient
 from fontTools.subset import Subsetter
 
 from squidpdf.api.pool import WorkerPool
@@ -58,11 +59,13 @@ def _make_pdf_stalling_once_open(
 
 
 @pytest.fixture
-def own_pool() -> Iterator[WorkerPool]:
-    """Workers of the test's own, since it kills one; shut down after."""
-    pool = WorkerPool()
+def own_pool(server: TestClient) -> Iterator[WorkerPool]:
+    """Workers of the test's own, since it kills one, made in the app's loop; closed after."""
+    if server.portal is None:
+        pytest.fail("the app isn't started")
+    pool = server.portal.call(WorkerPool)
     yield pool
-    pool.close()
+    server.portal.call(pool.close)
 
 
 @pytest.fixture(scope="module")
@@ -155,7 +158,7 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     in the file, and the check reads it where its page went.
     """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: None)
+    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
     span = span_starting(doc, 1, "Invoices")
     kept = _files(doc)
 

@@ -47,6 +47,8 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             store.save_index(path, index)
             store.save_pages(path, engine.pages())
         reports = {report.span_id: report for report in engine.assess(index)}
+        # Text a form field draws: said before any edit, since an edit to it is left out.
+        form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
         # Index order: the first span in each font speaks for it.
         first_span_of_font: dict[str, Span] = {}
         for span in index:
@@ -68,7 +70,10 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(path)
         ],
-        "spans": [span_info(span, reports[span.id]) for span in index],
+        "spans": [
+            span_info(span, reports[span.id], form_field=span.id in form_field_span_ids)
+            for span in index
+        ],
         "fonts": fonts,
     }
     store.save_analysis(path, BUILD, kept_analysis(analysis))
@@ -102,8 +107,11 @@ def approximate_why(report: FidelityReport) -> ApproximateInfo | None:
     return {"code": reason_of(report.why), "params": report.why.params}
 
 
-def span_info(span: Span, report: FidelityReport) -> SpanInfo:
-    """One span as the browser gets it, with how well it keeps its own font."""
+def span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanInfo:
+    """One span as the browser gets it, with how well it keeps its own font.
+
+    `form_field` when a form field draws it, not the page.
+    """
     box = span.bbox
     return {
         "id": span.id,
@@ -116,4 +124,5 @@ def span_info(span: Span, report: FidelityReport) -> SpanInfo:
         "origin": list(span.origin),
         "fidelity": report.state,
         "why": approximate_why(report),
+        "form_field": form_field,
     }

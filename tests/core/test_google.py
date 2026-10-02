@@ -19,7 +19,7 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import FontSources, LineToDraw, open_pdf
+from squidpdf.core import FontSources, LineToDraw, SpanIndex, new_text, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
@@ -29,7 +29,6 @@ from squidpdf.core.fonts.google import (
     Download,
     Fetch,
     GoogleFile,
-    GoogleFontController,
     RetryAt,
     blob_hash,
     family_list,
@@ -37,7 +36,6 @@ from squidpdf.core.fonts.google import (
     google_file,
     google_fonts,
 )
-from squidpdf.core.pdf.mupdf import MuPDFDriver
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
@@ -59,11 +57,6 @@ _NOT_GOOGLES = {
 }
 
 
-def _why_none(found: object) -> str:
-    """Why Google lends nothing, by its sentence's key; "lends" when it does lend."""
-    return found.reason.key if isinstance(found, FontUnusable) else "lends"
-
-
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
     """A fetch handing back `font_file` for anything asked, and the list of what was asked."""
     asked: list[GoogleFile] = []
@@ -80,6 +73,15 @@ def _missing(path: str, fetch: Fetch) -> list[str]:
     with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
         return eng.plan_for(span, _WANTED).missing
+
+
+def _why_substitute(path: str, fetch: Fetch) -> str | None:
+    """Why new text reading _WANTED in the first span's font is a substitute, by its key."""
+    with open_pdf(path, sources=FontSources(google=fetch)) as engine:
+        span = next(iter(engine.index()))
+        new = new_text(0, origin=(72, 200), text=_WANTED, size=span.size, font=span.font)
+        [report] = engine.assess(SpanIndex([new]))
+    return None if report.why is None else report.why.key
 
 
 def _fetched(file: GoogleFile, folder: Path, download: Download) -> bytes | None:
@@ -140,10 +142,16 @@ def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
         got = _fetched(file, tmp_path, _failing)
     assert_equal(got, None, "what a failed fetch hands back")
     assert_true("fetch failed" in caplog.text, "the failure was logged")
-    driver = MuPDFDriver(poppins_subset)
-    lent = GoogleFontController(driver, fetch=fetch).opened(file)
-    driver.close()
-    assert_equal(_why_none(lent), "google_not_fetched", "why Google's copy lends nothing")
+
+
+def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset):
+    """The file's Poppins lacks Y: the reader hears why Google's copy didn't lend it either."""
+    not_fetched, _asked = _google(None)
+    unreadable, _asked = _google(b"not a font")
+
+    whys = [_why_substitute(poppins_subset, fetch) for fetch in (not_fetched, unreadable)]
+
+    assert_equal(whys, ["google_not_fetched", "google_unreadable"], "why a similar font draws")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
@@ -335,8 +343,10 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
         for span in engine.index():
             engine.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
-    whys = [_why_none(google_file(font, None)) for font in _NOT_GOOGLES]
-    assert_equal(whys, list(_NOT_GOOGLES.values()), "why Google has no file for each")
+    for font, why in _NOT_GOOGLES.items():
+        with pytest.raises(FontUnusable) as raised:
+            google_file(font, None)
+        assert_equal(raised.value.reason.key, why, f"why Google has no file for {font}")
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():

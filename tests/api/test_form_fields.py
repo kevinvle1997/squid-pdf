@@ -3,38 +3,13 @@
 from __future__ import annotations
 
 import pymupdf
-import pytest
 
 from squidpdf.core import words
 from tests.api.conftest import around, span_starting, upload
+from tests.conftest import FORM_FIELD_VALUE, FORM_HINT, FORM_LINE
 from tests.helpers import assert_equal, assert_problem
 
 _SCALE = 2
-_FIELD_VALUE = "SSN 078-05-1120"
-_LINE = "Name: Ada Byron"
-# PyMuPDF's PDF_WIDGET_TYPE_TEXT, a text field: set at import, so type checkers can't see it.
-_TEXT_FIELD = 7
-
-
-@pytest.fixture(scope="module")
-def form() -> bytes:
-    """One page: a line of the page's own text, and below it a filled-in text field.
-
-    The field's value is drawn by the field itself (a widget), not by the page,
-    so it's read as a span like any other, but erasing the page's text can't
-    reach it. That's how a filled-in PDF form comes.
-    """
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_text((72, 96), _LINE, fontname="helv", fontsize=12)
-    field = pymupdf.Widget()
-    field.field_type = _TEXT_FIELD
-    field.field_name = "ssn"
-    field.field_value = _FIELD_VALUE
-    field.rect = pymupdf.Rect(72, 120, 300, 140)
-    field.text_fontsize = 12
-    page.add_widget(field)
-    return doc.tobytes()
 
 
 def _said(rendered: dict) -> list[tuple[str, str, str, str]]:
@@ -42,15 +17,36 @@ def _said(rendered: dict) -> list[tuple[str, str, str, str]]:
     return [(n["kind"], n["span_id"], n["code"], n["detail"]) for n in rendered["notices"]]
 
 
-def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
-    """Drawn over the field's own text, the new value would sit on the old one."""
+def test_text_a_form_field_shows_is_marked_at_upload_before_any_edit(mine, form):
+    """Rule 1: the browser can say it before the edit, not only once a render comes back."""
+    doc = upload(mine, form).json()
+
+    marked = {span["text"]: span["form_field"] for span in doc["spans"]}
+    # The hint sits inside a field, but the page prints it: an edit reaches it.
+    expected = {FORM_LINE: False, FORM_FIELD_VALUE: True, FORM_HINT: False}
+    assert_equal(marked, expected, "spans a form field draws")
+    key = "form_field_not_edited"
+    assert_equal(doc["copy"][key], words.sentence(key), "what the browser says of one")
+
+
+def test_a_replace_in_a_form_field_is_left_out_and_said_and_the_pages_own_text_is_not(
+    mine, form
+):
+    """Drawn over the field's own text, the new value would sit on the old one.
+
+    The hint the page prints inside an empty field is the page's: it's edited,
+    as its fit said it would be.
+    """
     doc = upload(mine, form).json()
     field, line = span_starting(doc, 0, "SSN"), span_starting(doc, 0, "Name")
+    hint = span_starting(doc, 0, FORM_HINT)
     edits = [
         {"kind": "replace", "span_id": field["id"], "text": "SSN on file"},
         {"kind": "replace", "span_id": line["id"], "text": "Name: Ada Lovelace"},
+        {"kind": "replace", "span_id": hint["id"], "text": "DD/MM/YYYY"},
     ]
-    body = {"edits": edits, "scale": _SCALE, "regions": [around(field), around(line)]}
+    regions = [around(field), around(line), around(hint)]
+    body = {"edits": edits, "scale": _SCALE, "regions": regions}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
@@ -59,9 +55,8 @@ def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
     expected = [("span", field["id"], key, words.sentence(key))]
     assert_equal(_said(rendered), expected, "what render tells the user")
     lines = pymupdf.open(stream=exported.content, filetype="pdf")[0].get_text().splitlines()
-    assert_equal(
-        sorted(lines), sorted(["Name: Ada Lovelace", _FIELD_VALUE]), "the file's lines"
-    )
+    expected_lines = ["Name: Ada Lovelace", FORM_FIELD_VALUE, "DD/MM/YYYY"]
+    assert_equal(sorted(lines), sorted(expected_lines), "the file's lines")
 
 
 def test_a_redaction_in_a_form_field_is_warned_at_render_and_refused_at_export(mine, form):

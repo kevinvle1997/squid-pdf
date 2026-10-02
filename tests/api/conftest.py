@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -46,13 +47,19 @@ def session_app(tmp_path_factory) -> Iterator[FastAPI]:
         env.setattr(api_constants, "UPLOADS_PER_MINUTE", _SUITE_UPLOADS_PER_MINUTE)
         app = create_app()
         app.include_router(_crashes())
-        with TestClient(app):  # runs the lifespan: the pool and the sweeper
-            yield app
+        yield app
+
+
+@pytest.fixture(scope="session")
+def server(session_app: FastAPI) -> Iterator[TestClient]:
+    """The run's app started, its pool and sweeper with it, in the loop every browser shares."""
+    with TestClient(session_app) as server:  # runs the lifespan
+        yield server
 
 
 @pytest.fixture(scope="module")
-def app(session_app: FastAPI, tmp_path_factory) -> Iterator[FastAPI]:
-    """The run's app, with this module's documents kept in a fresh folder of their own.
+def app(session_app: FastAPI, server: TestClient, tmp_path_factory) -> Iterator[FastAPI]:
+    """The run's app, started, with this module's documents kept in a fresh folder of their own.
 
     The folder is read on each request, and work goes to the pool by absolute path,
     so the workers started for an earlier module find this one's documents.
@@ -62,10 +69,22 @@ def app(session_app: FastAPI, tmp_path_factory) -> Iterator[FastAPI]:
         yield session_app
 
 
+def browser_on(server: TestClient, **options: Any) -> TestClient:
+    """A new browser on `server`'s app, with cookies of its own; `options` go to TestClient.
+
+    Its requests run in the loop `server` started the app in, as a server runs
+    one: the pool works only in the loop it was made in, and a TestClient on its
+    own gives each request a new loop.
+    """
+    browser = TestClient(server.app, base_url=BASE_URL, **options)
+    browser.portal = server.portal
+    return browser
+
+
 @pytest.fixture
-def browser(app: FastAPI) -> Callable[[], TestClient]:
+def browser(app: FastAPI, server: TestClient) -> Callable[[], TestClient]:
     """Opens a new browser on the app each call; each keeps its own cookies."""
-    return lambda: TestClient(app, base_url=BASE_URL)
+    return lambda: browser_on(server)
 
 
 def upload(client: TestClient, body: bytes) -> Response:

@@ -185,12 +185,13 @@ class DocumentFonts:
 
     def _lenders(
         self, page: int, own: FontCopy, letters: Mapping[str, FontCopy]
-    ) -> Iterator[FontCopy]:
+    ) -> Iterator[FontCopy | FontUnusable]:
         """Every copy that may lend the own copy letters, in the order they lend: the chain.
 
         The file's other copies, nearest page first; then copies from outside
         the file, only while `letters`, those the pool has so far, lacks one
-        someone could type. A face we ship is the engine's last resort, not a lender.
+        someone could type, each as the copy or why there's none to be had. A
+        face we ship is the engine's last resort, not a lender.
         """
         opened = (self._opened(font) for font in self._other_copies(page, own.font))
         # A copy we can't open lends no letters; the span's own still draws what it can.
@@ -204,23 +205,24 @@ class DocumentFonts:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
                 return
-            copy = copy_from(own)
-            # No copy of this font to be had there, and why: it lends nothing, as above.
-            if isinstance(copy, FontCopy):
-                yield copy
+            try:
+                lent: FontCopy | FontUnusable = copy_from(own)
+            except FontUnusable as no_copy:  # raised when there's no copy to be had there
+                lent = no_copy
+            # Without a copy there, nothing is lent, but why goes to the pool, to be said.
+            yield lent
 
-    def _google_copy(
-        self, google: GoogleFontController, own: FontCopy
-    ) -> FontCopy | FontUnusable:
-        """Google's copy of the own copy's font, or why it has none, or it can't be had."""
+    def _google_copy(self, google: GoogleFontController, own: FontCopy) -> FontCopy:
+        """Google's copy of the own copy's font.
+
+        Raises FontUnusable, saying why, when Google has none, or it can't be had.
+        """
+        # Raises when it isn't one of Google's families, or is a cut it may not make.
         file = google.file_for(own.font)
-        # Not one of Google's families, or a cut it may not make.
-        if isinstance(file, FontUnusable):
-            return file
         embedded = google.opened(file)
-        # Not fetched, or not readable.
+        # Not fetched, or not readable: said as it was the first time it was asked for.
         if isinstance(embedded, FontUnusable):
-            return embedded
+            raise FontUnusable(embedded.reason)
         return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:

@@ -126,8 +126,8 @@ class GoogleFontController:
         # Each file, opened, or why it can't be had, by `GoogleFile.source`.
         self._fonts: dict[str, EmbeddedFont | FontUnusable] = {}
 
-    def file_for(self, font: PageFont) -> GoogleFile | FontUnusable:
-        """Google's file for one of the document's fonts, or why none fits."""
+    def file_for(self, font: PageFont) -> GoogleFile:
+        """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
         return google_file(font.name, self._driver.font_descriptor(font.xref))
 
     def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
@@ -143,7 +143,7 @@ class GoogleFontController:
         try:
             program = self._driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it, though git vouched for it
-            raise FontUnusable(problem.reason) from problem
+            raise FontUnusable(Message("google_unreadable")) from problem
         return EmbeddedFont(program, font_file, Coverage(font_file), None)
 
 
@@ -154,12 +154,13 @@ def family_list() -> dict[str, Any]:
     return json.loads(listed.read_text())
 
 
-def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | FontUnusable:
-    """The file in Google's collection for a document's font, or why there's none to use.
+def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
+    """The file in Google's collection for a document's font.
 
     Matched by family name, then by weight and style. A family that ships only
     a variable font is cut to the weight, unless its licence reserves its name:
-    a cut is a modified version, which may not carry a reserved name.
+    a cut is a modified version, which may not carry a reserved name. Raises
+    FontUnusable, saying why, when there's none to use.
     """
     listed = family_list()
     key = bare_name(font)
@@ -167,7 +168,7 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | Fo
     family = listed["families"].get(key)  # .get: most fonts aren't Google's
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if family is None:
-        return FontUnusable(Message("google_not_listed"))
+        raise FontUnusable(Message("google_not_listed"))
     weight = weight_of(font, descriptor)
     style, _usual_cut = style_of(font, descriptor)
     italic = style in ("italic", "bold-italic")
@@ -181,10 +182,10 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | Fo
     variable = next((file for file in same_slant if file.variable), None)
     # Neither: no file in this weight and slant.
     if variable is None:
-        return FontUnusable(Message("google_no_cut"))
+        raise FontUnusable(Message("google_no_cut"))
     # Variable only, but its licence reserves its name, which a cut may not carry.
     if family["reserved_name"]:
-        return FontUnusable(Message("google_name_reserved"))
+        raise FontUnusable(Message("google_name_reserved"))
     return GoogleFile(f"{folder}/{variable.name}", variable.blob, weight)
 
 

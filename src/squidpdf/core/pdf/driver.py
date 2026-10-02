@@ -18,6 +18,7 @@ from squidpdf.core.types import (
     FontCode,
     FontDescriptor,
     FontResource,
+    FormField,
     Page,
     PageFont,
     QuarterTurn,
@@ -90,6 +91,14 @@ class PdfDriver(Protocol):
         """The letters inside each box on the page, in reading order."""
         ...
 
+    def form_fields(self, page: int) -> list[FormField]:
+        """Each form field on the page that shows text, and the value it shows.
+
+        A field draws its value itself, not the page. A check box, a button, a
+        signature or an empty field shows no value, so it isn't listed.
+        """
+        ...
+
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
         ...
@@ -121,13 +130,15 @@ class PdfDriver(Protocol):
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
         ...
 
-    def erase_text(self, page: int, boxes: list[Rect]) -> None:
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Images, drawings and links stay, and so does every font the driver named
-        on the page, under the same resource name: each `add_font` put there, and
-        each of the file's own a `write_codes` named again. Any other font of the
-        file's own that no text on the page uses any more may go.
+        Returns the letters still inside each box, as `text_in` reads them: those
+        it couldn't reach, as a form field draws its value, not the page. Images,
+        drawings and links stay, and so does every font the driver named on the
+        page, under the same resource name: each `add_font` put there, and each of
+        the file's own a `write_codes` named again. Any other font of the file's
+        own that no text on the page uses any more may go.
         """
         ...
 

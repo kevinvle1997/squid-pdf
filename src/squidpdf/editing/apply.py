@@ -314,13 +314,11 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     """
     erased = [span for span in map(erased_by, steps) if span is not None]
     drawn = [line for line in map(drawn_by, steps) if line is not None]
-    engine.remove(erased, then_drawn=drawn)
+    # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
+    # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
+    stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
     # A redaction's links go too, as one can carry the text it's on (a mailto:).
     engine.unlink([step.span for step in steps if isinstance(step, Erase)])
-    # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
-    # Only a redraw's: a redaction's is checked where it's said, by RedactionController.
-    redrawn = [step.span for step in steps if isinstance(step, Redraw)]
-    stuck = {span.id for span in engine.still_there(redrawn)}
     return [notice for step in steps for notice in finish_step(engine, step, stuck=stuck)]
 
 

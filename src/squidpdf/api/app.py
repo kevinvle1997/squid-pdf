@@ -30,6 +30,7 @@ __all__ = [
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
+    # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = WorkerPool()
     # Uploads by address, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentUploads()

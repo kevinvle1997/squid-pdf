@@ -36,7 +36,11 @@ class EmbeddedFont:
 
 
 class FontUnusable(Exception):
-    """Why the file's own copy of a font can't be used, so a similar font draws instead."""
+    """Why a copy of a font can't be used, for the edge to say.
+
+    The file's own copy, so a similar font draws instead; or a copy lent from
+    outside the file, as Google's is, so it lends no letters.
+    """
 
     def __init__(self, reason: Message) -> None:
         """`reason` names a sentence in `core.app.words`, for the edge to put into words."""
