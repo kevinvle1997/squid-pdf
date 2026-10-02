@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from fontTools.subset import Subsetter
 
-from squidpdf.api.pool import WorkerPool
+from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Engine, words, write_dense
 from squidpdf.documents import constants as documents_constants
 from squidpdf.documents import store
@@ -63,7 +63,7 @@ def own_pool(server: TestClient) -> Iterator[WorkerPool]:
     """Workers of the test's own, since it kills one, made in the app's loop; closed after."""
     if server.portal is None:
         pytest.fail("the app isn't started")
-    pool = server.portal.call(WorkerPool)
+    pool = server.portal.call(start_pool)
     yield pool
     server.portal.call(pool.close)
 

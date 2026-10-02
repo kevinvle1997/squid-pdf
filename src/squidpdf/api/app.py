@@ -17,7 +17,7 @@ from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
 from squidpdf.api.errors.http import PROBLEM_RESPONSES, install
-from squidpdf.api.pool import WorkerPool, current
+from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
@@ -31,7 +31,7 @@ __all__ = [
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
-    app.state.pool = WorkerPool()
+    app.state.pool = start_pool()
     # Uploads by address, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentUploads()
     sweeper = asyncio.create_task(documents.sweep_forever())
@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(editing.fonts_router, responses=PROBLEM_RESPONSES)
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     upload_path = app.url_path_for(documents.upload.__name__)
-    app.add_middleware(BodyLimit, streamed=[upload_path])
+    app.add_middleware(BodyLimit, streamed=frozenset([upload_path]))
     # Outermost, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 

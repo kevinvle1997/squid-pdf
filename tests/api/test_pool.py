@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
-from squidpdf.api.pool import WorkerPool
+from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
@@ -59,13 +59,13 @@ def pool(runner: asyncio.Runner) -> Iterator[WorkerPool]:
 
 async def _new_pool() -> WorkerPool:
     """A pool made in the running loop, as the app's lifespan makes one."""
-    return WorkerPool()
+    return start_pool()
 
 
 @contextlib.asynccontextmanager
 async def _own_pool() -> AsyncIterator[WorkerPool]:
     """A pool of the test's own, made in the running loop and closed after."""
-    pool = WorkerPool()
+    pool = start_pool()
     try:
         yield pool
     finally:
@@ -217,7 +217,7 @@ def _noop() -> None:
 def test_a_pool_works_only_in_the_event_loop_it_was_made_in(pool):
     """As the server runs one: asyncio ties a lock to the first loop that waits on it."""
     with pytest.raises(RuntimeError, match="no running event loop"):
-        WorkerPool()
+        start_pool()
     with pytest.raises(RuntimeError, match="the event loop it was made in"):
         asyncio.run(pool.run(_ENOUGH_S, os.getpid))  # a loop of its own, not the pool's
 
@@ -369,7 +369,7 @@ def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_pa
     """The server stopping: nobody waits for that render's answer now."""
 
     async def leave_then_close() -> None:
-        pool = WorkerPool()  # its own: this closes it
+        pool = start_pool()  # its own: this closes it
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
         pool.close()
         await asyncio.sleep(_WORK_S)  # for the render's end to come back

@@ -32,7 +32,7 @@ class RecentUploads:
     An address is as `counted_as` gives it: an IPv6 one is its /64.
     """
 
-    started: dict[str, deque[float]] = field(default_factory=dict)
+    started: dict[str, deque[float]] = field(default_factory=dict, repr=False)
     forgotten_at: float = 0.0  # when addresses quiet for a minute were last dropped
 
     def admit(self, address: str, *, now: float, limit: int) -> bool:
@@ -40,10 +40,7 @@ class RecentUploads:
         since = now - _WINDOW_S
         # Once a minute, drop every address quiet for one, so a flood of them can't pile up.
         if self.forgotten_at < since:
-            self.started = {
-                key: times for key, times in self.started.items() if times and times[-1] > since
-            }
-            self.forgotten_at = now
+            self.forget_quiet(now)
         times = self.started.setdefault(address, deque())
         while times and times[0] <= since:
             times.popleft()
@@ -51,6 +48,14 @@ class RecentUploads:
             return False
         times.append(now)
         return True
+
+    def forget_quiet(self, now: float) -> None:
+        """Drop every address that started no upload in the minute before `now`."""
+        since = now - _WINDOW_S
+        self.started = {
+            key: times for key, times in self.started.items() if times and times[-1] > since
+        }
+        self.forgotten_at = now
 
 
 async def admit_upload(request: Request) -> None:
