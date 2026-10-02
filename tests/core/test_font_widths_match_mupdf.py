@@ -10,7 +10,7 @@ import pytest
 
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import FontProgram
-from squidpdf.core.pdf.mupdf import MuPDFDriver
+from squidpdf.core.pdf.mupdf import MuPDFDriver, open_driver
 from tests.conftest import EMBEDDED_PAGE
 from tests.helpers import assert_close
 
@@ -26,7 +26,7 @@ _WITHIN = 0.01  # points: far below what a fit check could notice
 @pytest.fixture(scope="module")
 def driver(pdf) -> Iterator[MuPDFDriver]:
     """The sample, open in the driver, which opens fonts to measure with."""
-    driver = MuPDFDriver(pdf)
+    driver = open_driver(pdf)
     yield driver
     driver.close()
 
