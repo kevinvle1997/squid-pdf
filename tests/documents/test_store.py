@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import threading
 import time
@@ -13,7 +14,7 @@ import pytest
 from squidpdf.core import index_of
 from squidpdf.documents import api as documents, store
 from squidpdf.documents.constants import IDLE_S
-from squidpdf.documents.errors import Gone
+from squidpdf.documents.errors import Gone, ServerFull
 from squidpdf.documents.store import _KeptIndex  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.documents.types import KeptAnalysis
 from tests.helpers import (
@@ -84,17 +85,26 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
     assert_in("the disk said no", caplog.text, "what the log says about the failed sweep")
 
 
-def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
+@pytest.mark.parametrize(
+    ("failure", "raised"),
+    [
+        # Full, not broken: the reader is told the server is full, not of a bug.
+        (OSError(errno.ENOSPC, os.strerror(errno.ENOSPC)), ServerFull),
+        (OSError(errno.EIO, os.strerror(errno.EIO)), OSError),
+    ],
+    ids=["the disk full", "the disk broken"],
+)
+def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raised):
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = store.create("owner")
     store.save_analysis(folder, "a-build", KeptAnalysis(b'{"worked": "out"}', b"[]"))
     whole = sorted(path.name for path in folder.iterdir())
 
-    def disk_full(*_paths: object) -> None:
-        raise OSError("no space left on device")
+    def cut_short(*_paths: object) -> None:
+        raise failure
 
-    monkeypatch.setattr(store.os, "replace", disk_full)
-    with pytest.raises(OSError):
+    monkeypatch.setattr(store.os, "replace", cut_short)
+    with pytest.raises(raised):
         store.save_analysis(folder, "a-build", KeptAnalysis(b'{"worked": "out again"}', b"[1]"))
 
     kept = store.load_analysis(folder, "a-build")

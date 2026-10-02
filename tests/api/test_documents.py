@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
+import asyncio
+import errno
+import io
 import os
 import shutil
+from collections.abc import AsyncIterator
 from datetime import datetime
+from functools import partial
 from pathlib import Path
+from typing import IO, Any
 
+import httpx
 import pymupdf
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.fonts.catalog import FACES
 from squidpdf.documents import constants, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
+from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
-from tests.api.conftest import upload
+from tests.api.conftest import BASE_URL, upload
 from tests.helpers import (
     assert_at_least,
     assert_equal,
+    assert_every_field_filled,
     assert_not_in,
     assert_problem,
     assert_true,
@@ -179,6 +190,127 @@ def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, mon
     """The server says so and keeps nothing, rather than fill the disk every document is on."""
     whole_disk = shutil.disk_usage(store.root()).total
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
+    before = _kept()
+    assert_problem(upload(mine, pdf_bytes), "server_full", 503)
+    assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
+async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> list[int]:
+    """Start `count` uploads at once, each held partway through its file, then one after them.
+
+    Through the server's own event loop, as a server runs: a TestClient's browser
+    sends its whole file before the next request can start. Answers each status,
+    those started at once sorted, then the one after.
+    """
+    go_on = asyncio.Event()
+
+    async def slow_file(asked_for_more: asyncio.Event) -> AsyncIterator[bytes]:
+        """The file, held back after its first chunk until the test lets it go on."""
+        yield pdf_bytes[:1024]
+        asked_for_more.set()
+        await go_on.wait()
+        yield pdf_bytes[1024:]
+
+    async def held_partway(asked_for_more: asyncio.Event, sent: asyncio.Task) -> None:
+        """Until this upload passed its check and is writing, or was answered first."""
+        writing = asyncio.ensure_future(asked_for_more.wait())
+        await asyncio.wait({writing, sent}, return_when=asyncio.FIRST_COMPLETED)
+        writing.cancel()
+
+    pdf = {"content-type": "application/pdf"}
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url=BASE_URL) as browser:
+        asked = [asyncio.Event() for _ in range(count)]
+        sending = [
+            asyncio.create_task(
+                browser.post("/api/documents", content=slow_file(asked_for_more), headers=pdf)
+            )
+            for asked_for_more in asked
+        ]
+        await asyncio.gather(*map(held_partway, asked, sending, strict=True))
+        go_on.set()
+        at_once = sorted(sent.status_code for sent in await asyncio.gather(*sending))
+        after = await browser.post("/api/documents", content=pdf_bytes, headers=pdf)
+    return [*at_once, after.status_code]
+
+
+def test_uploads_under_way_count_against_the_free_disk_floor(
+    app, server: TestClient, pdf_bytes, monkeypatch
+):
+    """Each may yet write a whole file: uploads at once pass only while each has room."""
+    disk = shutil.disk_usage(store.root())
+    # Each upload under way may write a whole disk; the floor leaves room for ten, not eleven.
+    # Half a disk either way, so other tests writing meanwhile change nothing.
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
+    monkeypatch.setattr(
+        constants, "MIN_FREE_BYTES", disk.free - 10 * disk.total - disk.total // 2
+    )
+
+    if server.portal is None:
+        pytest.fail("the app isn't started")
+    statuses = server.portal.call(partial(_uploads_at_once, app, pdf_bytes, count=20))
+
+    # Ten of the twenty fit and the others are refused; once they're in, there's room again.
+    assert_equal(statuses, [*[201] * 10, *[503] * 10, 201], "twenty at once, then one after")
+
+
+def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
+    mine, pdf_bytes, monkeypatch
+):
+    """Refused after its check, an upload holds nothing: refusals never fill the floor."""
+    disk = shutil.disk_usage(store.root())
+    # Room for one upload under way, not two; half a disk either way, as above.
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
+    monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total - disk.total // 2)
+    not_a_pdf = b"Dear Sir, please find attached."
+
+    # Each passes the check and is refused only once its file is in.
+    assert_problem(upload(mine, not_a_pdf), "not_a_pdf", 415)
+    assert_problem(upload(mine, not_a_pdf), "not_a_pdf", 415)
+    assert_equal(upload(mine, pdf_bytes).status_code, 201, "an upload after two refused")
+
+
+def test_uploads_under_way_that_forget_equal_fresh_ones():
+    """The disk a server holds for uploads under way: forgotten, none is held."""
+    under_way = _UploadsUnderWay()
+    with under_way.holding(1024, free=constants.MIN_FREE_BYTES + 1024):
+        assert_every_field_filled(under_way, _UploadsUnderWay(), "the record while one streams")
+        under_way.forget()
+        assert_equal(under_way, _UploadsUnderWay(), "the record once it forgot")
+
+
+def _write_on_a_full_disk(*_args: object, **_kwargs: object) -> int:
+    """A write the disk has no room left for."""
+    raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+
+class _FileOnAFullDisk(io.FileIO):
+    """A file opened on a disk with no room left: every write is refused."""
+
+    def write(self, _data: object, /) -> int:
+        """Refused: the disk is full."""
+        return _write_on_a_full_disk()
+
+
+def _original_on_a_full_disk(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> IO[Any]:
+    """`path` opened as Path.open opens it, but the upload's original on a full disk."""
+    if path.name == store.ORIGINAL:
+        return _FileOnAFullDisk(path, "wb")
+    return open(path, mode, *args, **kwargs)
+
+
+# An upload's first write, once its folder is made, is its owner's, as text; its largest is
+# its original's, as the file streams in.
+@pytest.mark.parametrize(
+    ("method", "on_a_full_disk"),
+    [("write_text", _write_on_a_full_disk), ("open", _original_on_a_full_disk)],
+    ids=["writing its owner", "writing its original"],
+)
+def test_a_disk_that_fills_up_as_an_upload_is_kept_is_server_full(
+    mine, pdf_bytes, monkeypatch, method, on_a_full_disk
+):
+    """Past the floor's check the disk can still run out: the server says so, as no bug."""
+    monkeypatch.setattr(Path, method, on_a_full_disk)
     before = _kept()
     assert_problem(upload(mine, pdf_bytes), "server_full", 503)
     assert_equal(_kept(), before, "documents on disk after a refusal")
