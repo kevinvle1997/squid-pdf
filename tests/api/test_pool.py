@@ -252,9 +252,20 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     assert_true(worker_pid != os.getpid(), "the task ran in a worker")
 
 
+def _note_pid(folder: Path) -> None:
+    """Writes this worker's process id to `folder / "pid"`, whole.
+
+    Written beside it, then renamed into place: the test waits for the file to
+    exist, and `write_text` makes it empty before it fills it.
+    """
+    written = folder / "pid.partial"
+    written.write_text(str(os.getpid()))
+    written.replace(folder / "pid")
+
+
 def _note_pid_then_work(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then says it's done."""
-    (folder / "pid").write_text(str(os.getpid()))
+    _note_pid(folder)
     time.sleep(_WORK_S)
     (folder / "done").touch()
 
@@ -305,14 +316,14 @@ def test_an_export_whose_browser_left_is_stopped(runner, pool, tmp_path):
 
 def _note_pid_then_die(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then crashes its worker."""
-    (folder / "pid").write_text(str(os.getpid()))
+    _note_pid(folder)
     time.sleep(_WORK_S)
     os._exit(1)
 
 
 def _note_pid_then_raise(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then fails as a bug of ours would."""
-    (folder / "pid").write_text(str(os.getpid()))
+    _note_pid(folder)
     time.sleep(_WORK_S)
     raise ValueError("a bug in our own code")
 
