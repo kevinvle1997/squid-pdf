@@ -135,7 +135,7 @@ class UnknownSpan(Exception):
         self.span_id = span_id
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Opened:
     """A PDF open in the engine, its spans, and the one a command was given."""
 

@@ -16,7 +16,14 @@ from squidpdf.documents import store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
-from tests.helpers import assert_at_least, assert_equal, assert_false, assert_in, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_equal,
+    assert_every_field_filled,
+    assert_false,
+    assert_in,
+    assert_true,
+)
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
 _RACES = 20  # deletes raced against a writer; before the fix, most left a folder
@@ -184,3 +191,14 @@ def test_a_kept_index_never_outlives_its_file(engine):
     assert_equal(read, [span.id for span in first_span], "spans in the index read again")
     store.delete(folder)
     assert_equal(store.load_index(folder), None, "the index of a deleted document")
+
+
+def test_a_kept_index_that_forgets_equals_a_fresh_one(engine, tmp_path):
+    """What a worker keeps between requests: forgotten, nothing of the last index stays."""
+    kept = store.KeptIndex()
+    kept.index_for((tmp_path, 1, 2), engine.index)
+    assert_every_field_filled(kept, store.KeptIndex(), "the record once it keeps an index")
+
+    kept.forget()
+
+    assert_equal(kept, store.KeptIndex(), "the record once it forgot")
