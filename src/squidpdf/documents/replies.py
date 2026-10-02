@@ -25,11 +25,6 @@ from squidpdf.documents.types import (
     KeptAnalysis,
 )
 
-__all__ = [
-    "document_json",
-    "time_of",
-]
-
 _NO_SPANS = b"[]"  # the spans kept for a file with no text, as a scan
 
 
@@ -46,7 +41,7 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
         "build": facts["build"],
         "pages": facts["pages"],
         "spans": [],  # sent as kept, below
-        "fonts": [font_info(font, said_in) for font in facts["fonts"]],
+        "fonts": [_font_info(font, said_in) for font in facts["fonts"]],
         "id": doc_id,
         "expires_at": time_of(expires_at),
         "fit": {
@@ -54,8 +49,8 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
             "condense_limit": CONDENSE_LIMIT,
             "shrink_floor": SHRINK_FLOOR,
         },
-        "copy": copy_in(said_in),
-        "notices": notices_in(has_text=kept.spans != _NO_SPANS, said_in=said_in),
+        "copy": _copy_in(said_in),
+        "notices": _notices_in(has_text=kept.spans != _NO_SPANS, said_in=said_in),
     }
     return orjson.dumps({**body, "spans": orjson.Fragment(kept.spans)})
 
@@ -65,7 +60,7 @@ def time_of(epoch_seconds: float) -> str:
     return datetime.fromtimestamp(epoch_seconds, UTC).isoformat()
 
 
-def font_info(font: FontFacts, said_in: str) -> FontInfo:
+def _font_info(font: FontFacts, said_in: str) -> FontInfo:
     """A font as the browser gets it: why its own copy can't be used, in `said_in`."""
     why = None if font["why"] is None else Message.from_info(font["why"])
     return {
@@ -79,7 +74,7 @@ def font_info(font: FontFacts, said_in: str) -> FontInfo:
     }
 
 
-def copy_in(said_in: str) -> Copy:
+def _copy_in(said_in: str) -> Copy:
     """The sentences the browser fills in as the user types, in `said_in`, unfilled."""
     options = {
         name: {
@@ -105,7 +100,7 @@ def copy_in(said_in: str) -> Copy:
     }
 
 
-def notices_in(*, has_text: bool, said_in: str) -> list[DocumentNoticeInfo]:
+def _notices_in(*, has_text: bool, said_in: str) -> list[DocumentNoticeInfo]:
     """What may not be what the user expected of this document, in `said_in`."""
     # A scan has no text layer: say so, rather than show a page nothing on can be edited.
     if has_text:

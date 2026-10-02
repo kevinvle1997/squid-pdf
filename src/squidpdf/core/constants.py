@@ -70,7 +70,7 @@ GLYPH_LIST_RANGES = (
 
 
 @dataclass(frozen=True, slots=True)
-class OptionKeys:
+class _OptionKeys:
     """One way out of a too-long edit: the keys of the sentences that offer it.
 
     Defined here, not in core/types.py, since that module reads this one.
@@ -83,7 +83,7 @@ class OptionKeys:
 # The ways out of a too-long edit, by the name an edit's `strategy` uses: what offers
 # each. The fit check and the browser's copy of its sentences both read it.
 OPTION_KEYS = {
-    "shrink": OptionKeys(label="shrink_label", detail="shrink_detail"),
-    "condense": OptionKeys(label="condense_label", detail="condense_detail"),
-    "as-is": OptionKeys(label="as_is_label", detail="as_is_detail"),
+    "shrink": _OptionKeys(label="shrink_label", detail="shrink_detail"),
+    "condense": _OptionKeys(label="condense_label", detail="condense_detail"),
+    "as-is": _OptionKeys(label="as_is_label", detail="as_is_detail"),
 }

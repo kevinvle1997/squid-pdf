@@ -15,19 +15,6 @@ from typing import Any, ClassVar
 from squidpdf.core.app import words
 from squidpdf.core.app.message import Message, Param
 
-__all__ = [
-    "Problem",
-    "NotFound",
-    "InvalidRequest",
-    "Unreadable",
-    "Encrypted",
-    "Damaged",
-    "TooHeavy",
-    "Failure",
-    "ErrorController",
-    "machine_failure",
-]
-
 
 class Problem(Exception):
     """Subclass it and set `type` and `status`; `fill` fills the sentence.
@@ -62,10 +49,10 @@ class Problem(Exception):
 
     def __reduce__(self) -> tuple[Any, ...]:
         """Raised in a worker, it reaches the server whole: `fill` isn't in `args`."""
-        return rebuild, (type(self), self.debug, self.fill)
+        return _rebuild, (type(self), self.debug, self.fill)
 
 
-def rebuild(cls: type[Problem], debug: str | None, fill: dict[str, Param]) -> Problem:
+def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, Param]) -> Problem:
     """A pickled Problem as it was raised, bypassing the subclass's own arguments."""
     problem = cls.__new__(cls)
     Problem.__init__(problem, debug, **fill)
@@ -125,7 +112,7 @@ class Failure:
     def problem_of(self, exc: Exception) -> Problem:
         """The Problem `exc`, which this row claims, means."""
         if isinstance(self.problem, type):  # a class: the exception says nothing more
-            return self.problem(debug=described(exc))
+            return self.problem(debug=_described(exc))
         return self.problem(exc)
 
 
@@ -150,7 +137,7 @@ class ErrorController:
             return exc
         claimed = self.problem_if_claimed(exc)
         if claimed is None:  # a bug: nothing here knows what it means
-            return Problem(debug=described(exc))
+            return Problem(debug=_described(exc))
         return claimed
 
     def problem_if_claimed(self, exc: Exception) -> Problem | None:
@@ -180,7 +167,7 @@ class ErrorController:
             raise claimed from exc
 
 
-def described(exc: Exception) -> str:
+def _described(exc: Exception) -> str:
     """An exception as a developer reads it: its type and its text, if it has any."""
     text = str(exc)
     # A timeout, say, has no words of its own.
@@ -204,5 +191,5 @@ def machine_failure(exc: Exception) -> Problem:
     """
     out_of_memory = _OUT_OF_MEMORY.search(str(exc)) is not None
     if out_of_memory:
-        return TooHeavy(debug=described(exc))
-    return Problem(debug=described(exc))
+        return TooHeavy(debug=_described(exc))
+    return Problem(debug=_described(exc))

@@ -13,7 +13,7 @@ from tests.helpers import assert_equal
 
 
 def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
-    english = words.ENGLISH_SENTENCES
+    english = words.CATALOGS[words.ENGLISH]
     for language, catalog in words.CATALOGS.items():
         assert_equal(set(catalog), set(english), f"the keys {language!r} has")
         for key, said in catalog.items():
@@ -61,8 +61,9 @@ def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeyp
 
 def test_a_list_with_no_joiner_of_its_own_is_joined_as_items():
     """Only `chars` and `letters` have their own; a new list must not fail when it's said."""
-    said = words.fill("{fonts}", {"fonts": ["Carlito Bold", "Arimo Regular"]})
-    assert_equal(said, "Carlito Bold, Arimo Regular", "a list with no join_fonts")
+    fit = Message("missing", {"chars": ["é"], "font": ["Carlito Bold", "Arimo Regular"]})
+    expected = "no é in this font, so the line is drawn in Carlito Bold, Arimo Regular"
+    assert_equal(words.render(fit), expected, "a list with no join_font")
 
 
 @pytest.mark.parametrize(
@@ -95,15 +96,22 @@ def test_a_character_is_named_in_the_reader_s_language(pseudo):
     assert_equal(said, expected, "the name, in the language asked for")
 
 
+def _left_out(character: str) -> Message:
+    """The sentence an edit that left `character` out says, which names it."""
+    return Message("left_out", {"letters": [character]})
+
+
 def test_every_character_name_in_the_catalog_is_said_for_its_character(pseudo):
     """A name's key is its character's code point; a typo in one would leave it unsaid."""
     names = {
-        key: said for key, said in words.ENGLISH_SENTENCES.items() if key.startswith("char_")
+        key: said
+        for key, said in words.CATALOGS[words.ENGLISH].items()
+        if key.startswith("char_")
     }
     unsaid = [
         key
         for key, said in names.items()
-        if words.visible(chr(int(key.removeprefix("char_u"), 16)), pseudo)
-        != pseudo_sentence(said)
+        if words.render(_left_out(chr(int(key.removeprefix("char_u"), 16))), pseudo)
+        != pseudo_sentence(f"Left out {said}: no font we have can draw them.")
     ]
     assert_equal(unsaid, [], "names in the catalog their character isn't said by")

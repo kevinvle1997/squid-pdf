@@ -22,11 +22,6 @@ from squidpdf.documents.types import (
     SpanInfo,
 )
 
-__all__ = [
-    "analyse",
-    "kept_analysis",
-]
-
 
 def analyse(folder: str, max_pages: int) -> Analysis:
     """Judge every span and list each font's letters, under this build, and keep it.
@@ -57,7 +52,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": substitute_why(reports[span.id]),
+                "why": _substitute_why(reports[span.id]),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": engine.widths(span),
             }
@@ -71,7 +66,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             for page in store.load_pages(path)
         ],
         "spans": [
-            span_info(span, reports[span.id], form_field=span.id in form_field_span_ids)
+            _span_info(span, reports[span.id], form_field=span.id in form_field_span_ids)
             for span in index
         ],
         "fonts": fonts,
@@ -90,14 +85,14 @@ def kept_analysis(analysis: Analysis) -> KeptAnalysis:
     return KeptAnalysis(orjson.dumps(facts), orjson.dumps(analysis["spans"]))
 
 
-def substitute_why(report: FidelityReport) -> MessageInfo | None:
+def _substitute_why(report: FidelityReport) -> MessageInfo | None:
     """Why a substitute stands in for the span's font, in no language yet; None if none does."""
     if report.state != "substitute" or report.why is None:
         return None
     return report.why.as_info()
 
 
-def approximate_why(report: FidelityReport) -> ApproximateInfo | None:
+def _approximate_why(report: FidelityReport) -> ApproximateInfo | None:
     """How an approximate span would come back unlike itself, in no language.
 
     None when it isn't approximate.
@@ -107,7 +102,7 @@ def approximate_why(report: FidelityReport) -> ApproximateInfo | None:
     return {"code": reason_of(report.why), "params": report.why.params}
 
 
-def span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanInfo:
+def _span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanInfo:
     """One span as the browser gets it, with how well it keeps its own font.
 
     `form_field` when a form field draws it, not the page.
@@ -123,6 +118,6 @@ def span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanIn
         "bbox": {"x0": box.x0, "y0": box.y0, "x1": box.x1, "y1": box.y1},
         "origin": list(span.origin),
         "fidelity": report.state,
-        "why": approximate_why(report),
+        "why": _approximate_why(report),
         "form_field": form_field,
     }

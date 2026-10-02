@@ -22,10 +22,6 @@ from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
-__all__ = [
-    "create_app",
-]
-
 # Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
 # `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
 _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -40,7 +36,7 @@ _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = start_pool()
@@ -58,7 +54,7 @@ def create_app() -> FastAPI:
     """A fresh app, so each test gets its own."""
     app = FastAPI(
         title="squid-pdf",
-        lifespan=lifespan,
+        lifespan=_lifespan,
         # Everything lives under /api; the rest of the host is the frontend's.
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",

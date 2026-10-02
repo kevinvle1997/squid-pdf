@@ -16,11 +16,6 @@ from fastapi import Request
 from squidpdf.api import constants
 from squidpdf.api.errors import RateLimited
 
-__all__ = [
-    "RecentUploads",
-    "admit_upload",
-]
-
 _WINDOW_S = 60.0
 _IPV6_BLOCK_BITS = 64  # an IPv6 address's block: the /64 one home or machine is given
 
@@ -29,7 +24,7 @@ _IPV6_BLOCK_BITS = 64  # an IPv6 address's block: the /64 one home or machine is
 class RecentUploads:
     """When each address started its uploads of the last minute, oldest first.
 
-    An address is as `counted_as` gives it: an IPv6 one is its /64.
+    An address is as `_counted_as` gives it: an IPv6 one is its /64.
     """
 
     started: dict[str, deque[float]] = field(default_factory=dict, repr=False)
@@ -66,7 +61,7 @@ async def admit_upload(request: Request) -> None:
     """
     recent_uploads: RecentUploads = request.app.state.recent_uploads  # made in the lifespan
     # None only under a server that doesn't say who's calling; they then share one count.
-    counted_against = counted_as(request.client.host) if request.client is not None else ""
+    counted_against = _counted_as(request.client.host) if request.client is not None else ""
     # Read as a module attribute, so a test can change the limit.
     admitted = recent_uploads.admit(
         counted_against, now=time.monotonic(), limit=constants.UPLOADS_PER_MINUTE
@@ -75,7 +70,7 @@ async def admit_upload(request: Request) -> None:
         raise RateLimited()
 
 
-def counted_as(host: str) -> str:
+def _counted_as(host: str) -> str:
     """What an upload from `host` counts against: an IPv4 address itself, an IPv6 one's /64."""
     try:
         address = ip_address(host)

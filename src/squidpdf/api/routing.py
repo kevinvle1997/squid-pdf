@@ -17,12 +17,6 @@ from fastapi import Depends, Response
 from squidpdf.api import pool
 from squidpdf.core import Reply, Workers
 
-__all__ = [
-    "controller_with_workers",
-    "response_of",
-    "listed_header",
-]
-
 
 def controller_with_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers], C]:
     """A route's dependency: a new `cls` for each request, built with the app's workers.

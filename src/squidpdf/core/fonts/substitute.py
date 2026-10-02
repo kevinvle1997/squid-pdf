@@ -15,13 +15,6 @@ from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.look_alike import broadest
 from squidpdf.core.types import Face
 
-__all__ = [
-    "Substitute",
-    "face_coverage",
-    "face_letters",
-    "substitute_for",
-]
-
 
 @dataclass(frozen=True, slots=True)
 class Substitute:
@@ -61,12 +54,12 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    candidates = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
+    candidates = [_try_face(face, text) for face in (look_alike, broadest(look_alike))]
     # min keeps the first of a tie
     return min(candidates, key=lambda candidate: len(candidate.left_out))
 
 
-def try_face(face: Face, text: str) -> Substitute:
+def _try_face(face: Face, text: str) -> Substitute:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
     kept = "".join(ch for ch in text if ch not in left_out)

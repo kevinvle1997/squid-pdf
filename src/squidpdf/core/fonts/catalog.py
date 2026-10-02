@@ -13,12 +13,6 @@ from importlib import resources
 
 from squidpdf.core.types import Category, Face, Style
 
-__all__ = [
-    "CATALOG",
-    "FACES",
-    "face_bytes",
-]
-
 _OFL = "OFL-1.1"  # the SIL Open Font License, which most faces we ship are under
 _GUST = "GUST-Font-License"  # Latin Modern's: the LaTeX Project Public License, plus a request
 # GNU FreeFont's: a document that embeds it stays the user's, under no licence of ours.
@@ -36,7 +30,7 @@ _STYLE_NAMES: dict[Style, str] = {
 }
 
 
-def family_faces(
+def _family_faces(
     family: str,
     category: Category,
     *,
@@ -60,7 +54,7 @@ def family_faces(
 
 
 @dataclass(frozen=True, slots=True)
-class Cut:
+class _Cut:
     """One face of a family whose files aren't named our way, as its own files say."""
 
     style: Style
@@ -69,12 +63,12 @@ class Cut:
     same_widths_as: tuple[str, ...] = ()  # document fonts that are this cut, like CMBX10
 
 
-def cut_faces(
+def _cut_faces(
     family: str,
     category: Category,
     *,
     license: str,
-    cuts: tuple[Cut, ...],
+    cuts: tuple[_Cut, ...],
     same_widths_as: tuple[str, ...] = (),
 ) -> tuple[Face, ...]:
     """A family's faces, each named and filed as its source ships it."""
@@ -95,12 +89,12 @@ def cut_faces(
 # Every face we ship. Where it came from and its version: `fonts/README.md`.
 CATALOG: tuple[Face, ...] = (
     # Same letter widths as the fonts documents most often name but don't embed.
-    *family_faces(
+    *_family_faces(
         "Liberation Sans",
         "sans",
         same_widths_as=("Arial", "ArialMT", "Helvetica", "Arimo", "Nimbus Sans", "NimbusSanL"),
     ),
-    *family_faces(
+    *_family_faces(
         "Liberation Serif",
         "serif",
         same_widths_as=(
@@ -114,7 +108,7 @@ CATALOG: tuple[Face, ...] = (
             "NimbusRomNo9L",
         ),
     ),
-    *family_faces(
+    *_family_faces(
         "Liberation Mono",
         "mono",
         same_widths_as=(
@@ -126,29 +120,29 @@ CATALOG: tuple[Face, ...] = (
             "NimbusMonL",
         ),
     ),
-    *family_faces("Carlito", "sans", same_widths_as=("Calibri",)),
-    *family_faces("Caladea", "serif", same_widths_as=("Cambria",)),
+    *_family_faces("Carlito", "sans", same_widths_as=("Calibri",)),
+    *_family_faces("Caladea", "serif", same_widths_as=("Cambria",)),
     # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
-    *family_faces("Noto Sans", "sans"),
-    *family_faces("Noto Serif", "serif"),
+    *_family_faces("Noto Sans", "sans"),
+    *_family_faces("Noto Serif", "serif"),
     # The typeface a document names, so its widths match. Offered for new text too.
-    *family_faces("Poppins", "sans"),
-    *family_faces("Open Sans", "sans"),
-    *family_faces("Montserrat", "sans"),
-    *family_faces("Nunito", "sans"),
-    *family_faces("PT Sans", "sans"),
-    *family_faces("PT Serif", "serif"),
-    *cut_faces(
+    *_family_faces("Poppins", "sans"),
+    *_family_faces("Open Sans", "sans"),
+    *_family_faces("Montserrat", "sans"),
+    *_family_faces("Nunito", "sans"),
+    *_family_faces("PT Sans", "sans"),
+    *_family_faces("PT Serif", "serif"),
+    *_cut_faces(
         "FreeSans",
         "sans",
         license=_FREEFONT,
         cuts=(
-            Cut("regular", "Regular", "FreeSans.ttf"),
-            Cut("bold", "Bold", "FreeSansBold.ttf", same_widths_as=("FreeSansBold",)),
-            Cut(
+            _Cut("regular", "Regular", "FreeSans.ttf"),
+            _Cut("bold", "Bold", "FreeSansBold.ttf", same_widths_as=("FreeSansBold",)),
+            _Cut(
                 "italic", "Oblique", "FreeSansOblique.ttf", same_widths_as=("FreeSansOblique",)
             ),
-            Cut(
+            _Cut(
                 "bold-italic",
                 "Bold Oblique",
                 "FreeSansBoldOblique.ttf",
@@ -156,15 +150,17 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    *cut_faces(
+    *_cut_faces(
         "FreeSerif",
         "serif",
         license=_FREEFONT,
         cuts=(
-            Cut("regular", "Regular", "FreeSerif.ttf"),
-            Cut("bold", "Bold", "FreeSerifBold.ttf", same_widths_as=("FreeSerifBold",)),
-            Cut("italic", "Italic", "FreeSerifItalic.ttf", same_widths_as=("FreeSerifItalic",)),
-            Cut(
+            _Cut("regular", "Regular", "FreeSerif.ttf"),
+            _Cut("bold", "Bold", "FreeSerifBold.ttf", same_widths_as=("FreeSerifBold",)),
+            _Cut(
+                "italic", "Italic", "FreeSerifItalic.ttf", same_widths_as=("FreeSerifItalic",)
+            ),
+            _Cut(
                 "bold-italic",
                 "Bold Italic",
                 "FreeSerifBoldItalic.ttf",
@@ -174,26 +170,26 @@ CATALOG: tuple[Face, ...] = (
     ),
     # LaTeX's Computer Modern, redrawn with the same widths. TeX names a font
     # by its cut and size (CMBX10: bold, 10 pt design), so each name pins one face.
-    *cut_faces(
+    *_cut_faces(
         "Latin Modern Roman 10",
         "serif",
         license=_GUST,
         same_widths_as=("LMRoman10",),
         cuts=(
-            Cut(
+            _Cut(
                 "regular",
                 "Regular",
                 "lmroman10-regular.otf",
                 same_widths_as=("CMR10", "SFRM1000"),
             ),
-            Cut("bold", "Bold", "lmroman10-bold.otf", same_widths_as=("CMBX10", "SFBX1000")),
-            Cut(
+            _Cut("bold", "Bold", "lmroman10-bold.otf", same_widths_as=("CMBX10", "SFBX1000")),
+            _Cut(
                 "italic",
                 "Italic",
                 "lmroman10-italic.otf",
                 same_widths_as=("CMTI10", "SFTI1000"),
             ),
-            Cut(
+            _Cut(
                 "bold-italic",
                 "Bold Italic",
                 "lmroman10-bolditalic.otf",
@@ -201,20 +197,20 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    *cut_faces(
+    *_cut_faces(
         "Latin Modern Roman 12",
         "serif",
         license=_GUST,
         same_widths_as=("LMRoman12",),
         cuts=(
-            Cut(
+            _Cut(
                 "regular",
                 "Regular",
                 "lmroman12-regular.otf",
                 same_widths_as=("CMR12", "SFRM1200"),
             ),
-            Cut("bold", "Bold", "lmroman12-bold.otf", same_widths_as=("CMBX12", "SFBX1200")),
-            Cut(
+            _Cut("bold", "Bold", "lmroman12-bold.otf", same_widths_as=("CMBX12", "SFBX1200")),
+            _Cut(
                 "italic",
                 "Italic",
                 "lmroman12-italic.otf",
@@ -222,13 +218,13 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    *cut_faces(
+    *_cut_faces(
         "Latin Modern Roman 17",
         "serif",
         license=_GUST,
         same_widths_as=("LMRoman17",),
         cuts=(
-            Cut(
+            _Cut(
                 "regular",
                 "Regular",
                 "lmroman17-regular.otf",
@@ -236,13 +232,13 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    *cut_faces(
+    *_cut_faces(
         "Latin Modern Roman Caps 10",
         "serif",
         license=_GUST,
         same_widths_as=("LMRomanCaps10",),
         cuts=(
-            Cut(
+            _Cut(
                 "regular",
                 "Regular",
                 "lmromancaps10-regular.otf",
@@ -250,19 +246,19 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    *cut_faces(
+    *_cut_faces(
         "Latin Modern Mono 10",
         "mono",
         license=_GUST,
         same_widths_as=("LMMono10",),
         cuts=(
-            Cut(
+            _Cut(
                 "regular",
                 "Regular",
                 "lmmono10-regular.otf",
                 same_widths_as=("CMTT10", "SFTT1000"),
             ),
-            Cut(
+            _Cut(
                 "italic",
                 "Italic",
                 "lmmono10-italic.otf",
@@ -271,14 +267,14 @@ CATALOG: tuple[Face, ...] = (
         ),
     ),
     # More choice for new text.
-    *family_faces("Inter", "sans"),
-    *family_faces("Roboto", "sans"),
-    *family_faces("Lato", "sans"),
-    *family_faces("EB Garamond", "serif"),
-    *family_faces("IBM Plex Serif", "serif"),
-    *family_faces("IBM Plex Mono", "mono"),
-    *family_faces("Caveat", "handwriting", styles=("regular", "bold")),
-    *family_faces("Great Vibes", "handwriting", styles=("regular",)),
+    *_family_faces("Inter", "sans"),
+    *_family_faces("Roboto", "sans"),
+    *_family_faces("Lato", "sans"),
+    *_family_faces("EB Garamond", "serif"),
+    *_family_faces("IBM Plex Serif", "serif"),
+    *_family_faces("IBM Plex Mono", "mono"),
+    *_family_faces("Caveat", "handwriting", styles=("regular", "bold")),
+    *_family_faces("Great Vibes", "handwriting", styles=("regular",)),
 )
 
 # Each face by the name an insert asks for it by.

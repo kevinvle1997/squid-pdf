@@ -18,7 +18,7 @@ if TYPE_CHECKING:  # fit.py imports this module for Strategy
 type Strategy = Literal["as-is", "shrink", "condense"]
 
 # Why an edit was left out: what it points at isn't in the document.
-type SkipReason = Literal["bad_reference"]
+type _SkipReason = Literal["bad_reference"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +29,7 @@ class Skipped:
     """
 
     edit: int
-    type: SkipReason
+    type: _SkipReason
     detail: Message
 
 

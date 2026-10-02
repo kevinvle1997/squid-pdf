@@ -13,8 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
-from squidpdf.api import constants as limits
-from squidpdf.api import owner, rate
+from squidpdf.api import constants as limits, owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
@@ -25,16 +24,6 @@ from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import EXPIRES_HEADER, ReadController
 from squidpdf.documents.types import Document, Loaded
 from squidpdf.documents.upload import UploadController
-
-__all__ = [
-    "router",
-    "load",
-    "upload",
-    "read",
-    "delete",
-    "page",
-    "sweep_forever",
-]
 
 router = APIRouter(prefix="/api/documents")
 

@@ -20,14 +20,6 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.types import FontCode, GlyphId, Rect
 
-__all__ = [
-    "MUPDF_ERRORS",
-    "MUPDF_OWN_ERRORS",
-    "MUPDF_TOO_HEAVY",
-    "MUPDF_SYSTEM_ERRORS",
-    "PdfFile",
-]
-
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
 _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
@@ -69,7 +61,7 @@ class PdfFile:
                 code_count = _ONE_BYTE_CODES
             else:  # Type0: one code per glyph, so stop after the last glyph
                 code_count = font.cid_to_gid_len or font.font.glyph_count
-            codes = (font_code(font, value) for value in range(code_count))
+            codes = (_font_code(font, value) for value in range(code_count))
             return [code for code in codes if code is not None]
 
     def text_font_name(self, xref: int) -> str | None:
@@ -173,7 +165,7 @@ class PdfFile:
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
 
 
-def font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
+def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
     """What code `value` draws in a font MuPDF has loaded, or None if it isn't one letter."""
     mu = pymupdf.mupdf
     codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, value)

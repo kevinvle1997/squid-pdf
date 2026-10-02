@@ -16,10 +16,8 @@ from fontTools.subset import Subsetter
 
 from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Engine, words, write_dense
-from squidpdf.documents import constants as documents_constants
-from squidpdf.documents import store
-from squidpdf.editing import Edit, export
-from squidpdf.editing import constants as editing_constants
+from squidpdf.documents import constants as documents_constants, store
+from squidpdf.editing import Edit, constants as editing_constants, export
 from squidpdf.editing.types import Exported
 from tests.api.conftest import span_starting, upload
 from tests.conftest import cannot_cut
@@ -42,7 +40,7 @@ class _InProcess:
 
 _STALL_S = 60  # far past any export timeout here
 _STALLED_TIMEOUT_S = 3  # long enough to start the export, short enough to wait for
-_make_pdf = export.make_pdf  # the real one, kept before a test swaps it
+_make_pdf = export._make_pdf  # the real one, kept before a test swaps it
 
 
 def _stall(*_args: object, **_kwargs: object) -> None:
@@ -53,7 +51,7 @@ def _stall(*_args: object, **_kwargs: object) -> None:
 def _make_pdf_stalling_once_open(
     folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
 ) -> Exported:
-    """`make_pdf`, hanging where it opens the original. Runs in a worker, the patch with it."""
+    """`_make_pdf`, hanging where it opens the original. Runs in a worker, the patch with it."""
     with mock.patch.object(store, "open_original", _stall):
         return _make_pdf(folder, scratch, edits=edits, pages=pages)
 
@@ -207,7 +205,7 @@ def test_an_export_killed_at_its_timeout_leaves_nothing_in_the_temp_folder(
     )  # the workers' temp folder, read when they start
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))  # and the server's
     monkeypatch.setattr(app.state, "pool", own_pool)
-    monkeypatch.setattr(export, "make_pdf", _make_pdf_stalling_once_open)
+    monkeypatch.setattr(export, "_make_pdf", _make_pdf_stalling_once_open)
     monkeypatch.setattr(export, "EXPORT_TIMEOUT_S", _STALLED_TIMEOUT_S)
     span = span_starting(doc, 1, "Invoices")
 

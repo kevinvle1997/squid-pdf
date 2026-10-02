@@ -11,15 +11,6 @@ from __future__ import annotations
 from squidpdf.core.fonts.catalog import CATALOG, FACES
 from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
-__all__ = [
-    "strip_subset",
-    "family_and_style",
-    "bare_name",
-    "style_of",
-    "look_alike",
-    "broadest",
-]
-
 # Bits of a PDF font description's /Flags.
 _FIXED_WIDTH = 1 << 0
 _SERIF = 1 << 1
@@ -129,7 +120,7 @@ def bare_name(font: str) -> str:
     return family.replace(" ", "").lower()
 
 
-def by_family() -> dict[str, dict[Style, Face]]:
+def _by_family() -> dict[str, dict[Style, Face]]:
     """Each family's faces by style, under its bare name and those of the fonts it matches."""
     families: dict[str, dict[Style, Face]] = {}
     for face in CATALOG:
@@ -138,7 +129,7 @@ def by_family() -> dict[str, dict[Style, Face]]:
     return families
 
 
-def pinned() -> dict[str, Face]:
+def _pinned() -> dict[str, Face]:
     """Document fonts only one face is the look-alike for, like CMBX10, by bare name."""
     faces_by_name: dict[str, list[Face]] = {}
     for face in CATALOG:
@@ -147,8 +138,8 @@ def pinned() -> dict[str, Face]:
     return {name: faces[0] for name, faces in faces_by_name.items() if len(faces) == 1}
 
 
-_BY_FAMILY = by_family()
-_PINNED = pinned()
+_BY_FAMILY = _by_family()
+_PINNED = _pinned()
 
 
 def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike:
@@ -172,22 +163,22 @@ def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike
     family = _BY_FAMILY.get(bare_name(font))  # None: a family we don't ship
     # A family we know: the same letter widths, if it's a cut we have.
     if family is not None:
-        face = nearest_face(family, style)
+        face = _nearest_face(family, style)
         return LookAlike(face, same_widths=usual_cut and face.style == style)
 
     # Unknown: a plain face of its kind.
-    category = category_of(descriptor)
-    face = nearest_face(_BY_FAMILY[bare_name(_PLAIN_FAMILY[category])], style)
+    category = _category_of(descriptor)
+    face = _nearest_face(_BY_FAMILY[bare_name(_PLAIN_FAMILY[category])], style)
     return LookAlike(face, same_widths=False)
 
 
 def broadest(face: Face) -> Face:
     """The face with the most letters, of the same kind and style as `face`."""
     family = _BY_FAMILY[bare_name(_BROADEST_FAMILY[face.category])]
-    return nearest_face(family, face.style)
+    return _nearest_face(family, face.style)
 
 
-def nearest_face(family: dict[Style, Face], style: Style) -> Face:
+def _nearest_face(family: dict[Style, Face], style: Style) -> Face:
     """The family's face in `style`, or the nearest style it has."""
     while style not in family:
         style = _NEAREST_STYLE[style]
@@ -212,7 +203,7 @@ def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]
     return _STYLE_BY_BOLD_ITALIC[(bold, italic)], usual_cut
 
 
-def category_of(descriptor: FontDescriptor | None) -> Category:
+def _category_of(descriptor: FontDescriptor | None) -> Category:
     """Serif, fixed width or sans, as the PDF describes the font; sans when it doesn't."""
     # Nothing to go on: most document text is sans.
     if descriptor is None:

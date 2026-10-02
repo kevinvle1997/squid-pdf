@@ -11,8 +11,8 @@ import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
-from fontTools.ttLib.tables._c_m_a_p import cmap_format_12
-from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
+from fontTools.ttLib.tables._c_m_a_p import cmap_format_12  # noqa: PLC2701 (fontTools names its table modules so)
+from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent  # noqa: PLC2701 (fontTools names its table modules so)
 
 from squidpdf.core import open_pdf
 from squidpdf.core.fonts.catalog import CATALOG, FACES, face_bytes

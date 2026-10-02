@@ -235,6 +235,8 @@ def pseudo_sentence(english: str) -> str:
 @pytest.fixture
 def pseudo(monkeypatch) -> str:
     """A second language to answer in, made from English, for this test only; its tag."""
-    catalog = {key: pseudo_sentence(said) for key, said in words.ENGLISH_SENTENCES.items()}
+    catalog = {
+        key: pseudo_sentence(said) for key, said in words.CATALOGS[words.ENGLISH].items()
+    }
     monkeypatch.setitem(words.CATALOGS, PSEUDO, catalog)
     return PSEUDO

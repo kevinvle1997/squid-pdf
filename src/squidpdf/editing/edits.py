@@ -109,12 +109,12 @@ def check_edits(edits: list[Edit]) -> None:
     if len(edits) > constants.MAX_EDITS:
         raise TooManyEdits(constants.MAX_EDITS)
     longest = constants.MAX_TEXT_CHARS
-    too_long = any(len(typed_in(edit)) > longest for edit in edits)
+    too_long = any(len(_typed_in(edit)) > longest for edit in edits)
     if too_long:
         raise TextTooLong(longest)
 
 
-def typed_in(edit: Edit) -> str:
+def _typed_in(edit: Edit) -> str:
     """The new text an edit carries: empty for a redaction, which draws none."""
     # A replace or an insert: the text it draws.
     if isinstance(edit, Replace | Insert):

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from squidpdf.api.errors import TooSlow
 from squidpdf.core import BUILD
 from squidpdf.editing import font_list
-from squidpdf.editing.font_list import FontListTasks
+from squidpdf.editing.font_list import _FontListTasks  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.types import FontList
 from tests.api.conftest import BASE_URL
 from tests.helpers import assert_equal, assert_every_field_filled, assert_problem
@@ -46,9 +46,9 @@ class _StandInWorkers:
 @pytest.fixture
 def unlisted() -> Iterator[None]:
     """A server that hasn't listed its fonts yet; after, the stand-in's list is forgotten."""
-    font_list.font_list_tasks.forget()
+    font_list._font_list_tasks.forget()
     yield
-    font_list.font_list_tasks.forget()
+    font_list._font_list_tasks.forget()
 
 
 async def _ask_at_once(app: FastAPI) -> list[httpx.Response]:
@@ -97,14 +97,14 @@ async def _measured() -> bytes:
 def test_font_list_tasks_that_forget_equal_fresh_ones():
     """What a server keeps of its font list: forgotten, the next ask measures again."""
 
-    async def kept_then_forgotten() -> FontListTasks:
-        tasks = FontListTasks()
+    async def kept_then_forgotten() -> _FontListTasks:
+        tasks = _FontListTasks()
         await tasks.task_for(BUILD, lambda: asyncio.create_task(_measured()))
-        assert_every_field_filled(tasks, FontListTasks(), "the record once it keeps a list")
+        assert_every_field_filled(tasks, _FontListTasks(), "the record once it keeps a list")
         tasks.forget()
         return tasks
 
-    assert_equal(asyncio.run(kept_then_forgotten()), FontListTasks(), "the record forgotten")
+    assert_equal(asyncio.run(kept_then_forgotten()), _FontListTasks(), "the record forgotten")
 
 
 async def _runs_out_of_time() -> bytes:
@@ -115,13 +115,13 @@ async def _runs_out_of_time() -> bytes:
 def test_font_list_tasks_that_forget_a_failed_measuring_equal_fresh_ones():
     """A measuring that failed is dropped, so the next request measures again."""
 
-    async def failed_then_forgotten() -> FontListTasks:
-        tasks = FontListTasks()
+    async def failed_then_forgotten() -> _FontListTasks:
+        tasks = _FontListTasks()
         measuring = tasks.task_for(BUILD, lambda: asyncio.create_task(_runs_out_of_time()))
         with pytest.raises(TooSlow):
             await measuring
-        assert_every_field_filled(tasks, FontListTasks(), "the record once a measuring failed")
+        assert_every_field_filled(tasks, _FontListTasks(), "the record once a measuring failed")
         tasks.forget_if_failed(BUILD, measuring)
         return tasks
 
-    assert_equal(asyncio.run(failed_then_forgotten()), FontListTasks(), "the record forgotten")
+    assert_equal(asyncio.run(failed_then_forgotten()), _FontListTasks(), "the record forgotten")

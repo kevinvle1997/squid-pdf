@@ -62,7 +62,7 @@ class RedactionConflict(Problem):
 
 
 # Not raised yet: kept for the browser, which already branches on it.
-class FontMismatch(Problem):
+class _FontMismatch(Problem):
     """A font that isn't the one the document uses."""
 
     type = "font_mismatch"

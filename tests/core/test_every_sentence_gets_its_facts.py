@@ -187,10 +187,10 @@ def _mismatches(said: Iterable[_Said]) -> list[str]:
     """Each sentence said without a fact one of its placeholders takes, or with no sentence."""
     wrong = []
     for each in said:
-        if each.key not in words.ENGLISH_SENTENCES:
+        if each.key not in words.CATALOGS[words.ENGLISH]:
             wrong.append(f"{each.where}: {each.key!r} has no sentence")
             continue
-        wants = placeholders(words.ENGLISH_SENTENCES[each.key])
+        wants = placeholders(words.CATALOGS[words.ENGLISH][each.key])
         lacking = wants - each.facts if each.facts is not None else frozenset()
         if lacking:
             wrong.append(f"{each.where}: {each.key!r} is given no {sorted(lacking)}")

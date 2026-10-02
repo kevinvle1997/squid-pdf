@@ -58,16 +58,6 @@ from squidpdf.core.types import (
     TextRun,
 )
 
-__all__ = [
-    "BUILD",
-    "CORE_ERRORS",
-    "open_pdf",
-    "result_of",
-    "face_widths",
-    "MuPDFDriver",
-    "open_driver",
-]
-
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 
@@ -131,7 +121,7 @@ def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
 
     `sources` lend a font the letters its copies in the file lack: Google's copy.
     """
-    return open_engine(open_driver(path), sources=sources)
+    return open_engine(_open_driver(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:
@@ -152,12 +142,12 @@ def face_widths(face: Face) -> dict[str, float]:
     For the font list, where there's no document to open: the same widths the
     engine gives a span drawn in the face.
     """
-    return letter_widths(open_face(face), face_letters(face))
+    return letter_widths(_open_face(face), face_letters(face))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class MuPDFFont:
-    """A font file MuPDF has opened, made by `mupdf_font`. Implements `FontProgram`."""
+class _MuPDFFont:
+    """A font file MuPDF has opened, made by `_mupdf_font`. Implements `FontProgram`."""
 
     font: pymupdf.Font
     # Each letter's width in ems, by its code point, read once: a fit check measures
@@ -181,19 +171,19 @@ class MuPDFFont:
         return sum(map(self.width_in_ems, map(ord, text))) * size
 
 
-def mupdf_font(font_file: bytes) -> MuPDFFont:
+def _mupdf_font(font_file: bytes) -> _MuPDFFont:
     """`font_file` opened in MuPDF, to measure with. Raises MuPDF's error if it isn't a font."""
     font = pymupdf.Font(fontbuffer=font_file)
-    return MuPDFFont(font, cache(font.glyph_advance))
+    return _MuPDFFont(font, cache(font.glyph_advance))
 
 
 @cache
-def open_face(face: Face) -> MuPDFFont:
+def _open_face(face: Face) -> _MuPDFFont:
     """A face we ship, opened once per process: it measures what `add_font` draws."""
-    return mupdf_font(face_bytes(face))
+    return _mupdf_font(face_bytes(face))
 
 
-def open_driver(path: str) -> MuPDFDriver:
+def _open_driver(path: str) -> _MuPDFDriver:
     """The PDF at `path`, open in MuPDF, only ever as a PDF.
 
     Raises FileNotFoundError when it's gone, Encrypted behind a password, and
@@ -217,12 +207,12 @@ def open_driver(path: str) -> MuPDFDriver:
     if page_count == 0:  # no page to show or edit: not a document anyone made
         doc.close()
         raise Damaged(debug="no pages")
-    return MuPDFDriver(doc, PdfFile(doc))
+    return _MuPDFDriver(doc, PdfFile(doc))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class MuPDFDriver:
-    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `open_driver`."""
+class _MuPDFDriver:
+    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `_open_driver`."""
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
@@ -265,8 +255,8 @@ class MuPDFDriver:
         """Each line of text on the page, split into the pieces it is drawn in."""
         blocks = self.doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
         return [
-            [text_piece(raw, direction=line["dir"]) for raw in line["spans"]]
-            for line in each_line(blocks)
+            [_text_piece(raw, direction=line["dir"]) for raw in line["spans"]]
+            for line in _each_line(blocks)
         ]
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
@@ -275,7 +265,7 @@ class MuPDFDriver:
         A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
         letters = self._letters(page)
-        return [letters_inside(letters, box) for box in boxes]
+        return [_letters_inside(letters, box) for box in boxes]
 
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
@@ -289,13 +279,13 @@ class MuPDFDriver:
         return [
             FormField(Rect(*field.rect), field.field_value)
             for field in self.doc[page].widgets()
-            if shows_text(field.field_type_string, field.field_value)
+            if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int) -> list[Letter]:
+    def _letters(self, page: int) -> list[_Letter]:
         """Every letter on the page, in reading order."""
         blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        return list(each_letter(blocks))
+        return list(_each_letter(blocks))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -378,19 +368,19 @@ class MuPDFDriver:
         """
         return self.file.text_font_name(xref)
 
-    def open_font(self, font_file: bytes) -> MuPDFFont:
+    def open_font(self, font_file: bytes) -> _MuPDFFont:
         """Open a font file to measure with. Raises DriverError when it isn't one."""
         # No bytes at all: MuPDF would open its own Noto Serif in their place.
         if not font_file:
             raise DriverError(Message("font_unreadable"), debug="no bytes")
         try:
-            return mupdf_font(font_file)
+            return _mupdf_font(font_file)
         except MUPDF_ERRORS as exc:  # MuPDF can't read the bytes as a font
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
 
-    def face_font(self, face: Face) -> MuPDFFont:
+    def face_font(self, face: Face) -> _MuPDFFont:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
-        return open_face(face)
+        return _open_face(face)
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
         """Add a font to the page under the resource name `resource`, or one like it if taken.
@@ -430,7 +420,7 @@ class MuPDFDriver:
         links = self.doc[page].get_links()
         letters = self._letters(page)
         # No letter's middle inside: erase the whole box, as nothing else would.
-        self.file.redact(page, [strip_through(letters, box) or box for box in boxes])
+        self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
         left = self.text_in(page, boxes)
         missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
         # Read again only after a second erase: most boxes are clear after the first.
@@ -446,9 +436,9 @@ class MuPDFDriver:
     def _restore_links(self, page: int, links: list[dict]) -> None:
         """Add back any of `links`, as get_links read them, that the page no longer has."""
         pdf_page = self.doc[page]
-        kept = {link_key(link) for link in pdf_page.get_links()}
+        kept = {_link_key(link) for link in pdf_page.get_links()}
         for link in links:
-            if link_key(link) not in kept:
+            if _link_key(link) not in kept:
                 pdf_page.insert_link(link)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
@@ -608,7 +598,7 @@ class MuPDFDriver:
 
 
 @dataclass(frozen=True, slots=True)
-class Letter:
+class _Letter:
     """One letter as get_text("rawdict") reads it, with its line's direction."""
 
     text: str
@@ -617,29 +607,29 @@ class Letter:
     direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
 
 
-def each_line(blocks: list[dict]) -> Iterator[dict]:
+def _each_line(blocks: list[dict]) -> Iterator[dict]:
     """Every line of text get_text read, in reading order."""
     for block in blocks:
         yield from block["lines"]
 
 
-def each_letter(blocks: list[dict]) -> Iterator[Letter]:
+def _each_letter(blocks: list[dict]) -> Iterator[_Letter]:
     """Every letter get_text("rawdict") read, in reading order."""
-    for line in each_line(blocks):
+    for line in _each_line(blocks):
         direction = (line["dir"][0], line["dir"][1])
         for piece in line["spans"]:
             for char in piece["chars"]:
                 origin = (char["origin"][0], char["origin"][1])
-                yield Letter(char["c"], tuple(char["bbox"]), origin, direction)
+                yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
-def text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
+def _text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
     """One piece of text from get_text("dict"), named, on a line that reads `direction`."""
     return TextPiece(
         text=raw["text"],
         font=raw["font"],
         size=raw["size"],
-        color=rgb(raw["color"]),
+        color=_rgb(raw["color"]),
         opacity=raw["alpha"] / _BYTE_MAX,
         box=Rect(*raw["bbox"]),
         origin=(raw["origin"][0], raw["origin"][1]),
@@ -647,36 +637,36 @@ def text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
     )
 
 
-def shows_text(kind: str, value: object) -> bool:
+def _shows_text(kind: str, value: object) -> bool:
     """Whether a form field of `kind`, as PyMuPDF names it, shows `value` as text."""
     return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
-def letters_inside(letters: list[Letter], box: Rect) -> str:
+def _letters_inside(letters: list[_Letter], box: Rect) -> str:
     """The letters whose middle is inside `box`, in order."""
-    return "".join(letter.text for letter in letters if middle_inside(letter.box, box))
+    return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
 
 
-def link_key(link: dict) -> tuple[tuple[str, str], ...]:
+def _link_key(link: dict) -> tuple[tuple[str, str], ...]:
     """What a link from get_links is: where it sits and where it goes, not its object number."""
     return tuple(
         sorted((key, repr(value)) for key, value in link.items() if key not in ("xref", "id"))
     )
 
 
-def middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
     """The middle of a box given as x0, y0, x1, y1."""
     x0, y0, x1, y1 = bbox
     return (x0 + x1) / 2, (y0 + y1) / 2
 
 
-def middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
+def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
     """Whether the middle of `bbox` lies inside `box`."""
-    x, y = middle_of(bbox)
+    x, y = _middle_of(bbox)
     return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
 
 
-def strip_through(letters: list[Letter], box: Rect) -> Rect | None:
+def _strip_through(letters: list[_Letter], box: Rect) -> Rect | None:
     """A thin box along the letters whose middle is in `box`, just above their baselines.
 
     None when no letter's middle is there.
@@ -684,8 +674,8 @@ def strip_through(letters: list[Letter], box: Rect) -> Rect | None:
     points = [
         point
         for letter in letters
-        if middle_inside(letter.box, box)
-        for point in lifted(letter)
+        if _middle_inside(letter.box, box)
+        for point in _lifted(letter)
     ]
     if not points:
         return None
@@ -694,7 +684,7 @@ def strip_through(letters: list[Letter], box: Rect) -> Rect | None:
     return Rect(min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
 
 
-def lifted(letter: Letter) -> list[tuple[float, float]]:
+def _lifted(letter: _Letter) -> list[tuple[float, float]]:
     """Points over the letter's middle, each _STRIP_LIFTS of its height up from its baseline.
 
     Up is across the line's direction, so a line turned on the page works too.
@@ -712,7 +702,7 @@ def lifted(letter: Letter) -> list[tuple[float, float]]:
     ]
 
 
-def rgb(packed: int) -> tuple[float, float, float]:
+def _rgb(packed: int) -> tuple[float, float, float]:
     """A 0xRRGGBB color as r, g, b, each 0-1."""
     return (
         ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,

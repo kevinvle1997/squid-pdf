@@ -11,10 +11,6 @@ from dataclasses import dataclass, replace
 from squidpdf.core import Engine, Span, open_pdf
 from squidpdf.editing.errors import RedactionFailed
 
-__all__ = [
-    "RedactionController",
-]
-
 
 @dataclass(frozen=True, slots=True, eq=False)
 class RedactionController:
@@ -39,13 +35,13 @@ class RedactionController:
         RedactionFailed naming the first span still there, by its original page.
         """
         with open_pdf(path) as saved:
-            left = saved.still_there(as_saved(self.redacted, pages))
+            left = saved.still_there(_as_saved(self.redacted, pages))
         if left:
             first = next(span for span in self.redacted if span.id == left[0].id)
             raise RedactionFailed(first.id, first.text, first.page + 1)
 
 
-def as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:
+def _as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:
     """Each redacted span on the page it went to in `pages`; none on a page left out."""
     by_page: dict[int, list[Span]] = {}
     for span in redacted:

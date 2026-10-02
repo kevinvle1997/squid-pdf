@@ -40,28 +40,6 @@ from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
 
-__all__ = [
-    "ORIGINAL",
-    "open_to_analyse",
-    "open_original",
-    "root",
-    "create",
-    "find",
-    "touch",
-    "delete",
-    "sweep",
-    "save_index",
-    "KeptIndex",
-    "load_index",
-    "require_index",
-    "save_pages",
-    "load_pages",
-    "save_analysis",
-    "load_analysis",
-    "analysis_file",
-    "spans_file",
-]
-
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
@@ -180,11 +158,11 @@ def sweep() -> None:
             continue
         # With or without its owner: one emptied by a delete from before they moved aside.
         is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
-        if is_document and idle(folder):
+        if is_document and _idle(folder):
             delete(folder)
 
 
-def idle(folder: Path) -> bool:
+def _idle(folder: Path) -> bool:
     """Whether the folder has gone untouched past the idle hour; False once it's gone."""
     try:
         return folder.stat().st_mtime < time.time() - IDLE_S
@@ -192,7 +170,7 @@ def idle(folder: Path) -> bool:
         return False
 
 
-def write_whole(path: Path, data: bytes) -> None:
+def _write_whole(path: Path, data: bytes) -> None:
     """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
 
     Written beside it, then renamed over it, which the filesystem does at once.
@@ -218,11 +196,11 @@ def write_whole(path: Path, data: bytes) -> None:
 
 def save_index(folder: Path, index: SpanIndex) -> None:
     """Keep the index, built once from the original, so ids never change."""
-    write_whole(folder / _INDEX, orjson.dumps(list(index)))
+    _write_whole(folder / _INDEX, orjson.dumps(list(index)))
 
 
 @dataclass(slots=True)
-class KeptIndex:
+class _KeptIndex:
     """The last index this worker read, and which file it read it from."""
 
     file_identity: tuple[Path, int, int] | None = None  # folder, mtime and inode
@@ -251,7 +229,7 @@ class KeptIndex:
         self.file_identity, self.index = None, None
 
 
-kept_index = KeptIndex()  # per worker process: each has its own
+_kept_index = _KeptIndex()  # per worker process: each has its own
 
 
 def load_index(folder: Path) -> SpanIndex | None:
@@ -268,12 +246,12 @@ def load_index(folder: Path) -> SpanIndex | None:
         # Mtime and inode: each save is a new file, but the clock may not have moved.
         index_stat = os.fstat(index_file.fileno())
         file_identity = (folder, index_stat.st_mtime_ns, index_stat.st_ino)
-        return kept_index.index_for(file_identity, partial(read_index, index_file))
+        return _kept_index.index_for(file_identity, partial(_read_index, index_file))
 
 
-def read_index(index_file: BinaryIO) -> SpanIndex:
+def _read_index(index_file: BinaryIO) -> SpanIndex:
     """The index saved in `index_file`, already open, each span rebuilt."""
-    return index_of(load_span(span) for span in orjson.loads(index_file.read()))
+    return index_of(_load_span(span) for span in orjson.loads(index_file.read()))
 
 
 def require_index(folder: Path) -> SpanIndex:
@@ -288,7 +266,7 @@ def require_index(folder: Path) -> SpanIndex:
     return index
 
 
-def load_span(saved: dict[str, Any]) -> Span:
+def _load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
@@ -296,14 +274,14 @@ def load_span(saved: dict[str, Any]) -> Span:
         "opacity": saved.get("opacity", SOLID),
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
-        "fragments": tuple(load_fragment(fragment) for fragment in saved["fragments"]),
+        "fragments": tuple(_load_fragment(fragment) for fragment in saved["fragments"]),
         # .get: an index saved before spans kept their direction; all were drawn level then.
         "direction": tuple(saved.get("direction", LEVEL)),
     }
     return Span(**saved | rebuilt)
 
 
-def load_fragment(saved: dict[str, Any]) -> Fragment:
+def _load_fragment(saved: dict[str, Any]) -> Fragment:
     """One saved fragment, the same way."""
     rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
     return Fragment(**saved | rebuilt)
@@ -311,7 +289,7 @@ def load_fragment(saved: dict[str, Any]) -> Fragment:
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
-    write_whole(folder / _PAGES, orjson.dumps(pages))
+    _write_whole(folder / _PAGES, orjson.dumps(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
@@ -328,21 +306,21 @@ def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
 
     The spans first: the facts' file is what says the analysis is there.
     """
-    write_whole(folder / spans_file(build), kept.spans)
-    write_whole(folder / analysis_file(build), kept.facts)
+    _write_whole(folder / _spans_file(build), kept.spans)
+    _write_whole(folder / _analysis_file(build), kept.facts)
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
     """The analysis saved under this build, or None if it hasn't been worked out."""
     try:
-        facts = (folder / analysis_file(build)).read_bytes()
-        spans = (folder / spans_file(build)).read_bytes()
+        facts = (folder / _analysis_file(build)).read_bytes()
+        spans = (folder / _spans_file(build)).read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
     return KeptAnalysis(facts, spans)
 
 
-def analysis_file(build: str) -> str:
+def _analysis_file(build: str) -> str:
     """The file the analysis under `build` is kept in.
 
     Named for how it's kept too: one kept in an older way (`_ANALYSIS_FORMAT`)
@@ -351,6 +329,6 @@ def analysis_file(build: str) -> str:
     return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"
 
 
-def spans_file(build: str) -> str:
-    """The file the analysis's spans under `build` are kept in, beside `analysis_file`."""
+def _spans_file(build: str) -> str:
+    """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
     return f"spans-{build}.{_ANALYSIS_FORMAT}.json"

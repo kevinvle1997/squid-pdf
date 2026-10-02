@@ -27,12 +27,6 @@ from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, FormField, Page, QuarterTurn, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 
-__all__ = [
-    "Engine",
-    "LineToDraw",
-    "open_engine",
-]
-
 
 @dataclass(frozen=True, slots=True)
 class LineToDraw:
@@ -84,7 +78,7 @@ class Engine:
         """
         return [
             span
-            for page, on_page in by_page(spans).items()
+            for page, on_page in _by_page(spans).items()
             for span in self._in_fields_on(page, on_page)
         ]
 
@@ -94,7 +88,7 @@ class Engine:
         # A page with no field showing text: nothing to find, so no span is looked at.
         if not fields:
             return []
-        return [span for span in spans if any(field_draws(field, span) for field in fields)]
+        return [span for span in spans if any(_field_draws(field, span) for field in fields)]
 
     # What we can promise about it.
 
@@ -187,14 +181,14 @@ class Engine:
         span's box covers its fragments. Lines, underlines and links stay.
         """
         self._read_before_erasing(spans, then_drawn)
-        left = (self._erased_on(page, on_page) for page, on_page in by_page(spans).items())
+        left = (self._erased_on(page, on_page) for page, on_page in _by_page(spans).items())
         return [span for on_page in left for span in on_page]
 
     def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Erase `spans`, all on `page`; returns those with any word of their text left."""
         texts = self.driver.erase_text(page, [span.bbox for span in spans])
         pairs = zip(spans, texts, strict=True)
-        return [span for span, left in pairs if any_word_left(span.text, left)]
+        return [span for span, left in pairs if _any_word_left(span.text, left)]
 
     def _read_before_erasing(self, spans: list[Span], lines: Sequence[LineToDraw]) -> None:
         """Read what `draw` needs while the page still has it.
@@ -214,7 +208,7 @@ class Engine:
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
-        for page, on_page in by_page(spans).items():
+        for page, on_page in _by_page(spans).items():
             self.driver.drop_links(page, [span.bbox for span in on_page])
 
     def draw(
@@ -277,14 +271,14 @@ class Engine:
         own box is read, so the same words elsewhere aren't a leak. Spaces are
         ignored, so respacing can't hide a leftover.
         """
-        left = (self._left_on(page, on_page) for page, on_page in by_page(spans).items())
+        left = (self._left_on(page, on_page) for page, on_page in _by_page(spans).items())
         return [span for on_page in left for span in on_page]
 
     def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, with any word of their text still in their box."""
         texts = self.driver.text_in(page, [span.bbox for span in spans])
         pairs = zip(spans, texts, strict=True)
-        return [span for span, left in pairs if any_word_left(span.text, left)]
+        return [span for span, left in pairs if _any_word_left(span.text, left)]
 
     def close(self) -> None:
         """Release the open document."""
@@ -312,7 +306,7 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     )
 
 
-def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
+def _by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
     """`spans` grouped by page, each page's in the order given."""
     grouped: dict[int, list[Span]] = {}
     for span in spans:
@@ -320,20 +314,20 @@ def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
     return grouped
 
 
-def field_draws(field: FormField, span: Span) -> bool:
+def _field_draws(field: FormField, span: Span) -> bool:
     """Whether `field` draws `span`: it sits inside, and its words are part of the value."""
     words = " ".join(span.text.split())
     shown = " ".join(field.value.split())
-    return bool(words) and words in shown and middle_inside(span.bbox, field.box)
+    return bool(words) and words in shown and _middle_inside(span.bbox, field.box)
 
 
-def middle_inside(box: Rect, area: Rect) -> bool:
+def _middle_inside(box: Rect, area: Rect) -> bool:
     """Whether the middle of `box` lies inside `area`."""
     x, y = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
     return area.x0 <= x <= area.x1 and area.y0 <= y <= area.y1
 
 
-def any_word_left(text: str, left: str) -> bool:
+def _any_word_left(text: str, left: str) -> bool:
     """Whether any word of `text`, or all of it, is in `left`, spaces aside.
 
     A word of one letter doesn't count alone: "A" is in most labels drawn over

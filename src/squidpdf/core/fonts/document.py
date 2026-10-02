@@ -30,13 +30,6 @@ from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
-__all__ = [
-    "FontSources",
-    "NO_SOURCES",
-    "FontCache",
-    "DocumentFonts",
-]
-
 
 @dataclass(frozen=True, slots=True)
 class FontSources:
@@ -54,7 +47,7 @@ NO_SOURCES = FontSources()
 
 
 @dataclass(slots=True)
-class PageFacts:
+class _PageFacts:
     """What one page says about its fonts and text, and what's worked out from them.
 
     Each read or worked out when the page is first asked for it.
@@ -95,7 +88,7 @@ class PageFacts:
 
 
 @dataclass(slots=True)
-class FontCache:
+class _FontCache:
     """What has been looked up about the document's fonts, each filled in on first use.
 
     A copy of a font by how its page lists it (its object, its name there,
@@ -104,13 +97,13 @@ class FontCache:
     """
 
     # What each page says, by page number, read when the page is first asked about.
-    pages: dict[int, PageFacts] = field(default_factory=dict)
+    pages: dict[int, _PageFacts] = field(default_factory=dict)
     # Each copy of a font in the file, opened, or why it can't be used.
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
 
-    def page(self, number: int, make: Callable[[], PageFacts]) -> PageFacts:
+    def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
         """What page `number` says, read on first use."""
         return made_once(self.pages, number, make)
 
@@ -142,7 +135,7 @@ class DocumentFonts:
     driver: PdfDriver
     # Google's copies of the document's fonts. None: only the file's own copies lend.
     google: GoogleFontController | None
-    cache: FontCache = field(default_factory=FontCache, repr=False)
+    cache: _FontCache = field(default_factory=_FontCache, repr=False)
 
     def forget_pages(self) -> None:
         """Forget what was looked up: the pages were just renumbered."""
@@ -184,18 +177,18 @@ class DocumentFonts:
         listed = self._listed(span.page).get(name)
         return listed if listed is not None else self._read_as(span.page).get(name)
 
-    def _facts(self, page: int) -> PageFacts:
+    def _facts(self, page: int) -> _PageFacts:
         """What the page says, its fonts read the first time it's asked about."""
         return self.cache.page(page, partial(self._read_facts, page))
 
-    def _read_facts(self, page: int) -> PageFacts:
+    def _read_facts(self, page: int) -> _PageFacts:
         """Read the page's fonts, and list each under its name."""
         fonts = self.driver.fonts(page)
         listed: dict[str, PageFont] = {}
         # The library's order: the first by a name wins.
         for font in fonts:
             listed.setdefault(strip_subset(font.name), font)
-        return PageFacts(fonts, listed)
+        return _PageFacts(fonts, listed)
 
     def _listed(self, page: int) -> dict[str, PageFont]:
         """The page's fonts by the name it lists each under."""
