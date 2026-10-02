@@ -48,8 +48,8 @@ def face_letters(face: Face) -> tuple[str, ...]:
     coverage = face_coverage(face)
     return tuple(
         chr(codepoint)
-        for start, end in GLYPH_LIST_RANGES
-        for codepoint in range(start, end)
+        for block in GLYPH_LIST_RANGES
+        for codepoint in block
         if coverage.covers(chr(codepoint))
     )
 

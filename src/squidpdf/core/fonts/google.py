@@ -62,22 +62,31 @@ _EVERY_FILE = "*"  # in a RetryRecord: a download got no answer, so the network 
 # One INFO line per cache miss, worded the same every time so a grep counts them.
 _CACHE_MISS = "Google cache miss: %s (%s)"
 
-# A weight word in a font's name, and the weight it means; compound words first,
-# so "SemiBold" isn't read as "Bold".
+
+@dataclass(frozen=True, slots=True)
+class _WeightWord:
+    """A weight word in a font's name, and the weight it means."""
+
+    word: str  # lower case, as the name reads with its spaces dropped
+    weight: int  # 100 to 900
+
+
+# Each weight word; the first match wins, so compound words come first and
+# "SemiBold" isn't read as "Bold".
 _WEIGHT_WORDS = (
-    ("extralight", 200),
-    ("ultralight", 200),
-    ("semibold", 600),
-    ("demibold", 600),
-    ("extrabold", 800),
-    ("ultrabold", 800),
-    ("hairline", 100),
-    ("thin", 100),
-    ("light", 300),
-    ("medium", 500),
-    ("bold", 700),
-    ("black", 900),
-    ("heavy", 900),
+    _WeightWord("extralight", 200),
+    _WeightWord("ultralight", 200),
+    _WeightWord("semibold", 600),
+    _WeightWord("demibold", 600),
+    _WeightWord("extrabold", 800),
+    _WeightWord("ultrabold", 800),
+    _WeightWord("hairline", 100),
+    _WeightWord("thin", 100),
+    _WeightWord("light", 300),
+    _WeightWord("medium", 500),
+    _WeightWord("bold", 700),
+    _WeightWord("black", 900),
+    _WeightWord("heavy", 900),
 )
 
 
@@ -221,7 +230,10 @@ def weight_of(font: str, descriptor: FontDescriptor | None) -> int:
     """A font's weight, 100 to 900: from its name, else its description, else regular."""
     _family, style_words = family_and_style(font)
     style_text = style_words.replace(" ", "").lower()
-    named = next((weight for word, weight in _WEIGHT_WORDS if word in style_text), None)
+    named = next(
+        (weight_word.weight for weight_word in _WEIGHT_WORDS if weight_word.word in style_text),
+        None,
+    )
     if named is not None:
         return named
     if descriptor is not None and descriptor.weight is not None:

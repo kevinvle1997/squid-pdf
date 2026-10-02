@@ -54,9 +54,14 @@ FETCH_TIMEOUT_S = 5.0
 # no answer leaves every copy that long, since each would wait out the timeout too.
 FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
-KEYBOARD_RANGES = ((0x20, 0x7F), (0xA0, 0x100))
+KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
 
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
 # Short to keep the font list small; letters past these still draw.
-GLYPH_LIST_RANGES = ((0x20, 0x250), (0x370, 0x530), (0x1E00, 0x1F00), (0x2000, 0x2200))
+GLYPH_LIST_RANGES = (
+    range(0x20, 0x250),
+    range(0x370, 0x530),
+    range(0x1E00, 0x1F00),
+    range(0x2000, 0x2200),
+)

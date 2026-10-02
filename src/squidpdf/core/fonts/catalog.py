@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from functools import cache
 from importlib import resources
 
-from squidpdf.core.fonts.constants import STYLE_NAMES
 from squidpdf.core.types import Category, Face, Style
 
 __all__ = [
@@ -25,7 +24,16 @@ _GUST = "GUST-Font-License"  # Latin Modern's: the LaTeX Project Public License,
 # GNU FreeFont's: a document that embeds it stays the user's, under no licence of ours.
 _FREEFONT = "GPL-3.0-or-later WITH Font-exception-2.0"
 
+# Every style: the faces a family has unless it lists fewer.
 _ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
+
+# How each style is written in a face's name; its file's name drops the spaces.
+_STYLE_NAMES: dict[Style, str] = {
+    "regular": "Regular",
+    "bold": "Bold",
+    "italic": "Italic",
+    "bold-italic": "Bold Italic",
+}
 
 
 def family_faces(
@@ -39,11 +47,11 @@ def family_faces(
     file_stem = family.replace(" ", "")
     return tuple(
         Face(
-            name=f"{family} {STYLE_NAMES[style]}",
+            name=f"{family} {_STYLE_NAMES[style]}",
             family=family,
             style=style,
             category=category,
-            file=f"{file_stem}-{STYLE_NAMES[style].replace(' ', '')}.ttf",
+            file=f"{file_stem}-{_STYLE_NAMES[style].replace(' ', '')}.ttf",
             license=_OFL,
             same_widths_as=same_widths_as,
         )

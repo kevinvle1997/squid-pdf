@@ -9,12 +9,6 @@ are exactly as wide as the original's, so nothing on the page moves.
 from __future__ import annotations
 
 from squidpdf.core.fonts.catalog import CATALOG, FACES
-from squidpdf.core.fonts.constants import (
-    BROADEST_FAMILY,
-    NEAREST_STYLE,
-    PLAIN_FAMILY,
-    STYLE_BY_BOLD_ITALIC,
-)
 from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
 __all__ = [
@@ -32,6 +26,36 @@ _SERIF = 1 << 1
 _ITALIC = 1 << 6
 _FORCE_BOLD = 1 << 18
 _BOLD_WEIGHT = 600  # /FontWeight at or past this reads as bold
+
+# A style by whether it's (bold, italic).
+_STYLE_BY_BOLD_ITALIC: dict[tuple[bool, bool], Style] = {
+    (False, False): "regular",
+    (True, False): "bold",
+    (False, True): "italic",
+    (True, True): "bold-italic",
+}
+
+# A style a family lacks falls back one step at a time.
+_NEAREST_STYLE: dict[Style, Style] = {
+    "bold-italic": "bold",
+    "italic": "regular",
+    "bold": "regular",
+}
+
+# The family that draws a letter a look-alike lacks, by the look-alike's kind of font.
+_BROADEST_FAMILY: dict[Category, str] = {
+    "sans": "Noto Sans",
+    "serif": "Noto Serif",
+    "mono": "Noto Sans",
+    "handwriting": "Noto Sans",
+}
+
+# A document font we know nothing about gets a family of its kind; letter widths will differ.
+_PLAIN_FAMILY: dict[Category, str] = {
+    "sans": "Liberation Sans",
+    "serif": "Liberation Serif",
+    "mono": "Liberation Mono",
+}
 
 # Words in a font's name after the family, and what they say about its style.
 _BOLD_WORDS = ("bold", "black", "heavy")
@@ -153,20 +177,20 @@ def look_alike(font: str, descriptor: FontDescriptor | None = None) -> LookAlike
 
     # Unknown: a plain face of its kind.
     category = category_of(descriptor)
-    face = nearest_face(_BY_FAMILY[bare_name(PLAIN_FAMILY[category])], style)
+    face = nearest_face(_BY_FAMILY[bare_name(_PLAIN_FAMILY[category])], style)
     return LookAlike(face, same_widths=False)
 
 
 def broadest(face: Face) -> Face:
     """The face with the most letters, of the same kind and style as `face`."""
-    family = _BY_FAMILY[bare_name(BROADEST_FAMILY[face.category])]
+    family = _BY_FAMILY[bare_name(_BROADEST_FAMILY[face.category])]
     return nearest_face(family, face.style)
 
 
 def nearest_face(family: dict[Style, Face], style: Style) -> Face:
     """The family's face in `style`, or the nearest style it has."""
     while style not in family:
-        style = NEAREST_STYLE[style]
+        style = _NEAREST_STYLE[style]
     return family[style]
 
 
@@ -185,7 +209,7 @@ def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]
         heavy = descriptor.weight is not None and descriptor.weight >= _BOLD_WEIGHT
         bold = bold or bool(descriptor.flags & _FORCE_BOLD) or heavy
         italic = italic or bool(descriptor.flags & _ITALIC) or descriptor.italic_angle != 0
-    return STYLE_BY_BOLD_ITALIC[(bold, italic)], usual_cut
+    return _STYLE_BY_BOLD_ITALIC[(bold, italic)], usual_cut
 
 
 def category_of(descriptor: FontDescriptor | None) -> Category:
