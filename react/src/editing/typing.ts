@@ -27,10 +27,17 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   return { said: troublesOf(fit, rules, copy, substitute), kind: troubleKindOf(fit, rules) };
 }
 
-export function typeInto(editor: Editor, text: string): void {
+// A tab or any line break (U+0085, U+2028, U+2029 too) shows as a gap: a space keeps the words apart.
+const SPACING_CONTROL = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
+
+// The rest of what check_text (editing/edits.py) refuses draws nothing, so it's dropped as it arrives.
+const NOT_ON_A_LINE = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u202A-\u202E\u2066-\u2069]/gu;
+
+export function typeInto(editor: Editor, typed: string): void {
   const { store } = editor;
   const state = store.get();
   if (state.draft === null) return;
+  const text = typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
   // A trouble is said as it appears or changes, not as its numbers tick by with each letter.

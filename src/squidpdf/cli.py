@@ -293,7 +293,7 @@ def _one_line(text: str) -> str:
     """New text, as one line of letters; otherwise a usage error that says why."""
     try:
         check_text(text)
-    except ValueError as exc:  # a line break, a tab, or half an emoji
+    except ValueError as exc:  # a line break, a tab, a bidi control, or half an emoji
         raise argparse.ArgumentTypeError(str(exc)) from None
     return text
 

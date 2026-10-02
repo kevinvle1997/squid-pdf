@@ -135,11 +135,25 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
 @pytest.mark.parametrize("kind", ["replace", "insert"])
 @pytest.mark.parametrize(
     "character",
-    ["\n", "\r", "\t", "\ud800"],
-    ids=["line break", "carriage return", "tab", "half an emoji"],
+    ["\n", "\r", "\t", "\ud800", "\u2028", "\u2029", "\u202a", "\u202e", "\u2066", "\u2069"],
+    ids=[
+        "line break",
+        "carriage return",
+        "tab",
+        "half an emoji",
+        "line separator",
+        "paragraph separator",
+        "first bidi embedding",
+        "last bidi override",
+        "first bidi isolate",
+        "last bidi isolate",
+    ],
 )
 def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
-    """A line break would draw a second line over the next; half an emoji draws nothing."""
+    """A line break would draw a second line over the next; half an emoji draws nothing.
+
+    A bidi control draws nothing either, and makes the line read in another order than drawn.
+    """
     span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
@@ -155,6 +169,29 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
 
     assert_problem(response, "invalid_request", 400)
     assert_in("text", response.json()["debug"], "what a developer reads")
+
+
+@pytest.mark.parametrize("kind", ["replace", "insert"])
+@pytest.mark.parametrize(
+    "character",
+    ["\u200d", "\u200c", "\u202f", "\u206a"],
+    ids=[
+        "zero-width joiner",
+        "zero-width non-joiner",
+        "narrow no-break space, just past the bidi overrides",
+        "the format character just past the bidi isolates",
+    ],
+)
+def test_new_text_with_a_joiner_or_a_narrow_space_is_drawn(mine, doc, kind, character):
+    """Real text, or a format character just outside the refused ranges."""
+    span = span_starting(doc, 0, "Made")
+    replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
+    insert = {**_INSERT, "text": f"Sig{character}ned"}
+    edit = replace if kind == "replace" else insert
+
+    response = _render(mine, doc, [edit], [{"page": 0}])
+
+    assert_equal(response.status_code, 200, f"U+{ord(character):04X} drawn, not refused")
 
 
 def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):

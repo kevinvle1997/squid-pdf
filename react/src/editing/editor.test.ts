@@ -72,6 +72,13 @@ describe("an edit", () => {
     expect(troublesIn(editor.store.get(), "was field").said).toEqual([COPY.form_field_not_edited]);
   });
 
+  test("a pasted tab or line separator becomes a space, and a bidi control is dropped, since the server refuses new text with one", () => {
+    // A phone number copied from a chat comes bracketed in U+202A and U+202C, which draw nothing;
+    // Pages and Notes break a line with U+2028, between words that must stay apart.
+    typed("own", "\u202A+1 555\t0100\u202C Invoices are\u2028due\u2029by\u0085May");
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("+1 555 0100 Invoices are due by May");
+  });
+
   test("Escape, the same words, or nothing at all put nothing in the history", () => {
     edit(editor, "own", null);
     typeInto(editor, "now");
