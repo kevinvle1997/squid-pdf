@@ -14,9 +14,11 @@ import secrets
 import shutil
 import tempfile
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import orjson
 
@@ -49,6 +51,7 @@ __all__ = [
     "delete",
     "sweep",
     "save_index",
+    "KeptIndex",
     "load_index",
     "require_index",
     "save_pages",
@@ -219,7 +222,29 @@ class KeptIndex:
     """The last index this worker read, and which file it read it from."""
 
     file_identity: tuple[Path, int, int] | None = None  # folder, mtime and inode
-    index: SpanIndex | None = None
+    index: SpanIndex | None = field(default=None, repr=False)  # every span in the document
+
+    def index_for(
+        self, file_identity: tuple[Path, int, int], read: Callable[[], SpanIndex]
+    ) -> SpanIndex:
+        """The index in the file `file_identity` names: the one kept, else read and kept."""
+        kept = self.index if file_identity == self.file_identity else None
+        # The same file as last time: it isn't read again.
+        if kept is not None:
+            return kept
+        # Dropped before the next is read, so two never share the worker's memory cap.
+        self.forget()
+        index = read()
+        self.keep(file_identity, index)
+        return index
+
+    def keep(self, file_identity: tuple[Path, int, int], index: SpanIndex) -> None:
+        """Keep `index`, read from the file `file_identity` names."""
+        self.file_identity, self.index = file_identity, index
+
+    def forget(self) -> None:
+        """Drop the index kept, as a fresh record: the next one is read from its file."""
+        self.file_identity, self.index = None, None
 
 
 kept_index = KeptIndex()  # per worker process: each has its own
@@ -239,14 +264,12 @@ def load_index(folder: Path) -> SpanIndex | None:
         # Mtime and inode: each save is a new file, but the clock may not have moved.
         index_stat = os.fstat(index_file.fileno())
         file_identity = (folder, index_stat.st_mtime_ns, index_stat.st_ino)
-        if file_identity == kept_index.file_identity:
-            return kept_index.index
-        # Dropped before the next is read, so two never share the worker's memory cap.
-        kept_index.file_identity, kept_index.index = None, None
-        raw = orjson.loads(index_file.read())
-    kept_index.index = index_of(load_span(span) for span in raw)
-    kept_index.file_identity = file_identity
-    return kept_index.index
+        return kept_index.index_for(file_identity, partial(read_index, index_file))
+
+
+def read_index(index_file: BinaryIO) -> SpanIndex:
+    """The index saved in `index_file`, already open, each span rebuilt."""
+    return index_of(load_span(span) for span in orjson.loads(index_file.read()))
 
 
 def require_index(folder: Path) -> SpanIndex:
