@@ -140,7 +140,10 @@ class WorkerPool:
         self.jobs.discard(job)
 
     async def ready(self) -> bool:
-        """Whether workers can take a task, replacing them first if the pool broke."""
+        """Whether the pool takes tasks, once replaced if it broke and its workers started.
+
+        Busy workers still count: a task sent now waits for one to come free.
+        """
         self._require_own_loop()
         try:
             return (await self._running()).active  # starts a new pool's workers
