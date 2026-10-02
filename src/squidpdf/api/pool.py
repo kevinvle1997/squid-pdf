@@ -22,6 +22,11 @@ What it guarantees. A change that breaks one changes this list in the same diff.
   on the new pool and to the same deadline. The worker makes the try's start
   file before running the task, read once the old workers are gone, and only a
   try without one is retried, so a started task never runs twice.
+- A task the pool can't run, because the new pool broke too, no worker can
+  start or stay up, or the pool broke under it once started, is `no_workers`:
+  the server's failure, not a bug and not the file's. The break, or the
+  failed start, is logged with its cause, which can be a bug of ours (a result
+  that can't be sent back).
 - A pool works only in the event loop it was made in (the lifespan's), and
   refuses any other: its lock and semaphore bind to that loop.
 - pebble's failures become Problems through `constants.WORKER_FAILURES`, asked
@@ -32,6 +37,8 @@ What it guarantees. A change that breaks one changes this list in the same diff.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 import multiprocessing
 import shutil
 import sys
@@ -49,9 +56,11 @@ from fastapi import Request
 from pebble import ProcessPool
 
 from squidpdf.api import constants
-from squidpdf.api.errors import TooSlow
+from squidpdf.api.errors import NoWorkers, TooSlow
 from squidpdf.api.errors.http import API_ERRORS
 from squidpdf.core import result_of
+
+_logger = logging.getLogger(__name__)
 
 
 class _NeverStarted(Exception):
@@ -151,31 +160,43 @@ class WorkerPool:
         """`task()` on a worker set aside for it, killed by pebble at `deadline`.
 
         Sent a second time, on a new pool, if the pool broke before any worker
-        started it: it did no work, so nothing runs twice. Never a third.
+        started it: it did no work, so nothing runs twice. Never a third: if the
+        new pool breaks the same way, no worker can take it.
         """
+        with contextlib.suppress(_NeverStarted):  # the pool broke before a worker started it
+            return await self._sent(deadline, task)
         try:
             return await self._sent(deadline, task)
-        except _NeverStarted:  # raised when the pool broke before a worker started the task
-            return await self._sent(deadline, task)
+        except _NeverStarted as again:  # raised when the new pool broke the same way
+            raise NoWorkers() from again
 
     async def _sent[T](self, deadline: float, task: Callable[[], T]) -> T:
         """`task()` sent to the pool, a new one if it broke, killed by pebble at `deadline`.
 
-        Raises _NeverStarted when the pool breaks before any worker starts it.
+        Raises _NeverStarted when the pool breaks before any worker starts it, and
+        pebble's BrokenProcessPool when no worker can start, or the pool broke under
+        the task once started: `WORKER_FAILURES` calls that `no_workers`.
         """
         # Worked out before a broken pool is replaced: that's the server's time, not the task's.
         time_left = deadline - self.loop.time()
         if time_left <= 0:  # out of time already; pebble reads 0 as no timeout at all
             raise TooSlow()
-        pool = await self._running()
+        try:
+            pool = await self._running()
+        except BrokenProcessPool as broke:  # raised by pebble when no worker process can start
+            _logger.warning("No worker could start", exc_info=broke)
+            raise
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
             future = pool.submit(partial(_noted_start, str(start), task), time_left)
-        except RuntimeError as refused:  # raised by pebble when the pool broke since `_running`
+        except RuntimeError as refused:  # raised by pebble: the pool broke, or no worker starts
+            _logger.warning("The worker pool refused a task", exc_info=refused)
             raise _NeverStarted() from refused
         try:
             return await asyncio.wrap_future(future)
         except BrokenProcessPool as broke:  # raised by pebble when it gives up on the pool
+            # Its cause can be a bug of ours, such as a result that can't be sent back.
+            _logger.warning("The worker pool broke under a task", exc_info=broke)
             # Its workers stopped first, so none can still start the task once it's looked at.
             await self._running()
             if not _has_started(start):
@@ -240,11 +261,13 @@ def _process_pool() -> ProcessPool:
 
 
 def _log_unexpected[T](job: asyncio.Task[T]) -> None:
-    """Log how a task nobody waits for now failed, unless pebble's usual failures say it."""
+    """Log how a task nobody waits for now failed, unless the pool expects that failure."""
     if job.cancelled():
         return
     failure = job.exception()  # read here, so asyncio doesn't log it as never read
-    expected = failure is None or isinstance(failure, constants.WORKER_FAILURE_TYPES)
+    # pebble's usual failures, and NoWorkers, which the pool raises itself: none is a bug.
+    usual: tuple[type[BaseException], ...] = (NoWorkers, *constants.WORKER_FAILURE_TYPES)
+    expected = failure is None or isinstance(failure, usual)
     if expected:
         return
     message = "a task whose caller left failed"

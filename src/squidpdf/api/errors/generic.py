@@ -27,7 +27,7 @@ class TooSlow(Problem):
 
 
 class NoWorkers(Problem):
-    """No worker can start, so no PDF work can be done: what the health check answers."""
+    """No worker can start or stay up, so no PDF work can be done now."""
 
     type = "no_workers"
     status = 503

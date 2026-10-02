@@ -7,10 +7,11 @@ business, so no plan or account lifts them.
 from __future__ import annotations
 
 import os
+from concurrent.futures.process import BrokenProcessPool
 
 from pebble import ProcessExpired
 
-from squidpdf.api.errors import TooSlow
+from squidpdf.api.errors import NoWorkers, TooSlow
 from squidpdf.core import Damaged, Failure, TooHeavy
 
 _MB = 1024 * 1024
@@ -46,6 +47,8 @@ WORKER_FAILURES = (
     Failure(raised=MemoryError, problem=TooHeavy),  # past the memory ceiling
     # The worker died: MuPDF crashed on the file.
     Failure(raised=ProcessExpired, problem=Damaged),
+    # pebble gave up on the pool under the task, or no worker could start or stay up.
+    Failure(raised=BrokenProcessPool, problem=NoWorkers),
 )
 # The types alone, for an `except` or an `isinstance`.
 WORKER_FAILURE_TYPES = tuple(failure.raised for failure in WORKER_FAILURES)

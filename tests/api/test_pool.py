@@ -13,6 +13,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import partial
 from pathlib import Path
+from types import ModuleType
 
 import pebble.pool.process
 import pymupdf
@@ -26,6 +27,8 @@ from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
 from tests.helpers import (
+    assert_all,
+    assert_at_least,
     assert_at_most,
     assert_equal,
     assert_false,
@@ -190,24 +193,65 @@ def test_a_task_sent_as_every_worker_dies_goes_again_on_a_new_pool():
     assert_not_in(worker_pid, killed, "the worker that ran the task")
 
 
+_launch_process = (
+    pebble.pool.process.launch_process
+)  # pebble's own, kept before a test patches it
+
+
 def _cannot_start(*_args: object) -> None:
     """A machine with no room for another process."""
     raise OSError("no room for another process")
 
 
-def test_health_says_so_when_no_worker_can_start(tmp_path, monkeypatch):
-    """Its own app: this breaks the pool on purpose."""
+def _dies_as_it_starts(
+    name: str, _function: object, daemon: bool, context: ModuleType, *_args: object
+) -> multiprocessing.Process:
+    """A worker that exits at once, as one does whose memory cap the host refuses."""
+    return _launch_process(name, os._exit, daemon, context, 1)
+
+
+@pytest.mark.parametrize(
+    ("launch", "health_sees_it"),
+    [
+        pytest.param(_cannot_start, True, id="no worker can start"),
+        # Health replaces the broken pool and finds the new one running: it can't tell.
+        pytest.param(_dies_as_it_starts, False, id="every worker dies as it starts"),
+    ],
+)
+def test_pdf_work_says_no_workers_when_no_worker_can_start(
+    tmp_path, monkeypatch, caplog, pdf_bytes, launch, health_sees_it
+):
+    """Its own app: this breaks the pool on purpose.
+
+    A page is asked for twice: the first finds the pool broken and replaces
+    it, and no worker of the new one starts; the second finds that one broken too.
+    """
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     app = create_app()
     with TestClient(app, base_url=BASE_URL) as client:
+        doc = upload(client, pdf_bytes).json()
+        page = f"/api/documents/{doc['id']}/pages/0"
+        params = {"scale": 1, "build": doc["build"]}
         _kill_idle_worker(client, app.state.pool)
         with monkeypatch.context() as machine:
-            machine.setattr(pebble.pool.process, "launch_process", _cannot_start)
-            broken = client.get("/api/health")
-        healed = client.get("/api/health")
+            machine.setattr(pebble.pool.process, "launch_process", launch)
+            broken_pages = [client.get(page, params=params) for _ in range(2)]
+            broken_health = client.get("/api/health")
+        healed_page = client.get(page, params=params)
+        healed_health = client.get("/api/health")
 
-    assert_problem(broken, "no_workers", 503)
-    assert_equal(healed.json(), {"status": "ok"}, "health once workers can start again")
+    for broken_page in broken_pages:
+        assert_problem(broken_page, "no_workers", 503)
+    # The answer doesn't say why: the log does, for whoever runs the server.
+    causes = [record for record in caplog.records if record.name == "squidpdf.api.pool"]
+    assert_at_least(
+        len(causes), len(broken_pages), "warnings the pool logged, one a page at least"
+    )
+    assert_all(causes, lambda record: record.exc_info is not None, lambda record: record.msg)
+    if health_sees_it:
+        assert_problem(broken_health, "no_workers", 503)
+    assert_equal(healed_page.status_code, 200, "page image once workers can start again")
+    assert_equal(healed_health.json(), {"status": "ok"}, "health once workers can start again")
 
 
 def _noop() -> None:
