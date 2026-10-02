@@ -26,7 +26,7 @@ from squidpdf.core.app.errors import (
 )
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
-from squidpdf.core.engine import Engine
+from squidpdf.core.engine import Engine, open_engine
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.document import NO_SOURCES, FontSources
 from squidpdf.core.fonts.substitute import face_letters
@@ -130,7 +130,7 @@ def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
 
     `sources` lend a font the letters its copies in the file lack: Google's copy.
     """
-    return Engine(MuPDFDriver(path), sources=sources)
+    return open_engine(MuPDFDriver(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:

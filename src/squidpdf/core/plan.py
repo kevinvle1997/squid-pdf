@@ -51,7 +51,7 @@ class DrawPlan:
     left_out: list[str]  # letters no font we have can draw, each once, in the order typed
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class DrawPlanner:
     """Answers what draws a line at a span, and how wide it comes out, for one document."""
 

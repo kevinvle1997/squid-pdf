@@ -30,6 +30,7 @@ from squidpdf.core.writer import PageWriter, Setting
 __all__ = [
     "Engine",
     "LineToDraw",
+    "open_engine",
 ]
 
 
@@ -41,36 +42,30 @@ class LineToDraw:
     text: str
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class Engine:
-    """A PDF open for editing. Use it in a `with`, or close it."""
+    """A PDF open for editing. Use it in a `with`, or close it. Made by `open_engine`."""
 
-    def __init__(self, driver: PdfDriver, *, sources: FontSources) -> None:
-        """Take over an open document, with nothing looked up or added yet.
-
-        `sources` are where a font may borrow the letters its copies in the file lack.
-        """
-        self._driver = driver
-        fetch = sources.google
-        self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
-        self._fonts = DocumentFonts(driver, google=self._google)
-        # Which font draws a line and what comes out: one answer the fit and the draw share.
-        self._plans = DrawPlanner(self._fonts, driver)
-        self._writer = PageWriter(driver)
+    driver: PdfDriver
+    fonts: DocumentFonts
+    # Which font draws a line and what comes out: one answer the fit and the draw share.
+    plans: DrawPlanner
+    writer: PageWriter
 
     # What the document says.
 
     def index(self) -> SpanIndex:
         """Every editable span, extracted once from the pristine document."""
-        page_count = self._driver.page_count()
-        return build_index(self._driver.text_lines(page) for page in range(page_count))
+        page_count = self.driver.page_count()
+        return build_index(self.driver.text_lines(page) for page in range(page_count))
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
-        return self._driver.page_count()
+        return self.driver.page_count()
 
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
-        return self._driver.pages()
+        return self.driver.pages()
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
         """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box.
@@ -78,7 +73,7 @@ class Engine:
         No alpha channel: the page is white whatever the app's theme (Rule 2).
         Unrotated, so the image lines up with the span boxes; the browser turns it.
         """
-        return self._driver.page_image(page, scale, clip)
+        return self.driver.page_image(page, scale, clip)
 
     def in_form_fields(self, spans: Iterable[Span]) -> list[Span]:
         """The spans a form field draws, not the page, so an edit can't change them yet.
@@ -95,7 +90,7 @@ class Engine:
 
     def _in_fields_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, that a form field draws."""
-        fields = self._driver.form_fields(page)
+        fields = self.driver.form_fields(page)
         # A page with no field showing text: nothing to find, so no span is looked at.
         if not fields:
             return []
@@ -115,11 +110,11 @@ class Engine:
 
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact, approximate or substitute, for one span."""
-        plan = self._plans.plan_for(span, span.text)
+        plan = self.plans.plan_for(span, span.text)
         drawn_in = plan.drawn_in
         # The file's own font redraws its own text, as it is or not quite.
         if isinstance(drawn_in, PooledFont):
-            unlike = self._plans.unlike(span, plan)
+            unlike = self.plans.unlike(span, plan)
             if unlike is None:
                 return FidelityReport(span.id, "exact", span.font, in_file=True)
             return FidelityReport(span.id, "approximate", span.font, in_file=True, why=unlike)
@@ -130,21 +125,21 @@ class Engine:
 
     def _substitute_report(self, span: Span, drawn_in: Face) -> FidelityReport:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
-        own = self._fonts.own(span)
-        match = self._fonts.look_alike(span)
+        own = self.fonts.own(span)
+        match = self.fonts.look_alike(span)
         return FidelityReport(
             span.id,
             "substitute",
             span.font,
             in_file=own is not None,
             substitute=drawn_in.name,
-            why=self._fonts.why_not(span) if own is None else own.why_missing(span.text),
+            why=self.fonts.why_not(span) if own is None else own.why_missing(span.text),
             same_widths=match.same_widths and drawn_in == match.face,
         )
 
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em."""
-        return self._plans.widths(span)
+        return self.plans.widths(span)
 
     def plan_for(self, span: Span, text: str) -> DrawPlan:
         """How `text` is drawn at this span: worked out once, for a fit to ask all it needs of.
@@ -155,11 +150,11 @@ class Engine:
         its look-alike. Its `left_out` are those no font we have draws. `width_of`
         and `substitute` read it too.
         """
-        return self._plans.plan_for(span, text)
+        return self.plans.plan_for(span, text)
 
     def width_of(self, span: Span, plan: DrawPlan) -> float:
         """How wide `plan`'s line renders, placed as `draw` places it, at this span's size."""
-        return self._plans.width_of(span, plan, size=span.size)
+        return self.plans.width_of(span, plan, size=span.size)
 
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
@@ -173,7 +168,7 @@ class Engine:
         drawn_in = plan.drawn_in
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
-            return self._plans.substitute_for(span, text).face.name
+            return self.plans.substitute_for(span, text).face.name
         # A face we ship draws it.
         if isinstance(drawn_in, Face):
             return drawn_in.name
@@ -197,7 +192,7 @@ class Engine:
 
     def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Erase `spans`, all on `page`; returns those with any word of their text left."""
-        texts = self._driver.erase_text(page, [span.bbox for span in spans])
+        texts = self.driver.erase_text(page, [span.bbox for span in spans])
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 
@@ -210,17 +205,17 @@ class Engine:
         in every copy of a font it borrows a letter from.
         """
         for span in spans:
-            own = self._fonts.own(span)
-            self._fonts.look_alike(span)
+            own = self.fonts.own(span)
+            self.fonts.look_alike(span)
             if own is not None and lacks_space(own):
-                self._fonts.usual_gap(span, own)
+                self.fonts.usual_gap(span, own)
         for line in lines:
-            self._plans.plan_for(line.span, line.text)
+            self.plans.plan_for(line.span, line.text)
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
         for page, on_page in by_page(spans).items():
-            self._driver.drop_links(page, [span.bbox for span in on_page])
+            self.driver.drop_links(page, [span.bbox for span in on_page])
 
     def draw(
         self,
@@ -240,7 +235,7 @@ class Engine:
         to put into words; empty when nothing did.
         """
         setting = Setting(span.size if size is None else size, scale_x, turn_ccw)
-        return self._writer.draw(span, text, plans=self._plans, setting=setting)
+        return self.writer.draw(span, text, plans=self.plans, setting=setting)
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.
@@ -248,13 +243,13 @@ class Engine:
         Call it after the last draw: page numbers change here. Returns what
         came out other than asked.
         """
-        every_page_kept = set(pages) == set(range(self._driver.page_count()))
+        every_page_kept = set(pages) == set(range(self.driver.page_count()))
         said = [] if every_page_kept else self._drop_tags()
-        self._driver.keep_pages(pages)
-        # Looked up and named by page number, and those just changed.
-        self._fonts = DocumentFonts(self._driver, google=self._google)
-        self._plans = DrawPlanner(self._fonts, self._driver)
-        self._writer.forget_pages()
+        self.driver.keep_pages(pages)
+        # Looked up and named by page number, and those just changed. The planner
+        # asks the same `fonts`, so it forgets with them.
+        self.fonts.forget_pages()
+        self.writer.forget_pages()
         return said
 
     def _drop_tags(self) -> list[Message]:
@@ -262,9 +257,9 @@ class Engine:
 
         They point at every page, so they would keep left-out pages in the file.
         """
-        if not self._driver.has_tags():
+        if not self.driver.has_tags():
             return []
-        self._driver.drop_tags()
+        self.driver.drop_tags()
         return [Message("tags_dropped")]
 
     def save(self, path: str) -> list[Message]:
@@ -273,7 +268,7 @@ class Engine:
         Call it last: afterwards they can't draw any new letter. Returns
         anything that came out other than asked, for the edge to put into words.
         """
-        return self._writer.save(path)
+        return self.writer.save(path)
 
     def still_there(self, spans: Iterable[Span]) -> list[Span]:
         """The spans with any word of their text still in their box. A black box won't hide it.
@@ -287,13 +282,13 @@ class Engine:
 
     def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, with any word of their text still in their box."""
-        texts = self._driver.text_in(page, [span.bbox for span in spans])
+        texts = self.driver.text_in(page, [span.bbox for span in spans])
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 
     def close(self) -> None:
         """Release the open document."""
-        self._driver.close()
+        self.driver.close()
 
     def __enter__(self) -> Engine:
         """Lets the engine be used as `with open_pdf(path) as engine:`."""
@@ -302,6 +297,19 @@ class Engine:
     def __exit__(self, *_exc: object) -> None:
         """Close the document when the `with` block ends."""
         self.close()
+
+
+def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
+    """Take over an open document, with nothing looked up or added yet.
+
+    `sources` are where a font may borrow the letters its copies in the file lack.
+    """
+    fetch = sources.google
+    google = None if fetch is None else GoogleFontController(driver, fetch)
+    fonts = DocumentFonts(driver, google)
+    return Engine(
+        driver, fonts=fonts, plans=DrawPlanner(fonts, driver), writer=PageWriter(driver)
+    )
 
 
 def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:

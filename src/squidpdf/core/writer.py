@@ -20,7 +20,7 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.embedded import FontUnusable, remembered
+from squidpdf.core.fonts.embedded import FontUnusable, made_once, remembered
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import DrawPlanner, coded_in
@@ -37,6 +37,7 @@ from squidpdf.core.types import (
 
 __all__ = [
     "Setting",
+    "PageNames",
     "PageWriter",
 ]
 
@@ -65,6 +66,15 @@ class PageNames:
         """The resource name of a copy of a font on a page, added on first use, or why not."""
         return remembered(self.own, key, add)
 
+    def face_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str:
+        """The resource name of a face we ship on a page, added on first use."""
+        return made_once(self.faces, key, add)
+
+    def forget(self) -> None:
+        """Forget every page's names, as a fresh record: the pages were renumbered."""
+        self.own.clear()
+        self.faces.clear()
+
 
 @dataclass(slots=True)
 class AddedFont:
@@ -74,9 +84,18 @@ class AddedFont:
     """
 
     name: str  # what the user reads it as
-    file: bytes  # the whole font
+    file: bytes = field(repr=False)  # the whole font
     xrefs: set[int] = field(default_factory=set)  # its PDF objects; pages usually share one
-    drawn: set[str] = field(default_factory=set)  # every letter drawn in it, over all pages
+    # Every letter drawn in it, over all pages.
+    drawn: set[str] = field(default_factory=set, repr=False)
+
+    def note_drawn(self, text: str) -> None:
+        """Keep the letters of `text`, drawn in it, for `save` to cut it down to."""
+        self.drawn.update(text)
+
+    def note_object(self, xref: int) -> None:
+        """Keep `xref`, another PDF object it was added as: another page's, usually."""
+        self.xrefs.add(xref)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +107,7 @@ class OffsetRun:
     resource: str  # the resource name of the font they're drawn in
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class PageWriter:
     """Draws lines onto a document's pages, adding each font a page needs once.
 
@@ -95,12 +115,10 @@ class PageWriter:
     cut down.
     """
 
-    def __init__(self, driver: PdfDriver) -> None:
-        """Write through `driver`, with nothing added yet."""
-        self._driver = driver
-        self._names = PageNames()
-        # By the face's file, or Google's source for its copy: one font file each.
-        self._added: dict[str, AddedFont] = {}
+    driver: PdfDriver
+    names: PageNames = field(default_factory=PageNames)
+    # By the face's file, or Google's source for its copy: one font file each.
+    added: dict[str, AddedFont] = field(default_factory=dict, repr=False)
 
     def draw(
         self, span: Span, text: str, *, plans: DrawPlanner, setting: Setting
@@ -141,7 +159,7 @@ class PageWriter:
 
     def forget_pages(self) -> None:
         """Forget each page's resource names: the pages were just renumbered."""
-        self._names = PageNames()
+        self.names.forget()
 
     def save(self, path: str) -> list[Message]:
         """Write the document to `path`, the fonts we added cut to the letters drawn in them.
@@ -150,7 +168,7 @@ class PageWriter:
         anything that came out other than asked, for the edge to put into words.
         """
         notices: list[Message] = []
-        for added in self._added.values():
+        for added in self.added.values():
             try:
                 font_file = trimmed(added.file, added.drawn)
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
@@ -159,10 +177,10 @@ class PageWriter:
                 notices.append(Message("face_not_trimmed", {"font": added.name}))
             for xref in sorted(added.xrefs):
                 try:
-                    self._driver.replace_font_file(xref, font_file)
+                    self.driver.replace_font_file(xref, font_file)
                 except DriverError as problem:  # its file can't be swapped: it stays whole
                     notices.append(problem.reason)
-        self._driver.save(path)
+        self.driver.save(path)
         return notices
 
     def _write_in_face(
@@ -170,8 +188,8 @@ class PageWriter:
     ) -> None:
         """Write `text` at the span's baseline in a face we ship."""
         resource = self._face_resource(span.page, face)
-        self._added[face.file].drawn.update(text)
-        font = plans.driver.face_font(face)
+        self.added[face.file].note_drawn(text)
+        font = self.driver.face_font(face)
         resources = dict.fromkeys(text, resource)
         self._write(span, text, font=font, resources=resources, plans=plans, setting=setting)
 
@@ -201,7 +219,7 @@ class PageWriter:
             TextRun(run.text, (x + step_x * run.offset, y + step_y * run.offset), run.resource)
             for run in offset_runs
         ]
-        self._driver.write_text(
+        self.driver.write_text(
             span.page,
             runs=runs,
             size=setting.size,
@@ -220,7 +238,7 @@ class PageWriter:
         runs = [
             CodeRun(codes_for(run.coded, run.text), run.copy.font.xref) for run in coded_runs
         ]
-        self._driver.write_codes(
+        self.driver.write_codes(
             span.page,
             origin=span.origin,
             runs=runs,
@@ -245,7 +263,7 @@ class PageWriter:
         redraw. Raises FontUnusable when the library won't add it.
         """
         key = (page, copy_source(copy))
-        found = self._names.own_resource(key, partial(self._add_copy, page, copy))
+        found = self.names.own_resource(key, partial(self._add_copy, page, copy))
         if isinstance(found, FontUnusable):
             raise FontUnusable(found.reason)
         return found
@@ -259,7 +277,7 @@ class PageWriter:
         # Named by its source, so copies of one font are told apart.
         resource = resource_name("F", copy_source(copy))
         try:
-            font_resource = self._driver.add_font(page, copy.embedded.file, resource=resource)
+            font_resource = self.driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the substitute draws instead
             raise FontUnusable(problem.reason) from problem
         if copy.lent is not None:
@@ -272,23 +290,23 @@ class PageWriter:
         for ch in text:
             copy = own.copy_for(ch)
             if copy.lent is not None:
-                self._added[copy.lent.source].drawn.add(ch)
+                self.added[copy.lent.source].note_drawn(ch)
 
     def _face_resource(self, page: int, face: Face) -> str:
         """The resource name of a face we ship, added to the page on first use.
 
         Once per page, as `_copy_resource` does for the file's own fonts.
         """
-        key = (page, face.file)
-        if key not in self._names.faces:
-            font_file = face_bytes(face)
-            font_resource = self._driver.add_font(
-                page, font_file, resource=resource_name("S", face.file)
-            )
-            self._names.faces[key] = font_resource.resource
-            added_font = AddedFont(face.name, font_file)
-            self._keep_whole(face.file, added_font, xref=font_resource.xref)
-        return self._names.faces[key]
+        return self.names.face_resource((page, face.file), partial(self._add_face, page, face))
+
+    def _add_face(self, page: int, face: Face) -> str:
+        """Add a face we ship to a page, whole, and return its resource name."""
+        font_file = face_bytes(face)
+        font_resource = self.driver.add_font(
+            page, font_file, resource=resource_name("S", face.file)
+        )
+        self._keep_whole(face.file, AddedFont(face.name, font_file), xref=font_resource.xref)
+        return font_resource.resource
 
     def _keep_whole(self, source: str, font: AddedFont, *, xref: int) -> None:
         """Note a font added whole as font `xref`, for `save` to cut down.
@@ -296,7 +314,7 @@ class PageWriter:
         `source` tells one font file from another: two can share a name.
         """
         # The first time a file is added makes its record; later pages add their object.
-        self._added.setdefault(source, font).xrefs.add(xref)
+        self.added.setdefault(source, font).note_object(xref)
 
 
 def resource_name(kind: str, source: str) -> str:
