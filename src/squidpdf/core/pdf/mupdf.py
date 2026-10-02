@@ -11,8 +11,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from functools import cache
+from functools import cache, reduce
 from itertools import chain, count
+from operator import or_
 
 import pymupdf
 
@@ -242,19 +243,29 @@ class _MuPDFDriver:
         # MuPDF reads /Rotate, a clockwise turn, as a quarter turn: 0, 90, 180 or 270.
         return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
-    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
-        """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box.
-
-        The clip is mapped into the rotated page, where MuPDF clips.
-        """
+    def page_image(self, page: int, scale: float) -> bytes:
+        """The page unrotated as a PNG, `scale` pixels per point."""
         pdf_page = self.doc[page]
-        box = None if clip is None else pymupdf.Rect(clip.x0, clip.y0, clip.x1, clip.y1)
         pix = pdf_page.get_pixmap(
-            matrix=pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale),
-            clip=None if box is None else box * pdf_page.rotation_matrix,
-            alpha=False,
+            matrix=pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale), alpha=False
         )
         return pix.tobytes("png")
+
+    def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
+        """Each box of the page unrotated as a PNG, `scale` pixels per point.
+
+        The area around them all is drawn once and each box cut from it: every
+        drawing runs the page's whole content, however small. A box is mapped
+        into the rotated page, where MuPDF clips.
+        """
+        pdf_page = self.doc[page]
+        matrix = pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale)
+        turned = [
+            pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) * pdf_page.rotation_matrix
+            for box in boxes
+        ]
+        drawn = pdf_page.get_pixmap(matrix=matrix, clip=reduce(or_, turned), alpha=False)
+        return [_cut(drawn, (box * matrix).irect) for box in turned]
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
@@ -761,6 +772,13 @@ def _written_name(resource: str) -> str:
 def _is_plain(byte: int) -> bool:
     """Whether a PDF name can hold `byte` as it is."""
     return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
+
+
+def _cut(drawn: pymupdf.Pixmap, box: pymupdf.IRect) -> bytes:
+    """The pixels of `drawn` inside `box`, which is in the same device pixels, as a PNG."""
+    part = pymupdf.Pixmap(drawn.colorspace, box & drawn.irect, drawn.alpha)
+    part.copy(drawn, part.irect)
+    return part.tobytes("png")
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

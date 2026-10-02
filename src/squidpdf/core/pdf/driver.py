@@ -80,8 +80,16 @@ class PdfDriver(Protocol):
         """Each page's size, unrotated, and the turn it asks for."""
         ...
 
-    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
-        """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box."""
+    def page_image(self, page: int, scale: float) -> bytes:
+        """The page unrotated as a PNG, `scale` pixels per point."""
+        ...
+
+    def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
+        """Each box of the page unrotated as a PNG, `scale` pixels per point.
+
+        The page is drawn once for them all, not once a box, so their number
+        doesn't multiply the drawing.
+        """
         ...
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:

@@ -82,13 +82,21 @@ class Engine:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
         return self.driver.pages()
 
-    def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
-        """The page unrotated as a PNG, `scale` pixels per point, or only the `clip` box.
+    def page_image(self, page: int, scale: float) -> bytes:
+        """The page unrotated as a PNG, `scale` pixels per point.
 
         No alpha channel: the page is white whatever the app's theme (Rule 2).
         Unrotated, so the image lines up with the span boxes; the browser turns it.
         """
-        return self.driver.page_image(page, scale, clip)
+        return self.driver.page_image(page, scale)
+
+    def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
+        """Each box of the page unrotated as a PNG, `scale` pixels per point.
+
+        The page is drawn once for them all, not once a box, so their number
+        doesn't multiply the drawing.
+        """
+        return self.driver.box_images(page, scale, boxes)
 
     def in_form_fields(self, spans: Iterable[Span]) -> list[Span]:
         """The spans a form field draws, not the page, so an edit can't change them yet.

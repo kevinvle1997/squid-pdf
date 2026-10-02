@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import base64
 import math
+from collections import Counter
 from dataclasses import dataclass
 from functools import partial
+from itertools import pairwise
 from pathlib import Path
 
 from squidpdf.core import (
@@ -28,8 +30,8 @@ from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
 from squidpdf.documents.types import Loaded
+from squidpdf.editing import constants
 from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve, run
-from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import fit_info, notice_info, redaction_info, skipped_info
@@ -62,10 +64,12 @@ class RenderController:
     ) -> Reply[Render]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
-        Refuses edits over the limits and regions the document lacks. A
-        redaction pointing at nothing fails the whole request.
+        Refuses edits and regions over the limits, regions the document lacks,
+        rows of a page asked for twice, and strips whose pixel rows add up past
+        their limit. A redaction pointing at nothing fails the whole request.
         """
         check_edits(edits)
+        _check_region_count(regions)
         pages = store.load_pages(doc.folder)
         _check_regions(regions, pages)
         # Only the pages drawn go to the worker, so it needn't read the page list again,
@@ -74,6 +78,7 @@ class RenderController:
             region.page: DrawnPage(pages[region.page], page_scale(pages[region.page], scale))
             for region in regions
         }
+        _check_rows(regions, drawn_pages)
         rendered = await self._enqueue_draw_regions(
             doc.folder, edits=edits, regions=regions, drawn_pages=drawn_pages
         )
@@ -92,7 +97,7 @@ class RenderController:
         task = partial(
             _draw_regions, str(folder), edits=edits, regions=regions, drawn_pages=drawn_pages
         )
-        return await self.workers.run(RENDER_TIMEOUT_S, task)
+        return await self.workers.run(constants.RENDER_TIMEOUT_S, task)
 
 
 def _draw_regions(
@@ -122,9 +127,7 @@ def _draw_regions(
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         notices = run(engine, steps)
         verdicts = redactions.verdicts(engine)
-        images = [
-            _draw(engine, region, drawn_page=drawn_pages[region.page]) for region in regions
-        ]
+        images = _draw(engine, regions, drawn_pages=drawn_pages)
 
     redaction_per_span = {
         span_id: Redaction(gone, hidden[span_id]) for span_id, gone in verdicts.items()
@@ -155,8 +158,16 @@ def _said_unredacted(verdicts: dict[str, bool]) -> list[Notice]:
     ]
 
 
+def _check_region_count(regions: list[Region]) -> None:
+    """Refuse more regions than a render draws, before anything is read."""
+    # Read as a module attribute, so a test can lower the limit.
+    if len(regions) > constants.MAX_REGIONS:
+        raise InvalidRequest(debug=f"regions: {len(regions)}, at most {constants.MAX_REGIONS}")
+
+
 def _check_regions(regions: list[Region], pages: list[Page]) -> None:
-    """Refuse a region the document can't give: a page it lacks, or no rows of the page."""
+    """Refuse a region the document can't give, or rows of a page asked for twice."""
+    strips: dict[int, list[Rect]] = {}
     for region in regions:
         if not is_page(region.page, len(pages)):
             raise NoSuchPage(debug=f"regions: no page {region.page}")
@@ -165,6 +176,38 @@ def _check_regions(regions: list[Region], pages: list[Page]) -> None:
         # `not <` rather than `>=`: every comparison with NaN is false, so NaN fails too.
         if not strip.y0 < strip.y1:
             debug = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
+            raise InvalidRequest(debug=debug)
+        strips.setdefault(region.page, []).append(strip)
+    for page_number, page_strips in strips.items():
+        _check_apart(page_number, page_strips)
+
+
+def _check_apart(page_number: int, strips: list[Rect]) -> None:
+    """Refuse two strips of a page that share rows: the browser joins those into one."""
+    ordered = sorted(strips, key=lambda strip: strip.y0)
+    for above, below in pairwise(ordered):
+        if below.y0 < above.y1:
+            debug = f"regions: two on page {page_number} share the rows from {below.y0:g}"
+            raise InvalidRequest(debug=debug)
+
+
+def _check_rows(regions: list[Region], drawn_pages: dict[int, DrawnPage]) -> None:
+    """Refuse a page's strips whose whole pixel rows add up past their limit.
+
+    Each is drawn out to whole rows, so slivers apart, each under a row, would come
+    back as a row or two apiece: many times the page.
+    """
+    asked: Counter[int] = Counter()
+    for region in regions:
+        drawn_page = drawn_pages[region.page]
+        strip = _strip_of(region, drawn_page.page)
+        asked[region.page] += len(_pixel_rows(strip, drawn_page.scale))
+    for number, rows in asked.items():
+        page, scale = drawn_pages[number].page, drawn_pages[number].scale
+        page_rows = len(_pixel_rows(Rect(0.0, 0.0, page.width, page.height), scale))
+        most = constants.MAX_STRIP_ROWS_PER_PAGE_ROW * page_rows
+        if rows > most:
+            debug = f"regions: {rows} pixel rows on page {number}, at most {most}"
             raise InvalidRequest(debug=debug)
 
 
@@ -196,16 +239,47 @@ def _reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
     }
 
 
-def _draw(engine: Engine, region: Region, *, drawn_page: DrawnPage) -> ImageInfo:
-    """One region as a base64 PNG: the whole page, or a full-width strip of it."""
+def _draw(
+    engine: Engine, regions: list[Region], *, drawn_pages: dict[int, DrawnPage]
+) -> list[ImageInfo]:
+    """Each region as a base64 PNG, in the order asked, each page drawn once for all its own."""
+    on_page: dict[int, list[Region]] = {}
+    for region in regions:
+        on_page.setdefault(region.page, []).append(region)
+    drawn = {
+        number: iter(_draw_page(engine, page_regions, drawn_page=drawn_pages[number]))
+        for number, page_regions in on_page.items()
+    }
+    return [next(drawn[region.page]) for region in regions]
+
+
+def _draw_page(
+    engine: Engine, regions: list[Region], *, drawn_page: DrawnPage
+) -> list[ImageInfo]:
+    """One page's regions as base64 PNGs: the whole page, or full-width strips of it."""
     page, scale = drawn_page.page, drawn_page.scale
-    whole_page = region.y0 is None and region.y1 is None
+    number = regions[0].page
+    # No two regions of a page share rows (_check_apart), so a whole page is its only one.
+    whole_page = regions[0].y0 is None and regions[0].y1 is None
     if whole_page:
-        png = engine.page_image(region.page, scale)
-        return {"page": region.page, "y": 0.0, "image": base64.b64encode(png).decode()}
-    # A strip, out to whole pixels so its rows are the page image's rows.
-    strip = _strip_of(region, page)
-    top = math.floor(strip.y0 * scale) / scale
-    bottom = math.ceil(strip.y1 * scale) / scale
-    png = engine.page_image(region.page, scale, Rect(0, top, page.width, bottom))
-    return {"page": region.page, "y": top, "image": base64.b64encode(png).decode()}
+        return [_image_of(number, 0.0, engine.page_image(number, scale))]
+    # Strips, out to whole pixels so their rows are the page image's rows.
+    boxes = [_whole_rows(_strip_of(region, page), scale) for region in regions]
+    pngs = engine.box_images(number, scale, boxes)
+    return [_image_of(number, box.y0, png) for box, png in zip(boxes, pngs, strict=True)]
+
+
+def _whole_rows(strip: Rect, scale: float) -> Rect:
+    """The strip grown out to whole pixel rows at `scale`."""
+    rows = _pixel_rows(strip, scale)
+    return Rect(strip.x0, rows.start / scale, strip.x1, rows.stop / scale)
+
+
+def _pixel_rows(strip: Rect, scale: float) -> range:
+    """The page image's pixel rows the strip touches at `scale`."""
+    return range(math.floor(strip.y0 * scale), math.ceil(strip.y1 * scale))
+
+
+def _image_of(page: int, y: float, png: bytes) -> ImageInfo:
+    """One image as the browser gets it: its page, its top, and the PNG in base64."""
+    return {"page": page, "y": y, "image": base64.b64encode(png).decode()}

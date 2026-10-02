@@ -87,6 +87,7 @@ def test_on_a_turned_page_the_span_box_covers_its_ink(turned):
     """A box that misses its text would show fidelity on the wrong words."""
     with open_pdf(turned) as engine:
         box = next(iter(engine.index())).bbox
-        pix = pymupdf.Pixmap(engine.page_image(0, _SCALE, box))
+        [png] = engine.box_images(0, _SCALE, [box])
+        pix = pymupdf.Pixmap(png)
     darkest = min(pix.samples)
     assert_true(darkest < _INK, f"darkest channel inside the span box is {darkest}")
