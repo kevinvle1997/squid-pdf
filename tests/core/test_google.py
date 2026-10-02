@@ -38,6 +38,8 @@ from squidpdf.core.fonts.google import (
     google_fonts,
 )
 from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
+from squidpdf.core.types import FontDescriptor
+from tests.conftest import name_two_byte_font
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
@@ -51,13 +53,17 @@ _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
 _COPIES = 100  # Google copies measured in one worker: far past how many it keeps
 
 
-# Fonts Google has no file to lend for, and why: not a family of its, no cut in this
-# weight and slant (Aclonica has no italic), a variable font whose name is reserved.
-_NOT_GOOGLES = {
-    "Arial": "google_not_listed",
-    "Aclonica-Italic": "google_no_cut",
-    "Assistant-Bold": "google_name_reserved",
-}
+# A font, what its description says, and why Google has no file for it: not a family
+# of its, no cut in this slant (Aclonica has no italic), a variable font whose name is
+# reserved, a weight none of the nine. Roboto ships only a variable file, which would
+# be cut at whatever weight the file names: 450, between two, or 0, below the lightest.
+_NOT_GOOGLES = [
+    ("Arial", None, "google_not_listed"),
+    ("Aclonica-Italic", None, "google_no_cut"),
+    ("Assistant-Bold", None, "google_name_reserved"),
+    ("Roboto", FontDescriptor(32, 450.0, 0.0), "google_no_cut"),
+    ("Roboto", FontDescriptor(32, 0.0, 0.0), "google_no_cut"),
+]
 
 
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
@@ -348,10 +354,95 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
         for span in engine.index():
             engine.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
-    for font, why in _NOT_GOOGLES.items():
+    for font, descriptor, why in _NOT_GOOGLES:
         with pytest.raises(FontUnusable) as raised:
-            _google_file(font, None)
+            _google_file(font, descriptor)
         assert_equal(raised.value.reason.key, why, f"why Google has no file for {font}")
+
+
+def _described_as(path: str, out: Path, *, name: str, described: dict[str, str]) -> str:
+    """The Poppins fixture at `out`, its font named `name` and described by `described`.
+
+    `name` goes on the font and the one inside it, as the fixture's own does;
+    the description, which a two-byte font keeps on the one inside, gets each
+    key of `described` set to its value.
+    """
+    doc = pymupdf.open(path)
+    [(xref, *_)] = doc[0].get_fonts()
+    # A space in a PDF name is written #20.
+    inner = name_two_byte_font(doc, xref, name.replace(" ", "#20"))
+    _kind, descriptor_reference = doc.xref_get_key(inner, "FontDescriptor")
+    descriptor = int(descriptor_reference.split()[0])
+    for key, value in described.items():
+        doc.xref_set_key(descriptor, key, value)
+    doc.save(out)
+    return str(out)
+
+
+# A font's name and description, then the file Google is asked for (None: none) and
+# the face we ship that draws for it. A weight past the heaviest, below the lightest,
+# between two: none is a weight a file comes in. Bold by ForceBold alone (the
+# fixture's own /Flags are 32, ForceBold is 1 << 18, fixed width 1); a name's weight
+# word over a description that says otherwise; a light cut drawn bold, as ",Bold" or
+# a "Bold" after the weight word says. Then weights a family has no file in:
+# Syncopate has 400 and 700, Abhaya Libre 400 to 800, Coustard 400 and 900, Courier
+# Prime 400 and 700. A file of another weight is never asked for: a fixed width one,
+# as Courier Prime's Regular is for its Medium, has the same widths, so it would be
+# lent as exact. Then a name's weight word between two (SemiLight 350, Retina and
+# Text 450) with no weight described, since /FontWeight is optional. Last, IBM
+# Plex's own short words, as its PostScript names spell them: Medm, SmBld, ExtLt.
+_WEIGHTS_SAID = [
+    ("Poppins-Regular", {"FontWeight": "123456"}, None, "Poppins Bold"),
+    ("Poppins-Regular", {"FontWeight": "-5"}, None, "Poppins Regular"),
+    ("Poppins-Regular", {"FontWeight": "640"}, None, "Poppins Bold"),
+    ("Poppins-Regular", {"Flags": str(32 | 1 << 18)}, "Poppins-Regular.ttf", "Poppins Bold"),
+    ("Poppins-Medium", {"FontWeight": "700"}, "Poppins-Medium.ttf", "Poppins Regular"),
+    ("Poppins-Light,Bold", {}, "Poppins-Light.ttf", "Poppins Bold"),
+    ("Poppins Light Bold", {}, "Poppins-Light.ttf", "Poppins Bold"),
+    ("Syncopate", {"FontWeight": "600"}, None, "Liberation Sans Bold"),
+    ("AbhayaLibre-Black", {}, None, "Liberation Sans Bold"),
+    ("Coustard-SemiBold", {}, None, "Liberation Sans Bold"),
+    ("CourierPrime-Medium", {"Flags": "33"}, None, "Liberation Mono Regular"),
+    ("Poppins-SemiLight", {}, None, "Poppins Regular"),
+    ("FiraCode-Retina", {"Flags": "33"}, None, "Liberation Mono Regular"),
+    ("IBMPlexMono-Text", {"Flags": "33"}, None, "IBM Plex Mono Regular"),
+    ("IBMPlexMono-Medm", {"Flags": "33"}, "IBMPlexMono-Medium.ttf", "IBM Plex Mono Regular"),
+    ("IBMPlexMono-SmBld", {"Flags": "33"}, "IBMPlexMono-SemiBold.ttf", "IBM Plex Mono Bold"),
+    (
+        "IBMPlexMono-ExtLt",
+        {"Flags": "33"},
+        "IBMPlexMono-ExtraLight.ttf",
+        "IBM Plex Mono Regular",
+    ),
+]
+
+
+@pytest.mark.parametrize(("name", "described", "file_name", "face"), _WEIGHTS_SAID)
+def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
+    poppins_subset, tmp_path, name, described, file_name, face
+):
+    """A file names any weight it likes: each would be a download and a cut, kept for good.
+
+    The face we ship is bold when that weight is, or when the file has the
+    viewer draw the font bold.
+    """
+    path = _described_as(
+        poppins_subset, tmp_path / "described.pdf", name=name, described=described
+    )
+    fetch, asked = _google(None)
+    with open_pdf(path, sources=FontSources(google=fetch)) as engine:
+        span = next(iter(engine.index()))
+        drawn_in = engine.substitute(span, _WANTED, plan=engine.plan_for(span, _WANTED))
+    asked_for = [Path(file.path).name for file in asked]
+    said = _why_substitute(path, fetch)
+
+    # Asked for a file, the fetch hands back nothing; asked for none, Google has no cut.
+    expected = (
+        ([], face, "google_no_cut")
+        if file_name is None
+        else ([file_name], face, "google_not_fetched")
+    )
+    assert_equal((asked_for, drawn_in, said), expected, "the file asked for, the face, why")
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():

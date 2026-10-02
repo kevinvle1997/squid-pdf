@@ -32,7 +32,7 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
-from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
+from squidpdf.core.fonts.look_alike import WEIGHTS, bare_name, style_of, weight_of
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
@@ -41,39 +41,11 @@ _logger = logging.getLogger(__name__)
 _RAW = "https://raw.githubusercontent.com/google/fonts"
 # Set to anything: never fetch. For tests, and a server with no way out.
 _NO_FETCH = "SQUIDPDF_NO_FETCH"
-_REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 _EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network is down
 # One INFO line per cache miss, worded the same every time so a grep counts them.
 _CACHE_MISS = "Google cache miss: %s (%s)"
-
-
-@dataclass(frozen=True, slots=True)
-class _WeightWord:
-    """A weight word in a font's name, and the weight it means."""
-
-    word: str  # lower case, as the name reads with its spaces dropped
-    weight: int  # 100 to 900
-
-
-# Each weight word; the first match wins, so compound words come first and
-# "SemiBold" isn't read as "Bold".
-_WEIGHT_WORDS = (
-    _WeightWord("extralight", 200),
-    _WeightWord("ultralight", 200),
-    _WeightWord("semibold", 600),
-    _WeightWord("demibold", 600),
-    _WeightWord("extrabold", 800),
-    _WeightWord("ultrabold", 800),
-    _WeightWord("hairline", 100),
-    _WeightWord("thin", 100),
-    _WeightWord("light", 300),
-    _WeightWord("medium", 500),
-    _WeightWord("bold", 700),
-    _WeightWord("black", 900),
-    _WeightWord("heavy", 900),
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,10 +152,13 @@ def _family_list() -> dict[str, Any]:
 def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     """The file in Google's collection for a document's font.
 
-    Matched by family name, then by weight and style. A family that ships only
-    a variable font is cut to the weight, unless its licence reserves its name:
-    a cut is a modified version, which may not carry a reserved name. Raises
-    FontUnusable, saying why, when there's none to use.
+    Matched by family name, then by the font's own weight and style, exactly:
+    a file of another weight is no copy of it, though a fixed-width one would
+    pass the width check. Only the nine usual weights are asked for, so a file
+    naming a new weight on each page can't ask for a cut of each. A family that
+    ships only a variable font is cut to the weight, unless its licence
+    reserves its name: a cut is a modified version, which may not carry a
+    reserved name. Raises FontUnusable, saying why, when there's none to use.
     """
     listed = _family_list()
     key = bare_name(font)
@@ -192,7 +167,11 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if family is None:
         raise FontUnusable(Message("google_not_listed"))
-    weight = _weight_of(font, descriptor)
+    weight = weight_of(font, descriptor)
+    # None of the nine, as a Text cut's 450 or a 0 is: no fixed file is in it, and a
+    # variable one would be cut at any weight the file names.
+    if weight not in WEIGHTS:
+        raise FontUnusable(Message("google_no_cut"))
     style, _usual_cut = style_of(font, descriptor)
     italic = style in ("italic", "bold-italic")
     files = [_ListedFile(*row) for row in family["files"]]  # rows keep the fields' order
@@ -210,21 +189,6 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     if family["reserved_name"]:
         raise FontUnusable(Message("google_name_reserved"))
     return GoogleFile(f"{folder}/{variable.name}", variable.blob, weight)
-
-
-def _weight_of(font: str, descriptor: FontDescriptor | None) -> int:
-    """A font's weight, 100 to 900: from its name, else its description, else regular."""
-    _family, style_words = family_and_style(font)
-    style_text = style_words.replace(" ", "").lower()
-    named = next(
-        (weight_word.weight for weight_word in _WEIGHT_WORDS if weight_word.word in style_text),
-        None,
-    )
-    if named is not None:
-        return named
-    if descriptor is not None and descriptor.weight is not None:
-        return int(descriptor.weight)
-    return _REGULAR
 
 
 def blob_hash(data: bytes) -> str:
