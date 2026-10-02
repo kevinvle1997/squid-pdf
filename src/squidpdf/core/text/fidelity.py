@@ -64,7 +64,7 @@ def reason_of(why: Message) -> ApproximateReason:
 
 
 def green_rate(reports: list[FidelityReport]) -> float:
-    """The share of spans that keep their original font.
+    """The share of spans that are exact: their own font, set as the page sets them.
 
     The one number the product is judged on. Below GREEN_RATE_TARGET the
     promise inverts: substitution becomes the normal case and the signal reads

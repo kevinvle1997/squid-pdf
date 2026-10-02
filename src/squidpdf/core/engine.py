@@ -67,7 +67,10 @@ class Engine:
     # What the document says.
 
     def index(self) -> SpanIndex:
-        """Every editable span, extracted once from the pristine document."""
+        """Every editable span, extracted from the document as it is now, on each call.
+
+        Call it once, on the pristine file: an index of an edited one changes the ids.
+        """
         page_count = self.driver.page_count()
         return build_index(self.driver.text_lines(page) for page in range(page_count))
 
@@ -422,8 +425,9 @@ def _middle_inside(box: Rect, area: Rect) -> bool:
 def _any_word_left(text: str, left: str) -> bool:
     """Whether any word of `text`, or all of it, is in `left`, spaces aside.
 
-    A word of one letter doesn't count alone: "A" is in most labels drawn over
-    a redaction, such as "[REDACTED]".
+    A word of one letter is looked for only within the whole text, not alone:
+    "A" is in most labels drawn over a redaction, such as "[REDACTED]". So a
+    span that is one letter is still looked for, as its whole text.
     """
     leftover = "".join(left.split())
     words = [word for word in text.split() if len(word) > 1]
