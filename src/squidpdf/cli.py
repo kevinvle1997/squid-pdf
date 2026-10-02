@@ -115,13 +115,17 @@ def _summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     counts = Counter(report.state for report in reports)
-    colour = _GREEN if rate >= GREEN_RATE_TARGET else _YELLOW
-    print(
+    tally = (
         f"\n  {len(reports)} spans · {counts['exact']} exact"
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
-        f" · {colour}{rate:.0%} keep the original font{_OFF}"
     )
+    # No text: no share of it to keep.
+    if rate is None:
+        print(f"{tally} · no text")
+        return
+    colour = _GREEN if rate >= GREEN_RATE_TARGET else _YELLOW
+    print(f"{tally} · {colour}{rate:.0%} keep the original font{_OFF}")
 
 
 class _UnknownSpan(Exception):
@@ -223,43 +227,60 @@ def _cmd_redact(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True, slots=True)
+class _Row:
+    """One file's line in `report`."""
+
+    path: str
+    read: bool  # whether it opened; when it didn't, `note` says why
+    rate: float | None  # its green rate, None when it has no text; unused when not read
+    note: str  # how many spans it has, or why it couldn't be read
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     """Green rate across a corpus. Below 80% the promise inverts into an apology.
 
     Exits 1 when it could read no file, so a script sees nothing was measured.
     """
-    rows: list[tuple[str, float | None, str]] = []  # a file, its green rate, a note
+    rows: list[_Row] = []
     total = exact_count = 0
     for path in args.pdfs:
         try:
             with _opened(path) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
-            rows.append((path, None, exc.detail))
+            rows.append(_Row(path, read=False, rate=None, note=exc.detail))
             continue
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
-            rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
+            rows.append(_Row(path, read=False, rate=None, note=str(exc)[:_NAME_COL_WIDTH]))
             continue
         exact_count += sum(1 for report in reports if report.state == "exact")
         total += len(reports)
-        rows.append((path, green_rate(reports), f"{len(reports)} spans"))
+        rate = green_rate(reports)
+        rows.append(_Row(path, read=True, rate=rate, note=f"{len(reports)} spans"))
 
     print()
-    for path, rate, note in rows:
-        name = posixpath.basename(path)[:_NAME_COL_WIDTH]
-        # The file couldn't be read: `note` says why.
-        if rate is None:
-            print(f"  {_RED}failed{_OFF}   {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
-            continue
-        colour = _rate_colour(rate)
-        print(f"  {colour}{rate:>5.0%}{_OFF}    {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
+    for row in rows:
+        print(_line_of(row))
     if total:
         overall = exact_count / total
         colour = _GREEN if overall >= GREEN_RATE_TARGET else _YELLOW
         print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
-    # A rate of None is a file that couldn't be read.
-    read_any = any(rate is not None for _path, rate, _note in rows)
+    read_any = any(row.read for row in rows)
     return 0 if read_any else 1
+
+
+def _line_of(row: _Row) -> str:
+    """A file's line in `report`: its green rate, its name, and a note."""
+    name = posixpath.basename(row.path)[:_NAME_COL_WIDTH]
+    name_and_note = f"{name:<{_NAME_COL_PAD}}{_DIM}{row.note}{_OFF}"
+    # The file couldn't be read: `note` says why.
+    if not row.read:
+        return f"  {_RED}failed{_OFF}   {name_and_note}"
+    # It has no text, so no share of it to keep.
+    if row.rate is None:
+        return f"  no text  {name_and_note}"
+    return f"  {_rate_colour(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
 
 
 def _rate_colour(rate: float) -> str:
