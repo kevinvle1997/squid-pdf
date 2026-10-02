@@ -23,7 +23,6 @@ __all__ = [
     "load_catalogs",
     "CATALOGS",
     "ENGLISH_SENTENCES",
-    "OPTION_KEYS",
     "sentence",
     "catalog",
     "render",
@@ -49,13 +48,6 @@ def load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
 # Every language we can answer in, by its tag; English is the fallback.
 CATALOGS = load_catalogs(resources.files(__name__))
 ENGLISH_SENTENCES = CATALOGS[ENGLISH]
-
-# Each way out of an overflow, by the name an edit's `strategy` uses: its sentences' keys.
-OPTION_KEYS: dict[str, dict[str, str]] = {
-    "shrink": {"label": "shrink_label", "detail": "shrink_detail"},
-    "condense": {"label": "condense_label", "detail": "condense_detail"},
-    "as-is": {"label": "as_is_label", "detail": "as_is_detail"},
-}
 
 
 def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> str:

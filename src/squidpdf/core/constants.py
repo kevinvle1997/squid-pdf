@@ -6,6 +6,8 @@ these are the judgement calls.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 # The one number the product is judged on: the share of spans that keep their font.
 GREEN_RATE_TARGET = 0.8  # below this, substitution is the normal case, not the exception
 GREEN_RATE_WARN = 0.5  # below this, the CLI marks a document red rather than yellow
@@ -65,3 +67,23 @@ GLYPH_LIST_RANGES = (
     range(0x1E00, 0x1F00),
     range(0x2000, 0x2200),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class OptionKeys:
+    """One way out of a too-long edit: the keys of the sentences that offer it.
+
+    Defined here, not in core/types.py, since that module reads this one.
+    """
+
+    label: str  # what the choice is called, e.g. "Make it slightly smaller"
+    detail: str  # what it does to the line; some take how far the text runs over
+
+
+# The ways out of a too-long edit, by the name an edit's `strategy` uses: what offers
+# each. The fit check and the browser's copy of its sentences both read it.
+OPTION_KEYS = {
+    "shrink": OptionKeys(label="shrink_label", detail="shrink_detail"),
+    "condense": OptionKeys(label="condense_label", detail="condense_detail"),
+    "as-is": OptionKeys(label="as_is_label", detail="as_is_detail"),
+}

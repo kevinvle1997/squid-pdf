@@ -27,6 +27,7 @@ from squidpdf.core.constants import (
     CONDENSE_LIMIT,
     GREEN_RATE_TARGET,
     GREEN_RATE_WARN,
+    OPTION_KEYS,
     SHRINK_FLOOR,
     TOLERANCE_PT,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "TOLERANCE_PT",
     "CONDENSE_LIMIT",
     "SHRINK_FLOOR",
+    "OPTION_KEYS",
     "CATALOG",
     "FACES",
     "Category",

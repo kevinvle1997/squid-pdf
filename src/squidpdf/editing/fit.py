@@ -11,11 +11,11 @@ from dataclasses import dataclass, field
 
 from squidpdf.core import (
     CONDENSE_LIMIT,
+    OPTION_KEYS,
     SHRINK_FLOOR,
     TOLERANCE_PT,
     Message,
     Param,
-    words,
 )
 from squidpdf.editing.types import Strategy
 
@@ -109,8 +109,8 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
     return [
         Option(
             name,
-            Message(words.OPTION_KEYS[name]["label"]),
-            Message(words.OPTION_KEYS[name]["detail"], {"delta_pt": delta_pt}),
+            Message(OPTION_KEYS[name].label),
+            Message(OPTION_KEYS[name].detail, {"delta_pt": delta_pt}),
         )
         for name in names
     ]

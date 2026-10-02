@@ -9,6 +9,7 @@ import orjson
 from squidpdf.core import (
     APPROXIMATE_REASONS,
     CONDENSE_LIMIT,
+    OPTION_KEYS,
     SHRINK_FLOOR,
     TOLERANCE_PT,
     Message,
@@ -81,8 +82,11 @@ def font_info(font: FontFacts, said_in: str) -> FontInfo:
 def copy_in(said_in: str) -> Copy:
     """The sentences the browser fills in as the user types, in `said_in`, unfilled."""
     options = {
-        name: {part: words.sentence(key, said_in) for part, key in keys.items()}
-        for name, keys in words.OPTION_KEYS.items()
+        name: {
+            "label": words.sentence(keys.label, said_in),
+            "detail": words.sentence(keys.detail, said_in),
+        }
+        for name, keys in OPTION_KEYS.items()
     }
     return {
         "missing": words.sentence("missing", said_in),
