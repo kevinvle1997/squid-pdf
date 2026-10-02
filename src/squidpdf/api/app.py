@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
@@ -47,7 +47,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         sweeper.cancel()
-        app.state.pool.close()
+        # Waited for, so it has ended before the app has.
+        with suppress(asyncio.CancelledError):  # raised: it was cancelled
+            await sweeper
+        await app.state.pool.close()
 
 
 def create_app() -> FastAPI:

@@ -205,12 +205,14 @@ class WorkerPool:
         finally:
             _forget_start(start)
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
+        self._require_own_loop()
         for job in self.jobs:  # a task whose caller left: it ends as cancelled, not as failed
             job.cancel()
         self.slot.pool.stop()
-        self.slot.pool.join()
+        # Off the loop: pebble stops each worker in turn, waiting up to seconds for each.
+        await asyncio.to_thread(self.slot.pool.join)
         shutil.rmtree(self.starts, ignore_errors=True)
 
 

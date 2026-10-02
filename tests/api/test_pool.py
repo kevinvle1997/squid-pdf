@@ -57,7 +57,7 @@ def pool(runner: asyncio.Runner) -> Iterator[WorkerPool]:
     """One pool of workers for the module, made in its loop, shut down after."""
     pool = runner.run(_new_pool())
     yield pool
-    pool.close()
+    runner.run(pool.close())
 
 
 async def _new_pool() -> WorkerPool:
@@ -72,7 +72,7 @@ async def _own_pool() -> AsyncIterator[WorkerPool]:
     try:
         yield pool
     finally:
-        pool.close()
+        await pool.close()
 
 
 def _hang() -> None:
@@ -426,7 +426,7 @@ def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_pa
     async def leave_then_close() -> None:
         pool = start_pool()  # its own: this closes it
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
-        pool.close()
+        await pool.close()
         await asyncio.sleep(_WORK_S)  # for the render's end to come back
 
     asyncio.run(leave_then_close())
