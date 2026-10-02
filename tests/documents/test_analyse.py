@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import shutil
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pymupdf
@@ -73,6 +74,13 @@ def _trimmed(line: str) -> bytes:
     return out.getvalue()
 
 
+@pytest.fixture
+def fetches_forgotten() -> Iterator[None]:
+    """Google's record of failed fetches is this process's: the test's go with it."""
+    yield
+    google.retry_record.forget()
+
+
 def _google_through(monkeypatch, download: Download) -> list[str]:
     """Let this test reach Google through `download`, fresh as a new worker; what it's asked."""
     asked: list[str] = []
@@ -83,7 +91,7 @@ def _google_through(monkeypatch, download: Download) -> list[str]:
 
     monkeypatch.delenv("SQUIDPDF_NO_FETCH", raising=False)
     monkeypatch.setattr(google, "download", counted)
-    monkeypatch.setattr(google, "_retry_at", {})
+    google.retry_record.forget()
     monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
     return asked
 
@@ -96,7 +104,7 @@ def _render_fit(folder: Path, family: str) -> list[str]:
 
 
 def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
-    in_google_families, monkeypatch
+    in_google_families, monkeypatch, fetches_forgotten
 ):
     """One fetch deadline however many families, inside the analysis's; renders never fetch."""
     released = threading.Event()
@@ -120,7 +128,9 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
         released.set()
 
 
-def test_a_render_lends_what_the_analysis_fetched_and_no_more(in_google_families, monkeypatch):
+def test_a_render_lends_what_the_analysis_fetched_and_no_more(
+    in_google_families, monkeypatch, fetches_forgotten
+):
     """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
     _google_through(monkeypatch, lambda _url: poppins)  # only Poppins' file has its hash

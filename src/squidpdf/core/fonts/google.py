@@ -40,7 +40,8 @@ __all__ = [
     "GoogleFile",
     "Download",
     "Fetch",
-    "RetryAt",
+    "RetryRecord",
+    "retry_record",
     "GoogleFontController",
     "blob_hash",
     "raw_url",
@@ -57,11 +58,9 @@ _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
-_EVERY_FILE = "*"  # in a RetryAt: a download got no answer, so the network is down
+_EVERY_FILE = "*"  # in a RetryRecord: a download got no answer, so the network is down
 # One INFO line per cache miss, worded the same every time so a grep counts them.
 _CACHE_MISS = "Google cache miss: %s (%s)"
-# This process's record of what failed to come: each worker learns on its own.
-_retry_at: RetryAt = {}
 
 # A weight word in a font's name, and the weight it means; compound words first,
 # so "SemiBold" isn't read as "Bold".
@@ -111,9 +110,39 @@ class GoogleFile:
 type Download = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
-# When each file that failed to come may be tried again, by `GoogleFile.source`, as
-# `time.monotonic()` reads; `_EVERY_FILE` holds back all of them.
-type RetryAt = dict[str, float]
+
+
+@dataclass(slots=True)
+class RetryRecord:
+    """What failed to come, and when each may be tried again, as `time.monotonic()` reads.
+
+    By `GoogleFile.source`; `_EVERY_FILE` holds back all of them. Each process
+    keeps its own (`retry_record`): each worker learns on its own.
+    """
+
+    retry_at: dict[str, float] = field(default_factory=dict)
+
+    def holds(self, source: str, now: float) -> bool:
+        """Whether `source` failed a moment ago, or the network did: not worth a wait yet."""
+        # .get: most files, and the network, have never failed
+        held_until = max(self.retry_at.get(source, 0.0), self.retry_at.get(_EVERY_FILE, 0.0))
+        return now < held_until
+
+    def hold(self, source: str, until: float) -> None:
+        """Try `source` again only from `until` on; `_EVERY_FILE` holds back every file."""
+        self.retry_at[source] = until
+
+    def lift_network_hold(self) -> None:
+        """The network answered: a wait that ran out holds back no other file now."""
+        self.retry_at.pop(_EVERY_FILE, None)  # None: most answers find no hold to lift
+
+    def forget(self) -> None:
+        """Forget every failure, as a fresh record."""
+        self.retry_at.clear()
+
+
+# This process's record of what failed to come.
+retry_record = RetryRecord()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -211,14 +240,14 @@ def raw_url(path: str) -> str:
 
 
 def fetched(
-    file: GoogleFile, *, folder: Path, download: Download | None, retry_at: RetryAt
+    file: GoogleFile, *, folder: Path, download: Download | None, retries: RetryRecord
 ) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
     From the cache in `folder` when it's there and sound. Else, given `download`,
     downloaded in the background and waited on for FETCH_TIMEOUT_S at most; one
     that finishes later is still checked, cut and cached, for the next analysis.
-    A failure is logged, not raised, and noted in `retry_at`, so nothing waits
+    A failure is logged, not raised, and noted in `retries`, so nothing waits
     on it again for FETCH_RETRY_S. A download that gets no answer holds back
     every file: the network failed, not the file, and each would wait as long.
     """
@@ -237,12 +266,10 @@ def fetched(
     if download is None:
         return None
     now = time.monotonic()
-    # .get: most files, and the network, have never failed
-    held_until = max(retry_at.get(file.source, 0.0), retry_at.get(_EVERY_FILE, 0.0))
     # Failed a moment ago: not worth another wait yet.
-    if now < held_until:
+    if retries.holds(file.source, now):
         return None
-    fetching = Fetching(cached_path=cached_path, download=download, retry_at=retry_at)
+    fetching = Fetching(cached_path=cached_path, download=download, retries=retries)
     # A daemon: one still hanging never keeps the worker from exiting.
     threading.Thread(target=download_and_cache, args=(file, fetching), daemon=True).start()
     try:
@@ -251,10 +278,10 @@ def fetched(
         _logger.warning("No Google copy of %s: not ready in %s s", file.path, FETCH_TIMEOUT_S)
         # No answer from the network holds back every file; a slow cut, only this one.
         held = file.source if fetching.answered.is_set() else _EVERY_FILE
-        retry_at[held] = now + FETCH_RETRY_S
+        retries.hold(held, now + FETCH_RETRY_S)
         return None
     if font_file is None:
-        retry_at[file.source] = now + FETCH_RETRY_S
+        retries.hold(file.source, now + FETCH_RETRY_S)
     return font_file
 
 
@@ -264,7 +291,7 @@ class Fetching:
 
     cached_path: Path  # where it's cached
     download: Download
-    retry_at: RetryAt  # the record of failures, lifted for every file once an answer comes
+    retries: RetryRecord  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
     # Set once the network has answered, so a slow cut isn't taken for a network down.
@@ -303,7 +330,7 @@ def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | No
     finally:
         fetching.answered.set()
     # The network works after all: a wait that ran out held back every file for nothing.
-    fetching.retry_at.pop(_EVERY_FILE, None)
+    fetching.retries.lift_network_hold()
     if blob_hash(whole) != file.blob:
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None
@@ -412,4 +439,4 @@ def google_fonts(*, folder: Path | None = None, cache_only: bool = False) -> Fet
         return None
     cache = cache_folder() if folder is None else folder
     github_download = None if cache_only else download
-    return partial(fetched, folder=cache, download=github_download, retry_at=_retry_at)
+    return partial(fetched, folder=cache, download=github_download, retries=retry_record)
