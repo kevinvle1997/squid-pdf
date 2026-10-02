@@ -15,11 +15,11 @@ maker), is checked as its class's own `__init__` says.
 from __future__ import annotations
 
 import ast
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from squidpdf.core import Problem, words
+from squidpdf.core import OPTION_KEYS, Problem, words
 from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
 
@@ -72,13 +72,12 @@ def _dict_keys(node: ast.expr) -> frozenset[str] | None:
 
 
 def _option_keys(node: ast.expr) -> list[str]:
-    """`words.OPTION_KEYS[name]["label"]` as every sentence key it can be."""
-    if not (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Subscript)):
+    """`OPTION_KEYS[name].label` as every sentence key it can be."""
+    if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Subscript)):
         return []
-    part = _text(node.slice)
-    if _named(node.value.value) != "OPTION_KEYS" or part is None:
+    if _named(node.value.value) != "OPTION_KEYS":
         return []
-    return [keys[part] for keys in words.OPTION_KEYS.values()]
+    return [getattr(keys, node.attr) for keys in OPTION_KEYS.values()]
 
 
 def _messages(where: str, tree: ast.Module) -> Iterator[_Said]:
@@ -184,7 +183,7 @@ def _raised_with(classes: dict[str, _ProblemClass]) -> dict[str, list[frozenset[
     return made
 
 
-def _mismatches(said: Iterator[_Said]) -> list[str]:
+def _mismatches(said: Iterable[_Said]) -> list[str]:
     """Each sentence said without a fact one of its placeholders takes, or with no sentence."""
     wrong = []
     for each in said:
@@ -199,8 +198,13 @@ def _mismatches(said: Iterator[_Said]) -> list[str]:
 
 
 def test_every_message_is_given_every_fact_its_sentence_takes():
-    said = (each for where, tree in _trees() for each in _messages(where, tree))
+    said = [each for where, tree in _trees() for each in _messages(where, tree)]
     assert_equal(_mismatches(said), [], "Messages and their sentences")
+    # The ways out's keys are read off OPTION_KEYS, not written out: a new way of
+    # reading them would drop them from the check without a word.
+    option_keys = {key for keys in OPTION_KEYS.values() for key in (keys.label, keys.detail)}
+    found = {each.key for each in said}
+    assert_equal(option_keys - found, set(), "the ways out's sentences the check never read")
 
 
 def test_every_problem_is_raised_with_every_fact_its_sentence_takes():
