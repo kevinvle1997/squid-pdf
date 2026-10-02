@@ -250,6 +250,66 @@ def test_only_a_holder_changes_its_fields_after_it_is_made():
     assert_equal(breaking, [], "fields changed after an object is made, outside a holder")
 
 
+# Where a table lives (rules/backend/python.md, Constants): several modules read it, so it's
+# in a constants.py, or one module does, so it's private to it. These live elsewhere on
+# purpose, by name, each with why.
+_TABLES_ELSEWHERE = {
+    "QUARTER_TURNS": "type data several modules read, beside its type, QuarterTurn",
+    "CATALOG": "the faces we ship: data about files, not tuning, in core/fonts/catalog.py",
+    "FACES": "the faces we ship, by name, beside CATALOG",
+}
+
+
+def _is_table(value: ast.expr) -> bool:
+    """Whether a value is written as a table: a dict, or a tuple or list of rows.
+
+    A row is a tuple or a call (`Failure(...)`), spread with `*` or not. A short
+    tuple of literals (`("CFF ", "CFF2")`) is a value, not a table.
+    """
+    if isinstance(value, (ast.Dict, ast.DictComp)):
+        return True
+    if not isinstance(value, (ast.Tuple, ast.List)):
+        return False
+    items = [item.value if isinstance(item, ast.Starred) else item for item in value.elts]
+    return any(isinstance(item, (ast.Tuple, ast.Call)) for item in items)
+
+
+def _assignments(tree: ast.Module) -> Iterator[tuple[ast.expr, ast.expr]]:
+    """Each `NAME = value` or `NAME: type = value` at a module's top level: target, value."""
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            yield node.targets[0], node.value
+        if isinstance(node, ast.AnnAssign) and node.value is not None:
+            yield node.target, node.value
+
+
+def _tables() -> Iterator[tuple[str, str]]:
+    """Each table a module outside a constants.py names at its top level: module, name."""
+    for module, tree in _TREES.items():
+        if module.endswith(".constants"):
+            continue
+        for target, value in _assignments(tree):
+            if isinstance(target, ast.Name) and _is_table(value):
+                yield module, target.id
+
+
+def test_a_table_outside_a_constants_py_is_private_unless_named():
+    """A table several modules read goes in a constants.py; one module's stays private to it.
+
+    Any name counts, not only an UPPER_SNAKE one: lower case doesn't make a table less of
+    one, and a dict that functions fill is a holder's job (rules/backend/python.md, Data).
+    """
+    tables = list(_tables())
+    breaking = [
+        f"{module}.{name}"
+        for module, name in tables
+        if not name.startswith("_") and name not in _TABLES_ELSEWHERE
+    ]
+    assert_equal(breaking, [], "public tables outside a constants.py")
+    allowed_unused = set(_TABLES_ELSEWHERE) - {name for _module, name in tables}
+    assert_equal(allowed_unused, set(), "tables let through by name that are no longer tables")
+
+
 # Where a requirement's name ends: its extras, version, or environment marker begin.
 _NAME_ENDS = re.compile(r"[\[<>=~!; ]")
 
