@@ -111,14 +111,14 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 
 # MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
 # errors all derive from one, so the narrower ones go first.
-MUPDF_FAILURES = (
+_MUPDF_FAILURES = (
     Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
     # Out of memory, or a file it can't open: only its words tell which.
     Failure(raised=MUPDF_SYSTEM_ERRORS, problem=machine_failure),
     Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
 )
 # Core's own: every failure below the API, said as the Problem it means.
-CORE_ERRORS = ErrorController(MUPDF_FAILURES)
+CORE_ERRORS = ErrorController(_MUPDF_FAILURES)
 
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 # Google's copies are part of it: a new pin lends other letters.
@@ -139,7 +139,7 @@ def result_of[T](task: Callable[[], T]) -> T:
 
     A worker runs its task through this: MuPDF's exceptions hold a pointer, so
     they can't be sent back from another process, and they mean something a
-    person can be told. `MUPDF_FAILURES` says what; anything else goes up as
+    person can be told. `_MUPDF_FAILURES` says what; anything else goes up as
     it is.
     """
     return CORE_ERRORS.result_of(task)

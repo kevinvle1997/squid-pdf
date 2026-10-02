@@ -295,7 +295,7 @@ def measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
 
 def in_glyph_list(ch: str) -> bool:
     """Whether `ch` is in GLYPH_LIST_RANGES, the letters the browser is sent widths for."""
-    return any(start <= ord(ch) < end for start, end in GLYPH_LIST_RANGES)
+    return any(ord(ch) in block for block in GLYPH_LIST_RANGES)
 
 
 def copy_source(copy: FontCopy) -> str:
@@ -307,7 +307,7 @@ def copy_source(copy: FontCopy) -> str:
 
 def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
     """Whether some letter in KEYBOARD_RANGES is one no copy lends in `letters`."""
-    keyboard = (chr(code) for start, end in KEYBOARD_RANGES for code in range(start, end))
+    keyboard = (chr(code) for block in KEYBOARD_RANGES for code in block)
     return any(ch not in letters for ch in keyboard)
 
 
