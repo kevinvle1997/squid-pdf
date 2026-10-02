@@ -22,6 +22,7 @@ import pytest
 
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Engine, Fidelity, open_pdf, words
+from tests.conftest import named_only
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 
@@ -127,6 +128,17 @@ def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal,
     assert_equal(
         "\033[" in said["stderr"], coloured, f"colour on stderr, {terminal} a terminal"
     )
+
+
+@pytest.mark.parametrize("command", ["spans", "report"])
+def test_a_rate_below_the_warning_line_is_red_wherever_it_is_shown(tmp_path, command):
+    """`report`'s rows were red there, while its total and `spans` said yellow."""
+    named = named_only(str(tmp_path / "named.pdf"), "Calibri")  # drawn in a substitute: 0%
+
+    said = _run_in_a_terminal([command, named], terminal="stdout")
+
+    red = "\033[31m"
+    assert_in(f"{red}0%", said["stdout"], f"the green rate `squidpdf {command}` gives")
 
 
 def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):

@@ -124,8 +124,7 @@ def _summary(reports: list[FidelityReport]) -> None:
     if rate is None:
         print(f"{tally} · no text")
         return
-    colour = _GREEN if rate >= GREEN_RATE_TARGET else _YELLOW
-    print(f"{tally} · {colour}{rate:.0%} keep the original font{_OFF}")
+    print(f"{tally} · {_rate_colour(rate)}{rate:.0%} keep the original font{_OFF}")
 
 
 class _UnknownSpan(Exception):
@@ -264,7 +263,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
         print(_line_of(row))
     if total:
         overall = exact_count / total
-        colour = _GREEN if overall >= GREEN_RATE_TARGET else _YELLOW
+        colour = _rate_colour(overall)
         print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
     read_any = any(row.read for row in rows)
     return 0 if read_any else 1
