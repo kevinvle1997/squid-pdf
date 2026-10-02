@@ -12,13 +12,42 @@ from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
 
 
-def test_every_language_has_every_sentence_with_the_same_placeholders(pseudo):
+def _sentences_unlike_english() -> list[tuple[str, str, str]]:
+    """Each sentence a language says unlike English: its language, its key and how."""
     english = words.CATALOGS[words.ENGLISH]
+    unlike: list[tuple[str, str, str]] = []
     for language, catalog in words.CATALOGS.items():
-        assert_equal(set(catalog), set(english), f"the keys {language!r} has")
-        for key, said in catalog.items():
-            wants = placeholders(english[key])
-            assert_equal(placeholders(said), wants, f"{language!r} {key!r} placeholders")
+        unlike += [(language, key, "missing") for key in english.keys() - catalog.keys()]
+        unlike += [(language, key, "not in English") for key in catalog.keys() - english.keys()]
+        unlike += [
+            (language, key, "other placeholders")
+            for key in catalog.keys() & english.keys()
+            if placeholders(catalog[key]) != placeholders(english[key])
+        ]
+    return sorted(unlike)
+
+
+def test_every_language_has_every_sentence_with_the_same_placeholders():
+    assert_equal(_sentences_unlike_english(), [], "sentences a language says unlike English")
+
+
+@pytest.mark.parametrize(
+    ("key", "said", "how"),
+    [
+        ("too_long", None, "missing"),
+        ("too_long", "TOO LONG", "other placeholders"),
+        ("too_long", "{delta} PT TOO LONG", "other placeholders"),
+        ("not_a_sentence", "NOT A SENTENCE", "not in English"),
+    ],
+    ids=["a sentence left out", "a placeholder left out", "a placeholder renamed", "an extra"],
+)
+def test_a_language_unlike_english_is_found(pseudo, monkeypatch, key, said, how):
+    """The check above, shown failing: a language made from English, one thing changed."""
+    if said is None:
+        monkeypatch.delitem(words.CATALOGS[pseudo], key)
+    else:
+        monkeypatch.setitem(words.CATALOGS[pseudo], key, said)
+    assert_equal(_sentences_unlike_english(), [(pseudo, key, how)], "what the check finds")
 
 
 def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
