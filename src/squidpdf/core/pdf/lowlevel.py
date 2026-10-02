@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import pymupdf
 
@@ -44,12 +45,11 @@ MUPDF_TOO_HEAVY = pymupdf.mupdf.FzErrorLimit
 MUPDF_SYSTEM_ERRORS = pymupdf.mupdf.FzErrorSystem
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class PdfFile:
     """An open PDF, as MuPDF's low-level API sees it: a few plain methods over it."""
 
-    def __init__(self, doc: pymupdf.Document) -> None:
-        """Wrap an open document. The caller still closes it."""
-        self._doc = doc
+    doc: pymupdf.Document  # open already; whoever opened it closes it
 
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first.
@@ -58,7 +58,7 @@ class PdfFile:
         that list; DriverError if MuPDF can't load the font at all. `code_bytes`
         is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
-        value_type, _value = self._doc.xref_get_key(xref, "ToUnicode")
+        value_type, _value = self.doc.xref_get_key(xref, "ToUnicode")
         if value_type == _PDF_NULL:
             return None
 
@@ -107,7 +107,7 @@ class PdfFile:
 
     def redact(self, page: int, boxes: list[Rect]) -> None:
         """Delete every letter whose box touches one of `boxes`, and nothing else."""
-        pg = self._doc[page]
+        pg = self.doc[page]
         for box in boxes:
             pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
         pg.apply_redactions(
@@ -162,7 +162,7 @@ class PdfFile:
         page's box starts.
         """
         mu = pymupdf.mupdf
-        pg = self._doc[page]
+        pg = self.doc[page]
         _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
         mu.pdf_page_transform(mu.pdf_page_from_fz_page(pg.this), _mediabox, page_to_screen)
         moved = pymupdf.Point(*point) * pg.rotation_matrix * ~pymupdf.Matrix(page_to_screen)
@@ -170,7 +170,7 @@ class PdfFile:
 
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
-        return pymupdf.mupdf.pdf_document_from_fz_document(self._doc.this)
+        return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
 
 
 def font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
