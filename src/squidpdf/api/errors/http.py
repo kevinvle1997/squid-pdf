@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, NotRequired, TypedDict, cast
 
 from fastapi import FastAPI, Request, Response
@@ -11,19 +10,22 @@ from fastapi.responses import JSONResponse
 from starlette import status
 from starlette.exceptions import HTTPException
 
-from squidpdf.api.errors.generic import (
-    InvalidRequest,
-    MethodNotAllowed,
-    NotFound,
-    ServerError,
-)
+from squidpdf.api.constants import WORKER_FAILURES
+from squidpdf.api.errors.generic import MethodNotAllowed, ServerError
 from squidpdf.api.language import language_of
-from squidpdf.core import Param, Problem, words
+from squidpdf.core import (
+    CORE_ERRORS,
+    Failure,
+    InvalidRequest,
+    NotFound,
+    Param,
+    Problem,
+    words,
+)
 
 __all__ = [
-    "ProblemInfo",
     "PROBLEM_RESPONSES",
-    "adopt",
+    "API_ERRORS",
     "response",
     "install",
 ]
@@ -58,7 +60,7 @@ PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 def from_validation(exc: Exception) -> Problem:
     """FastAPI's list of what was wrong, kept for a developer."""
-    invalid = cast(RequestValidationError, exc)  # _ADOPT hands it only these
+    invalid = cast(RequestValidationError, exc)  # FRAMEWORK_FAILURES hands it only these
     return InvalidRequest(debug="; ".join(describe(item) for item in invalid.errors()))
 
 
@@ -71,7 +73,7 @@ _HTTP_PROBLEMS: dict[int, type[Problem]] = {
 
 def from_http(exc: Exception) -> Problem:
     """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
-    failure = cast(HTTPException, exc)  # _ADOPT hands it only these
+    failure = cast(HTTPException, exc)  # FRAMEWORK_FAILURES hands it only these
     # .get: most of Starlette's failures are the browser's, said as a bad request.
     problem_type = _HTTP_PROBLEMS.get(failure.status_code)
     if problem_type is None:
@@ -79,21 +81,24 @@ def from_http(exc: Exception) -> Problem:
     return problem_type()
 
 
-# Exceptions from outside our code, and the Problem each one means.
-_ADOPT: list[tuple[type[Exception], Callable[[Exception], Problem]]] = [
-    (RequestValidationError, from_validation),
-    (HTTPException, from_http),
-]
+# The framework's failures, each the Problem it means. Neither type is the other's.
+FRAMEWORK_FAILURES = (
+    Failure(raised=RequestValidationError, problem=from_validation),
+    Failure(raised=HTTPException, problem=from_http),
+)
+# The API's own: core's rows (MuPDF's), then pebble's, then the framework's.
+API_ERRORS = CORE_ERRORS.with_rows(*WORKER_FAILURES, *FRAMEWORK_FAILURES)
 
 
 def adopt(exc: Exception) -> Problem:
-    """Any exception as the Problem it means; a bug if nothing claims it."""
+    """Any exception as the Problem `API_ERRORS` says it means; a bug if nothing claims it."""
     if isinstance(exc, Problem):
         return exc
-    for raised, make in _ADOPT:
-        if isinstance(exc, raised):
-            return make(exc)
-    return ServerError()  # Starlette logs the traceback after
+    claimed = API_ERRORS.problem_if_claimed(exc)
+    # A bug: said without its text, which is for the log. Starlette logs the traceback after.
+    if claimed is None:
+        return ServerError()
+    return claimed
 
 
 def response(problem: Problem, language: str) -> JSONResponse:
@@ -105,9 +110,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
     body: ProblemInfo = {
         "type": problem.type,
         "status": problem.status,
-        "detail": problem.said_in(language),
-        "code": problem.type,
-        "params": problem.fill,
+        **words.said(problem.message, language),
     }
     if problem.debug is not None:
         body["debug"] = problem.debug

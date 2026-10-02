@@ -1,7 +1,7 @@
 """The only file that uses MuPDF's low-level API.
 
 Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
-they stay in `core.mupdf`, whose driver holds a `PdfFile` for the rest. The
+they stay in `core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. The
 hard-to-read calls live here, and their results come back as named
 dataclasses. This file only reports what the PDF says; the engine decides
 what to do with it.
@@ -15,14 +15,15 @@ from contextlib import contextmanager
 
 import pymupdf
 
-from squidpdf.core.driver import DriverError
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
+from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.types import FontCode, GlyphId, Rect
 
 __all__ = [
     "MUPDF_ERRORS",
     "MUPDF_OWN_ERRORS",
     "MUPDF_TOO_HEAVY",
+    "MUPDF_SYSTEM_ERRORS",
     "PdfFile",
 ]
 

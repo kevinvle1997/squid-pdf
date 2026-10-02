@@ -7,11 +7,11 @@ ending in Info is JSON the browser gets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core.message import MessageInfo, Param
+from squidpdf.core import MessageInfo, Param
 
 __all__ = [
     "Box",
@@ -20,6 +20,8 @@ __all__ = [
     "FontFacts",
     "FontInfo",
     "Analysis",
+    "AnalysisFacts",
+    "KeptAnalysis",
     "FitRules",
     "Copy",
     "DocumentNoticeInfo",
@@ -95,7 +97,10 @@ class FontInfo(TypedDict):
 
 
 class Analysed(TypedDict):
-    """What every form of the analysis has."""
+    """What the analysis and the Document the browser gets have alike: build, pages, spans.
+
+    `AnalysisFacts`, the analysis as kept beside its spans, is the rest of it.
+    """
 
     build: str
     pages: list[PageInfo]
@@ -107,6 +112,26 @@ class Analysis(Analysed):
 
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
+
+
+class AnalysisFacts(TypedDict):
+    """The analysis less its spans, as kept beside them: read on every visit."""
+
+    build: str
+    pages: list[PageInfo]
+    fonts: list[FontFacts]
+
+
+@dataclass(frozen=True, slots=True)
+class KeptAnalysis:
+    """An analysis as kept: the facts, read when sent, and the spans, sent as they are.
+
+    Two files, so a read needn't find the spans inside the rest: on a long
+    document they're nearly all of it, and parsing them held up the server.
+    """
+
+    facts: bytes  # AnalysisFacts, as JSON
+    spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
 
 
 class FitRules(TypedDict):
@@ -122,8 +147,8 @@ class Copy(TypedDict):
 
     missing: str
     too_long: str
-    stand_in: str  # when the substitute's letters may be another width
-    stand_in_same_widths: str  # when they are exactly as wide: `same_widths` on the font
+    substitute: str  # when the substitute's letters may be another width
+    substitute_same_widths: str  # when they are exactly as wide: `same_widths` on the font
     undo_redaction: str
     reopened: str
     export_left_out: str

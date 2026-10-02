@@ -3,7 +3,7 @@
 A Span holds what the file states and nothing we concluded. Whether an edit here
 will look identical depends on the font library we happen to ship, which is a
 judgement that can change without the document changing, so it lives in
-`core.fidelity`, not here.
+`core.text.fidelity`, not here.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, NewType
+
+from squidpdf.core.constants import TURN_TOLERANCE
 
 # Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
 Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
@@ -100,7 +102,7 @@ class FontResource:
 
 @dataclass(frozen=True, slots=True)
 class TextRun:
-    """Text written in one go from a point on its baseline, in one font."""
+    """A run of a line as the driver writes it: text from a point on its baseline, one font."""
 
     text: str
     origin: tuple[float, float]
@@ -109,7 +111,7 @@ class TextRun:
 
 @dataclass(frozen=True, slots=True)
 class CodeRun:
-    """Codes written in one go in one font.
+    """A run of a line as the driver writes it in codes: codes in one font, written in one go.
 
     A code is what a page writes to pick a shape from a font: one or two bytes,
     as many as that font's codes take, not a letter. Most fonts look up a
@@ -184,6 +186,15 @@ class Span:
         """True when this span is stitched from more than one fragment."""
         return len(self.fragments) > 1
 
+    @property
+    def turned(self) -> bool:
+        """True when its line is turned on the page past TURN_TOLERANCE: redraws are level."""
+        _horizontal, vertical = self.direction
+        return abs(vertical) > TURN_TOLERANCE
+
+
+EM = 1000  # widths are given per 1000 em, as PDF font widths are
+
 
 @dataclass(frozen=True, slots=True)
 class FontCode:
@@ -228,7 +239,7 @@ class Face:
 
 @dataclass(frozen=True, slots=True)
 class LookAlike:
-    """The face that stands in for a document's font, and whether nothing on the page moves."""
+    """A document font's look-alike, and whether nothing on the page moves if it draws."""
 
     face: Face
     same_widths: bool  # False when it's only the same kind of font (a serif for a serif)

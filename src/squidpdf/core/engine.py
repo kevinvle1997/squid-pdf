@@ -1,6 +1,6 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The product's own logic, written against a `core.driver.PdfDriver`'s primitives,
+The product's own logic, written against a `core.pdf.driver.PdfDriver`'s primitives,
 so it's the same over any PDF library. Open one with `core.open_pdf`.
 
 The engine speaks only in primitives (remove, draw), so it never learns what a
@@ -11,37 +11,50 @@ engine asks both.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import assert_never
 
-from squidpdf.core.document_fonts import DocumentFonts
-from squidpdf.core.driver import PdfDriver
-from squidpdf.core.fidelity import Fidelity, FidelityReport
-from squidpdf.core.google import Fetch, GoogleFontController
-from squidpdf.core.message import Message
-from squidpdf.core.plan import LinePlanner
-from squidpdf.core.pooled import PooledFont
-from squidpdf.core.spacing import lacks_space
-from squidpdf.core.spans import build_index
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.document import DocumentFonts, FontSources
+from squidpdf.core.fonts.google import GoogleFontController
+from squidpdf.core.fonts.pool import PooledFont
+from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.plan import DrawPlan, DrawPlanner
+from squidpdf.core.text.fidelity import Fidelity, FidelityReport
+from squidpdf.core.text.spacing import lacks_space
+from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, Page, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
 
-__all__ = ["Engine"]
+__all__ = [
+    "Engine",
+    "LineToDraw",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class LineToDraw:
+    """A line `draw` will draw once the erasing is done: the span it's at, and its text."""
+
+    span: Span
+    text: str
 
 
 class Engine:
     """A PDF open for editing. Use it in a `with`, or close it."""
 
-    def __init__(self, driver: PdfDriver, *, fetch: Fetch | None = None) -> None:
+    def __init__(self, driver: PdfDriver, *, sources: FontSources) -> None:
         """Take over an open document, with nothing looked up or added yet.
 
-        `fetch` gets Google's copy of a font; without one, only the file's copies lend.
+        `sources` are where a font may borrow the letters its copies in the file lack.
         """
         self._driver = driver
+        fetch = sources.google
         self._google = None if fetch is None else GoogleFontController(driver, fetch=fetch)
         self._fonts = DocumentFonts(driver, google=self._google)
         # Which font draws a line and what comes out: one answer the fit and the draw share.
-        self._plans = LinePlanner(self._fonts, driver)
+        self._plans = DrawPlanner(self._fonts, driver)
         self._writer = PageWriter(driver)
 
     # What the document says.
@@ -93,10 +106,10 @@ class Engine:
             )
         # A face we ship draws it in the font's place.
         if isinstance(drawn_in, Face):
-            return self._substitute(span, drawn_in)
+            return self._substitute_report(span, drawn_in)
         assert_never(drawn_in)
 
-    def _substitute(self, span: Span, drawn_in: Face) -> FidelityReport:
+    def _substitute_report(self, span: Span, drawn_in: Face) -> FidelityReport:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
         own = self._fonts.own(span)
         match = self._fonts.look_alike(span)
@@ -114,29 +127,34 @@ class Engine:
         """Each letter the span's font really draws, and its width per 1000 em."""
         return self._plans.widths(span)
 
+    def plan_for(self, span: Span, text: str) -> DrawPlan:
+        """How `text` is drawn at this span: worked out once, for a fit to ask all it needs of.
+
+        Its `missing` are the letters no copy of the span's font in the file really
+        draws: each is checked for a shape, since a trimmed (subset) font still lists
+        letters whose shapes were emptied; a font not in the file is checked against
+        its look-alike. Its `left_out` are those no font we have draws. `width_of`
+        and `substitute` read it too.
+        """
+        return self._plans.plan_for(span, text)
+
+    def width_of(self, span: Span, plan: DrawPlan) -> float:
+        """How wide `plan`'s line renders, placed as `draw` places it, at this span's size."""
+        return self._plans.width_of(span, plan, size=span.size)
+
     def measure(self, span: Span, text: str) -> float:
         """How wide `text` would render, placed as `draw` places it, at this span's size."""
-        return self._plans.width_of(span, self._plans.plan_for(span, text), size=span.size)
+        return self.width_of(span, self.plan_for(span, text))
 
-    def missing(self, span: Span, text: str) -> list[str]:
-        """Characters no copy of this span's font in the file can actually draw.
+    def substitute(self, span: Span, text: str, *, plan: DrawPlan) -> str:
+        """The face we ship that draws `text` when the span's own font can't: "Carlito Bold".
 
-        Checks each letter draws a shape rather than trusting the font's list: a
-        trimmed (subset) font still lists letters whose shapes were emptied. A
-        font not in the file is checked against its look-alike, the real file we ship.
+        `plan` is `text`'s, from `plan_for`.
         """
-        return self._plans.plan_for(span, text).missing
-
-    def left_out(self, span: Span, text: str) -> list[str]:
-        """Characters no font we have can draw here, so a redraw leaves them out."""
-        return self._plans.plan_for(span, text).left_out
-
-    def stand_in(self, span: Span, text: str) -> str:
-        """The face we ship that draws `text` when the span's own font can't: "Carlito Bold"."""
-        drawn_in = self._plans.plan_for(span, text).drawn_in
+        drawn_in = plan.drawn_in
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
-            return self._plans.stand_in_for(span, text).face.name
+            return self._plans.substitute_for(span, text).face.name
         # A face we ship draws it.
         if isinstance(drawn_in, Face):
             return drawn_in.name
@@ -144,28 +162,33 @@ class Engine:
 
     # Changing it.
 
-    def remove(self, spans: list[Span]) -> None:
+    def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> None:
         """Delete these spans' text for real, not by covering it with a box.
 
-        One box per span, not per fragment: the cost grows with the box count,
-        and a span's box covers its fragments. Lines, underlines and links stay.
+        `then_drawn` are the lines `draw` will draw after: what they need is read
+        first, while the page still has it. One box per span, not per fragment:
+        the cost grows with the box count, and a span's box covers its fragments.
+        Lines, underlines and links stay.
         """
-        self._read_before_erasing(spans)
+        self._read_before_erasing(spans, then_drawn)
         for page, on_page in by_page(spans).items():
             self._driver.erase_text(page, [span.bbox for span in on_page])
 
-    def _read_before_erasing(self, spans: list[Span]) -> None:
-        """Read what `draw` needs about each span while the page still has it.
+    def _read_before_erasing(self, spans: list[Span], lines: Sequence[LineToDraw]) -> None:
+        """Read what `draw` needs while the page still has it.
 
-        Erasing can delete a font no text on the page uses any more, so each
+        Erasing can delete a font no text on the page uses any more. So each
         span's font and look-alike are read first, and the page's gaps a new
-        space is measured against.
+        space is measured against; and each line to draw is planned, which takes
+        in every copy of a font it borrows a letter from.
         """
         for span in spans:
             own = self._fonts.own(span)
             self._fonts.look_alike(span)
             if own is not None and lacks_space(own):
                 self._fonts.usual_gap(span, own)
+        for line in lines:
+            self._plans.plan_for(line.span, line.text)
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
@@ -203,7 +226,7 @@ class Engine:
         self._driver.keep_pages(pages)
         # Looked up and named by page number, and those just changed.
         self._fonts = DocumentFonts(self._driver, google=self._google)
-        self._plans = LinePlanner(self._fonts, self._driver)
+        self._plans = DrawPlanner(self._fonts, self._driver)
         self._writer.forget_pages()
         return said
 

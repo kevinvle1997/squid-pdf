@@ -1,7 +1,7 @@
 """What the app tells a person, before it's put into anyone's words.
 
 Below the API nothing writes a sentence: it says what happened as a Message,
-the key of a sentence in `core.words` and the facts that fill it, and the edge
+the key of a sentence in `core.app.words` and the facts that fill it, and the edge
 puts that into the reader's language. Plain data, so a worker can pickle it
 back and the analysis can keep it on disk.
 """
@@ -23,12 +23,18 @@ class MessageInfo(TypedDict):
     params: dict[str, Param]
 
 
+class SaidInfo(MessageInfo):
+    """A Message said to a reader: `detail` in their words, and `code` and `params` unsaid."""
+
+    detail: str
+
+
 @dataclass(frozen=True, slots=True)
 class Message:
     """Which sentence to tell a person, and the facts its placeholders take.
 
-    `key` names the sentence in `core.words` and is never renamed: the browser
-    can branch on it, as it does on a Problem's type.
+    `key` names the sentence in `core.app.words`, and is renamed only with the
+    browser, which can branch on it, as it does on a Problem's type.
     """
 
     key: str  # snake_case, e.g. "font_not_in_file"

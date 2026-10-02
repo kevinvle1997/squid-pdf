@@ -6,7 +6,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core import words
-from tests.api.conftest import span_starting, upload
+from tests.api.conftest import around, span_starting, upload
 from tests.helpers import assert_equal, assert_problem
 
 _SCALE = 2
@@ -37,12 +37,6 @@ def form() -> bytes:
     return doc.tobytes()
 
 
-def _around(span: dict) -> dict:
-    """A region: the full-width strip over a span's line."""
-    box = span["bbox"]
-    return {"page": span["page"], "y0": box["y0"] - 4, "y1": box["y1"] + 4}
-
-
 def _said(rendered: dict) -> list[tuple[str | None, str, str]]:
     """Render's notices: the span each is about, its sentence's key, and the sentence."""
     return [(n["span_id"], n["code"], n["detail"]) for n in rendered["notices"]]
@@ -56,7 +50,7 @@ def test_a_replace_in_a_form_field_is_left_as_it_was_and_said(mine, form):
         {"kind": "replace", "span_id": field["id"], "text": "SSN on file"},
         {"kind": "replace", "span_id": line["id"], "text": "Name: Ada Lovelace"},
     ]
-    body = {"edits": edits, "scale": _SCALE, "regions": [_around(field), _around(line)]}
+    body = {"edits": edits, "scale": _SCALE, "regions": [around(field), around(line)]}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
@@ -75,7 +69,7 @@ def test_a_redaction_in_a_form_field_is_warned_at_render_and_refused_at_export(m
     doc = upload(mine, form).json()
     field = span_starting(doc, 0, "SSN")
     edits = [{"kind": "redact", "span_id": field["id"]}]
-    body = {"edits": edits, "scale": _SCALE, "regions": [_around(field)]}
+    body = {"edits": edits, "scale": _SCALE, "regions": [around(field)]}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})

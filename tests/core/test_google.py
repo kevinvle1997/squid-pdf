@@ -19,20 +19,25 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import Fidelity, google, open_pdf
+from squidpdf.core import Fidelity, FontSources, LineToDraw, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.google import (
+from squidpdf.core.fonts import google
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.embedded import FontUnusable
+from squidpdf.core.fonts.google import (
     Download,
     Fetch,
     GoogleFile,
+    GoogleFontController,
     RetryAt,
     blob_hash,
     family_list,
     fetched,
+    google_file,
     google_fonts,
 )
+from squidpdf.core.pdf.mupdf import MuPDFDriver
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
@@ -43,6 +48,20 @@ _EM = 1000
 _WIDE = 200  # how much wider the made-up variable font's A is at its heaviest
 _DEADLINE_S = 0.1  # the whole-fetch deadline in the hang test
 _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
+
+
+# Fonts Google has no file to lend for, and why: not a family of its, no cut in this
+# weight and slant (Aclonica has no italic), a variable font whose name is reserved.
+_NOT_GOOGLES = {
+    "Arial": "google_not_listed",
+    "Aclonica-Italic": "google_no_cut",
+    "Assistant-Bold": "google_name_reserved",
+}
+
+
+def _why_none(found: object) -> str:
+    """Why Google lends nothing, by its sentence's key; "lends" when it does lend."""
+    return found.reason.key if isinstance(found, FontUnusable) else "lends"
 
 
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
@@ -58,9 +77,9 @@ def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
 
 def _missing(path: str, fetch: Fetch) -> list[str]:
     """What the fit says the first span can't draw of _WANTED, with `fetch` to Google."""
-    with open_pdf(path, fetch=fetch) as eng:
+    with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
-        return eng.missing(span, _WANTED)
+        return eng.plan_for(span, _WANTED).missing
 
 
 def _fetched(file: GoogleFile, folder: Path, download: Download) -> bytes | None:
@@ -84,11 +103,11 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     """The file's Poppins has no Y; Google's has, as wide: exact, and drawn from it."""
     fetch, asked = _google(POPPINS.read_bytes())
     out = str(tmp_path / "redrawn.pdf")
-    with open_pdf(poppins_subset, fetch=fetch) as engine:
+    with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        missing = engine.missing(span, _WANTED)
+        missing = engine.plan_for(span, _WANTED).missing
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, _WANTED)])
         engine.draw(span, _WANTED)
         engine.save(out)
 
@@ -109,7 +128,7 @@ def test_a_google_copy_with_other_widths_lends_nothing(poppins_subset):
     assert_equal(_missing(poppins_subset, fetch), _LACKED, "letters Poppins lacks")
 
 
-def test_a_fetch_that_fails_leaves_the_line_to_the_stand_in_and_is_logged(
+def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
     poppins_subset, tmp_path, caplog
 ):
     """No Google copy to be had: the letters stay missing, and nothing is raised."""
@@ -121,6 +140,10 @@ def test_a_fetch_that_fails_leaves_the_line_to_the_stand_in_and_is_logged(
         got = _fetched(file, tmp_path, _failing)
     assert_equal(got, None, "what a failed fetch hands back")
     assert_true("fetch failed" in caplog.text, "the failure was logged")
+    driver = MuPDFDriver(poppins_subset)
+    lent = GoogleFontController(driver, fetch=fetch).opened(file)
+    driver.close()
+    assert_equal(_why_none(lent), "google_not_fetched", "why Google's copy lends nothing")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
@@ -308,10 +331,12 @@ def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())
-    with open_pdf(pdf, fetch=fetch) as engine:
+    with open_pdf(pdf, sources=FontSources(google=fetch)) as engine:
         for span in engine.index():
-            engine.missing(span, "Ωxyzq")
+            engine.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
+    whys = [_why_none(google_file(font, None)) for font in _NOT_GOOGLES]
+    assert_equal(whys, list(_NOT_GOOGLES.values()), "why Google has no file for each")
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():

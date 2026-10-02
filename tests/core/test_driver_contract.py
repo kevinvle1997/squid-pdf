@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from squidpdf.core import Message, Rect
-from squidpdf.core.driver import DriverError
-from squidpdf.core.fonts import FACES, face_bytes
-from squidpdf.core.mupdf import MuPDFDriver
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.pdf.mupdf import MuPDFDriver
 from squidpdf.core.types import TextRun
 from tests.helpers import assert_equal
 

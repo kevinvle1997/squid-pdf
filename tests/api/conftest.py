@@ -15,6 +15,7 @@ from squidpdf.api.app import create_app
 
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
+_MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
 def _crashes() -> APIRouter:
@@ -95,3 +96,9 @@ def doc(mine: TestClient, pdf_bytes: bytes) -> dict:
 def span_starting(doc: dict, page: int, starts: str) -> dict:
     """The span on `page` of an uploaded `doc` whose text starts with `starts`."""
     return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
+
+
+def around(span: dict) -> dict:
+    """A region: the full-width strip over a span's line."""
+    box = span["bbox"]
+    return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}

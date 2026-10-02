@@ -12,29 +12,28 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import assert_never
 
-from squidpdf.core import faces
-from squidpdf.core.constants import TOLERANCE_PT, TURN_TOLERANCE
-from squidpdf.core.document_fonts import DocumentFonts
-from squidpdf.core.driver import FontProgram, PdfDriver
-from squidpdf.core.message import Message
-from squidpdf.core.pooled import CodedStretch, PooledFont
-from squidpdf.core.spacing import Word, lacks_space, placed_words, span_gaps
-from squidpdf.core.types import Face, Span
+from squidpdf.core.app.message import Message
+from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.core.fonts.document import DocumentFonts
+from squidpdf.core.fonts.pool import CodedRun, PooledFont
+from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_letters
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
+from squidpdf.core.types import EM, Face, Span
 
 __all__ = [
     "letter_widths",
     "DrawPlan",
-    "LinePlanner",
+    "DrawPlanner",
     "coded_in",
 ]
 
-_EM = 1000  # widths are given per 1000 em, as PDF font widths are
 _WIDTH_DP = 2  # finer than any page can show
 
 
 def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]:
     """Each letter's width in `font`, per 1000 em, as the browser gets it."""
-    return {ch: round(font.advance(ch) * _EM, _WIDTH_DP) for ch in letters}
+    return {ch: round(font.advance(ch) * EM, _WIDTH_DP) for ch in letters}
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +51,7 @@ class DrawPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class LinePlanner:
+class DrawPlanner:
     """Answers what draws a line at a span, and how wide it comes out, for one document."""
 
     fonts: DocumentFonts
@@ -62,7 +61,7 @@ class LinePlanner:
         """How `text` is drawn at this span: the one answer the fit and the draw share.
 
         In the file's copies of the span's font if they draw every character;
-        otherwise the whole line in the stand-in, less what even that can't
+        otherwise the whole line in the substitute, less what even that can't
         draw. When the only letters the own font lacks are ones no font we have
         draws, switching would draw none of them, so the own font keeps the
         line without them.
@@ -72,31 +71,30 @@ class LinePlanner:
         if own is None:
             composed = unicodedata.normalize("NFC", text)
             look_alike = self.fonts.look_alike(span).face
-            missing = faces.face_coverage(look_alike).missing(composed)
-            stand_in = self.stand_in_for(span, composed)
-            return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+            missing = face_coverage(look_alike).missing(composed)
+            substitute = self.substitute_for(span, composed)
+            return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
         text = spelled(own, text)
         missing = own.missing(text)
         # The own font draws every letter.
         if not missing:
             return DrawPlan(own, text, [], [])
-        stand_in = self.fonts.stand_in(span, text)
+        substitute = self.fonts.substitute(span, text)
         # Nothing we have draws what it lacks: switching would gain nothing.
-        undrawable = set(missing) <= set(stand_in.left_out)
+        undrawable = set(missing) <= set(substitute.left_out)
         if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
             return DrawPlan(own, kept, missing, missing)
-        return DrawPlan(stand_in.face, stand_in.text, missing, stand_in.left_out)
+        return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
 
-    def stand_in_for(self, span: Span, text: str) -> faces.StandIn:
+    def substitute_for(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` if the page won't take the span's own font after all."""
-        return self.fonts.stand_in(span, unicodedata.normalize("NFC", text))
+        return self.fonts.substitute(span, unicodedata.normalize("NFC", text))
 
     def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
         """How a redraw of the span's own text in its own font looks unlike it; None if not."""
         # Turned on the page: redraws are level.
-        _horizontal, vertical = span.direction
-        if abs(vertical) > TURN_TOLERANCE:
+        if span.turned:
             return Message("turned_text")
         # Letters no font we have draws: a redraw leaves them out.
         if plan.left_out:
@@ -115,10 +113,8 @@ class LinePlanner:
         by_code = coded_in(plan)
         # Written by code: widths come from each copy's width list.
         if by_code is not None:
-            widths = (
-                stretch.coded.letters[ch].width for stretch in by_code for ch in stretch.text
-            )
-            return sum(widths) * size / _EM
+            widths = (run.coded.letters[ch].width for run in by_code for ch in run.text)
+            return sum(widths) * size / EM
         _words, width = self.words_of(span, plan.text, font=self.program_of(plan), size=size)
         return width
 
@@ -156,7 +152,7 @@ class LinePlanner:
         # Not in the file: the look-alike draws it, its list kept to GLYPH_LIST_RANGES.
         if pooled is None:
             face = self.fonts.look_alike(span).face
-            return letter_widths(self.driver.face_font(face), faces.face_letters(face))
+            return letter_widths(self.driver.face_font(face), face_letters(face))
 
         # Each from the copy that draws it: its width list if written by code, else the font.
         letters = sorted(pooled.letters.items())
@@ -164,12 +160,12 @@ class LinePlanner:
         # Written by letter, with no space of its own: a space is the page's usual gap.
         spaceless = pooled.own.embedded.coded is None and lacks_space(pooled)
         if spaceless:
-            widths[" "] = round(self.fonts.usual_gap(span, pooled) * _EM, _WIDTH_DP)
+            widths[" "] = round(self.fonts.usual_gap(span, pooled) * EM, _WIDTH_DP)
         return widths
 
 
-def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
-    """`plan`'s line in the codes of the file's copies of its font, a stretch per copy.
+def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
+    """`plan`'s line in the codes of the file's copies of its font, a run per copy.
 
     None unless they draw it by code.
     """
@@ -182,7 +178,7 @@ def coded_in(plan: DrawPlan) -> list[CodedStretch] | None:
         return None
     # The file's copies, written by code: the line in their codes.
     if isinstance(drawn_in, PooledFont):
-        return drawn_in.coded_stretches(plan.text)
+        return drawn_in.coded_runs(plan.text)
     assert_never(drawn_in)
 
 

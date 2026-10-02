@@ -29,19 +29,13 @@ def fit_info(fit: FitReport, said_in: str) -> FitInfo:
 
 def skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:
     """An edit left out, as the browser gets it: why, in words and unsaid."""
-    return {
-        "edit": skipped.edit,
-        "type": skipped.type,
-        "detail": words.render(skipped.detail, said_in),
-        **skipped.detail.as_info(),
-    }
+    return {"edit": skipped.edit, "type": skipped.type, **words.said(skipped.detail, said_in)}
 
 
 def notice_info(notice: Notice, said_in: str) -> NoticeInfo:
     """An edit drawn other than asked, as the browser gets it: why, in words and unsaid."""
     return {
         "span_id": notice.span_id,
-        "detail": words.render(notice.detail, said_in),
         "edit": notice.edit,
-        **notice.detail.as_info(),
+        **words.said(notice.detail, said_in),
     }

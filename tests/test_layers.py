@@ -34,7 +34,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def _module(path: Path) -> str:
-    """`src/squidpdf/core/pdf.py` -> `squidpdf.core.pdf`."""
+    """`src/squidpdf/core/pdf/lowlevel.py` -> `squidpdf.core.pdf.lowlevel`."""
     parts = path.relative_to(_SRC).with_suffix("").parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 
@@ -53,10 +53,8 @@ def _within(name: str, package: str) -> bool:
 @pytest.mark.parametrize(
     ("importers", "imported", "allowed"),
     [
-        ("squidpdf", "pymupdf", ["squidpdf.core.pdf", "squidpdf.core.mupdf"]),
+        ("squidpdf", "pymupdf", ["squidpdf.core.pdf"]),
         ("squidpdf", "fitz", []),
-        ("squidpdf", "squidpdf.core.mupdf", ["squidpdf.core"]),
-        ("squidpdf", "squidpdf.core.pdf", ["squidpdf.core"]),
         ("squidpdf.core", "squidpdf.editing", []),
         ("squidpdf.core", "squidpdf.documents", []),
         ("squidpdf.core", "squidpdf.api", []),
@@ -70,10 +68,8 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf", "pydantic", _WEB),
     ],
     ids=[
-        "only core/pdf.py and core/mupdf.py talk to MuPDF",
+        "only core/pdf/ talks to MuPDF",
         "nothing reaches MuPDF by its old name, around the rule above",
-        "outside core, nothing names the driver: open_pdf is the way in",
-        "outside core, nothing reads MuPDF's low-level wrapper",
         "core imports no feature: editing",
         "core imports no feature: documents",
         "core imports no feature: the web layer",
@@ -96,6 +92,32 @@ def test_the_import_rule_holds(importers, imported, allowed):
         and any(_within(name, imported) for name in imports)
     ]
     assert_equal(breaking, [], f"modules in {importers} importing {imported}")
+
+
+# Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.
+_CORE_INSIDE = [name for name in _MODULES if name.startswith("squidpdf.core.")]
+
+
+def _past_core_door(name: str) -> bool:
+    """Whether an imported name is one of core's modules, or inside one."""
+    return any(_within(name, inside) for inside in _CORE_INSIDE)
+
+
+def test_outside_core_squidpdf_core_is_the_only_way_in():
+    """A feature imports `from squidpdf.core import ...`, never one of core's modules.
+
+    So core can move its insides without touching a feature, what a feature uses
+    is exported on purpose, and nothing outside names the driver: `open_pdf` is
+    the way in. `from squidpdf.core import Span` reads as `squidpdf.core.Span`,
+    which is no module, so only an import past the door counts.
+    """
+    breaking = [
+        module
+        for module, imports in _MODULES.items()
+        if not _within(module, "squidpdf.core")
+        and any(_past_core_door(name) for name in imports)
+    ]
+    assert_equal(breaking, [], "modules outside core importing one of core's modules")
 
 
 def test_nothing_inside_imports_the_package_itself():

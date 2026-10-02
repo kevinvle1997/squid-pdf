@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
 
 
 class Fidelity(StrEnum):

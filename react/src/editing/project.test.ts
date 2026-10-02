@@ -27,7 +27,7 @@ describe("what the document reads as", () => {
   });
 
   test("a span changed and changed back reads as untouched, and nothing is sent for it", () => {
-    // Otherwise the server redraws it, in a stand-in face if the file's font can't be used,
+    // Otherwise the server redraws it, in a substitute if the file's font can't be used,
     // while the page says nothing changed.
     const reading = read(add(add(EMPTY_HISTORY, replace("a", "one")), replace("a", "was a")));
     expect(reading.spans.has("a")).toBe(false);

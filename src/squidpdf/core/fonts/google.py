@@ -28,11 +28,12 @@ import httpx
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
+from squidpdf.core.app.message import Message
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.driver import PdfDriver
-from squidpdf.core.embedded import EmbeddedFont
-from squidpdf.core.fonts import bare_name, family_and_style, style_of
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
+from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
+from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
 __all__ = [
@@ -122,29 +123,27 @@ class GoogleFontController:
         """Match fonts in `driver`'s file, and get each file Google has by `fetch`."""
         self._driver = driver
         self._fetch = fetch
-        # Each file, opened, or None when there's none to be had, by `GoogleFile.source`.
-        self._fonts: dict[str, EmbeddedFont | None] = {}
+        # Each file, opened, or why it can't be had, by `GoogleFile.source`.
+        self._fonts: dict[str, EmbeddedFont | FontUnusable] = {}
 
-    def file_for(self, font: PageFont) -> GoogleFile | None:
-        """Google's file for one of the document's fonts; None when none fits."""
+    def file_for(self, font: PageFont) -> GoogleFile | FontUnusable:
+        """Google's file for one of the document's fonts, or why none fits."""
         return google_file(font.name, self._driver.font_descriptor(font.xref))
 
-    def opened(self, file: GoogleFile) -> EmbeddedFont | None:
-        """`file`, fetched and opened once; None when it can't be had or opened."""
-        if file.source not in self._fonts:
-            self._fonts[file.source] = self._open(file)
-        return self._fonts[file.source]
+    def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
+        """`file`, fetched and opened once, or why it can't be had or opened."""
+        return remembered(self._fonts, file.source, partial(self._open, file))
 
-    def _open(self, file: GoogleFile) -> EmbeddedFont | None:
-        """`file`, fetched and opened; None when it can't be had or opened."""
+    def _open(self, file: GoogleFile) -> EmbeddedFont:
+        """`file`, fetched and opened. Raises FontUnusable when it can't be had or opened."""
         font_file = self._fetch(file)
         # None, or empty: MuPDF would quietly open a font of its own for no bytes.
         if not font_file:
-            return None
+            raise FontUnusable(Message("google_not_fetched"))
         try:
             program = self._driver.open_font(font_file)
-        except ValueError:  # the library can't read it, though git vouched for the bytes
-            return None
+        except DriverError as problem:  # the library can't read it, though git vouched for it
+            raise FontUnusable(problem.reason) from problem
         return EmbeddedFont(program, font_file, Coverage(font_file), None)
 
 
@@ -155,8 +154,8 @@ def family_list() -> dict[str, Any]:
     return json.loads(listed.read_text())
 
 
-def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | None:
-    """The file in Google's collection for a document's font; None when there's none to use.
+def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | FontUnusable:
+    """The file in Google's collection for a document's font, or why there's none to use.
 
     Matched by family name, then by weight and style. A family that ships only
     a variable font is cut to the weight, unless its licence reserves its name:
@@ -168,7 +167,7 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | No
     family = listed["families"].get(key)  # .get: most fonts aren't Google's
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if family is None:
-        return None
+        return FontUnusable(Message("google_not_listed"))
     weight = weight_of(font, descriptor)
     style, _usual_cut = style_of(font, descriptor)
     italic = style in ("italic", "bold-italic")
@@ -182,10 +181,10 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile | No
     variable = next((file for file in same_slant if file.variable), None)
     # Neither: no file in this weight and slant.
     if variable is None:
-        return None
+        return FontUnusable(Message("google_no_cut"))
     # Variable only, but its licence reserves its name, which a cut may not carry.
     if family["reserved_name"]:
-        return None
+        return FontUnusable(Message("google_name_reserved"))
     return GoogleFile(f"{folder}/{variable.name}", variable.blob, weight)
 
 
@@ -298,7 +297,7 @@ def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | No
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
-    except Exception:  # a network fails in many ways; logged, and the stand-in draws
+    except Exception:  # a network fails in many ways; logged, and the substitute draws
         _logger.warning("No Google copy of %s: fetch failed", file.path, exc_info=True)
         return None
     finally:

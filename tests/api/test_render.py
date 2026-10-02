@@ -11,7 +11,7 @@ import pytest
 from squidpdf.core import Engine, words
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.documents import store
-from tests.api.conftest import span_starting
+from tests.api.conftest import around, span_starting
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
@@ -150,10 +150,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
         {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"},
         {"kind": "replace", "span_id": invoices["id"], "text": "Invoices are due at once."},
     ]
-    box = invoices["bbox"]
-    strip = {"page": 1, "y0": box["y0"] - 4, "y1": box["y1"] + 4}
-
-    fits = _render(mine, doc, edits, [strip]).json()["fits"]
+    fits = _render(mine, doc, edits, [around(invoices)]).json()["fits"]
 
     assert_equal(redrawn, ["Invoices are due at once."], "the lines redrawn")
     assert_equal(set(fits), {delivery["id"], invoices["id"]}, "the replaces with a fit")

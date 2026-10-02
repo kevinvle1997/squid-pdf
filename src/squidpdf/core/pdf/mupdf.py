@@ -1,14 +1,13 @@
 """The one driver there is: PyMuPDF.
 
-Only primitives here (see `core.driver`): the hard-to-read MuPDF calls come
-from `core.pdf`, whose `PdfFile` the driver holds, and the everyday ones are below.
+Only primitives here (see `core.pdf.driver`): the hard-to-read MuPDF calls come
+from `core.pdf.lowlevel`, whose `PdfFile` the driver holds, and the everyday ones are below.
 What to make of them is `core.engine`'s. `open_pdf` is the one way in:
 nothing outside `core` learns that MuPDF is underneath.
 """
 
 from __future__ import annotations
 
-import random
 import re
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
@@ -17,15 +16,28 @@ from itertools import chain, count
 
 import pymupdf
 
-from squidpdf.core import faces
-from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
-from squidpdf.core.driver import DriverError
+from squidpdf.core.app.errors import (
+    Damaged,
+    Encrypted,
+    ErrorController,
+    Failure,
+    TooHeavy,
+    machine_failure,
+)
+from squidpdf.core.app.message import Message
+from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.engine import Engine
-from squidpdf.core.errors import Damaged, Encrypted, TooHeavy
-from squidpdf.core.fonts import face_bytes
-from squidpdf.core.google import Fetch
-from squidpdf.core.message import Message
-from squidpdf.core.pdf import MUPDF_ERRORS, MUPDF_OWN_ERRORS, MUPDF_TOO_HEAVY, PdfFile
+from squidpdf.core.fonts.catalog import face_bytes
+from squidpdf.core.fonts.document import NO_SOURCES, FontSources
+from squidpdf.core.fonts.substitute import face_letters
+from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.pdf.lowlevel import (
+    MUPDF_ERRORS,
+    MUPDF_OWN_ERRORS,
+    MUPDF_SYSTEM_ERRORS,
+    MUPDF_TOO_HEAVY,
+    PdfFile,
+)
 from squidpdf.core.plan import letter_widths
 from squidpdf.core.types import (
     QUARTER_TURNS,
@@ -46,28 +58,12 @@ from squidpdf.core.types import (
 
 __all__ = [
     "BUILD",
+    "CORE_ERRORS",
     "open_pdf",
     "result_of",
     "face_widths",
     "MuPDFDriver",
-    "write_sample",
-    "write_dense",
 ]
-
-_GARBAGE_COLLECT = 2  # drop unused objects; 3 also merges copies, taking pages-squared time
-
-# The long fixture's page: a contract's body text, set the way a word processor sets it.
-_DENSE_SIZE = 10.5  # points
-_DENSE_LEADING = 14.0  # points from one baseline to the next
-_DENSE_TOP = 108.0  # the first body line's baseline
-_DENSE_BOTTOM = 770.0  # no baseline below this
-_DENSE_WORDS = (
-    "the provider shall deliver services under this agreement within the term and "
-    "notify the client in writing of any change to the schedule fees or invoices "
-    "each party keeps confidential information secret and uses it only for the "
-    "purpose agreed liability is limited to the fees paid in the period before the claim"
-).split()
-_DENSE_TERMS = ("the Services", "the Client", "the Provider", "Confidential Information")
 
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
@@ -107,18 +103,29 @@ _STRIP_LIFTS = (0.05, 0.2)
 _TAGS_KEY = "StructTreeRoot"
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 
+# MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
+# errors all derive from one, so the narrower ones go first.
+MUPDF_FAILURES = (
+    Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
+    # Out of memory, or a file it can't open: only its words tell which.
+    Failure(raised=MUPDF_SYSTEM_ERRORS, problem=machine_failure),
+    Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
+)
+# Core's own: every failure below the API, said as the Problem it means.
+CORE_ERRORS = ErrorController(MUPDF_FAILURES)
+
 # What drew and judged a page; a new one means earlier images and fidelity may differ.
 # Google's copies are part of it: a new pin lends other letters.
 _GOOGLE = GOOGLE_FONTS_COMMIT[:7]
 BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
-def open_pdf(path: str, *, fetch: Fetch | None = None) -> Engine:
+def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
     """The PDF at `path`, open for editing. Use it in a `with`, or close it.
 
-    `fetch` gets Google's copy of a font the file's copies can't draw all of.
+    `sources` lend a font the letters its copies in the file lack: Google's copy.
     """
-    return Engine(MuPDFDriver(path), fetch=fetch)
+    return Engine(MuPDFDriver(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:
@@ -126,21 +133,10 @@ def result_of[T](task: Callable[[], T]) -> T:
 
     A worker runs its task through this: MuPDF's exceptions hold a pointer, so
     they can't be sent back from another process, and they mean something a
-    person can be told. The ErrorController's MuPDF rows say what; anything
-    else goes up as it is.
+    person can be told. `MUPDF_FAILURES` says what; anything else goes up as
+    it is.
     """
-    # Imported here: the imports above are the driver's to change, and wave 2 lifts these.
-    from squidpdf.core.errors import ErrorController, machine_failure, problem_maker
-    from squidpdf.core.pdf import MUPDF_SYSTEM_ERRORS
-
-    mupdf_errors = ErrorController(
-        (
-            (MUPDF_TOO_HEAVY, problem_maker(TooHeavy)),  # past a limit of MuPDF's own
-            (MUPDF_SYSTEM_ERRORS, machine_failure),  # out of memory, or a file it can't open
-            (MUPDF_OWN_ERRORS, problem_maker(Damaged)),  # anything else it couldn't make out
-        )
-    )
-    return mupdf_errors.result_of(task)
+    return CORE_ERRORS.result_of(task)
 
 
 @cache
@@ -150,11 +146,11 @@ def face_widths(face: Face) -> dict[str, float]:
     For the font list, where there's no document to open: the same widths the
     engine gives a span drawn in the face.
     """
-    return letter_widths(open_face(face), faces.face_letters(face))
+    return letter_widths(open_face(face), face_letters(face))
 
 
 class MuPDFFont:
-    """A font file MuPDF has opened. Implements `core.driver.FontProgram`."""
+    """A font file MuPDF has opened. Implements `core.pdf.driver.FontProgram`."""
 
     def __init__(self, font: pymupdf.Font) -> None:
         """Wrap a font MuPDF has opened."""
@@ -186,9 +182,9 @@ def open_face(face: Face) -> MuPDFFont:
 
 
 class MuPDFDriver:
-    """A PDF open in MuPDF. Implements `core.driver.PdfDriver`.
+    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`.
 
-    Holds a `core.pdf.PdfFile` for the calls MuPDF's low-level API makes.
+    Holds a `core.pdf.lowlevel.PdfFile` for the calls MuPDF's low-level API makes.
     """
 
     def __init__(self, path: str) -> None:
@@ -215,9 +211,10 @@ class MuPDFDriver:
             raise Damaged(debug="no pages")
         self._doc = doc
         self._file = PdfFile(doc)
-        # The fonts add_font put on each page, by resource name, for erase_text to keep.
+        # The fonts this driver named on each page, by resource name, for erase_text to
+        # keep: those add_font added, and the file's own a code write named again.
         # By the page's own object, whose number stays when the pages are renumbered.
-        self._added: dict[int, dict[str, int]] = {}
+        self._named: dict[int, dict[str, int]] = {}
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -377,8 +374,12 @@ class MuPDFDriver:
             xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._added.setdefault(pdf_page.xref, {})[free_name] = xref
+        self._keep_named(page, free_name, xref)
         return FontResource(free_name, xref)
+
+    def _keep_named(self, page: int, resource: str, xref: int) -> None:
+        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
+        self._named.setdefault(self._doc[page].xref, {})[resource] = xref
 
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside each box, for real.
@@ -391,7 +392,8 @@ class MuPDFDriver:
         don't reach. A box that still has letters afterwards (a font whose boxes
         sit oddly) is erased whole, so old text is never left under new. MuPDF
         also deletes any link a redaction touches, and any font no text on the
-        page uses any more: the links go back, and so do the fonts `add_font` added.
+        page uses any more: the links go back, and so do the fonts this driver
+        named on the page.
         """
         links = self._doc[page].get_links()
         letters = self._letters(page)
@@ -402,8 +404,8 @@ class MuPDFDriver:
         if missed:
             self._file.redact(page, missed)
         self._restore_links(page, links)
-        # .get: a page nothing was added to.
-        for resource, xref in self._added.get(self._doc[page].xref, {}).items():
+        # .get: a page the driver named no font on.
+        for resource, xref in self._named.get(self._doc[page].xref, {}).items():
             self._file.restore_font(page, resource, xref)
 
     def _restore_links(self, page: int, links: list[dict]) -> None:
@@ -471,6 +473,7 @@ class MuPDFDriver:
         for xref in sorted(xrefs - named.keys()):
             resource = self._free_name(page, f"C{xref}")
             self._file.restore_font(page, resource, xref)
+            self._keep_named(page, resource, xref)
             named[xref] = resource
         return named
 
@@ -518,7 +521,7 @@ class MuPDFDriver:
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
         # Object streams compress the plain objects too: a face's width list is most of it.
-        self._doc.save(path, garbage=_GARBAGE_COLLECT, deflate=True, use_objstms=True)
+        self._doc.save(path, garbage=GARBAGE_COLLECT, deflate=True, use_objstms=True)
 
     def close(self) -> None:
         """Release the open document."""
@@ -567,86 +570,6 @@ class MuPDFDriver:
         self._doc.xref_set_key(
             pdf_page.xref, "Contents", "[" + " ".join(f"{p} 0 R" for p in parts) + "]"
         )
-
-
-def write_sample(path: str) -> None:
-    """A two-page sample: one page whose fonts are only named, one where one is stored."""
-    doc = pymupdf.open()
-    # "tibo" and "tiro" are MuPDF's short names for Times Bold and Times Roman,
-    # which it never puts in the file.
-    referenced = doc.new_page()
-    referenced.insert_text((72, 96), "SERVICES AGREEMENT", fontname="tibo", fontsize=13)
-    referenced.insert_text(
-        (72, 128),
-        "This agreement is made on 14 March 2026 between",
-        fontname="tiro",
-        fontsize=11,
-    )
-    referenced.insert_text(
-        (72, 146),
-        "Wescott Analytics Ltd and Lindqvist & Rowe LLP.",
-        fontname="tiro",
-        fontsize=11,
-    )
-    referenced.insert_text(
-        (72, 176),
-        "The Client shall pay 48,500 per quarter in arrears.",
-        fontname="tiro",
-        fontsize=11,
-    )
-
-    # Embedded then subsetted, the way a real generator leaves it, so only the
-    # glyphs this page used survive and typing an accent will fail.
-    embedded = doc.new_page()
-    # "emb" is only the name the page files the font under.
-    embedded.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
-    embedded.insert_text((72, 96), "Schedule 1 - Scope of work", fontname="emb", fontsize=12)
-    embedded.insert_text(
-        (72, 124),
-        "Delivery begins 14 March 2026 and runs eighteen months.",
-        fontname="emb",
-        fontsize=11,
-    )
-    doc.subset_fonts(verbose=False)
-
-    doc.save(path)
-    doc.close()
-
-
-def write_dense(path: str, *, pages: int) -> None:
-    """A long contract of made-up clauses, for timing the browser on full pages.
-
-    Every line is a span, and one in three has a defined term set in bold, as a
-    contract's are, so a page carries as many spans as a real one. The words are
-    the same on every run. Page 1 opens with the sample's line, for a test to find.
-    """
-    choose = random.Random(0)
-    doc = pymupdf.open()
-    for number in range(pages):
-        page = doc.new_page()
-        page.insert_text((72, 84), f"Schedule {number + 1}", fontname="tibo", fontsize=13)
-        baseline = _DENSE_TOP
-        if number == 0:
-            opening = "This agreement is made on 14 March 2026 between"
-            page.insert_text((72, baseline), opening, fontname="tiro", fontsize=_DENSE_SIZE)
-            baseline += _DENSE_LEADING
-        while baseline <= _DENSE_BOTTOM:
-            line = [choose.choice(_DENSE_WORDS) for _ in range(choose.randint(9, 12))]
-            runs = [(" ".join(line) + " ", "tiro")]
-            if choose.random() < 1 / 3:
-                cut = choose.randint(2, len(line) - 2)
-                runs = [
-                    (" ".join(line[:cut]) + " ", "tiro"),
-                    (choose.choice(_DENSE_TERMS) + " ", "tibo"),
-                    (" ".join(line[cut:]), "tiro"),
-                ]
-            x = 72.0
-            for text, font in runs:
-                page.insert_text((x, baseline), text, fontname=font, fontsize=_DENSE_SIZE)
-                x += pymupdf.get_text_length(text, fontname=font, fontsize=_DENSE_SIZE)
-            baseline += _DENSE_LEADING
-    doc.save(path)
-    doc.close()
 
 
 @dataclass(frozen=True, slots=True)

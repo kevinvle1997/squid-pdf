@@ -24,7 +24,7 @@ from pathlib import Path
 import httpx
 
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
-from squidpdf.core.google import blob_hash, raw_url
+from squidpdf.core.fonts.google import blob_hash, raw_url
 
 _REPO = "https://github.com/google/fonts.git"
 _OUT = Path(__file__).parents[1] / "src" / "squidpdf" / "fonts" / "google-families.json"

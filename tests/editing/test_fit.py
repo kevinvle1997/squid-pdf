@@ -14,7 +14,9 @@ def test_check_reports_overflow_with_options(engine):
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE)
     longer = span.text + " and"
-    assert_equal(engine.missing(span, longer), [], "missing chars, isolating the width case")
+    assert_equal(
+        engine.plan_for(span, longer).missing, [], "missing chars, isolating the width case"
+    )
     fit = replace_fit(engine, span, longer)
     assert_false(fit.ok, "fit.ok for text that overflows the line")
     assert_in("too long", words.render_all(fit.describe()) or "", "the overflow description")
@@ -22,7 +24,7 @@ def test_check_reports_overflow_with_options(engine):
     missing = {"shrink", "as-is"} - offered
     assert_true(not missing, f"options offered ({offered}) are missing {missing}")
 
-    # A letter only the stand-in has, and one nothing has: both said, each its way.
+    # A letter only the substitute has, and one nothing has: both said, each its way.
     fit = replace_fit(engine, span, longer + " é 中")
     switch = words.sentence("missing").format(chars="é", font="Liberation Serif Regular")
     assert_in(

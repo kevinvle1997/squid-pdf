@@ -1,7 +1,7 @@
 """What the engine asks of a PDF library: the seam another library would fill.
 
 Primitives only: read what the file says, change it, draw on it, save it. What
-to make of it (spans, fidelity, stand-ins, fits) is `core.engine`'s, the same
+to make of it (spans, fidelity, substitutes, fits) is `core.engine`'s, the same
 over any driver. PyMuPDF is AGPL; a permissive rewrite would implement these
 two protocols over pypdfium2 and pikepdf, and nothing else.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from squidpdf.core.message import Message
+from squidpdf.core.app.message import Message
 from squidpdf.core.types import (
     CodeRun,
     Face,
@@ -26,16 +26,15 @@ from squidpdf.core.types import (
 )
 
 
-class DriverError(ValueError):
+class DriverError(Exception):
     """The library couldn't do what was asked with a font, and why, for the edge to say.
 
     One error for every way a font fails in the driver, as `FontUnusable` is in
-    the engine. A ValueError so callers written when the driver raised those
-    still catch it, until they catch this by name.
+    the engine. Caught by name.
     """
 
     def __init__(self, reason: Message, *, debug: str = "") -> None:
-        """`reason` names a sentence in `core.words`; `debug` is the library's own words."""
+        """`reason` names a sentence in `core.app.words`; `debug` is the library's own words."""
         super().__init__(reason, debug)
         self.reason = reason
         self.debug = debug
@@ -62,7 +61,7 @@ class FontProgram(Protocol):
 
 
 class PdfDriver(Protocol):
-    """A PDF open in a library. `core.mupdf.MuPDFDriver` is the one there is.
+    """A PDF open in a library. `core.pdf.mupdf.MuPDFDriver` is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the
     page unrotated. A font the library can't use raises DriverError, saying
@@ -124,9 +123,10 @@ class PdfDriver(Protocol):
     def erase_text(self, page: int, boxes: list[Rect]) -> None:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Images, drawings and links stay, and so does every font `add_font` put
-        on the page, under the same resource name. A font of the file's own
-        that no text on the page uses any more may go.
+        Images, drawings and links stay, and so does every font the driver named
+        on the page, under the same resource name: each `add_font` put there, and
+        each of the file's own a `write_codes` named again. Any other font of the
+        file's own that no text on the page uses any more may go.
         """
         ...
 

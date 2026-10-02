@@ -8,13 +8,12 @@ Carlito in the file.
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator
 
 import pymupdf
 import pytest
 
-from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf
-from tests.conftest import named_only, saved_as
+from squidpdf.core import Engine, LineToDraw, Span, SpanIndex, new_text, open_pdf
+from tests.conftest import each_span, named_only, saved_as
 from tests.helpers import assert_equal
 
 # The own font: MuPDF's Nimbus Sans, stored trimmed and renamed Calibri, so its
@@ -44,20 +43,12 @@ def _own_font_file(path: str) -> str:
     return path
 
 
-def _each_drawn(path: str) -> Iterator[dict]:
-    """Every piece of text on the saved file's first page, as MuPDF reads it back."""
-    for block in pymupdf.open(path)[0].get_text("dict")["blocks"]:
-        # .get: an image block has no lines.
-        for line in block.get("lines", []):
-            yield from line["spans"]
-
-
 def _font_drawing(path: str, text: str) -> str:
     """The font the saved file draws `text` in, read back from its first page."""
     wanted = unicodedata.normalize("NFC", text)
     [font] = {
         piece["font"]
-        for piece in _each_drawn(path)
+        for piece in each_span(pymupdf.open(path)[0].get_text("dict")["blocks"])
         if wanted in unicodedata.normalize("NFC", piece["text"])
     }
     return font
@@ -70,9 +61,10 @@ def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
     switches: the own font lacks a letter that a face we ship has.
     """
     [report] = engine.assess(SpanIndex([span]))
-    left_out = engine.left_out(span, text)
-    switches = [ch for ch in engine.missing(span, text) if ch not in left_out]
-    return engine.stand_in(span, text) if switches or not report.in_file else None
+    plan = engine.plan_for(span, text)
+    switches = [ch for ch in plan.missing if ch not in plan.left_out]
+    named = switches or not report.in_file
+    return engine.substitute(span, text, plan=plan) if named else None
 
 
 def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:
@@ -86,7 +78,7 @@ def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:
             span = new_text(0, origin=_INSERT_AT, text=text, size=_SIZE, font="Calibri")
         named = _named_by_fit(engine, span, text)
         if not insert:
-            engine.remove([span])
+            engine.remove([span], then_drawn=[LineToDraw(span, text)])
         engine.draw(span, text)
         engine.save(out)
     return named

@@ -16,11 +16,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import assert_never
 
-from squidpdf.core import Message
-from squidpdf.core.constants import TURN_TOLERANCE
-from squidpdf.core.engine import Engine
-from squidpdf.core.fonts import FACES
-from squidpdf.core.types import Rect, Span, SpanIndex, new_text
+from squidpdf.core import (
+    FACES,
+    Engine,
+    LineToDraw,
+    Message,
+    Rect,
+    Span,
+    SpanIndex,
+    new_text,
+)
 from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict
@@ -247,9 +252,7 @@ def shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     # .get: a page with no strip drawn on it shows no edit.
     on_page = strips.get(span.page, [])
     # Turned text is redrawn level, so its box says little of where: anywhere on a drawn page.
-    _horizontal, vertical = span.direction
-    turned = abs(vertical) > TURN_TOLERANCE
-    if on_page and turned:
+    if on_page and span.turned:
         return True
     # Letters drawn at the span's size can reach a little past its box: an accent, a tail.
     reach = span.size * REDRAW_REACH_EM
@@ -305,7 +308,8 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     time, and an erase after a redraw would take the new text too.
     """
     erased = [span for span in map(erased_by, steps) if span is not None]
-    engine.remove(erased)
+    drawn = [line for line in map(drawn_by, steps) if line is not None]
+    engine.remove(erased, then_drawn=drawn)
     # A redaction's links go too, as one can carry the text it's on (a mailto:).
     engine.unlink([step.span for step in steps if isinstance(step, Erase)])
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
@@ -323,6 +327,20 @@ def erased_by(step: Step) -> Span | None:
     # An insert: there was no text there.
     if isinstance(step, Place):
         return None
+    assert_never(step)
+
+
+def drawn_by(step: Step) -> LineToDraw | None:
+    """The line a step draws once the erasing is done; None for one that only erases."""
+    # A redaction: nothing drawn.
+    if isinstance(step, Erase):
+        return None
+    # A replace: its new text, where the old was.
+    if isinstance(step, Redraw):
+        return LineToDraw(step.span, step.text)
+    # An insert: its text, where there was none.
+    if isinstance(step, Place):
+        return LineToDraw(step.span, step.span.text)
     assert_never(step)
 
 
@@ -374,13 +392,14 @@ def insert_fit(engine: Engine, insert: Insert) -> FitReport:
     [report] = engine.assess(SpanIndex([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
-    # One that only lacks a letter can: the stand-in draws that line, as for a replace.
+    # One that only lacks a letter can: the substitute draws that line, as for a replace.
     unusable = not shipped and not report.in_file
+    typed_plan = engine.plan_for(span, insert.text)
     return FitReport(
         delta_pt=0.0,
-        missing=[] if unusable else engine.missing(span, insert.text),
-        left_out=engine.left_out(span, insert.text),
-        stand_in=engine.stand_in(span, insert.text),
+        missing=[] if unusable else typed_plan.missing,
+        left_out=typed_plan.left_out,
+        substitute=engine.substitute(span, insert.text, plan=typed_plan),
         unavailable=insert.font if unusable else "",
     )
 
@@ -392,17 +411,18 @@ def replace_fit(
 
     `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
     """
-    missing = engine.missing(span, text)
+    # One plan for what's typed, asked everything the fit says; the original's is its own.
+    typed_plan = engine.plan_for(span, text)
     original_width = engine.measure(span, span.text)
-    typed_width = engine.measure(span, text)
+    typed_width = engine.width_of(span, typed_plan)
     delta_pt = typed_width - original_width
     options = options_for(delta_pt, original_width)
     return FitReport(
         delta_pt=round(delta_pt, 2),
-        missing=missing,
+        missing=typed_plan.missing,
         options=options,
         strategy=strategy_drawn(strategy, options),
-        left_out=engine.left_out(span, text),
-        stand_in=engine.stand_in(span, text),
+        left_out=typed_plan.left_out,
+        substitute=engine.substitute(span, text, plan=typed_plan),
         asked=strategy,
     )

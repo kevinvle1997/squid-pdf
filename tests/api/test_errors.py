@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api.app import create_app
 from squidpdf.api.errors import ServerError
-from squidpdf.core import Damaged, NotFound, Problem, Unreadable, words
+from squidpdf.core import NotFound, Problem, words
 from squidpdf.documents.errors import Gone
 from tests.api.conftest import BASE_URL, upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
@@ -54,7 +54,7 @@ def test_every_problem_has_its_own_wire_type_and_an_english_sentence(app):
     """The browser branches on the type; one with no sentence fails in the error handler."""
     # `app` imports every feature, so every Problem subclass is defined by now.
     # The same failure, as far as the browser knows.
-    shared = {Gone: NotFound, Damaged: Unreadable, ServerError: Problem}
+    shared = {Gone: NotFound, ServerError: Problem}
     seen: dict[str, type[Problem]] = {}
     for cls in _every(Problem):
         if not cls.__module__.startswith("squidpdf."):  # a test's own, or a library's

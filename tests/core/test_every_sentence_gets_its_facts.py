@@ -18,9 +18,9 @@ import ast
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from string import Formatter
 
 from squidpdf.core import Problem, words
+from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
 
 _SRC = Path(__file__).parents[2] / "src"
@@ -34,11 +34,6 @@ class _Said:
     key: str
     facts: frozenset[str] | None  # None: not written out, so only the key is checked
     where: str
-
-
-def _placeholders(sentence: str) -> frozenset[str]:
-    """The `{name}`s a sentence takes."""
-    return frozenset(name for _text, name, _spec, _conv in Formatter().parse(sentence) if name)
 
 
 def _trees() -> Iterator[tuple[str, ast.Module]]:
@@ -193,7 +188,7 @@ def _mismatches(said: Iterator[_Said]) -> list[str]:
         if each.key not in words.ENGLISH_SENTENCES:
             wrong.append(f"{each.where}: {each.key!r} has no sentence")
             continue
-        wants = _placeholders(words.ENGLISH_SENTENCES[each.key])
+        wants = placeholders(words.ENGLISH_SENTENCES[each.key])
         lacking = wants - each.facts if each.facts is not None else frozenset()
         if lacking:
             wrong.append(f"{each.where}: {each.key!r} is given no {sorted(lacking)}")

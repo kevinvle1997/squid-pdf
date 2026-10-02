@@ -19,7 +19,7 @@ from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.edits import Edit
 from squidpdf.editing.export import ExportController
-from squidpdf.editing.fonts import FontListController
+from squidpdf.editing.font_list import FontListController
 from squidpdf.editing.render import RenderController
 from squidpdf.editing.types import FontList, Region, Render
 

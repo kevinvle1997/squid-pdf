@@ -5,7 +5,7 @@ the API names a sentence by its key in a Message; the edge says it in the
 reader's language with `render`.
 
 Placeholders are bare `{name}`, so the browser can fill them too. A key is
-never renamed: the browser can branch on it.
+renamed only with the browser, in the same change: the browser can branch on it.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from collections.abc import Iterable, Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 
-from squidpdf.core.message import Message, Param
+from squidpdf.core.app.message import Message, Param, SaidInfo
 
 __all__ = [
     "ENGLISH",
@@ -28,6 +28,7 @@ __all__ = [
     "catalog",
     "render",
     "render_all",
+    "said",
     "fill",
     "language_headers",
     "visible",
@@ -79,6 +80,11 @@ def catalog(language: str) -> dict[str, str]:
 def render(message: Message, language: str = ENGLISH) -> str:
     """`message` as a person reads it in `language`: its sentence, placeholders filled."""
     return fill(sentence(message.key, language), message.params, language)
+
+
+def said(message: Message, language: str) -> SaidInfo:
+    """`message` as a reader gets it: said in `language` as `detail`, and unsaid beside it."""
+    return {"detail": render(message, language), **message.as_info()}
 
 
 def render_all(messages: Iterable[Message], language: str = ENGLISH) -> str | None:

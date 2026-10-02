@@ -1,38 +1,55 @@
-"""The document's fonts: each span's own, pooled, the face that stands in for it, and its gaps.
+"""The document's fonts: each span's own, pooled, its look-alike, and its gaps.
 
 What the engine knows about fonts, read through the driver once and kept. A
 copy of a font is opened once per listing, not once per page, so a font every
 page shares is read and parsed once. A span's font is its page's copy pooled
-with every other copy of it in the file (`core.pooled`), so a letter one copy
+with every other copy of it in the file (`core.fonts.pool`), so a letter one copy
 lacks can come from another, and last with Google's copy, if it has one.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 
-from squidpdf.core import faces
-from squidpdf.core.driver import FontProgram, PdfDriver
-from squidpdf.core.embedded import FontUnusable, open_embedded
-from squidpdf.core.fonts import look_alike, strip_subset
-from squidpdf.core.google import GoogleFontController
-from squidpdf.core.message import Message
-from squidpdf.core.pooled import (
+from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.embedded import FontUnusable, open_embedded, remembered
+from squidpdf.core.fonts.google import Fetch, GoogleFontController
+from squidpdf.core.fonts.look_alike import look_alike, strip_subset
+from squidpdf.core.fonts.pool import (
     FontCopy,
     PooledFont,
     font_copy,
     google_copy,
     lacks_a_keyboard_letter,
 )
-from squidpdf.core.spacing import usual_gap
+from squidpdf.core.fonts.substitute import Substitute, substitute_for
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
 __all__ = [
+    "FontSources",
+    "NO_SOURCES",
     "FontCache",
     "DocumentFonts",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class FontSources:
+    """Where a document's fonts may borrow letters from outside the file, chosen at the edge.
+
+    One record from `open_pdf` down, so a new source is one more field here, not
+    another keyword through every signature on the way.
+    """
+
+    google: Fetch | None = None  # Google's copies, fetched or read from the cache
+
+
+# No sources: only the file's own copies lend.
+NO_SOURCES = FontSources()
 
 
 @dataclass(slots=True)
@@ -66,12 +83,22 @@ class FontCache:
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
     # A span's font with its other copies, by its page and its page's copy.
     pools: dict[tuple[int, PageFont], PooledFont | FontUnusable] = field(default_factory=dict)
-    # The face that stands in for each font, by its name and object (None: not on the page).
+    # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
+
+    def pool(
+        self, key: tuple[int, PageFont], make: Callable[[], PooledFont]
+    ) -> PooledFont | FontUnusable:
+        """A span's font pooled with its other copies, made on first use, or why it can't be."""
+        return remembered(self.pools, key, make)
+
+    def copy(self, font: PageFont, make: Callable[[], FontCopy]) -> FontCopy | FontUnusable:
+        """One copy of a font in the file, opened on first use, or why it can't be used."""
+        return remembered(self.copies, font, make)
 
 
 class DocumentFonts:
-    """The fonts a document's spans are written in, and the faces we ship that stand in."""
+    """The fonts a document's spans are written in, and the look-alike we ship for each."""
 
     def __init__(self, driver: PdfDriver, *, google: GoogleFontController | None) -> None:
         """Read through `driver`, with nothing looked up yet.
@@ -88,13 +115,8 @@ class DocumentFonts:
         # Not on the page: new text in a font it doesn't have.
         if page_font is None:
             return FontUnusable(Message("font_not_in_file"))
-        key = (span.page, page_font)
-        if key not in self._cache.pools:
-            try:
-                self._cache.pools[key] = self._pool(span.page, page_font)
-            except FontUnusable as problem:  # no copy of the font we can use, and why
-                self._cache.pools[key] = problem
-        return self._cache.pools[key]
+        make_pool = partial(self._pool, span.page, page_font)
+        return self._cache.pool((span.page, page_font), make_pool)
 
     def own(self, span: Span) -> PooledFont | None:
         """The span's font, pooled with its other copies in the file; None when we can't use it.
@@ -174,38 +196,43 @@ class DocumentFonts:
         # A copy we can't open lends no letters; the span's own still draws what it can.
         yield from (copy for copy in opened if isinstance(copy, FontCopy))
         # From outside the file, in order. The user's own copy of a font, once
-        # they can attach one, goes before Google's.
-        from_outside = (self._google_copy,)
+        # they can attach one, goes before Google's. Without Google, there are none.
+        from_outside = (
+            () if self._google is None else (partial(self._google_copy, self._google),)
+        )
         for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
                 return
             copy = copy_from(own)
-            # None: no copy of this font to be had there.
-            if copy is not None:
+            # No copy of this font to be had there, and why: it lends nothing, as above.
+            if isinstance(copy, FontCopy):
                 yield copy
 
-    def _google_copy(self, own: FontCopy) -> FontCopy | None:
-        """Google's copy of the own copy's font; None when it has none, or it can't be had."""
-        if self._google is None:
-            return None
-        file = self._google.file_for(own.font)
+    def _google_copy(
+        self, google: GoogleFontController, own: FontCopy
+    ) -> FontCopy | FontUnusable:
+        """Google's copy of the own copy's font, or why it has none, or it can't be had."""
+        file = google.file_for(own.font)
         # Not one of Google's families, or a cut it may not make.
-        if file is None:
-            return None
-        embedded = self._google.opened(file)
-        if embedded is None:
-            return None
+        if isinstance(file, FontUnusable):
+            return file
+        embedded = google.opened(file)
+        # Not fetched, or not readable.
+        if isinstance(embedded, FontUnusable):
+            return embedded
         return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
-        if font not in self._cache.copies:
-            try:
-                self._cache.copies[font] = font_copy(font, open_embedded(self._driver, font))
-            except FontUnusable as problem:  # not stored, unreadable, or no way to write it
-                self._cache.copies[font] = problem
-        return self._cache.copies[font]
+        return self._cache.copy(font, partial(self._open_copy, font))
+
+    def _open_copy(self, font: PageFont) -> FontCopy:
+        """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't.
+
+        It may not be stored, be unreadable, or have no way to be written to.
+        """
+        return font_copy(font, open_embedded(self._driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other font in the file by the same name, subset prefix aside.
@@ -232,7 +259,7 @@ class DocumentFonts:
             yield from self._facts(other_page).fonts
 
     def look_alike(self, span: Span) -> LookAlike:
-        """The face we ship that stands in for the span's font, in its style."""
+        """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self.page_font(span)
         xref = None if page_font is None else page_font.xref
         key = (strip_subset(span.font), xref)
@@ -242,9 +269,9 @@ class DocumentFonts:
             self._cache.look_alikes[key] = look_alike(span.font, descriptor)
         return self._cache.look_alikes[key]
 
-    def stand_in(self, span: Span, text: str) -> faces.StandIn:
+    def substitute(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
-        return faces.stand_in(self.look_alike(span).face, text)
+        return substitute_for(self.look_alike(span).face, text)
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.

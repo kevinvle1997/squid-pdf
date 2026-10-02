@@ -10,20 +10,21 @@ from dataclasses import dataclass
 from functools import cache
 
 from squidpdf.core.constants import GLYPH_LIST_RANGES
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import broadest, face_bytes
+from squidpdf.core.fonts.catalog import face_bytes
+from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.look_alike import broadest
 from squidpdf.core.types import Face
 
 __all__ = [
-    "StandIn",
+    "Substitute",
     "face_coverage",
     "face_letters",
-    "stand_in",
+    "substitute_for",
 ]
 
 
 @dataclass(frozen=True, slots=True)
-class StandIn:
+class Substitute:
     """A face we ship drawing a line the span's own font can't, less what even it can't draw."""
 
     face: Face
@@ -53,20 +54,20 @@ def face_letters(face: Face) -> tuple[str, ...]:
     )
 
 
-def stand_in(look_alike: Face, text: str) -> StandIn:
+def substitute_for(look_alike: Face, text: str) -> Substitute:
     """The face that draws `text` in place of a font whose look-alike is `look_alike`.
 
     The look-alike when it has every letter; otherwise whichever of it and the
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    stand_ins = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
+    candidates = [try_face(face, text) for face in (look_alike, broadest(look_alike))]
     # min keeps the first of a tie
-    return min(stand_ins, key=lambda stand_in: len(stand_in.left_out))
+    return min(candidates, key=lambda candidate: len(candidate.left_out))
 
 
-def try_face(face: Face, text: str) -> StandIn:
+def try_face(face: Face, text: str) -> Substitute:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
     kept = "".join(ch for ch in text if ch not in left_out)
-    return StandIn(face, kept, left_out)
+    return Substitute(face, kept, left_out)

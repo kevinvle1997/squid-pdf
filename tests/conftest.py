@@ -8,10 +8,11 @@ from collections.abc import Iterator
 
 import pymupdf
 import pytest
+from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
 from squidpdf.core import open_pdf, words
-from squidpdf.core.fonts import FACES, face_bytes
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 
 # pytest only explains the asserts in test modules; this has it explain the helpers' too,
 # so a failing assert_equal shows a diff, not two whole values. Before any test imports them.
@@ -20,7 +21,7 @@ pytest.register_assert_rewrite("tests.helpers")
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
 
 # The sample's two pages, counted from 0 as spans count them.
-REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a stand-in
+REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
 
@@ -31,6 +32,19 @@ def no_fetch() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_NO_FETCH", "1")
         yield
+
+
+def each_span(blocks: list[dict]) -> Iterator[dict]:
+    """Every span of text in get_text's blocks, in reading order."""
+    for block in blocks:
+        # .get: an image block has no lines.
+        for line in block.get("lines", []):
+            yield from line["spans"]
+
+
+def cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
+    """Fails, as fontTools can on an odd font: patched over `Subsetter.subset`."""
+    raise ValueError("fontTools can't cut this font")
 
 
 def saved_as(face: str) -> str:

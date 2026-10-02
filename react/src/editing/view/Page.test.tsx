@@ -134,9 +134,22 @@ describe("a page", () => {
   });
 
   test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
-    const similar = aSpan({ id: "s3", text: "in Arial", font: "Arial", bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    const standIn = aFont("Arial", { substitute: "Liberation Sans Regular", same_widths: false, why: "Not embedded." });
-    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [similar], fonts: [standIn] }), 2);
+    const substituted = aSpan({
+      id: "s3",
+      text: "in Arial",
+      font: "Arial",
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    const substitutedFont = aFont("Arial", {
+      substitute: "Liberation Sans Regular",
+      same_widths: false,
+      why: "Not embedded.",
+    });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [substituted], fonts: [substitutedFont] }),
+      2,
+    );
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "in Arial" });
     await expect.element(mark).toBeInTheDocument();
@@ -154,9 +167,18 @@ describe("a page", () => {
   });
 
   test("a click shows a span's note; a click's focus alone doesn't", async () => {
-    const similar = aSpan({ id: "s3", text: "in Arial", font: "Arial", bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    const standIn = aFont("Arial", { substitute: "Liberation Sans Regular" });
-    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [similar], fonts: [standIn] }), 2);
+    const substituted = aSpan({
+      id: "s3",
+      text: "in Arial",
+      font: "Arial",
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular" });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [substituted], fonts: [substitutedFont] }),
+      2,
+    );
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "in Arial" });
     await expect.element(mark).toBeInTheDocument();

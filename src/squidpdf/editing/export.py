@@ -14,14 +14,14 @@ from pathlib import Path
 
 from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Workers, words
 from squidpdf.documents import store
-from squidpdf.documents.errors import Gone, NoSuchPage
+from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
-from squidpdf.editing.info import notice_info
 from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, Notice, Saved
 
 __all__ = [
@@ -85,9 +85,7 @@ def make_pdf(
     Saves into `scratch`, which the server makes and removes. Runs in a worker.
     """
     path = Path(folder)
-    index = store.load_index(path)
-    if index is None:  # analysed at upload, so a sweep or a delete removed it
-        raise Gone
+    index = store.require_index(path)
 
     with store.open_original(path) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.

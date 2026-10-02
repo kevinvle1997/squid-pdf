@@ -82,7 +82,7 @@ test("a span edited back to its own words is untouched: nothing is drawn over it
   const field = page.getByRole("textbox", { name: "Change “This agreement is made on 2 April 2026 between”" });
   await field.fill(LINE);
   await field.press("Enter");
-  // Drawn again, the line would come back in the stand-in face while the page says nothing changed.
+  // Drawn again, the line would come back in the substitute while the page says nothing changed.
   await expect(page.locator("img[data-strip]")).toHaveCount(0);
   await expect(page.getByText("1 change")).toHaveCount(0);
 });
@@ -135,9 +135,7 @@ test("Cmd+S while still typing exports the edit being typed", async ({ page }) =
   await downloading;
 });
 
-test("typing previews in the stand-in face, says a trouble once, and Tab goes on to the next span", async ({
-  page,
-}) => {
+test("typing previews in a similar font, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
   await open(page);
   // Held, so the browser's preview stays up to be looked at.
   let release: () => void = () => undefined;

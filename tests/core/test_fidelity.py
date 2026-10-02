@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 
 import pymupdf
 import pytest
@@ -11,6 +11,7 @@ from squidpdf.core import (
     Engine,
     Fidelity,
     FidelityReport,
+    LineToDraw,
     Span,
     SpanIndex,
     green_rate,
@@ -18,9 +19,9 @@ from squidpdf.core import (
     open_pdf,
     words,
 )
-from squidpdf.core.fonts import strip_subset
-from squidpdf.core.mupdf import MuPDFDriver, MuPDFFont
-from tests.conftest import REFERENCED_PAGE, drawn_with, named_only, saved_as
+from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
+from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
 
@@ -40,18 +41,10 @@ _INK_LEVEL = 128  # a pixel darker than mid-grey is ink on the white page
 _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
 
 
-def _each_span(blocks: list[dict]) -> Iterator[dict]:
-    """Every span of text in get_text's blocks, in reading order."""
-    for block in blocks:
-        # .get: an image block has no lines.
-        for line in block.get("lines", []):
-            yield from line["spans"]
-
-
 def _drawn(path: str) -> list[dict]:
     """Every span of text on the saved file's first page, re-read."""
     blocks = pymupdf.open(path)[0].get_text("rawdict")["blocks"]
-    return list(_each_span(blocks))
+    return list(each_span(blocks))
 
 
 def _text(span: dict) -> str:
@@ -117,7 +110,7 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     # Drawn with nothing asked first: remove() must read the font before erasing it.
     with open_pdf(path) as engine:
         span = next(iter(engine.index()))
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "Hello again")])
         engine.draw(span, "Hello again")
         engine.save(out)
     with open_pdf(path) as engine:
@@ -135,7 +128,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
     with open_pdf(symbolic) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABBA")])
         engine.draw(span, "ABBA")
         engine.save(str(out))
 
@@ -155,7 +148,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
     with open_pdf(corrupt) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABBA")])
         engine.draw(span, "ABBA")
         engine.save(out)
 
@@ -175,7 +168,7 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
         [report] = engine.assess(engine.index())
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
         engine.draw(span, "BA AB")
         engine.save(out)
 
@@ -207,8 +200,8 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
-        missing = engine.missing(span, "ABCD")
-        engine.remove([span])
+        missing = engine.plan_for(span, "ABCD").missing
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
         engine.draw(span, "ABC")
         engine.save(out)
 
@@ -231,7 +224,7 @@ def _font_files(doc: pymupdf.Document, page: int) -> set[bytes]:
 def _blank_letters(page: pymupdf.Page) -> list[str]:
     """The letters on a page that put no ink down, in order."""
     blocks = page.get_text("rawdict")["blocks"]
-    letters = [char for span in _each_span(blocks) for char in span["chars"]]
+    letters = [char for span in each_span(blocks) for char in span["chars"]]
     return [
         char["c"]
         for char in letters
@@ -251,10 +244,10 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     """Redraw page 0's line as _POOLED: what the fit says is missing, and new text's state."""
     with open_pdf(path) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, _POOLED)
+        missing = engine.plan_for(span, _POOLED).missing
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
         [report] = engine.assess(SpanIndex([new]))
-        engine.remove([span])
+        engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
         engine.draw(span, _POOLED)
         engine.save(out)
     return missing, report
@@ -280,7 +273,7 @@ def _assert_drawn_in_both_copies(original: str, out: str) -> None:
 def test_a_letter_only_another_pages_copy_draws_is_exact_and_redraws_in_the_files_font(
     merged, tmp_path
 ):
-    """Page 0's Times has no Y; page 1's has. Before, the whole line went to the stand-in."""
+    """Page 0's Times has no Y; page 1's has. Before, the whole line went to the substitute."""
     out = str(tmp_path / "redrawn.pdf")
     missing, report = _redraw(merged, out)
 
@@ -296,7 +289,7 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_equal(len(names), 1, "names the fixture's two copies go by, prefix aside")
     with open_pdf(merged_unlike) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, _POOLED)
+        missing = engine.plan_for(span, _POOLED).missing
         listed = engine.widths(span)
         why = _why_new(engine, span, _POOLED)
 
@@ -309,7 +302,7 @@ def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
     with open_pdf(merged_apart) as engine:
         span = _first_span(engine)
-        missing = engine.missing(span, "Yak Hello")
+        missing = engine.plan_for(span, "Yak Hello").missing
         why = _why_new(engine, span, "Yak Hello")
 
     assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
@@ -398,8 +391,9 @@ def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path)
     with open_pdf(pdf) as engine:
         index = engine.index()
         [line] = [span for span in index if span.text.startswith("Invoices")]
-        engine.remove([line])
-        engine.draw(line, "Invoices are due within ten days.")
+        typed = "Invoices are due within ten days."
+        engine.remove([line], then_drawn=[LineToDraw(line, typed)])
+        engine.draw(line, typed)
         engine.save(out)
 
     with open_pdf(out) as again:

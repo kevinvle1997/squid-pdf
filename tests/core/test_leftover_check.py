@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pymupdf
 
-from squidpdf.core import new_text, open_pdf
+from squidpdf.core import LineToDraw, new_text, open_pdf
 from tests.helpers import assert_equal
 
 _CARD = "Card 4111 2222 3333"  # four groups: the check once passed with three of them left
@@ -41,8 +41,8 @@ def test_a_label_drawn_over_a_removal_is_not_its_text_left_behind(tmp_path):
     doc.save(path)
     with open_pdf(path) as engine:
         [span] = list(engine.index())
-        engine.remove([span])
         label = new_text(0, origin=span.origin, text=_LABEL, size=12, font="Carlito Regular")
+        engine.remove([span], then_drawn=[LineToDraw(label, _LABEL)])
         engine.draw(label, _LABEL)
         engine.save(saved_path)
 

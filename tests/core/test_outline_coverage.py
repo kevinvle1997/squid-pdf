@@ -8,8 +8,8 @@ import pytest
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
 
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import FACES, face_bytes
+from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
 from tests.helpers import assert_equal
 
 # Two of each format we ship: TrueType outlines (the largest and a common one)

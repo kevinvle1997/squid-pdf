@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core.message import Message, MessageInfo
-from squidpdf.core.types import Category, Style
+from squidpdf.core import Category, Message, MessageInfo, Page, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
     from squidpdf.editing.fit import LogFits
@@ -65,10 +64,18 @@ class Region:
 
 
 @dataclass(frozen=True, slots=True)
+class DrawnPage:
+    """A page render draws on, and its pixels per point, its page image's."""
+
+    page: Page
+    scale: float
+
+
+@dataclass(frozen=True, slots=True)
 class Rendered:
     """What render worked out, in no one's words yet: the strips, the fits, and the skips.
 
-    `notices` are edits drawn other than asked, such as in a stand-in font.
+    `notices` are edits drawn other than asked, such as in a substitute.
     """
 
     images: list[ImageInfo]
@@ -181,7 +188,7 @@ class FontList(TypedDict):
 class Render(TypedDict):
     """Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
 
-    `notices` are edits drawn other than asked, such as in a stand-in font.
+    `notices` are edits drawn other than asked, such as in a substitute.
     """
 
     images: list[ImageInfo]

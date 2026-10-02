@@ -3,7 +3,7 @@
 
 export type Facts = Record<string, string | number | readonly string[]>;
 
-// How a list goes into a sentence, as the server joins it (core/words, join_chars and join_letters).
+// How a list goes into a sentence, as the server joins it (core/app/words, join_chars and join_letters).
 const JOINS: Record<string, string> = { chars: " or ", letters: " " };
 
 const ONE_PLACE = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });

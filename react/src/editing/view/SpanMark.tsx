@@ -71,7 +71,7 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
 
   const className = [
     styles.span,
-    look.similar && styles.similar,
+    look.substituted && styles.substitute,
     look.changed && styles.changed,
     look.trouble && styles.trouble,
   ]

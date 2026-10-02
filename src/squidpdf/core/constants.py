@@ -30,6 +30,10 @@ TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
+# How hard a save cleans the file: MuPDF's garbage level. 2 drops unused objects;
+# 3 also merges copies, which takes time in the square of the pages.
+GARBAGE_COLLECT = 2
+
 # Half of `build`: bump it when the fonts we ship change, so browsers refetch.
 # 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
 # 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.
@@ -44,7 +48,7 @@ LIBRARY_VERSION = "8"
 # list in `fonts/google-families.json` is read from it, and every copy is fetched
 # from it. Part of `build`: a new pin judges every document again.
 GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
-# How long one fetch of Google's copy may take before the line goes to the stand-in.
+# How long one fetch of Google's copy may take before the line goes to the substitute.
 FETCH_TIMEOUT_S = 5.0
 # How long a copy that failed to come is left before it's tried again; a fetch with
 # no answer leaves every copy that long, since each would wait out the timeout too.

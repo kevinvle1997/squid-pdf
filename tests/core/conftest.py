@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from string import Formatter
 
 import pymupdf
 import pytest
@@ -13,7 +14,7 @@ from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
-from squidpdf.core.fonts import FACES, face_bytes
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
@@ -205,7 +206,7 @@ def coded_translucent(tmp_path_factory) -> str:
 def translucent(tmp_path_factory) -> str:
     """One line in a stored Times Roman, trimmed and painted at TRANSLUCENT opacity.
 
-    Trimmed, so a letter it didn't use sends a redraw to the stand-in.
+    Trimmed, so a letter it didn't use sends a redraw to the substitute.
     """
     path = str(tmp_path_factory.mktemp("translucent") / "translucent.pdf")
     doc = pymupdf.open()
@@ -350,7 +351,7 @@ def merged(tmp_path_factory) -> str:
 
     MuPDF's Times ("tiro") is a CFF font, which keeps its letter table when
     trimmed, so the engine writes it by letter. Not a face we ship, so the
-    stand-in (Liberation Serif) can't be mistaken for it.
+    substitute (Liberation Serif) can't be mistaken for it.
     """
     times = pymupdf.Font("tiro").buffer
     return _merged(str(tmp_path_factory.mktemp("merged") / "letters.pdf"), (times, times))
@@ -431,3 +432,8 @@ def poppins_subset(tmp_path_factory) -> str:
     path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
     doc.save(path)
     return path
+
+
+def placeholders(sentence: str) -> frozenset[str]:
+    """The `{name}`s a sentence takes."""
+    return frozenset(name for _text, name, _spec, _conv in Formatter().parse(sentence) if name)

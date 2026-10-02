@@ -2,7 +2,7 @@
 
 A PDF stores only the letters it used, per copy of a font, and one file can
 hold several copies of one face: merged documents, or a copy per page, and
-Google's copy of it can join them. `core.document_fonts` finds and opens the
+Google's copy of it can join them. `core.fonts.document` finds and opens the
 copies; the pool takes each in only when a letter needs it.
 """
 
@@ -13,21 +13,21 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from itertools import groupby
 
+from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     GLYPH_LIST_RANGES,
     KEYBOARD_RANGES,
     SAME_FONT_SHARED,
     SAME_WIDTH,
 )
-from squidpdf.core.embedded import EmbeddedFont
-from squidpdf.core.google import GoogleFile
-from squidpdf.core.message import Message
-from squidpdf.core.types import CodedFont, PageFont
+from squidpdf.core.fonts.embedded import EmbeddedFont
+from squidpdf.core.fonts.google import GoogleFile
+from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.types import EM, CodedFont, PageFont
 
 __all__ = [
     "FontCopy",
-    "CodedStretch",
-    "TurnedAway",
+    "CodedRun",
     "PooledFont",
     "font_copy",
     "google_copy",
@@ -35,7 +35,6 @@ __all__ = [
     "lacks_a_keyboard_letter",
 ]
 
-_EM = 1000  # widths are given per 1000 em, as PDF font widths are
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.
 _GOOGLE_COPIES_KEPT = 32
 
@@ -50,23 +49,38 @@ type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy]]
 
 
 @dataclass(frozen=True, slots=True)
+class Lent:
+    """Where a copy lent from outside the file came from, and what the reader calls it."""
+
+    source: str  # what it's cached and added to a page as, e.g. Google's path and weight
+    name: str  # the font's own name, "Poppins-Bold", for a sentence that names it
+
+
+@dataclass(frozen=True, slots=True)
 class FontCopy:
     """One copy of a font in the file, opened, and each letter it really draws."""
 
     font: PageFont  # where the file keeps it
     embedded: EmbeddedFont
     widths: dict[str, float]  # each letter it really draws, and its width per 1000 em
-    google: GoogleFile | None = None  # set when it's Google's copy, not one in the file
+    lent: Lent | None = None  # set when it's lent from outside the file, as Google's copy is
 
 
 @dataclass(frozen=True, slots=True)
-class CodedStretch:
-    """Letters drawn in one copy of a font written by code, and the codes it's written in."""
+class CopyRun:
+    """A run of a line: letters drawn in one copy of a font."""
+
+    text: str
+    copy: FontCopy
+
+
+@dataclass(frozen=True, slots=True)
+class CodedRun:
+    """A run of a line in one copy of a font written by code, and the codes it's written in."""
 
     text: str
     copy: FontCopy
     coded: CodedFont
-    own: bool  # the span's own copy, whose name on the page is kept
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +97,7 @@ class PooledFont:
     Each letter comes from the first copy, in the order they lend, that really
     draws it. A copy is taken in only when a letter the ones so far lack is
     asked for, so a line the own copy draws opens no other. Implements
-    `core.driver.FontProgram`, so it measures like one font.
+    `core.pdf.driver.FontProgram`, so it measures like one font.
     """
 
     __slots__ = ("_lenders", "_letters", "_turned_away", "own")
@@ -118,11 +132,8 @@ class PooledFont:
         return self.copy_for(ch).embedded.program.maps(ch)
 
     def width(self, text: str, size: float) -> float:
-        """How wide `text` is at `size` points, each stretch measured in its own copy."""
-        return sum(
-            copy.embedded.program.width(stretch_text, size)
-            for copy, stretch_text in self.stretches(text)
-        )
+        """How wide `text` is at `size` points, each run measured in its own copy."""
+        return sum(run.copy.embedded.program.width(run.text, size) for run in self.runs(text))
 
     def copy_for(self, ch: str) -> FontCopy:
         """The copy that draws `ch`, or the span's own when none does."""
@@ -132,21 +143,23 @@ class PooledFont:
             return self.own
         return lender
 
-    def stretches(self, text: str) -> list[tuple[FontCopy, str]]:
+    def runs(self, text: str) -> list[CopyRun]:
         """`text` split where the copy that draws it changes, in order."""
-        return [(copy, "".join(letters)) for copy, letters in groupby(text, key=self.copy_for)]
+        return [
+            CopyRun("".join(letters), copy)
+            for copy, letters in groupby(text, key=self.copy_for)
+        ]
 
-    def coded_stretches(self, text: str) -> list[CodedStretch] | None:
+    def coded_runs(self, text: str) -> list[CodedRun] | None:
         """`text` split by copy, each with its codes; None when a copy is written by letter."""
-        stretches: list[CodedStretch] = []
-        for copy, stretch_text in self.stretches(text):
-            coded = copy.embedded.coded
+        runs: list[CodedRun] = []
+        for run in self.runs(text):
+            coded = run.copy.embedded.coded
             # Written by letter: there are no codes to write it in.
             if coded is None:
                 return None
-            own = copy.font.xref == self.own.font.xref
-            stretches.append(CodedStretch(stretch_text, copy, coded, own))
-        return stretches
+            runs.append(CodedRun(run.text, run.copy, coded))
+        return runs
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that no copy draws, in order, deduped."""
@@ -196,7 +209,7 @@ def font_copy(font: PageFont, embedded: EmbeddedFont) -> FontCopy:
     if coded is not None:
         return FontCopy(font, embedded, {ch: coded.letters[ch].width for ch in letters})
     program = embedded.program
-    return FontCopy(font, embedded, {ch: program.advance(ch) * _EM for ch in letters})
+    return FontCopy(font, embedded, {ch: program.advance(ch) * EM for ch in letters})
 
 
 def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> FontCopy:
@@ -204,7 +217,8 @@ def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> Font
 
     Stands for the same font as the own copy, so it's checked like any other copy.
     """
-    return FontCopy(own.font, embedded, google_widths(embedded), file)
+    lent = Lent(file.source, strip_subset(own.font.name))
+    return FontCopy(own.font, embedded, google_widths(embedded), lent)
 
 
 def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
@@ -222,7 +236,7 @@ def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
         del _google_widths[next(iter(_google_widths))]
     program = embedded.program
     letters = [ch for ch in embedded.coverage.drawable() if in_glyph_list(ch)]
-    widths = {ch: program.advance(ch) * _EM for ch in letters}
+    widths = {ch: program.advance(ch) * EM for ch in letters}
     _google_widths[digest] = widths
     return widths
 
@@ -233,9 +247,9 @@ def in_glyph_list(ch: str) -> bool:
 
 
 def copy_source(copy: FontCopy) -> str:
-    """What tells one copy from another: Google's file, or its object and name in the file."""
-    if copy.google is not None:
-        return copy.google.source
+    """What tells one copy from another: where it was lent from, or its object and name."""
+    if copy.lent is not None:
+        return copy.lent.source
     return f"{copy.font.xref} {copy.font.name}"
 
 

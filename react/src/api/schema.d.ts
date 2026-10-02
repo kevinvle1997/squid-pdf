@@ -177,10 +177,10 @@ export interface components {
             missing: string;
             /** Too Long */
             too_long: string;
-            /** Stand In */
-            stand_in: string;
-            /** Stand In Same Widths */
-            stand_in_same_widths: string;
+            /** Substitute */
+            substitute: string;
+            /** Substitute Same Widths */
+            substitute_same_widths: string;
             /** Undo Redaction */
             undo_redaction: string;
             /** Reopened */
@@ -363,7 +363,7 @@ export interface components {
          * Insert
          * @description Draw new text where the document has none: a signature, an annotation.
          *
-         *     `font` names a face we ship (`core.fonts.FACES`, e.g. "Caveat Bold") or a
+         *     `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a
          *     font the document uses on this page. Anything else is drawn in a look-alike,
          *     and its fit says so: the fit always says what will really be drawn.
          */
@@ -525,7 +525,7 @@ export interface components {
          * Render
          * @description Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
          *
-         *     `notices` are edits drawn other than asked, such as in a stand-in font.
+         *     `notices` are edits drawn other than asked, such as in a substitute.
          */
         Render: {
             /** Images */

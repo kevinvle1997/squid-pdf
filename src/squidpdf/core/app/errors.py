@@ -12,8 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from squidpdf.core import words
-from squidpdf.core.message import Message, Param
+from squidpdf.core.app import words
+from squidpdf.core.app.message import Message, Param
 
 __all__ = [
     "Problem",
@@ -23,8 +23,8 @@ __all__ = [
     "Encrypted",
     "Damaged",
     "TooHeavy",
+    "Failure",
     "ErrorController",
-    "problem_maker",
     "machine_failure",
 ]
 
@@ -32,7 +32,7 @@ __all__ = [
 class Problem(Exception):
     """Subclass it and set `type` and `status`; `fill` fills the sentence.
 
-    A Message like any other: `type` is its sentence's key in `core.words`, and
+    A Message like any other: `type` is its sentence's key in `core.app.words`, and
     `fill` holds the facts. `debug` is the technical why, for a developer: sent
     beside `detail`, never in it.
     """
@@ -111,8 +111,22 @@ class TooHeavy(Problem):
     status = 422
 
 
-# One foreign exception, and how to make the Problem it means from it.
-type Row = tuple[type[Exception], Callable[[Exception], Problem]]
+@dataclass(frozen=True, slots=True)
+class Failure:
+    """One way a library fails, and the Problem it means: one row of a failure table.
+
+    `problem` is a Problem class, made with the exception's text in `debug`, or
+    a function of the exception, for a row that must read it to say which.
+    """
+
+    raised: type[Exception]  # what the library raises, or a subclass of it
+    problem: type[Problem] | Callable[[Exception], Problem]
+
+    def problem_of(self, exc: Exception) -> Problem:
+        """The Problem `exc`, which this row claims, means."""
+        if isinstance(self.problem, type):  # a class: the exception says nothing more
+            return self.problem(debug=described(exc))
+        return self.problem(exc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,9 +138,9 @@ class ErrorController:
     the ones below it.
     """
 
-    rows: tuple[Row, ...]
+    rows: tuple[Failure, ...]
 
-    def with_rows(self, *rows: Row) -> ErrorController:
+    def with_rows(self, *rows: Failure) -> ErrorController:
         """A controller that asks this one's rows first, then `rows`."""
         return ErrorController((*self.rows, *rows))
 
@@ -134,18 +148,18 @@ class ErrorController:
         """`exc` as the Problem it means; a server error, with its text, if no row claims it."""
         if isinstance(exc, Problem):  # ours already: it means what it says
             return exc
-        claimed = self._claimed(exc)
+        claimed = self.problem_if_claimed(exc)
         if claimed is None:  # a bug: nothing here knows what it means
             return Problem(debug=described(exc))
         return claimed
 
-    def _claimed(self, exc: Exception) -> Problem | None:
+    def problem_if_claimed(self, exc: Exception) -> Problem | None:
         """The Problem the first row that claims `exc` makes of it; None when no row does."""
-        makers = (make for raised, make in self.rows if isinstance(exc, raised))
-        make = next(makers, None)  # None: no row claims it
-        if make is None:
+        claiming = (row for row in self.rows if isinstance(exc, row.raised))
+        row = next(claiming, None)  # None: no row claims it
+        if row is None:
             return None
-        return make(exc)
+        return row.problem_of(exc)
 
     def result_of[T](self, task: Callable[[], T]) -> T:
         """What `task()` returns, or the Problem a row says its failure means.
@@ -160,25 +174,19 @@ class ErrorController:
         except Problem:  # ours already: it crosses as it is
             raise
         except Exception as exc:  # whatever else the task raised: a row may say what it means
-            claimed = self._claimed(exc)
+            claimed = self.problem_if_claimed(exc)
             if claimed is None:  # no row here claims it
                 raise
             raise claimed from exc
 
 
 def described(exc: Exception) -> str:
-    """An exception as a developer reads it: its type and its text."""
-    return f"{type(exc).__name__}: {exc}"
-
-
-def problem_maker(cls: type[Problem]) -> Callable[[Exception], Problem]:
-    """A row's maker: the Problem `cls`, which takes no facts, with the exception's text."""
-
-    def make(exc: Exception) -> Problem:
-        """`cls`, and `exc` as a developer reads it."""
-        return cls(debug=described(exc))
-
-    return make
+    """An exception as a developer reads it: its type and its text, if it has any."""
+    text = str(exc)
+    # A timeout, say, has no words of its own.
+    if not text:
+        return type(exc).__name__
+    return f"{type(exc).__name__}: {text}"
 
 
 # How a C library words a failed allocation, e.g. MuPDF's "malloc (468750000 bytes) failed",

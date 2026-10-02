@@ -18,13 +18,13 @@
 .span[data-hovered] { background: var(--mark-change-soft); mix-blend-mode: multiply; }
 /* On the page the ring is the page's own indigo: the dark theme's would wash out on white. */
 .span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
-/* A similar font stands in here: a dashed warning line, always. */
-.similar::after {
+/* A substitute draws here ("a similar font"): a dashed warning line, always. */
+.substitute::after {
   opacity: .55; height: 1.5px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 2px, transparent 2px 4px);
 }
-.similar[data-hovered] { background: var(--mark-warn-soft); }
-.similar[data-hovered]::after, .similar[data-focus-visible]::after { opacity: 1; }
+.substitute[data-hovered] { background: var(--mark-warn-soft); }
+.substitute[data-hovered]::after, .substitute[data-focus-visible]::after { opacity: 1; }
 /* You changed this. */
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* It went in, but not quite as typed: the server said why. */

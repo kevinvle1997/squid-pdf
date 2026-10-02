@@ -7,12 +7,11 @@ business, so no plan or account lifts them.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 
 from pebble import ProcessExpired
 
 from squidpdf.api.errors import TooSlow
-from squidpdf.core import Damaged, Problem, TooHeavy
+from squidpdf.core import Damaged, Failure, TooHeavy
 
 _MB = 1024 * 1024
 
@@ -25,7 +24,7 @@ UPLOADS_PER_MINUTE = 20  # per IP
 # Every request body but an upload, which checks its own size.
 MAX_BODY_BYTES = 5 * _MB
 
-# Attached fonts.
+# Attached fonts: read by font attach (#52) when it's built.
 MAX_FONT_BYTES = 25 * _MB
 MAX_FONTS = 20  # per document
 
@@ -38,23 +37,15 @@ TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
 STOP_WHEN_LEFT_S = 30
 
 
-@dataclass(frozen=True, slots=True)
-class WorkerFailure:
-    """One way pebble says a worker failed, and the Problem the user is told."""
-
-    raised: type[Exception]  # what pebble raises, or a subclass of it
-    problem: type[Problem]  # made with no arguments: these say nothing about the file
-
-
 # Worker failures, matched in order with `isinstance`, and the first match wins.
 # `isinstance`, not a dict keyed by type: a subclass of a row's type must find it.
 # The order, because a new row could overlap one above it: the narrower goes first.
 WORKER_FAILURES = (
     # Out of time, waiting or working: slow, not necessarily broken.
-    WorkerFailure(raised=TimeoutError, problem=TooSlow),
-    WorkerFailure(raised=MemoryError, problem=TooHeavy),  # past the memory ceiling
+    Failure(raised=TimeoutError, problem=TooSlow),
+    Failure(raised=MemoryError, problem=TooHeavy),  # past the memory ceiling
     # The worker died: MuPDF crashed on the file.
-    WorkerFailure(raised=ProcessExpired, problem=Damaged),
+    Failure(raised=ProcessExpired, problem=Damaged),
 )
 # The types alone, for an `except` or an `isinstance`.
-WORKER_FAILURE_TYPES = tuple(worker_failure.raised for worker_failure in WORKER_FAILURES)
+WORKER_FAILURE_TYPES = tuple(failure.raised for failure in WORKER_FAILURES)

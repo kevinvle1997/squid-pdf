@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from squidpdf.api.errors import TooSlow
 from squidpdf.core import BUILD
-from squidpdf.editing import fonts
+from squidpdf.editing import font_list
 from squidpdf.editing.types import FontList
 from tests.api.conftest import BASE_URL
 from tests.helpers import assert_equal, assert_problem
@@ -57,7 +57,7 @@ def test_browsers_asking_for_the_font_list_at_once_wait_for_one_measurement(app,
     workers = _StandInWorkers()
     monkeypatch.setattr(app.state, "pool", workers)
     # A server that hasn't listed its fonts yet.
-    monkeypatch.setattr(fonts, "_font_list_tasks", {})
+    monkeypatch.setattr(font_list, "_font_list_tasks", {})
 
     replies = asyncio.run(_ask_at_once(app))
 
@@ -70,7 +70,7 @@ def test_a_font_list_that_ran_out_of_time_is_measured_again(app, browser, monkey
     workers = _StandInWorkers(too_slow=1)
     monkeypatch.setattr(app.state, "pool", workers)
     # A server that hasn't listed its fonts yet.
-    monkeypatch.setattr(fonts, "_font_list_tasks", {})
+    monkeypatch.setattr(font_list, "_font_list_tasks", {})
 
     first = browser().get("/api/fonts", params={"build": BUILD})
     assert_problem(first, "too_slow", 503)

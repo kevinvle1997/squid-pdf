@@ -1,9 +1,9 @@
 """Where documents live: one folder each, deleted whole.
 
 A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build`. Delete it and everything goes. Its mtime is
-the idle clock: every visit touches it, and the sweeper deletes what's gone an
-hour untouched.
+and the analysis for each `build`, its spans in a file of their own. Delete it
+and everything goes. Its mtime is the idle clock: every visit touches it, and
+the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from squidpdf.core import (
     LEVEL,
     SOLID,
     Engine,
+    FontSources,
     Fragment,
     Page,
     Rect,
@@ -34,6 +35,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
+from squidpdf.documents.types import KeptAnalysis
 
 __all__ = [
     "ORIGINAL",
@@ -47,16 +49,21 @@ __all__ = [
     "sweep",
     "save_index",
     "load_index",
+    "require_index",
     "save_pages",
     "load_pages",
     "save_analysis",
     "load_analysis",
+    "analysis_file",
+    "spans_file",
 ]
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
 _PAGES = "pages.json"
+# Google's copies of fonts, cached beside the documents: no document id looks like it.
+_GOOGLE_FONTS = "fonts"
 _ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
@@ -98,9 +105,9 @@ def open_to_analyse(folder: Path) -> Engine:
     beside the documents (the sweep passes over it). Every other open reads
     that cache alone, so it lends what the analysis fetched and never waits.
     """
-    fetch = google_fonts(folder=root() / "fonts")
+    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS))
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
+        return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 
@@ -111,9 +118,9 @@ def open_original(folder: Path) -> Engine:
     Google's copy of a font lends the letters its copies in the file lack, from
     the cache the analysis filled: a render never waits on the network.
     """
-    fetch = google_fonts(folder=root() / "fonts", cache_only=True)
+    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True))
     try:
-        return open_pdf(str(folder / ORIGINAL), fetch=fetch)
+        return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
         raise Gone from exc
 
@@ -235,6 +242,18 @@ def load_index(folder: Path) -> SpanIndex | None:
     return kept_index.index
 
 
+def require_index(folder: Path) -> SpanIndex:
+    """The saved index of a document analysed at upload. Raises Gone if it was deleted since.
+
+    For work after upload, where a missing index can only mean a delete; analysis
+    reads `load_index`'s None as "not analysed yet".
+    """
+    index = load_index(folder)
+    if index is None:  # analysed at upload, so a sweep or a delete removed it
+        raise Gone
+    return index
+
+
 def load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
@@ -270,17 +289,23 @@ def load_pages(folder: Path) -> list[Page]:
     return [Page(**page) for page in saved]
 
 
-def save_analysis(folder: Path, build: str, analysis: bytes) -> None:
-    """Keep what was worked out under this build; another build works it out again."""
-    write_whole(folder / analysis_file(build), analysis)
+def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
+    """Keep what was worked out under this build; another build works it out again.
+
+    The spans first: the facts' file is what says the analysis is there.
+    """
+    write_whole(folder / spans_file(build), kept.spans)
+    write_whole(folder / analysis_file(build), kept.facts)
 
 
-def load_analysis(folder: Path, build: str) -> bytes | None:
+def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
     """The analysis saved under this build, or None if it hasn't been worked out."""
     try:
-        return (folder / analysis_file(build)).read_bytes()
+        facts = (folder / analysis_file(build)).read_bytes()
+        spans = (folder / spans_file(build)).read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
+    return KeptAnalysis(facts, spans)
 
 
 def analysis_file(build: str) -> str:
@@ -290,3 +315,8 @@ def analysis_file(build: str) -> str:
     reads as not worked out yet, and is worked out again over the same index.
     """
     return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"
+
+
+def spans_file(build: str) -> str:
+    """The file the analysis's spans under `build` are kept in, beside `analysis_file`."""
+    return f"spans-{build}.{_ANALYSIS_FORMAT}.json"

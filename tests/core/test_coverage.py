@@ -15,8 +15,8 @@ from fontTools.ttLib.tables._c_m_a_p import cmap_format_12
 from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 
 from squidpdf.core import open_pdf
-from squidpdf.core.coverage import Coverage
-from squidpdf.core.fonts import CATALOG, FACES, face_bytes
+from squidpdf.core.fonts.catalog import CATALOG, FACES, face_bytes
+from squidpdf.core.fonts.coverage import Coverage
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
@@ -34,8 +34,10 @@ def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
     reported as available. Coverage asks the glyph to draw instead.
     """
     span = next(s for s in engine.index() if s.page == EMBEDDED_PAGE)
-    assert_in("é", engine.missing(span, "Février"), "accented character in a Latin word")
-    assert_equal(engine.missing(span, "March"), [], "an all-covered word")
+    assert_in(
+        "é", engine.plan_for(span, "Février").missing, "accented character in a Latin word"
+    )
+    assert_equal(engine.plan_for(span, "March").missing, [], "an all-covered word")
 
 
 def test_a_substitute_lists_what_its_look_alike_really_draws(engine):
@@ -47,9 +49,11 @@ def test_a_substitute_lists_what_its_look_alike_really_draws(engine):
     assert_in("Ω", widths, "a Greek letter")
     assert_not_in(_NOWHERE, widths, "a letter no face we ship draws")
     # So a fit on it is honest: what it says is missing agrees with the table.
-    missing = engine.missing(span, f"Février → 2026 {_NOWHERE}")
+    missing = engine.plan_for(span, f"Février → 2026 {_NOWHERE}").missing
     assert_equal(missing, [_NOWHERE], "missing from the substitute")
-    assert_equal(engine.missing(span, "".join(widths)), [], "missing from what widths() lists")
+    assert_equal(
+        engine.plan_for(span, "".join(widths)).missing, [], "missing from what widths() lists"
+    )
 
 
 def test_every_face_we_ship_is_the_file_it_names_and_draws():
@@ -90,7 +94,7 @@ def test_a_ligature_a_stored_font_draws_counts_as_drawn(tmp_path):
 
     with open_pdf(path) as engine:
         [span] = engine.index()
-        assert_equal(engine.missing(span, span.text), [], "letters the font lacks")
+        assert_equal(engine.plan_for(span, span.text).missing, [], "letters the font lacks")
 
 
 def _built_of_parts(*, parts_drawn: bool) -> bytes:
@@ -161,8 +165,8 @@ def test_a_letter_typed_in_two_pieces_is_the_one_the_font_has(tmp_path):
 
     with open_pdf(path) as engine:
         [span] = engine.index()
-        assert_equal(engine.missing(span, in_pieces), [], "letters the font lacks")
-        assert_equal(engine.left_out(span, in_pieces), [], "letters left out")
+        assert_equal(engine.plan_for(span, in_pieces).missing, [], "letters the font lacks")
+        assert_equal(engine.plan_for(span, in_pieces).left_out, [], "letters left out")
 
 
 def test_a_font_coverage_cant_read_draws_what_the_library_lists():

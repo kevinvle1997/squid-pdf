@@ -9,7 +9,8 @@ from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from squidpdf.api import constants as limits
-from squidpdf.api.errors import RequestTooLarge, response
+from squidpdf.api.errors import RequestTooLarge
+from squidpdf.api.errors.http import response
 from squidpdf.api.language import language_of
 from squidpdf.core import InvalidRequest
 
