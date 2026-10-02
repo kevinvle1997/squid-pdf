@@ -23,10 +23,12 @@ from squidpdf.documents.types import (
 )
 
 
-def analyse(folder: str, max_pages: int) -> Analysis:
-    """Judge every span and list each font's letters, under this build, and keep it.
+def analyse(folder: str, max_pages: int) -> KeptAnalysis:
+    """Judge every span and list each font's letters, under this build; keep and return it.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
+    Handed back as kept, its JSON, not every span as a dict: that crosses from
+    the worker in a moment, and the reply sends its spans as they are.
 
     The index is built on the first run and reused after, so a new build judges
     the same spans and every id holds. Raises TooManyPages first, if it has
@@ -71,11 +73,12 @@ def analyse(folder: str, max_pages: int) -> Analysis:
         ],
         "fonts": fonts,
     }
-    store.save_analysis(path, BUILD, kept_analysis(analysis))
-    return analysis
+    kept = _kept_analysis(analysis)
+    store.save_analysis(path, BUILD, kept)
+    return kept
 
 
-def kept_analysis(analysis: Analysis) -> KeptAnalysis:
+def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
     """The analysis as it's kept and sent: its spans apart from the rest."""
     facts: AnalysisFacts = {
         "build": analysis["build"],

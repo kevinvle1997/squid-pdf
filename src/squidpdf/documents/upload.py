@@ -12,12 +12,12 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import BinaryIO
 
-from squidpdf.core import BUILD, Reply, Workers, words
+from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
-from squidpdf.documents.errors import Gone, NotAPdf, ServerFull, TooLarge
+from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
-from squidpdf.documents.types import Analysis
+from squidpdf.documents.types import KeptAnalysis
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
@@ -95,26 +95,23 @@ class UploadController:
             await _deleted_if_it_fails(
                 folder, _save_original(chunks, to=folder / store.ORIGINAL)
             )
-        await _deleted_if_it_fails(folder, self._enqueue_analyse(folder))
+        kept = await _deleted_if_it_fails(folder, self._enqueue_analyse(folder))
         # Answered under the same delete: a browser that leaves first never gets the id.
         # The fonts' letters are read and written out again: off the server's thread.
         body = await _deleted_if_it_fails(
-            folder, asyncio.to_thread(_reply_body, doc_id, folder=folder, said_in=said_in)
+            folder,
+            asyncio.to_thread(_reply_body, doc_id, folder=folder, kept=kept, said_in=said_in),
         )
         return Reply(body, words.language_headers(said_in), HTTPStatus.CREATED)
 
-    async def _enqueue_analyse(self, folder: Path) -> Analysis:
+    async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
         task = partial(analyse, str(folder), constants.MAX_PAGES)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
-def _reply_body(doc_id: str, *, folder: Path, said_in: str) -> bytes:
-    """The reply's JSON: the new document's hour started, every span judged."""
-    # Sent as kept, as a read sends it: writing it out again takes a while.
-    kept = store.load_analysis(folder, BUILD)
-    if kept is None:  # deleted since it was analysed
-        raise Gone()
+def _reply_body(doc_id: str, *, folder: Path, kept: KeptAnalysis, said_in: str) -> bytes:
+    """The reply's JSON: the new document's hour started, every span judged as kept."""
     return document_json(doc_id, expires_at=store.touch(folder), kept=kept, said_in=said_in)
 
 

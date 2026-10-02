@@ -8,6 +8,7 @@ import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import orjson
 import pymupdf
 import pytest
 from fontTools.subset import Options, Subsetter
@@ -21,7 +22,7 @@ from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
 from tests.conftest import drawn_with, name_two_byte_font
 from tests.core.conftest import POPPINS
-from tests.helpers import assert_at_most, assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal
 
 # Three of Google's families, each its own file there; Montserrat's is variable, so it'd be cut.
 _FAMILIES = ("Poppins-Regular", "Lato-Regular", "Montserrat-Regular")
@@ -152,24 +153,24 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
     monkeypatch.setattr(analyse, "BUILD", "a-later-build")
     later = analyse.analyse(str(folder), MAX_PAGES)
 
-    assert_equal(later["build"], "a-later-build", "build of the second analysis")
-    first_ids = [s["id"] for s in first["spans"]]
-    later_ids = [s["id"] for s in later["spans"]]
+    assert_equal(orjson.loads(later.facts)["build"], "a-later-build", "build of the second")
+    first_ids = [s["id"] for s in orjson.loads(first.spans)]
+    later_ids = [s["id"] for s in orjson.loads(later.spans)]
     assert_equal(later_ids, first_ids, "span ids across builds")
     kept = store.load_analysis(folder, "a-later-build")
-    assert_true(kept is not None, "the later build's analysis wasn't kept")
+    assert_equal(kept, later, "the later build's analysis as kept, beside what it handed back")
 
 
 def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usable():
     _, folder = store.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="1.5 Tc")
 
-    analysis = analyse.analyse(str(folder), MAX_PAGES)
+    kept = analyse.analyse(str(folder), MAX_PAGES)
 
-    [span] = analysis["spans"]
+    [span] = orjson.loads(kept.spans)
     judged = (span["fidelity"], span["why"])
     assert_equal(judged, ("approximate", {"code": "spaced_text", "params": {}}), "the span")
-    [font] = analysis["fonts"]
+    [font] = orjson.loads(kept.facts)["fonts"]
     assert_equal((font["substitute"], font["why"]), (None, None), "its font: nothing stands in")
 
 
