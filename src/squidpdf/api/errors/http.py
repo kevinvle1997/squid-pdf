@@ -27,7 +27,6 @@ from squidpdf.core import (
 )
 
 __all__ = [
-    "PROBLEM_RESPONSES",
     "API_ERRORS",
     "response",
     "install",
@@ -66,22 +65,9 @@ class ProblemInfo(TypedDict):
     debug: NotRequired[str]  # for a developer: what exactly was wrong with the request
 
 
-# Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
-# `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
-PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
-    "default": {
-        "model": ProblemInfo,
-        "description": "Problem Details: what went wrong, in the reader's words",
-        "content": {
-            "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemInfo"}}
-        },
-    },
-}
-
-
 def from_validation(exc: Exception) -> Problem:
     """FastAPI's list of what was wrong, kept for a developer."""
-    invalid = cast(RequestValidationError, exc)  # FRAMEWORK_FAILURES hands it only these
+    invalid = cast(RequestValidationError, exc)  # _FRAMEWORK_FAILURES hands it only these
     return InvalidRequest(debug="; ".join(describe(item) for item in invalid.errors()))
 
 
@@ -94,7 +80,7 @@ _HTTP_PROBLEMS: dict[int, type[Problem]] = {
 
 def from_http(exc: Exception) -> Problem:
     """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
-    failure = cast(HTTPException, exc)  # FRAMEWORK_FAILURES hands it only these
+    failure = cast(HTTPException, exc)  # _FRAMEWORK_FAILURES hands it only these
     # .get: most of Starlette's failures are the browser's, said as a bad request.
     problem_type = _HTTP_PROBLEMS.get(failure.status_code)
     if problem_type is None:
@@ -103,12 +89,12 @@ def from_http(exc: Exception) -> Problem:
 
 
 # The framework's failures, each the Problem it means. Neither type is the other's.
-FRAMEWORK_FAILURES = (
+_FRAMEWORK_FAILURES = (
     Failure(raised=RequestValidationError, problem=from_validation),
     Failure(raised=HTTPException, problem=from_http),
 )
 # The API's own: core's rows (MuPDF's), then pebble's, then the framework's.
-API_ERRORS = CORE_ERRORS.with_rows(*WORKER_FAILURES, *FRAMEWORK_FAILURES)
+API_ERRORS = CORE_ERRORS.with_rows(*WORKER_FAILURES, *_FRAMEWORK_FAILURES)
 
 
 def adopt(exc: Exception) -> Problem:
