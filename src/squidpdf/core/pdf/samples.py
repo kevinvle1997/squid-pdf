@@ -9,11 +9,6 @@ import random
 
 import pymupdf
 
-__all__ = [
-    "write_sample",
-    "write_dense",
-]
-
 # The long fixture's page: a contract's body text, set the way a word processor sets it.
 _DENSE_SIZE = 10.5  # points
 _DENSE_LEADING = 14.0  # points from one baseline to the next

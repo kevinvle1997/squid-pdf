@@ -13,23 +13,6 @@ from typing import TypedDict
 
 from squidpdf.core import ApproximateReason, Fidelity, MessageInfo, Param, QuarterTurn
 
-__all__ = [
-    "Box",
-    "PageInfo",
-    "ApproximateInfo",
-    "SpanInfo",
-    "FontFacts",
-    "FontInfo",
-    "Analysis",
-    "AnalysisFacts",
-    "KeptAnalysis",
-    "FitRules",
-    "Copy",
-    "DocumentNoticeInfo",
-    "Document",
-    "Loaded",
-]
-
 
 class Box(TypedDict):
     """A box on the page in points, top-left origin."""
@@ -110,7 +93,7 @@ class FontInfo(TypedDict):
     glyphs: dict[str, float]
 
 
-class Analysed(TypedDict):
+class _Analysed(TypedDict):
     """What the analysis and the Document the browser gets have alike: build, pages, spans.
 
     `AnalysisFacts`, the analysis as kept beside its spans, is the rest of it.
@@ -121,7 +104,7 @@ class Analysed(TypedDict):
     spans: list[SpanInfo]
 
 
-class Analysis(Analysed):
+class Analysis(_Analysed):
     """Everything worked out from the original under one build, in no language."""
 
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
@@ -183,7 +166,7 @@ class DocumentNoticeInfo(MessageInfo):
     detail: str
 
 
-class Document(Analysed):
+class Document(_Analysed):
     """The stored document, as the browser gets it, in the reader's language."""
 
     fonts: list[FontInfo]

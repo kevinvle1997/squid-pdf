@@ -35,12 +35,6 @@ from squidpdf.core.types import (
     TextRun,
 )
 
-__all__ = [
-    "Setting",
-    "PageNames",
-    "PageWriter",
-]
-
 _NAME_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
 
 
@@ -54,7 +48,7 @@ class Setting:
 
 
 @dataclass(slots=True)
-class PageNames:
+class _PageNames:
     """The resource name each page gives a font once it's been added there to draw with."""
 
     # Each copy of a font, by (page, `copy_source`), or why it wasn't added.
@@ -77,7 +71,7 @@ class PageNames:
 
 
 @dataclass(slots=True)
-class AddedFont:
+class _AddedFont:
     """A font we added to the document whole: a face we ship, or a copy lent from outside.
 
     Cut down on save to the letters drawn in it.
@@ -99,7 +93,7 @@ class AddedFont:
 
 
 @dataclass(frozen=True, slots=True)
-class OffsetRun:
+class _OffsetRun:
     """A run of a line: letters of one word drawn in one font, and where on it they start."""
 
     text: str
@@ -116,9 +110,9 @@ class PageWriter:
     """
 
     driver: PdfDriver
-    names: PageNames = field(default_factory=PageNames)
+    names: _PageNames = field(default_factory=_PageNames)
     # By the face's file, or Google's source for its copy: one font file each.
-    added: dict[str, AddedFont] = field(default_factory=dict, repr=False)
+    added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
     def draw(
         self, span: Span, text: str, *, plans: DrawPlanner, setting: Setting
@@ -130,11 +124,11 @@ class PageWriter:
         # A face we ship draws the whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             self._write_in_face(span, drawn_in, text=plan.text, plans=plans, setting=setting)
-            return said_left_out(plan.left_out)
+            return _said_left_out(plan.left_out)
         # The file's own font, written by code as the original was.
         if isinstance(drawn_in, PooledFont) and by_code is not None:
             self._write_codes(span, by_code, setting=setting)
-            return said_left_out(plan.left_out)
+            return _said_left_out(plan.left_out)
         # The file's own copies of the font, by letter, once the page has them.
         if isinstance(drawn_in, PooledFont):
             try:
@@ -144,7 +138,7 @@ class PageWriter:
                 self._write_in_face(
                     span, substitute.face, text=substitute.text, plans=plans, setting=setting
                 )
-                return [problem.reason, *said_left_out(substitute.left_out)]
+                return [problem.reason, *_said_left_out(substitute.left_out)]
             self._note_lent_letters(drawn_in, plan.text)
             self._write(
                 span,
@@ -154,7 +148,7 @@ class PageWriter:
                 plans=plans,
                 setting=setting,
             )
-            return said_left_out(plan.left_out)
+            return _said_left_out(plan.left_out)
         assert_never(drawn_in)
 
     def forget_pages(self) -> None:
@@ -170,7 +164,7 @@ class PageWriter:
         notices: list[Message] = []
         for added in self.added.values():
             try:
-                font_file = trimmed(added.file, added.drawn)
+                font_file = _trimmed(added.file, added.drawn)
             except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font)
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = added.file
@@ -214,7 +208,7 @@ class PageWriter:
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         words, _width = plans.words_of(span, text, font=font, size=setting.size)
-        offset_runs = runs_in(words, resources=resources, font=font, size=setting.size)
+        offset_runs = _runs_in(words, resources=resources, font=font, size=setting.size)
         runs = [
             TextRun(run.text, (x + step_x * run.offset, y + step_y * run.offset), run.resource)
             for run in offset_runs
@@ -236,7 +230,7 @@ class PageWriter:
         agree with the others'.
         """
         runs = [
-            CodeRun(codes_for(run.coded, run.text), run.copy.font.xref) for run in coded_runs
+            CodeRun(_codes_for(run.coded, run.text), run.copy.font.xref) for run in coded_runs
         ]
         self.driver.write_codes(
             span.page,
@@ -275,13 +269,13 @@ class PageWriter:
         the file goes in whole, to be cut down on save like a face we ship.
         """
         # Named by its source, so copies of one font are told apart.
-        resource = resource_name("F", copy_source(copy))
+        resource = _resource_name("F", copy_source(copy))
         try:
             font_resource = self.driver.add_font(page, copy.embedded.file, resource=resource)
         except DriverError as problem:  # the page won't take it: the substitute draws instead
             raise FontUnusable(problem.reason) from problem
         if copy.lent is not None:
-            added_font = AddedFont(copy.lent.name, copy.embedded.file)
+            added_font = _AddedFont(copy.lent.name, copy.embedded.file)
             self._keep_whole(copy.lent.source, added_font, xref=font_resource.xref)
         return font_resource.resource
 
@@ -303,12 +297,12 @@ class PageWriter:
         """Add a face we ship to a page, whole, and return its resource name."""
         font_file = face_bytes(face)
         font_resource = self.driver.add_font(
-            page, font_file, resource=resource_name("S", face.file)
+            page, font_file, resource=_resource_name("S", face.file)
         )
-        self._keep_whole(face.file, AddedFont(face.name, font_file), xref=font_resource.xref)
+        self._keep_whole(face.file, _AddedFont(face.name, font_file), xref=font_resource.xref)
         return font_resource.resource
 
-    def _keep_whole(self, source: str, font: AddedFont, *, xref: int) -> None:
+    def _keep_whole(self, source: str, font: _AddedFont, *, xref: int) -> None:
         """Note a font added whole as font `xref`, for `save` to cut down.
 
         `source` tells one font file from another: two can share a name.
@@ -317,7 +311,7 @@ class PageWriter:
         self.added.setdefault(source, font).note_object(xref)
 
 
-def resource_name(kind: str, source: str) -> str:
+def _resource_name(kind: str, source: str) -> str:
     """A resource name for a font we add, `kind` then a digest of `source`.
 
     Made from what it names, so it can't clash with a name a file's writer chose.
@@ -326,9 +320,9 @@ def resource_name(kind: str, source: str) -> str:
     return kind + digest.hexdigest()
 
 
-def runs_in(
+def _runs_in(
     words: Iterable[Word], *, resources: Mapping[str, str], font: FontProgram, size: float
-) -> list[OffsetRun]:
+) -> list[_OffsetRun]:
     """Each word split where the font its letters are drawn in changes, in order.
 
     `resources` is the resource name of the font each letter is drawn in.
@@ -336,34 +330,34 @@ def runs_in(
     return [
         run
         for word in words
-        for run in word_runs(word, resources=resources, font=font, size=size)
+        for run in _word_runs(word, resources=resources, font=font, size=size)
     ]
 
 
-def word_runs(
+def _word_runs(
     word: Word, *, resources: Mapping[str, str], font: FontProgram, size: float
-) -> list[OffsetRun]:
+) -> list[_OffsetRun]:
     """One word split where its font changes, each run starting where the last ends."""
-    runs: list[OffsetRun] = []
+    runs: list[_OffsetRun] = []
     start = word.offset
     for resource, letters in groupby(word.text, key=lambda ch: resources[ch]):
         text = "".join(letters)
-        runs.append(OffsetRun(text, start, resource))
+        runs.append(_OffsetRun(text, start, resource))
         start += font.width(text, size)
     return runs
 
 
-def codes_for(coded: CodedFont, text: str) -> bytes:
+def _codes_for(coded: CodedFont, text: str) -> bytes:
     """`text` as the font's codes, each as many bytes wide as the font's codes take."""
     return b"".join(coded.letters[ch].value.to_bytes(coded.code_bytes) for ch in text)
 
 
-def said_left_out(letters: list[str]) -> list[Message]:
+def _said_left_out(letters: list[str]) -> list[Message]:
     """The notice a draw gives for letters it left out; none when it left none."""
     return [Message("left_out", {"letters": list(letters)})] if letters else []
 
 
-def trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
+def _trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
     """A font file we added whole, cut down to `letters`."""
     options = Options(
         hinting=True,  # keeps small text crisp on screen, for a few KB

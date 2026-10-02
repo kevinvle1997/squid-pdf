@@ -26,28 +26,22 @@ from squidpdf.core import (
     words,
 )
 
-__all__ = [
-    "API_ERRORS",
-    "response",
-    "install",
-]
 
-
-def each_subclass_of(problem: type[Problem]) -> Iterator[type[Problem]]:
+def _each_subclass_of(problem: type[Problem]) -> Iterator[type[Problem]]:
     """`problem` and every subclass under it, however deep."""
     yield problem
     for child in problem.__subclasses__():
-        yield from each_subclass_of(child)
+        yield from _each_subclass_of(child)
 
 
-def list_every_type(schema: JsonDict) -> None:
+def _list_every_type(schema: JsonDict) -> None:
     """ProblemInfo's `type` in the OpenAPI: one of every Problem's, so the browser knows each.
 
     Worked out when the OpenAPI is first asked for, once the app has imported
     every feature, and so every Problem.
     """
     # Unpacked into a new list, which mypy reads as JSON: a list[str] is not one.
-    schema["enum"] = [*sorted({cls.type for cls in each_subclass_of(Problem)})]
+    schema["enum"] = [*sorted({cls.type for cls in _each_subclass_of(Problem)})]
 
 
 class ProblemInfo(TypedDict):
@@ -57,7 +51,7 @@ class ProblemInfo(TypedDict):
     verbatim; `code` is always `type`, and `params` fill it.
     """
 
-    type: Annotated[str, Field(json_schema_extra=list_every_type)]
+    type: Annotated[str, Field(json_schema_extra=_list_every_type)]
     status: int
     detail: str
     code: str
@@ -65,10 +59,10 @@ class ProblemInfo(TypedDict):
     debug: NotRequired[str]  # for a developer: what exactly was wrong with the request
 
 
-def from_validation(exc: Exception) -> Problem:
+def _from_validation(exc: Exception) -> Problem:
     """FastAPI's list of what was wrong, kept for a developer."""
     invalid = cast(RequestValidationError, exc)  # _FRAMEWORK_FAILURES hands it only these
-    return InvalidRequest(debug="; ".join(describe(item) for item in invalid.errors()))
+    return InvalidRequest(debug="; ".join(_describe(item) for item in invalid.errors()))
 
 
 # Starlette's own failures a Problem keeps the status of; any other is a bad request.
@@ -78,7 +72,7 @@ _HTTP_PROBLEMS: dict[int, type[Problem]] = {
 }
 
 
-def from_http(exc: Exception) -> Problem:
+def _from_http(exc: Exception) -> Problem:
     """Starlette's own: a missing path or a wrong method as itself, else a bad request."""
     failure = cast(HTTPException, exc)  # _FRAMEWORK_FAILURES hands it only these
     # .get: most of Starlette's failures are the browser's, said as a bad request.
@@ -90,14 +84,14 @@ def from_http(exc: Exception) -> Problem:
 
 # The framework's failures, each the Problem it means. Neither type is the other's.
 _FRAMEWORK_FAILURES = (
-    Failure(raised=RequestValidationError, problem=from_validation),
-    Failure(raised=HTTPException, problem=from_http),
+    Failure(raised=RequestValidationError, problem=_from_validation),
+    Failure(raised=HTTPException, problem=_from_http),
 )
 # The API's own: core's rows (MuPDF's), then pebble's, then the framework's.
 API_ERRORS = CORE_ERRORS.with_rows(*WORKER_FAILURES, *_FRAMEWORK_FAILURES)
 
 
-def adopt(exc: Exception) -> Problem:
+def _adopt(exc: Exception) -> Problem:
     """Any exception as the Problem `API_ERRORS` says it means; a bug if nothing claims it."""
     if isinstance(exc, Problem):
         return exc
@@ -129,18 +123,18 @@ def response(problem: Problem, language: str) -> JSONResponse:
     )
 
 
-async def handle(request: Request, exc: Exception) -> Response:
+async def _handle(request: Request, exc: Exception) -> Response:
     """Whatever was raised, answered as the Problem Details the browser gets.
 
     Starlette's own headers ride along: a 405's Allow says the methods the path takes.
     """
-    answer = response(adopt(exc), language_of(request))
+    answer = response(_adopt(exc), language_of(request))
     if isinstance(exc, HTTPException) and exc.headers:
         answer.headers.update(exc.headers)
     return answer
 
 
-def describe(item: dict[str, Any]) -> str:
+def _describe(item: dict[str, Any]) -> str:
     """One validation failure as `field.path: message`."""
     # The part of the request, e.g. "body", then the path to the field inside it.
     part, *field_path = item["loc"]
@@ -152,4 +146,4 @@ def install(app: FastAPI) -> None:
     """Make every error the app can raise leave as Problem Details."""
     # FastAPI has its own handlers for validation and HTTP errors; Exception is the rest.
     for raised in (Problem, RequestValidationError, HTTPException, Exception):
-        app.add_exception_handler(raised, handle)
+        app.add_exception_handler(raised, _handle)

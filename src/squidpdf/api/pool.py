@@ -53,26 +53,20 @@ from squidpdf.api.errors import TooSlow
 from squidpdf.api.errors.http import API_ERRORS
 from squidpdf.core import result_of
 
-__all__ = [
-    "WorkerPool",
-    "start_pool",
-    "current",
-]
 
-
-class NeverStarted(Exception):
+class _NeverStarted(Exception):
     """The pool broke before any worker started the task, so the task did no work."""
 
 
 @dataclass(slots=True)
-class ProcessSlot:
+class _ProcessSlot:
     """pebble's worker processes: the part of a WorkerPool that's replaced when it breaks."""
 
     pool: ProcessPool
 
     def replace(self) -> ProcessPool:
         """Put a new pool in, not started yet, and hand back the broken one to stop."""
-        broken, self.pool = self.pool, process_pool()
+        broken, self.pool = self.pool, _process_pool()
         return broken
 
 
@@ -88,7 +82,7 @@ class WorkerPool:
     # that waits on it, so a pool two loops share would fail only once it's busy;
     # tied to the loop it's made in, another loop is refused on its first task.
     loop: asyncio.AbstractEventLoop
-    slot: ProcessSlot  # pebble's pool, which a worker dying between tasks breaks
+    slot: _ProcessSlot  # pebble's pool, which a worker dying between tasks breaks
     # Where each try of a task notes that a worker started it; removed with the pool.
     starts: Path
     # One replacement at a time: two tasks that find the pool broken build one new pool.
@@ -121,7 +115,7 @@ class WorkerPool:
             # A long task stops; pebble holds a short one to its time.
             if timeout >= constants.STOP_WHEN_LEFT_S:
                 job.cancel()  # does nothing to a task that has finished
-            job.add_done_callback(log_unexpected)
+            job.add_done_callback(_log_unexpected)
             raise
         # pebble's failures as the Problems they mean; a bug goes up as it is, to be logged.
         return API_ERRORS.result_of(job.result)
@@ -161,13 +155,13 @@ class WorkerPool:
         """
         try:
             return await self._sent(deadline, task)
-        except NeverStarted:  # raised when the pool broke before a worker started the task
+        except _NeverStarted:  # raised when the pool broke before a worker started the task
             return await self._sent(deadline, task)
 
     async def _sent[T](self, deadline: float, task: Callable[[], T]) -> T:
         """`task()` sent to the pool, a new one if it broke, killed by pebble at `deadline`.
 
-        Raises NeverStarted when the pool breaks before any worker starts it.
+        Raises _NeverStarted when the pool breaks before any worker starts it.
         """
         # Worked out before a broken pool is replaced: that's the server's time, not the task's.
         time_left = deadline - self.loop.time()
@@ -176,19 +170,19 @@ class WorkerPool:
         pool = await self._running()
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
-            future = pool.submit(partial(noted_start, str(start), task), time_left)
+            future = pool.submit(partial(_noted_start, str(start), task), time_left)
         except RuntimeError as refused:  # raised by pebble when the pool broke since `_running`
-            raise NeverStarted() from refused
+            raise _NeverStarted() from refused
         try:
             return await asyncio.wrap_future(future)
         except BrokenProcessPool as broke:  # raised by pebble when it gives up on the pool
             # Its workers stopped first, so none can still start the task once it's looked at.
             await self._running()
-            if not has_started(start):
-                raise NeverStarted() from broke
+            if not _has_started(start):
+                raise _NeverStarted() from broke
             raise
         finally:
-            forget_start(start)
+            _forget_start(start)
 
     def close(self) -> None:
         """Stop the workers, dropping queued tasks: nobody is waiting for them now."""
@@ -207,14 +201,14 @@ def start_pool() -> WorkerPool:
     loop = asyncio.get_running_loop()
     return WorkerPool(
         loop,
-        ProcessSlot(process_pool()),
+        _ProcessSlot(_process_pool()),
         starts=Path(tempfile.mkdtemp(prefix="squidpdf-starts-")),
         replacing=asyncio.Lock(),
         free=asyncio.Semaphore(constants.WORKERS),
     )
 
 
-def noted_start[T](start: str, task: Callable[[], T]) -> T:
+def _noted_start[T](start: str, task: Callable[[], T]) -> T:
     """In a worker: note that it started `task` by making the file `start`, then run it.
 
     The library's failures come back as the Problems they mean (`core.result_of`).
@@ -223,29 +217,29 @@ def noted_start[T](start: str, task: Callable[[], T]) -> T:
     return result_of(task)
 
 
-def has_started(start: Path) -> bool:
-    """Whether a worker made the file a try's `noted_start` was given."""
+def _has_started(start: Path) -> bool:
+    """Whether a worker made the file a try's `_noted_start` was given."""
     return start.exists()
 
 
-def forget_start(start: Path) -> None:
+def _forget_start(start: Path) -> None:
     """Remove a try's start file, made or not: the try is over."""
     start.unlink(missing_ok=True)
 
 
-def process_pool() -> ProcessPool:
+def _process_pool() -> ProcessPool:
     """pebble's pool of worker processes, not started yet."""
     return ProcessPool(
         max_workers=constants.WORKERS,
         max_tasks=constants.TASKS_PER_WORKER,
-        initializer=limit_memory,
+        initializer=_limit_memory,
         # Spawn: a fork of a threaded server can inherit a held lock and hang.
         # The cast because pebble types `context` as a module; it takes any.
         context=cast(ModuleType, multiprocessing.get_context("spawn")),
     )
 
 
-def log_unexpected[T](job: asyncio.Task[T]) -> None:
+def _log_unexpected[T](job: asyncio.Task[T]) -> None:
     """Log how a task nobody waits for now failed, unless pebble's usual failures say it."""
     if job.cancelled():
         return
@@ -264,7 +258,7 @@ def current(request: Request) -> WorkerPool:
     return request.app.state.pool
 
 
-def limit_memory() -> None:
+def _limit_memory() -> None:
     """Cap a worker's memory, so a hostile PDF runs out in its worker, not the server.
 
     Linux only. macOS doesn't enforce RLIMIT_AS, so development runs uncapped.

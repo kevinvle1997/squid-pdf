@@ -25,13 +25,6 @@ from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Saved
 
-__all__ = [
-    "ExportController",
-    "save_edited",
-    "SKIPPED_HEADER",
-    "NOTICES_HEADER",
-]
-
 _EXPORTED = "export.pdf"  # the file saved, then checked, before its bytes go back
 
 # The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
@@ -55,7 +48,7 @@ class ExportController:
         """
         check_edits(edits)
         if pages is not None:
-            check_pages(pages, len(store.load_pages(doc.folder)))
+            _check_pages(pages, len(store.load_pages(doc.folder)))
         # The server's folder, not the worker's: a worker killed at its timeout
         # runs no cleanup, and the edited file must not outlive the document.
         # Made here on the loop, one mkdir: an await could be cancelled after it
@@ -69,17 +62,17 @@ class ExportController:
             # In a thread: it may hold the whole file. The thread finishes even if the
             # request is cancelled again. Nothing to keep, so a failure is ignored.
             await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
-        return Reply(exported.pdf, reply_headers(exported, said_in))
+        return Reply(exported.pdf, _reply_headers(exported, said_in))
 
     async def _enqueue_make_pdf(
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
         """Make the PDF on a worker."""
-        task = partial(make_pdf, str(folder), str(scratch), edits=edits, pages=pages)
+        task = partial(_make_pdf, str(folder), str(scratch), edits=edits, pages=pages)
         return await self.workers.run(EXPORT_TIMEOUT_S, task)
 
 
-def make_pdf(
+def _make_pdf(
     folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
 ) -> Exported:
     """The document in `folder` with the edits applied and checked, as PDF bytes.
@@ -129,7 +122,7 @@ def save_edited(
     return Saved(applied, notices)
 
 
-def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
+def _reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
     """What export says besides the file: edits left out, notices, and the language."""
     notices = [notice_info(FileNotice(message), said_in) for message in exported.file_notices]
     return {
@@ -140,7 +133,7 @@ def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
     }
 
 
-def check_pages(pages: list[int], page_count: int) -> None:
+def _check_pages(pages: list[int], page_count: int) -> None:
     """Refuse a page list export can't give: none, one the document lacks, or one twice."""
     if not pages:
         raise InvalidRequest(debug="pages: empty; leave it out for every page")

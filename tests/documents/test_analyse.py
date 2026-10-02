@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import shutil
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pymupdf
@@ -16,7 +16,6 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Engine
 from squidpdf.core.constants import FETCH_TIMEOUT_S
 from squidpdf.core.fonts import google
-from squidpdf.core.fonts.google import Download
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
@@ -78,10 +77,10 @@ def _trimmed(line: str) -> bytes:
 def fetches_forgotten() -> Iterator[None]:
     """Google's record of failed fetches is this process's: the test's go with it."""
     yield
-    google.retry_record.forget()
+    google._retry_record.forget()
 
 
-def _google_through(monkeypatch, download: Download) -> list[str]:
+def _google_through(monkeypatch, download: Callable[[str], bytes]) -> list[str]:
     """Let this test reach Google through `download`, fresh as a new worker; what it's asked."""
     asked: list[str] = []
 
@@ -90,8 +89,8 @@ def _google_through(monkeypatch, download: Download) -> list[str]:
         return download(url)
 
     monkeypatch.delenv("SQUIDPDF_NO_FETCH", raising=False)
-    monkeypatch.setattr(google, "download", counted)
-    google.retry_record.forget()
+    monkeypatch.setattr(google, "_download", counted)
+    google._retry_record.forget()
     monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
     return asked
 

@@ -12,16 +12,10 @@ from fastapi import Depends, Request
 
 from squidpdf.core import words
 
-__all__ = [
-    "best_language",
-    "language_of",
-    "ReaderLanguage",
-]
-
 _WILDCARD = "*"  # "any language": ours first
 
 
-def best_language(accept_language: str | None) -> str:
+def _best_language(accept_language: str | None) -> str:
     """The tag of the catalog to answer in: the most wanted one we have, else English.
 
     A tag we lack falls back to its shorter forms, so "en-GB" is answered in "en",
@@ -32,7 +26,7 @@ def best_language(accept_language: str | None) -> str:
     refused: set[str] = set()
     for position, item in enumerate((accept_language or "").split(",")):
         tag, _, weight = item.partition(";")
-        tag, quality = tag.strip().lower(), quality_of(weight)
+        tag, quality = tag.strip().lower(), _quality_of(weight)
         if tag and quality > 0:
             wanted.append((-quality, position, tag))
         if tag and quality == 0:
@@ -48,7 +42,7 @@ def best_language(accept_language: str | None) -> str:
     return words.ENGLISH
 
 
-def quality_of(weight: str) -> float:
+def _quality_of(weight: str) -> float:
     """The `q=` in what follows a tag: 1 when it isn't there, 0 when it can't be read."""
     for param in weight.split(";"):
         name, _, value = param.partition("=")
@@ -64,7 +58,7 @@ def quality_of(weight: str) -> float:
 
 def language_of(request: Request) -> str:
     """The language this request is answered in."""
-    return best_language(request.headers.get("accept-language"))
+    return _best_language(request.headers.get("accept-language"))
 
 
 # A route's reader's language, as a parameter: `said_in: ReaderLanguage`.

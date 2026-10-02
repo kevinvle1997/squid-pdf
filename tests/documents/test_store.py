@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from squidpdf.core import index_of
-from squidpdf.documents import api as documents
-from squidpdf.documents import store
+from squidpdf.documents import api as documents, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone
+from squidpdf.documents.store import _KeptIndex  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.documents.types import KeptAnalysis
 from tests.helpers import (
     assert_at_least,
@@ -88,6 +88,7 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = store.create("owner")
     store.save_analysis(folder, "a-build", KeptAnalysis(b'{"worked": "out"}', b"[]"))
+    whole = sorted(path.name for path in folder.iterdir())
 
     def disk_full(*_paths: object) -> None:
         raise OSError("no space left on device")
@@ -99,8 +100,7 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch):
     kept = store.load_analysis(folder, "a-build")
     assert_equal(kept, KeptAnalysis(b'{"worked": "out"}', b"[]"), "the analysis kept")
     names = sorted(path.name for path in folder.iterdir())
-    kept_files = [store.analysis_file("a-build"), store.spans_file("a-build")]
-    assert_equal(names, sorted(["owner", *kept_files]), "files in the folder")
+    assert_equal(names, whole, "files in the folder, as the whole save left them")
 
 
 def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
@@ -195,10 +195,10 @@ def test_a_kept_index_never_outlives_its_file(engine):
 
 def test_a_kept_index_that_forgets_equals_a_fresh_one(engine, tmp_path):
     """What a worker keeps between requests: forgotten, nothing of the last index stays."""
-    kept = store.KeptIndex()
+    kept = _KeptIndex()
     kept.index_for((tmp_path, 1, 2), engine.index)
-    assert_every_field_filled(kept, store.KeptIndex(), "the record once it keeps an index")
+    assert_every_field_filled(kept, _KeptIndex(), "the record once it keeps an index")
 
     kept.forget()
 
-    assert_equal(kept, store.KeptIndex(), "the record once it forgot")
+    assert_equal(kept, _KeptIndex(), "the record once it forgot")

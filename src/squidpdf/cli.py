@@ -53,26 +53,16 @@ from squidpdf.editing import (
 )
 from squidpdf.editing.edits import check_text
 
-__all__ = [
-    "cmd_spans",
-    "cmd_check",
-    "cmd_edit",
-    "cmd_redact",
-    "cmd_report",
-    "cmd_fixture",
-    "main",
-]
-
 # Colours for a terminal; none when the output is piped or the reader set NO_COLOR.
 _COLOURED = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
-DIM, RED, GREEN, YELLOW, OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
+_DIM, _RED, _GREEN, _YELLOW, _OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
 
 # How each judgement is marked in `spans`, padded to one width.
 _MARKS: dict[Fidelity, str] = {
-    "exact": f"{GREEN}exact{OFF}      ",
-    "approximate": f"{YELLOW}approximate{OFF}",
-    "substitute": f"{YELLOW}substitute{OFF} ",
+    "exact": f"{_GREEN}exact{_OFF}      ",
+    "approximate": f"{_YELLOW}approximate{_OFF}",
+    "substitute": f"{_YELLOW}substitute{_OFF} ",
 }
 
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
@@ -81,14 +71,14 @@ _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
 _SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
 
 
-def opened(pdf: str) -> Engine:
+def _opened(pdf: str) -> Engine:
     """`pdf`, open for editing, with Google's copies of its fonts to lend, downloaded."""
     return open_pdf(pdf, sources=FontSources(google=google_fonts()))
 
 
-def cmd_spans(args: argparse.Namespace) -> int:
+def _cmd_spans(args: argparse.Namespace) -> int:
     """List every editable span and whether it would keep its own font."""
-    with opened(args.pdf) as engine:
+    with _opened(args.pdf) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
@@ -98,35 +88,35 @@ def cmd_spans(args: argparse.Namespace) -> int:
             report = reports[span.id]
             mark = _MARKS[report.state]
             note = f" -> {report.substitute}" if report.substitute else ""
-            fragments = f" {DIM}({len(span.fragments)} fragments){OFF}" if span.merged else ""
+            fragments = f" {_DIM}({len(span.fragments)} fragments){_OFF}" if span.merged else ""
             fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
             preview = span.text if fits else span.text[:_TEXT_PREVIEW_LEN] + "..."
             print(
                 f"  {span.id}  p{span.page + 1}  {mark}  "
-                f"{DIM}{span.font}{note} {span.size}pt{OFF}{fragments}\n"
+                f"{_DIM}{span.font}{note} {span.size}pt{_OFF}{fragments}\n"
                 f"           {preview}"
             )
             # Its own font draws it, but not as it looks: say how.
             if report.state == "approximate" and report.why is not None:
-                print(f"           {DIM}{words.render(report.why)}{OFF}")
-        summary([reports[span.id] for span in shown])
+                print(f"           {_DIM}{words.render(report.why)}{_OFF}")
+        _summary([reports[span.id] for span in shown])
     return 0
 
 
-def summary(reports: list[FidelityReport]) -> None:
+def _summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     counts = Counter(report.state for report in reports)
-    colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
+    colour = _GREEN if rate >= GREEN_RATE_TARGET else _YELLOW
     print(
         f"\n  {len(reports)} spans · {counts['exact']} exact"
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
-        f" · {colour}{rate:.0%} keep the original font{OFF}"
+        f" · {colour}{rate:.0%} keep the original font{_OFF}"
     )
 
 
-class UnknownSpan(Exception):
+class _UnknownSpan(Exception):
     """The PDF has no span by the id typed."""
 
     def __init__(self, span_id: str) -> None:
@@ -136,7 +126,7 @@ class UnknownSpan(Exception):
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class Opened:
+class _Opened:
     """A PDF open in the engine, its spans, and the one a command was given."""
 
     engine: Engine
@@ -145,48 +135,48 @@ class Opened:
 
 
 @contextmanager
-def opened_at(pdf: str, span_id: str) -> Iterator[Opened]:
+def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
     """The PDF open for as long as the `with` lasts, at the span `span_id` names.
 
-    Raises UnknownSpan, which `main` says as a hint, if it has no such span.
+    Raises _UnknownSpan, which `main` says as a hint, if it has no such span.
     """
-    with opened(pdf) as engine:
+    with _opened(pdf) as engine:
         index = engine.index()
         span = index.get(span_id)
         if span is None:
-            raise UnknownSpan(span_id)
-        yield Opened(engine, index, span)
+            raise _UnknownSpan(span_id)
+        yield _Opened(engine, index, span)
 
 
-def cmd_check(args: argparse.Namespace) -> int:
+def _cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
-    with opened_at(args.pdf, args.span_id) as opened:
+    with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         fit = replace_fit(opened.engine, span, args.text)
         print(f"\n  {span.text!r} -> {args.text!r}")
-        print(f"  {DIM}{span.font} {span.size}pt{OFF}")
+        print(f"  {_DIM}{span.font} {span.size}pt{_OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
 
         described = words.render_all(fit.describe())
         # It fits: nothing to choose between.
         if not described:
-            print(f"  {GREEN}fits in place{OFF}\n")
+            print(f"  {_GREEN}fits in place{_OFF}\n")
             return 0
         # It doesn't: say why and list the ways out.
-        print(f"  {RED}{described}{OFF}")
+        print(f"  {_RED}{described}{_OFF}")
         for option in fit.options:
             label, detail = words.render(option.label), words.render(option.detail)
-            print(f"    {DIM}{option.name:<9}{OFF} {label}{DIM}: {detail}{OFF}")
+            print(f"    {_DIM}{option.name:<9}{_OFF} {label}{_DIM}: {detail}{_OFF}")
         print()
         return 0
 
 
-def cmd_edit(args: argparse.Namespace) -> int:
+def _cmd_edit(args: argparse.Namespace) -> int:
     """Replace a span's text and save. Refuses if it will not fit, unless --force.
 
     `--strategy` takes a way out `check` offered: shrink or condense, to fit.
     """
-    with opened_at(args.pdf, args.span_id) as opened:
+    with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         replace = Replace(span.id, args.text, strategy=args.strategy)
         fit = replace_fit(opened.engine, span, replace.text, strategy=replace.strategy)
@@ -195,7 +185,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
         refused = not (fit.ok or fitted or args.force)
         if refused:
             described = words.render_all(fit.describe())
-            refusal = f"  {RED}{described}{OFF} {DIM}(pass --force to do it anyway){OFF}"
+            refusal = f"  {_RED}{described}{_OFF} {_DIM}(pass --force to do it anyway){_OFF}"
             print(refusal, file=sys.stderr)
             return 1
 
@@ -203,14 +193,14 @@ def cmd_edit(args: argparse.Namespace) -> int:
         saved = save_edited(opened.engine, opened.index, edits=[replace], to=args.out)
     print(f"\n  {span.text!r} -> {args.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
-        print(f"  {YELLOW}{words.render(said)}{OFF}")
-    print(f"  {GREEN}saved{OFF} {args.out}\n")
+        print(f"  {_YELLOW}{words.render(said)}{_OFF}")
+    print(f"  {_GREEN}saved{_OFF} {args.out}\n")
     return 0
 
 
-def cmd_redact(args: argparse.Namespace) -> int:
+def _cmd_redact(args: argparse.Namespace) -> int:
     """Remove a span, save, and verify by re-reading the output that it is gone."""
-    with opened_at(args.pdf, args.span_id) as opened:
+    with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         # The same save and check a download gets.
         try:
@@ -218,22 +208,22 @@ def cmd_redact(args: argparse.Namespace) -> int:
                 opened.engine, opened.index, edits=[Redact(span.id)], to=args.out
             )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
-            print(f"  {RED}{failed.detail}{OFF}", file=sys.stderr)
+            print(f"  {_RED}{failed.detail}{_OFF}", file=sys.stderr)
             return 1
     print(f"\n  removed {span.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
-        print(f"  {YELLOW}{words.render(said)}{OFF}")
-    print(f"  {GREEN}saved{OFF} {args.out} {DIM}· checked gone by re-reading it{OFF}\n")
+        print(f"  {_YELLOW}{words.render(said)}{_OFF}")
+    print(f"  {_GREEN}saved{_OFF} {args.out} {_DIM}· checked gone by re-reading it{_OFF}\n")
     return 0
 
 
-def cmd_report(args: argparse.Namespace) -> int:
+def _cmd_report(args: argparse.Namespace) -> int:
     """Green rate across a corpus. Below 80% the promise inverts into an apology."""
     rows: list[tuple[str, float | None, str]] = []
     total = exact_count = 0
     for path in args.pdfs:
         try:
-            with opened(path) as engine:
+            with _opened(path) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
             rows.append((path, None, exc.detail))
@@ -250,56 +240,56 @@ def cmd_report(args: argparse.Namespace) -> int:
         name = posixpath.basename(path)[:_NAME_COL_WIDTH]
         # The file couldn't be read: `note` says why.
         if rate is None:
-            print(f"  {RED}failed{OFF}   {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
+            print(f"  {_RED}failed{_OFF}   {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
             continue
-        colour = rate_colour(rate)
-        print(f"  {colour}{rate:>5.0%}{OFF}    {name:<{_NAME_COL_PAD}}{DIM}{note}{OFF}")
+        colour = _rate_colour(rate)
+        print(f"  {colour}{rate:>5.0%}{_OFF}    {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
     if total:
         overall = exact_count / total
-        colour = GREEN if overall >= GREEN_RATE_TARGET else YELLOW
-        print(f"\n  {colour}{overall:.0%}{OFF} of {total} spans keep the original font\n")
+        colour = _GREEN if overall >= GREEN_RATE_TARGET else _YELLOW
+        print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
     return 0
 
 
-def rate_colour(rate: float) -> str:
+def _rate_colour(rate: float) -> str:
     """Green at the target, yellow down to the warning line, red below it."""
     if rate >= GREEN_RATE_TARGET:
-        return GREEN
+        return _GREEN
     if rate >= GREEN_RATE_WARN:
-        return YELLOW
-    return RED
+        return _YELLOW
+    return _RED
 
 
-def cmd_fixture(args: argparse.Namespace) -> int:
+def _cmd_fixture(args: argparse.Namespace) -> int:
     """Two pages: one whose fonts are only referenced, one where they are embedded.
 
     With `--pages`, a long contract of made-up clauses instead, every page full.
     """
     if args.pages is not None:
         write_dense(args.out, pages=args.pages)
-        print(f"  wrote {args.out} {DIM}· {args.pages} full pages, fonts not embedded{OFF}")
+        print(f"  wrote {args.out} {_DIM}· {args.pages} full pages, fonts not embedded{_OFF}")
         return 0
     write_sample(args.out)
-    print(f"  wrote {args.out} {DIM}· page 1 not embedded, page 2 embedded{OFF}")
+    print(f"  wrote {args.out} {_DIM}· page 1 not embedded, page 2 embedded{_OFF}")
     return 0
 
 
-def no_span(span_id: str) -> int:
+def _no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
     said = words.sentence("no_span")
-    hint = f"{DIM}({span_id}: run `squidpdf spans` to list them){OFF}"
-    print(f"  {RED}{said}{OFF} {hint}", file=sys.stderr)
+    hint = f"{_DIM}({span_id}: run `squidpdf spans` to list them){_OFF}"
+    print(f"  {_RED}{said}{_OFF} {hint}", file=sys.stderr)
     return 1
 
 
-def existing_file(path: str) -> str:
+def _existing_file(path: str) -> str:
     """A path to a file that's there; otherwise a usage error that names it."""
     if not Path(path).is_file():
         raise argparse.ArgumentTypeError(f"there's no file at {path}")
     return path
 
 
-def one_line(text: str) -> str:
+def _one_line(text: str) -> str:
     """New text, as one line of letters; otherwise a usage error that says why."""
     try:
         check_text(text)
@@ -308,7 +298,7 @@ def one_line(text: str) -> str:
     return text
 
 
-def new_file(path: str) -> str:
+def _new_file(path: str) -> str:
     """A path to save to: in a folder that's there, and not a folder itself."""
     target = Path(path)
     if target.is_dir():
@@ -319,7 +309,7 @@ def new_file(path: str) -> str:
     return path
 
 
-def same_file(pdf: str, out: str) -> bool:
+def _same_file(pdf: str, out: str) -> bool:
     """Whether `out` is `pdf` itself, under this name or another."""
     return Path(out).exists() and Path(out).samefile(pdf)
 
@@ -334,21 +324,21 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="cmd", required=True)
 
     command = commands.add_parser("spans", help="list editable text and how it would edit")
-    command.add_argument("pdf", type=existing_file)
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("-p", "--page", type=int, default=None, help="only this page, from 1")
-    command.set_defaults(fn=cmd_spans)
+    command.set_defaults(fn=_cmd_spans)
 
     command = commands.add_parser("check", help="what would happen if you typed this")
-    command.add_argument("pdf", type=existing_file)
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
-    command.add_argument("text", type=one_line)
-    command.set_defaults(fn=cmd_check)
+    command.add_argument("text", type=_one_line)
+    command.set_defaults(fn=_cmd_check)
 
     command = commands.add_parser("edit", help="replace a span and save")
-    command.add_argument("pdf", type=existing_file)
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
-    command.add_argument("text", type=one_line)
-    command.add_argument("-o", "--out", default="out.pdf", type=new_file)
+    command.add_argument("text", type=_one_line)
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
     command.add_argument(
         "--strategy",
@@ -356,27 +346,27 @@ def main(argv: list[str] | None = None) -> int:
         default="as-is",
         help="a way out `check` offers: shrink or condense, to fit",
     )
-    command.set_defaults(fn=cmd_edit)
+    command.set_defaults(fn=_cmd_edit)
 
     command = commands.add_parser("redact", help="remove a span and verify it is gone")
-    command.add_argument("pdf", type=existing_file)
+    command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
-    command.add_argument("-o", "--out", default="out.pdf", type=new_file)
-    command.set_defaults(fn=cmd_redact)
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
+    command.set_defaults(fn=_cmd_redact)
 
     # No check here: one file that won't open is a row in the report, not the end of it.
     command = commands.add_parser("report", help="green rate across a corpus")
     command.add_argument("pdfs", nargs="+")
-    command.set_defaults(fn=cmd_report)
+    command.set_defaults(fn=_cmd_report)
 
     command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default=_SAMPLE, type=new_file)
+    command.add_argument("out", nargs="?", default=_SAMPLE, type=_new_file)
     command.add_argument("--pages", type=int, help="a long contract of this many pages")
-    command.set_defaults(fn=cmd_fixture)
+    command.set_defaults(fn=_cmd_fixture)
 
     args = parser.parse_args(argv)
     # Saving over the PDF being read would lose the original if anything went wrong.
-    overwrites = args.cmd in ("edit", "redact") and same_file(args.pdf, args.out)
+    overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
     # The tests read the committed sample, so a long contract never lands on it.
@@ -385,10 +375,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
         return result_of(partial(args.fn, args))
-    except UnknownSpan as unknown:  # the span id typed isn't in the PDF
-        return no_span(unknown.span_id)
+    except _UnknownSpan as unknown:  # the span id typed isn't in the PDF
+        return _no_span(unknown.span_id)
     except Problem as exc:  # e.g. the one PDF a command was given won't open
-        print(f"  {RED}{exc.detail}{OFF}", file=sys.stderr)
+        print(f"  {_RED}{exc.detail}{_OFF}", file=sys.stderr)
         return 1
 
 

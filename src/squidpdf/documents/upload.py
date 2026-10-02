@@ -17,10 +17,6 @@ from squidpdf.documents.errors import Gone, NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.types import Analysis
 
-__all__ = [
-    "UploadController",
-]
-
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 
@@ -49,11 +45,11 @@ class UploadController:
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
-        if disk_nearly_full():
+        if _disk_nearly_full():
             raise ServerFull()
         doc_id, folder = store.create(owner_digest)
         try:
-            await save_original(chunks, to=folder / store.ORIGINAL)
+            await _save_original(chunks, to=folder / store.ORIGINAL)
             await self._enqueue_analyse(folder)
             # Sent as kept, as a read sends it: writing it out again takes a while.
             kept = await asyncio.to_thread(store.load_analysis, folder, BUILD)
@@ -71,7 +67,7 @@ class UploadController:
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
-def disk_nearly_full() -> bool:
+def _disk_nearly_full() -> bool:
     """Whether the disk documents are kept on has less than MIN_FREE_BYTES free."""
     root = store.root()
     root.mkdir(parents=True, exist_ok=True)  # otherwise made by the first upload
@@ -79,7 +75,7 @@ def disk_nearly_full() -> bool:
     return shutil.disk_usage(root).free < constants.MIN_FREE_BYTES
 
 
-async def save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
+async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
     """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF.
 
     Each chunk is written off the server's thread: a disk can be slow.

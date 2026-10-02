@@ -22,13 +22,6 @@ from squidpdf.core.text.fidelity import why_approximate
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.types import EM, Face, Span
 
-__all__ = [
-    "letter_widths",
-    "DrawPlan",
-    "DrawPlanner",
-    "coded_in",
-]
-
 _WIDTH_DP = 2  # finer than any page can show
 
 
@@ -75,7 +68,7 @@ class DrawPlanner:
             missing = face_coverage(look_alike).missing(composed)
             substitute = self.substitute_for(span, composed)
             return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
-        text = spelled(own, text)
+        text = _spelled(own, text)
         missing = own.missing(text)
         # The own font draws every letter.
         if not missing:
@@ -186,7 +179,7 @@ def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
     assert_never(drawn_in)
 
 
-def spelled(own: PooledFont, text: str) -> str:
+def _spelled(own: PooledFont, text: str) -> str:
     """`text` spelled as the span's own font has it: as typed, composed or in pieces.
 
     é can be one letter or e and an accent. A trimmed font keeps whichever

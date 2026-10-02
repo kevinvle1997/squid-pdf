@@ -8,7 +8,7 @@ import pytest
 from squidpdf.core import FontSources, open_pdf
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
-from squidpdf.core.pdf.mupdf import MuPDFDriver
+from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from squidpdf.core.types import PageFont
 from tests.core.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in
@@ -45,18 +45,18 @@ def noted(monkeypatch) -> tuple[list[int], list[int]]:
     """Each font object read out of the file, and each page whose fonts are listed, in order."""
     read_out: list[int] = []
     listed: list[int] = []
-    font_bytes, fonts = MuPDFDriver.font_bytes, MuPDFDriver.fonts
+    font_bytes, fonts = _MuPDFDriver.font_bytes, _MuPDFDriver.fonts
 
-    def noted_font_bytes(self: MuPDFDriver, xref: int) -> bytes | None:
+    def noted_font_bytes(self: _MuPDFDriver, xref: int) -> bytes | None:
         read_out.append(xref)
         return font_bytes(self, xref)
 
-    def noted_fonts(self: MuPDFDriver, page: int) -> list[PageFont]:
+    def noted_fonts(self: _MuPDFDriver, page: int) -> list[PageFont]:
         listed.append(page)
         return fonts(self, page)
 
-    monkeypatch.setattr(MuPDFDriver, "font_bytes", noted_font_bytes)
-    monkeypatch.setattr(MuPDFDriver, "fonts", noted_fonts)
+    monkeypatch.setattr(_MuPDFDriver, "font_bytes", noted_font_bytes)
+    monkeypatch.setattr(_MuPDFDriver, "fonts", noted_fonts)
     return read_out, listed
 
 

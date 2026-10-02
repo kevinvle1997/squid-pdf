@@ -18,14 +18,6 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.types import Span, TextPiece
 
-__all__ = [
-    "Word",
-    "lacks_space",
-    "span_gaps",
-    "usual_gap",
-    "placed_words",
-]
-
 
 @dataclass(frozen=True, slots=True)
 class Word:
@@ -40,13 +32,13 @@ def lacks_space(font: FontProgram) -> bool:
     return not font.maps(" ")
 
 
-def each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
+def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
     """Every piece of a page's text, line by line."""
     for line in lines:
         yield from line
 
 
-def gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
+def _gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
     """The gap for each space in a piece of text `width` wide: one per space.
 
     What its letters don't fill is gap, shared evenly: the piece doesn't say how
@@ -64,7 +56,7 @@ def span_gaps(span: Span, font: FontProgram) -> list[float]:
     return [
         gap
         for fragment in span.fragments
-        for gap in gaps_in(fragment.text, width=fragment.bbox.width, font=font, size=span.size)
+        for gap in _gaps_in(fragment.text, width=fragment.bbox.width, font=font, size=span.size)
     ]
 
 
@@ -75,9 +67,9 @@ def usual_gap(lines: list[list[TextPiece]], *, font_name: str, font: FontProgram
     """
     gaps = [
         gap
-        for piece in each_piece(lines)
+        for piece in _each_piece(lines)
         if strip_subset(piece.font) == font_name
-        for gap in gaps_in(piece.text, width=piece.box.width, font=font, size=piece.size)
+        for gap in _gaps_in(piece.text, width=piece.box.width, font=font, size=piece.size)
     ]
     return statistics.median(gaps) if gaps else font.advance(" ")
 

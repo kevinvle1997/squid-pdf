@@ -17,12 +17,6 @@ from squidpdf.editing.types import (
     SpanNotice,
 )
 
-__all__ = [
-    "fit_info",
-    "skipped_info",
-    "notice_info",
-]
-
 
 def fit_info(fit: FitReport, said_in: str) -> FitInfo:
     """A fit as the browser gets it: option names, since it has their sentences."""

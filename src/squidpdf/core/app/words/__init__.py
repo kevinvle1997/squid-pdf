@@ -18,25 +18,10 @@ from importlib.resources.abc import Traversable
 
 from squidpdf.core.app.message import Message, Param, SaidInfo
 
-__all__ = [
-    "ENGLISH",
-    "load_catalogs",
-    "CATALOGS",
-    "ENGLISH_SENTENCES",
-    "sentence",
-    "catalog",
-    "render",
-    "render_all",
-    "said",
-    "fill",
-    "language_headers",
-    "visible",
-]
-
 ENGLISH = "en"
 
 
-def load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
+def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
     """Every language file in `folder`, by its lower-case tag: `pt-BR.toml` answers "pt-br"."""
     return {
         file.name.removesuffix(".toml").lower(): tomllib.loads(file.read_text(encoding="utf-8"))
@@ -46,8 +31,8 @@ def load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
 
 
 # Every language we can answer in, by its tag; English is the fallback.
-CATALOGS = load_catalogs(resources.files(__name__))
-ENGLISH_SENTENCES = CATALOGS[ENGLISH]
+CATALOGS = _load_catalogs(resources.files(__name__))
+_ENGLISH_SENTENCES = CATALOGS[ENGLISH]
 
 
 def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> str:
@@ -57,8 +42,8 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
     KeyError when there's none of those: a key no catalog has is a bug.
     """
     # .get: a language we have may not say every sentence yet, or not be one we have.
-    in_english = ENGLISH_SENTENCES.get(key, default)
-    found = CATALOGS.get(language, ENGLISH_SENTENCES).get(key, in_english)
+    in_english = _ENGLISH_SENTENCES.get(key, default)
+    found = CATALOGS.get(language, _ENGLISH_SENTENCES).get(key, in_english)
     if found is None:
         raise KeyError(key)
     return found
@@ -66,12 +51,12 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
 
 def catalog(language: str) -> dict[str, str]:
     """Every sentence as `language` says it, English where it has none."""
-    return {key: sentence(key, language) for key in ENGLISH_SENTENCES}
+    return {key: sentence(key, language) for key in _ENGLISH_SENTENCES}
 
 
 def render(message: Message, language: str = ENGLISH) -> str:
     """`message` as a person reads it in `language`: its sentence, placeholders filled."""
-    return fill(sentence(message.key, language), message.params, language)
+    return _fill(sentence(message.key, language), message.params, language)
 
 
 def said(message: Message, language: str) -> SaidInfo:
@@ -85,9 +70,9 @@ def render_all(messages: Iterable[Message], language: str = ENGLISH) -> str | No
     return joiner.join(render(message, language) for message in messages) or None
 
 
-def fill(template: str, params: Mapping[str, Param], language: str = ENGLISH) -> str:
+def _fill(template: str, params: Mapping[str, Param], language: str = ENGLISH) -> str:
     """`template` with each placeholder's fact written out as a person reads it."""
-    written = {name: written_out(name, value, language) for name, value in params.items()}
+    written = {name: _written_out(name, value, language) for name, value in params.items()}
     return template.format_map(written)
 
 
@@ -96,12 +81,12 @@ def language_headers(language: str) -> dict[str, str]:
     return {"Content-Language": language, "Vary": "Accept-Language"}
 
 
-def written_out(name: str, value: Param, language: str) -> str:
+def _written_out(name: str, value: Param, language: str) -> str:
     """One fact as it reads in a sentence: a list joined, a fraction to one decimal place."""
     if isinstance(value, list):
         # A list's own joiner, or the one every list without one takes.
         joiner = sentence(f"join_{name}", language, default=sentence("join_items", language))
-        return joiner.join(visible(item, language) for item in value)
+        return joiner.join(_visible(item, language) for item in value)
     if isinstance(value, float):
         # One decimal place, written with the language's own mark: "6.8", or "6,8" where
         # a comma is the decimal mark.
@@ -109,7 +94,7 @@ def written_out(name: str, value: Param, language: str) -> str:
     return str(value)
 
 
-def visible(character: str, language: str = ENGLISH) -> str:
+def _visible(character: str, language: str = ENGLISH) -> str:
     """A character as a person can see it: itself, or its name when it draws nothing alone.
 
     Named in `language`, e.g. "narrow no-break space", when a catalog names
@@ -123,15 +108,15 @@ def visible(character: str, language: str = ENGLISH) -> str:
     if shows:
         return character
     # Its name in `language` when the catalog has one, else Unicode's.
-    return sentence(name_key(character), language, default=unicode_name(character))
+    return sentence(_name_key(character), language, default=_unicode_name(character))
 
 
-def name_key(character: str) -> str:
+def _name_key(character: str) -> str:
     """The catalog key a character's name is under: U+202F's is `char_u202f`."""
     return f"char_u{ord(character):04x}"
 
 
-def unicode_name(character: str) -> str:
+def _unicode_name(character: str) -> str:
     """Unicode's name for a character, lower case; its code point ("U+0001") if it has none."""
     try:
         return unicodedata.name(character).lower()

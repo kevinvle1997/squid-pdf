@@ -15,19 +15,10 @@ these.
 from __future__ import annotations
 
 from squidpdf.api.errors.generic import (
-    MethodNotAllowed,
-    NoWorkers,
-    RateLimited,
-    RequestTooLarge,
-    ServerError,
-    TooSlow,
+    MethodNotAllowed as MethodNotAllowed,
+    NoWorkers as NoWorkers,
+    RateLimited as RateLimited,
+    RequestTooLarge as RequestTooLarge,
+    ServerError as ServerError,
+    TooSlow as TooSlow,
 )
-
-__all__ = [
-    "MethodNotAllowed",
-    "NoWorkers",
-    "RateLimited",
-    "RequestTooLarge",
-    "ServerError",
-    "TooSlow",
-]

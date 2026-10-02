@@ -71,7 +71,7 @@ def test_every_problem_has_its_own_wire_type_and_an_english_sentence():
     seen: dict[str, type[Problem]] = {}
     for cls in _ours():
         said = f"the catalog's sentence for {cls.__name__}"
-        assert_in(cls.type, words.ENGLISH_SENTENCES, said)
+        assert_in(cls.type, words.CATALOGS[words.ENGLISH], said)
         owner = seen.setdefault(cls.type, cls)
         if owner is not cls:
             assert_equal(shared.get(cls), owner, f"{cls.__name__} reuses {cls.type!r}")

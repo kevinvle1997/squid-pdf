@@ -63,10 +63,14 @@ src = ["src", "tests"]
 # S101: no bare assert; a failure says what it expected (tests/helpers.py). RET505/506: no
 # else after a return or raise. PLR2004: a number in a comparison is a named constant.
 # ASYNC: nothing blocking on the event loop.
+# PLC2701: no import of another module's _name (rules/backend/python.md, Style). A preview
+# rule, so check it on each ruff upgrade; explicit-preview-rules keeps every other rule as it is.
 select = [
     "E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID",
-    "PLR0917", "S101", "RET505", "RET506", "PLR2004", "ASYNC",
+    "PLR0917", "S101", "RET505", "RET506", "PLR2004", "ASYNC", "PLC2701",
 ]
+preview = true
+explicit-preview-rules = true
 # ASYNC109: a timeout parameter on an async function. Ours go to the pool, which kills a
 # worker at its deadline (pebble); asyncio's own timeout can't stop a process.
 ignore = ["ASYNC109"]
@@ -80,6 +84,10 @@ ignore = ["ASYNC109"]
 # The one place a bare assert belongs: the helpers every other check goes through.
 "tests/helpers.py" = ["S101"]
 "src/squidpdf/core/pdf/lowlevel.py" = ["TID251"]
+
+[tool.ruff.lint.isort]
+# A package's re-exports (`from x import Name as Name`) stay one import, not one per name.
+combine-as-imports = true
 
 [tool.ruff.lint.pylint]
 max-positional-args = 3

@@ -23,29 +23,18 @@ from squidpdf.editing.font_list import FontListController
 from squidpdf.editing.render import RenderController
 from squidpdf.editing.types import FontList, Region, Render
 
-__all__ = [
-    "router",
-    "fonts_router",
-    "AnyEdit",
-    "RenderBody",
-    "ExportBody",
-    "fonts",
-    "render",
-    "export",
-]
-
 router = APIRouter(prefix="/api/documents")
 fonts_router = APIRouter(prefix="/api/fonts")
 
 # Read by `kind` first: one bad kind is one error, not one per edit type. The union is
 # edits.py's, so a new edit type is read here as soon as it's added there.
-AnyEdit = Annotated[Edit, Field(discriminator="kind")]
+_AnyEdit = Annotated[Edit, Field(discriminator="kind")]
 
 
 class RenderBody(BaseModel):
     """What render reads from the request body."""
 
-    edits: list[AnyEdit]
+    edits: list[_AnyEdit]
     scale: Annotated[int, Field(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))]
     regions: list[Region]
 
@@ -53,7 +42,7 @@ class RenderBody(BaseModel):
 class ExportBody(BaseModel):
     """What export reads from the request body. No `pages` means every page."""
 
-    edits: list[AnyEdit]
+    edits: list[_AnyEdit]
     pages: list[int] | None = None
 
 

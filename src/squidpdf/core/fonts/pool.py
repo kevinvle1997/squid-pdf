@@ -26,32 +26,20 @@ from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
 
-__all__ = [
-    "KeptWidths",
-    "FontCopy",
-    "CodedRun",
-    "PooledFont",
-    "pooled_font",
-    "font_copy",
-    "google_copy",
-    "copy_source",
-    "lacks_a_keyboard_letter",
-]
-
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.
 _GOOGLE_COPIES_KEPT = 32
 
 # The copies that may lend the own copy letters, in the order they lend, given the
 # letters lent so far: whether a later one is worth opening can depend on them. A
 # copy from outside the file that can't be had comes as why, to be said.
-type Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
+type _Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
 
 
 @dataclass(slots=True)
-class KeptWidths:
+class _KeptWidths:
     """Each Google copy's letters and widths, by a digest of the file, oldest first.
 
-    A process keeps them (`kept_widths`): finding which letters really draw is
+    A process keeps them (`_kept_widths`): finding which letters really draw is
     slow, and the same bytes always give the same answer.
     It keeps the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
     """
@@ -75,11 +63,11 @@ class KeptWidths:
 
 
 # This process's widths of Google's copies.
-kept_widths = KeptWidths()
+_kept_widths = _KeptWidths()
 
 
 @dataclass(frozen=True, slots=True)
-class Lent:
+class _Lent:
     """Where a copy lent from outside the file came from, and what the reader calls it."""
 
     source: str  # what it's cached and added to a page as, e.g. Google's path and weight
@@ -94,11 +82,11 @@ class FontCopy:
     embedded: EmbeddedFont
     # Each letter it really draws, and its width per 1000 em.
     widths: dict[str, float] = field(repr=False)
-    lent: Lent | None = None  # set when it's lent from outside the file, as Google's copy is
+    lent: _Lent | None = None  # set when it's lent from outside the file, as Google's copy is
 
 
 @dataclass(frozen=True, slots=True)
-class CopyRun:
+class _CopyRun:
     """A run of a line: letters drawn in one copy of a font."""
 
     text: str
@@ -115,7 +103,7 @@ class CodedRun:
 
 
 @dataclass(frozen=True, slots=True)
-class TurnedAway:
+class _TurnedAway:
     """A copy by the font's name that lends nothing, and why it isn't the same font."""
 
     copy: FontCopy
@@ -131,7 +119,7 @@ class PooledFont:
     asked for, so a line the own copy draws opens no other. Implements
     `core.pdf.driver.FontProgram`, so it measures like one font. Made by
     `pooled_font`; its fields are never replaced, only filled. `eq=False` is
-    needed, not only tidy: it's part of a dict key (`PageFacts.usual_gaps`),
+    needed, not only tidy: it's part of a dict key (`_PageFacts.usual_gaps`),
     so it hashes as itself.
     """
 
@@ -141,7 +129,7 @@ class PooledFont:
     # The copies not taken in yet, each opened only when it's reached.
     lenders: Iterator[FontCopy | FontUnusable] = field(repr=False)
     # Copies taken in with the font's name that aren't the same font, and why.
-    turned_away: list[TurnedAway] = field(default_factory=list)
+    turned_away: list[_TurnedAway] = field(default_factory=list)
     # Why each copy from outside the file asked for couldn't be had, in order.
     not_lent: list[Message] = field(default_factory=list)
 
@@ -180,10 +168,10 @@ class PooledFont:
             return self.own
         return lender
 
-    def runs(self, text: str) -> list[CopyRun]:
+    def runs(self, text: str) -> list[_CopyRun]:
         """`text` split where the copy that draws it changes, in order."""
         return [
-            CopyRun("".join(letters), copy)
+            _CopyRun("".join(letters), copy)
             for copy, letters in groupby(text, key=self.copy_for)
         ]
 
@@ -238,16 +226,16 @@ class PooledFont:
         if isinstance(other, FontUnusable):
             self.not_lent.append(other.reason)
             return
-        why = why_turned_away(other, own=self.own, letters=self.taken_in)
+        why = _why_turned_away(other, own=self.own, letters=self.taken_in)
         # Only the same name: it lends nothing, and keeps why for the report.
         if why is not None:
-            self.turned_away.append(TurnedAway(other, why))
+            self.turned_away.append(_TurnedAway(other, why))
             return
         for ch in other.widths:
             self.taken_in.setdefault(ch, other)  # in lending order: the first to draw it lends
 
 
-def pooled_font(own: FontCopy, lenders: Lenders) -> PooledFont:
+def pooled_font(own: FontCopy, lenders: _Lenders) -> PooledFont:
     """The own copy's letters, and the copies to take in, in order, for any it lacks.
 
     `lenders` is handed the pool's letters, which grow as copies are taken in.
@@ -272,28 +260,28 @@ def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> Font
 
     Stands for the same font as the own copy, so it's checked like any other copy.
     """
-    lent = Lent(file.source, strip_subset(own.font.name))
-    return FontCopy(own.font, embedded, google_widths(embedded), lent)
+    lent = _Lent(file.source, strip_subset(own.font.name))
+    return FontCopy(own.font, embedded, _google_widths(embedded), lent)
 
 
-def google_widths(embedded: EmbeddedFont) -> dict[str, float]:
+def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
 
-    Worked out once per process for each file (`kept_widths`). By the bytes, not
+    Worked out once per process for each file (`_kept_widths`). By the bytes, not
     the file's name: a test can hand in another font under it.
     """
     digest = hashlib.sha256(embedded.file).digest()
-    return kept_widths.widths(digest, partial(measured_widths, embedded))
+    return _kept_widths.widths(digest, partial(_measured_widths, embedded))
 
 
-def measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
+def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter Google's copy draws that the browser can preview, measured in it."""
     program = embedded.program
-    letters = [ch for ch in embedded.coverage.drawable() if in_glyph_list(ch)]
+    letters = [ch for ch in embedded.coverage.drawable() if _in_glyph_list(ch)]
     return {ch: program.advance(ch) * EM for ch in letters}
 
 
-def in_glyph_list(ch: str) -> bool:
+def _in_glyph_list(ch: str) -> bool:
     """Whether `ch` is in GLYPH_LIST_RANGES, the letters the browser is sent widths for."""
     return any(ord(ch) in block for block in GLYPH_LIST_RANGES)
 
@@ -311,7 +299,7 @@ def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
     return any(ch not in letters for ch in keyboard)
 
 
-def why_turned_away(
+def _why_turned_away(
     other: FontCopy, *, own: FontCopy, letters: Mapping[str, FontCopy]
 ) -> Message | None:
     """Why `other` isn't the same font as the pool so far, only the same name; None when it is.

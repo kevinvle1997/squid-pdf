@@ -18,11 +18,6 @@ from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_
 from squidpdf.documents.replies import document_json, time_of
 from squidpdf.documents.types import Analysis, KeptAnalysis, Loaded
 
-__all__ = [
-    "ReadController",
-    "EXPIRES_HEADER",
-]
-
 # When the document now expires: a 304 carries no body, and reading restarted the hour.
 # The route lists it in the OpenAPI.
 EXPIRES_HEADER = "Squid-Expires-At"
@@ -45,7 +40,7 @@ class ReadController:
         kept = await self._saved_analysis(doc)
         # A thousand pages' analysis takes a while to hash and write: off the server's thread.
         return await asyncio.to_thread(
-            answer, doc, kept=kept, said_in=said_in, if_none_match=if_none_match
+            _answer, doc, kept=kept, said_in=said_in, if_none_match=if_none_match
         )
 
     async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
@@ -61,12 +56,12 @@ class ReadController:
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 
-def answer(
+def _answer(
     doc: Loaded, *, kept: KeptAnalysis, said_in: str, if_none_match: str | None
 ) -> Reply[bytes]:
     """The analysis kept, as the browser gets it: the JSON with its ETag, or a 304."""
     headers = {
-        "ETag": etag_of(kept, said_in),
+        "ETag": _etag_of(kept, said_in),
         "Cache-Control": DOCUMENT_CACHE,
         EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
@@ -78,7 +73,7 @@ def answer(
     return Reply(body, headers)
 
 
-def etag_of(kept: KeptAnalysis, said_in: str) -> str:
+def _etag_of(kept: KeptAnalysis, said_in: str) -> str:
     """The document's ETag: over the analysis as kept and the words it's said in.
 
     Not `expires_at`, which moves on every visit. Another language, or a

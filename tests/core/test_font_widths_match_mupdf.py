@@ -8,9 +8,9 @@ from collections.abc import Iterator
 import pymupdf
 import pytest
 
+from squidpdf.core import open_pdf
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.core.pdf.driver import FontProgram
-from squidpdf.core.pdf.mupdf import MuPDFDriver, open_driver
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from tests.conftest import EMBEDDED_PAGE
 from tests.helpers import assert_close
 
@@ -24,11 +24,10 @@ _WITHIN = 0.01  # points: far below what a fit check could notice
 
 
 @pytest.fixture(scope="module")
-def driver(pdf) -> Iterator[MuPDFDriver]:
+def driver(pdf) -> Iterator[PdfDriver]:
     """The sample, open in the driver, which opens fonts to measure with."""
-    driver = open_driver(pdf)
-    yield driver
-    driver.close()
+    with open_pdf(pdf) as engine:
+        yield engine.driver
 
 
 def _assert_widths_match(font: FontProgram, font_file: bytes, seed: str) -> None:

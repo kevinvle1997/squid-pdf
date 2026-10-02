@@ -36,20 +36,6 @@ from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
-__all__ = [
-    "GoogleFile",
-    "Download",
-    "Fetch",
-    "RetryRecord",
-    "retry_record",
-    "GoogleFontController",
-    "blob_hash",
-    "raw_url",
-    "fetched",
-    "download",
-    "google_fonts",
-]
-
 _logger = logging.getLogger(__name__)
 
 _RAW = "https://raw.githubusercontent.com/google/fonts"
@@ -58,7 +44,7 @@ _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _REGULAR = 400  # the weight a name with no weight word is
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
-_EVERY_FILE = "*"  # in a RetryRecord: a download got no answer, so the network is down
+_EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network is down
 # One INFO line per cache miss, worded the same every time so a grep counts them.
 _CACHE_MISS = "Google cache miss: %s (%s)"
 
@@ -91,7 +77,7 @@ _WEIGHT_WORDS = (
 
 
 @dataclass(frozen=True, slots=True)
-class ListedFile:
+class _ListedFile:
     """One file of a family, as the vendored list has it."""
 
     name: str  # e.g. "Poppins-Bold.ttf", or "OpenSans[wdth,wght].ttf"
@@ -116,17 +102,17 @@ class GoogleFile:
 
 
 # The bytes at a URL; raises when it can't get them. Tests hand in one reading a local file.
-type Download = Callable[[str], bytes]
+type _Download = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
 
 
 @dataclass(slots=True)
-class RetryRecord:
+class _RetryRecord:
     """What failed to come, and when each may be tried again, as `time.monotonic()` reads.
 
     By `GoogleFile.source`; `_EVERY_FILE` holds back all of them. Each process
-    keeps its own (`retry_record`): each worker learns on its own.
+    keeps its own (`_retry_record`): each worker learns on its own.
     """
 
     retry_at: dict[str, float] = field(default_factory=dict)
@@ -151,7 +137,7 @@ class RetryRecord:
 
 
 # This process's record of what failed to come.
-retry_record = RetryRecord()
+_retry_record = _RetryRecord()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -165,7 +151,7 @@ class GoogleFontController:
 
     def file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
-        return google_file(font.name, self.driver.font_descriptor(font.xref))
+        return _google_file(font.name, self.driver.font_descriptor(font.xref))
 
     def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
         """`file`, fetched and opened once, or why it can't be had or opened."""
@@ -185,13 +171,13 @@ class GoogleFontController:
 
 
 @cache
-def family_list() -> dict[str, Any]:
+def _family_list() -> dict[str, Any]:
     """The vendored family list, read once per process."""
     listed = resources.files("squidpdf").joinpath("fonts", "google-families.json")
     return json.loads(listed.read_text())
 
 
-def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
+def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     """The file in Google's collection for a document's font.
 
     Matched by family name, then by weight and style. A family that ships only
@@ -199,17 +185,17 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     a cut is a modified version, which may not carry a reserved name. Raises
     FontUnusable, saying why, when there's none to use.
     """
-    listed = family_list()
+    listed = _family_list()
     key = bare_name(font)
     key = listed["aliases"].get(key, key)  # .get: most families were never renamed
     family = listed["families"].get(key)  # .get: most fonts aren't Google's
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if family is None:
         raise FontUnusable(Message("google_not_listed"))
-    weight = weight_of(font, descriptor)
+    weight = _weight_of(font, descriptor)
     style, _usual_cut = style_of(font, descriptor)
     italic = style in ("italic", "bold-italic")
-    files = [ListedFile(*row) for row in family["files"]]  # rows keep the fields' order
+    files = [_ListedFile(*row) for row in family["files"]]  # rows keep the fields' order
     same_slant = [file for file in files if file.italic == italic]
     folder = family["folder"]
     # A fixed file in this weight and slant.
@@ -226,7 +212,7 @@ def google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     return GoogleFile(f"{folder}/{variable.name}", variable.blob, weight)
 
 
-def weight_of(font: str, descriptor: FontDescriptor | None) -> int:
+def _weight_of(font: str, descriptor: FontDescriptor | None) -> int:
     """A font's weight, 100 to 900: from its name, else its description, else regular."""
     _family, style_words = family_and_style(font)
     style_text = style_words.replace(" ", "").lower()
@@ -251,8 +237,8 @@ def raw_url(path: str) -> str:
     return f"{_RAW}/{GOOGLE_FONTS_COMMIT}/{path}"
 
 
-def fetched(
-    file: GoogleFile, *, folder: Path, download: Download | None, retries: RetryRecord
+def _fetched(
+    file: GoogleFile, *, folder: Path, download: _Download | None, retries: _RetryRecord
 ) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
@@ -265,7 +251,7 @@ def fetched(
     """
     cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
     try:
-        cached_copy = read_cached_copy(cached_path, file)
+        cached_copy = _read_cached_copy(cached_path, file)
     except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
         # Counted by grep: how often the cache is empty, and whether this call may download.
         next_step = "cache only" if download is None else "may download"
@@ -281,9 +267,9 @@ def fetched(
     # Failed a moment ago: not worth another wait yet.
     if retries.holds(file.source, now):
         return None
-    fetching = Fetching(cached_path=cached_path, download=download, retries=retries)
+    fetching = _Fetching(cached_path=cached_path, download=download, retries=retries)
     # A daemon: one still hanging never keeps the worker from exiting.
-    threading.Thread(target=download_and_cache, args=(file, fetching), daemon=True).start()
+    threading.Thread(target=_download_and_cache, args=(file, fetching), daemon=True).start()
     try:
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
@@ -298,41 +284,41 @@ def fetched(
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class Fetching:
+class _Fetching:
     """One download under way in the background, and what it tells the one waiting on it."""
 
     cached_path: Path  # where it's cached
-    download: Download
-    retries: RetryRecord  # the record of failures, lifted for every file once an answer comes
+    download: _Download
+    retries: _RetryRecord  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
     # Set once the network has answered, so a slow cut isn't taken for a network down.
     answered: threading.Event = field(default_factory=threading.Event)
 
 
-def download_and_cache(file: GoogleFile, fetching: Fetching) -> None:
+def _download_and_cache(file: GoogleFile, fetching: _Fetching) -> None:
     """On its own thread: download `file` and cache it, then hand the copy, or None, on.
 
     The one waiting may have given up; what's cached is there for the next analysis.
     """
-    font_file = download_checked_and_cut(file, fetching)
+    font_file = _download_checked_and_cut(file, fetching)
     # A failure has nothing to cache, and is logged where it happened.
     if font_file is not None:
-        cache_copy(fetching.cached_path, file, font_file)
+        _cache_copy(fetching.cached_path, file, font_file)
     fetching.answer.put(font_file)
 
 
-def cache_copy(cached_path: Path, file: GoogleFile, font_file: bytes) -> None:
+def _cache_copy(cached_path: Path, file: GoogleFile, font_file: bytes) -> None:
     """Keep `font_file` at `cached_path`, and for a cut, its own hash beside it."""
-    kept(cached_path, font_file)
+    _kept(cached_path, font_file)
     # A fixed file is checked by git's hash, which `file` carries.
     if file.weight is None:
         return
     # A cut isn't the file git hashed, so it's checked by its own.
-    kept(hash_beside(cached_path), blob_hash(font_file).encode())
+    _kept(_hash_beside(cached_path), blob_hash(font_file).encode())
 
 
-def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | None:
+def _download_checked_and_cut(file: GoogleFile, fetching: _Fetching) -> bytes | None:
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
@@ -347,13 +333,13 @@ def download_checked_and_cut(file: GoogleFile, fetching: Fetching) -> bytes | No
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None
     try:
-        return whole if file.weight is None else cut(whole, file.weight)
+        return whole if file.weight is None else _cut(whole, file.weight)
     except Exception:  # fontTools raises many kinds on a font it can't cut; logged
         _logger.warning("No Google copy of %s: can't be cut", file.source, exc_info=True)
         return None
 
 
-def read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
+def _read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     """The cached copy of `file` at `cached_path`; None when it's gone bad.
 
     Raises FileNotFoundError when it isn't cached, so the caller can count the miss.
@@ -362,7 +348,7 @@ def read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     allows, and fetched again.
     """
     font_file = cached_path.read_bytes()
-    expected_hash = file.blob if file.weight is None else hash_beside(cached_path).read_text()
+    expected_hash = file.blob if file.weight is None else _hash_beside(cached_path).read_text()
     if blob_hash(font_file) == expected_hash:
         return font_file
     _logger.warning("Google's copy of %s in the cache is damaged: fetched again", file.source)
@@ -373,12 +359,12 @@ def read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     return None
 
 
-def hash_beside(cached_path: Path) -> Path:
+def _hash_beside(cached_path: Path) -> Path:
     """Where a cut copy's own hash is kept: beside it, under the same name."""
     return cached_path.with_name(f"{cached_path.name}{_HASH_SUFFIX}")
 
 
-def cut(variable_font: bytes, weight: int) -> bytes:
+def _cut(variable_font: bytes, weight: int) -> bytes:
     """A variable font fixed at `weight` and the usual width, every other axis at its default.
 
     MuPDF draws a variable font only at its default weight.
@@ -398,7 +384,7 @@ def cut(variable_font: bytes, weight: int) -> bytes:
     return out.getvalue()
 
 
-def kept(path: Path, font_file: bytes) -> None:
+def _kept(path: Path, font_file: bytes) -> None:
     """Write `font_file` to the cache whole or not at all; a failure is logged, not raised.
 
     Written beside it, then renamed over it, so a reader never sees half.
@@ -416,18 +402,18 @@ def kept(path: Path, font_file: bytes) -> None:
             part.unlink(missing_ok=True)
 
 
-def download(url: str) -> bytes:
+def _download(url: str) -> bytes:
     """The bytes at `url`. Raises on a failed request.
 
     httpx's timeout is per step (connecting, each read), not for the whole
-    fetch; `fetched` keeps the deadline for the whole of it.
+    fetch; `_fetched` keeps the deadline for the whole of it.
     """
     response = httpx.get(url, timeout=FETCH_TIMEOUT_S, follow_redirects=True)
     response.raise_for_status()
     return response.content
 
 
-def cache_folder() -> Path:
+def _cache_folder() -> Path:
     """Where the CLI keeps Google's copies: `SQUIDPDF_FONTS`, or the user's cache folder.
 
     Public fonts only, shared by every document. The server passes its own.
@@ -443,12 +429,12 @@ def cache_folder() -> Path:
 def google_fonts(*, folder: Path | None = None, cache_only: bool = False) -> Fetch | None:
     """The way to Google's copies: from the cache in `folder`, else fetched and kept there.
 
-    `folder` is `cache_folder()` unless given, as the server gives its own. With
+    `folder` is `_cache_folder()` unless given, as the server gives its own. With
     `cache_only`, the cache alone, never the network. None when
     SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
     """
     if os.environ.get(_NO_FETCH):
         return None
-    cache = cache_folder() if folder is None else folder
-    github_download = None if cache_only else download
-    return partial(fetched, folder=cache, download=github_download, retries=retry_record)
+    cache = _cache_folder() if folder is None else folder
+    github_download = None if cache_only else _download
+    return partial(_fetched, folder=cache, download=github_download, retries=_retry_record)

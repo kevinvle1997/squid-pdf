@@ -14,15 +14,9 @@ from squidpdf.core import BUILD, CATALOG, Reply, Workers, face_widths
 from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
 from squidpdf.editing.types import FamilyInfo, FontList
 
-__all__ = [
-    "FontListTasks",
-    "font_list_tasks",
-    "FontListController",
-]
-
 
 @dataclass(slots=True)
-class FontListTasks:
+class _FontListTasks:
     """The font list's measuring by build, running or done: made once per server.
 
     The same for everyone under a build, and seconds of pool work. The running
@@ -51,7 +45,7 @@ class FontListTasks:
 
 
 # This server's font list, measured or being measured.
-font_list_tasks = FontListTasks()
+_font_list_tasks = _FontListTasks()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -63,7 +57,7 @@ class FontListController:
     async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
         # Started on the first ask since the server started, or since the last one failed.
-        measuring = font_list_tasks.task_for(BUILD, self._start_measuring)
+        measuring = _font_list_tasks.task_for(BUILD, self._start_measuring)
         # Shielded: a browser that leaves doesn't stop the measuring others wait for.
         font_list_json = await asyncio.shield(measuring)
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
@@ -72,7 +66,7 @@ class FontListController:
     def _start_measuring(self) -> asyncio.Task[bytes]:
         """Start measuring the font list; it's dropped if it fails."""
         measuring = asyncio.create_task(self._font_list_json())
-        measuring.add_done_callback(partial(font_list_tasks.forget_if_failed, BUILD))
+        measuring.add_done_callback(partial(_font_list_tasks.forget_if_failed, BUILD))
         return measuring
 
     async def _font_list_json(self) -> bytes:
@@ -81,10 +75,10 @@ class FontListController:
 
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
-        return await self.workers.run(FONT_LIST_TIMEOUT_S, measure_faces)
+        return await self.workers.run(FONT_LIST_TIMEOUT_S, _measure_faces)
 
 
-def measure_faces() -> FontList:
+def _measure_faces() -> FontList:
     """Every face we ship, grouped by family, in the catalog's order. Runs in a worker."""
     families: dict[str, FamilyInfo] = {}
     for face in CATALOG:

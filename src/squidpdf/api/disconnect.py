@@ -19,10 +19,6 @@ from dataclasses import dataclass
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-__all__ = [
-    "CancelOnDisconnect",
-]
-
 
 @dataclass(frozen=True, slots=True, eq=False)
 class CancelOnDisconnect:

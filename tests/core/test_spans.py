@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from squidpdf.core.text.spans import build_index, merge
+from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Rect, TextPiece
 from tests.helpers import assert_equal, assert_true
 
@@ -33,15 +33,15 @@ def _piece(
     return TextPiece(text, font, _SIZE, color, opacity, box, (x0, baseline))
 
 
-def _texts(groups: list[list[TextPiece]]) -> list[str]:
-    """Each merged group's text, as its span reads."""
-    return ["".join(piece.text for piece in group) for group in groups]
+def _texts(line: list[TextPiece]) -> list[str]:
+    """The text of each span one line of pieces makes."""
+    return [span.text for span in build_index([[line]])]
 
 
 def test_pieces_split_for_spacing_merge_back_into_one_span():
     """A kerned word in two pieces, then the next word: one span, as a person reads it."""
     pieces = [_piece("Deliv", 72, 96), _piece("ery", 96.3, 110), _piece(" begins", 110, 140)]
-    assert_equal(_texts(merge(pieces)), ["Delivery begins"], "spans")
+    assert_equal(_texts(pieces), ["Delivery begins"], "spans")
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_pieces_split_for_spacing_merge_back_into_one_span():
 def test_a_piece_carries_on_the_span_only_close_by_and_in_its_style(then, carries_on):
     first = _piece("a", 72, _FIRST_ENDS)
     expected = ["ab"] if carries_on else ["a", "b"]
-    assert_equal(_texts(merge([first, then])), expected, "spans")
+    assert_equal(_texts([first, then]), expected, "spans")
 
 
 def test_blank_runs_are_no_span_and_identical_ones_get_their_own_ids():

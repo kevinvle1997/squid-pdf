@@ -5,7 +5,6 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.api.language import best_language
 from squidpdf.core import words
 from tests.api.conftest import upload
 from tests.conftest import PSEUDO, pseudo_sentence
@@ -35,10 +34,12 @@ def _in(language: str) -> dict[str, str]:
     ],
 )
 def test_the_language_answered_in_is_the_most_wanted_one_we_have(
-    pseudo, accept_language, chosen
+    pseudo, mine, doc, accept_language, chosen
 ):
+    headers = {} if accept_language is None else _in(accept_language)
+    response = mine.get(f"/api/documents/{doc['id']}", headers=headers)
     assert_equal(
-        best_language(accept_language), chosen, f"the language for {accept_language!r}"
+        response.headers["content-language"], chosen, f"the language for {accept_language!r}"
     )
 
 

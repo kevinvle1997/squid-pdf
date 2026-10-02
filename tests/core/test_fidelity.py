@@ -20,7 +20,8 @@ from squidpdf.core import (
     words,
 )
 from squidpdf.core.fonts.look_alike import strip_subset
-from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
+from squidpdf.core.pdf.driver import FontProgram
+from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
 from tests.helpers import (
@@ -352,13 +353,13 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
     path = str(tmp_path / "shared.pdf")
     doc.save(path)
     opened: list[bytes] = []
-    open_font = MuPDFDriver.open_font
+    open_font = _MuPDFDriver.open_font
 
-    def counted(self: MuPDFDriver, font_file: bytes) -> MuPDFFont:
+    def counted(self: _MuPDFDriver, font_file: bytes) -> FontProgram:
         opened.append(font_file)
         return open_font(self, font_file)
 
-    monkeypatch.setattr(MuPDFDriver, "open_font", counted)
+    monkeypatch.setattr(_MuPDFDriver, "open_font", counted)
 
     with open_pdf(path) as engine:
         reports = engine.assess(engine.index())
@@ -370,7 +371,7 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
 def test_every_way_a_span_can_be_approximate_has_its_sentence():
     """The browser says a span's `why` from `copy.approximate`, keyed by its reason."""
     for reason in APPROXIMATE_REASONS:
-        assert_in(reason, words.ENGLISH_SENTENCES, "the ways a span can be approximate")
+        assert_in(reason, words.CATALOGS[words.ENGLISH], "the ways a span can be approximate")
 
 
 @pytest.mark.parametrize(

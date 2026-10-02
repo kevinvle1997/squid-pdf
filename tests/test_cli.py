@@ -14,7 +14,7 @@ from typing import get_args
 import pymupdf
 import pytest
 
-from squidpdf.cli import _MARKS, main
+from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Engine, Fidelity, open_pdf, words
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 

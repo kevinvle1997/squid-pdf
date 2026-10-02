@@ -14,11 +14,6 @@ from squidpdf.api.errors.http import response
 from squidpdf.api.language import language_of
 from squidpdf.core import InvalidRequest
 
-__all__ = [
-    "declared_size",
-    "BodyLimit",
-]
-
 # An exabyte: no body comes near it, and int() refuses a number past 4300 digits.
 _MAX_DIGITS = 18
 
@@ -69,16 +64,16 @@ class BodyLimit:
         limit = limits.MAX_BODY_BYTES
         too_large = declared is not None and declared > limit
         try:
-            body = None if too_large else await body_up_to(receive, limit)
+            body = None if too_large else await _body_up_to(receive, limit)
         except ClientDisconnect:  # the browser left mid-body: nobody to answer
             return
         if body is None:
             await response(RequestTooLarge(), language)(scope, receive, send)
             return
-        await self.app(scope, replaying(body, receive), send)
+        await self.app(scope, _replaying(body, receive), send)
 
 
-async def body_up_to(receive: Receive, limit: int) -> bytes | None:
+async def _body_up_to(receive: Receive, limit: int) -> bytes | None:
     """The whole body, or None as soon as it passes `limit` bytes."""
     chunks: list[bytes] = []
     size = 0
@@ -97,7 +92,7 @@ async def body_up_to(receive: Receive, limit: int) -> bytes | None:
     return b"".join(chunks)
 
 
-def replaying(body: bytes, receive: Receive) -> Receive:
+def _replaying(body: bytes, receive: Receive) -> Receive:
     """A receive that hands the app `body` whole, then whatever comes after it."""
     handed = False
 
