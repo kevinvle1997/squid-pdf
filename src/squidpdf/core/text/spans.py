@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
-from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, TextPiece, span_id
+from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, TextPiece, index_of, span_id
 
 __all__ = [
     "build_index",
@@ -36,7 +36,7 @@ def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
                 span = span_from(page, group, ordinal=len(spans))
                 if span is not None:
                     spans.append(span)
-    return SpanIndex(spans)
+    return index_of(spans)
 
 
 def merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:

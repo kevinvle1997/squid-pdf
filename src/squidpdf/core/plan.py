@@ -162,7 +162,7 @@ class DrawPlanner:
         letters = sorted(pooled.letters.items())
         widths = {ch: round(copy.widths[ch], _WIDTH_DP) for ch, copy in letters}
         # Written by letter, with no space of its own: a space is the page's usual gap.
-        spaceless = pooled.own.embedded.coded is None and lacks_space(pooled)
+        spaceless = not pooled.is_coded() and lacks_space(pooled)
         if spaceless:
             widths[" "] = round(self.fonts.usual_gap(span, pooled) * EM, _WIDTH_DP)
         return widths
@@ -178,7 +178,7 @@ def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
     if isinstance(drawn_in, Face):
         return None
     # The file's copies, written by letter: no codes.
-    if isinstance(drawn_in, PooledFont) and drawn_in.own.embedded.coded is None:
+    if isinstance(drawn_in, PooledFont) and not drawn_in.is_coded():
         return None
     # The file's copies, written by code: the line in their codes.
     if isinstance(drawn_in, PooledFont):

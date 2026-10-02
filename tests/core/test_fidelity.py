@@ -13,8 +13,8 @@ from squidpdf.core import (
     FidelityReport,
     LineToDraw,
     Span,
-    SpanIndex,
     green_rate,
+    index_of,
     new_text,
     open_pdf,
     words,
@@ -253,7 +253,7 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
         span = _first_span(engine)
         missing = engine.plan_for(span, _POOLED).missing
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
-        [report] = engine.assess(SpanIndex([new]))
+        [report] = engine.assess(index_of([new]))
         engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
         engine.draw(span, _POOLED)
         engine.save(out)
@@ -263,7 +263,7 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
 def _why_new(engine: Engine, span: Span, text: str) -> str | None:
     """Why new text in the span's font would be a substitute, by its sentence's key."""
     new = new_text(0, origin=(72, 200), text=text, size=span.size, font=span.font)
-    [report] = engine.assess(SpanIndex([new]))
+    [report] = engine.assess(index_of([new]))
     return None if report.why is None else report.why.key
 
 
@@ -412,7 +412,7 @@ def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path)
     with open_pdf(out) as again:
         index = again.index()
         [line] = [span for span in index if span.text.startswith("Invoices")]
-        [report] = again.assess(SpanIndex([line]))
+        [report] = again.assess(index_of([line]))
 
     assert_equal((report.state, _said(report)), ("exact", None), "the redrawn line")
 

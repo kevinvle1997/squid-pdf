@@ -31,6 +31,7 @@ from squidpdf.core import (
     Span,
     SpanIndex,
     google_fonts,
+    index_of,
     open_pdf,
 )
 from squidpdf.documents.constants import IDLE_S
@@ -243,7 +244,7 @@ def load_index(folder: Path) -> SpanIndex | None:
         # Dropped before the next is read, so two never share the worker's memory cap.
         kept_index.file_identity, kept_index.index = None, None
         raw = orjson.loads(index_file.read())
-    kept_index.index = SpanIndex([load_span(span) for span in raw])
+    kept_index.index = index_of(load_span(span) for span in raw)
     kept_index.file_identity = file_identity
     return kept_index.index
 

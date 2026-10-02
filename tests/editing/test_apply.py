@@ -14,7 +14,7 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.editing import (
     Applied,
@@ -98,7 +98,7 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
     cut = stored_file(str(path), page, face)
     shipped = face_bytes(FACES[face])
     assert_true(len(cut) < len(shipped), f"{face} stored {len(cut)} bytes of {len(shipped)}")
-    assert_equal(Coverage(cut).missing(text), [], f"letters {face} lost in the cut")
+    assert_equal(coverage_of(cut).missing(text), [], f"letters {face} lost in the cut")
     kept = [table for table in _HINTING if table in TTFont(io.BytesIO(cut))]
     shipped_hinting = [table for table in _HINTING if table in TTFont(io.BytesIO(shipped))]
     assert_equal(kept, shipped_hinting, f"{face}'s hinting, cut and as shipped")

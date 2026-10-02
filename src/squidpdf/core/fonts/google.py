@@ -30,7 +30,7 @@ from fontTools.varLib.instancer import instantiateVariableFont
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
 from squidpdf.core.fonts.look_alike import bare_name, family_and_style, style_of
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
@@ -143,7 +143,7 @@ class GoogleFontController:
             program = self.driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it, though git vouched for it
             raise FontUnusable(Message("google_unreadable")) from problem
-        return EmbeddedFont(program, font_file, Coverage(font_file), None)
+        return EmbeddedFont(program, font_file, coverage_of(font_file), None)
 
 
 @cache

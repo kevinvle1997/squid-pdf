@@ -23,6 +23,7 @@ from squidpdf.core.fonts.pool import (
     font_copy,
     google_copy,
     lacks_a_keyboard_letter,
+    pooled_font,
 )
 from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
@@ -223,7 +224,7 @@ class DocumentFonts:
         own = self._opened(page_font)
         if isinstance(own, FontUnusable):
             raise FontUnusable(own.reason)
-        return PooledFont(own, partial(self._lenders, page, own))
+        return pooled_font(own, partial(self._lenders, page, own))
 
     def _lenders(
         self, page: int, own: FontCopy, letters: Mapping[str, FontCopy]

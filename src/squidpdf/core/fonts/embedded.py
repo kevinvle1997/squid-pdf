@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.types import CodedFont, FontCode, FontKind, PageFont
 
@@ -26,12 +26,16 @@ __all__ = [
 _CODE_BYTES: dict[FontKind, int] = {"truetype": 1, "type0": 2}
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class EmbeddedFont:
-    """A font stored in the file, and what it really draws."""
+    """A font stored in the file, and what it really draws.
+
+    Made of parts, a font program and its coverage, so `eq=False`: comparing
+    two would compare whole font files.
+    """
 
     program: FontProgram  # the driver's open copy, to measure with
-    file: bytes  # the font file itself, to add to a page for a redraw
+    file: bytes = field(repr=False)  # the font file itself, to add to a page for a redraw
     coverage: Coverage  # which letters draw a shape
     coded: CodedFont | None  # set when we write it by code, not by letter
 
@@ -92,7 +96,7 @@ def open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> 
     """The font opened, by letter when it looks letters up itself, else by code."""
     program = driver.open_font(font_file)
     listed_letters = program.listed_letters()
-    coverage = Coverage(font_file, listed_letters)
+    coverage = coverage_of(font_file, listed_letters)
 
     # Looks letters up itself: the usual case.
     if coverage.usable:
@@ -119,7 +123,7 @@ def read_by_code(
         raise FontUnusable(Message("font_cant_write"))
     coded = read_coded_font(driver, page_font)
     glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
-    coverage = Coverage(font_file, glyph_ids=glyph_ids)
+    coverage = coverage_of(font_file, glyph_ids=glyph_ids)
     if not coverage.usable:
         raise FontUnusable(Message("font_unreadable"))
     return coded, coverage

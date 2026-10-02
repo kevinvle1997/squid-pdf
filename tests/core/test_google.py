@@ -19,11 +19,11 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import FontSources, LineToDraw, SpanIndex, new_text, open_pdf
+from squidpdf.core import FontSources, LineToDraw, index_of, new_text, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Download,
@@ -80,7 +80,7 @@ def _why_substitute(path: str, fetch: Fetch) -> str | None:
     with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
         new = new_text(0, origin=(72, 200), text=_WANTED, size=span.size, font=span.font)
-        [report] = engine.assess(SpanIndex([new]))
+        [report] = engine.assess(index_of([new]))
     return None if report.why is None else report.why.key
 
 
@@ -118,7 +118,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     saved = pymupdf.open(out)
     assert_equal(saved[0].get_text().strip(), _WANTED, "the text read back")
     font_files = [saved.extract_font(xref)[-1] for xref, *_ in saved[0].get_fonts()]
-    lending = [file for file in font_files if Coverage(file).covers("Y")]
+    lending = [file for file in font_files if coverage_of(file).covers("Y")]
     assert_equal(len(lending), 1, "font files on the page that draw a Y")
     # Cut down to what was drawn, as a face we ship is: not the whole font.
     assert_true(len(lending[0]) < len(POPPINS.read_bytes()), "Google's copy was trimmed")

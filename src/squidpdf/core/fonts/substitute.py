@@ -11,7 +11,7 @@ from functools import cache
 
 from squidpdf.core.constants import GLYPH_LIST_RANGES
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.coverage import Coverage
+from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.look_alike import broadest
 from squidpdf.core.types import Face
 
@@ -35,7 +35,7 @@ class Substitute:
 @cache
 def face_coverage(face: Face) -> Coverage:
     """Which letters a face we ship really draws, read from its file once per process."""
-    return Coverage(face_bytes(face))
+    return coverage_of(face_bytes(face))
 
 
 @cache
