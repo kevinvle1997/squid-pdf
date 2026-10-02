@@ -8,6 +8,8 @@ engine's parts forget through `keep_pages`, the one place that renumbers pages.
 
 from __future__ import annotations
 
+import threading
+
 from squidpdf.core.fonts.document import _FontCache  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.core.fonts.google import _RetryRecord  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (a holder's forget test needs a fresh one)
@@ -44,8 +46,8 @@ def test_keeping_pages_forgets_each_pages_resource_names(engine):
 def test_a_retry_record_that_forgets_equals_a_fresh_one():
     """A worker's record of Google's failed fetches: forgotten, every file may be fetched."""
     retries = _RetryRecord()
-    retries.hold("ofl/poppins/Poppins-Regular.ttf", until=5.0)
-    assert_every_field_filled(retries, _RetryRecord(), "the record once a fetch failed")
+    retries.hold("ofl/poppins/Poppins-Regular.ttf", until=5.0, answered=threading.Event())
+    assert_every_field_filled(retries, _RetryRecord(), "the record once a fetch got no answer")
 
     retries.forget()
 

@@ -73,7 +73,8 @@ class GoogleFile:
         return self.path if self.weight is None else f"{self.path}@{self.weight}"
 
 
-# The bytes at a URL; raises when it can't get them. Tests hand in one reading a local file.
+# The bytes at a URL; raises when it can't get them, httpx's HTTPStatusError when the
+# server answered without them. Tests hand in one reading a local file.
 type _Download = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
@@ -88,24 +89,39 @@ class _RetryRecord:
     """
 
     retry_at: dict[str, float] = field(default_factory=dict)
+    # Taken by every read and change. A download's thread notes its answer while the
+    # one waiting on it may be holding back every file: one wholly before the other.
+    lock: threading.Lock = field(default_factory=threading.Lock, compare=False, repr=False)
 
     def holds(self, source: str, now: float) -> bool:
         """Whether `source` failed a moment ago, or the network did: not worth a wait yet."""
-        # .get: most files, and the network, have never failed
-        held_until = max(self.retry_at.get(source, 0.0), self.retry_at.get(_EVERY_FILE, 0.0))
+        with self.lock:
+            # .get: most files, and the network, have never failed
+            held_until = max(
+                self.retry_at.get(source, 0.0), self.retry_at.get(_EVERY_FILE, 0.0)
+            )
         return now < held_until
 
-    def hold(self, source: str, until: float) -> None:
-        """Try `source` again only from `until` on; `_EVERY_FILE` holds back every file."""
-        self.retry_at[source] = until
+    def hold(self, source: str, until: float, *, answered: threading.Event) -> None:
+        """Try `source` again only from `until` on; every file, if the network never `answered`.
 
-    def lift_network_hold(self) -> None:
-        """The network answered: a wait that ran out holds back no other file now."""
-        self.retry_at.pop(_EVERY_FILE, None)  # None: most answers find no hold to lift
+        No answer means the network failed, not the file, and every file would
+        fail or wait as long.
+        """
+        with self.lock:
+            held = source if answered.is_set() else _EVERY_FILE
+            self.retry_at[held] = until
+
+    def note_answer(self, answered: threading.Event) -> None:
+        """The network answered: set `answered`, and lift any hold on every file."""
+        with self.lock:
+            answered.set()
+            self.retry_at.pop(_EVERY_FILE, None)  # None: most answers find no hold to lift
 
     def forget(self) -> None:
         """Forget every failure, as a fresh record."""
-        self.retry_at.clear()
+        with self.lock:
+            self.retry_at.clear()
 
 
 # This process's record of what failed to come.
@@ -210,8 +226,8 @@ def _fetched(
     downloaded in the background and waited on for FETCH_TIMEOUT_S at most; one
     that finishes later is still checked, cut and cached, for the next analysis.
     A failure is logged, not raised, and noted in `retries`, so nothing waits
-    on it again for FETCH_RETRY_S. A download that gets no answer holds back
-    every file: the network failed, not the file, and each would wait as long.
+    on it again for FETCH_RETRY_S. A download that gets no answer, by its
+    deadline or at all, holds back every file.
     """
     cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
     try:
@@ -238,13 +254,14 @@ def _fetched(
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
         _logger.warning("No Google copy of %s: not ready in %s s", file.path, FETCH_TIMEOUT_S)
-        # No answer from the network holds back every file; a slow cut, only this one.
-        held = file.source if fetching.answered.is_set() else _EVERY_FILE
-        retries.hold(held, now + FETCH_RETRY_S)
-        return None
-    if font_file is None:
-        retries.hold(file.source, now + FETCH_RETRY_S)
-    return font_file
+        font_file = None
+    # Had: nothing to hold back.
+    if font_file is not None:
+        return font_file
+    # None came, or nothing yet: every file waits if the network never answered; else,
+    # a file GitHub hasn't or a slow cut, only this one.
+    retries.hold(file.source, now + FETCH_RETRY_S, answered=fetching.answered)
+    return None
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -256,7 +273,8 @@ class _Fetching:
     retries: _RetryRecord  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
-    # Set once the network has answered, so a slow cut isn't taken for a network down.
+    # Set once the network answers, even without the file, so neither that nor a slow
+    # cut is taken for a network down. Set only through `retries.note_answer`.
     answered: threading.Event = field(default_factory=threading.Event)
 
 
@@ -265,11 +283,14 @@ def _download_and_cache(file: GoogleFile, fetching: _Fetching) -> None:
 
     The one waiting may have given up; what's cached is there for the next analysis.
     """
-    font_file = _download_checked_and_cut(file, fetching)
-    # A failure has nothing to cache, and is logged where it happened.
-    if font_file is not None:
-        _cache_copy(fetching.cached_path, file, font_file)
-    fetching.answer.put(font_file)
+    font_file: bytes | None = None
+    try:
+        font_file = _download_checked_and_cut(file, fetching)
+        # A failure has nothing to cache, and is logged where it happened.
+        if font_file is not None:
+            _cache_copy(fetching.cached_path, file, font_file)
+    finally:  # anything unforeseen still raises, but the one waiting hears now, not later
+        fetching.answer.put(font_file)
 
 
 def _cache_copy(cached_path: Path, file: GoogleFile, font_file: bytes) -> None:
@@ -286,13 +307,17 @@ def _download_checked_and_cut(file: GoogleFile, fetching: _Fetching) -> bytes | 
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
-    except Exception:  # a network fails in many ways; logged, and the substitute draws
+    except httpx.HTTPStatusError:  # GitHub answered, without the file: the network works
+        _logger.warning(
+            "No Google copy of %s: GitHub answered without it", file.path, exc_info=True
+        )
+        fetching.retries.note_answer(fetching.answered)
+        return None
+    except Exception:  # no answer: a network fails in many ways; logged, the substitute draws
         _logger.warning("No Google copy of %s: fetch failed", file.path, exc_info=True)
         return None
-    finally:
-        fetching.answered.set()
     # The network works after all: a wait that ran out held back every file for nothing.
-    fetching.retries.lift_network_hold()
+    fetching.retries.note_answer(fetching.answered)
     if blob_hash(whole) != file.blob:
         _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
         return None

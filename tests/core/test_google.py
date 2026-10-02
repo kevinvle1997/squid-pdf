@@ -14,6 +14,7 @@ from functools import partial
 from importlib import resources
 from pathlib import Path
 
+import httpx
 import pymupdf
 import pytest
 from fontTools.fontBuilder import FontBuilder
@@ -103,6 +104,13 @@ def _fresh_fetch(
 def _failing(url: str) -> bytes:
     """A download that never gets through, as a network down does."""
     raise OSError(f"no route to {url}")
+
+
+def _not_found(url: str) -> bytes:
+    """A download GitHub answers, but without the file."""
+    raise httpx.HTTPStatusError(
+        "404 Not Found", request=httpx.Request("GET", url), response=httpx.Response(404)
+    )
 
 
 def _returning(data: bytes) -> Callable[[str], bytes]:
@@ -477,6 +485,30 @@ def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
     for _ in range(3):
         _fetched(file, folder=tmp_path, download=failing, retries=retries)
     assert_equal(len(asked), 1, "downloads tried")
+
+
+@pytest.mark.parametrize(
+    ("download", "others_tried"),
+    [(_failing, 0), (_not_found, 1)],
+    ids=["no answer", "an answer without the file"],
+)
+def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
+    tmp_path, download, others_tried
+):
+    """No route to GitHub: every other font would fail as fast. A 404 is that file's alone."""
+    poppins = POPPINS.read_bytes()
+    asked: list[str] = []
+
+    def answering(url: str) -> bytes:
+        asked.append(url)
+        return poppins
+
+    file = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
+    other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    retries = _RetryRecord()
+    _fetched(file, folder=tmp_path, download=download, retries=retries)
+    _fetched(other, folder=tmp_path, download=answering, retries=retries)
+    assert_equal(len(asked), others_tried, "downloads of another file tried")
 
 
 def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
