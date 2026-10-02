@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import get_args
+from typing import TextIO, get_args
 
 from squidpdf.core import (
     GREEN_RATE_TARGET,
@@ -53,10 +53,18 @@ from squidpdf.editing import (
 )
 from squidpdf.editing.edits import check_text
 
-# Colours for a terminal; none when the output is piped or the reader set NO_COLOR.
-_COLOURED = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+# A terminal's colours: dim, red, green, yellow, and back to plain.
 _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
-_DIM, _RED, _GREEN, _YELLOW, _OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
+
+
+def _colours_of(stream: TextIO) -> tuple[str, ...]:
+    """`_COLOURS` for a terminal; blanks when `stream` is piped or the reader set NO_COLOR."""
+    coloured = stream.isatty() and "NO_COLOR" not in os.environ
+    return _COLOURS if coloured else ("",) * len(_COLOURS)
+
+
+# What a command prints goes to stdout; a failure goes to stderr, through `_fail`.
+_DIM, _RED, _GREEN, _YELLOW, _OFF = _colours_of(sys.stdout)
 
 # How each judgement is marked in `spans`, padded to one width.
 _MARKS: dict[Fidelity, str] = {
@@ -184,10 +192,9 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         fitted = not fit.missing and fit.strategy != "as-is"
         refused = not (fit.ok or fitted or args.force)
         if refused:
-            described = words.render_all(fit.describe())
-            refusal = f"  {_RED}{described}{_OFF} {_DIM}(pass --force to do it anyway){_OFF}"
-            print(refusal, file=sys.stderr)
-            return 1
+            # Never None here: a fit that isn't ok lacks a letter or runs too long, and says so.
+            described = str(words.render_all(fit.describe()))
+            return _fail(described, hint="(pass --force to do it anyway)")
 
         # The same save a download gets.
         saved = save_edited(opened.engine, opened.index, edits=[replace], to=args.out)
@@ -208,8 +215,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                 opened.engine, opened.index, edits=[Redact(span.id)], to=args.out
             )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
-            print(f"  {_RED}{failed.detail}{_OFF}", file=sys.stderr)
-            return 1
+            return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
@@ -279,12 +285,21 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fail(said: str, *, hint: str = "") -> int:
+    """Say a failure on stderr and return the exit code: `said` red, then `hint` dim.
+
+    Coloured only where stderr is a terminal, whatever stdout is.
+    """
+    dim, red, _green, _yellow, off = _colours_of(sys.stderr)
+    shown_hint = f" {dim}{hint}{off}" if hint else ""
+    print(f"  {red}{said}{off}{shown_hint}", file=sys.stderr)
+    return 1
+
+
 def _no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
-    said = words.sentence("no_span")
-    hint = f"{_DIM}({span_id}: run `squidpdf spans` to list them){_OFF}"
-    print(f"  {_RED}{said}{_OFF} {hint}", file=sys.stderr)
-    return 1
+    hint = f"({span_id}: run `squidpdf spans` to list them)"
+    return _fail(words.sentence("no_span"), hint=hint)
 
 
 def _existing_file(path: str) -> str:
@@ -383,8 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     except _UnknownSpan as unknown:  # the span id typed isn't in the PDF
         return _no_span(unknown.span_id)
     except Problem as exc:  # e.g. the one PDF a command was given won't open
-        print(f"  {_RED}{exc.detail}{_OFF}", file=sys.stderr)
-        return 1
+        return _fail(exc.detail)
 
 
 if __name__ == "__main__":

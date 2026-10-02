@@ -3,13 +3,19 @@
 Each test calls `main()` with the words someone would type after `squidpdf`,
 then checks the exit code, what was printed, and any file it wrote. The
 pieces underneath are tested on their own in tests/core and tests/editing;
-these only check that the commands wire them together.
+these only check that the commands wire them together. Colour depends on
+whether a stream is a terminal, so its test runs the command in a process of
+its own, given a real one.
 """
 
 from __future__ import annotations
 
+import os
+import pty
 import shutil
-from typing import get_args
+import subprocess
+import sys
+from typing import Literal, get_args
 
 import pymupdf
 import pytest
@@ -23,6 +29,47 @@ def _span_id(pdf: str, needle: str) -> str:
     """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
     with open_pdf(pdf) as engine:
         return next(s.id for s in engine.index() if needle in s.text)
+
+
+def _read_until_closed(fd: int) -> str:
+    """Everything written to the terminal whose other end is `fd`, once the writer is gone."""
+    chunks = []
+    while True:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:  # Linux says a terminal with no writer left this way, not with b""
+            break
+        if not chunk:
+            break
+        chunks.append(chunk)
+    os.close(fd)
+    return b"".join(chunks).decode()
+
+
+def _run_in_a_terminal(
+    args: list[str], *, terminal: Literal["stdout", "stderr"]
+) -> dict[str, str]:
+    """What `squidpdf <args>` writes to each stream when only `terminal` is a terminal.
+
+    The other stream is piped, as `squidpdf ... 2> errors.log` pipes stderr.
+    NO_COLOR is left out, as a person's shell usually leaves it. The terminal is
+    read once the command ends, so what it prints there must be short.
+    """
+    reader, writer = pty.openpty()
+    streams = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, terminal: writer}
+    env = {name: value for name, value in os.environ.items() if name != "NO_COLOR"}
+    ran = subprocess.run(
+        [sys.executable, "-m", "squidpdf.cli", *args],
+        stdout=streams["stdout"],
+        stderr=streams["stderr"],
+        env=env,
+        check=False,
+    )
+    os.close(writer)
+    shown = _read_until_closed(reader)
+    if terminal == "stdout":
+        return {"stdout": shown, "stderr": ran.stderr.decode()}
+    return {"stdout": ran.stdout.decode(), "stderr": shown}
 
 
 def _text(path) -> str:
@@ -66,6 +113,20 @@ def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
     assert_equal(code, 1, "exit code of `squidpdf spans` on a damaged PDF")
     assert_in(words.sentence("damaged"), said.err, "what it says")
     assert_not_in("Traceback", said.err, "what it says")
+
+
+@pytest.mark.parametrize(("terminal", "coloured"), [("stdout", False), ("stderr", True)])
+def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal, coloured):
+    """`2> errors.log` keeps no colour codes, even when stdout is a terminal."""
+    broken = tmp_path / "broken.pdf"
+    broken.write_text("not a pdf")
+
+    said = _run_in_a_terminal(["spans", str(broken)], terminal=terminal)
+
+    assert_in(words.sentence("damaged"), said["stderr"], "what it says on stderr")
+    assert_equal(
+        "\033[" in said["stderr"], coloured, f"colour on stderr, {terminal} a terminal"
+    )
 
 
 def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):
