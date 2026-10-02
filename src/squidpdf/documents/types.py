@@ -11,11 +11,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core import MessageInfo, Param
+from squidpdf.core import ApproximateReason, Fidelity, MessageInfo, Param, QuarterTurn
 
 __all__ = [
     "Box",
     "PageInfo",
+    "ApproximateInfo",
     "SpanInfo",
     "FontFacts",
     "FontInfo",
@@ -40,11 +41,21 @@ class Box(TypedDict):
 
 
 class PageInfo(TypedDict):
-    """A page unrotated, and the turn the browser gives it."""
+    """A page unrotated, and the turn the browser gives it: clockwise, as the file asks."""
 
     width: float
     height: float
-    rotation: int
+    turn_cw: QuarterTurn
+
+
+class ApproximateInfo(TypedDict):
+    """How an approximate span would come back unlike itself, in no language.
+
+    `code` names the reason, and its sentence: `copy.approximate[code]`. `params` fill it.
+    """
+
+    code: ApproximateReason
+    params: dict[str, Param]
 
 
 class SpanInfo(TypedDict):
@@ -62,8 +73,8 @@ class SpanInfo(TypedDict):
     color: list[float]
     bbox: Box
     origin: list[float]
-    fidelity: str
-    why: MessageInfo | None
+    fidelity: Fidelity
+    why: ApproximateInfo | None
 
 
 class FontFacts(TypedDict):
@@ -153,7 +164,8 @@ class Copy(TypedDict):
     reopened: str
     export_left_out: str
     options: dict[str, dict[str, str]]
-    approximate: dict[str, str]  # each way a span can be approximate, by its `why` code
+    # Each way a span can be approximate, by its `why` code.
+    approximate: dict[ApproximateReason, str]
 
 
 class DocumentNoticeInfo(MessageInfo):

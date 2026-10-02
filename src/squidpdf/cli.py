@@ -17,6 +17,7 @@ import argparse
 import os
 import posixpath
 import sys
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -68,10 +69,10 @@ _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
 DIM, RED, GREEN, YELLOW, OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
 
 # How each judgement is marked in `spans`, padded to one width.
-_MARKS = {
-    Fidelity.EXACT: f"{GREEN}exact{OFF}      ",
-    Fidelity.APPROXIMATE: f"{YELLOW}approximate{OFF}",
-    Fidelity.SUBSTITUTE: f"{YELLOW}substitute{OFF} ",
+_MARKS: dict[Fidelity, str] = {
+    "exact": f"{GREEN}exact{OFF}      ",
+    "approximate": f"{YELLOW}approximate{OFF}",
+    "substitute": f"{YELLOW}substitute{OFF} ",
 }
 
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
@@ -106,7 +107,7 @@ def cmd_spans(args: argparse.Namespace) -> int:
                 f"           {preview}"
             )
             # Its own font draws it, but not as it looks: say how.
-            if report.state is Fidelity.APPROXIMATE and report.why is not None:
+            if report.state == "approximate" and report.why is not None:
                 print(f"           {DIM}{words.render(report.why)}{OFF}")
         summary([reports[span.id] for span in shown])
     return 0
@@ -115,14 +116,12 @@ def cmd_spans(args: argparse.Namespace) -> int:
 def summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
-    counts = {state: 0 for state in Fidelity}
-    for report in reports:
-        counts[report.state] += 1
+    counts = Counter(report.state for report in reports)
     colour = GREEN if rate >= GREEN_RATE_TARGET else YELLOW
     print(
-        f"\n  {len(reports)} spans · {counts[Fidelity.EXACT]} exact"
-        f" · {counts[Fidelity.APPROXIMATE]} approximate"
-        f" · {counts[Fidelity.SUBSTITUTE]} substitute"
+        f"\n  {len(reports)} spans · {counts['exact']} exact"
+        f" · {counts['approximate']} approximate"
+        f" · {counts['substitute']} substitute"
         f" · {colour}{rate:.0%} keep the original font{OFF}"
     )
 
@@ -242,7 +241,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
             rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
             continue
-        exact_count += sum(1 for report in reports if report.state is Fidelity.EXACT)
+        exact_count += sum(1 for report in reports if report.state == "exact")
         total += len(reports)
         rows.append((path, green_rate(reports), f"{len(reports)} spans"))
 

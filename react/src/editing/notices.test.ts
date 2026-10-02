@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { aNotice, aSkipped } from "../fixtures";
+import { aSkipped, aSpanNotice } from "../fixtures";
 import { NO_NOTICES, noticeLines, plain, warn } from "./notices";
 import { NOTHING_DRAWN } from "./render";
 
@@ -9,8 +9,8 @@ describe("the lines under the bar", () => {
     const drawn = {
       ...NOTHING_DRAWN,
       notices: new Map([
-        [0, [aNotice("Drawn in Liberation Serif.")]],
-        [3, [aNotice("Drawn in Liberation Serif.")]],
+        [0, [aSpanNotice("Drawn in Liberation Serif.")]],
+        [3, [aSpanNotice("Drawn in Liberation Serif.")]],
       ]),
       skipped: [aSkipped(2, "An edit points at nothing.")],
       failed: "Couldn't reach the server.",

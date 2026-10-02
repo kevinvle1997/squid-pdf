@@ -18,6 +18,7 @@ from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import CodedRun, PooledFont
 from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_letters
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.text.fidelity import why_approximate
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
 from squidpdf.core.types import EM, Face, Span
 
@@ -92,20 +93,23 @@ class DrawPlanner:
         return self.fonts.substitute(span, unicodedata.normalize("NFC", text))
 
     def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
-        """How a redraw of the span's own text in its own font looks unlike it; None if not."""
+        """How a redraw of the span's own text in its own font looks unlike it; None if not.
+
+        Said as one of the `ApproximateReason`s.
+        """
         # Turned on the page: redraws are level.
         if span.turned:
-            return Message("turned_text")
+            return why_approximate("turned_text")
         # Letters no font we have draws: a redraw leaves them out.
         if plan.left_out:
-            return Message("undrawable_letters", {"letters": list(plan.left_out)})
+            return why_approximate("undrawable_letters", {"letters": list(plan.left_out)})
         # New text: its box is only nominal, so there's no spacing of its own to keep.
         if not span.fragments:
             return None
         # Spaced or stretched (letter spacing, scaling, a justified line): redraws close it up.
         redrawn = self.width_of(span, plan, size=span.size)
         if abs(span.bbox.width - redrawn) > TOLERANCE_PT:
-            return Message("spaced_text")
+            return why_approximate("spaced_text")
         return None
 
     def width_of(self, span: Span, plan: DrawPlan, *, size: float) -> float:

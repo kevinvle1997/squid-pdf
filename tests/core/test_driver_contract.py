@@ -33,7 +33,9 @@ def test_a_font_added_to_a_page_keeps_its_name_when_its_text_is_erased(pdf):
     try:
         added = driver.add_font(0, face_bytes(FACES["Carlito Regular"]), resource="S1")
         run = TextRun("Added", _ADDED_AT, added.resource)
-        driver.write_text(0, runs=[run], size=12, color=_BLACK, opacity=1, scale_x=1, turn=0)
+        driver.write_text(
+            0, runs=[run], size=12, color=_BLACK, opacity=1, scale_x=1, turn_ccw=0
+        )
         x, y = _ADDED_AT
         driver.erase_text(0, [Rect(x, y - 12, x + 60, y)])
         left = driver.text_in(0, [Rect(x, y - 12, x + 60, y)])

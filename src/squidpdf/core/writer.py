@@ -25,7 +25,15 @@ from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import DrawPlanner, coded_in
 from squidpdf.core.text.spacing import Word
-from squidpdf.core.types import QUARTER_TURNS, CodedFont, CodeRun, Face, Span, TextRun
+from squidpdf.core.types import (
+    QUARTER_TURNS,
+    CodedFont,
+    CodeRun,
+    Face,
+    QuarterTurn,
+    Span,
+    TextRun,
+)
 
 __all__ = [
     "Setting",
@@ -41,7 +49,7 @@ class Setting:
 
     size: float  # in points
     scale_x: float  # 1 is as the font draws it; less narrows each run from its start
-    turn: int  # degrees counter-clockwise on the page unrotated: 0, 90, 180 or 270
+    turn_ccw: QuarterTurn  # on the page unrotated
 
 
 @dataclass(slots=True)
@@ -184,7 +192,7 @@ class PageWriter:
         order, so the text reads back as written.
         """
         x, y = span.origin
-        cos, sin = QUARTER_TURNS[setting.turn]
+        cos, sin = QUARTER_TURNS[setting.turn_ccw]
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         words, _width = plans.words_of(span, text, font=font, size=setting.size)
@@ -200,7 +208,7 @@ class PageWriter:
             color=span.color,
             opacity=span.opacity,
             scale_x=setting.scale_x,
-            turn=setting.turn,
+            turn_ccw=setting.turn_ccw,
         )
 
     def _write_codes(self, span: Span, coded_runs: list[CodedRun], *, setting: Setting) -> None:
@@ -220,7 +228,7 @@ class PageWriter:
             color=span.color,
             opacity=span.opacity,
             scale_x=setting.scale_x,
-            turn=setting.turn,
+            turn_ccw=setting.turn_ccw,
         )
 
     def _resources(self, page: int, own: PooledFont, text: str) -> dict[str, str]:

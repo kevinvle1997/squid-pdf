@@ -6,7 +6,14 @@ from datetime import UTC, datetime
 
 import orjson
 
-from squidpdf.core import CONDENSE_LIMIT, SHRINK_FLOOR, TOLERANCE_PT, Message, words
+from squidpdf.core import (
+    APPROXIMATE_REASONS,
+    CONDENSE_LIMIT,
+    SHRINK_FLOOR,
+    TOLERANCE_PT,
+    Message,
+    words,
+)
 from squidpdf.documents.types import (
     AnalysisFacts,
     Copy,
@@ -21,9 +28,6 @@ __all__ = [
     "document_json",
     "time_of",
 ]
-
-# Every way a span can be approximate: the sentences behind a span's `why` code.
-_APPROXIMATE_KEYS = ("turned_text", "spaced_text", "undrawable_letters")
 
 _NO_SPANS = b"[]"  # the spans kept for a file with no text, as a scan
 
@@ -89,7 +93,10 @@ def copy_in(said_in: str) -> Copy:
         "reopened": words.sentence("reopened", said_in),
         "export_left_out": words.sentence("export_left_out", said_in),
         "options": options,
-        "approximate": {key: words.sentence(key, said_in) for key in _APPROXIMATE_KEYS},
+        # Every way a span can be approximate: the sentences behind a span's `why` code.
+        "approximate": {
+            reason: words.sentence(reason, said_in) for reason in APPROXIMATE_REASONS
+        },
     }
 
 

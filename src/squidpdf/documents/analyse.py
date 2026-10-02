@@ -10,12 +10,13 @@ from pathlib import Path
 
 import orjson
 
-from squidpdf.core import BUILD, Fidelity, FidelityReport, MessageInfo, Span
+from squidpdf.core import BUILD, FidelityReport, MessageInfo, Span, reason_of
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import (
     Analysis,
     AnalysisFacts,
+    ApproximateInfo,
     FontFacts,
     KeptAnalysis,
     SpanInfo,
@@ -54,7 +55,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
             {
                 "name": span.font,
                 "substitute": reports[span.id].substitute,
-                "why": why_of(reports[span.id], Fidelity.SUBSTITUTE),
+                "why": substitute_why(reports[span.id]),
                 "same_widths": reports[span.id].same_widths,
                 "glyphs": engine.widths(span),
             }
@@ -64,7 +65,7 @@ def analyse(folder: str, max_pages: int) -> Analysis:
     analysis: Analysis = {
         "build": BUILD,
         "pages": [
-            {"width": page.width, "height": page.height, "rotation": page.rotation}
+            {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(path)
         ],
         "spans": [span_info(span, reports[span.id]) for span in index],
@@ -84,15 +85,21 @@ def kept_analysis(analysis: Analysis) -> KeptAnalysis:
     return KeptAnalysis(orjson.dumps(facts), orjson.dumps(analysis["spans"]))
 
 
-def why_of(report: FidelityReport, state: Fidelity) -> MessageInfo | None:
-    """Why the span is `state`, in no language yet; None when it's something else.
-
-    A font's `why` is why a substitute stands in; a span's is how an approximate
-    one would come back unlike itself.
-    """
-    if report.state is not state or report.why is None:
+def substitute_why(report: FidelityReport) -> MessageInfo | None:
+    """Why a substitute stands in for the span's font, in no language yet; None if none does."""
+    if report.state != "substitute" or report.why is None:
         return None
     return report.why.as_info()
+
+
+def approximate_why(report: FidelityReport) -> ApproximateInfo | None:
+    """How an approximate span would come back unlike itself, in no language.
+
+    None when it isn't approximate.
+    """
+    if report.state != "approximate" or report.why is None:
+        return None
+    return {"code": reason_of(report.why), "params": report.why.params}
 
 
 def span_info(span: Span, report: FidelityReport) -> SpanInfo:
@@ -107,6 +114,6 @@ def span_info(span: Span, report: FidelityReport) -> SpanInfo:
         "color": list(span.color),
         "bbox": {"x0": box.x0, "y0": box.y0, "x1": box.x1, "y1": box.y1},
         "origin": list(span.origin),
-        "fidelity": report.state.value,
-        "why": why_of(report, Fidelity.APPROXIMATE),
+        "fidelity": report.state,
+        "why": approximate_why(report),
     }
