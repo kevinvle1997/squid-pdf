@@ -51,6 +51,7 @@ from squidpdf.core.types import (
     FontResource,
     Page,
     PageFont,
+    QuarterTurn,
     Rect,
     TextPiece,
     TextRun,
@@ -229,6 +230,7 @@ class MuPDFDriver:
             pages = [self._doc[pno] for pno in range(len(self._doc))]
         except (*MUPDF_ERRORS, IndexError) as exc:  # its page list says pages it doesn't hold
             raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
+        # MuPDF reads /Rotate, a clockwise turn, as a quarter turn: 0, 90, 180 or 270.
         return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
     def page_image(self, page: int, scale: float, clip: Rect | None = None) -> bytes:
@@ -434,7 +436,7 @@ class MuPDFDriver:
         color: tuple[float, float, float],
         opacity: float,
         scale_x: float,
-        turn: int,
+        turn_ccw: QuarterTurn,
     ) -> None:
         """Write each run's codes in its font, from `origin` on, on top of the page.
 
@@ -451,7 +453,7 @@ class MuPDFDriver:
         # See-through: a graphics state that paints at `opacity`.
         paint = f" /{self._file.add_opacity(page, opacity)} gs" if opacity < SOLID else ""
         # Where the text goes: narrowed along its line, turned, and placed.
-        cos, sin = QUARTER_TURNS[turn]
+        cos, sin = QUARTER_TURNS[turn_ccw]
         matrix = [scale_x * cos, scale_x * sin, -sin, cos, x, y]
         placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
         color_operands = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
@@ -492,12 +494,12 @@ class MuPDFDriver:
         color: tuple[float, float, float],
         opacity: float,
         scale_x: float,
-        turn: int,
+        turn_ccw: QuarterTurn,
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
         `scale_x` narrows each run from its own start; an `opacity` of 1 is solid.
-        `turn` turns each run counter-clockwise about its origin: 0, 90, 180 or 270.
+        `turn_ccw` turns each run counter-clockwise about its origin.
         """
         shape = self._doc[page].new_shape()
         for run in runs:
@@ -509,7 +511,7 @@ class MuPDFDriver:
                 fontsize=size,
                 color=color,
                 fill_opacity=opacity,
-                rotate=turn,
+                rotate=turn_ccw,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
         shape.commit(overlay=True)

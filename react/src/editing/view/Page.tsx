@@ -137,7 +137,7 @@ function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTM
         style={{
           width: `${(info.width / wide) * 100}%`,
           height: `${(info.height / tall) * 100}%`,
-          transform: `translate(-50%, -50%) rotate(${info.rotation}deg)`,
+          transform: `translate(-50%, -50%) rotate(${info.turn_cw}deg)`,
         }}
       >
         {children}

@@ -153,6 +153,23 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ApproximateInfo
+         * @description How an approximate span would come back unlike itself, in no language.
+         *
+         *     `code` names the reason, and its sentence: `copy.approximate[code]`. `params` fill it.
+         */
+        ApproximateInfo: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "turned_text" | "spaced_text" | "undrawable_letters";
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+        };
+        /**
          * Box
          * @description A box on the page in points, top-left origin.
          */
@@ -279,6 +296,25 @@ export interface components {
             same_widths_as: string[];
             /** Faces */
             faces: components["schemas"]["FaceInfo"][];
+        };
+        /**
+         * FileNoticeInfo
+         * @description What saving did to the whole file other than asked, and why.
+         */
+        FileNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /** Detail */
+            detail: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "file";
         };
         /**
          * FitInfo
@@ -425,6 +461,27 @@ export interface components {
             edit: number;
         };
         /**
+         * InsertNoticeInfo
+         * @description An insert drawn other than asked, by its place in the list the browser sent, and why.
+         */
+        InsertNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /** Detail */
+            detail: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "insert";
+            /** Edit */
+            edit: number;
+        };
+        /**
          * MessageInfo
          * @description A Message as JSON: the sentence's key as `code`, and the facts that fill it.
          */
@@ -437,47 +494,34 @@ export interface components {
             };
         };
         /**
-         * NoticeInfo
-         * @description An edit drawn other than asked, by its span or its place in the list, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-         */
-        NoticeInfo: {
-            /** Code */
-            code: string;
-            /** Params */
-            params: {
-                [key: string]: components["schemas"]["Param"];
-            };
-            /** Span Id */
-            span_id: string | null;
-            /** Detail */
-            detail: string;
-            /** Edit */
-            edit: number | null;
-        };
-        /**
          * PageInfo
-         * @description A page unrotated, and the turn the browser gives it.
+         * @description A page unrotated, and the turn the browser gives it: clockwise, as the file asks.
          */
         PageInfo: {
             /** Width */
             width: number;
             /** Height */
             height: number;
-            /** Rotation */
-            rotation: number;
+            /**
+             * Turn Cw
+             * @enum {integer}
+             */
+            turn_cw: 0 | 90 | 180 | 270;
         };
         Param: string | number | string[];
         /**
          * ProblemInfo
          * @description A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
          *
-         *     `detail` is shown verbatim; `code` is always `type`, and `params` fill it.
+         *     `type` is one of every Problem's, which the OpenAPI lists. `detail` is shown
+         *     verbatim; `code` is always `type`, and `params` fill it.
          */
         ProblemInfo: {
-            /** Type */
-            type: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "invalid_request" | "method_not_allowed" | "no_such_page" | "no_workers" | "not_a_pdf" | "not_found" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -543,7 +587,7 @@ export interface components {
             /** Skipped */
             skipped: components["schemas"]["SkippedInfo"][];
             /** Notices */
-            notices: components["schemas"]["NoticeInfo"][];
+            notices: (components["schemas"]["SpanNoticeInfo"] | components["schemas"]["InsertNoticeInfo"] | components["schemas"]["FileNoticeInfo"])[];
             /** Build */
             build: string;
             /** Expires At */
@@ -621,9 +665,33 @@ export interface components {
             bbox: components["schemas"]["Box"];
             /** Origin */
             origin: number[];
-            /** Fidelity */
-            fidelity: string;
-            why: components["schemas"]["MessageInfo"] | null;
+            /**
+             * Fidelity
+             * @enum {string}
+             */
+            fidelity: "exact" | "approximate" | "substitute";
+            why: components["schemas"]["ApproximateInfo"] | null;
+        };
+        /**
+         * SpanNoticeInfo
+         * @description A replace or a redaction drawn other than asked, by its span, and why.
+         */
+        SpanNoticeInfo: {
+            /** Code */
+            code: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /** Detail */
+            detail: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "span";
+            /** Span Id */
+            span_id: string;
         };
         /** @enum {string} */
         Strategy: "as-is" | "shrink" | "condense";
@@ -682,6 +750,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description When the document now expires, in ISO 8601 and UTC; a 304 says it too */
+                    "Squid-Expires-At"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -820,6 +890,10 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Each edit left out, by its place in the list sent, joined by commas */
+                    "Squid-Skipped-Edits"?: string;
+                    /** @description What saving did to the whole file, as a JSON list of notices */
+                    "Squid-Notices"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -888,6 +962,16 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
                 };
             };
         };

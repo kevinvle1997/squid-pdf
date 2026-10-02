@@ -9,12 +9,13 @@ these only check that the commands wire them together.
 from __future__ import annotations
 
 import shutil
+from typing import get_args
 
 import pymupdf
 import pytest
 
-from squidpdf.cli import main
-from squidpdf.core import Engine, open_pdf, words
+from squidpdf.cli import _MARKS, main
+from squidpdf.core import Engine, Fidelity, open_pdf, words
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 
@@ -38,6 +39,11 @@ def test_spans_lists_every_span_and_a_summary(pdf, capsys):
     assert_in("SERVICES AGREEMENT", out, "the spans listing")
     assert_in("Invoices are due", out, "the spans listing")
     assert_in("keep the original font", out, "the summary line")
+
+
+def test_every_fidelity_has_its_mark_in_the_spans_listing():
+    """One without would fail `spans` on the first span judged so."""
+    assert_equal(sorted(_MARKS), sorted(get_args(Fidelity)), "the fidelities `spans` marks")
 
 
 def test_spans_on_one_page_counts_that_page_from_1_as_it_prints_it(pdf, capsys):

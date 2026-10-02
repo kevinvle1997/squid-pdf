@@ -21,8 +21,16 @@ GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty
 type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
 LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
+# A turn in degrees, a whole number of quarters. Which way it turns is in the name of
+# each field that holds one: `turn_cw`, `turn_ccw`. A plain alias: pydantic reads it.
+QuarterTurn = Literal[0, 90, 180, 270]
 # Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
-QUARTER_TURNS = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
+QUARTER_TURNS: dict[QuarterTurn, tuple[int, int]] = {
+    0: (1, 0),
+    90: (0, 1),
+    180: (-1, 0),
+    270: (0, -1),
+}
 
 # What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
 # writes each letter as two bytes; "other" is any kind not named here.
@@ -65,13 +73,13 @@ class Rect:
 class Page:
     """A page's size in points, unrotated like every box here, and its turn.
 
-    `rotation` is the file's own /Rotate, clockwise: 0, 90, 180 or 270. Nothing
-    on the server applies it; the browser turns the page.
+    `turn_cw` is the file's own /Rotate, which turns the page clockwise when
+    it's shown. Nothing on the server applies it; the browser turns the page.
     """
 
     width: float
     height: float
-    rotation: int
+    turn_cw: QuarterTurn
 
 
 @dataclass(frozen=True, slots=True)

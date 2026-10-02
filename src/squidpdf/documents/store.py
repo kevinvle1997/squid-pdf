@@ -61,10 +61,14 @@ __all__ = [
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
 _INDEX = "index.json"
-_PAGES = "pages.json"
+# Renamed with `turn_cw`: a document kept before it reads as gone, and the browser
+# uploads it again.
+_PAGES = "pages.turn_cw.json"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
-_ANALYSIS_FORMAT = "codes"  # every sentence kept as its Message, said when sent
+# How the analysis is kept: every sentence as its Message, said when sent, and each
+# page's turn named with its way.
+_ANALYSIS_FORMAT = "codes.turn_cw"
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
@@ -311,8 +315,9 @@ def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
 def analysis_file(build: str) -> str:
     """The file the analysis under `build` is kept in.
 
-    Named for how it's kept too: one kept before its sentences were codes
-    reads as not worked out yet, and is worked out again over the same index.
+    Named for how it's kept too: one kept another way, as before its sentences
+    were codes, reads as not worked out yet, and is worked out again over the
+    same index.
     """
     return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"
 

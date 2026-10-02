@@ -8,8 +8,8 @@ import pymupdf
 import pytest
 
 from squidpdf.core import (
+    APPROXIMATE_REASONS,
     Engine,
-    Fidelity,
     FidelityReport,
     LineToDraw,
     Span,
@@ -23,7 +23,14 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.mupdf import MuPDFDriver, MuPDFFont
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
 from tests.core.conftest import MERGED_TEXTS
-from tests.helpers import assert_all, assert_at_most, assert_close, assert_equal, assert_not_in
+from tests.helpers import (
+    assert_all,
+    assert_at_most,
+    assert_close,
+    assert_equal,
+    assert_in,
+    assert_not_in,
+)
 
 _EM = 1000
 _SIZE = 12
@@ -76,7 +83,7 @@ def test_referenced_font_is_a_substitution(engine):
     reports = {r.span_id: r for r in engine.assess(engine.index())}
     referenced = [s for s in engine.index() if s.page == REFERENCED_PAGE]
     describe = _describe_report(reports)
-    assert_all(referenced, lambda s: reports[s.id].state is Fidelity.SUBSTITUTE, describe)
+    assert_all(referenced, lambda s: reports[s.id].state == "substitute", describe)
     # Drawn in the look-alike we ship, in the span's own style, letters as wide as Times'.
     look_alikes = {
         "Times-Bold": "Liberation Serif Bold",
@@ -132,7 +139,7 @@ def test_an_embedded_font_nothing_can_map_through_is_a_substitute(symbolic, tmp_
         engine.draw(span, "ABBA")
         engine.save(str(out))
 
-    assert_equal(report.state, Fidelity.SUBSTITUTE, "fidelity of a symbol-cmap span")
+    assert_equal(report.state, "substitute", "fidelity of a symbol-cmap span")
     assert_equal(
         _said(report), words.sentence("font_no_letter_list"), "why, as the user reads it"
     )
@@ -152,7 +159,7 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
         engine.draw(span, "ABBA")
         engine.save(out)
 
-    expected = (Fidelity.SUBSTITUTE, words.sentence("font_unreadable"))
+    expected = ("substitute", words.sentence("font_unreadable"))
     assert_equal((report.state, _said(report)), expected, "fidelity, and why")
     [drawn] = _drawn(out)
     assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
@@ -172,7 +179,7 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
         engine.draw(span, "BA AB")
         engine.save(out)
 
-    assert_equal(report.state, Fidelity.EXACT, "fidelity of a span its own font draws by code")
+    assert_equal(report.state, "exact", "fidelity of a span its own font draws by code")
     [before] = _drawn(coded)
     [after] = _drawn(out)
     assert_equal((_text(after), after["font"]), ("BA AB", "Coded"), "what redrew, and in what")
@@ -277,7 +284,7 @@ def test_a_letter_only_another_pages_copy_draws_is_exact_and_redraws_in_the_file
     out = str(tmp_path / "redrawn.pdf")
     missing, report = _redraw(merged, out)
 
-    assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
+    assert_equal((missing, report.state), ([], "exact"), "missing, and fidelity")
     _assert_drawn_in_both_copies(merged, out)
 
 
@@ -328,7 +335,7 @@ def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_c
     out = str(tmp_path / "redrawn.pdf")
     missing, report = _redraw(merged_coded, out)
 
-    assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
+    assert_equal((missing, report.state), ([], "exact"), "missing, and fidelity")
     _assert_drawn_in_both_copies(merged_coded, out)
 
 
@@ -356,17 +363,23 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
     with open_pdf(path) as engine:
         reports = engine.assess(engine.index())
 
-    assert_all(reports, lambda r: r.state is Fidelity.EXACT, lambda r: r.span_id)
+    assert_all(reports, lambda r: r.state == "exact", lambda r: r.span_id)
     assert_equal(len(opened), 1, "times the shared font was opened")
+
+
+def test_every_way_a_span_can_be_approximate_has_its_sentence():
+    """The browser says a span's `why` from `copy.approximate`, keyed by its reason."""
+    for reason in APPROXIMATE_REASONS:
+        assert_in(reason, words.ENGLISH_SENTENCES, "the ways a span can be approximate")
 
 
 @pytest.mark.parametrize(
     ("setting", "rotate", "state", "why"),
     [
-        ("", 0, Fidelity.EXACT, None),
-        ("1.5 Tc", 0, Fidelity.APPROXIMATE, "spaced_text"),
-        ("80 Tz", 0, Fidelity.APPROXIMATE, "spaced_text"),
-        ("", 90, Fidelity.APPROXIMATE, "turned_text"),
+        ("", 0, "exact", None),
+        ("1.5 Tc", 0, "approximate", "spaced_text"),
+        ("80 Tz", 0, "approximate", "spaced_text"),
+        ("", 90, "approximate", "turned_text"),
     ],
     ids=["as its font sets it", "letter spacing", "narrowed", "turned to read upward"],
 )
@@ -401,7 +414,7 @@ def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path)
         [line] = [span for span in index if span.text.startswith("Invoices")]
         [report] = again.assess(SpanIndex([line]))
 
-    assert_equal((report.state, _said(report)), (Fidelity.EXACT, None), "the redrawn line")
+    assert_equal((report.state, _said(report)), ("exact", None), "the redrawn line")
 
 
 def test_the_green_rate_is_the_share_of_spans_that_keep_their_font(engine):

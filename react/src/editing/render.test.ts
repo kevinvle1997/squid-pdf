@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
 import type { Edit, ImageInfo, Render, RenderBody, SpanInfo } from "../api/types";
-import { aDoc, aFit, aNotice, aProblem, aReply, aSkipped, aSpan } from "../fixtures";
+import { aDoc, aFit, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
@@ -149,7 +149,7 @@ describe("the render queue", () => {
   });
 
   test("what a reply says of a page goes with its strips; what it left out is of the whole list", async () => {
-    const drewOtherwise = aNotice("Drawn in Liberation Serif.", { span_id: ONE.id });
+    const drewOtherwise = aSpanNotice("Drawn in Liberation Serif.", ONE.id);
     const leftOut = aSkipped(0, "An edit points at nothing.");
     queue.draw(readingOf(replace(ONE)));
     await settle();

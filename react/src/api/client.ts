@@ -1,11 +1,11 @@
 // Every call the browser makes. Routes are in decisions/api.md; shapes come from schema.d.ts.
-import type { Document, Edit, NoticeInfo, ProblemInfo, Render, RenderBody } from "./types";
+import type { Document, Edit, FileNoticeInfo, Problem, ProblemInfo, Render, RenderBody } from "./types";
 
 /** What the server said went wrong. `detail` is shown to the user as it is. */
 export class ProblemError extends Error {
-  readonly problem: ProblemInfo;
+  readonly problem: Problem;
 
-  constructor(problem: ProblemInfo) {
+  constructor(problem: Problem) {
     super(problem.detail);
     this.name = "ProblemError";
     this.problem = problem;
@@ -13,7 +13,7 @@ export class ProblemError extends Error {
 }
 
 // When nothing answers (no network, or the proxy failed), there's no Problem, so the browser says it.
-const UNREACHABLE: ProblemInfo = {
+const UNREACHABLE: Problem = {
   type: "unreachable",
   status: 0,
   detail: "Couldn't reach the server. Check your connection and try again.",
@@ -23,7 +23,7 @@ const UNREACHABLE: ProblemInfo = {
 
 const PROBLEM_TYPES = ["application/problem+json", "application/json"];
 
-async function problemOf(response: Response): Promise<ProblemInfo> {
+async function problemOf(response: Response): Promise<Problem> {
   const type = response.headers.get("content-type") ?? "";
   if (PROBLEM_TYPES.some((json) => type.startsWith(json))) {
     return (await response.json()) as ProblemInfo;
@@ -94,7 +94,7 @@ export async function render(docId: string, body: RenderBody, signal: AbortSigna
 export interface Exported {
   pdf: Blob;
   skipped: number[]; // positions in the edit list the server left out
-  notices: NoticeInfo[]; // what saving did other than asked
+  notices: FileNoticeInfo[]; // what saving did to the whole file other than asked
 }
 
 /** The edited document as a PDF. The body is the file, so the rest comes in headers. */
@@ -108,6 +108,6 @@ export async function exportPdf(docId: string, edits: Edit[]): Promise<Exported>
     .split(",")
     .filter((position) => position.trim() !== "")
     .map(Number);
-  const notices = JSON.parse(response.headers.get("squid-notices") ?? "[]") as NoticeInfo[];
+  const notices = JSON.parse(response.headers.get("squid-notices") ?? "[]") as FileNoticeInfo[];
   return { pdf: await response.blob(), skipped, notices };
 }

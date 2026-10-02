@@ -19,7 +19,7 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import Fidelity, FontSources, LineToDraw, open_pdf
+from squidpdf.core import FontSources, LineToDraw, open_pdf
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
@@ -111,7 +111,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
         engine.draw(span, _WANTED)
         engine.save(out)
 
-    assert_equal((missing, report.state), ([], Fidelity.EXACT), "missing, and fidelity")
+    assert_equal((missing, report.state), ([], "exact"), "missing, and fidelity")
     assert_equal([file.path for file in asked], ["ofl/poppins/Poppins-Regular.ttf"], "fetched")
     saved = pymupdf.open(out)
     assert_equal(saved[0].get_text().strip(), _WANTED, "the text read back")

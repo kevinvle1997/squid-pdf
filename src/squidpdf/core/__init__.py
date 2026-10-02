@@ -20,7 +20,7 @@ from squidpdf.core.app.errors import (
     TooHeavy,
     Unreadable,
 )
-from squidpdf.core.app.message import Message, MessageInfo, Param
+from squidpdf.core.app.message import Message, MessageInfo, Param, SaidInfo
 from squidpdf.core.app.reply import Reply
 from squidpdf.core.app.workers import Workers
 from squidpdf.core.constants import (
@@ -38,13 +38,21 @@ from squidpdf.core.fonts.google import google_fonts
 # The one import that names the driver: another PDF library is swapped in here.
 from squidpdf.core.pdf.mupdf import BUILD, CORE_ERRORS, face_widths, open_pdf, result_of
 from squidpdf.core.pdf.samples import write_dense, write_sample
-from squidpdf.core.text.fidelity import Fidelity, FidelityReport, green_rate
+from squidpdf.core.text.fidelity import (
+    APPROXIMATE_REASONS,
+    ApproximateReason,
+    Fidelity,
+    FidelityReport,
+    green_rate,
+    reason_of,
+)
 from squidpdf.core.types import (
     LEVEL,
     SOLID,
     Category,
     Fragment,
     Page,
+    QuarterTurn,
     Rect,
     Span,
     SpanIndex,
@@ -64,6 +72,7 @@ __all__ = [
     "write_dense",
     "Message",
     "MessageInfo",
+    "SaidInfo",
     "Param",
     "Problem",
     "Reply",
@@ -79,6 +88,9 @@ __all__ = [
     "face_widths",
     "Fidelity",
     "FidelityReport",
+    "ApproximateReason",
+    "APPROXIMATE_REASONS",
+    "reason_of",
     "green_rate",
     "GREEN_RATE_TARGET",
     "GREEN_RATE_WARN",
@@ -91,6 +103,7 @@ __all__ = [
     "Style",
     "Fragment",
     "Page",
+    "QuarterTurn",
     "LEVEL",
     "SOLID",
     "Rect",

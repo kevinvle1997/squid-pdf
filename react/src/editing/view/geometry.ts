@@ -26,7 +26,7 @@ export function points(value: number, page: { width: number }): string {
 
 /** The page's width and height as shown, in points: the file's /Rotate turns a page on its side. */
 export function shownSize(page: PageInfo): [wide: number, tall: number] {
-  const turned = page.rotation % 180 !== 0;
+  const turned = page.turn_cw % 180 !== 0;
   return turned ? [page.height, page.width] : [page.width, page.height];
 }
 

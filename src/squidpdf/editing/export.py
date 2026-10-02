@@ -22,18 +22,20 @@ from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import notice_info
-from squidpdf.editing.types import Exported, Notice, Saved
+from squidpdf.editing.types import Exported, FileNotice, Saved
 
 __all__ = [
     "ExportController",
     "save_edited",
+    "SKIPPED_HEADER",
+    "NOTICES_HEADER",
 ]
 
 _EXPORTED = "export.pdf"  # the file saved, then checked, before its bytes go back
 
-# The body is the file, so these headers carry the rest.
-_SKIPPED_HEADER = "Squid-Skipped-Edits"
-_NOTICES_HEADER = "Squid-Notices"
+# The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
+SKIPPED_HEADER = "Squid-Skipped-Edits"
+NOTICES_HEADER = "Squid-Notices"
 
 
 class ExportController:
@@ -129,11 +131,11 @@ def save_edited(
 
 def reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
     """What export says besides the file: edits left out, notices, and the language."""
-    notices = [notice_info(Notice(None, message), said_in) for message in exported.file_notices]
+    notices = [notice_info(FileNotice(message), said_in) for message in exported.file_notices]
     return {
-        _SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
+        SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
         # ASCII only, so a header in any language stays valid.
-        _NOTICES_HEADER: json.dumps(notices, ensure_ascii=True),
+        NOTICES_HEADER: json.dumps(notices, ensure_ascii=True),
         **words.language_headers(said_in),
     }
 

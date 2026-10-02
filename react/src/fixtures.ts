@@ -6,16 +6,16 @@ import type {
   FitInfo,
   FitRules,
   FontInfo,
-  NoticeInfo,
   PageInfo,
   ProblemInfo,
   Render,
   SkippedInfo,
   SpanInfo,
+  SpanNoticeInfo,
 } from "./api/types";
 
 /** An A4 page, upright, in points. */
-export const A4: PageInfo = { width: 595, height: 842, rotation: 0 };
+export const A4: PageInfo = { width: 595, height: 842, turn_cw: 0 };
 
 /** The server's thresholds, as core/constants.py sets them. */
 export const RULES: FitRules = { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 };
@@ -110,9 +110,9 @@ export function aReply(fields: Partial<Render> = {}): Render {
   };
 }
 
-/** Something the server did other than asked, in its words. */
-export function aNotice(detail: string, fields: Partial<NoticeInfo> = {}): NoticeInfo {
-  return { code: "notice", params: {}, span_id: null, detail, edit: null, ...fields };
+/** A span's edit the server drew other than asked, in its words. */
+export function aSpanNotice(detail: string, spanId = "span"): SpanNoticeInfo {
+  return { kind: "span", span_id: spanId, code: "notice", params: {}, detail };
 }
 
 /** An edit the server left out, at `edit` in the list sent. */
@@ -122,5 +122,5 @@ export function aSkipped(edit: number, detail: string): SkippedInfo {
 
 /** A Problem the server answered with. */
 export function aProblem(status: number, detail = "said"): ProblemInfo {
-  return { type: "problem", status, detail, code: "problem", params: {} };
+  return { type: "server_error", status, detail, code: "server_error", params: {} };
 }
