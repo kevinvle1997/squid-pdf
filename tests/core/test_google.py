@@ -32,6 +32,7 @@ from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Fetch,
     GoogleFile,
+    GoogleFontController,
     _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     _google_file,  # noqa: PLC2701 (why Google has no file, per font: no sample uses these)
     _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
@@ -171,6 +172,23 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
     whys = [_why_substitute(poppins_subset, fetch) for fetch in (not_fetched, unreadable)]
 
     assert_equal(whys, ["google_not_fetched", "google_unreadable"], "why a similar font draws")
+
+
+def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(pdf):
+    """Kept for the document's life: a traceback's frames would keep the bytes it was handed."""
+    unreadable, _asked = _google(b"not a font")
+    file = GoogleFile(_POPPINS_PATH, "a hash never checked here", None)
+    with open_pdf(pdf) as engine:
+        google_copies = GoogleFontController(engine.driver, unreadable)
+        first, again = google_copies.opened(file), google_copies.opened(file)
+
+    if not isinstance(first, FontUnusable):
+        pytest.fail("bytes that aren't a font were opened")
+    kept = (first.reason.key, first.__traceback__, first.__cause__, first.__context__)
+    assert_equal(
+        kept, ("google_unreadable", None, None, None), "the reason, and what else is kept"
+    )
+    assert_true(again is first, "the second ask is answered as the first was")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
