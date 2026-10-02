@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from dataclasses import dataclass
 
 from fastapi import Request
 from starlette.requests import ClientDisconnect
@@ -37,20 +37,20 @@ def declared_size(request: Request) -> int | None:
     return int(digits)
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class BodyLimit:
     """Reads a request's body before its route does, and refuses one past MAX_BODY_BYTES.
 
     However it's sent: a size stated up front is checked before any is read,
     and a body sent in chunks, which states none, is counted as it comes. A
-    route read into memory whole would otherwise take any size. `streamed`
-    are the paths that read their own body as it streams, with their own
-    limit (uploads); theirs passes through unread.
+    route read into memory whole would otherwise take any size. Starlette
+    builds it, as `BodyLimit(app, streamed=...)`.
     """
 
-    def __init__(self, app: ASGIApp, *, streamed: Collection[str]) -> None:
-        """Guard `app`, all but the POSTs to `streamed`."""
-        self.app = app
-        self.streamed = frozenset(streamed)
+    app: ASGIApp  # guarded, all but the POSTs to `streamed`
+    # The paths that read their own body as it streams, with their own limit (uploads):
+    # theirs passes through unread.
+    streamed: frozenset[str]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Answer too large or a bad size; otherwise hand the app the body, read whole."""

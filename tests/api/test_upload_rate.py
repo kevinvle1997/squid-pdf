@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +14,13 @@ from squidpdf.api.app import create_app
 from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import store
 from tests.api.conftest import browser_on, upload
-from tests.helpers import assert_equal, assert_false, assert_problem, assert_true
+from tests.helpers import (
+    assert_equal,
+    assert_every_field_filled,
+    assert_false,
+    assert_problem,
+    assert_true,
+)
 
 # Refused as not a PDF before any work: the count is all these tests look at.
 _NOT_A_PDF = b"Dear Sir, please find attached."
@@ -79,3 +86,16 @@ def test_addresses_quiet_for_a_minute_are_forgotten():
         recent.admit(f"192.0.2.{n}", now=0.0, limit=1)
     recent.admit(_OTHER, now=2 * _MINUTE_S, limit=1)
     assert_equal(list(recent.started), [_OTHER], "addresses still counted")
+
+
+def test_uploads_that_forget_quiet_addresses_equal_fresh_ones_but_for_the_clock():
+    """A forget notes when it ran, so that alone differs from a fresh record."""
+    recent = RecentUploads()
+    recent.admit(_ONE, now=2 * _MINUTE_S, limit=1)
+    assert_every_field_filled(recent, RecentUploads(), "the record once one upload is counted")
+
+    recent.forget_quiet(4 * _MINUTE_S)
+
+    fresh = RecentUploads()
+    as_if_fresh = replace(recent, forgotten_at=fresh.forgotten_at)
+    assert_equal(as_if_fresh, fresh, "the record once it forgot, its clock aside")

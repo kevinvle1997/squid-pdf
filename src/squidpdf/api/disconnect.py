@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -23,12 +24,11 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class CancelOnDisconnect:
     """Cancels a request's handler when its browser leaves before the answer has begun."""
 
-    def __init__(self, app: ASGIApp) -> None:
-        """Watch every request `app` handles."""
-        self.app = app
+    app: ASGIApp  # every request it handles is watched
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Run the handler; once its body is in, listen for the browser leaving."""
