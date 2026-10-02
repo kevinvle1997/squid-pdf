@@ -9,14 +9,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
 
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
-from squidpdf.api.errors.http import PROBLEM_RESPONSES, install
+from squidpdf.api.errors.http import ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentUploads
 from squidpdf.documents import api as documents
@@ -25,6 +25,18 @@ from squidpdf.editing import api as editing
 __all__ = [
     "create_app",
 ]
+
+# Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
+# `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
+_PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
+    "default": {
+        "model": ProblemInfo,
+        "description": "Problem Details: what went wrong, in the reader's words",
+        "content": {
+            "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemInfo"}}
+        },
+    },
+}
 
 
 @asynccontextmanager
@@ -53,16 +65,16 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     install(app)
-    app.include_router(documents.router, responses=PROBLEM_RESPONSES)
-    app.include_router(editing.router, responses=PROBLEM_RESPONSES)
-    app.include_router(editing.fonts_router, responses=PROBLEM_RESPONSES)
+    app.include_router(documents.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(editing.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(editing.fonts_router, responses=_PROBLEM_RESPONSES)
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     upload_path = app.url_path_for(documents.upload.__name__)
     app.add_middleware(BodyLimit, streamed=frozenset([upload_path]))
     # Outermost, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
-    @app.get("/api/health", responses=PROBLEM_RESPONSES)
+    @app.get("/api/health", responses=_PROBLEM_RESPONSES)
     async def health(pool: Annotated[WorkerPool, Depends(current)]) -> dict[str, str]:
         """Up and answering."""
         # The docstring stays: it's the schema's description, which the browser's types copy.
