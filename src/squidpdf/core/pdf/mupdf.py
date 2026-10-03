@@ -539,7 +539,11 @@ class _MuPDFDriver:
                 rotate=turn_ccw,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
-        shape.commit(overlay=True)
+        # No letter written, as for empty new text: nothing to add.
+        if not shape.text_cont:
+            return
+        # Added as a code write's is, not by the shape's commit, which reads the whole page.
+        self._add_content(page, shape.text_cont.encode())
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
