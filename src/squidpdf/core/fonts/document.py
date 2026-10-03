@@ -323,9 +323,19 @@ class DocumentFonts:
         return self._facts(span.page).usual_gap((font_name, font), measure)
 
     def _usual_gap_on(self, page: int, *, font_name: str, font: FontProgram) -> float:
-        """The page's usual gap for a space in the font `font_name`, measured in `font`."""
-        return usual_gap(self.page_lines(page), font_name=font_name, font=font)
+        """The page's usual gap for a space in `font_name`, subset prefix aside, in `font`."""
+        lines = self.page_lines(page)
+        in_font = [
+            piece for piece in _each_piece(lines) if strip_subset(piece.font) == font_name
+        ]
+        return usual_gap(in_font, font=font)
 
     def page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""
         return self._facts(page).text_lines(partial(self.driver.text_lines, page))
+
+
+def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
+    """Every piece of a page's text, line by line."""
+    for line in lines:
+        yield from line
