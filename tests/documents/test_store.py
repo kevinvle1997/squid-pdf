@@ -97,7 +97,8 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
 def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raised):
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = store.create("owner")
-    store.save_analysis(folder, "a-build", KeptAnalysis(b'{"worked": "out"}', b"[]"))
+    first = KeptAnalysis(b'{"worked": "out"}', b"[]", "its-digest")
+    store.save_analysis(folder, "a-build", first)
     whole = sorted(path.name for path in folder.iterdir())
 
     def cut_short(*_paths: object) -> None:
@@ -105,10 +106,10 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
 
     monkeypatch.setattr(store.os, "replace", cut_short)
     with pytest.raises(raised):
-        store.save_analysis(folder, "a-build", KeptAnalysis(b'{"worked": "out again"}', b"[1]"))
+        again = KeptAnalysis(b'{"worked": "out again"}', b"[1]", "its-next-digest")
+        store.save_analysis(folder, "a-build", again)
 
-    kept = store.load_analysis(folder, "a-build")
-    assert_equal(kept, KeptAnalysis(b'{"worked": "out"}', b"[]"), "the analysis kept")
+    assert_equal(store.load_analysis(folder, "a-build"), first, "the analysis kept")
     names = sorted(path.name for path in folder.iterdir())
     assert_equal(names, whole, "files in the folder, as the whole save left them")
 
@@ -178,7 +179,7 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
     with pytest.raises(Gone):
         store.save_index(folder, engine.index())
     with pytest.raises(Gone):
-        store.save_analysis(folder, "a-build", KeptAnalysis(b"{}", b"[]"))
+        store.save_analysis(folder, "a-build", KeptAnalysis(b"{}", b"[]", "its-digest"))
 
 
 def test_a_worker_reads_an_index_once(engine):

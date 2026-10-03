@@ -1,9 +1,9 @@
 """Where documents live: one folder each, deleted whole.
 
 A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build`, its spans in a file of their own. Delete it
-and everything goes. Its mtime is the idle clock: every visit touches it, and
-the sweeper deletes what's gone an hour untouched.
+and the analysis for each `build`, its spans and its digest in files of their
+own. Delete it and everything goes. Its mtime is the idle clock: every visit
+touches it, and the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
@@ -321,20 +321,34 @@ def load_pages(folder: Path) -> list[Page]:
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
     """Keep what was worked out under this build; another build works it out again.
 
-    The spans first: the facts' file is what says the analysis is there.
+    The digest last: its file is what says the analysis is there, since a read
+    the browser has already is answered from it alone.
     """
     _write_whole(folder / _spans_file(build), kept.spans)
     _write_whole(folder / _analysis_file(build), kept.facts)
+    _write_whole(folder / _digest_file(build), kept.digest.encode())
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
     """The analysis saved under this build, or None if it hasn't been worked out."""
     try:
+        digest = (folder / _digest_file(build)).read_text()
         facts = (folder / _analysis_file(build)).read_bytes()
         spans = (folder / _spans_file(build)).read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
-    return KeptAnalysis(facts, spans)
+    return KeptAnalysis(facts, spans, digest)
+
+
+def load_analysis_digest(folder: Path, build: str) -> str | None:
+    """The digest of the analysis saved under this build, or None if it hasn't been worked out.
+
+    Read alone, it says whether the browser's copy is current without reading the spans.
+    """
+    try:
+        return (folder / _digest_file(build)).read_text()
+    except FileNotFoundError:  # a new build, or never analysed
+        return None
 
 
 def _analysis_file(build: str) -> str:
@@ -349,3 +363,8 @@ def _analysis_file(build: str) -> str:
 def _spans_file(build: str) -> str:
     """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
     return f"spans-{build}.{_ANALYSIS_FORMAT}.json"
+
+
+def _digest_file(build: str) -> str:
+    """The file the analysis's digest under `build` is kept in, beside `_analysis_file`."""
+    return f"digest-{build}.{_ANALYSIS_FORMAT}.txt"

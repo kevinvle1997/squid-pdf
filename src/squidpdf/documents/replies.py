@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import orjson
+import xxhash
 
 from squidpdf.core import (
     APPROXIMATE_REASONS,
@@ -15,11 +16,13 @@ from squidpdf.core import (
     Message,
     words,
 )
+from squidpdf.documents import constants
 from squidpdf.documents.types import (
     AnalysisFacts,
     Copy,
     Document,
     DocumentNoticeInfo,
+    FitRules,
     FontFacts,
     FontInfo,
     KeptAnalysis,
@@ -44,20 +47,38 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
         "fonts": [_font_info(font, said_in) for font in facts["fonts"]],
         "id": doc_id,
         "expires_at": time_of(expires_at),
-        "fit": {
-            "tolerance_pt": TOLERANCE_PT,
-            "condense_limit": CONDENSE_LIMIT,
-            "shrink_floor": SHRINK_FLOOR,
-        },
+        "fit": _fit_rules(),
         "copy": _copy_in(said_in),
         "notices": _notices_in(has_text=kept.spans != _NO_SPANS, said_in=said_in),
     }
     return orjson.dumps({**body, "spans": orjson.Fragment(kept.spans)})
 
 
+def reply_digest(said_in: str) -> str:
+    """A digest of what a document's reply is worked out from besides its analysis.
+
+    The words it's said in, the fit rules and the reply's shape: a deploy that
+    changes any of them, with no new build, is a new body for every document.
+    Worked out on every read, from the catalog itself: one that changes is
+    another digest.
+    """
+    rules = orjson.dumps([constants.REPLY_VERSION, _fit_rules()])
+    catalog = orjson.dumps([said_in, words.catalog(said_in)])
+    return xxhash.xxh3_64_hexdigest(rules + catalog)
+
+
 def time_of(epoch_seconds: float) -> str:
     """A moment as the browser reads it: ISO 8601, in UTC."""
     return datetime.fromtimestamp(epoch_seconds, UTC).isoformat()
+
+
+def _fit_rules() -> FitRules:
+    """The thresholds the browser runs the fit check with: the server's own."""
+    return {
+        "tolerance_pt": TOLERANCE_PT,
+        "condense_limit": CONDENSE_LIMIT,
+        "shrink_floor": SHRINK_FLOOR,
+    }
 
 
 def _font_info(font: FontFacts, said_in: str) -> FontInfo:

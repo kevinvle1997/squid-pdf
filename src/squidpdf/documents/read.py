@@ -8,14 +8,13 @@ from functools import partial
 from http import HTTPStatus
 from pathlib import Path
 
-import orjson
 import xxhash
 
 from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
-from squidpdf.documents.replies import document_json, time_of
+from squidpdf.documents.replies import document_json, reply_digest, time_of
 from squidpdf.documents.types import KeptAnalysis, Loaded
 
 # When the document now expires: a 304 carries no body, and reading restarted the hour.
@@ -37,11 +36,17 @@ class ReadController:
         Either way with when it now expires, which the ETag leaves out: it moves
         on every visit, and a 304's browser keeps the body it had.
         """
+        digest = await asyncio.to_thread(store.load_analysis_digest, doc.folder, BUILD)
+        etag = None if digest is None else _etag_of(digest, said_in)
+        # The browser's copy is current: a 304 carries no body, so the analysis isn't read.
+        if etag is not None and if_none_match == etag:
+            return Reply(b"", _headers_of(doc, etag, said_in), HTTPStatus.NOT_MODIFIED)
         kept = await self._saved_analysis(doc)
-        # A thousand pages' analysis takes a while to hash and write: off the server's thread.
-        return await asyncio.to_thread(
-            _answer, doc, kept=kept, said_in=said_in, if_none_match=if_none_match
+        # The fonts' letters are read and written out again: off the server's thread.
+        body = await asyncio.to_thread(
+            document_json, doc.id, expires_at=doc.expires_at, kept=kept, said_in=said_in
         )
+        return Reply(body, _headers_of(doc, _etag_of(kept.digest, said_in), said_in))
 
     async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
         """The analysis kept under this build, worked out first if the build is new."""
@@ -56,28 +61,21 @@ class ReadController:
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 
-def _answer(
-    doc: Loaded, *, kept: KeptAnalysis, said_in: str, if_none_match: str | None
-) -> Reply[bytes]:
-    """The analysis kept, as the browser gets it: the JSON with its ETag, or a 304."""
-    headers = {
-        "ETag": _etag_of(kept, said_in),
+def _headers_of(doc: Loaded, etag: str, said_in: str) -> dict[str, str]:
+    """The headers of a read, 200 or 304: its ETag, how to cache it, and when it expires."""
+    return {
+        "ETag": etag,
         "Cache-Control": DOCUMENT_CACHE,
         EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(said_in),
     }
-    # The browser's copy is current: a 304 carries no body.
-    if if_none_match == headers["ETag"]:
-        return Reply(b"", headers, HTTPStatus.NOT_MODIFIED)
-    body = document_json(doc.id, expires_at=doc.expires_at, kept=kept, said_in=said_in)
-    return Reply(body, headers)
 
 
-def _etag_of(kept: KeptAnalysis, said_in: str) -> str:
-    """The document's ETag: over the analysis as kept and the words it's said in.
+def _etag_of(digest: str, said_in: str) -> str:
+    """The document's ETag: over the analysis's `digest` and the rest the reply is made of.
 
-    Not `expires_at`, which moves on every visit. Another language, or a
-    sentence reworded since, is another body.
+    That is the words it's said in, the fit rules and the reply's shape. Not
+    `expires_at`, which moves on every visit. Another language, a sentence
+    reworded since, or a fit rule retuned, is another body.
     """
-    said = orjson.dumps([said_in, words.catalog(said_in)])
-    return f'"{xxhash.xxh3_64_hexdigest(kept.facts + kept.spans + said)}"'
+    return f'"{xxhash.xxh3_64_hexdigest((digest + reply_digest(said_in)).encode())}"'
