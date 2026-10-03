@@ -215,13 +215,19 @@ class PdfFile:
         A comment goes only when it writes its words on the page (a FreeText): a note
         behind an icon, a highlight or a form field stays.
         """
-        pg = self.doc[page]
-        for box in boxes:
-            pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
-        pg.apply_redactions(
-            images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
-            graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
-        )
+        mu = pymupdf.mupdf
+        # MuPDF's own calls: PyMuPDF's read every mark on the page again for each one.
+        # Unturned, since a box is read unturned and MuPDF places a mark as it's shown.
+        with self._unturned(page) as pdf_page:
+            for box in boxes:
+                mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
+                mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
+        options = mu.PdfRedactOptions()
+        options.black_boxes = 0  # nothing drawn where the letters were
+        options.text = mu.PDF_REDACT_TEXT_REMOVE
+        options.image_method = mu.PDF_REDACT_IMAGE_NONE
+        options.line_art = mu.PDF_REDACT_LINE_ART_NONE
+        mu.pdf_redact_page(self._pdf(), pdf_page, options)
 
     @contextmanager
     def links_kept(self, page: int) -> Iterator[None]:
