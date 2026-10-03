@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from squidpdf.core import index_of
+from squidpdf.core import Fragment, Page, Rect, Span, index_of, new_text
 from squidpdf.documents import api as documents, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
@@ -202,6 +202,46 @@ def test_a_kept_index_never_outlives_its_file(engine):
     assert_equal(read, [span.id for span in first_span], "spans in the index read again")
     store.delete(folder)
     assert_equal(store.load_index(folder), None, "the index of a deleted document")
+
+
+def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
+    """A span's id and facts never change, so what's kept on disk must read back whole.
+
+    Every field of the span, of each of its fragments and of the page is off a
+    blank one's, so a field added later and left at its default fails here: a
+    box or a tuple left out of the loading would read back as a dict or a list.
+    Two fragments, each its own box, since a merged span is redrawn from them.
+    """
+    first_fragment = Fragment("Total ", Rect(10.0, 20.0, 40.0, 32.0), (10.0, 30.0))
+    second_fragment = Fragment("due", Rect(40.5, 20.0, 60.0, 32.0), (40.5, 30.0))
+    span = Span(
+        id="a1b2c3d4e5f6",
+        page=1,
+        text="Total due",
+        font="ABCDEE+Calibri",
+        size=11.5,
+        color=(0.1, 0.2, 0.3),
+        opacity=0.5,
+        bbox=first_fragment.bbox.union(second_fragment.bbox),
+        origin=(10.0, 30.0),
+        fragments=(first_fragment, second_fragment),
+        direction=(0.0, -1.0),
+    )
+    blank_span = new_text(0, origin=(0.0, 0.0), text="", size=1.0, font="")
+    assert_every_field_filled(span, blank_span, "the span kept")
+    blank_fragment = Fragment("", Rect(0.0, 0.0, 0.0, 0.0), (0.0, 0.0))
+    for fragment in span.fragments:
+        assert_every_field_filled(fragment, blank_fragment, "each fragment kept")
+    page = Page(width=612.0, height=792.0, turn_cw=90)
+    blank_page = Page(0.0, 0.0, 0)
+    assert_every_field_filled(page, blank_page, "the page kept")
+    _, folder = store.create("owner")
+
+    store.save_index(folder, index_of([span]))
+    store.save_pages(folder, [page])
+
+    assert_equal(list(store.require_index(folder)), [span], "the spans read back")
+    assert_equal(store.load_pages(folder), [page], "the pages read back")
 
 
 def test_a_kept_index_that_forgets_equals_a_fresh_one(engine, tmp_path):

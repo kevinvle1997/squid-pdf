@@ -20,22 +20,20 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any, BinaryIO
-
-import orjson
+from typing import BinaryIO
 
 from squidpdf.core import (
     FIDELITY_TUNING,
     Engine,
     FontSources,
-    Fragment,
     Page,
-    Rect,
-    Span,
     SpanIndex,
     google_fonts,
-    index_of,
+    index_as_json,
+    index_from_json,
     open_pdf,
+    pages_as_json,
+    pages_from_json,
 )
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
@@ -214,7 +212,7 @@ def _write_whole(path: Path, data: bytes) -> None:
 
 def save_index(folder: Path, index: SpanIndex) -> None:
     """Keep the index, built once from the original, so ids never change."""
-    _write_whole(folder / _INDEX, orjson.dumps(list(index)))
+    _write_whole(folder / _INDEX, index_as_json(index))
 
 
 @dataclass(slots=True)
@@ -269,7 +267,7 @@ def load_index(folder: Path) -> SpanIndex | None:
 
 def _read_index(index_file: BinaryIO) -> SpanIndex:
     """The index saved in `index_file`, already open, each span rebuilt."""
-    return index_of(_load_span(span) for span in orjson.loads(index_file.read()))
+    return index_from_json(index_file.read())
 
 
 def require_index(folder: Path) -> SpanIndex:
@@ -284,36 +282,18 @@ def require_index(folder: Path) -> SpanIndex:
     return index
 
 
-def _load_span(saved: dict[str, Any]) -> Span:
-    """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
-    rebuilt: dict[str, Any] = {
-        "color": tuple(saved["color"]),
-        "bbox": Rect(**saved["bbox"]),
-        "origin": tuple(saved["origin"]),
-        "fragments": tuple(_load_fragment(fragment) for fragment in saved["fragments"]),
-        "direction": tuple(saved["direction"]),
-    }
-    return Span(**saved | rebuilt)
-
-
-def _load_fragment(saved: dict[str, Any]) -> Fragment:
-    """One saved fragment, the same way."""
-    rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
-    return Fragment(**saved | rebuilt)
-
-
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
-    _write_whole(folder / _PAGES, orjson.dumps(pages))
+    _write_whole(folder / _PAGES, pages_as_json(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
     """The saved page list. Raises Gone if the sweep deleted the document meanwhile."""
     try:
-        saved = orjson.loads((folder / _PAGES).read_bytes())
+        saved = (folder / _PAGES).read_bytes()
     except FileNotFoundError as exc:  # upload saves it first: a sweep or a delete removed it
         raise Gone from exc
-    return [Page(**page) for page in saved]
+    return pages_from_json(saved)
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
