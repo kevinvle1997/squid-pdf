@@ -11,8 +11,10 @@ from __future__ import annotations
 import threading
 
 from squidpdf.core.fonts.document import _FontCache  # noqa: PLC2701 (a holder's forget test needs a fresh one)
-from squidpdf.core.fonts.google import _RetryRecord  # noqa: PLC2701 (a holder's forget test needs a fresh one)
-from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+from squidpdf.core.fonts.google import (
+    _KeptWidths,  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+    _RetryRecord,  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+)
 from squidpdf.core.writer import _PageNames  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_every_field_filled

@@ -1,4 +1,4 @@
-"""Google's copy of a document's font: which file it is, and fetching it once per server.
+"""Google's copy of a document's font: which file it is, fetched once per server, and measured.
 
 Every family on Google Fonts is free to fetch from github.com/google/fonts. The
 list of families, read from one pinned commit, ships as
@@ -29,12 +29,18 @@ from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
+from squidpdf.core.constants import (
+    FETCH_RETRY_S,
+    FETCH_TIMEOUT_S,
+    GLYPH_LIST_RANGES,
+    GOOGLE_FONTS_COMMIT,
+)
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
-from squidpdf.core.fonts.names import WEIGHTS, bare_name, style_of, weight_of
+from squidpdf.core.fonts.names import WEIGHTS, bare_name, strip_subset, style_of, weight_of
+from squidpdf.core.fonts.pool import FontCopy, Lent
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
-from squidpdf.core.types import FontDescriptor, PageFont
+from squidpdf.core.types import EM, FontDescriptor, PageFont
 
 _logger = logging.getLogger(__name__)
 
@@ -46,6 +52,8 @@ _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 _EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network is down
 # One INFO line per cache miss, worded the same every time so a grep counts them.
 _CACHE_MISS = "Google cache miss: %s (%s)"
+# How many of Google's copies a process keeps the letters of: each is a few tens of KB.
+_GOOGLE_COPIES_KEPT = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,20 +133,66 @@ class _RetryRecord:
 _retry_record = _RetryRecord()
 
 
+@dataclass(slots=True)
+class _KeptWidths:
+    """Each Google copy's letters and widths, by a digest of the file, oldest first.
+
+    A process keeps them (`_kept_widths`): finding which letters really draw is
+    slow, and the same bytes always give the same answer.
+    It keeps the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
+    """
+
+    by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
+
+    def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
+        """The widths of the copy `digest` names, measured on first use."""
+        # Kept already: this process has measured these bytes.
+        if digest in self.by_digest:
+            return self.by_digest[digest]
+        # Full: forget the one kept longest.
+        if len(self.by_digest) >= _GOOGLE_COPIES_KEPT:
+            del self.by_digest[next(iter(self.by_digest))]
+        widths = self.by_digest[digest] = make()
+        return widths
+
+    def forget(self) -> None:
+        """Forget every copy's widths, as a fresh record."""
+        self.by_digest.clear()
+
+
+# This process's widths of Google's copies.
+_kept_widths = _KeptWidths()
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class GoogleFontController:
-    """Google's copy of a document's fonts: matched, fetched and opened, once per file."""
+    """Google's copy of a document's fonts: matched, fetched, opened and measured, once each."""
 
     driver: PdfDriver  # the document's, whose fonts are matched
     fetch: Fetch  # how each file Google has is got
     # Each file, opened, or why it can't be had, by `GoogleFile.source`.
     fonts: dict[str, EmbeddedFont | FontUnusable] = field(default_factory=dict, repr=False)
 
-    def file_for(self, font: PageFont) -> GoogleFile:
+    def copy_of(self, own: FontCopy) -> FontCopy:
+        """Google's copy of the own copy's font, lending only letters the browser can preview.
+
+        Stands for the same font as the own copy, so it's checked like any other
+        copy. Raises FontUnusable, saying why, when Google has none, or it can't be had.
+        """
+        # Raises when it isn't one of Google's families, or is a cut it may not make.
+        file = self._file_for(own.font)
+        embedded = self._opened(file)
+        # Not fetched, or not readable: said as it was the first time it was asked for.
+        if isinstance(embedded, FontUnusable):
+            raise FontUnusable(embedded.reason)
+        lent = Lent(file.source, strip_subset(own.font.name))
+        return FontCopy(own.font, embedded, _google_widths(embedded), lent)
+
+    def _file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
         return _google_file(font.name, self.driver.font_descriptor(font.xref))
 
-    def opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
+    def _opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
         """`file`, fetched and opened once, or why it can't be had or opened."""
         return remembered(self.fonts, file.source, partial(self._open, file))
 
@@ -153,6 +207,28 @@ class GoogleFontController:
         except DriverError as problem:  # the library can't read it, though git vouched for it
             raise FontUnusable(Message("google_unreadable")) from problem
         return EmbeddedFont(program, font_file, coverage_of(font_file), None)
+
+
+def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
+
+    Worked out once per process for each file (`_kept_widths`). By the bytes, not
+    the file's name: a test can hand in another font under it.
+    """
+    digest = hashlib.sha256(embedded.file).digest()
+    return _kept_widths.widths(digest, partial(_measured_widths, embedded))
+
+
+def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter Google's copy draws that the browser can preview, measured in it."""
+    program = embedded.program
+    letters = [ch for ch in embedded.coverage.drawable() if _in_glyph_list(ch)]
+    return {ch: program.advance(ch) * EM for ch in letters}
+
+
+def _in_glyph_list(ch: str) -> bool:
+    """Whether `ch` is in GLYPH_LIST_RANGES, the letters the browser is sent widths for."""
+    return any(ord(ch) in block for block in GLYPH_LIST_RANGES)
 
 
 @cache

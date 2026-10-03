@@ -22,7 +22,6 @@ from squidpdf.core.fonts.pool import (
     FontCopy,
     PooledFont,
     font_copy,
-    google_copy,
     lacks_a_keyboard_letter,
     pooled_font,
 )
@@ -235,7 +234,7 @@ class DocumentFonts:
         yield from (copy for copy in opened if isinstance(copy, FontCopy))
         # From outside the file, in order. The user's own copy of a font, once
         # they can attach one, goes before Google's. Without Google, there are none.
-        from_outside = () if self.google is None else (partial(self._google_copy, self.google),)
+        from_outside = () if self.google is None else (self.google.copy_of,)
         for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
@@ -246,19 +245,6 @@ class DocumentFonts:
                 lent = no_copy
             # Without a copy there, nothing is lent, but why goes to the pool, to be said.
             yield lent
-
-    def _google_copy(self, google: GoogleFontController, own: FontCopy) -> FontCopy:
-        """Google's copy of the own copy's font.
-
-        Raises FontUnusable, saying why, when Google has none, or it can't be had.
-        """
-        # Raises when it isn't one of Google's families, or is a cut it may not make.
-        file = google.file_for(own.font)
-        embedded = google.opened(file)
-        # Not fetched, or not readable: said as it was the first time it was asked for.
-        if isinstance(embedded, FontUnusable):
-            raise FontUnusable(embedded.reason)
-        return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""

@@ -32,14 +32,13 @@ from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Fetch,
     GoogleFile,
-    GoogleFontController,
     _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     _google_file,  # noqa: PLC2701 (why Google has no file, per font: no sample uses these)
+    _KeptWidths,  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
     _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     blob_hash,
     google_fonts,
 )
-from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
 from squidpdf.core.types import FontDescriptor
 from tests.conftest import name_two_byte_font
 from tests.core.conftest import POPPINS, POPPINS_TEXT
@@ -172,21 +171,26 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
     assert_equal(whys, ["google_not_fetched", "google_unreadable"], "why a similar font draws")
 
 
-def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(pdf):
-    """A failure is kept bare: no traceback, cause or context to hold the font's bytes."""
-    unreadable, _asked = _google(b"not a font")
-    file = GoogleFile(_POPPINS_PATH, "a hash never checked here", None)
-    with open_pdf(pdf) as engine:
-        google_copies = GoogleFontController(engine.driver, unreadable)
-        first, again = google_copies.opened(file), google_copies.opened(file)
+def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(poppins_subset):
+    """Kept for the document's life: a traceback's frames would keep the bytes it was handed."""
+    unreadable, asked = _google(b"not a font")
+    with open_pdf(poppins_subset, sources=FontSources(google=unreadable)) as engine:
+        span = next(iter(engine.index()))
+        new = new_text(0, origin=(72, 200), text=_WANTED, size=span.size, font=span.font)
+        engine.assess(index_of([new]))
+        engine.assess(index_of([new]))
+        google_copies = engine.fonts.google
 
-    if not isinstance(first, FontUnusable):
+    if google_copies is None:
+        pytest.fail("the engine was handed a fetch but has no Google copies")
+    [kept] = google_copies.fonts.values()
+    if not isinstance(kept, FontUnusable):
         pytest.fail("bytes that aren't a font were opened")
-    kept = (first.reason.key, first.__traceback__, first.__cause__, first.__context__)
+    held = (kept.reason.key, kept.__traceback__, kept.__cause__, kept.__context__)
     assert_equal(
-        kept, ("google_unreadable", None, None, None), "the reason, and what else is kept"
+        held, ("google_unreadable", None, None, None), "the reason, and what else is kept"
     )
-    assert_true(again is first, "the second ask is answered as the first was")
+    assert_equal(len(asked), 1, "fetches, for the second ask answered as the first was")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
