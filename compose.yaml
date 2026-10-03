@@ -11,9 +11,12 @@ services:
     # Reaps the pool's exited helper processes and passes stop signals on.
     init: true
     environment:
-      # Only Caddy reaches the app here, so its X-Forwarded-For is the client's real address.
+      # Caddy's X-Forwarded-For names the address Caddy sees: the app believes it from
+      # Caddy's address alone (below), so nothing else that reaches the app can fake the
+      # address it limits. The network below is IPv4 alone, so an IPv6 client reaches Caddy
+      # through Docker's proxy and is seen as the network's gateway, one address for all.
       # Not in the image: run alone with its port open, anyone could fake the header.
-      FORWARDED_ALLOW_IPS: "*"
+      FORWARDED_ALLOW_IPS: 172.31.255.2
     volumes:
       - documents:/data
     # No ports: only Caddy, on this network, reaches the app.
@@ -36,11 +39,24 @@ services:
       SQUIDPDF_DOMAIN: ${SQUIDPDF_DOMAIN:?set it in .env}
       SQUIDPDF_USER: ${SQUIDPDF_USER:?set it in .env}
       SQUIDPDF_PASSWORD_HASH: ${SQUIDPDF_PASSWORD_HASH:?set it in .env}
+    networks:
+      default:
+        # Fixed, so the app knows which address is Caddy's.
+        ipv4_address: 172.31.255.2
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Its certificates. Kept, so a restart doesn't ask the CA for new ones.
       - caddy-data:/data
       - caddy-config:/config
+
+networks:
+  default:
+    ipam:
+      config:
+        # A range of its own, so Caddy's address is known. Others get theirs from the top
+        # half, so none can take Caddy's before it starts.
+        - subnet: 172.31.255.0/24
+          ip_range: 172.31.255.128/25
 
 volumes:
   # Uploaded documents, each deleted after an hour untouched.
