@@ -20,8 +20,8 @@ class Problem(Exception):
     """Subclass it and set `type` and `status`; `fill` fills the sentence.
 
     A Message like any other: `type` is its sentence's key in `core.app.words`, and
-    `fill` holds the facts. `debug` is the technical why, for a developer: sent
-    beside `detail`, never in it.
+    `fill` holds the facts. `debug` is the technical why, for a developer: never in
+    `detail`; the API sends it beside it on a 4xx, and logs a 5xx's.
     """
 
     type: ClassVar[str] = "server_error"  # what the browser branches on: never renamed

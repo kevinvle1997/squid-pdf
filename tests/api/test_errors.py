@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi.testclient import TestClient
 
 from squidpdf.api.app import create_app
 from squidpdf.api.errors import ServerError
 from squidpdf.core import NotFound, Problem, words
 from squidpdf.documents.errors import Gone
-from tests.api.conftest import BASE_URL, upload
+from tests.api.conftest import BASE_URL, SERVER_PATH, upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
 
 
@@ -43,6 +45,17 @@ def test_a_crash_is_a_server_error_without_the_traceback(app):
     response = client.get("/api/crash")
     assert_problem(response, "server_error", 500)
     assert_not_in("a bug nobody caught", response.text, "the body of a crash")
+
+
+def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
+    """A 5xx's debug can name a file on the server; a 4xx's keeps it (the bad request above)."""
+    with caplog.at_level(logging.WARNING, logger="squidpdf.api"):
+        response = browser().get("/api/crash-naming-a-path")
+    assert_problem(response, "server_error", 500)
+    assert_not_in("debug", response.json(), "what a server error sends")
+    assert_not_in(SERVER_PATH, response.text, "the body of a server error")
+    assert_in(SERVER_PATH, caplog.text, "what the server's log says of it")
+    assert_in("server_error", caplog.text, "the type the log gives it")
 
 
 def _every(cls: type[Problem]) -> list[type[Problem]]:
