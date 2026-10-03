@@ -8,6 +8,7 @@ learns why.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import assert_never
 
 from squidpdf.core import (
     CONDENSE_LIMIT,
@@ -15,11 +16,11 @@ from squidpdf.core import (
     OPTION_KEYS,
     SHRINK_FLOOR,
     TOLERANCE_PT,
+    DrawPlan,
     Engine,
     Message,
     Param,
     Span,
-    index_of,
     new_text,
 )
 from squidpdf.editing.edits import Insert, Strategy
@@ -84,12 +85,27 @@ class FitReport:
         return parts
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
+class Fitted:
+    """A fit, and the line it was worked out for, as `draw` draws it: one plan for both.
+
+    `report` is what the user is told. `plan` holds the fonts the line is drawn
+    in, so it stays where it was made. A None `size` keeps the span's own;
+    `scale_x` narrows the line from its start.
+    """
+
+    report: FitReport
+    plan: DrawPlan = field(repr=False)
+    size: float | None = None
+    scale_x: float = 1.0
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class LogFits:
     """A fit for every replace and insert an edit log leaves, drawn or not."""
 
-    replaces: dict[str, FitReport]  # by the replaced span's id
-    inserts: dict[int, FitReport]  # by the insert's place in the log
+    replaces: dict[str, Fitted]  # by the replaced span's id
+    inserts: dict[int, Fitted]  # by the insert's place in the log
 
 
 def options_for(delta_pt: float, original_width: float) -> list[Option]:
@@ -121,7 +137,7 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
     ]
 
 
-def strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
+def _strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
     """The way out that's drawn: the one asked for if it was offered, else as-is."""
     offered = asked in {option.name for option in options}
     return asked if offered else "as-is"
@@ -139,46 +155,57 @@ def insert_span(insert: Insert) -> Span:
     )
 
 
-def insert_fit(engine: Engine, insert: Insert) -> FitReport:
+def insert_fit(engine: Engine, insert: Insert) -> Fitted:
     """What new text will really look like: in its chosen font, or what draws it instead.
 
     Nothing to fit against, so only the font and the letters are checked.
     """
     span = insert_span(insert)
-    [report] = engine.assess(index_of([span]))
     shipped = insert.font in FACES
     # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
     # One that only lacks a letter can: the substitute draws that line, as for a replace.
-    unusable = not shipped and not report.in_file
+    unusable = not shipped and not engine.has_own_font(span)
     typed_plan = engine.plan_for(span, insert.text)
-    return FitReport(
+    report = FitReport(
         delta_pt=0.0,
         missing=[] if unusable else typed_plan.missing,
         left_out=typed_plan.left_out,
         substitute=engine.substitute(span, insert.text, plan=typed_plan),
         unavailable=insert.font if unusable else "",
     )
+    return Fitted(report, typed_plan)
 
 
 def replace_fit(
     engine: Engine, span: Span, text: str, *, strategy: Strategy = "as-is"
-) -> FitReport:
+) -> Fitted:
     """What would happen if the user typed this, with the ways out if it will not fit.
 
     `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
     """
-    # One plan for what's typed, asked everything the fit says; the original's is its own.
+    # One plan for what's typed: the fit asks it everything, and the draw draws it.
     typed_plan = engine.plan_for(span, text)
     original_width = engine.measure(span, span.text)
     typed_width = engine.width_of(span, typed_plan)
     delta_pt = typed_width - original_width
     options = options_for(delta_pt, original_width)
-    return FitReport(
+    drawn_strategy = _strategy_drawn(strategy, options)
+    report = FitReport(
         delta_pt=round(delta_pt, 2),
         missing=typed_plan.missing,
         options=options,
-        strategy=strategy_drawn(strategy, options),
+        strategy=drawn_strategy,
         left_out=typed_plan.left_out,
         substitute=engine.substitute(span, text, plan=typed_plan),
         asked=strategy,
     )
+    # Drawn as typed: the span's size, no stretch.
+    if drawn_strategy == "as-is":
+        return Fitted(report, typed_plan)
+    # Smaller letters, same shape: width goes with size, so it ends where the original did.
+    if drawn_strategy == "shrink":
+        return Fitted(report, typed_plan, size=span.size * original_width / typed_width)
+    # The same size, letters squeezed narrower, to the same end.
+    if drawn_strategy == "condense":
+        return Fitted(report, typed_plan, scale_x=original_width / typed_width)
+    assert_never(drawn_strategy)

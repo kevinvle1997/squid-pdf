@@ -276,7 +276,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     with open_pdf(path) as engine:
         index = engine.index()
         span = next(iter(index))
-        fit = replace_fit(engine, span, "Hi Ωμέγα")
+        fit = replace_fit(engine, span, "Hi Ωμέγα").report
         applied = _apply(engine, [Replace(span.id, "Hi Ωμέγα")], index)
         engine.save(out)
 
@@ -317,7 +317,7 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
     out = tmp_path / "inserted.pdf"
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 12.0, font)
 
-    fit = insert_fit(engine, insert)
+    fit = insert_fit(engine, insert).report
     _apply(engine, [insert], engine.index())
     engine.save(str(out))
 
@@ -335,7 +335,7 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
     text = "15\u202f000 EUR"  # French thousands, with a narrow no-break space
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
 
-    fit = insert_fit(engine, insert)
+    fit = insert_fit(engine, insert).report
     measured = engine.measure(_insert_as_span(insert), text)
     _apply(engine, [insert], engine.index())
     engine.save(str(out))
@@ -402,7 +402,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
         Replace(span.id, "Made on 2 April 2026."),
         signed,
     ]
-    fit = insert_fit(engine, signed)
+    fit = insert_fit(engine, signed).report
     applied = _apply(engine, edits, index)
     engine.save(str(out))
 
@@ -553,7 +553,7 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     text = span.text.replace("thirty", "中 thirty")
     out = tmp_path / "out.pdf"
 
-    fit = replace_fit(engine, span, text)
+    fit = replace_fit(engine, span, text).report
     applied = _apply(engine, [Replace(span.id, text)], index)
     engine.save(str(out))
 

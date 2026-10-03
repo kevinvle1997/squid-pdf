@@ -152,7 +152,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
-        fit = replace_fit(opened.engine, span, args.text)
+        fit = replace_fit(opened.engine, span, args.text).report
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {_DIM}{span.font} {span.size}pt{_OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
@@ -179,7 +179,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         replace = Replace(span.id, args.text, strategy=args.strategy)
-        fit = replace_fit(opened.engine, span, replace.text, strategy=replace.strategy)
+        fit = replace_fit(opened.engine, span, replace.text, strategy=replace.strategy).report
         # A way out that was offered makes a long line fit; missing letters still don't.
         fitted = not fit.missing and fit.strategy != "as-is"
         refused = not (fit.ok or fitted or args.force)

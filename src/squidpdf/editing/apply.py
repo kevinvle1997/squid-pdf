@@ -5,9 +5,9 @@ is what keeps `core` free of any feature import. Translating one into the other
 is this module's whole job:
 
     resolved = resolve(engine, edits, index)  # once: what each edit points at
-    fits = log_fits(engine, resolved)         # what each will look like
-    steps = plan(engine, resolved)            # Erase, Redraw or Place, per edit shown
-    notices = run(engine, steps)              # every erase, then every draw
+    fits = log_fits(engine, resolved)         # what each will look like, planned once
+    steps = plan(engine, resolved, fits)      # Erase, Redraw or Place, per edit shown
+    notices = run(engine, steps)              # every erase, then every draw, as planned
 """
 
 from __future__ import annotations
@@ -28,15 +28,7 @@ from squidpdf.core import (
 from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict
-from squidpdf.editing.fit import (
-    FitReport,
-    LogFits,
-    insert_fit,
-    insert_span,
-    options_for,
-    replace_fit,
-    strategy_drawn,
-)
+from squidpdf.editing.fit import Fitted, LogFits, insert_fit, insert_span, replace_fit
 from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice
 
 
@@ -76,25 +68,22 @@ class Erase:
     span: Span
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class _Redraw:
-    """A replace: the span's text goes, and `text` is drawn in its place.
-
-    A None `size` keeps the span's own; `scale_x` narrows the line from its start.
-    """
+    """A replace: the span's text goes, and `text` is drawn in its place, as its fit says."""
 
     span: Span
     text: str
-    size: float | None
-    scale_x: float
+    fitted: Fitted
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class _Place:
-    """An insert: new text drawn where there was none, turned as its page is turned."""
+    """An insert: new text drawn as its fit says where there was none, turned with its page."""
 
     position: int
     span: Span
+    fitted: Fitted
     turn_ccw: QuarterTurn
 
 
@@ -185,7 +174,8 @@ def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     """A fit for each span the log leaves replaced and for each insert, drawn or not.
 
-    Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
+    Measurement only, and each line is planned here for `plan` to draw. Call it
+    before `run`: erasing can drop the fonts it measures with.
     """
     fits = {
         edited_span.span.id: _fit_of(engine, edited_span) for edited_span in resolved.span_edits
@@ -198,7 +188,7 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     )
 
 
-def _fit_of(engine: Engine, edited_span: _EditedSpan) -> FitReport | None:
+def _fit_of(engine: Engine, edited_span: _EditedSpan) -> Fitted | None:
     """What a span edit will look like; None for one that draws nothing to fit."""
     edit = edited_span.edit
     # A replace: measured as it will be drawn.
@@ -211,9 +201,13 @@ def _fit_of(engine: Engine, edited_span: _EditedSpan) -> FitReport | None:
 
 
 def plan(
-    engine: Engine, resolved: Resolved, *, strips: Mapping[int, list[Rect]] | None = None
+    engine: Engine,
+    resolved: Resolved,
+    fits: LogFits,
+    *,
+    strips: Mapping[int, list[Rect]] | None = None,
 ) -> list[Step]:
-    """The steps the edits shown take, worked out before anything is erased.
+    """The steps the edits shown take, each drawn with the plan its fit in `fits` made.
 
     `strips` are the rows drawn, by page, or None to draw every edit. A span
     edit shows where its rows meet a strip; turned text, whose redraw is level,
@@ -230,11 +224,12 @@ def plan(
     # New text reads upright as the page is shown: turned back as far as its page turns.
     turns_cw = [page.turn_cw for page in engine.pages()] if placed else []
     return [
-        *(_step_for(engine, edited_span) for edited_span in shown),
+        *(_step_for(edited_span, fits) for edited_span in shown),
         *(
             _Place(
                 listed.position,
                 insert_span(listed.insert),
+                fits.inserts[listed.position],
                 turn_ccw=turns_cw[listed.insert.page],
             )
             for listed in placed
@@ -255,39 +250,17 @@ def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     return any(strip.y0 < bottom and top < strip.y1 for strip in on_page)
 
 
-def _step_for(engine: Engine, edited_span: _EditedSpan) -> Step:
+def _step_for(edited_span: _EditedSpan, fits: LogFits) -> Step:
     """What one span edit does to the page."""
     edit = edited_span.edit
+    span = edited_span.span
     # A redaction: its text goes, and nothing is drawn.
     if isinstance(edit, Redact):
-        return Erase(edited_span.span)
-    # A replace: its text goes, and the new text is drawn.
+        return Erase(span)
+    # A replace: its text goes, and the new text is drawn as its fit says.
     if isinstance(edit, Replace):
-        return _redraw_of(engine, edited_span.span, edit)
+        return _Redraw(span, edit.text, fits.replaces[span.id])
     assert_never(edit)
-
-
-def _redraw_of(engine: Engine, span: Span, replace: Replace) -> _Redraw:
-    """A replacement at the size and width it's drawn: its own, or shrunk or condensed to fit.
-
-    The edit's strategy counts only if it was offered, as its fit says.
-    """
-    original_width = engine.measure(span, span.text)
-    typed_width = engine.measure(span, replace.text)
-    delta_pt = typed_width - original_width
-    strategy = strategy_drawn(replace.strategy, options_for(delta_pt, original_width))
-    # Drawn as typed: the span's size, no stretch.
-    if strategy == "as-is":
-        return _Redraw(span, replace.text, size=None, scale_x=1.0)
-    # Smaller letters, same shape: width goes with size, so it ends where the original did.
-    if strategy == "shrink":
-        return _Redraw(
-            span, replace.text, size=span.size * original_width / typed_width, scale_x=1.0
-        )
-    # The same size, letters squeezed narrower, to the same end.
-    if strategy == "condense":
-        return _Redraw(span, replace.text, size=None, scale_x=original_width / typed_width)
-    assert_never(strategy)
 
 
 def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
@@ -326,10 +299,10 @@ def _drawn_by(step: Step) -> LineToDraw | None:
         return None
     # A replace: its new text, where the old was.
     if isinstance(step, _Redraw):
-        return LineToDraw(step.span, step.text)
+        return LineToDraw(step.span, step.text, step.fitted.plan)
     # An insert: its text, where there was none.
     if isinstance(step, _Place):
-        return LineToDraw(step.span, step.span.text)
+        return LineToDraw(step.span, step.span.text, step.fitted.plan)
     assert_never(step)
 
 
@@ -346,15 +319,25 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
         return [SpanNotice(step.span.id, Message("form_field_not_edited"))]
     # A replace: the new text drawn where the old was.
     if isinstance(step, _Redraw):
-        drawn = engine.draw(step.span, step.text, size=step.size, scale_x=step.scale_x)
+        fitted = step.fitted
+        drawn = engine.draw(
+            step.span,
+            step.text,
+            plan=fitted.plan,
+            size=fitted.size,
+            scale_x=fitted.scale_x,
+        )
         return [SpanNotice(step.span.id, said) for said in drawn]
     # An insert: new text drawn where there was none.
     if isinstance(step, _Place):
-        drawn = engine.draw(step.span, step.span.text, turn_ccw=step.turn_ccw)
+        drawn = engine.draw(
+            step.span, step.span.text, plan=step.fitted.plan, turn_ccw=step.turn_ccw
+        )
         return [InsertNotice(step.position, said) for said in drawn]
     assert_never(step)
 
 
 def apply_edits(engine: Engine, resolved: Resolved) -> Applied:
     """Apply every edit on every page, in memory. Nothing is written."""
-    return Applied(resolved.skipped, run(engine, plan(engine, resolved)))
+    fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+    return Applied(resolved.skipped, run(engine, plan(engine, resolved, fits)))

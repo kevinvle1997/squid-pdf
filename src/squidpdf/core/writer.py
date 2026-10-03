@@ -23,7 +23,7 @@ from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, remembered
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
-from squidpdf.core.plan import DrawPlanner, coded_in
+from squidpdf.core.plan import DrawPlan, DrawPlanner, coded_in
 from squidpdf.core.text.spacing import Word
 from squidpdf.core.types import (
     QUARTER_TURNS,
@@ -115,10 +115,13 @@ class PageWriter:
     added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
     def draw(
-        self, span: Span, text: str, *, plans: DrawPlanner, setting: Setting
+        self, span: Span, text: str, *, plan: DrawPlan, plans: DrawPlanner, setting: Setting
     ) -> list[Message]:
-        """Draw `text` at the span's baseline as planned, and say what came out otherwise."""
-        plan = plans.plan_for(span, text)
+        """Draw `text` at the span's baseline as `plan` says, and say what came out otherwise.
+
+        `plan` is `text`'s; `plans` measures, and names a substitute if the page won't take
+        the font after all.
+        """
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
         # A face we ship draws the whole line, less what even it can't draw.

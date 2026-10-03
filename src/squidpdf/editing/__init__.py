@@ -30,6 +30,7 @@ from squidpdf.editing.export import (
 )
 from squidpdf.editing.fit import (
     FitReport as FitReport,
+    Fitted as Fitted,
     LogFits as LogFits,
     Option as Option,
     insert_fit as insert_fit,

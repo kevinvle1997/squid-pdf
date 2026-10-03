@@ -11,7 +11,7 @@ from typing import Literal, TypedDict
 
 from squidpdf.core import Category, HiddenPlace, Message, MessageInfo, Page, SaidInfo, Style
 from squidpdf.editing.edits import Strategy
-from squidpdf.editing.fit import LogFits
+from squidpdf.editing.fit import FitReport
 
 # Why an edit was left out: what it points at isn't in the document.
 type _SkipReason = Literal["bad_reference"]
@@ -105,7 +105,8 @@ class Rendered:
     """
 
     images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
-    fits: LogFits
+    fits: dict[str, FitReport]  # by the replaced span's id
+    insert_fits: dict[int, FitReport]  # by the insert's place in the list the browser sent
     skipped: list[Skipped]
     notices: list[Notice]
     redactions: dict[str, Redaction]
