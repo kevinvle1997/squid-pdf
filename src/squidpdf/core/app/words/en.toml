@@ -88,6 +88,7 @@ as_is_detail = "Runs {delta_pt} pt past where the original ended."
 # A Problem's `detail`, shown to the user verbatim. Limits are placeholders so
 # the sentence can't drift from the number the server enforces.
 not_a_pdf = "This isn't a PDF."
+not_sent_as_pdf = "Send the file as a PDF (Content-Type application/pdf)."
 too_large = "This file is over {mb} MB."
 too_many_pages = "This PDF has more than {pages} pages."
 encrypted = "This PDF is password-protected. Open it with the password and save a copy first."

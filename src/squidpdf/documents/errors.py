@@ -12,6 +12,13 @@ class NotAPdf(Problem):
     status = 415
 
 
+class NotSentAsPdf(Problem):
+    """Not sent as application/pdf, whatever the upload holds: refused before it's counted."""
+
+    type = "not_sent_as_pdf"
+    status = 415
+
+
 class TooLarge(Problem):
     """The upload is over the size limit."""
 
