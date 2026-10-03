@@ -36,6 +36,13 @@ TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
 # A task allowed this long (an export, an analysis) is stopped when its caller leaves.
 # A shorter one (a render, a page image) finishes: stopping it kills its worker.
 STOP_WHEN_LEFT_S = 30
+# Room for a new worker to start, which a task's timeout doesn't count. A task pebble
+# hasn't answered by its timeout and this is too slow, so a lost one isn't waited for
+# forever. Generous, a guess: a task stopped here would be one pebble should have stopped.
+WORKER_START_S = 30
+# How often a task waiting for its answer looks at whether its pool broke: pebble can
+# lose a task sent as it gives up on the pool, and says nothing. As often as pebble looks.
+BROKEN_POOL_CHECK_S = 0.1
 
 
 # Worker failures, matched in order with `isinstance`, and the first match wins.
