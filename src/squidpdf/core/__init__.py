@@ -37,19 +37,18 @@ from squidpdf.core.constants import (
     SHRINK_FLOOR as SHRINK_FLOOR,
     TOLERANCE_PT as TOLERANCE_PT,
 )
-from squidpdf.core.engine import Engine as Engine, LineToDraw as LineToDraw
-from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
-from squidpdf.core.fonts.document import FontSources as FontSources
-from squidpdf.core.fonts.google import google_fonts as google_fonts
-
-# The one import that names the driver: another PDF library is swapped in here.
-from squidpdf.core.pdf.mupdf import (
+from squidpdf.core.engine import (
     BUILD as BUILD,
     CORE_ERRORS as CORE_ERRORS,
+    Engine as Engine,
+    LineToDraw as LineToDraw,
     face_widths as face_widths,
     open_pdf as open_pdf,
     result_of as result_of,
 )
+from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
+from squidpdf.core.fonts.document import FontSources as FontSources
+from squidpdf.core.fonts.google import google_fonts as google_fonts
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
 from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.text.fidelity import (

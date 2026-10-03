@@ -259,6 +259,7 @@ _TABLES_ELSEWHERE = {
     "QUARTER_TURNS": "type data several modules read, beside its type, QuarterTurn",
     "CATALOG": "the faces we ship: data about files, not tuning, in core/fonts/catalog.py",
     "FACES": "the faces we ship, by name, beside CATALOG",
+    "MUPDF_FAILURES": "the library's failures, beside its driver: a new library brings its own",
 }
 
 

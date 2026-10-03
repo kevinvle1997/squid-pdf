@@ -3,7 +3,9 @@
 Primitives only: read what the file says, change it, draw on it, save it. What
 to make of it (spans, fidelity, substitutes, fits) is `core.engine`'s, the same
 over any driver. PyMuPDF is AGPL; a permissive rewrite would implement these
-two protocols over pypdfium2 and pikepdf, and nothing else.
+two protocols over pypdfium2 and pikepdf, and give `core.engine` the four
+things `core.pdf.mupdf` gives it: an opener for a PDF and one for a face we
+ship, the table of the library's failures, and the library's name and version.
 """
 
 from __future__ import annotations
@@ -64,7 +66,7 @@ class FontProgram(Protocol):
 
 
 class PdfDriver(Protocol):
-    """A PDF open in a library. `core.pdf.mupdf.MuPDFDriver` is the one there is.
+    """A PDF open in a library. `core.pdf.mupdf`'s is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the
     page unrotated. A font the library can't use raises DriverError, saying

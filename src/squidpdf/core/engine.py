@@ -1,7 +1,13 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The product's own logic, written against a `core.pdf.driver.PdfDriver`'s primitives,
-so it's the same over any PDF library. Open one with `core.open_pdf`.
+The engine is the product's own logic, written against a
+`core.pdf.driver.PdfDriver`'s primitives, so it's the same over any PDF library.
+
+This module is also core's one door to the library, so no other core module
+names the driver: `open_pdf` opens a PDF, `result_of` raises the library's
+failures as the Problems they mean (`CORE_ERRORS`), `BUILD` names what drew a
+page, and `face_widths` measures a face for the font list, where no document
+is open.
 
 The engine speaks only in primitives (remove, draw), so it never learns what a
 Replace or a Redact is, which is what keeps `core` free of feature imports.
@@ -13,17 +19,23 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cache, partial
 from typing import assert_never
 
+from squidpdf.core.app.errors import ErrorController
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.document import DocumentFonts, FontSources
+from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
+from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
+from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import PdfDriver
-from squidpdf.core.plan import DrawPlan, DrawPlanner
+
+# The one import that names the driver: another PDF library is swapped in here.
+from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
+from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
@@ -44,6 +56,14 @@ from squidpdf.core.writer import PageWriter, Setting
 
 # A word: a run of letters and digits (`\w` without its underscore).
 _WORD = re.compile(r"[^\W_]+")
+
+# Core's own: every failure below the API, said as the Problem it means.
+CORE_ERRORS = ErrorController(MUPDF_FAILURES)
+
+# What drew and judged a page; a new one means earlier images and fidelity may differ.
+# Google's copies are part of it: a new pin lends other letters.
+_GOOGLE = GOOGLE_FONTS_COMMIT[:7]
+BUILD = f"{DRIVER_BUILD}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -408,6 +428,35 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     return Engine(
         driver, fonts=fonts, plans=DrawPlanner(fonts, driver), writer=PageWriter(driver)
     )
+
+
+def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
+    """The PDF at `path`, open for editing. Use it in a `with`, or close it.
+
+    `sources` lend a font the letters its copies in the file lack: Google's copy.
+    """
+    return open_engine(open_driver(path), sources=sources)
+
+
+def result_of[T](task: Callable[[], T]) -> T:
+    """What `task()` returns, with the library's own failures raised as the Problems they mean.
+
+    A worker runs its task through this: MuPDF's exceptions hold a pointer, so
+    they can't be sent back from another process, and they mean something a
+    person can be told. `MUPDF_FAILURES` says what; anything else goes up as
+    it is.
+    """
+    return CORE_ERRORS.result_of(task)
+
+
+@cache
+def face_widths(face: Face) -> dict[str, float]:
+    """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
+
+    For the font list, where there's no document to open: the same widths the
+    engine gives a span drawn in the face.
+    """
+    return letter_widths(open_face(face), face_letters(face))
 
 
 def _by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
