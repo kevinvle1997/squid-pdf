@@ -963,7 +963,7 @@ class PdfFile:
         return name
 
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
-        """Turn a point on the page as you see it into the PDF's own coordinates.
+        """Turn a point on the page, read unturned, into the PDF's own coordinates.
 
         Not page.transformation_matrix: on a turned page it forgets where the
         page's box starts.
@@ -972,12 +972,31 @@ class PdfFile:
         return (moved.x, moved.y)
 
     def _to_pdf_matrix(self, page: int) -> pymupdf.Matrix:
-        """What turns a point on the page as you see it into the PDF's own coordinates."""
+        """What turns a point on the page, read unturned, into the PDF's own coordinates."""
         mu = pymupdf.mupdf
+        with self._unturned(page) as pdf_page:
+            _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
+            mu.pdf_page_transform(pdf_page, _mediabox, page_to_screen)
+        return ~pymupdf.Matrix(page_to_screen)
+
+    @contextmanager
+    def _unturned(self, page: int) -> Iterator[pymupdf.mupdf.PdfPage]:
+        """The page with its turn (its Rotate) taken off inside the `with`, put back after.
+
+        A point on the page is read unturned. PyMuPDF's matrix to turn it
+        (rotation_matrix) starts from the whole crop box, MuPDF's from the part on
+        the paper (the MediaBox): on a page cropped past its paper they differ.
+        """
         pg = self.doc[page]
-        _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
-        mu.pdf_page_transform(mu.pdf_page_from_fz_page(pg.this), _mediabox, page_to_screen)
-        return pg.rotation_matrix * ~pymupdf.Matrix(page_to_screen)
+        turn_cw = pg.rotation
+        # A page not turned is left as it is, with no Rotate written.
+        if turn_cw:
+            pg.set_rotation(0)
+        try:
+            yield pymupdf.mupdf.pdf_page_from_fz_page(pg.this)
+        finally:
+            if turn_cw:
+                pg.set_rotation(turn_cw)
 
     def _sync_links(self, page: int) -> None:
         """Have MuPDF read the page's links again: it keeps a list of its own, read once."""
