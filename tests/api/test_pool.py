@@ -391,15 +391,34 @@ def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [record.getMessage() for record in caplog.records if record.name == "asyncio"]
 
 
-def test_a_render_that_crashes_after_its_browser_left_logs_no_error(
-    runner, pool, tmp_path, caplog
+def _note_pid_then_read_a_broken_font(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then reads a broken font."""
+    _note_pid(folder)
+    time.sleep(_WORK_S)
+    (folder / "done").touch()  # what the test waits for: the failure comes next
+    _read_a_broken_font()
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        pytest.param(_note_pid_then_die, id="its worker crashes"),
+        pytest.param(_note_pid_then_read_a_broken_font, id="the file is damaged"),
+    ],
+)
+def test_a_render_that_fails_on_its_file_after_its_browser_left_logs_no_error(
+    runner, pool, tmp_path, caplog, task
 ):
-    """Nobody waits for its answer, and a crash is a file's doing: a log would be noise."""
+    """Nobody waits for its answer, and the failure is the file's doing: a log is noise."""
 
     async def leave() -> None:
-        worker_pid = await _start_then_leave(pool, tmp_path, _note_pid_then_die)
-        await asyncio.to_thread(_wait_until, lambda: _is_gone(worker_pid), _ENOUGH_S)
-        await asyncio.sleep(_WORK_S)  # for pebble to see it die and say so
+        worker_pid = await _start_then_leave(pool, tmp_path, task)
+
+        def ended() -> bool:
+            return (tmp_path / "done").exists() or _is_gone(worker_pid)
+
+        await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
+        await asyncio.sleep(_WORK_S)  # for pebble to see it end and say how
 
     runner.run(leave())
 

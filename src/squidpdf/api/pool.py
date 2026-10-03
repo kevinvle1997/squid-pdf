@@ -58,9 +58,13 @@ from pebble import ProcessPool
 from squidpdf.api import constants
 from squidpdf.api.errors import NoWorkers, TooSlow
 from squidpdf.api.errors.http import API_ERRORS
-from squidpdf.core import result_of
+from squidpdf.core import Problem, result_of
 
 _logger = logging.getLogger(__name__)
+
+# How a task whose caller left may fail without a bug: pebble's usual failures, and any
+# Problem (too slow, a damaged file, no workers), which a caller gets as its answer, unlogged.
+_EXPECTED_WHEN_LEFT: tuple[type[Exception], ...] = (Problem, *constants.WORKER_FAILURE_TYPES)
 
 
 class _NeverStarted(Exception):
@@ -270,9 +274,7 @@ def _log_unexpected[T](job: asyncio.Task[T]) -> None:
     if job.cancelled():
         return
     failure = job.exception()  # read here, so asyncio doesn't log it as never read
-    # pebble's usual failures, and NoWorkers, which the pool raises itself: none is a bug.
-    usual: tuple[type[BaseException], ...] = (NoWorkers, *constants.WORKER_FAILURE_TYPES)
-    expected = failure is None or isinstance(failure, usual)
+    expected = failure is None or isinstance(failure, _EXPECTED_WHEN_LEFT)
     if expected:
         return
     message = "a task whose caller left failed"
