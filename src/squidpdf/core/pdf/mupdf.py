@@ -371,7 +371,8 @@ class _MuPDFDriver:
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
         value_type, value = self.doc.xref_get_key(xref, key)
-        if value_type not in ("int", "real"):
+        # PyMuPDF calls a number with a fraction (a PDF's real) a "float".
+        if value_type not in ("int", "float"):
             return None
         return float(value)
 

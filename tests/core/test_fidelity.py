@@ -97,23 +97,25 @@ def test_referenced_font_is_a_substitution(engine):
 
 
 @pytest.mark.parametrize(
-    ("base_font", "flags", "face", "same_widths"),
+    ("base_font", "flags", "italic_angle", "face", "same_widths"),
     [
-        ("Calibri-Bold", None, "Carlito Bold", True),
+        ("Calibri-Bold", None, 0, "Carlito Bold", True),
         # The typeface itself, shipped: its own letters, so its own widths.
-        ("Poppins-Bold", None, "Poppins Bold", True),
+        ("Poppins-Bold", None, 0, "Poppins Bold", True),
         # A name that says its cut with no dash, as TeX's do: the name alone picks the face.
-        ("CMBX10", None, "Latin Modern Roman 10 Bold", True),
+        ("CMBX10", None, 0, "Latin Modern Roman 10 Bold", True),
         # A font we don't know: its kind comes from the PDF's description, not its name.
-        ("NimbusSomething", _SERIF_FLAGS, "Liberation Serif Regular", False),
-        ("NimbusSomething", None, "Liberation Sans Regular", False),
+        ("NimbusSomething", _SERIF_FLAGS, 0, "Liberation Serif Regular", False),
+        ("NimbusSomething", None, 0, "Liberation Sans Regular", False),
+        # Slanted by a fraction of a degree, which read as no slant: it was drawn upright.
+        ("NimbusSomething", _SERIF_FLAGS, -11.5, "Liberation Serif Italic", False),
     ],
 )
 def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
-    tmp_path, base_font, flags, face, same_widths
+    tmp_path, base_font, flags, italic_angle, face, same_widths
 ):
     """Calibri-Bold gets Carlito Bold, the face the report names, not Helvetica."""
-    path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
+    path = named_only(str(tmp_path / "named.pdf"), base_font, flags, italic_angle=italic_angle)
     out = str(tmp_path / "redrawn.pdf")
     # Drawn with nothing asked first: remove() must read the font before erasing it.
     with open_pdf(path) as engine:
