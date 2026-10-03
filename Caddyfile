@@ -24,6 +24,17 @@
 		Strict-Transport-Security "max-age=31536000"
 		# Each reply is the type it says: a browser never guesses a PDF or PNG is a page.
 		X-Content-Type-Options "nosniff"
+		# Only what the built app loads, all of it from here: its scripts, styles and fonts, the
+		# preview's faces, the page images, and the base64 strips render sends. No inline script,
+		# so one injected into a page never runs. The one style tag is React Aria's own, for what
+		# can be pressed, allowed by its hash: react/src/policy.test.ts fails when a React Aria
+		# upgrade changes it, and the browser's console names the new hash. No other site may
+		# frame a page, so none can trick a click on it.
+		Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-38RhXrc7EdReTKsOm23ZPOCUgniTUUcjky8QOOrQx6o='; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		# Another site never learns which page a request came from; ours still do.
+		Referrer-Policy "same-origin"
+		# The app uses none of these, so nothing on a page may ask for them.
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=()"
 	}
 
 	# No body cap here: the app enforces its own, and must see them.

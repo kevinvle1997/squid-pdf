@@ -73,6 +73,12 @@ read -r status seconds < <(call "${signed_in[@]}" "$base/")
 [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
   fail "the browser app answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "the browser app is served: $status in ${seconds}s"
+# header() drops spaces, so the policy reads default-src'none';script-src'self';...
+[[ $(header content-security-policy) == *"frame-ancestors'none'"* ]] ||
+  fail "the page's Content-Security-Policy is '$(header content-security-policy)'"
+[[ -n $(header referrer-policy) && -n $(header permissions-policy) ]] ||
+  fail "the page has no Referrer-Policy or Permissions-Policy"
+pass "the page carries a Content-Security-Policy that refuses framing"
 
 read -r status seconds < <(call "${signed_in[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")
