@@ -107,6 +107,27 @@ class FormField:
     value: str
 
 
+# Where a document keeps a copy of words apart from its pages' text: its title, the rest
+# of what it says about itself (metadata), bookmarks, comments, form fields, and what a
+# screen reader reads in place of letters or a picture. A plain alias: pydantic reads it.
+CopyPlace = Literal[
+    "title", "metadata", "bookmarks", "comments", "form_fields", "screen_reader_text"
+]
+
+
+@dataclass(frozen=True, slots=True)
+class HiddenCopy:
+    """A copy of words the document keeps apart from its pages' text, and where: a hidden copy.
+
+    What it says about itself, bookmarks, comments, form fields, tags. A
+    screen reader, a search or a copy reads them all the same, so a redacted
+    word left in one is a leak.
+    """
+
+    place: CopyPlace
+    text: str
+
+
 @dataclass(frozen=True, slots=True)
 class FontResource:
     """A font as a page names it, and the font itself.

@@ -220,10 +220,22 @@ class Engine:
             self.driver.drop_links(page, [span.bbox for span in on_page])
 
     def drop_hidden_copies(self, spans: list[Span]) -> None:
-        """Delete these spans' words, as whole words, from the hidden copies on their pages."""
+        """Delete these spans' words from every hidden copy, as whole words, and all signatures.
+
+        Those on their pages, and the document's own: its title and metadata,
+        bookmarks, comments, form fields and tags. Every span's words go from
+        the document's own, since none of those sits on one page. A signature
+        goes whatever it holds: the redaction rewrites the file, so it would no
+        longer hold.
+        """
+        # No span: nothing to delete, and a pattern of no words would match everywhere.
+        if not spans:
+            return
         for page, on_page in _by_page(spans).items():
             words = _whole_words(on_page)
             self.driver.rewrite_hidden_copies(page, partial(_without, words))
+        self.driver.rewrite_document_hidden_copies(partial(_without, _whole_words(spans)))
+        self.driver.drop_signatures()
 
     def draw(
         self,

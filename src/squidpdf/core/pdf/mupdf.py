@@ -50,6 +50,7 @@ from squidpdf.core.types import (
     FontKind,
     FontResource,
     FormField,
+    HiddenCopy,
     Page,
     PageFont,
     QuarterTurn,
@@ -468,6 +469,23 @@ class _MuPDFDriver:
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
         self.file.rewrite_hidden_copies(page, rewritten)
+
+    def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
+        """Each of the document's own hidden copies that `holding` is true of, and where."""
+        return self.file.document_hidden_copies(holding)
+
+    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(copy)` for each of the document's hidden copies; one left blank goes.
+
+        A comment or a form field that shows its words on the page is drawn
+        again by MuPDF, as it draws one the user typed in; one MuPDF can't draw
+        has its old drawing go.
+        """
+        self.file.rewrite_document_hidden_copies(rewritten)
+
+    def drop_signatures(self) -> None:
+        """Delete every signature, and what the file keeps only to check one."""
+        self.file.drop_signatures()
 
     def write_codes(
         self,

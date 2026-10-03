@@ -20,7 +20,17 @@ from squidpdf.core import Engine, words, write_dense
 from squidpdf.documents import constants as documents_constants, store
 from squidpdf.editing import Edit, constants as editing_constants, export
 from squidpdf.editing.types import Exported
-from tests.api.conftest import span_starting, upload
+from tests.api.conftest import (
+    CHOSEN,
+    NAME_COPIES,
+    NOT_XML_COPIES,
+    OTHER_LINE,
+    REDACTED_NAME,
+    SIGNED,
+    span_starting,
+    upload,
+    with_hidden_copies,
+)
 from tests.conftest import cannot_cut
 from tests.helpers import (
     assert_equal,
@@ -457,6 +467,219 @@ def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monk
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=_CARD_LINE, page=1)
     assert_equal(response.json()["detail"], said, "what the user reads")
+
+
+def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(mine):
+    """The title, metadata, bookmarks, comments, form fields and tags keep hidden copies.
+
+    A screen reader, a search or a copy reads them, so the redacted words go
+    from each, as whole words: the words of their own stay. What a comment or a
+    field writes on the page is drawn again from what's left, and a drawing
+    that still shows the words goes. A field the form doesn't list still shows
+    on the page, so it's found there. A bookmark keeps its title, empty: the
+    file must have one. The form's XFA and a signature field's seed values
+    aren't edited: each goes whole.
+    """
+    doc = upload(mine, with_hidden_copies(NAME_COPIES)).json()
+    name = span_starting(doc, 0, REDACTED_NAME)
+
+    response = _export(mine, doc, [_redact(name)])
+
+    saved = _opened(response)
+    expected = {
+        "title": ("string", "Notes on"),
+        "author": ("null", "null"),
+        "xmp": ["Notes on"],
+        "bookmark": (("string", "Visit by"), ("string", "")),
+        "note": ("Call", "", "Visit", ("null", "null")),
+        "free_text": "Ask",
+        "stale_free_text": ("Ring", "Ring"),
+        "field": ("", ("null", "null"), ("null", "null")),
+        "undrawable_field": (("string", ""), ("null", "null")),
+        "choice": (CHOSEN, ("array", f"[({CHOSEN})]")),
+        "multi_choice": (
+            ("array", f"[({CHOSEN})]"),
+            ("array", f"[({CHOSEN})]"),
+            ("null", "null"),
+        ),
+        "unlisted_field": "",
+        "tooltip": ("string", "Signature of"),
+        "widget_contents": ("string", "Phone of"),
+        "seed_value": ("null", "null"),
+        "button": ("dict", "<</CA(Email)>>"),
+        "stamp": ("null", "null"),
+        "xfa": ("null", "null"),
+        "tag": ("string", "Photo of"),
+    }
+    assert_equal(_kept_in(saved), expected, "what each place holds")
+    assert_not_in("Quill", _everything_in(saved), "the name, anywhere in the file")
+    # The stamp, with no drawing of its own, is drawn as MuPDF draws one, and so is the
+    # signature field not signed yet.
+    expected_lines = [[OTHER_LINE, "Ask", "Ring", "APPROVED", CHOSEN, CHOSEN, "SIGN", "Email"]]
+    assert_equal(
+        _lines(saved), expected_lines, "the page's lines, the comments' and the fields'"
+    )
+
+
+@pytest.mark.parametrize("copy", NOT_XML_COPIES)
+def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine, copy):
+    """It can't be written back without the word as it was, so none of it stays.
+
+    Nor can XMP the XML reader can't read, or whose DOCTYPE declares the word.
+    """
+    doc = upload(mine, with_hidden_copies([copy])).json()
+    name = span_starting(doc, 0, REDACTED_NAME)
+
+    response = _export(mine, doc, [_redact(name)])
+
+    saved = _opened(response)
+    metadata = saved.xref_get_key(saved.pdf_catalog(), "Metadata")
+    assert_equal(metadata, ("null", "null"), "the metadata stream the catalog names")
+    assert_not_in("Quill", _everything_in(saved), "the name, anywhere in the file")
+
+
+@pytest.mark.parametrize("signed", SIGNED)
+def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signed):
+    """The redaction rewrites the file, so no signature in it would still hold: each goes.
+
+    Whatever it holds, unread: none here holds the redacted name. So does
+    what a certified document permits (Perms) and what keeps signatures
+    checkable for years (DSS), which are there only for them.
+    """
+    doc = upload(mine, with_hidden_copies([signed])).json()
+    name = span_starting(doc, 0, REDACTED_NAME)
+
+    response = _export(mine, doc, [_redact(name)])
+
+    expected = (["null"], "null", "null")
+    assert_equal(_signatures_in(_opened(response)), expected, "the signatures, Perms and DSS")
+
+
+def test_a_signed_document_exported_with_no_redaction_keeps_its_signatures(mine):
+    """Only a redaction takes them away: a replace leaves each as the export writes it."""
+    doc = upload(mine, with_hidden_copies(SIGNED)).json()
+    line = span_starting(doc, 0, OTHER_LINE)
+    edits = [{"kind": "replace", "span_id": line["id"], "text": "Other lane"}]
+
+    response = _export(mine, doc, edits)
+
+    expected = (["xref"] * 3, "dict", "dict")
+    assert_equal(_signatures_in(_opened(response)), expected, "the signatures, Perms and DSS")
+
+
+def _signatures_in(pdf: pymupdf.Document) -> tuple[list[str], str, str]:
+    """What kind each signature field's value is, then the catalog's Perms and DSS.
+
+    A signature is a dictionary of its own ("xref"); a key the file leaves
+    out reads "null".
+    """
+    catalog = pdf.pdf_catalog()
+    values = [pdf.xref_get_key(field.xref, "V")[0] for field in pdf[0].widgets()]
+    return values, pdf.xref_get_key(catalog, "Perms")[0], pdf.xref_get_key(catalog, "DSS")[0]
+
+
+# Metadata (XMP) as Acrobat writes it: in its packet's wrapper, with typed values, as
+# attributes and as elements: the dates and the identifiers of the document and this
+# version of it, its file type, whether it's trapped, its PDF/A part and level, its PDF
+# version and its page count.
+_TYPED_XMP = (
+    '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+    '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+    '<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/"'
+    ' xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/" xmlns:dc="http://purl.org/dc/elements/1.1/"'
+    ' xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"'
+    ' xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/"'
+    ' xmp:ModifyDate="2024-05-03T10:00:00Z" xmpMM:DocumentID="xmp.did:3F2A9C"'
+    ' pdf:Trapped="False" pdfaid:part="2" pdfaid:conformance="B">'
+    "<xmp:CreateDate>2024-05-03T10:00:00Z</xmp:CreateDate>"
+    "<xmpMM:InstanceID>uuid:5d3c0f12-2024-11e9</xmpMM:InstanceID>"
+    "<dc:format>application/pdf</dc:format>"
+    "<pdf:PDFVersion>1.7</pdf:PDFVersion>"
+    "<xmpTPg:NPages>12</xmpTPg:NPages>"
+    "</rdf:Description></rdf:RDF></x:xmpmeta>"
+    '<?xpacket end="w"?>'
+)
+# A line holding each word the packet's wrapper and the typed values are written with:
+# begin, end and id; did; 2024 and 05; application and pdf; false; 12.
+_TYPED_LINE = "Begin to end: ID did 2024 05 application PDF False 12"
+
+
+@pytest.fixture(scope="module")
+def typed_metadata() -> bytes:
+    """A page of `_TYPED_LINE`, its metadata `_TYPED_XMP`."""
+    pdf = pymupdf.open()
+    pdf.new_page().insert_text((72, 100), _TYPED_LINE, fontname="helv", fontsize=12)
+    pdf.set_xml_metadata(_TYPED_XMP)
+    return pdf.tobytes()
+
+
+def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
+    mine, typed_metadata
+):
+    """They say when, which or what kind, not what, as the Info's dates do, so none is a copy.
+
+    Rewritten, a date, an identifier, a file type or a number would no longer
+    be valid, and a wrapper with no id would break the packet a PDF/A file
+    must have.
+    """
+    doc = upload(mine, typed_metadata).json()
+    line = span_starting(doc, 0, "Begin")
+
+    response = _export(mine, doc, [_redact(line)])
+
+    assert_equal(_opened(response).get_xml_metadata(), _TYPED_XMP, "the metadata")
+
+
+def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
+    """What each copy `with_hidden_copies` made of the name holds, read back from the file.
+
+    A key the file leaves out reads ("null", "null").
+    """
+    page = pdf[0]
+    catalog = pdf.pdf_catalog()
+    note, free_text, stale_free_text, stamp = page.annots()
+    fields = {field.field_name: field for field in page.widgets()}
+    field, choice = fields["who"], fields["pick"]
+    undrawable, listed = fields["sealed"].xref, fields["team"].xref
+    return {
+        "title": pdf.xref_get_key(-1, "Info/Title"),  # -1: the file's trailer
+        "author": pdf.xref_get_key(-1, "Info/Author"),
+        "xmp": re.findall(r">([^<>]+)<", pdf.get_xml_metadata()),
+        "bookmark": tuple(
+            pdf.xref_get_key(catalog, f"Outlines/{end}/Title") for end in ("First", "Last")
+        ),
+        "note": (
+            note.info["content"],
+            note.info["title"],
+            note.info["subject"],
+            pdf.xref_get_key(note.xref, "RC"),
+        ),
+        "free_text": free_text.info["content"],
+        "stale_free_text": (
+            stale_free_text.info["content"],
+            stale_free_text.get_text().strip(),
+        ),
+        "field": (
+            field.field_value,
+            pdf.xref_get_key(field.xref, "DV"),
+            pdf.xref_get_key(field.xref, "RV"),
+        ),
+        "undrawable_field": (
+            pdf.xref_get_key(undrawable, "V"),
+            pdf.xref_get_key(undrawable, "AP"),
+        ),
+        "choice": (choice.field_value, pdf.xref_get_key(choice.xref, "Opt")),
+        "multi_choice": tuple(pdf.xref_get_key(listed, key) for key in ("V", "Opt", "I")),
+        "unlisted_field": fields["signed"].field_value,
+        "tooltip": pdf.xref_get_key(fields["described"].xref, "TU"),
+        "widget_contents": pdf.xref_get_key(fields["phone"].xref, "Contents"),
+        "seed_value": pdf.xref_get_key(fields["to_sign"].xref, "SV"),
+        "button": pdf.xref_get_key(fields["mail"].xref, "MK"),
+        "stamp": pdf.xref_get_key(stamp.xref, "AP"),
+        "xfa": pdf.xref_get_key(catalog, "AcroForm/XFA"),
+        "tag": pdf.xref_get_key(catalog, "StructTreeRoot/K/Alt"),
+    }
 
 
 def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc, monkeypatch):

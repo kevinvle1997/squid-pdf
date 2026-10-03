@@ -125,14 +125,14 @@ def _draw_regions(
 
 
 def _said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
-    """A notice for each redaction drawn whose text is still there, as a form field's is.
+    """A notice for each redaction drawn whose text is still there: the erase couldn't reach it.
 
     Said now, while the user can still undo it: export refuses the file.
     """
     redacted = tuple(step.span for step in steps if isinstance(step, Erase))
     verdicts = RedactionController(redacted).verdicts(engine)
     return [
-        SpanNotice(span_id, Message("form_field_not_redacted"))
+        SpanNotice(span_id, Message("not_redacted"))
         for span_id, gone in verdicts.items()
         if not gone
     ]
