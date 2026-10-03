@@ -11,13 +11,18 @@ from dataclasses import dataclass, field
 
 from squidpdf.core import (
     CONDENSE_LIMIT,
+    FACES,
     OPTION_KEYS,
     SHRINK_FLOOR,
     TOLERANCE_PT,
+    Engine,
     Message,
     Param,
+    Span,
+    index_of,
+    new_text,
 )
-from squidpdf.editing.types import Strategy
+from squidpdf.editing.edits import Insert, Strategy
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,3 +119,66 @@ def options_for(delta_pt: float, original_width: float) -> list[Option]:
         )
         for name in names
     ]
+
+
+def strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
+    """The way out that's drawn: the one asked for if it was offered, else as-is."""
+    offered = asked in {option.name for option in options}
+    return asked if offered else "as-is"
+
+
+def insert_span(insert: Insert) -> Span:
+    """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
+    return new_text(
+        insert.page,
+        origin=insert.origin,
+        text=insert.text,
+        size=insert.size,
+        font=insert.font,
+        color=insert.color,
+    )
+
+
+def insert_fit(engine: Engine, insert: Insert) -> FitReport:
+    """What new text will really look like: in its chosen font, or what draws it instead.
+
+    Nothing to fit against, so only the font and the letters are checked.
+    """
+    span = insert_span(insert)
+    [report] = engine.assess(index_of([span]))
+    shipped = insert.font in FACES
+    # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
+    # One that only lacks a letter can: the substitute draws that line, as for a replace.
+    unusable = not shipped and not report.in_file
+    typed_plan = engine.plan_for(span, insert.text)
+    return FitReport(
+        delta_pt=0.0,
+        missing=[] if unusable else typed_plan.missing,
+        left_out=typed_plan.left_out,
+        substitute=engine.substitute(span, insert.text, plan=typed_plan),
+        unavailable=insert.font if unusable else "",
+    )
+
+
+def replace_fit(
+    engine: Engine, span: Span, text: str, *, strategy: Strategy = "as-is"
+) -> FitReport:
+    """What would happen if the user typed this, with the ways out if it will not fit.
+
+    `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
+    """
+    # One plan for what's typed, asked everything the fit says; the original's is its own.
+    typed_plan = engine.plan_for(span, text)
+    original_width = engine.measure(span, span.text)
+    typed_width = engine.width_of(span, typed_plan)
+    delta_pt = typed_width - original_width
+    options = options_for(delta_pt, original_width)
+    return FitReport(
+        delta_pt=round(delta_pt, 2),
+        missing=typed_plan.missing,
+        options=options,
+        strategy=strategy_drawn(strategy, options),
+        left_out=typed_plan.left_out,
+        substitute=engine.substitute(span, text, plan=typed_plan),
+        asked=strategy,
+    )

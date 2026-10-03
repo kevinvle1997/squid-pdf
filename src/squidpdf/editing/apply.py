@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from typing import assert_never
 
 from squidpdf.core import (
-    FACES,
     Engine,
     LineToDraw,
     Message,
@@ -25,14 +24,20 @@ from squidpdf.core import (
     Rect,
     Span,
     SpanIndex,
-    index_of,
-    new_text,
 )
 from squidpdf.editing.constants import REDRAW_REACH_EM
 from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
 from squidpdf.editing.errors import BadReference, RedactionConflict
-from squidpdf.editing.fit import FitReport, LogFits, Option, options_for
-from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice, Strategy
+from squidpdf.editing.fit import (
+    FitReport,
+    LogFits,
+    insert_fit,
+    insert_span,
+    options_for,
+    replace_fit,
+    strategy_drawn,
+)
+from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +57,7 @@ class _ListedInsert:
 
 
 @dataclass(frozen=True, slots=True)
-class _Resolved:
+class Resolved:
     """An edit list checked against the document: what each edit points at."""
 
     # The last edit to each span, in the order spans were first edited.
@@ -106,7 +111,7 @@ def is_page(page: int, page_count: int) -> bool:
     return 0 <= page < page_count
 
 
-def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> _Resolved:
+def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
     A redaction that points at nothing raises BadReference instead of being
@@ -156,10 +161,10 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> _Resolve
             latest[edit.span_id] = _EditedSpan(edit, span)
             continue
         assert_never(edit)
-    return _Resolved(list(latest.values()), inserts, skipped, page_count)
+    return Resolved(list(latest.values()), inserts, skipped, page_count)
 
 
-def page_order(resolved: _Resolved, pages: Sequence[int] | None) -> list[int]:
+def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
     """The pages the saved file has, in order, by their numbers in the original.
 
     Worked out once, so the pages kept and the redaction check read the same
@@ -168,7 +173,7 @@ def page_order(resolved: _Resolved, pages: Sequence[int] | None) -> list[int]:
     return list(range(resolved.page_count)) if pages is None else list(pages)
 
 
-def redacted_in(resolved: _Resolved) -> tuple[Span, ...]:
+def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
     """Every span whose last edit is a redaction, numbered as in the original."""
     return tuple(
         edited_span.span
@@ -177,7 +182,7 @@ def redacted_in(resolved: _Resolved) -> tuple[Span, ...]:
     )
 
 
-def log_fits(engine: Engine, resolved: _Resolved) -> LogFits:
+def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     """A fit for each span the log leaves replaced and for each insert, drawn or not.
 
     Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
@@ -206,7 +211,7 @@ def _fit_of(engine: Engine, edited_span: _EditedSpan) -> FitReport | None:
 
 
 def plan(
-    engine: Engine, resolved: _Resolved, *, strips: Mapping[int, list[Rect]] | None = None
+    engine: Engine, resolved: Resolved, *, strips: Mapping[int, list[Rect]] | None = None
 ) -> list[Step]:
     """The steps the edits shown take, worked out before anything is erased.
 
@@ -229,7 +234,7 @@ def plan(
         *(
             _Place(
                 listed.position,
-                _insert_span(listed.insert),
+                insert_span(listed.insert),
                 turn_ccw=turns_cw[listed.insert.page],
             )
             for listed in placed
@@ -270,7 +275,7 @@ def _redraw_of(engine: Engine, span: Span, replace: Replace) -> _Redraw:
     original_width = engine.measure(span, span.text)
     typed_width = engine.measure(span, replace.text)
     delta_pt = typed_width - original_width
-    strategy = _strategy_drawn(replace.strategy, options_for(delta_pt, original_width))
+    strategy = strategy_drawn(replace.strategy, options_for(delta_pt, original_width))
     # Drawn as typed: the span's size, no stretch.
     if strategy == "as-is":
         return _Redraw(span, replace.text, size=None, scale_x=1.0)
@@ -283,12 +288,6 @@ def _redraw_of(engine: Engine, span: Span, replace: Replace) -> _Redraw:
     if strategy == "condense":
         return _Redraw(span, replace.text, size=None, scale_x=original_width / typed_width)
     assert_never(strategy)
-
-
-def _strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
-    """The way out that's drawn: the one asked for if it was offered, else as-is."""
-    offered = asked in {option.name for option in options}
-    return asked if offered else "as-is"
 
 
 def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
@@ -356,63 +355,6 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
     assert_never(step)
 
 
-def apply_edits(engine: Engine, resolved: _Resolved) -> Applied:
+def apply_edits(engine: Engine, resolved: Resolved) -> Applied:
     """Apply every edit on every page, in memory. Nothing is written."""
     return Applied(resolved.skipped, run(engine, plan(engine, resolved)))
-
-
-def _insert_span(insert: Insert) -> Span:
-    """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
-    return new_text(
-        insert.page,
-        origin=insert.origin,
-        text=insert.text,
-        size=insert.size,
-        font=insert.font,
-        color=insert.color,
-    )
-
-
-def insert_fit(engine: Engine, insert: Insert) -> FitReport:
-    """What new text will really look like: in its chosen font, or what draws it instead.
-
-    Nothing to fit against, so only the font and the letters are checked.
-    """
-    span = _insert_span(insert)
-    [report] = engine.assess(index_of([span]))
-    shipped = insert.font in FACES
-    # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
-    # One that only lacks a letter can: the substitute draws that line, as for a replace.
-    unusable = not shipped and not report.in_file
-    typed_plan = engine.plan_for(span, insert.text)
-    return FitReport(
-        delta_pt=0.0,
-        missing=[] if unusable else typed_plan.missing,
-        left_out=typed_plan.left_out,
-        substitute=engine.substitute(span, insert.text, plan=typed_plan),
-        unavailable=insert.font if unusable else "",
-    )
-
-
-def replace_fit(
-    engine: Engine, span: Span, text: str, *, strategy: Strategy = "as-is"
-) -> FitReport:
-    """What would happen if the user typed this, with the ways out if it will not fit.
-
-    `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
-    """
-    # One plan for what's typed, asked everything the fit says; the original's is its own.
-    typed_plan = engine.plan_for(span, text)
-    original_width = engine.measure(span, span.text)
-    typed_width = engine.width_of(span, typed_plan)
-    delta_pt = typed_width - original_width
-    options = options_for(delta_pt, original_width)
-    return FitReport(
-        delta_pt=round(delta_pt, 2),
-        missing=typed_plan.missing,
-        options=options,
-        strategy=_strategy_drawn(strategy, options),
-        left_out=typed_plan.left_out,
-        substitute=engine.substitute(span, text, plan=typed_plan),
-        asked=strategy,
-    )

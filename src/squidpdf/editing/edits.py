@@ -15,7 +15,9 @@ from typing import Literal, assert_never
 
 from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
-from squidpdf.editing.types import Strategy
+
+# How a too-long replacement is drawn; the names the user's options go by.
+type Strategy = Literal["as-is", "shrink", "condense"]
 
 # Unicode's categories not on a line: controls, line and paragraph separators, half an emoji.
 # typing.ts's NOT_ON_A_LINE copies this and _BIDI_CONTROLS: change both.
