@@ -61,8 +61,6 @@ from squidpdf.core.text.fidelity import (
 )
 from squidpdf.core.types import (
     COPY_PLACES as COPY_PLACES,
-    LEVEL as LEVEL,
-    SOLID as SOLID,
     Category as Category,
     Fragment as Fragment,
     HiddenPlace as HiddenPlace,

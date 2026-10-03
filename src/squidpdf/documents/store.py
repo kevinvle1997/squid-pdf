@@ -25,8 +25,6 @@ from typing import Any, BinaryIO
 import orjson
 
 from squidpdf.core import (
-    LEVEL,
-    SOLID,
     Engine,
     FontSources,
     Fragment,
@@ -287,13 +285,10 @@ def _load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
-        # .get: an index saved before spans kept opacity; they were drawn solid then.
-        "opacity": saved.get("opacity", SOLID),
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
         "fragments": tuple(_load_fragment(fragment) for fragment in saved["fragments"]),
-        # .get: an index saved before spans kept their direction; all were drawn level then.
-        "direction": tuple(saved.get("direction", LEVEL)),
+        "direction": tuple(saved["direction"]),
     }
     return Span(**saved | rebuilt)
 
