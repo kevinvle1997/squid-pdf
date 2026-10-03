@@ -294,6 +294,21 @@ class Engine:
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if _any_word_left(span.text, left)]
 
+    def still_hidden(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans with a word of their text still in a hidden copy on their page.
+
+        Read as `drop_hidden_copies` deletes them: whole words in any case, so
+        "Annual" isn't a leftover "Ann", and a word of one letter only within
+        the whole text.
+        """
+        left = (self._hidden_on(page, on_page) for page, on_page in _by_page(spans).items())
+        return [span for on_page in left for span in on_page]
+
+    def _hidden_on(self, page: int, spans: list[Span]) -> list[Span]:
+        """Those of `spans`, all on `page`, with a word of their text in a hidden copy there."""
+        hidden_copies = self.driver.hidden_copies(page)
+        return [span for span in spans if _any_holds(_whole_words([span]), hidden_copies)]
+
     def close(self) -> None:
         """Release the open document."""
         self.driver.close()
@@ -400,6 +415,11 @@ def _comparable(text: str) -> str:
 def _holds(words: re.Pattern[str], hidden_copy: str) -> bool:
     """Whether a hidden copy holds any of `words`, its ligatures read as their letters."""
     return words.search(_comparable(hidden_copy)) is not None
+
+
+def _any_holds(words: re.Pattern[str], hidden_copies: list[str]) -> bool:
+    """Whether any of `hidden_copies` holds one of `words`."""
+    return any(_holds(words, hidden_copy) for hidden_copy in hidden_copies)
 
 
 def _without(words: re.Pattern[str], hidden_copy: str) -> str:

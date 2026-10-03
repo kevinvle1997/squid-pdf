@@ -333,6 +333,79 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, twice, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
+    # Alone: a tiling pattern whose dictionary MuPDF can't read holds the line, in UTF-16
+    # written as hex, as Word writes an ActualText. The redaction can't rewrite it, and a
+    # check that read its bytes rather than its text would miss the number.
+    if "unreadable" in places:
+        line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # UTF-16, as hex
+        unreadable = f"/Span <</ActualText {line} /Bad>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P1", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P1 scn {_SQUARE}")
+    # Alone: the same, but MuPDF stops reading at a key that's a string, before the line.
+    if "unreadable_first" in places:
+        unreadable = f"/Span << (Logo) /ActualText ({_CARD}) >> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P2", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P2 scn {_SQUARE}")
+    # Alone: the same, but MuPDF's parser stops, raising nothing, at an ID where a key goes,
+    # as an image's dictionary ends: before the line.
+    if "unreadable_id" in places:
+        unreadable = f"/Span <</ActualText (Logo) ID /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P7", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P7 scn {_SQUARE}")
+    # Alone: the same, but with a >> inside an array before the line, which MuPDF reads as
+    # an item and reads on past, and a reader counting only << and >> takes as the end.
+    if "unreadable_array" in places:
+        unreadable = f"/Span <</A [ >> ] /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P8", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P8 scn {_SQUARE}")
+    # Alone: the same, then a key that's a string, where MuPDF stops: both readings stop
+    # before the line, so neither says where the dictionary ends.
+    if "unreadable_both" in places:
+        unreadable = f"/Span <</A [ >> ] (junk) /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P9", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P9 scn {_SQUARE}")
+    # Alone: a tiling pattern with a one-dot image and no EI after its byte, then the line.
+    # MuPDF reads no further than such an image, so the redaction can't rewrite what's after.
+    if "unreadable_image" in places:
+        no_end = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 {_AROUND_SQUARE}"
+        tile = _new_stream(doc, no_end, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P4", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P4 scn {_SQUARE}")
+    # Alone: the same, but the image says it has 100 bytes, spaces after the line giving
+    # them, and its first is a %. A reader that ends it at the first EI reads the line;
+    # MuPDF's reader of a drawing would take the % as a comment, to the end of the line.
+    if "unreadable_image_comment" in places:
+        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID %EI {_AROUND_SQUARE}{' ' * 100}"
+        tile = _new_stream(doc, no_end, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P10", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P10 scn {_SQUARE}")
+    # Alone: the same, but its first byte a (, and the line in UTF-16, each byte in octal,
+    # as Word writes an ActualText. MuPDF's reader of a drawing would take the ( as the
+    # start of a string, with the line's inside it, where its mark of UTF-16 isn't first.
+    if "unreadable_image_string" in places:
+        in_utf16 = f"\ufeff{_CARD}".encode("utf-16-be")  # its mark first, as Word has it
+        line = "".join(f"\\{byte:03o}" for byte in in_utf16)
+        hidden_copy = f"/Span <</ActualText ({line})>> BDC {_SQUARE} EMC"
+        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID (EI {hidden_copy}{' ' * 100}"
+        tile = _new_stream(doc, no_end, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P11", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P11 scn {_SQUARE}")
+    # Alone: a dictionary not read whole, an image where a value goes, its byte a <, and
+    # the line in UTF-16 written as hex. A reader that ends the image at its EI reads the
+    # line; MuPDF's reader of a drawing would take the < as the start of a string in hex
+    # that reads on past the line's own <, its digits from the first < on odd in number.
+    if "unreadable_image_hex" in places:
+        image = "BI /W 1 /H 1 /BPC 8 /CS /G ID <EI"
+        line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"
+        unreadable = f"/Span <</X {image} /ActualText {line}>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, unreadable, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P12", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P12 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
     contents = _new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
@@ -392,6 +465,49 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
     assert_in("(en-US)", _everything_in(saved), "the kept line's language, no hidden copy")
     assert_not_in(_NUMBER, _everything_in(saved), "the card number, anywhere in the file")
     assert_equal(_lines(saved), [[_KEPT, "x"]], "the page's lines, the Type3 letter's after")
+
+
+@pytest.mark.parametrize(
+    "place",
+    [
+        *_PLACES,
+        "unreadable",
+        "unreadable_first",
+        "unreadable_id",
+        "unreadable_array",
+        "unreadable_both",
+        "unreadable_image",
+        "unreadable_image_comment",
+        "unreadable_image_string",
+        "unreadable_image_hex",
+    ],
+)
+def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
+    """The letters are gone, but a hidden copy is as much a leak: no file, the span named.
+
+    One place at a time, so the check is shown to read each place on its own:
+    a hidden copy with a NUL before the line is read past it, a string of its
+    own included; one whose dictionary is written before its tag; one under
+    the first of a key written twice, which MuPDF doesn't keep; a dictionary
+    not read whole, which the removal leaves as written, whether MuPDF stops
+    reading it after the line or before, at a key that's a string or at an ID,
+    or reads on past a >> inside an array where a count stops, or both stop
+    before the line; and all that follows an image MuPDF can't read, which
+    the removal leaves too. What follows either is read from wherever a
+    string may start: after a byte of an image that MuPDF's reader of a
+    drawing takes as starting a comment, a string or a string in hex, which
+    a reader that ends the image at its first EI doesn't.
+    """
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
+    doc = upload(mine, _marked_pdf([place])).json()
+    card = span_starting(doc, 0, "A US card")
+
+    response = _export(mine, doc, [_redact(card)])
+
+    assert_problem(response, "redaction_failed", 422)
+    said = words.sentence("redaction_failed").format(text=_CARD_LINE, page=1)
+    assert_equal(response.json()["detail"], said, "what the user reads")
 
 
 def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc, monkeypatch):

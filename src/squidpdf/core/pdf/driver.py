@@ -149,6 +149,22 @@ class PdfDriver(Protocol):
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
         ...
 
+    def hidden_copies(self, page: int) -> list[str]:
+        """Every hidden copy on the page, as text: those `rewrite_hidden_copies` reaches.
+
+        And each string written in a marked content's dictionary the library
+        reads only in part (it keeps one of a key written twice); and every
+        string from a dictionary the library doesn't read whole (its reading
+        and a count of << and >> end apart, or it can't read it), or from an
+        image written into a drawing that it can't read, to the end of that
+        drawing, read from every ( and < where one may start, since another
+        reader may read the bytes before it otherwise (as an image's, or as a
+        comment): any may be a hidden copy another reader keeps, so a word
+        left there fails a check rather than passing it. A string the library
+        reads in any other key, as a language (`/Lang`), is no hidden copy.
+        """
+        ...
+
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
 
