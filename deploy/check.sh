@@ -69,6 +69,12 @@ pass "/api/health answers through the gate: $status in ${seconds}s"
   fail "the reply's X-Content-Type-Options is '$(header x-content-type-options)'"
 pass "the proxy sends HSTS and nosniff"
 
+for docs in /api/docs /api/openapi.json; do
+  read -r status seconds < <(call "${signed_in[@]}" "$base$docs")
+  [[ $status == 404 ]] || fail "the API's $docs answered $status through the proxy, not 404"
+done
+pass "the API's docs aren't served through the proxy"
+
 read -r status seconds < <(call "${signed_in[@]}" "$base/")
 [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
   fail "the browser app answered $status: $(head -c "$shown_bytes" "$work/body")"

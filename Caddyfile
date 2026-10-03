@@ -42,6 +42,10 @@
 
 	# No body cap here: the app enforces its own, and must see them.
 	handle /api/* {
+		# The API's docs are for development, run without the proxy: the browser never asks
+		# for them, and the browser's types read the schema from Python, not over HTTP.
+		@docs path /api/docs /api/docs/* /api/openapi.json
+		respond @docs 404
 		reverse_proxy app:8000
 	}
 
