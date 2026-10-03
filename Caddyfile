@@ -1,5 +1,8 @@
 # The one way in: HTTPS, compression, and a password until the app opens to the public.
 {
+	# A local run (localhost) signs its own certificate. Nothing in the container needs to
+	# trust it, and the container's files are read-only.
+	skip_install_trust
 	servers {
 		# A body sent a trickle at a time holds a connection and an upload open for as long as
 		# it lasts, and the app can't tell slow from stalled. Ten minutes for the whole request

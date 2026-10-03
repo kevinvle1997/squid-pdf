@@ -1,6 +1,6 @@
 # The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
-# this file (copy env.example). .env holds the domain and the password hash,
-# and is never committed.
+# this file (copy env.example). .env holds the domain, the password hash and
+# the app's memory, and is never committed.
 name: squidpdf
 
 services:
@@ -20,6 +20,24 @@ services:
     volumes:
       - documents:/data
     # No ports: only Caddy, on this network, reaches the app.
+    # The whole app's memory: one worker a core of the host, each capped at 1 GiB
+    # (api/constants.py), /tmp's files, and the server's own process, which also holds each
+    # export's bytes as its worker sends them back. It is what the host can give the app
+    # beside Caddy and the system, so .env sets it (env.example says how). No default: one
+    # sized for a larger host never binds on a smaller one, where the host runs out first
+    # and its own out-of-memory killer stops any process, Caddy included. Under a limit that
+    # binds, the kernel kills the app's largest process: most often a worker at its cap,
+    # whose task alone fails and which the pool replaces (api/pool.py). If it kills the main
+    # process instead, the container restarts.
+    mem_limit: ${SQUIDPDF_APP_MEMORY:?set it in .env from the host's memory, as env.example says}
+    # It needs no privilege: it runs as its own user, on a port above 1024.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Nothing in the image is written: documents go to /data, and an export is saved in /tmp
+    # while it's made, at most one a worker, so /tmp's size follows the cores too.
+    read_only: true
+    tmpfs:
+      - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
 
   # Caddy, with the browser app built into it: see react/Dockerfile.
   proxy:
@@ -48,6 +66,14 @@ services:
       # Its certificates. Kept, so a restart doesn't ask the CA for new ones.
       - caddy-data:/data
       - caddy-config:/config
+    # It streams bodies through rather than holding them.
+    mem_limit: 512m
+    # Only the right to listen on 80 and 443: its program carries it, and won't start without.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    # It writes only its certificates and config, to the volumes above.
+    read_only: true
 
 networks:
   default:

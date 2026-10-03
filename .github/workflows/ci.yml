@@ -136,6 +136,13 @@ jobs:
           printf "SQUIDPDF_DOMAIN=localhost\nSQUIDPDF_USER=ci\nSQUIDPDF_PASSWORD_HASH='%s'\n" "$hash" > .env
           echo "SQUIDPDF_PASSWORD=$password" >> "$GITHUB_ENV"
 
+      # The worst case for the runner's cores (env.example), which the runner's memory holds.
+      - name: Memory for the runner's cores
+        run: |
+          cores=$(nproc)
+          printf "SQUIDPDF_APP_MEMORY=%sm\nSQUIDPDF_APP_SCRATCH=%sm\n" \
+            "$(( cores * 1792 + 1024 ))" "$(( cores * 256 ))" >> .env
+
       - name: Build
         run: docker compose build
 
