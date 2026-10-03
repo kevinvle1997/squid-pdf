@@ -547,6 +547,32 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
     )
 
 
+@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES])
+def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
+    app, mine, monkeypatch, copy
+):
+    """A title or a bookmark is as much a leak as the page: no file, the span named.
+
+    One copy at a time, so the check is shown to read each on its own:
+    metadata that isn't read as XML among them, read whole. Render runs the
+    same check first, so the user hears it before the download.
+    """
+    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
+    doc = upload(mine, with_hidden_copies([copy])).json()
+    name = span_starting(doc, 0, REDACTED_NAME)
+    body = {"edits": [_redact(name)], "scale": 1, "regions": [around(name)]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, [_redact(name)])
+
+    verified = rendered["redactions"][name["id"]]["verified"]
+    assert_equal(verified, False, "whether render said the words were gone")
+    assert_problem(response, "redaction_failed", 422)
+    said = words.sentence("redaction_failed").format(text=REDACTED_NAME, page=1)
+    assert_equal(response.json()["detail"], said, "what the user reads")
+
+
 @pytest.mark.parametrize("copy", NOT_XML_COPIES)
 def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine, copy):
     """It can't be written back without the word as it was, so none of it stays.

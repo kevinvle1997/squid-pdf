@@ -362,6 +362,24 @@ class Engine:
         hidden_copies = self.driver.hidden_copies(page)
         return [span for span in spans if _any_holds(_whole_words([span]), hidden_copies)]
 
+    def still_hidden_in_document(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans with a word of their text still in one of the document's own hidden copies.
+
+        Its title and metadata, bookmarks, comments, form fields and tags,
+        wherever the span's page went: none of those sits on one page. Read as
+        `drop_hidden_copies` deletes them.
+        """
+        checked = list(spans)
+        # No span, as an export with no redaction: the document's own needn't be read.
+        if not checked:
+            return []
+        document_copies = self.driver.document_hidden_copies(
+            partial(_holds, _whole_words(checked))
+        )
+        return [
+            span for span in checked if _places_holding(_whole_words([span]), document_copies)
+        ]
+
     def close(self) -> None:
         """Release the open document."""
         self.driver.close()
