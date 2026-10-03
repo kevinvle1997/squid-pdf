@@ -47,7 +47,9 @@ class ReadController:
         """The analysis kept under this build, worked out first if the build is new."""
         kept = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
         if kept is None:  # a new build: worked out again over the saved index
-            kept = kept_analysis(await self._enqueue_analyse(doc.folder))
+            analysis = await self._enqueue_analyse(doc.folder)
+            # Every span written out: off the server's thread, as the answer is.
+            kept = await asyncio.to_thread(kept_analysis, analysis)
         return kept
 
     async def _enqueue_analyse(self, folder: Path) -> Analysis:

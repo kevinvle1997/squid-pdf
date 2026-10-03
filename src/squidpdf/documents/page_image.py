@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import dataclass
 from functools import partial
@@ -22,7 +23,8 @@ class PageController:
 
     async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> Reply[bytes]:
         """Page `page` as a PNG, at `scale` or less if the page is very large."""
-        pages = store.load_pages(doc.folder)
+        # Read and parsed from disk: off the server's thread, as the drawing is.
+        pages = await asyncio.to_thread(store.load_pages, doc.folder)
         if not 0 <= page < len(pages):
             raise NoSuchPage()
         png = await self._enqueue_draw_page(
