@@ -49,9 +49,9 @@ class ReadController:
         return Reply(body, _headers_of(doc, _etag_of(kept.digest, said_in), said_in))
 
     async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
-        """The analysis kept under this build, worked out first if the build is new."""
+        """The analysis kept, worked out first if the build or the tuning is new."""
         kept = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
-        if kept is None:  # a new build: worked out again over the saved index
+        if kept is None:  # a new build or tuning: worked out again over the saved index
             kept = await self._enqueue_analyse(doc.folder)
         return kept
 

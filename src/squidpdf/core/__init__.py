@@ -30,6 +30,7 @@ from squidpdf.core.app.reply import Reply as Reply
 from squidpdf.core.app.workers import Workers as Workers
 from squidpdf.core.constants import (
     CONDENSE_LIMIT as CONDENSE_LIMIT,
+    FIDELITY_TUNING as FIDELITY_TUNING,
     GREEN_RATE_TARGET as GREEN_RATE_TARGET,
     GREEN_RATE_WARN as GREEN_RATE_WARN,
     OPTION_KEYS as OPTION_KEYS,

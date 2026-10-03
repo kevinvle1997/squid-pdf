@@ -1,14 +1,15 @@
 """Where documents live: one folder each, deleted whole.
 
 A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build`, its spans and its digest in files of their
-own. Delete it and everything goes. Its mtime is the idle clock: every visit
-touches it, and the sweeper deletes what's gone an hour untouched.
+and the analysis for each `build` and tuning, its spans and its digest in files
+of their own. Delete it and everything goes. Its mtime is the idle clock: every
+visit touches it, and the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
 
 import errno
+import hashlib
 import os
 import re
 import secrets
@@ -25,6 +26,7 @@ from typing import Any, BinaryIO
 import orjson
 
 from squidpdf.core import (
+    FIDELITY_TUNING,
     Engine,
     FontSources,
     Fragment,
@@ -53,6 +55,9 @@ _GOOGLE_FONTS = "fonts"
 # page's turn named with its way; "form-fields": each span says whether a form
 # field draws it.
 _ANALYSIS_FORMAT = "codes.turn_cw.form-fields"
+# Bytes of the digest of the tuning an analysis was judged by, in its files' names:
+# enough that two tunings won't share one.
+_TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
@@ -314,7 +319,7 @@ def load_pages(folder: Path) -> list[Page]:
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
-    """Keep what was worked out under this build; another build works it out again.
+    """Keep what was worked out under this build; another build or tuning works it out again.
 
     The digest last: its file is what says the analysis is there, since a read
     the browser has already is answered from it alone.
@@ -349,17 +354,25 @@ def load_analysis_digest(folder: Path, build: str) -> str | None:
 def _analysis_file(build: str) -> str:
     """The file the analysis under `build` is kept in.
 
-    Named for how it's kept too: one kept in an older way (`_ANALYSIS_FORMAT`)
-    reads as not worked out yet, and is worked out again over the same index.
+    Named for how it's kept and what judged it too (`_kept_as`): one kept in an
+    older way, or judged by other tuning, reads as not worked out yet, and is
+    worked out again over the same index.
     """
-    return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"
+    return f"analysis-{build}.{_kept_as()}.json"
 
 
 def _spans_file(build: str) -> str:
     """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
-    return f"spans-{build}.{_ANALYSIS_FORMAT}.json"
+    return f"spans-{build}.{_kept_as()}.json"
 
 
 def _digest_file(build: str) -> str:
     """The file the analysis's digest under `build` is kept in, beside `_analysis_file`."""
-    return f"digest-{build}.{_ANALYSIS_FORMAT}.txt"
+    return f"digest-{build}.{_kept_as()}.txt"
+
+
+def _kept_as() -> str:
+    """How an analysis is kept (`_ANALYSIS_FORMAT`) and a digest of what tuning judged it."""
+    tuning = repr(FIDELITY_TUNING).encode()
+    judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
+    return f"{_ANALYSIS_FORMAT}.{judged_by}"
