@@ -1,7 +1,7 @@
 # Fonts we ship
 
 The faces squid-pdf draws with when a document's own font can't be used, and the
-faces new text can be drawn in. `squidpdf.core.fonts.CATALOG` lists them; a test
+faces new text can be drawn in. `squidpdf.core.CATALOG` lists them; a test
 checks every file here is in it and is the face it says.
 
 Most are under the SIL Open Font License 1.1; Latin Modern is under the GUST
@@ -45,7 +45,7 @@ style here is a fixed instance cut with fontTools 4.65
 Italic) or 700 (Bold, Bold Italic), from the upright or the italic file. Other
 axes are pinned: Inter's optical size at 14 (text), Roboto's width at 100. The
 name table was then set to plain four-style names (family, style, full name,
-PostScript name) and the STAT table dropped. None of these four families has a
+PostScript name) and the STAT table dropped. None of these five families has a
 Reserved Font Name, so the OFL allows this under the same names.
 
 Families that do reserve their name (Merriweather, Source Code Pro, Dancing
