@@ -8,7 +8,7 @@ two protocols over pypdfium2 and pikepdf, and nothing else.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from squidpdf.core.app.message import Message
@@ -147,6 +147,25 @@ class PdfDriver(Protocol):
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+        ...
+
+    def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
+
+        A hidden copy is words marked content keeps beside what it draws: what
+        its letters stand for (ActualText), an image's description (Alt), an
+        abbreviation's long form (E). Erasing the letters leaves them, and a
+        screen reader, copy and paste, or a search reads them. Every one the
+        page's drawing reaches, and each drawing it draws: forms (XObjects),
+        tiling patterns, soft masks and Type3 fonts' letters; and the same in
+        each annotation's appearance (the drawing it shows on the page). A
+        hidden copy `rewritten` leaves as it was stays as the file wrote it, as
+        does each in a dictionary the library doesn't read whole (its reading
+        and a count of << and >> end apart, or it can't read it), or after an
+        image it can't read. A dictionary with a key written twice is written
+        back with the one the library reads, so no other reader finds the
+        other. A NUL in a hidden copy reads as a space, as between two words.
+        """
         ...
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:

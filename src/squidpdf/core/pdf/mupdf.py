@@ -461,6 +461,13 @@ class _MuPDFDriver:
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
         self.file.drop_links(page, boxes)
 
+    def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
+
+        Read with MuPDF's own reader of a drawing, so the hidden copies are those MuPDF reads.
+        """
+        self.file.rewrite_hidden_copies(page, rewritten)
+
     def write_codes(
         self,
         page: int,

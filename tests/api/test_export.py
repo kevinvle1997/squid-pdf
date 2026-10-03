@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from pathlib import Path
 from unittest import mock
 
@@ -21,7 +22,14 @@ from squidpdf.editing import Edit, constants as editing_constants, export
 from squidpdf.editing.types import Exported
 from tests.api.conftest import span_starting, upload
 from tests.conftest import cannot_cut
-from tests.helpers import assert_equal, assert_false, assert_in, assert_problem, assert_true
+from tests.helpers import (
+    assert_equal,
+    assert_false,
+    assert_in,
+    assert_not_in,
+    assert_problem,
+    assert_true,
+)
 
 _SKIPPED = "Squid-Skipped-Edits"
 _NOTICES = "Squid-Notices"
@@ -29,6 +37,65 @@ _HEADER = "CONFIDENTIAL"
 _LINES = ["First page", "Second page", "Third page"]
 _OPENING = "This agreement is made on"  # how the long fixture's first line starts
 _UNTIMED_S = 600  # time enough for any analysis: an upload isn't what's timed here
+_NUMBER = "4111 1111 1111 1111"  # the marked fixture's card number, redacted
+# Its line, drawn with an fi ligature. Its "US" is in the language the kept line names too.
+_CARD_LINE = f"A US card on \ufb01le: {_NUMBER}"
+_CARD = f"A US card on file {_NUMBER}"  # its line as its hidden copies hold it: typed, no colon
+_KEPT = "Keep this line"  # its other line
+_SCAN = f"{_CARD.lower().replace(' ', '_')}.png"  # an image's file name, as Word puts in an Alt
+_SQUARE = "10 10 20 20 re f"  # a filled square, drawn inside marked content to keep it
+# The line's hidden copy on that square.
+_AROUND_SQUARE = f"/Span <</ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+# The card line's font: Helvetica, its code 1 the fi ligature.
+_LIGATURES = (
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica"
+    "/Encoding<</Type/Encoding/BaseEncoding/WinAnsiEncoding/Differences[1/fi]>>>>"
+)
+# A one-dot image written into a drawing, in hex, its end of data (>) against its EI.
+_HEX_IMAGE = "BI /W 1 /H 1 /BPC 8 /CS /G /F /AHx ID 00>EI"
+# A 4 by 4 image written as it is, its 16 bytes after ID and a CR LF, which are one line
+# end. They happen to read " EI (", and to end in an E that an I follows: only their count,
+# from past the whole line end, says where they end.
+_UNFILTERED_IMAGE = "BI /W 4 /H 4 /BPC 8 /CS /G ID\r\n\0 EI (" + "\0" * 9 + "EI ( EI"
+# A form: a drawing of its own, 100 points square, that a page draws as it draws an image.
+_FORM = {"Type": "/XObject", "Subtype": "/Form", "BBox": "[0 0 100 100]"}
+# A tiling pattern: painted with its own colours, tiled at even spacing, every 20 points.
+_TILING = {
+    "PatternType": "1",
+    "PaintType": "1",
+    "TilingType": "1",
+    "BBox": "[0 0 20 20]",
+    "XStep": "20",
+    "YStep": "20",
+    "Resources": "<<>>",
+}
+# A Type3 font: each letter a drawing of its own, 1000 units to the point, "x" its one.
+_TYPE3 = (
+    "<</Type/Font/Subtype/Type3/FontBBox[0 0 1000 1000]/FontMatrix[0.001 0 0 0.001 0 0]"
+    "/Encoding<</Type/Encoding/Differences[120/x]>>/FirstChar 120/LastChar 120/Widths[1000]"
+    "/CharProcs<</x {letter} 0 R>>>>"
+)
+# Where `_marked_pdf` can keep a hidden copy: the page's drawing, a marked point in it, its
+# properties, a form it draws, a tiling pattern it fills with, a soft mask it paints
+# through, a Type3 letter it writes, an annotation's appearance. Then hidden copies written
+# oddly: with a NUL before the line, in a tiling pattern and as a string of its own the
+# properties name; with its dictionary before its tag; and under a key written twice.
+_PLACES = (
+    "drawing",
+    "point",
+    "properties",
+    "form",
+    "pattern",
+    "smask",
+    "type3",
+    "annotation",
+    "nul",
+    "nul_reference",
+    "dictionary_first",
+    "twice",
+)
+# A hidden copy as a file writes it: the key, then the text in brackets.
+_HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
 
 
 class _InProcess:
@@ -166,6 +233,165 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     said = words.sentence("redaction_failed").format(text=span["text"], page=2)
     assert_equal(response.json()["detail"], said, "what the user reads")
     assert_equal(_files(doc), kept, "the document's files after the export")
+
+
+@pytest.fixture(scope="module")
+def marked() -> bytes:
+    """A tagged page that keeps its card number beside the letters, in each place a page can."""
+    return _marked_pdf(_PLACES)
+
+
+def _marked_pdf(places: Collection[str]) -> bytes:
+    """A tagged page that keeps its card line beside the letters, in each of `places`.
+
+    All but the inline ActualText wrap a square: MuPDF's erase drops marked
+    content it leaves empty, and the Properties it names with it.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="helv")
+    _kind, resources = doc.xref_get_key(page.xref, "Resources")  # "5 0 R": an object of its own
+    resources_xref = int(resources.split()[0])
+    doc.xref_set_key(resources_xref, "Font/Lig", _LIGATURES)
+    number = f"({_NUMBER}) Tj"
+    # The kept line, with an ActualText of its own, which stays, and its language, as Word
+    # names it: no hidden copy, so it stays too, though it holds a word of the redacted line.
+    kept = f"<</Lang (en-US) /ActualText ({_KEPT})>>"
+    drawing = [f"/Span {kept} BDC BT /helv 12 Tf 72 700 Td ({_KEPT}) Tj ET EMC"]
+    # The page's drawing: the number inside marked content whose ActualText repeats it, as
+    # Word and LaTeX (accsupp) write it, only the number, as MuPDF reads it for the letters
+    # it wraps; and an abbreviation's long form (E) holding the line.
+    if "drawing" in places:
+        number = f"/Span <</ActualText ({_NUMBER})>> BDC {number} EMC"
+        drawing.append(f"/Span <</E ({_CARD})>> BDC {_SQUARE} EMC")
+    # A marked point (DP): marked content with nothing inside.
+    if "point" in places:
+        drawing.append(f"/Span <</ActualText ({_CARD})>> DP")
+    # The page's Properties, named /MC0, rather than inline.
+    if "properties" in places:
+        doc.xref_set_key(resources_xref, "Properties/MC0", f"<</ActualText ({_CARD})>>")
+        drawing.append(f"/Span /MC0 BDC {_SQUARE} EMC")
+    # A form the page draws, an image's Alt in it naming the image's file: the line's words
+    # in lower case, joined by underscores. Its own words stay, its "A" of one letter too.
+    if "form" in places:
+        alt = f"/Figure <</Alt (A scan: {_SCAN})>> BDC {_SQUARE} EMC"
+        figure = _new_stream(doc, alt, **_FORM)
+        doc.xref_set_key(resources_xref, "XObject/Fm0", f"{figure} 0 R")
+        drawing.append("/Fm0 Do")
+    # A tiling pattern the page fills a square with. First a dictionary MuPDF can't read, a
+    # key with no value, as a damaged file might have: MuPDF draws on past it, as must we.
+    if "pattern" in places:
+        unreadable = f"/Span <</ActualText (Logo) /Bad>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, f"{unreadable} {_AROUND_SQUARE}", **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P0", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P0 scn {_SQUARE}")
+    # A soft mask the page paints a square through. Its group: the drawing whose brightness
+    # says how much shows through.
+    if "smask" in places:
+        group = _new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
+        mask = f"<</SMask<</S/Luminosity/G {group} 0 R>>>>"
+        doc.xref_set_key(resources_xref, "ExtGState/GS0", mask)
+        drawing.append(f"q /GS0 gs {_SQUARE} Q")
+    # A Type3 letter "x" the page writes, its image first, as a bitmap font's letters are.
+    if "type3" in places:
+        letter = _new_stream(doc, f"1000 0 d0 {_HEX_IMAGE} {_AROUND_SQUARE}")
+        font = doc.get_new_xref()
+        doc.update_object(font, _TYPE3.format(letter=letter))
+        doc.xref_set_key(resources_xref, "Font/T3", f"{font} 0 R")
+        drawing.append("BT /T3 12 Tf 72 500 Td (x) Tj ET")
+    # A square annotation's appearance, the drawing it shows, with an image first.
+    if "annotation" in places:
+        annotation = page.add_rect_annot(pymupdf.Rect(300, 300, 400, 330))
+        _kind, appearance = doc.xref_get_key(annotation.xref, "AP/N")
+        appearance_drawing = f"{_UNFILTERED_IMAGE} {_AROUND_SQUARE}"
+        doc.update_stream(int(appearance.split()[0]), appearance_drawing.encode())
+    # A tiling pattern whose hidden copy has a NUL (\000) before the line, as a careless
+    # producer might write: MuPDF's own reading of such a string stops at it.
+    if "nul" in places:
+        after_nul = f"/Span <</ActualText (Ref\\000{_CARD})>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, after_nul, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P3", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P3 scn {_SQUARE}")
+    # The page's properties, /MC1, naming the same hidden copy as a string of its own (an
+    # object of the file), which MuPDF's reading of a string in a dictionary doesn't follow.
+    if "nul_reference" in places:
+        string = doc.get_new_xref()
+        doc.update_object(string, f"(Ref\\000{_CARD})")
+        doc.xref_set_key(resources_xref, "Properties/MC1", f"<</ActualText {string} 0 R>>")
+        drawing.append(f"/Span /MC1 BDC {_SQUARE} EMC")
+    # A tiling pattern whose marked content has its dictionary before its tag, which MuPDF
+    # draws as if after it.
+    if "dictionary_first" in places:
+        first = f"<</ActualText ({_CARD})>> /Span BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, first, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P5", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P5 scn {_SQUARE}")
+    # A tiling pattern whose ActualText is written twice, the line first. MuPDF keeps the
+    # last, "Logo"; a reader that keeps the first, or a search of the drawing, finds the line.
+    if "twice" in places:
+        twice = f"/Span <</ActualText ({_CARD}) /ActualText (Logo)>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, twice, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
+    drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
+    contents = _new_stream(doc, "\n".join(drawing))
+    doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
+    return doc.tobytes()
+
+
+def _new_stream(doc: pymupdf.Document, drawing: str, **keys: str) -> int:
+    """A new stream in `doc` holding `drawing`, with these keys; its number."""
+    xref = doc.get_new_xref()
+    doc.update_object(xref, "<<>>")
+    doc.update_stream(xref, drawing.encode())
+    for key, value in keys.items():
+        doc.xref_set_key(xref, key, value)
+    return xref
+
+
+def _everything_in(pdf: pymupdf.Document) -> str:
+    """Every object in the file and every stream, decoded, as one text."""
+    return " ".join(
+        f"{pdf.xref_object(xref)} {pdf.xref_stream(xref) or b''!r}"
+        for xref in range(1, pdf.xref_length())
+    )
+
+
+def _hidden_copies_in(pdf: pymupdf.Document) -> list[tuple[str, str]]:
+    """Each ActualText, Alt and E written in the file, as (key, text), wherever it is."""
+    # A set: an object packed in an object stream is read twice, alone and in the stream.
+    return sorted(set(_HIDDEN_COPY.findall(_everything_in(pdf))))
+
+
+def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked):
+    """A screen reader, copy and paste, or a search reads a hidden copy, so it goes too.
+
+    Whole words in any case, the line's ligature read as the letters typed in
+    its hidden copies: the Alt's file name goes, and its own words stay, its
+    word of one letter too, and so does the kept line's hidden copy. One after
+    an image goes too, and one after a NUL, which leaves the words before it,
+    whether written in its dictionary or as a string of its own. One whose
+    dictionary is written before its tag goes, and one under a key written
+    twice, leaving the other. A dictionary MuPDF can't read stays as it was,
+    and the file still comes. The kept line's language is no hidden copy: it
+    stays, though it holds a redacted word.
+    """
+    doc = upload(mine, marked).json()
+    card = span_starting(doc, 0, "A US card")
+
+    response = _export(mine, doc, [_redact(card)])
+
+    saved = _opened(response)
+    expected = [
+        ("ActualText", _KEPT),
+        ("ActualText", "Logo"),
+        ("ActualText", "Ref"),
+        ("Alt", "A scan: .png"),
+    ]
+    assert_equal(_hidden_copies_in(saved), expected, "the hidden copies left in the file")
+    assert_in("(en-US)", _everything_in(saved), "the kept line's language, no hidden copy")
+    assert_not_in(_NUMBER, _everything_in(saved), "the card number, anywhere in the file")
+    assert_equal(_lines(saved), [[_KEPT, "x"]], "the page's lines, the Type3 letter's after")
 
 
 def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc, monkeypatch):

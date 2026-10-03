@@ -11,8 +11,11 @@ engine asks both.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
@@ -26,6 +29,9 @@ from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import Face, FormField, Page, QuarterTurn, Rect, Span, SpanIndex
 from squidpdf.core.writer import PageWriter, Setting
+
+# A word: a run of letters and digits (`\w` without its underscore).
+_WORD = re.compile(r"[^\W_]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +219,12 @@ class Engine:
         for page, on_page in _by_page(spans).items():
             self.driver.drop_links(page, [span.bbox for span in on_page])
 
+    def drop_hidden_copies(self, spans: list[Span]) -> None:
+        """Delete these spans' words, as whole words, from the hidden copies on their pages."""
+        for page, on_page in _by_page(spans).items():
+            words = _whole_words(on_page)
+            self.driver.rewrite_hidden_copies(page, partial(_without, words))
+
     def draw(
         self,
         span: Span,
@@ -338,3 +350,63 @@ def _any_word_left(text: str, left: str) -> bool:
     leftover = "".join(left.split())
     words = [word for word in text.split() if len(word) > 1]
     return any(word in leftover for word in [*words, "".join(text.split())])
+
+
+def _whole_words(spans: Iterable[Span]) -> re.Pattern[str]:
+    """The spans' words, each matched only as a whole word, in any case, the longest first.
+
+    Each span's text whole, then each of its words of two letters or more. A
+    word of one letter counts only within the whole text, as `_any_word_left`
+    reads it: alone, "a" or "I" is in most sentences. So a whole text of one
+    letter, as a box's "X", goes wherever it stands alone. Longest first, so a
+    whole text goes before its words leave its one-letter words behind.
+
+    Looser than `_any_word_left`, which reads back the page's own letters, as
+    the span has them: a hidden copy is typed. So in any case, since a
+    heading's "JOHN SMITH" is an image's "John Smith", and with ligatures as
+    their letters (`_comparable`).
+    """
+    choices = {choice for span in spans for choice in _word_choices(span.text)}
+    longest_first = sorted(choices, key=len, reverse=True)
+    # Whole: no letter or digit just before it, or just after.
+    return re.compile(rf"(?<![^\W_])(?:{'|'.join(longest_first)})(?![^\W_])", re.IGNORECASE)
+
+
+def _word_choices(text: str) -> list[str]:
+    """`text` whole, then each word of two letters or more, as patterns.
+
+    A word is a run of letters and digits, so what joins two (a space,
+    punctuation, an underscore) is set aside: a line's "O'Brien" with a
+    curly apostrophe is a hidden copy's typed with a straight one, its
+    "4111-1111" a hidden copy's "4111 1111", its "Smith," a file name's
+    "john_smith". The whole text is its words with anything of the kind
+    between; one with no letter or digit, as a lone bullet, is itself,
+    spaces aside.
+    """
+    comparable = _comparable(text)
+    words = _WORD.findall(comparable)
+    whole = r"[\W_]*".join(map(re.escape, words or comparable.split()))
+    return [whole, *(re.escape(word) for word in words if len(word) > 1)]
+
+
+def _comparable(text: str) -> str:
+    """`text` with each ligature or styled letter as its plain letters (NFKC): "ﬁ" reads "fi".
+
+    A page's letters keep their ligatures, and a hidden copy someone typed doesn't.
+    """
+    return unicodedata.normalize("NFKC", text)
+
+
+def _holds(words: re.Pattern[str], hidden_copy: str) -> bool:
+    """Whether a hidden copy holds any of `words`, its ligatures read as their letters."""
+    return words.search(_comparable(hidden_copy)) is not None
+
+
+def _without(words: re.Pattern[str], hidden_copy: str) -> str:
+    """A hidden copy with `words` deleted and the spaces closed up; as it was if none are in it.
+
+    What's left reads as it was compared, its ligatures spelled out.
+    """
+    if not _holds(words, hidden_copy):
+        return hidden_copy
+    return " ".join(words.sub("", _comparable(hidden_copy)).split())
