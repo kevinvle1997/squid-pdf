@@ -7,7 +7,9 @@ Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is
 
 from __future__ import annotations
 
+import math
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from functools import cache, reduce
@@ -235,7 +237,7 @@ class _MuPDFDriver:
         A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
         letters = self._letters(page)
-        return [_letters_inside(letters, box) for box in boxes]
+        return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
@@ -252,10 +254,10 @@ class _MuPDFDriver:
             if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int) -> list[_Letter]:
-        """Every letter on the page, in reading order."""
+    def _letters(self, page: int) -> _PageLetters:
+        """Every letter on the page, to find by where it sits."""
         blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        return list(_each_letter(blocks))
+        return _page_letters(list(_each_letter(blocks)))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -411,7 +413,7 @@ class _MuPDFDriver:
         letters = self._letters(page)
         with self.file.links_kept(page):
             # No letter's middle inside: erase the whole box, as nothing else would.
-            self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
+            self.file.redact(page, [_strip_along(letters.inside(box)) or box for box in boxes])
             left = self.text_in(page, boxes)
             missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
             # Read again only after a second erase: most boxes are clear after the first.
@@ -619,6 +621,48 @@ class _Letter:
     direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class _PageLetters:
+    """A page's letters, found by where their middle is. Made by `_page_letters`."""
+
+    in_order: list[_Letter] = field(repr=False)  # in reading order
+    # Each letter's middle, top of the page first: the letters a box holds are then
+    # one run of these, found by halving, not by reading every letter on the page.
+    middles_top_down: list[_Middle] = field(repr=False)
+
+    def inside(self, box: Rect) -> list[_Letter]:
+        """The letters whose middle is inside `box`, in reading order."""
+        first = bisect_left(self.middles_top_down, box.y0, key=_y_of)
+        past = bisect_right(self.middles_top_down, box.y1, key=_y_of)
+        across = self.middles_top_down[first:past]
+        places = sorted(middle.place for middle in across if box.x0 <= middle.x <= box.x1)
+        return [self.in_order[place] for place in places]
+
+
+@dataclass(frozen=True, slots=True)
+class _Middle:
+    """Where a letter's middle is on the page, and the letter's place in reading order."""
+
+    x: float
+    y: float
+    place: int
+
+
+def _page_letters(letters: list[_Letter]) -> _PageLetters:
+    """`letters`, in reading order, sorted by where their middle is too."""
+    middles = (_Middle(*_middle_of(letter.box), place) for place, letter in enumerate(letters))
+    # A middle that isn't a number is inside no box, and would leave the order unsorted.
+    numbers = (
+        middle for middle in middles if not (math.isnan(middle.x) or math.isnan(middle.y))
+    )
+    return _PageLetters(letters, sorted(numbers, key=_y_of))
+
+
+def _y_of(middle: _Middle) -> float:
+    """How far down the page a letter's middle is."""
+    return middle.y
+
+
 def _each_line(blocks: list[dict]) -> Iterator[dict]:
     """Every line of text get_text read, in reading order."""
     for block in blocks:
@@ -654,11 +698,6 @@ def _shows_text(kind: str, value: object) -> bool:
     return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
-def _letters_inside(letters: list[_Letter], box: Rect) -> str:
-    """The letters whose middle is inside `box`, in order."""
-    return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
-
-
 def _object_number(reference: str) -> int:
     """The object a reference points at: "7 0 R" -> 7."""
     return int(reference.split()[0])
@@ -670,23 +709,9 @@ def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
     return (x0 + x1) / 2, (y0 + y1) / 2
 
 
-def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
-    """Whether the middle of `bbox` lies inside `box`."""
-    x, y = _middle_of(bbox)
-    return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
-
-
-def _strip_through(letters: list[_Letter], box: Rect) -> Rect | None:
-    """A thin box along the letters whose middle is in `box`, just above their baselines.
-
-    None when no letter's middle is there.
-    """
-    points = [
-        point
-        for letter in letters
-        if _middle_inside(letter.box, box)
-        for point in _lifted(letter)
-    ]
+def _strip_along(letters: list[_Letter]) -> Rect | None:
+    """A thin box along `letters`, just above their baselines; None when there are none."""
+    points = [point for letter in letters for point in _lifted(letter)]
     if not points:
         return None
     xs, ys = [x for x, _y in points], [y for _x, y in points]
