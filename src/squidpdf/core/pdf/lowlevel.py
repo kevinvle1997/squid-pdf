@@ -968,6 +968,27 @@ class PdfFile:
         mu.pdf_dict_puts(states, name, state)
         return name
 
+    def add_drawing(self, page: int, drawing: bytes) -> None:
+        """Add `drawing` last in the page's list of drawings (its Contents), so it's on top.
+
+        Added to the page's own list, not by writing the list out again: a page
+        with many edits gets a drawing each.
+        """
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        page_obj = mu.pdf_lookup_page_obj(pdf, page)
+        added = mu.pdf_add_stream(
+            pdf, mu.fz_new_buffer_from_copied_data(drawing), mu.PdfObj(), 0
+        )
+        contents = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Contents)
+        # A list of the page's own, written in place: the drawing goes last.
+        if mu.pdf_is_array(contents) and not mu.pdf_is_indirect(contents):
+            mu.pdf_array_push(contents, added)
+            return
+        listed = _own_list_of(pdf, contents)
+        mu.pdf_array_push(listed, added)
+        mu.pdf_dict_put(page_obj, mu.PDF_ENUM_NAME_Contents, listed)
+
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
         """Turn a point on the page, read unturned, into the PDF's own coordinates.
 
@@ -1012,6 +1033,24 @@ class PdfFile:
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
+
+
+def _own_list_of(
+    pdf: pymupdf.mupdf.PdfDocument, contents: pymupdf.mupdf.PdfObj
+) -> pymupdf.mupdf.PdfObj:
+    """A new list, written in place, of the drawings a page's Contents names.
+
+    Its Contents is one drawing, none, or a list kept apart, which another page may share.
+    """
+    mu = pymupdf.mupdf
+    # A list kept apart: a copy, the page's alone.
+    if mu.pdf_is_array(contents):
+        return mu.pdf_copy_array(contents)
+    listed = mu.pdf_new_array(pdf, 1)
+    # One drawing: listed first. An empty m_internal means the page has none.
+    if contents.m_internal:
+        mu.pdf_array_push(listed, contents)
+    return listed
 
 
 def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:

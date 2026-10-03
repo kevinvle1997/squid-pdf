@@ -179,10 +179,9 @@ class _MuPDFDriver:
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
-    # The fonts this driver named on each page, by resource name, for erase_text to
-    # keep: those add_font added, and the file's own a code write named again.
-    # By the page's own object, whose number stays when the pages are renumbered.
-    named: dict[int, dict[str, int]] = field(default_factory=dict, repr=False)
+    # What this driver did to each page it changed, by the page's own object, whose
+    # number stays when the pages are renumbered.
+    changed: dict[int, _ChangedPage] = field(default_factory=dict, repr=False)
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -386,12 +385,12 @@ class _MuPDFDriver:
             xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._keep_named(page, free_name, xref)
+        self._changed_page(page).keep_named(free_name, xref)
         return FontResource(free_name, xref)
 
-    def _keep_named(self, page: int, resource: str, xref: int) -> None:
-        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
-        self.named.setdefault(self.doc[page].xref, {})[resource] = xref
+    def _changed_page(self, page: int) -> _ChangedPage:
+        """What this driver did to the page so far, kept from the first change on."""
+        return self.changed.setdefault(self.doc[page].xref, _ChangedPage())
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside each box, for real.
@@ -420,8 +419,7 @@ class _MuPDFDriver:
             if missed:
                 self.file.redact(page, missed)
                 left = self.text_in(page, boxes)
-        # .get: a page the driver named no font on.
-        for resource, xref in self.named.get(self.doc[page].xref, {}).items():
+        for resource, xref in self._changed_page(page).named.items():
             self.file.restore_font(page, resource, xref)
         return left
 
@@ -502,7 +500,7 @@ class _MuPDFDriver:
         for xref in sorted(xrefs - named.keys()):
             resource = self._free_name(page, f"C{xref}")
             self.file.restore_font(page, resource, xref)
-            self._keep_named(page, resource, xref)
+            self._changed_page(page).keep_named(resource, xref)
             named[xref] = resource
         return named
 
@@ -599,16 +597,35 @@ class _MuPDFDriver:
         The page's own drawing is wrapped first, so its settings (color,
         position) can't leak into ours.
         """
-        pdf_page = self.doc[page]
+        self._changed_page(page).wrap(self.doc[page])
+        self.file.add_drawing(page, stream)
+
+
+@dataclass(slots=True)
+class _ChangedPage:
+    """What the driver did to one page, for its later changes to know."""
+
+    # The fonts it named on the page, by resource name, for erase_text to keep: those
+    # add_font added, and the file's own a code write named again.
+    named: dict[str, int] = field(default_factory=dict)
+    # Whether the page's own drawing is known to put back each setting it changes,
+    # once wrapped if it didn't. Checking reads the whole page, so it's done once:
+    # each drawing the driver adds puts back its own, and an erase writes the page's
+    # drawing out again as balanced as it was.
+    balanced: bool = False
+
+    def keep_named(self, resource: str, xref: int) -> None:
+        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
+        self.named[resource] = xref
+
+    def wrap(self, pdf_page: pymupdf.Page) -> None:
+        """Wrap the page's own drawing, the first time, so its settings can't leak into ours."""
+        # Checked already: nothing since has changed what it leaves set.
+        if self.balanced:
+            return
         if not pdf_page.is_wrapped:
             pdf_page.wrap_contents()
-        xref = self.doc.get_new_xref()
-        self.doc.update_object(xref, "<<>>")
-        self.doc.update_stream(xref, stream)
-        parts = [*pdf_page.get_contents(), xref]
-        self.doc.xref_set_key(
-            pdf_page.xref, "Contents", "[" + " ".join(f"{p} 0 R" for p in parts) + "]"
-        )
+        self.balanced = True
 
 
 @dataclass(frozen=True, slots=True)
