@@ -13,7 +13,7 @@ import xxhash
 from squidpdf.core import BUILD, Reply, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
-from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE, MAX_PAGES
+from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE
 from squidpdf.documents.replies import document_json, reply_digest, time_of
 from squidpdf.documents.types import KeptAnalysis, Loaded
 
@@ -49,15 +49,15 @@ class ReadController:
         return Reply(body, _headers_of(doc, _etag_of(kept.digest, said_in), said_in))
 
     async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
-        """The analysis kept, worked out first if the build or the tuning is new."""
+        """The analysis kept, worked out first if the build, the tuning or its format is new."""
         kept = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
-        if kept is None:  # a new build or tuning: worked out again over the saved index
+        if kept is None:  # a new build, tuning or format: worked out again over the index
             kept = await self._enqueue_analyse(doc.folder)
         return kept
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse, str(folder), MAX_PAGES)
+        task = partial(analyse, str(folder))
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 

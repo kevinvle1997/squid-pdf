@@ -17,6 +17,7 @@ from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
     NAME_COPIES,
     REDACTED_NAME,
+    InProcess,
     around,
     span_starting,
     upload,
@@ -32,13 +33,6 @@ _WIDEST_PT = 14_400  # the longest side a PDF's page can have
 _SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
 _STACKED = 4  # copies of the long contract's page, stacked on one tall page
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
-
-
-class _InProcess:
-    """Runs pool work in the test's own process, where a monkeypatch reaches it."""
-
-    async def run(self, _timeout, task):
-        return task()
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
@@ -310,7 +304,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
 
     Every replace still gets its fit: that's measurement, not drawing.
     """
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     redrawn: list[str] = []
     draw = Engine.draw
 
@@ -332,7 +326,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
 
 def test_render_reads_the_page_list_once(app, mine, doc, monkeypatch):
     """The request reads it to check the regions, and hands the work the pages it draws."""
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the worker's reads are counted
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's reads are counted
     reads: list[object] = []
     load_pages = store.load_pages
 

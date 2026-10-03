@@ -98,6 +98,13 @@ def browser(app: FastAPI, server: TestClient) -> Callable[[], TestClient]:
     return lambda: browser_on(server)
 
 
+class InProcess:
+    """Runs pool work in the test's own process, where a monkeypatch reaches it."""
+
+    async def run(self, _timeout, task):
+        return task()
+
+
 def upload(client: TestClient, body: bytes) -> Response:
     """Send a file the way the browser does: the raw bytes, no form."""
     return client.post(

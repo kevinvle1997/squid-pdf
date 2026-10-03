@@ -20,14 +20,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, face_widths, words
+from squidpdf.core import BUILD, Engine, face_widths, words
 from squidpdf.core.fonts.catalog import FACES
-from squidpdf.documents import constants, replies, store
+from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
+from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
-from tests.api.conftest import BASE_URL, upload
+from tests.api.conftest import BASE_URL, InProcess, upload
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -473,8 +474,73 @@ def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc, monkeypatch
     assert_equal(len(reads), 0, "times the analysis was read")
 
 
+def _a_new_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A deploy of another build: the analysis kept is under the one before."""
+    monkeypatch.setattr(read, "BUILD", "a-later-build")
+    monkeypatch.setattr(analyse, "BUILD", "a-later-build")
+
+
+def _a_new_analysis_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A deploy that changes how an analysis is kept: the one kept is in the format before."""
+    monkeypatch.setattr(constants, "ANALYSIS_FORMAT", constants.ANALYSIS_FORMAT + 1)
+
+
+@pytest.mark.parametrize(
+    "deploy", [_a_new_build, _a_new_analysis_format], ids=["a build", "an analysis format"]
+)
+def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
+    app, mine, doc, monkeypatch, deploy
+):
+    """Open documents read on as before: never indexed again, so every span id holds."""
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patches below reach it
+
+    def reindex(self):
+        """Stands in for the engine's index, to fail if anything builds one."""
+        raise AssertionError("the index was rebuilt")
+
+    monkeypatch.setattr(Engine, "index", reindex)
+    deploy(monkeypatch)
+    folder = store.root() / doc["id"]
+    assert_equal(
+        store.load_analysis_digest(folder, read.BUILD), None, "the analysis kept before"
+    )
+
+    reply = mine.get(f"/api/documents/{doc['id']}")
+
+    assert_equal(reply.status_code, 200, "status of a read after the deploy")
+    assert_equal(reply.json()["build"], read.BUILD, "the build it was worked out under")
+    ids = [span["id"] for span in reply.json()["spans"]]
+    assert_equal(ids, [span["id"] for span in doc["spans"]], "span ids across the deploy")
+    kept_again = store.load_analysis(folder, read.BUILD)
+    assert_true(kept_again is not None, "the analysis, kept again under this build and format")
+
+
+def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_back(
+    app, mine, doc, monkeypatch
+):
+    """Not found, so the browser opens each again from its own copy, whatever it asks first.
+
+    An index is built once, at upload, never over a kept one, so no id the
+    browser holds moves under it. A page asked first says so too: answered
+    while the read worked the document out again, its image would never load.
+    """
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(constants, "DOCUMENT_FORMAT", constants.DOCUMENT_FORMAT + 1)
+    with pytest.raises(Gone):  # the index kept before reads as not there
+        store.require_index(store.root() / doc["id"])
+    url = f"/api/documents/{doc['id']}"
+    page_params = {"scale": 1, "build": doc["build"]}
+
+    assert_problem(mine.get(f"{url}/pages/0", params=page_params), "not_found", 404)
+    assert_problem(mine.get(url), "not_found", 404)
+    # Nothing the read did brought it back.
+    assert_problem(mine.get(f"{url}/pages/0", params=page_params), "not_found", 404)
+
+
 def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
     """Both send the spans as the analysis kept them, spliced in unread."""
-    read = mine.get(f"/api/documents/{doc['id']}").json()
-    assert_equal(read | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read")
+    read_reply = mine.get(f"/api/documents/{doc['id']}").json()
+    assert_equal(
+        read_reply | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read"
+    )
     assert_at_least(len(doc["spans"]), 1, "spans in the sample")

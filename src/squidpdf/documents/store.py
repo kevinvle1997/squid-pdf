@@ -1,8 +1,11 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, the owner's hash, the span index, the page list, and the analysis
-for each `build` and tuning, in files of their own. Delete it and everything goes. Its mtime is
-the idle clock: every visit touches it, and the sweeper deletes what's gone an hour untouched.
+A folder holds the original, the owner's hash, the span index, the page list,
+and the analysis for each `build` and tuning, its spans and its digest in files
+of their own. Each file worked out from the original is named for the format
+it's kept in too, so one kept in another reads as not there. Delete the folder
+and everything goes. Its mtime is the idle clock: every visit touches it, and
+the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
@@ -35,24 +38,16 @@ from squidpdf.core import (
     pages_as_json,
     pages_from_json,
 )
-from squidpdf.documents.constants import IDLE_S
+from squidpdf.documents import constants
 from squidpdf.documents.errors import Gone, ServerFull
 from squidpdf.documents.types import KeptAnalysis
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
-_INDEX = "index.json"
-# Renamed with `turn_cw`: a document kept before it reads as gone, and the browser
-# uploads it again.
-_PAGES = "pages.turn_cw.json"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
-# How a kept analysis is written: one kept in an older way is worked out again.
-# "codes": every sentence kept as its Message, said when sent; "turn_cw": each
-# page's turn named with its way; "form-fields": each span says whether a form
-# field draws it.
-_ANALYSIS_FORMAT = "codes.turn_cw.form-fields"
-# Bytes of the tuning's digest in file names: enough that two tunings won't share one.
+# Bytes of the digest of the tuning an analysis was judged by, in its files' names:
+# enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
@@ -125,7 +120,7 @@ def touch(folder: Path) -> float:
     """
     try:
         os.utime(folder)
-        return folder.stat().st_mtime + IDLE_S
+        return folder.stat().st_mtime + constants.IDLE_S
     except FileNotFoundError as exc:  # deleted between find() and here
         raise Gone from exc
 
@@ -170,7 +165,7 @@ def sweep() -> None:
 def _idle(folder: Path) -> bool:
     """Whether the folder has gone untouched past the idle hour; False once it's gone."""
     try:
-        return folder.stat().st_mtime < time.time() - IDLE_S
+        return folder.stat().st_mtime < time.time() - constants.IDLE_S
     except FileNotFoundError:  # its owner deleted it since the listing
         return False
 
@@ -212,7 +207,7 @@ def _write_whole(path: Path, data: bytes) -> None:
 
 def save_index(folder: Path, index: SpanIndex) -> None:
     """Keep the index, built once from the original, so ids never change."""
-    _write_whole(folder / _INDEX, index_as_json(index))
+    _write_whole(folder / _index_file(), index_as_json(index))
 
 
 @dataclass(slots=True)
@@ -248,16 +243,18 @@ class _KeptIndex:
 _kept_index = _KeptIndex()  # per worker process: each has its own
 
 
-def load_index(folder: Path) -> SpanIndex | None:
-    """The saved index, or None before the first analysis.
+def require_index(folder: Path) -> SpanIndex:
+    """The index saved at upload. Raises Gone if it was deleted, or kept in another format.
 
     Read once per worker: parsing a large one was most of a render. Kept while
     its file is the same file, so an index saved again or deleted is never served.
+    It's never built again over a document kept before: a deploy that changes how
+    spans are kept (`DOCUMENT_FORMAT`) sends each open document back to the browser.
     """
     try:
-        index_file = (folder / _INDEX).open("rb")
-    except FileNotFoundError:  # not analysed yet, or deleted since
-        return None
+        index_file = (folder / _index_file()).open("rb")
+    except FileNotFoundError as exc:  # saved at upload: a delete, a sweep or a deploy took it
+        raise Gone from exc
     with index_file:
         # Mtime and inode: each save is a new file, but the clock may not have moved.
         index_stat = os.fstat(index_file.fileno())
@@ -270,28 +267,16 @@ def _read_index(index_file: BinaryIO) -> SpanIndex:
     return index_from_json(index_file.read())
 
 
-def require_index(folder: Path) -> SpanIndex:
-    """The saved index of a document analysed at upload. Raises Gone if it was deleted since.
-
-    For work after upload, where a missing index can only mean a delete; analysis
-    reads `load_index`'s None as "not analysed yet".
-    """
-    index = load_index(folder)
-    if index is None:  # analysed at upload, so a sweep or a delete removed it
-        raise Gone
-    return index
-
-
 def save_pages(folder: Path, pages: list[Page]) -> None:
     """Keep the page list, read on every page view."""
-    _write_whole(folder / _PAGES, pages_as_json(pages))
+    _write_whole(folder / _pages_file(), pages_as_json(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
-    """The saved page list. Raises Gone if the sweep deleted the document meanwhile."""
+    """The saved page list. Raises Gone if it was deleted, or kept in another format."""
     try:
-        saved = (folder / _PAGES).read_bytes()
-    except FileNotFoundError as exc:  # upload saves it first: a sweep or a delete removed it
+        saved = (folder / _pages_file()).read_bytes()
+    except FileNotFoundError as exc:  # a delete, a sweep or a deploy took it
         raise Gone from exc
     return pages_from_json(saved)
 
@@ -307,44 +292,68 @@ def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
-    """The analysis saved under this build, or None if it hasn't been worked out."""
+    """The analysis saved under this build and format, or None if not worked out in them."""
     try:
         digest = (folder / _digest_file(build)).read_text()
         facts = (folder / _analysis_file(build)).read_bytes()
         spans = (folder / _spans_file(build)).read_bytes()
-    except FileNotFoundError:  # a new build, or never analysed
+    except FileNotFoundError:  # a new build or format, or never analysed
         return None
     return KeptAnalysis(facts, spans, digest)
 
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
-    """The saved analysis's digest under this build, or None if it hasn't been worked out."""
+    """The analysis's digest under this build and format, or None if not worked out in them.
+
+    Read alone, it says whether the browser's copy is current without reading the spans.
+    """
     try:
         return (folder / _digest_file(build)).read_text()
-    except FileNotFoundError:  # a new build, or never analysed
+    except FileNotFoundError:  # a new build or format, or never analysed
         return None
 
 
-def _analysis_file(build: str) -> str:
-    """The file the analysis under `build` is kept in.
+def _index_file() -> str:
+    """The file the span index is kept in."""
+    return _kept_as("index.json")
 
-    Named by `_kept_as` too, so one kept another way or under other tuning is worked out again.
-    """
-    return f"analysis-{build}.{_kept_as()}.json"
+
+def _pages_file() -> str:
+    """The file the page list is kept in, beside `_index_file`."""
+    return _kept_as("pages.json")
+
+
+def _analysis_file(build: str) -> str:
+    """The file the analysis under `build` is kept in."""
+    return _analysis_kept_as(f"analysis-{build}.json")
 
 
 def _spans_file(build: str) -> str:
     """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
-    return f"spans-{build}.{_kept_as()}.json"
+    return _analysis_kept_as(f"spans-{build}.json")
 
 
 def _digest_file(build: str) -> str:
     """The file the analysis's digest under `build` is kept in, beside `_analysis_file`."""
-    return f"digest-{build}.{_kept_as()}.txt"
+    return _analysis_kept_as(f"digest-{build}.txt")
 
 
-def _kept_as() -> str:
-    """How an analysis is kept (`_ANALYSIS_FORMAT`) and a digest of what tuning judged it."""
+def _kept_as(name: str) -> str:
+    """The file `name` is kept in, named for the format of a document's files.
+
+    One kept in another (`DOCUMENT_FORMAT`) reads as not there, and the index is
+    never built again over it, so the document reads as gone.
+    """
+    return f"v{constants.DOCUMENT_FORMAT}.{name}"
+
+
+def _analysis_kept_as(name: str) -> str:
+    """The file `name` is kept in, named for the analysis's format and tuning as well.
+
+    One kept in another (`ANALYSIS_FORMAT`), or judged by other tuning, reads as
+    not worked out yet, and is worked out again over the same index. The document's
+    format too, so a document whose index reads as gone has no analysis to answer from.
+    """
     tuning = repr(FIDELITY_TUNING).encode()
     judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
-    return f"{_ANALYSIS_FORMAT}.{judged_by}"
+    return _kept_as(f"a{constants.ANALYSIS_FORMAT}.{judged_by}.{name}")

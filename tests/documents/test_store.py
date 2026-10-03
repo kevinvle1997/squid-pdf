@@ -186,22 +186,22 @@ def test_a_worker_reads_an_index_once(engine):
     """Every render and export needs it, and parsing it was most of a render's time."""
     _, folder = store.create("owner")
     store.save_index(folder, engine.index())
-    first = store.load_index(folder)
-    assert_true(store.load_index(folder) is first, "the index was read from disk again")
+    first = store.require_index(folder)
+    assert_true(store.require_index(folder) is first, "the index was read from disk again")
 
 
 def test_a_kept_index_never_outlives_its_file(engine):
     """Saved again, the new one is read; deleted, there is none."""
     _, folder = store.create("owner")
     store.save_index(folder, engine.index())
-    store.load_index(folder)
+    store.require_index(folder)
     first_span = index_of(list(engine.index())[:1])
     store.save_index(folder, first_span)  # at once: the file's clock may not have moved
-    again = store.load_index(folder)
-    read = [span.id for span in again or ()]
+    read = [span.id for span in store.require_index(folder)]
     assert_equal(read, [span.id for span in first_span], "spans in the index read again")
     store.delete(folder)
-    assert_equal(store.load_index(folder), None, "the index of a deleted document")
+    with pytest.raises(Gone):
+        store.require_index(folder)
 
 
 def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():

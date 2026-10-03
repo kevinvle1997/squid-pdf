@@ -14,7 +14,7 @@ from typing import BinaryIO
 
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, store
-from squidpdf.documents.analyse import analyse
+from squidpdf.documents.analyse import analyse_upload
 from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.types import KeptAnalysis
@@ -99,7 +99,7 @@ class UploadController:
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse, str(folder), constants.MAX_PAGES)
+        task = partial(analyse_upload, str(folder), constants.MAX_PAGES)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 

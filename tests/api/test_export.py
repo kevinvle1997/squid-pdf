@@ -27,6 +27,7 @@ from tests.api.conftest import (
     OTHER_LINE,
     REDACTED_NAME,
     SIGNED,
+    InProcess,
     around,
     span_starting,
     upload,
@@ -102,13 +103,6 @@ _PLACES = (
 )
 # A hidden copy as a file writes it: the key, then the text in brackets.
 _HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
-
-
-class _InProcess:
-    """Runs pool work in the test's own process, where a monkeypatch reaches it."""
-
-    async def run(self, _timeout, task):
-        return task()
 
 
 _STALL_S = 60  # far past any export timeout here
@@ -195,7 +189,7 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     app, mine, doc, monkeypatch, pseudo
 ):
     """The file is only larger, but it's said, in the reader's words and in ASCII."""
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Subsetter, "subset", cannot_cut)
     monkeypatch.setitem(words.CATALOGS[pseudo], "face_not_trimmed", "{font} ENTIÈRE")
     span = span_starting(doc, 0, "Made")  # its font is only named, so a face we ship redraws it
@@ -228,7 +222,7 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     The erase is what's broken here, not the check: the text really is still
     in the file, and the check reads it where its page went.
     """
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
     span = span_starting(doc, 1, "Invoices")
     kept = _files(doc)
@@ -457,8 +451,22 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
-    """A hidden copy left in any one place fails the check: no file, the span named."""
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    """The letters are gone, but a hidden copy is as much a leak: no file, the span named.
+
+    One place at a time, so the check is shown to read each place on its own:
+    a hidden copy with a NUL before the line is read past it, a string of its
+    own included; one whose dictionary is written before its tag; one under
+    the first of a key written twice, which MuPDF doesn't keep; a dictionary
+    not read whole, which the removal leaves as written, whether MuPDF stops
+    reading it after the line or before, at a key that's a string or at an ID,
+    or reads on past a >> inside an array where a count stops, or both stop
+    before the line; and all that follows an image MuPDF can't read, which
+    the removal leaves too. What follows either is read from wherever a
+    string may start: after a byte of an image that MuPDF's reader of a
+    drawing takes as starting a comment, a string or a string in hex, which
+    a reader that ends the image at its first EI doesn't.
+    """
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
     doc = upload(mine, _marked_pdf([place])).json()
     card = span_starting(doc, 0, "A US card")
@@ -544,7 +552,7 @@ def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
 
     One copy at a time, so the check is shown to read each on its own.
     """
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
     doc = upload(mine, with_hidden_copies([copy])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
@@ -724,7 +732,7 @@ def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc
     The export used to save into that folder, so the save failed and the
     browser was told the file needs more memory.
     """
-    monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     opened = store.open_original
 
     def deleted_once_open(folder: Path, *args, **kwargs) -> Engine:
