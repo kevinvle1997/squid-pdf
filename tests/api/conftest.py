@@ -14,19 +14,29 @@ from httpx import Response
 
 from squidpdf.api import constants as api_constants
 from squidpdf.api.app import create_app
+from squidpdf.core import Problem
 
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
+# A file on the server, as MuPDF names one it couldn't open.
+SERVER_PATH = "/data/documents/0a1b2c/original.pdf"
+
+
 def _crashes() -> APIRouter:
-    """A route with a bug in it, to see what a crash looks like from outside."""
+    """Routes that fail on the server's side, to see what a failure looks like from outside."""
     router = APIRouter()
 
     @router.get("/api/crash")
     def crash() -> None:
         raise RuntimeError("a bug nobody caught")
+
+    @router.get("/api/crash-naming-a-path")
+    def crash_naming_a_path() -> None:
+        # How core reports MuPDF failing to open a file.
+        raise Problem(debug=f"FzErrorSystem: cannot open {SERVER_PATH}: No such file")
 
     return router
 

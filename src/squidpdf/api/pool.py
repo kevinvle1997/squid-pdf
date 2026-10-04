@@ -33,7 +33,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import cast
 
-from fastapi import Request
+from fastapi import Request, status
 from pebble import ProcessFuture, ProcessPool
 
 from squidpdf.api import constants
@@ -43,7 +43,7 @@ from squidpdf.core import Problem, result_of
 
 _logger = logging.getLogger(__name__)
 
-# A failure a waiting caller gets as its answer, unlogged, is no bug once the caller has left.
+# Failures that are no bug once a task's caller left: a Problem is its caller's answer.
 _EXPECTED_WHEN_LEFT: tuple[type[Exception], ...] = (Problem, *constants.WORKER_FAILURE_TYPES)
 
 
@@ -274,10 +274,15 @@ def _process_pool() -> ProcessPool:
 
 
 def _log_unexpected[T](job: asyncio.Task[T]) -> None:
-    """Log how a task nobody waits for now failed, unless the pool expects that failure."""
+    """Log how a task nobody waits for now failed, unless the pool expects that failure.
+
+    A server error is expected, but its debug is still logged.
+    """
     if job.cancelled():
         return
     failure = job.exception()  # read here, so asyncio doesn't log it as never read
+    if isinstance(failure, Problem):
+        _log_server_debug(failure)
     expected = failure is None or isinstance(failure, _EXPECTED_WHEN_LEFT)
     if expected:
         return
@@ -285,6 +290,15 @@ def _log_unexpected[T](job: asyncio.Task[T]) -> None:
     job.get_loop().call_exception_handler(
         {"message": message, "exception": failure, "task": job}
     )
+
+
+def _log_server_debug(problem: Problem) -> None:
+    """Log a 5xx Problem's debug with its type, as the API's handler does."""
+    on_our_side = problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR
+    # A 4xx is the file's or the request's doing, so a log of it is noise.
+    if not on_our_side or problem.debug is None:
+        return
+    _logger.warning("A task whose caller left failed with %s: %s", problem.type, problem.debug)
 
 
 def current(request: Request) -> WorkerPool:

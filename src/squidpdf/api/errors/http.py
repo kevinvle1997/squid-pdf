@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import Annotated, Any, NotRequired, TypedDict, cast
 
@@ -25,6 +26,8 @@ from squidpdf.core import (
     Problem,
     words,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 def _each_subclass_of(problem: type[Problem]) -> Iterator[type[Problem]]:
@@ -56,7 +59,15 @@ class ProblemInfo(TypedDict):
     detail: str
     code: str
     params: dict[str, Param]
-    debug: NotRequired[str]  # for a developer: what exactly was wrong with the request
+    debug: NotRequired[
+        Annotated[
+            str,
+            Field(
+                description="For a developer: what exactly was wrong with the request. Sent on "
+                "a 4xx only: a 5xx's can name a file on the server, so only its log has it."
+            ),
+        ]
+    ]
 
 
 def _from_validation(exc: Exception) -> Problem:
@@ -102,8 +113,20 @@ def _adopt(exc: Exception) -> Problem:
     return claimed
 
 
+def _debug_sent(problem: Problem) -> str | None:
+    """The `debug` the browser gets: a 4xx's; a 5xx's goes to the log instead."""
+    if problem.debug is None:
+        return None
+    # Our failure: its why can name a file on the server, so only the log gets it.
+    if problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        _logger.warning("Sent %s without its debug: %s", problem.type, problem.debug)
+        return None
+    # The file's or the request's doing: its why tells the developer what to fix.
+    return problem.debug
+
+
 def response(problem: Problem, language: str) -> JSONResponse:
-    """A Problem as Problem Details, `detail` in `language`, and `debug` when there is one.
+    """A Problem as Problem Details, `detail` in `language`; its `debug` sent on a 4xx only.
 
     `code` and `params` are its Message, so the browser can say it in its own words;
     `code` is always `type`.
@@ -113,8 +136,10 @@ def response(problem: Problem, language: str) -> JSONResponse:
         "status": problem.status,
         **words.said(problem.message, language),
     }
-    if problem.debug is not None:
-        body["debug"] = problem.debug
+    debug = _debug_sent(problem)
+    # Left out, not null, when there's none.
+    if debug is not None:
+        body["debug"] = debug
     return JSONResponse(
         body,
         status_code=problem.status,

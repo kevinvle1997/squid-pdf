@@ -534,7 +534,10 @@ export interface components {
             params: {
                 [key: string]: components["schemas"]["Param"];
             };
-            /** Debug */
+            /**
+             * Debug
+             * @description For a developer: what exactly was wrong with the request. Sent on a 4xx only: a 5xx's can name a file on the server, so only its log has it.
+             */
             debug?: string;
         };
         /**
