@@ -22,8 +22,9 @@ from fastapi.testclient import TestClient
 from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, face_widths, words
 from squidpdf.core.fonts.catalog import FACES
-from squidpdf.documents import constants, store
+from squidpdf.documents import constants, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
+from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import BASE_URL, upload
@@ -375,6 +376,79 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")
     said_in_body = first.json()["expires_at"]
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
+
+
+_REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
+
+
+@pytest.mark.parametrize(
+    ("change", "now", "sent_as"),
+    [
+        (
+            lambda patch, now: patch.setattr(replies, "TOLERANCE_PT", now),
+            replies.TOLERANCE_PT / 2,
+            ("fit", "tolerance_pt"),
+        ),
+        (
+            lambda patch, now: patch.setattr(replies, "CONDENSE_LIMIT", now),
+            replies.CONDENSE_LIMIT / 2,
+            ("fit", "condense_limit"),
+        ),
+        (
+            lambda patch, now: patch.setattr(replies, "SHRINK_FLOOR", now),
+            replies.SHRINK_FLOOR / 2,
+            ("fit", "shrink_floor"),
+        ),
+        (
+            lambda patch, now: patch.setitem(words.CATALOGS[words.ENGLISH], "missing", now),
+            _REWORDED,
+            ("copy", "missing"),
+        ),
+        (
+            lambda patch, now: patch.setattr(constants, "REPLY_VERSION", now),
+            constants.REPLY_VERSION + 1,
+            None,  # not in the reply: the 200 alone shows it
+        ),
+    ],
+    ids=[
+        "a fit tolerance",
+        "a condense limit",
+        "a shrink floor",
+        "a sentence",
+        "the reply's shape",
+    ],
+)
+def test_a_read_after_what_its_reply_is_made_of_changes_gets_a_new_body_not_a_304(
+    mine, doc, monkeypatch, change, now, sent_as
+):
+    """A deploy that changes a reply, with no new build, reaches every open document."""
+    url = f"/api/documents/{doc['id']}"
+    first = mine.get(url)
+    change(monkeypatch, now)
+    again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
+
+    assert_equal(again.status_code, 200, "status of a read after the change")
+    if sent_as is not None:
+        part, name = sent_as
+        assert_equal(again.json()[part][name], now, "what the reply now sends")
+
+
+def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc, monkeypatch):
+    """A 304 carries no body, so its spans, nearly all of a long document, aren't read."""
+    url = f"/api/documents/{doc['id']}"
+    first = mine.get(url)
+    reads: list[object] = []
+    load_analysis = store.load_analysis
+
+    def counted(folder, *args, **kwargs) -> KeptAnalysis | None:
+        reads.append(folder)
+        return load_analysis(folder, *args, **kwargs)
+
+    monkeypatch.setattr(store, "load_analysis", counted)
+    again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
+
+    assert_equal(again.status_code, 304, "status of a read the browser has already")
+    assert_equal(len(reads), 0, "times the analysis was read")
 
 
 def test_an_upload_answers_exactly_what_a_read_does(mine, doc):

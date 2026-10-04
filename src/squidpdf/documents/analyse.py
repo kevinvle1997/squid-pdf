@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import orjson
+import xxhash
 
 from squidpdf.core import BUILD, FidelityReport, MessageInfo, Span, reason_of
 from squidpdf.documents import store
@@ -28,7 +29,7 @@ def analyse(folder: str, max_pages: int) -> KeptAnalysis:
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
     Returned as kept JSON, not a dict per span: that crosses from the worker in a moment.
-    Raises TooManyPages on the first run, past `max_pages`; the index is reused, so ids hold.
+    A saved index keeps ids through a new build or retune. Raises TooManyPages past `max_pages`.
     """
     path = Path(folder)
     with store.open_to_analyse(path) as engine:
@@ -75,13 +76,15 @@ def analyse(folder: str, max_pages: int) -> KeptAnalysis:
 
 
 def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
-    """The analysis as it's kept and sent: its spans apart from the rest."""
+    """The analysis as kept and sent: its spans apart from the rest, and a digest of both."""
     facts: AnalysisFacts = {
         "build": analysis["build"],
         "pages": analysis["pages"],
         "fonts": analysis["fonts"],
     }
-    return KeptAnalysis(orjson.dumps(facts), orjson.dumps(analysis["spans"]))
+    facts_json, spans_json = orjson.dumps(facts), orjson.dumps(analysis["spans"])
+    digest = xxhash.xxh3_64_hexdigest(facts_json + spans_json)
+    return KeptAnalysis(facts_json, spans_json, digest)
 
 
 def _substitute_why(report: FidelityReport) -> MessageInfo | None:

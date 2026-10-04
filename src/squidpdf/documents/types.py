@@ -121,14 +121,16 @@ class AnalysisFacts(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class KeptAnalysis:
-    """An analysis as kept: the facts, read when sent, and the spans, sent as they are.
+    """An analysis as kept: the facts, read when sent, the spans, sent as is, and their digest.
 
-    Two files, so a read needn't find the spans inside the rest: on a long
+    Files apart, so a read needn't find the spans inside the rest: on a long
     document they're nearly all of it, and parsing them held up the server.
+    The digest is worked out when kept, so a 304 reads neither.
     """
 
     facts: bytes = field(repr=False)  # AnalysisFacts, as JSON
     spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
+    digest: str  # of the facts and the spans
 
 
 class FitRules(TypedDict):

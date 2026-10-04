@@ -14,7 +14,7 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Engine
+from squidpdf.core import BUILD, FIDELITY_TUNING, Engine, plan
 from squidpdf.core.constants import FETCH_TIMEOUT_S
 from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
@@ -159,6 +159,24 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
     assert_equal(later_ids, first_ids, "span ids across builds")
     kept = store.load_analysis(folder, "a-later-build")
     assert_equal(kept, later, "the later build's analysis as kept, beside what it handed back")
+
+
+def test_a_retune_judges_the_saved_index_again(monkeypatch):
+    """A retune with no new build judges every document again, each span keeping its id."""
+    _, folder = store.create("owner")
+    drawn_with(str(folder / store.ORIGINAL), setting="1.5 Tc")
+    [before] = orjson.loads(analyse.analyse(str(folder), MAX_PAGES).spans)
+    loose = 1000.0
+    # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
+    monkeypatch.setattr(plan, "TOLERANCE_PT", loose)
+    monkeypatch.setattr(store, "FIDELITY_TUNING", FIDELITY_TUNING | {"tolerance_pt": loose})
+
+    kept = store.load_analysis(folder, BUILD)
+    [after] = orjson.loads(analyse.analyse(str(folder), MAX_PAGES).spans)
+
+    assert_equal(kept, None, "the analysis kept under the old tuning, as a read finds it")
+    judged = [(span["id"], span["fidelity"]) for span in (before, after)]
+    assert_equal(judged, [(before["id"], "approximate"), (before["id"], "exact")], "the line")
 
 
 def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usable():

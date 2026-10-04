@@ -51,6 +51,15 @@ FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
 
+# The numbers fidelity is judged by: an analysis is kept under them, so add any new one here.
+FIDELITY_TUNING = {
+    "tolerance_pt": TOLERANCE_PT,
+    "turn_tolerance": TURN_TOLERANCE,
+    "same_width": SAME_WIDTH,
+    "same_font_shared": SAME_FONT_SHARED,
+    "keyboard_ranges": KEYBOARD_RANGES,
+}
+
 # The letters a face we ship lists widths for, so the browser can preview new text:
 # Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
 # Short to keep the font list small; letters past these still draw.

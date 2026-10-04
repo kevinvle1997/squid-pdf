@@ -21,5 +21,7 @@ SWEEP_EVERY_S = 60
 # A page URL carries `build`, so its bytes never change; kept as long as the document.
 PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unchanged
+# The shape of a document's reply: bump it when that changes, so an old copy gets no 304.
+REPLY_VERSION = 1
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

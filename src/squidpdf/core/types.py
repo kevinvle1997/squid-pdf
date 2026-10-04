@@ -20,7 +20,7 @@ Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
 GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty .notdef
 type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
 
-LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
+_LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
 # A turn in degrees, a whole number of quarters. Which way it turns is in the name of
 # each field that holds one: `turn_cw`, `turn_ccw`. A plain alias: pydantic reads it.
 QuarterTurn = Literal[0, 90, 180, 270]
@@ -93,7 +93,7 @@ class TextPiece:
     opacity: float  # 0 is see-through, 1 solid
     box: Rect
     origin: tuple[float, float]  # where the text starts, on its baseline
-    direction: tuple[float, float] = LEVEL  # the way its line reads, on the page unrotated
+    direction: tuple[float, float] = _LEVEL  # the way its line reads, on the page unrotated
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +220,7 @@ class Span:
     bbox: Rect
     origin: tuple[float, float]
     fragments: tuple[Fragment, ...]
-    direction: tuple[float, float] = LEVEL  # the way its line reads: (0, -1) is bottom to top
+    direction: tuple[float, float] = _LEVEL  # the way its line reads: (0, -1) is bottom to top
 
     @property
     def merged(self) -> bool:

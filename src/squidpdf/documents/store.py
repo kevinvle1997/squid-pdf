@@ -1,14 +1,14 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build`, its spans in a file of their own. Delete it
-and everything goes. Its mtime is the idle clock: every visit touches it, and
-the sweeper deletes what's gone an hour untouched.
+A folder holds the original, the owner's hash, the span index, the page list, and the analysis
+for each `build` and tuning, in files of their own. Delete it and everything goes. Its mtime is
+the idle clock: every visit touches it, and the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
 
 import errno
+import hashlib
 import os
 import re
 import secrets
@@ -25,8 +25,7 @@ from typing import Any, BinaryIO
 import orjson
 
 from squidpdf.core import (
-    LEVEL,
-    SOLID,
+    FIDELITY_TUNING,
     Engine,
     FontSources,
     Fragment,
@@ -55,6 +54,8 @@ _GOOGLE_FONTS = "fonts"
 # page's turn named with its way; "form-fields": each span says whether a form
 # field draws it.
 _ANALYSIS_FORMAT = "codes.turn_cw.form-fields"
+# Bytes of the tuning's digest in file names: enough that two tunings won't share one.
+_TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
@@ -287,13 +288,10 @@ def _load_span(saved: dict[str, Any]) -> Span:
     """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
-        # .get: an index saved before spans kept opacity; they were drawn solid then.
-        "opacity": saved.get("opacity", SOLID),
         "bbox": Rect(**saved["bbox"]),
         "origin": tuple(saved["origin"]),
         "fragments": tuple(_load_fragment(fragment) for fragment in saved["fragments"]),
-        # .get: an index saved before spans kept their direction; all were drawn level then.
-        "direction": tuple(saved.get("direction", LEVEL)),
+        "direction": tuple(saved["direction"]),
     }
     return Span(**saved | rebuilt)
 
@@ -319,33 +317,54 @@ def load_pages(folder: Path) -> list[Page]:
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
-    """Keep what was worked out under this build; another build works it out again.
+    """Keep what was worked out under this build; another build or tuning works it out again.
 
-    The spans first: the facts' file is what says the analysis is there.
+    The digest last: a 304 reads it alone, so its file says the rest is there.
     """
     _write_whole(folder / _spans_file(build), kept.spans)
     _write_whole(folder / _analysis_file(build), kept.facts)
+    _write_whole(folder / _digest_file(build), kept.digest.encode())
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
     """The analysis saved under this build, or None if it hasn't been worked out."""
     try:
+        digest = (folder / _digest_file(build)).read_text()
         facts = (folder / _analysis_file(build)).read_bytes()
         spans = (folder / _spans_file(build)).read_bytes()
     except FileNotFoundError:  # a new build, or never analysed
         return None
-    return KeptAnalysis(facts, spans)
+    return KeptAnalysis(facts, spans, digest)
+
+
+def load_analysis_digest(folder: Path, build: str) -> str | None:
+    """The saved analysis's digest under this build, or None if it hasn't been worked out."""
+    try:
+        return (folder / _digest_file(build)).read_text()
+    except FileNotFoundError:  # a new build, or never analysed
+        return None
 
 
 def _analysis_file(build: str) -> str:
     """The file the analysis under `build` is kept in.
 
-    Named for how it's kept too: one kept in an older way (`_ANALYSIS_FORMAT`)
-    reads as not worked out yet, and is worked out again over the same index.
+    Named by `_kept_as` too, so one kept another way or under other tuning is worked out again.
     """
-    return f"analysis-{build}.{_ANALYSIS_FORMAT}.json"
+    return f"analysis-{build}.{_kept_as()}.json"
 
 
 def _spans_file(build: str) -> str:
     """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
-    return f"spans-{build}.{_ANALYSIS_FORMAT}.json"
+    return f"spans-{build}.{_kept_as()}.json"
+
+
+def _digest_file(build: str) -> str:
+    """The file the analysis's digest under `build` is kept in, beside `_analysis_file`."""
+    return f"digest-{build}.{_kept_as()}.txt"
+
+
+def _kept_as() -> str:
+    """How an analysis is kept (`_ANALYSIS_FORMAT`) and a digest of what tuning judged it."""
+    tuning = repr(FIDELITY_TUNING).encode()
+    judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
+    return f"{_ANALYSIS_FORMAT}.{judged_by}"
