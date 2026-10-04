@@ -7,15 +7,11 @@ can import them. A name ending in Info is JSON the browser gets.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from squidpdf.core import Category, HiddenPlace, Message, MessageInfo, Page, SaidInfo, Style
-
-if TYPE_CHECKING:  # fit.py imports this module for Strategy
-    from squidpdf.editing.fit import LogFits
-
-# How a too-long replacement is drawn; the names the user's options go by.
-type Strategy = Literal["as-is", "shrink", "condense"]
+from squidpdf.editing.edits import Strategy
+from squidpdf.editing.fit import FitReport
 
 # Why an edit was left out: what it points at isn't in the document.
 type _SkipReason = Literal["bad_reference"]
@@ -109,7 +105,8 @@ class Rendered:
     """
 
     images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
-    fits: LogFits
+    fits: dict[str, FitReport]  # by the replaced span's id
+    insert_fits: dict[int, FitReport]  # by the insert's place in the list the browser sent
     skipped: list[Skipped]
     notices: list[Notice]
     redactions: dict[str, Redaction]

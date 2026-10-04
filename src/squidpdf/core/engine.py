@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import assert_never
 
@@ -46,12 +46,13 @@ from squidpdf.core.writer import PageWriter, Setting
 _WORD = re.compile(r"[^\W_]+")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class LineToDraw:
-    """A line `draw` will draw once the erasing is done: the span it's at, and its text."""
+    """A line `draw` draws after the erase: its span, its text, and a fit's plan, if any."""
 
     span: Span
     text: str
+    plan: DrawPlan | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -200,6 +201,10 @@ class Engine:
         """
         return self.plans.plan_for(span, text)
 
+    def has_own_font(self, span: Span) -> bool:
+        """Whether the file's own copy of the font can be used, if only for some letters."""
+        return self.fonts.own(span) is not None
+
     def width_of(self, span: Span, plan: DrawPlan) -> float:
         """How wide `plan`'s line renders, placed as `draw` places it, at this span's size."""
         return self.plans.width_of(span, plan, size=span.size)
@@ -249,10 +254,8 @@ class Engine:
     def _read_before_erasing(self, spans: list[Span], lines: Sequence[LineToDraw]) -> None:
         """Read what `draw` needs while the page still has it.
 
-        Erasing can delete a font no text on the page uses any more. So each
-        span's font and look-alike are read first, and the page's gaps a new
-        space is measured against; and each line to draw is planned, which takes
-        in every copy of a font it borrows a letter from.
+        Erasing can delete a font no text on the page uses any more, so each span's
+        fonts and gaps are read first, and each line not planned yet is planned.
         """
         for span in spans:
             own = self.fonts.own(span)
@@ -260,7 +263,9 @@ class Engine:
             if own is not None and lacks_space(own):
                 self.fonts.usual_gap(span, own)
         for line in lines:
-            self.plans.plan_for(line.span, line.text)
+            # A fit's plan already took in its fonts.
+            if line.plan is None:
+                self.plans.plan_for(line.span, line.text)
 
     def unlink(self, spans: list[Span]) -> None:
         """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
@@ -286,20 +291,20 @@ class Engine:
         span: Span,
         text: str,
         *,
+        plan: DrawPlan | None = None,
         size: float | None = None,
         scale_x: float = 1.0,
         turn_ccw: QuarterTurn = 0,
     ) -> list[Message]:
         """Redraw `text` at the span's baseline, in the font `plan_for` names.
 
-        `size` in points replaces the span's own; `scale_x` narrows the run from
-        its start; `turn_ccw` turns the line counter-clockwise on the page
-        unrotated (new text takes its page's turn, so it reads upright as the
-        page is shown). Returns anything that came out other than asked, for the edge
-        to put into words; empty when nothing did.
+        `plan` is `plan_for`'s answer from before the erase; None plans it here.
+        `scale_x` narrows the run from its start; `turn_ccw` turns it on the page
+        unrotated. Returns what came out other than asked.
         """
+        planned = self.plans.plan_for(span, text) if plan is None else plan
         setting = Setting(span.size if size is None else size, scale_x, turn_ccw)
-        return self.writer.draw(span, text, plans=self.plans, setting=setting)
+        return self.writer.draw(span, text, plan=planned, plans=self.plans, setting=setting)
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.

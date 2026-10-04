@@ -50,6 +50,7 @@ from squidpdf.core.pdf.mupdf import (
     result_of as result_of,
 )
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
+from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.text.fidelity import (
     APPROXIMATE_REASONS as APPROXIMATE_REASONS,
     ApproximateReason as ApproximateReason,

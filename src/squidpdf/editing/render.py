@@ -120,7 +120,7 @@ def _draw_regions(
     with store.open_original(path) as engine:
         resolved = resolve(engine, edits, index)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
-        steps = plan(engine, resolved, strips=strips)
+        steps = plan(engine, resolved, fits, strips=strips)
         redactions = RedactionController(tuple(_redacted_by(steps)))
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         notices = run(engine, steps)
@@ -132,7 +132,8 @@ def _draw_regions(
     }
     return Rendered(
         images,
-        fits=fits,
+        fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()},
+        insert_fits={position: fitted.report for position, fitted in fits.inserts.items()},
         skipped=resolved.skipped,
         notices=notices + _said_unredacted(verdicts),
         redactions=redaction_per_span,
@@ -217,13 +218,12 @@ def _strip_of(region: Region, page: Page) -> Rect:
 
 def _reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
     """What render worked out, as the browser gets it, in the reader's words."""
-    fits = rendered.fits
     return {
         "images": rendered.images,
-        "fits": {span_id: fit_info(fit, said_in) for span_id, fit in fits.replaces.items()},
+        "fits": {span_id: fit_info(fit, said_in) for span_id, fit in rendered.fits.items()},
         "insert_fits": [
             {**fit_info(fit, said_in), "edit": position}
-            for position, fit in fits.inserts.items()
+            for position, fit in rendered.insert_fits.items()
         ],
         "redactions": {
             span_id: redaction_info(redaction, said_in)
