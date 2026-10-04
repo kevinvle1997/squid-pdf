@@ -25,21 +25,15 @@ _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 
 @dataclass(slots=True)
 class _UploadsUnderWay:
-    """The disk the uploads under way may yet take, held against the free-disk floor.
+    """The disk the uploads under way may yet take, held against the free-disk floor."""
 
-    An upload is under way from its free-disk check until its file has streamed in.
-    Changed on the event loop alone, so two uploads never count at once.
-    """
-
-    held_bytes: int = 0  # a whole file's worth for each upload under way now
+    held_bytes: int = 0  # a whole file for each upload under way
 
     @contextmanager
     def holding(self, size: int, *, free: int) -> Iterator[None]:
         """Hold `size` bytes of disk while the block runs, refused if `free` has no room for it.
 
-        The room is `free` less every hold, this one included, above MIN_FREE_BYTES.
-        Checked and held in one step, so an upload refused holds nothing, and two
-        uploads never pass on the same room.
+        Checked and held in one step on the event loop: two uploads never pass on one room.
         """
         room = free - self.held_bytes - size
         # Read as a module attribute, so a test can raise the floor.
@@ -52,7 +46,7 @@ class _UploadsUnderWay:
             self.held_bytes -= size
 
     def forget(self) -> None:
-        """Forget every upload held, as a fresh record: for a server with none under way."""
+        """Forget every upload held, as a fresh record: only with none under way."""
         self.held_bytes = 0
 
 
@@ -78,15 +72,14 @@ class UploadController:
 
         `declared` is the size the request states, None when it streams without
         one. Refuses a file too large or not a PDF, and keeps nothing then. Refuses
-        any file while the disk is nearly full, counting a whole file for each
-        upload under way, and says so too if the disk fills up anyway.
+        any file while the disk is nearly full, or if it fills up anyway.
         """
         # Read as module attributes, so a test can lower the limit.
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
         free = await asyncio.to_thread(_documents_disk_free)
-        # Held from the check until the file is in: each upload under way may yet write one.
+        # Until its file is in, each upload under way may yet write a whole one.
         with (
             _uploads_under_way.holding(constants.MAX_FILE_BYTES, free=free),
             store.full_disk_refused(),
@@ -96,8 +89,8 @@ class UploadController:
                 folder, _save_original(chunks, to=folder / store.ORIGINAL)
             )
         kept = await _deleted_if_it_fails(folder, self._enqueue_analyse(folder))
-        # Answered under the same delete: a browser that leaves first never gets the id.
-        # The fonts' letters are read and written out again: off the server's thread.
+        # Deleted if it fails too: a browser that leaves first never gets the id.
+        # Off the server's thread: it reads every font's letters and writes them out again.
         body = await _deleted_if_it_fails(
             folder,
             asyncio.to_thread(_reply_body, doc_id, folder=folder, kept=kept, said_in=said_in),
@@ -134,7 +127,7 @@ async def _deleted_if_it_fails[T](folder: Path, step: Awaitable[T]) -> T:
 async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
     """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF.
 
-    The file is opened, written and closed off the server's thread: a disk can be slow.
+    Opened, written and closed off the server's thread: a disk can be slow.
     """
     size, first_kb = 0, b""
     out = await asyncio.to_thread(_opened_to_write, to)
@@ -148,7 +141,7 @@ async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
             if no_header:
                 raise NotAPdf()
             await asyncio.to_thread(out.write, chunk)
-    finally:  # refused or not, the file is closed; the caller deletes what's refused
+    finally:  # closed, refused or not; the caller deletes what's refused
         await asyncio.to_thread(out.close)
     if _PDF_HEADER not in first_kb:
         raise NotAPdf()

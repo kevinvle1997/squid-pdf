@@ -190,11 +190,9 @@ def full_disk_refused() -> Iterator[None]:
 def _write_whole(path: Path, data: bytes) -> None:
     """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
 
-    Written beside it, then renamed over it, which the filesystem does at once.
-    A half file (a worker killed mid-write, a full disk) would read as broken
-    JSON on every visit, and every visit restarts the hour, so it would never go.
-    Raises Gone if the document was deleted meanwhile, by its owner or the sweep,
-    and ServerFull if the disk has no room for it.
+    Written beside it, then renamed over it, which the filesystem does at once. A half file
+    would read as broken JSON, and each visit restarts the hour, so it would never go.
+    Raises Gone if the document was deleted meanwhile, and ServerFull if the disk is full.
     """
     with full_disk_refused():
         try:

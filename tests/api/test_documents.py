@@ -196,11 +196,9 @@ def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, mon
 
 
 async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> list[int]:
-    """Start `count` uploads at once, each held partway through its file, then one after them.
+    """The statuses of `count` uploads held partway at once, then of one upload after them.
 
-    Through the server's own event loop, as a server runs: a TestClient's browser
-    sends its whole file before the next request can start. Answers each status,
-    those started at once sorted, then the one after.
+    On the server's own loop, since a TestClient sends each file whole before the next.
     """
     go_on = asyncio.Event()
 
@@ -237,10 +235,9 @@ async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> lis
 def test_uploads_under_way_count_against_the_free_disk_floor(
     app, server: TestClient, pdf_bytes, monkeypatch
 ):
-    """Each may yet write a whole file: uploads at once pass only while each has room."""
+    """Uploads at once pass only while each has room for a whole file."""
     disk = shutil.disk_usage(store.root())
-    # Each upload under way may write a whole disk; the floor leaves room for ten, not eleven.
-    # Half a disk either way, so other tests writing meanwhile change nothing.
+    # Ten whole-disk files fit, not eleven; half a disk either way for other tests' writes.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
     monkeypatch.setattr(
         constants, "MIN_FREE_BYTES", disk.free - 10 * disk.total - disk.total // 2
@@ -250,7 +247,7 @@ def test_uploads_under_way_count_against_the_free_disk_floor(
         pytest.fail("the app isn't started")
     statuses = server.portal.call(partial(_uploads_at_once, app, pdf_bytes, count=20))
 
-    # Ten of the twenty fit and the others are refused; once they're in, there's room again.
+    # Ten fit and ten are refused; once they're in, there's room again.
     assert_equal(statuses, [*[201] * 10, *[503] * 10, 201], "twenty at once, then one after")
 
 
@@ -259,7 +256,7 @@ def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
 ):
     """Refused after its check, an upload holds nothing: refusals never fill the floor."""
     disk = shutil.disk_usage(store.root())
-    # Room for one upload under way, not two; half a disk either way, as above.
+    # Room for one whole-disk file, not two; half a disk either way, as above.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total - disk.total // 2)
     not_a_pdf = b"Dear Sir, please find attached."
@@ -271,7 +268,7 @@ def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
 
 
 def test_uploads_under_way_that_forget_equal_fresh_ones():
-    """The disk a server holds for uploads under way: forgotten, none is held."""
+    """Forgetting the uploads under way leaves a fresh record."""
     under_way = _UploadsUnderWay()
     with under_way.holding(1024, free=constants.MIN_FREE_BYTES + 1024):
         assert_every_field_filled(under_way, _UploadsUnderWay(), "the record while one streams")
@@ -299,8 +296,7 @@ def _original_on_a_full_disk(path: Path, mode: str = "r", *args: Any, **kwargs: 
     return open(path, mode, *args, **kwargs)
 
 
-# An upload's first write, once its folder is made, is its owner's, as text; its largest is
-# its original's, as the file streams in.
+# An upload's first write is its owner's, and its largest its original's.
 @pytest.mark.parametrize(
     ("method", "on_a_full_disk"),
     [("write_text", _write_on_a_full_disk), ("open", _original_on_a_full_disk)],
@@ -309,7 +305,7 @@ def _original_on_a_full_disk(path: Path, mode: str = "r", *args: Any, **kwargs: 
 def test_a_disk_that_fills_up_as_an_upload_is_kept_is_server_full(
     mine, pdf_bytes, monkeypatch, method, on_a_full_disk
 ):
-    """Past the floor's check the disk can still run out: the server says so, as no bug."""
+    """A disk that runs out past the floor's check is server_full, not a bug."""
     monkeypatch.setattr(Path, method, on_a_full_disk)
     before = _kept()
     assert_problem(upload(mine, pdf_bytes), "server_full", 503)
