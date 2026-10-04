@@ -1,11 +1,8 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build` and tuning, its spans and its digest in files
-of their own. Each file worked out from the original is named for the format
-it's kept in too, so one kept in another reads as not there. Delete the folder
-and everything goes. Its mtime is the idle clock: every visit touches it, and
-the sweeper deletes what's gone an hour untouched.
+A folder holds the original, the owner's hash, the span index, the page list, and the analysis
+for each `build` and tuning, its spans and its digest in files of their own. Each file worked
+out from the original is named for its format. Its mtime, touched each visit, is the idle clock.
 """
 
 from __future__ import annotations
@@ -46,8 +43,7 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
-# Bytes of the digest of the tuning an analysis was judged by, in its files' names:
-# enough that two tunings won't share one.
+# Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
@@ -244,12 +240,10 @@ _kept_index = _KeptIndex()  # per worker process: each has its own
 
 
 def require_index(folder: Path) -> SpanIndex:
-    """The index saved at upload. Raises Gone if it was deleted, or kept in another format.
+    """The index saved at upload; raises Gone if it was deleted or kept in another format.
 
     Read once per worker: parsing a large one was most of a render. Kept while
     its file is the same file, so an index saved again or deleted is never served.
-    It's never built again over a document kept before: a deploy that changes how
-    spans are kept (`DOCUMENT_FORMAT`) sends each open document back to the browser.
     """
     try:
         index_file = (folder / _index_file()).open("rb")
@@ -303,10 +297,7 @@ def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
 
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
-    """The analysis's digest under this build and format, or None if not worked out in them.
-
-    Read alone, it says whether the browser's copy is current without reading the spans.
-    """
+    """The analysis's digest under this build and format, or None if not worked out in them."""
     try:
         return (folder / _digest_file(build)).read_text()
     except FileNotFoundError:  # a new build or format, or never analysed
@@ -341,8 +332,8 @@ def _digest_file(build: str) -> str:
 def _kept_as(name: str) -> str:
     """The file `name` is kept in, named for the format of a document's files.
 
-    One kept in another (`DOCUMENT_FORMAT`) reads as not there, and the index is
-    never built again over it, so the document reads as gone.
+    One in another format reads as not there, and an index is never rebuilt, so
+    its document reads as gone.
     """
     return f"v{constants.DOCUMENT_FORMAT}.{name}"
 
@@ -350,9 +341,8 @@ def _kept_as(name: str) -> str:
 def _analysis_kept_as(name: str) -> str:
     """The file `name` is kept in, named for the analysis's format and tuning as well.
 
-    One kept in another (`ANALYSIS_FORMAT`), or judged by other tuning, reads as
-    not worked out yet, and is worked out again over the same index. The document's
-    format too, so a document whose index reads as gone has no analysis to answer from.
+    One in another format or tuning is worked out again over the same index. The
+    document's format is in it too, so a gone document has no analysis to answer from.
     """
     tuning = repr(FIDELITY_TUNING).encode()
     judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()

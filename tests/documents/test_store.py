@@ -205,12 +205,10 @@ def test_a_kept_index_never_outlives_its_file(engine):
 
 
 def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
-    """A span's id and facts never change, so what's kept on disk must read back whole.
+    """A span's id and facts never change, so what's kept must read back whole.
 
-    Every field of the span, of each of its fragments and of the page is off a
-    blank one's, so a field added later and left at its default fails here: a
-    box or a tuple left out of the loading would read back as a dict or a list.
-    Two fragments, each its own box, since a merged span is redrawn from them.
+    Every field is off a blank one's, so one added later and left at its default fails here.
+    Two fragments, since a merged span is redrawn from them.
     """
     first_fragment = Fragment("Total ", Rect(10.0, 20.0, 40.0, 32.0), (10.0, 30.0))
     second_fragment = Fragment("due", Rect(40.5, 20.0, 60.0, 32.0), (40.5, 30.0))

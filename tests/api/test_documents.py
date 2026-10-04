@@ -475,13 +475,13 @@ def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc, monkeypatch
 
 
 def _a_new_build(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deploy of another build: the analysis kept is under the one before."""
+    """A deploy of another build."""
     monkeypatch.setattr(read, "BUILD", "a-later-build")
     monkeypatch.setattr(analyse, "BUILD", "a-later-build")
 
 
 def _a_new_analysis_format(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deploy that changes how an analysis is kept: the one kept is in the format before."""
+    """A deploy that changes how an analysis is kept."""
     monkeypatch.setattr(constants, "ANALYSIS_FORMAT", constants.ANALYSIS_FORMAT + 1)
 
 
@@ -518,11 +518,10 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
 def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_back(
     app, mine, doc, monkeypatch
 ):
-    """Not found, so the browser opens each again from its own copy, whatever it asks first.
+    """Not found, whatever is asked first, so the browser opens each again from its copy.
 
-    An index is built once, at upload, never over a kept one, so no id the
-    browser holds moves under it. A page asked first says so too: answered
-    while the read worked the document out again, its image would never load.
+    An index is built only at upload, so no span id the browser holds moves. A page is
+    refused too: answered while a read worked the document out again, it would never load.
     """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(constants, "DOCUMENT_FORMAT", constants.DOCUMENT_FORMAT + 1)

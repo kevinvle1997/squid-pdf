@@ -1,9 +1,8 @@
-"""What the PDF says. Facts only, and how a span index and a page list are kept as JSON.
+"""What the PDF says, facts only, and how a span index and a page list are kept as JSON.
 
-A Span holds what the file states and nothing we concluded. Whether an edit here
-will look identical depends on the font library we happen to ship, which is a
-judgement that can change without the document changing, so it lives in
-`core.text.fidelity`, not here.
+A Span holds what the file states and nothing we concluded. Whether an edit will
+look identical is a judgement that can change with the font library we ship,
+without the document changing, so it lives in `core.text.fidelity`, not here.
 """
 
 from __future__ import annotations
@@ -192,9 +191,6 @@ class Fragment:
     PDF writers split a sentence into many of these to adjust letter spacing, so
     a fragment is often a few letters and sometimes half a word. Users never see
     fragments; they exist so a merged span can be redrawn accurately.
-
-    Read back by `_load_fragment`: a new field that JSON doesn't hold as it is,
-    a tuple or a box, is rebuilt there.
     """
 
     text: str
@@ -213,9 +209,6 @@ class Span:
     `id` is stable for the life of a document because the index is built once
     from the pristine file and never rebuilt from an edited one. See SpanIndex.
     `color`, `opacity` and `direction` are its first fragment's.
-
-    Kept on disk by `index_as_json` and read back by `index_from_json`: a new
-    field that JSON doesn't hold as it is, a tuple or a box, is rebuilt there.
     """
 
     id: str
@@ -367,8 +360,7 @@ def index_of(spans: Iterable[Span]) -> SpanIndex:
 
 
 def index_as_json(index: SpanIndex) -> bytes:
-    """The index as JSON, to keep: `index_from_json` reads back every field of every span."""
-    # orjson writes a dataclass as an object of its fields, and a tuple as a list.
+    """The index as JSON, which `index_from_json` reads back whole."""
     return orjson.dumps(list(index))
 
 
@@ -396,12 +388,12 @@ def _load_fragment(saved: dict[str, Any]) -> Fragment:
 
 
 def pages_as_json(pages: list[Page]) -> bytes:
-    """The page list as JSON, to keep: `pages_from_json` reads back every field."""
+    """The page list as JSON, which `pages_from_json` reads back whole."""
     return orjson.dumps(pages)
 
 
 def pages_from_json(saved: bytes) -> list[Page]:
-    """The page list `pages_as_json` wrote, each page as it was. Its fields are all plain."""
+    """The page list `pages_as_json` wrote; a page's fields are all plain."""
     return [Page(**page) for page in orjson.loads(saved)]
 
 

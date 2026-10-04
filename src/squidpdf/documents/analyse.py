@@ -25,10 +25,10 @@ from squidpdf.documents.types import (
 
 
 def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
-    """Index a new upload from its original and keep its pages, then analyse it.
+    """Index a new upload, keep its pages, and analyse it.
 
-    The one place an index is built: once, so no span id the browser holds ever
-    moves under it. Raises TooManyPages first, if it has more than `max_pages`.
+    The one place an index is built, so no span id the browser holds ever moves.
+    Raises TooManyPages past `max_pages`, before reading a page.
     """
     path = Path(folder)
     with store.open_to_analyse(path) as engine:
@@ -43,9 +43,7 @@ def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
 def analyse(folder: str) -> KeptAnalysis:
     """Analyse a stored document again, under this build, over the index kept at upload.
 
-    A new build, or a retune (`FIDELITY_TUNING`), judges the same spans, so every
-    id holds. Raises Gone if that index was deleted, or kept in another format:
-    the browser opens it again.
+    Raises Gone if that index was deleted or kept in another format.
     """
     path = Path(folder)
     index = store.require_index(path)
@@ -57,8 +55,7 @@ def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
-    Handed back as kept, its JSON, not every span as a dict: that crosses from
-    the worker in a moment, and the reply sends its spans as they are.
+    Handed back as its JSON, so it leaves the worker fast and the reply sends its spans as is.
     """
     reports = {report.span_id: report for report in engine.assess(index)}
     # Text a form field draws: said before any edit, since an edit to it is left out.

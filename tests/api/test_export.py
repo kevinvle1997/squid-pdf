@@ -451,21 +451,7 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
-    """The letters are gone, but a hidden copy is as much a leak: no file, the span named.
-
-    One place at a time, so the check is shown to read each place on its own:
-    a hidden copy with a NUL before the line is read past it, a string of its
-    own included; one whose dictionary is written before its tag; one under
-    the first of a key written twice, which MuPDF doesn't keep; a dictionary
-    not read whole, which the removal leaves as written, whether MuPDF stops
-    reading it after the line or before, at a key that's a string or at an ID,
-    or reads on past a >> inside an array where a count stops, or both stop
-    before the line; and all that follows an image MuPDF can't read, which
-    the removal leaves too. What follows either is read from wherever a
-    string may start: after a byte of an image that MuPDF's reader of a
-    drawing takes as starting a comment, a string or a string in hex, which
-    a reader that ends the image at its first EI doesn't.
-    """
+    """A hidden copy left in any one place fails the check: no file, the span named."""
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
     doc = upload(mine, _marked_pdf([place])).json()
