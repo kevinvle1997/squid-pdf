@@ -1,11 +1,7 @@
 """The command line, driven the way a person types it.
 
-Each test calls `main()` with the words someone would type after `squidpdf`,
-then checks the exit code, what was printed, and any file it wrote. The
-pieces underneath are tested on their own in tests/core and tests/editing;
-these only check that the commands wire them together. Colour depends on
-whether a stream is a terminal, so its test runs the command in a process of
-its own, given a real one.
+Only the wiring is checked; the pieces have tests of their own. Colour needs
+a real terminal, so its tests run the command in a process of its own.
 """
 
 from __future__ import annotations
@@ -38,7 +34,7 @@ def _read_until_closed(fd: int) -> str:
     while True:
         try:
             chunk = os.read(fd, 4096)
-        except OSError:  # Linux says a terminal with no writer left this way, not with b""
+        except OSError:  # once the writer closes, Linux ends the read with EIO, not b""
             break
         if not chunk:
             break
@@ -52,9 +48,8 @@ def _run_in_a_terminal(
 ) -> dict[str, str]:
     """What `squidpdf <args>` writes to each stream when only `terminal` is a terminal.
 
-    The other stream is piped, as `squidpdf ... 2> errors.log` pipes stderr.
-    NO_COLOR is left out, as a person's shell usually leaves it. The terminal is
-    read once the command ends, so what it prints there must be short.
+    NO_COLOR is unset, as in most shells. The terminal is read only once the
+    command ends, so its output must be short.
     """
     reader, writer = pty.openpty()
     streams = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, terminal: writer}
@@ -132,7 +127,7 @@ def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal,
 
 @pytest.mark.parametrize("command", ["spans", "report"])
 def test_a_rate_below_the_warning_line_is_red_wherever_it_is_shown(tmp_path, command):
-    """`report`'s rows were red there, while its total and `spans` said yellow."""
+    """`spans` and `report`'s total colour a rate as `report`'s rows do."""
     named = named_only(str(tmp_path / "named.pdf"), "Calibri")  # drawn in a substitute: 0%
 
     said = _run_in_a_terminal([command, named], terminal="stdout")
@@ -326,7 +321,7 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
 
 
 def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkeypatch, capsys):
-    """deploy/check.sh and the browser's end-to-end test read the sample, so no contract."""
+    """Other checks read the sample."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "fixtures").mkdir()
 

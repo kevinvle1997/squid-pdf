@@ -58,12 +58,12 @@ _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
 
 
 def _colours_of(stream: TextIO) -> tuple[str, ...]:
-    """`_COLOURS` for a terminal; blanks when `stream` is piped or the reader set NO_COLOR."""
+    """`_COLOURS` when `stream` is a terminal and NO_COLOR isn't set; blanks otherwise."""
     coloured = stream.isatty() and "NO_COLOR" not in os.environ
     return _COLOURS if coloured else ("",) * len(_COLOURS)
 
 
-# What a command prints goes to stdout; a failure goes to stderr, through `_fail`.
+# Colours for stdout; a failure, on stderr, gets its own in `_fail`.
 _DIM, _RED, _GREEN, _YELLOW, _OFF = _colours_of(sys.stdout)
 
 # How each judgement is marked in `spans`, padded to one width.
@@ -121,7 +121,7 @@ def _summary(reports: list[FidelityReport]) -> None:
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
     )
-    # No text: no share of it to keep.
+    # No text, so no green rate.
     if rate is None:
         print(f"{tally} · no text")
         return
@@ -196,7 +196,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         fitted = not fit.missing and fit.strategy != "as-is"
         refused = not (fit.ok or fitted or args.force)
         if refused:
-            # Never None here: a fit that isn't ok lacks a letter or runs too long, and says so.
+            # `render_all` gives None for no messages, but a fit that isn't ok always has one.
             described = str(words.render_all(fit.describe()))
             return _fail(described, hint="(pass --force to do it anyway)")
 
@@ -232,16 +232,13 @@ class _Row:
     """One file's line in `report`."""
 
     path: str
-    read: bool  # whether it opened; when it didn't, `note` says why
-    rate: float | None  # its green rate, None when it has no text; unused when not read
+    read: bool  # whether it opened and was assessed
+    rate: float | None  # its green rate; None if it has no text or wasn't read
     note: str  # how many spans it has, or why it couldn't be read
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    """Green rate across a corpus. Below 80% the promise inverts into an apology.
-
-    Exits 1 when it could read no file, so a script sees nothing was measured.
-    """
+    """Green rate across a corpus; exits 1 when it could read no file."""
     rows: list[_Row] = []
     total = exact_count = 0
     for path in args.pdfs:
@@ -277,7 +274,7 @@ def _line_of(row: _Row) -> str:
     # The file couldn't be read: `note` says why.
     if not row.read:
         return f"  {_RED}failed{_OFF}   {name_and_note}"
-    # It has no text, so no share of it to keep.
+    # No text, so no green rate.
     if row.rate is None:
         return f"  no text  {name_and_note}"
     return f"  {_rate_colour(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
@@ -307,10 +304,7 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
 
 
 def _fail(said: str, *, hint: str = "") -> int:
-    """Say a failure on stderr and return the exit code: `said` red, then `hint` dim.
-
-    Coloured only where stderr is a terminal, whatever stdout is.
-    """
+    """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colours_of(sys.stderr)
     shown_hint = f" {dim}{hint}{off}" if hint else ""
     print(f"  {red}{said}{off}{shown_hint}", file=sys.stderr)
@@ -410,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
-    # The browser's end-to-end test and deploy/check.sh read the sample: no contract over it.
+    # Others read `_SAMPLE`, so a long contract never replaces it.
     if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
         parser.error(f"--pages would replace {_SAMPLE}; name another file")
     try:

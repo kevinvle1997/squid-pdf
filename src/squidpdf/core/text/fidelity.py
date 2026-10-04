@@ -66,14 +66,9 @@ def reason_of(why: Message) -> ApproximateReason:
 def green_rate(reports: list[FidelityReport]) -> float | None:
     """The share of spans that are exact: their own font, set as the page sets them.
 
-    The one number the product is judged on. Green is `exact` only: an
-    approximate span keeps its own font but not its look. Below
-    GREEN_RATE_TARGET the promise inverts: substitution becomes the normal case
-    and the signal reads as an apology rather than reassurance. None for a
-    document with no text: there's nothing to keep, and 0% would read as every
-    edit failing.
+    An approximate span keeps its font but not its look, so it counts against the rate.
+    None when there are no spans: 0% would read as every edit failing.
     """
-    # No spans: no share of them to give.
     if not reports:
         return None
     exact_count = sum(1 for report in reports if report.state == "exact")
