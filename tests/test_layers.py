@@ -66,7 +66,6 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf.core", "squidpdf.api", []),
         ("squidpdf.core", "squidpdf.cli", []),
         ("squidpdf.documents", "squidpdf.editing", []),
-        ("squidpdf.core.text", "squidpdf.core.fonts", []),
         ("squidpdf", "squidpdf.api", _WEB),
         ("squidpdf", "squidpdf.documents.api", _WEB),
         ("squidpdf", "squidpdf.editing.api", _WEB),
@@ -82,7 +81,6 @@ def _within(name: str, package: str) -> bool:
         "core imports no feature: the web layer",
         "core imports no feature: the CLI",
         "editing builds on documents, never the other way",
-        "core's fonts build on its text, never the other way",
         "the web layer stays in api/ and each feature's api.py, so the CLI runs without it",
         "only the web layer imports documents' routes",
         "only the web layer imports editing's routes",
@@ -135,6 +133,50 @@ def test_nothing_inside_imports_the_package_itself():
     """
     breaking = [module for module, imports in _MODULES.items() if "squidpdf" in imports]
     assert_equal(breaking, [], "modules importing the squidpdf package itself")
+
+
+# Core's packages in the one order they import in, lowest first: each imports only from its
+# own row and the rows above it, so none reaches one that builds on it. The driver's
+# Protocol sits above text and fonts, which are written against it; the library that
+# implements it builds on fonts' catalog; the engine imports the rest, and `squidpdf.core`
+# is the door outside callers use.
+_CORE_ORDER = (
+    ("squidpdf.core.types", "squidpdf.core.constants"),
+    ("squidpdf.core.app",),
+    ("squidpdf.core.pdf.driver",),
+    ("squidpdf.core.text",),
+    ("squidpdf.core.fonts",),
+    ("squidpdf.core.pdf",),
+    ("squidpdf.core.plan",),
+    ("squidpdf.core.writer",),
+    ("squidpdf.core.engine",),
+    ("squidpdf.core",),
+)
+_CORE_ROWS = {package: row for row, packages in enumerate(_CORE_ORDER) for package in packages}
+
+
+def _core_package(name: str) -> str:
+    """The narrowest of `_CORE_ORDER`'s packages a name inside core is in."""
+    return max((package for package in _CORE_ROWS if _within(name, package)), key=len)
+
+
+def test_each_core_package_imports_only_those_before_it_in_one_order():
+    """The leaves import no other core package, text no fonts, the driver no engine.
+
+    So core has no cycle, and a second library's driver needs nothing of the engine:
+    `_CORE_ORDER` is the order.
+    """
+    breaking = sorted(
+        {
+            f"{module} imports {_core_package(name)}"
+            for module, imports in _MODULES.items()
+            if _within(module, "squidpdf.core")
+            for name in imports
+            if _within(name, "squidpdf.core")
+            and _CORE_ROWS[_core_package(name)] > _CORE_ROWS[_core_package(module)]
+        }
+    )
+    assert_equal(breaking, [], "core modules importing a package that builds on theirs")
 
 
 # How a class holds its state (rules/readable.md, Data): in public fields, set when it's
