@@ -55,10 +55,8 @@ _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
 _COPIES = 100  # Google copies measured in one worker: far past how many it keeps
 
 
-# A font, what its description says, and why Google has no file for it: not a family
-# of its, no cut in this slant (Aclonica has no italic), a variable font whose name is
-# reserved, a weight none of the nine. Roboto ships only a variable file, which would
-# be cut at whatever weight the file names: 450, between two, or 0, below the lightest.
+# A font, its description, and why Google has no file for it: Aclonica has no italic,
+# and Roboto, variable only, would be cut at any weight named, even 450 or 0.
 _NOT_GOOGLES = [
     ("Arial", None, "google_not_listed"),
     ("Aclonica-Italic", None, "google_no_cut"),
@@ -175,7 +173,7 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
 
 
 def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(pdf):
-    """Kept for the document's life: a traceback's frames would keep the bytes it was handed."""
+    """A failure is kept bare: no traceback, cause or context to hold the font's bytes."""
     unreadable, _asked = _google(b"not a font")
     file = GoogleFile(_POPPINS_PATH, "a hash never checked here", None)
     with open_pdf(pdf) as engine:
@@ -387,12 +385,7 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
 
 
 def _described_as(path: str, out: Path, *, name: str, described: dict[str, str]) -> str:
-    """The Poppins fixture at `out`, its font named `name` and described by `described`.
-
-    `name` goes on the font and the one inside it, as the fixture's own does;
-    the description, which a two-byte font keeps on the one inside, gets each
-    key of `described` set to its value.
-    """
+    """The Poppins fixture at `out`, its font named `name` and described by `described`."""
     doc = pymupdf.open(path)
     [(xref, *_)] = doc[0].get_fonts()
     # A space in a PDF name is written #20.
@@ -405,18 +398,8 @@ def _described_as(path: str, out: Path, *, name: str, described: dict[str, str])
     return str(out)
 
 
-# A font's name and description, then the file Google is asked for (None: none) and
-# the face we ship that draws for it. A weight past the heaviest, below the lightest,
-# between two: none is a weight a file comes in. Bold by ForceBold alone (the
-# fixture's own /Flags are 32, ForceBold is 1 << 18, fixed width 1); a name's weight
-# word over a description that says otherwise; a light cut drawn bold, as ",Bold" or
-# a "Bold" after the weight word says. Then weights a family has no file in:
-# Syncopate has 400 and 700, Abhaya Libre 400 to 800, Coustard 400 and 900, Courier
-# Prime 400 and 700. A file of another weight is never asked for: a fixed width one,
-# as Courier Prime's Regular is for its Medium, has the same widths, so it would be
-# lent as exact. Then a name's weight word between two (SemiLight 350, Retina and
-# Text 450) with no weight described, since /FontWeight is optional. Last, IBM
-# Plex's own short words, as its PostScript names spell them: Medm, SmBld, ExtLt.
+# A font's name and description, the file Google is asked for (None: none), the substitute.
+# Flags 33 is the fixture's 32 plus fixed width; 1 << 18 is ForceBold.
 _WEIGHTS_SAID = [
     ("Poppins-Regular", {"FontWeight": "123456"}, None, "Poppins Bold"),
     ("Poppins-Regular", {"FontWeight": "-5"}, None, "Poppins Regular"),
@@ -447,11 +430,7 @@ _WEIGHTS_SAID = [
 def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
     poppins_subset, tmp_path, name, described, file_name, face
 ):
-    """A file names any weight it likes: each would be a download and a cut, kept for good.
-
-    The face we ship is bold when that weight is, or when the file has the
-    viewer draw the font bold.
-    """
+    """Only the font's own weight is asked for; the substitute is bold when the font is."""
     path = _described_as(
         poppins_subset, tmp_path / "described.pdf", name=name, described=described
     )

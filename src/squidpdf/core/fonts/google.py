@@ -73,8 +73,7 @@ class GoogleFile:
         return self.path if self.weight is None else f"{self.path}@{self.weight}"
 
 
-# The bytes at a URL; raises when it can't get them, httpx's HTTPStatusError when the
-# server answered without them. Tests hand in one reading a local file.
+# The bytes at a URL; raises when it can't, HTTPStatusError if the server answered without them.
 type _Download = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
@@ -89,8 +88,7 @@ class _RetryRecord:
     """
 
     retry_at: dict[str, float] = field(default_factory=dict)
-    # Taken by every read and change. A download's thread notes its answer while the
-    # one waiting on it may be holding back every file: one wholly before the other.
+    # So a hold can't miss an answer, then hold back every file after that answer lifted it.
     lock: threading.Lock = field(default_factory=threading.Lock, compare=False, repr=False)
 
     def holds(self, source: str, now: float) -> bool:
@@ -103,10 +101,9 @@ class _RetryRecord:
         return now < held_until
 
     def hold(self, source: str, until: float, *, answered: threading.Event) -> None:
-        """Try `source` again only from `until` on; every file, if the network never `answered`.
+        """Try `source` again from `until` on; every file, if the network never `answered`.
 
-        No answer means the network failed, not the file, and every file would
-        fail or wait as long.
+        No answer means the network failed, not the file: every other file would wait as long.
         """
         with self.lock:
             held = source if answered.is_set() else _EVERY_FILE
@@ -166,15 +163,10 @@ def _family_list() -> dict[str, Any]:
 
 
 def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
-    """The file in Google's collection for a document's font.
+    """The file in Google's collection for a document's font, in its own weight and style.
 
-    Matched by family name, then by the font's own weight and style, exactly:
-    a file of another weight is no copy of it, though a fixed-width one would
-    pass the width check. Only the nine usual weights are asked for, so a file
-    naming a new weight on each page can't ask for a cut of each. A family that
-    ships only a variable font is cut to the weight, unless its licence
-    reserves its name: a cut is a modified version, which may not carry a
-    reserved name. Raises FontUnusable, saying why, when there's none to use.
+    A file of another weight is no copy, though a fixed-width one would pass the
+    width check. Raises FontUnusable, saying why, when there's none to use.
     """
     listed = _family_list()
     key = bare_name(font)
@@ -184,8 +176,7 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     if family is None:
         raise FontUnusable(Message("google_not_listed"))
     weight = weight_of(font, descriptor)
-    # None of the nine, as a Text cut's 450 or a 0 is: no fixed file is in it, and a
-    # variable one would be cut at any weight the file names.
+    # None of the nine: a file naming a new weight per page would get a cut of each.
     if weight not in WEIGHTS:
         raise FontUnusable(Message("google_no_cut"))
     style, _usual_cut = style_of(font, descriptor)
@@ -222,12 +213,9 @@ def _fetched(
 ) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
-    From the cache in `folder` when it's there and sound. Else, given `download`,
-    downloaded in the background and waited on for FETCH_TIMEOUT_S at most; one
-    that finishes later is still checked, cut and cached, for the next analysis.
-    A failure is logged, not raised, and noted in `retries`, so nothing waits
-    on it again for FETCH_RETRY_S. A download that gets no answer, by its
-    deadline or at all, holds back every file.
+    From the cache, else, given `download`, downloaded and waited on for
+    FETCH_TIMEOUT_S; a late one is still checked and cached. Neither a late
+    one nor a failure is waited on again for FETCH_RETRY_S (`retries`).
     """
     cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
     try:
@@ -258,8 +246,7 @@ def _fetched(
     # Had: nothing to hold back.
     if font_file is not None:
         return font_file
-    # None came, or nothing yet: every file waits if the network never answered; else,
-    # a file GitHub hasn't or a slow cut, only this one.
+    # None came, or none in time: held back, every file if the network never answered.
     retries.hold(file.source, now + FETCH_RETRY_S, answered=fetching.answered)
     return None
 
@@ -273,8 +260,7 @@ class _Fetching:
     retries: _RetryRecord  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
-    # Set once the network answers, even without the file, so neither that nor a slow
-    # cut is taken for a network down. Set only through `retries.note_answer`.
+    # The network answered, even without the file; set only by `retries.note_answer`.
     answered: threading.Event = field(default_factory=threading.Event)
 
 

@@ -91,7 +91,6 @@ def named_only(
 def name_two_byte_font(doc: pymupdf.Document, xref: int, name: str) -> int:
     """Names a two-byte font and the one inside it `ABCDEF+<name>`, as a real trimmed copy is.
 
-    MuPDF files a font it adds under a name of its own ("Poppins Regular").
     Returns the one inside, which keeps the font's description.
     """
     _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
