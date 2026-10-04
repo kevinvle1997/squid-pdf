@@ -64,9 +64,7 @@ class RenderController:
     ) -> Reply[Render]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
-        Refuses edits and regions over the limits, regions the document lacks,
-        rows of a page asked for twice, and strips whose pixel rows add up past
-        their limit. A redaction pointing at nothing fails the whole request.
+        A redaction pointing at nothing fails the whole request.
         """
         check_edits(edits)
         _check_region_count(regions)
@@ -194,8 +192,7 @@ def _check_apart(page_number: int, strips: list[Rect]) -> None:
 def _check_rows(regions: list[Region], drawn_pages: dict[int, DrawnPage]) -> None:
     """Refuse a page's strips whose whole pixel rows add up past their limit.
 
-    Each is drawn out to whole rows, so slivers apart, each under a row, would come
-    back as a row or two apiece: many times the page.
+    Each is drawn out to whole rows, so thin slivers would add up to many times the page.
     """
     asked: Counter[int] = Counter()
     for region in regions:
@@ -242,7 +239,7 @@ def _reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
 def _draw(
     engine: Engine, regions: list[Region], *, drawn_pages: dict[int, DrawnPage]
 ) -> list[ImageInfo]:
-    """Each region as a base64 PNG, in the order asked, each page drawn once for all its own."""
+    """Each region as a base64 PNG, in the order asked, drawing each page once."""
     on_page: dict[int, list[Region]] = {}
     for region in regions:
         on_page.setdefault(region.page, []).append(region)

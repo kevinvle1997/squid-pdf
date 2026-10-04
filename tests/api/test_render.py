@@ -27,10 +27,10 @@ from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
-_LOWERED = 3  # the region limit, lowered so a test can pass it with a short list
+_LOWERED = 3  # the region limit, lowered so a short list goes over it
 _WIDEST_PT = 14_400  # the longest side a PDF's page can have
 _SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
-_STACKED = 4  # the long contract's pages on one tall page
+_STACKED = 4  # copies of the long contract's page, stacked on one tall page
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
 
 
@@ -157,10 +157,7 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     ],
 )
 def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
-    """A line break would draw a second line over the next; half an emoji draws nothing.
-
-    A bidi control draws nothing either, and makes the line read in another order than drawn.
-    """
+    """Each would draw over the next line, draw nothing, or reorder the line."""
     span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
@@ -248,10 +245,7 @@ def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypat
     ],
 )
 def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions):
-    """The browser joins rows that touch into one strip, so it never asks for a row twice.
-
-    Drawn as asked, each would be the same rows again: many on one page outlast the timeout.
-    """
+    """The browser joins rows that touch into one strip, so it never asks for a row twice."""
     response = _render(mine, doc, [], regions)
 
     assert_problem(response, "invalid_request", 400)
@@ -259,10 +253,7 @@ def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions)
 
 
 def test_strips_thinner_than_a_pixel_row_are_a_bad_request(mine):
-    """Each is drawn out to whole rows, so slivers apart came back as many times the page.
-
-    The page is as wide as a PDF's can be, so each of those rows is long.
-    """
+    """Grown to whole rows, they'd be many times this page, as wide as a PDF's can be."""
     wide = pymupdf.open()
     wide.new_page(width=_WIDEST_PT, height=_SHORT_PT)
     doc = upload(mine, wide.tobytes()).json()
@@ -279,9 +270,9 @@ def test_strips_thinner_than_a_pixel_row_are_a_bad_request(mine):
 
 @pytest.fixture
 def tall_page(mine, tmp_path) -> dict:
-    """The long contract's page four times, one under another on one page, as `mine` sent it.
+    """The long contract's page, stacked on one tall page, as `mine` uploaded it.
 
-    Every drawing of it runs four full pages of text, however few rows it fills.
+    Every drawing of it runs every copy, however few rows it fills.
     """
     path = tmp_path / "contract.pdf"
     write_dense(str(path), pages=1)
@@ -297,10 +288,7 @@ def tall_page(mine, tmp_path) -> dict:
 
 
 def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
-    """Drawn one by one, each strip read the whole page again: this many outlasted the timeout.
-
-    Thin and apart, as no browser sends them, but under the rows limit: none is refused.
-    """
+    """Thin strips within every limit: drawn one by one, they'd outlast the timeout."""
     scale = max(api_constants.PAGE_SCALES)
     params = {"scale": scale, "build": tall_page["build"]}
     page_png = mine.get(f"/api/documents/{tall_page['id']}/pages/0", params=params).content

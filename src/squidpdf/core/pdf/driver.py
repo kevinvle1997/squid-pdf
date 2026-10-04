@@ -87,8 +87,7 @@ class PdfDriver(Protocol):
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
         """Each box of the page unrotated as a PNG, `scale` pixels per point.
 
-        The page is drawn once for them all, not once a box, so their number
-        doesn't multiply the drawing.
+        The page is drawn once for them all.
         """
         ...
 

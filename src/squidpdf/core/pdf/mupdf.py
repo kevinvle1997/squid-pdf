@@ -254,9 +254,8 @@ class _MuPDFDriver:
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
         """Each box of the page unrotated as a PNG, `scale` pixels per point.
 
-        The area around them all is drawn once and each box cut from it: every
-        drawing runs the page's whole content, however small. A box is mapped
-        into the rotated page, where MuPDF clips.
+        Draws the area around them all once and cuts each box out, since any
+        drawing runs the whole page. The clip is in the rotated page, so each box is turned.
         """
         pdf_page = self.doc[page]
         matrix = pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale)
@@ -775,7 +774,7 @@ def _is_plain(byte: int) -> bool:
 
 
 def _cut(drawn: pymupdf.Pixmap, box: pymupdf.IRect) -> bytes:
-    """The pixels of `drawn` inside `box`, which is in the same device pixels, as a PNG."""
+    """The pixels of `drawn` inside `box`, as a PNG; `box` is in `drawn`'s device pixels."""
     part = pymupdf.Pixmap(drawn.colorspace, box & drawn.irect, drawn.alpha)
     part.copy(drawn, part.irect)
     return part.tobytes("png")

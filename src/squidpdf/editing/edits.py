@@ -17,13 +17,11 @@ from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
 
-# Unicode's categories for what isn't a letter on a line: controls (line breaks, tabs), the
-# line and paragraph separators, and half an emoji.
-# typing.ts's NOT_ON_A_LINE, in the browser, copies this and the next set: change both.
+# Unicode's categories not on a line: controls, line and paragraph separators, half an emoji.
+# typing.ts's NOT_ON_A_LINE copies this and _BIDI_CONTROLS: change both.
 _NOT_ON_A_LINE = frozenset({"Cc", "Zl", "Zp", "Cs"})
 
-# The bidi embed, override and isolate controls, which draw nothing and reorder the line.
-# Not every format character: a zero-width joiner is part of the text it joins.
+# Bidi embeds, overrides and isolates, which reorder the line; not joiners, which are text.
 _BIDI_CONTROLS = (range(0x202A, 0x202F), range(0x2066, 0x206A))
 
 
