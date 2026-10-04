@@ -8,7 +8,7 @@ two protocols over pypdfium2 and pikepdf, and nothing else.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from squidpdf.core.app.message import Message
@@ -147,6 +147,23 @@ class PdfDriver(Protocol):
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+        ...
+
+    def hidden_copies(self, page: int) -> list[str]:
+        """Every hidden copy on the page, as text, and each string the library may miss.
+
+        Another reader may keep a string the library misses, so a redacted word there fails the
+        check. A string the library reads under another key, as a language, is no hidden copy.
+        """
+        ...
+
+    def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes.
+
+        A hidden copy is text marked content keeps beside what it draws (ActualText, Alt, E),
+        which a screen reader or a search still reads after the letters go. One the library
+        can't read whole stays as written; a key written twice keeps only the one it reads.
+        """
         ...
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:

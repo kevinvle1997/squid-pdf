@@ -355,8 +355,14 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
 
 
 def apply_edits(engine: Engine, resolved: _Resolved) -> Applied:
-    """Apply every edit on every page, in memory. Nothing is written."""
-    return Applied(resolved.skipped, run(engine, plan(engine, resolved)))
+    """Apply every edit on every page, in memory. Nothing is written.
+
+    A redaction's words also leave the hidden copies on its page: only an export
+    needs that, as a render draws none.
+    """
+    applied = Applied(resolved.skipped, run(engine, plan(engine, resolved)))
+    engine.drop_hidden_copies(list(redacted_in(resolved)))
+    return applied
 
 
 def _insert_span(insert: Insert) -> Span:

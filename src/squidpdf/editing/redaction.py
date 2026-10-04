@@ -30,12 +30,13 @@ class RedactionController:
     def check_saved(self, path: str, *, pages: Sequence[int]) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
-        `pages` is the saved file's page order, by original number, as `page_order`
-        worked it out: each span is read on the page it went to. Raises
-        RedactionFailed naming the first span still there, by its original page.
+        Gone from its box and from its page's hidden copies. `pages` is the saved file's page
+        order, by original number, so each is read where it went. Raises RedactionFailed
+        naming the first span still there, by its original page.
         """
+        as_saved = list(_as_saved(self.redacted, pages))
         with open_pdf(path) as saved:
-            left = saved.still_there(_as_saved(self.redacted, pages))
+            left = saved.still_there(as_saved) + saved.still_hidden(as_saved)
         if left:
             first = next(span for span in self.redacted if span.id == left[0].id)
             raise RedactionFailed(first.id, first.text, first.page + 1)
