@@ -139,16 +139,9 @@ class PdfDriver(Protocol):
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside these boxes, for real.
 
-        Returns the letters still inside each box, as `text_in` reads them: those
-        it couldn't reach, as a form field draws its value, not the page. Images
-        and drawings stay, links stay as they were, and so does every font the
-        driver named on the page, under the same resource name: each `add_font` put
-        there, and each of the file's own a `write_codes` named again. Any other
-        font of the file's own that no text on the page uses any more may go. A
-        comment written on the page over the erased letters (a FreeText) goes with
-        them, whatever it says: it can carry the text, and a redacted word kept in
-        it would stay in the file. A redaction mark the file holds but never applied
-        stays as it is, and so does the text under it.
+        Returns what `text_in` still reads in each box. Images, drawings, links, the file's own
+        redaction marks and the text under them stay, and each font `add_font` or `write_codes`
+        named keeps its resource name. A FreeText over the letters goes: it can hold the text.
         """
         ...
 

@@ -470,8 +470,7 @@ def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, sp
 
 
 def test_an_edit_leaves_the_text_under_the_files_own_redaction_mark(tmp_path):
-    # The file holds a redaction mark over the last line, never applied: applying it is
-    # its owner's call, not an edit's to another line.
+    # The file holds a redaction mark over the last line, never applied: its owner's to apply.
     doc = pymupdf.open(_three_lines(str(tmp_path / "lines.pdf"), spacing=1.2, font="helv"))
     page = doc[0]
     page.add_redact_annot(page.search_for(_LINES[2])[0], fill=(0, 0, 0))
@@ -607,23 +606,20 @@ _LINKS = {
     # out too, so a link looked for in that list was never found to delete.
     "reset": "/A<</S/ResetForm>>",
 }
-# Where the page is shown from: a box that doesn't start at 0,0, as a cropped page's,
-# and runs past the paper (its MediaBox) on two sides, which a viewer leaves out.
+# Where the page is shown from: not from 0,0, and past the paper (its MediaBox) on two sides.
 _CROPPED = "[20 30 640 900]"
 
 
 def _linked(path: str, turn_cw: QuarterTurn) -> str:
     """A line covered by three links of different kinds, and a link on a second line.
 
-    Each is written by hand, as `_LINKS` says, to be compared whole with what's saved.
-    The page is cropped and turned `turn_cw` once they're written, so each link's area
-    is in the PDF's own coordinates, not the page's as it's shown. The lines are in
-    trimmed Liberation Sans, stored in the file, so a replace draws in the file's own
-    codes.
+    Each written by hand, as `_LINKS` says; the page is cropped and turned after, so their
+    areas are in the PDF's own coordinates. The lines' font is stored in the file, trimmed,
+    so a replace draws in the file's own codes.
     """
     doc = pymupdf.open()
     page = doc.new_page()
-    # "emb" is only the name the page files the font under.
+    # "emb" is only the font's resource name.
     page.insert_font(fontname="emb", fontbuffer=face_bytes(FACES["Liberation Sans Regular"]))
     page.insert_text((72, 100), "Contact: sales@example.com", fontname="emb", fontsize=12)
     page.insert_text((72, 200), "Clear the form", fontname="emb", fontsize=12)
@@ -709,7 +705,7 @@ def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
     )
     said = sorted(pymupdf.open(out)[0].get_text().split())
     assert_equal(said, words, "the edited line's words gone, and the other line's kept")
-    # A line drawn again, in the file's own codes, starts where the one it replaces did.
+    # A line redrawn in the file's own codes starts where the old one did.
     original_starts = _line_starts(path)
     for first_word, (x, y) in _line_starts(out).items():
         original_x, original_y = original_starts[first_word]

@@ -179,8 +179,7 @@ class _MuPDFDriver:
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
-    # What this driver did to each page it changed, by the page's own object, whose
-    # number stays when the pages are renumbered.
+    # What this driver did to each page, by its object, whose number survives renumbering.
     changed: dict[int, _ChangedPage] = field(default_factory=dict, repr=False)
 
     def page_count(self) -> int:
@@ -395,21 +394,9 @@ class _MuPDFDriver:
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside each box, for real.
 
-        The same letters `text_in` reads, so what's erased is what's checked, and
-        what's returned is what's left in each box: letters no erase reaches, as a
-        form field's. MuPDF deletes every letter whose box a redaction touches,
-        and a letter's box runs from its font's ascender to its descender: at
-        usual line spacing it reaches the lines above and below. So each box is
-        erased as a thin strip just above its own letters' baselines, which other
-        lines' boxes don't reach. A box that still has letters afterwards (a font
-        whose boxes sit oddly) is erased whole, so old text is never left under
-        new. MuPDF also deletes every link a redaction touches, and any font no
-        text on the page uses any more: the links go back as they were, and so do
-        the fonts this driver named on the page. A comment written on the page over
-        the erased letters (a FreeText) goes with them, whatever it says: it can
-        carry the text. MuPDF applies every redaction mark on the page, so those the
-        file holds but never applied are set aside meanwhile: they stay, and so does
-        the text under them.
+        Each box is erased as a thin strip above its letters' baselines, since a redaction
+        takes every letter its box touches, and a letter's box can reach the lines around it.
+        A box with letters left is then erased whole, so old text is never left under new.
         """
         letters = self._letters(page)
         with self.file.links_kept(page):
@@ -541,10 +528,10 @@ class _MuPDFDriver:
                 rotate=turn_ccw,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
-        # No letter written, as for empty new text: nothing to add.
+        # No letter written (empty new text): nothing to add.
         if not shape.text_cont:
             return
-        # Added as a code write's is, not by the shape's commit, which reads the whole page.
+        # Not by the shape's commit, which reads the whole page.
         self._add_content(page, shape.text_cont.encode())
 
     def keep_pages(self, pages: list[int]) -> None:
@@ -611,13 +598,9 @@ class _MuPDFDriver:
 class _ChangedPage:
     """What the driver did to one page, for its later changes to know."""
 
-    # The fonts it named on the page, by resource name, for erase_text to keep: those
-    # add_font added, and the file's own a code write named again.
+    # Each font it named on the page, by resource name, for erase_text to keep.
     named: dict[str, int] = field(default_factory=dict)
-    # Whether the page's own drawing is known to put back each setting it changes,
-    # once wrapped if it didn't. Checking reads the whole page, so it's done once:
-    # each drawing the driver adds puts back its own, and an erase writes the page's
-    # drawing out again as balanced as it was.
+    # Whether the page's own drawing is known to put back each setting it changes.
     balanced: bool = False
 
     def keep_named(self, resource: str, xref: int) -> None:
@@ -626,7 +609,7 @@ class _ChangedPage:
 
     def wrap(self, pdf_page: pymupdf.Page) -> None:
         """Wrap the page's own drawing, the first time, so its settings can't leak into ours."""
-        # Checked already: nothing since has changed what it leaves set.
+        # Checked once, as that reads the whole page; nothing the driver does unbalances it.
         if self.balanced:
             return
         if not pdf_page.is_wrapped:
@@ -649,8 +632,7 @@ class _PageLetters:
     """A page's letters, found by where their middle is. Made by `_page_letters`."""
 
     in_order: list[_Letter] = field(repr=False)  # in reading order
-    # Each letter's middle, top of the page first: the letters a box holds are then
-    # one run of these, found by halving, not by reading every letter on the page.
+    # Each letter's middle, top first: those level with a box are one slice, found by halving.
     middles_top_down: list[_Middle] = field(repr=False)
 
     def inside(self, box: Rect) -> list[_Letter]:

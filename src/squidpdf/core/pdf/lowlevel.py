@@ -212,16 +212,15 @@ class PdfFile:
     def redact(self, page: int, boxes: list[Rect]) -> None:
         """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
 
-        A comment goes only when it writes its words on the page (a FreeText): a note
-        behind an icon, a highlight or a form field stays. So does a redaction mark the
-        file already holds, never applied: applying it is not this edit's call.
+        Only a comment that writes its words on the page (a FreeText) goes. A redaction
+        mark the file already holds stays unapplied: applying it is not this edit's call.
         """
         mu = pymupdf.mupdf
         # MuPDF applies every mark on the page, so only ours may be there.
         with self._file_marks_aside(page):
-            # MuPDF's own calls: PyMuPDF's read every mark on the page again for each one.
-            # Unturned, since a box is read unturned and MuPDF places a mark as it's shown.
+            # Unturned: a box is read unturned, and MuPDF places a mark as it's shown.
             with self._unturned(page) as pdf_page:
+                # MuPDF's own calls, as PyMuPDF's read every mark on the page again per box.
                 for box in boxes:
                     mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
                     mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
@@ -234,10 +233,7 @@ class PdfFile:
 
     @contextmanager
     def _file_marks_aside(self, page: int) -> Iterator[None]:
-        """The page's redaction marks, out of its Annots inside the `with`, back in place after.
-
-        Each is the same object, in its place in the list, as the file holds it.
-        """
+        """The page's redaction marks, out of its Annots in the `with`, back in place after."""
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
@@ -992,8 +988,7 @@ class PdfFile:
     def add_drawing(self, page: int, drawing: bytes) -> None:
         """Add `drawing` last in the page's list of drawings (its Contents), so it's on top.
 
-        Added to the page's own list, not by writing the list out again: a page
-        with many edits gets a drawing each.
+        Added to the page's own list, not by writing the list out again: each edit adds one.
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
@@ -1031,9 +1026,8 @@ class PdfFile:
     def _unturned(self, page: int) -> Iterator[pymupdf.mupdf.PdfPage]:
         """The page with its turn (its Rotate) taken off inside the `with`, put back after.
 
-        A point on the page is read unturned. PyMuPDF's matrix to turn it
-        (rotation_matrix) starts from the whole crop box, MuPDF's from the part on
-        the paper (the MediaBox): on a page cropped past its paper they differ.
+        Not PyMuPDF's rotation_matrix: it turns from the whole crop box, MuPDF from the part on
+        the paper (the MediaBox), so they differ on a page cropped past its paper.
         """
         pg = self.doc[page]
         turn_cw = pg.rotation
@@ -1066,8 +1060,7 @@ def _put_back(
 ) -> None:
     """Put each annotation of `kind` that `before` lists and `listed` lost back in its place.
 
-    Only deletions happened since `before`, so what's left keeps its order: each goes
-    back after every entry before it that's still listed.
+    Only deletions happened since `before`, so what's left keeps its order.
     """
     mu = pymupdf.mupdf
     place = 0  # where the next one goes back
@@ -1087,16 +1080,13 @@ def _put_back(
 def _own_list_of(
     pdf: pymupdf.mupdf.PdfDocument, contents: pymupdf.mupdf.PdfObj
 ) -> pymupdf.mupdf.PdfObj:
-    """A new list, written in place, of the drawings a page's Contents names.
-
-    Its Contents is one drawing, none, or a list kept apart, which another page may share.
-    """
+    """A new list, written in place, of the drawings a page's Contents names."""
     mu = pymupdf.mupdf
-    # A list kept apart: a copy, the page's alone.
+    # A list kept apart, which another page may share: a copy, the page's alone.
     if mu.pdf_is_array(contents):
         return mu.pdf_copy_array(contents)
     listed = mu.pdf_new_array(pdf, 1)
-    # One drawing: listed first. An empty m_internal means the page has none.
+    # One drawing, listed first; an empty m_internal means none.
     if contents.m_internal:
         mu.pdf_array_push(listed, contents)
     return listed
