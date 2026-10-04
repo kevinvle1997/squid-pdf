@@ -162,16 +162,12 @@ def test_a_new_build_judges_the_saved_index_never_a_new_one(folder, monkeypatch)
 
 
 def test_a_retune_judges_the_saved_index_again(monkeypatch):
-    """A deploy that retunes what judges a span, with no new build, judges every document again.
-
-    Kept under the old tuning, a spaced line would stay approximate; a tolerance
-    loose enough to forgive its spacing makes it exact, under the id it had.
-    """
+    """A retune with no new build judges every document again, each span keeping its id."""
     _, folder = store.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="1.5 Tc")
     [before] = orjson.loads(analyse.analyse(str(folder), MAX_PAGES).spans)
     loose = 1000.0
-    # One retune, as a deploy makes it: what judges the line, and the tuning it's kept by.
+    # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
     monkeypatch.setattr(plan, "TOLERANCE_PT", loose)
     monkeypatch.setattr(store, "FIDELITY_TUNING", FIDELITY_TUNING | {"tolerance_pt": loose})
 

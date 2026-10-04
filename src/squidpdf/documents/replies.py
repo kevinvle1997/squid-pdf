@@ -55,12 +55,9 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
 
 
 def reply_digest(said_in: str) -> str:
-    """A digest of what a document's reply is worked out from besides its analysis.
+    """A digest of the words, fit rules and shape of a document's reply.
 
-    The words it's said in, the fit rules and the reply's shape: a deploy that
-    changes any of them, with no new build, is a new body for every document.
-    Worked out on every read, from the catalog itself: one that changes is
-    another digest.
+    Worked out on every read: a deploy changing any of them, with no new build, is a new body.
     """
     rules = orjson.dumps([constants.REPLY_VERSION, _fit_rules()])
     catalog = orjson.dumps([said_in, words.catalog(said_in)])

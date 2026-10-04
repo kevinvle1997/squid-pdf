@@ -62,7 +62,7 @@ class ReadController:
 
 
 def _headers_of(doc: Loaded, etag: str, said_in: str) -> dict[str, str]:
-    """The headers of a read, 200 or 304: its ETag, how to cache it, and when it expires."""
+    """The headers of a read, the same on a 200 and a 304."""
     return {
         "ETag": etag,
         "Cache-Control": DOCUMENT_CACHE,
@@ -72,10 +72,5 @@ def _headers_of(doc: Loaded, etag: str, said_in: str) -> dict[str, str]:
 
 
 def _etag_of(digest: str, said_in: str) -> str:
-    """The document's ETag: over the analysis's `digest` and the rest the reply is made of.
-
-    That is the words it's said in, the fit rules and the reply's shape. Not
-    `expires_at`, which moves on every visit. Another language, a sentence
-    reworded since, or a fit rule retuned, is another body.
-    """
+    """The document's ETag: over its analysis and the rest of its reply but `expires_at`."""
     return f'"{xxhash.xxh3_64_hexdigest((digest + reply_digest(said_in)).encode())}"'

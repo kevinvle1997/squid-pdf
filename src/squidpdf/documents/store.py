@@ -1,9 +1,8 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, the owner's hash, the span index, the page list,
-and the analysis for each `build` and tuning, its spans and its digest in files
-of their own. Delete it and everything goes. Its mtime is the idle clock: every
-visit touches it, and the sweeper deletes what's gone an hour untouched.
+A folder holds the original, the owner's hash, the span index, the page list, and the analysis
+for each `build` and tuning, in files of their own. Delete it and everything goes. Its mtime is
+the idle clock: every visit touches it, and the sweeper deletes what's gone an hour untouched.
 """
 
 from __future__ import annotations
@@ -55,8 +54,7 @@ _GOOGLE_FONTS = "fonts"
 # page's turn named with its way; "form-fields": each span says whether a form
 # field draws it.
 _ANALYSIS_FORMAT = "codes.turn_cw.form-fields"
-# Bytes of the digest of the tuning an analysis was judged by, in its files' names:
-# enough that two tunings won't share one.
+# Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
@@ -321,8 +319,7 @@ def load_pages(folder: Path) -> list[Page]:
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
     """Keep what was worked out under this build; another build or tuning works it out again.
 
-    The digest last: its file is what says the analysis is there, since a read
-    the browser has already is answered from it alone.
+    The digest last: a 304 reads it alone, so its file says the rest is there.
     """
     _write_whole(folder / _spans_file(build), kept.spans)
     _write_whole(folder / _analysis_file(build), kept.facts)
@@ -341,10 +338,7 @@ def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
 
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
-    """The digest of the analysis saved under this build, or None if it hasn't been worked out.
-
-    Read alone, it says whether the browser's copy is current without reading the spans.
-    """
+    """The saved analysis's digest under this build, or None if it hasn't been worked out."""
     try:
         return (folder / _digest_file(build)).read_text()
     except FileNotFoundError:  # a new build, or never analysed
@@ -354,9 +348,7 @@ def load_analysis_digest(folder: Path, build: str) -> str | None:
 def _analysis_file(build: str) -> str:
     """The file the analysis under `build` is kept in.
 
-    Named for how it's kept and what judged it too (`_kept_as`): one kept in an
-    older way, or judged by other tuning, reads as not worked out yet, and is
-    worked out again over the same index.
+    Named by `_kept_as` too, so one kept another way or under other tuning is worked out again.
     """
     return f"analysis-{build}.{_kept_as()}.json"
 

@@ -125,13 +125,12 @@ class KeptAnalysis:
 
     Files apart, so a read needn't find the spans inside the rest: on a long
     document they're nearly all of it, and parsing them held up the server.
-    The digest is worked out once, when it's kept, so a read the browser has
-    already is answered without reading either.
+    The digest is worked out when kept, so a 304 reads neither.
     """
 
     facts: bytes = field(repr=False)  # AnalysisFacts, as JSON
     spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
-    digest: str  # of the facts and the spans, which change together
+    digest: str  # of the facts and the spans
 
 
 class FitRules(TypedDict):

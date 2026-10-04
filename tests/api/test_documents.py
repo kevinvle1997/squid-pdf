@@ -407,7 +407,7 @@ _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
         (
             lambda patch, now: patch.setattr(constants, "REPLY_VERSION", now),
             constants.REPLY_VERSION + 1,
-            None,  # the reply doesn't carry its version; a 200 is what shows it
+            None,  # not in the reply: the 200 alone shows it
         ),
     ],
     ids=[
@@ -421,10 +421,7 @@ _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
 def test_a_read_after_what_its_reply_is_made_of_changes_gets_a_new_body_not_a_304(
     mine, doc, monkeypatch, change, now, sent_as
 ):
-    """A deploy that changes a reply, with no new build, must reach every open document.
-
-    Its fit rules, its words or its shape: answered 304, the browser keeps the old ones.
-    """
+    """A deploy that changes a reply, with no new build, reaches every open document."""
     url = f"/api/documents/{doc['id']}"
     first = mine.get(url)
     change(monkeypatch, now)

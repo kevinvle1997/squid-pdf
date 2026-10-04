@@ -28,12 +28,8 @@ def analyse(folder: str, max_pages: int) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
-    Handed back as kept, its JSON, not every span as a dict: that crosses from
-    the worker in a moment, and the reply sends its spans as they are.
-
-    The index is built on the first run and reused after, so a new build, or a
-    retune (`FIDELITY_TUNING`), judges the same spans and every id holds.
-    Raises TooManyPages first, if it has more than `max_pages`.
+    Returned as kept JSON, not a dict per span: that crosses from the worker in a moment.
+    A saved index keeps ids through a new build or retune. Raises TooManyPages past `max_pages`.
     """
     path = Path(folder)
     with store.open_to_analyse(path) as engine:
@@ -80,7 +76,7 @@ def analyse(folder: str, max_pages: int) -> KeptAnalysis:
 
 
 def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
-    """The analysis as it's kept and sent: its spans apart from the rest, and their digest."""
+    """The analysis as kept and sent: its spans apart from the rest, and a digest of both."""
     facts: AnalysisFacts = {
         "build": analysis["build"],
         "pages": analysis["pages"],

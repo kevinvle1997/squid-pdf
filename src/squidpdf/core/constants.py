@@ -51,9 +51,7 @@ FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
 
-# Every number above that a span's fidelity is judged by, so add any new one here: a
-# document's analysis is kept under them as well as `build`, and a retune with no new
-# build judges every document again, over the same index.
+# The numbers fidelity is judged by: an analysis is kept under them, so add any new one here.
 FIDELITY_TUNING = {
     "tolerance_pt": TOLERANCE_PT,
     "turn_tolerance": TURN_TOLERANCE,
