@@ -42,7 +42,7 @@ def test_every_language_has_every_sentence_with_the_same_placeholders():
     ids=["a sentence left out", "a placeholder left out", "a placeholder renamed", "an extra"],
 )
 def test_a_language_unlike_english_is_found(pseudo, monkeypatch, key, said, how):
-    """The check above, shown failing: a language made from English, one thing changed."""
+    """The check above finds the one thing changed in a language made from English."""
     if said is None:
         monkeypatch.delitem(words.CATALOGS[pseudo], key)
     else:

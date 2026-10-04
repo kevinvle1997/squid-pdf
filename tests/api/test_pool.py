@@ -266,7 +266,7 @@ def test_a_pool_works_only_in_the_event_loop_it_was_made_in(pool):
 def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
     """Waiting behind other tasks is the caller's time, so it counts.
 
-    Timed from the task's own call: the pool's start and close are the server's time.
+    Timed from the queued task's call: starting and closing the pool is the server's time.
     """
 
     async def queued_behind_busy_workers() -> tuple[Problem, float]:
@@ -388,11 +388,7 @@ async def _start_then_leave(
 
 
 async def _wait_until_every_task_ends(pool: WorkerPool) -> None:
-    """Wait in the pool's loop until every task sent to `pool` has ended; fail past _ENOUGH_S.
-
-    Ended means out of `jobs`, then one more turn of the loop, so the callbacks
-    queued as it ended have run too.
-    """
+    """Wait in `pool`'s loop for its tasks to end, then a turn more for their done callbacks."""
     deadline = time.monotonic() + _ENOUGH_S
     while pool.jobs:
         if time.monotonic() > deadline:
