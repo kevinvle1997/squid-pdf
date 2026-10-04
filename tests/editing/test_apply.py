@@ -469,6 +469,32 @@ def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, sp
     assert_not_in("48,500", left, "the edited line's old text")
 
 
+def test_an_edit_leaves_the_text_under_the_files_own_redaction_mark(tmp_path):
+    # The file holds a redaction mark over the last line, never applied: applying it is
+    # its owner's call, not an edit's to another line.
+    doc = pymupdf.open(_three_lines(str(tmp_path / "lines.pdf"), spacing=1.2, font="helv"))
+    page = doc[0]
+    page.add_redact_annot(page.search_for(_LINES[2])[0], fill=(0, 0, 0))
+    path = str(tmp_path / "marked.pdf")
+    doc.save(path)
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [first] = [span for span in index if span.text == _LINES[0]]
+        _apply(engine, [Replace(first.id, "Line above the changed one")], index)
+        engine.save(out)
+
+    saved = pymupdf.open(out)[0]
+    left = saved.get_text()
+    assert_in(_LINES[1], left, "the line between")
+    assert_in(_LINES[2], left, "the line under the file's own mark")
+    assert_equal(
+        [annotation.type[1] for annotation in saved.annots()],
+        ["Redact"],
+        "the file's own mark, still there and still not applied",
+    )
+
+
 def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
     # "Jones" starts half a point inside the colon's box, as kerning leaves it.
     doc = pymupdf.open()

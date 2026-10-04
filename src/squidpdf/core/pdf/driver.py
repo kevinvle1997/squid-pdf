@@ -147,7 +147,8 @@ class PdfDriver(Protocol):
         font of the file's own that no text on the page uses any more may go. A
         comment written on the page over the erased letters (a FreeText) goes with
         them, whatever it says: it can carry the text, and a redacted word kept in
-        it would stay in the file.
+        it would stay in the file. A redaction mark the file holds but never applied
+        stays as it is, and so does the text under it.
         """
         ...
 

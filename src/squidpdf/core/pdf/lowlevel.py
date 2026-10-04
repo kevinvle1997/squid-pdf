@@ -213,21 +213,55 @@ class PdfFile:
         """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
 
         A comment goes only when it writes its words on the page (a FreeText): a note
-        behind an icon, a highlight or a form field stays.
+        behind an icon, a highlight or a form field stays. So does a redaction mark the
+        file already holds, never applied: applying it is not this edit's call.
         """
         mu = pymupdf.mupdf
-        # MuPDF's own calls: PyMuPDF's read every mark on the page again for each one.
-        # Unturned, since a box is read unturned and MuPDF places a mark as it's shown.
-        with self._unturned(page) as pdf_page:
-            for box in boxes:
-                mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
-                mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
-        options = mu.PdfRedactOptions()
-        options.black_boxes = 0  # nothing drawn where the letters were
-        options.text = mu.PDF_REDACT_TEXT_REMOVE
-        options.image_method = mu.PDF_REDACT_IMAGE_NONE
-        options.line_art = mu.PDF_REDACT_LINE_ART_NONE
-        mu.pdf_redact_page(self._pdf(), pdf_page, options)
+        # MuPDF applies every mark on the page, so only ours may be there.
+        with self._file_marks_aside(page):
+            # MuPDF's own calls: PyMuPDF's read every mark on the page again for each one.
+            # Unturned, since a box is read unturned and MuPDF places a mark as it's shown.
+            with self._unturned(page) as pdf_page:
+                for box in boxes:
+                    mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
+                    mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
+            options = mu.PdfRedactOptions()
+            options.black_boxes = 0  # nothing drawn where the letters were
+            options.text = mu.PDF_REDACT_TEXT_REMOVE
+            options.image_method = mu.PDF_REDACT_IMAGE_NONE
+            options.line_art = mu.PDF_REDACT_LINE_ART_NONE
+            mu.pdf_redact_page(self._pdf(), pdf_page, options)
+
+    @contextmanager
+    def _file_marks_aside(self, page: int) -> Iterator[None]:
+        """The page's redaction marks, out of its Annots inside the `with`, back in place after.
+
+        Each is the same object, in its place in the list, as the file holds it.
+        """
+        mu = pymupdf.mupdf
+        page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        marks = [
+            place
+            for place, annotation in enumerate(_items_of(listed))
+            if mu.pdf_name_eq(
+                mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype), mu.PDF_ENUM_NAME_Redact
+            )
+        ]
+        # No mark of the file's own: nothing to set aside.
+        if not marks:
+            yield
+            return
+        # The list as it was, a copy that holds on to each mark while it's out.
+        before = mu.pdf_copy_array(listed)
+        # From the end, so each deletion leaves the places still to read where they were.
+        for place in reversed(marks):
+            mu.pdf_array_delete(listed, place)
+        self._sync_annotations(page)
+        yield
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        _put_back(listed, before, mu.PDF_ENUM_NAME_Redact)
+        self._sync_annotations(page)
 
     @contextmanager
     def links_kept(self, page: int) -> Iterator[None]:
@@ -247,20 +281,7 @@ class PdfFile:
         if before is None:
             return
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        # A redaction only deletes, so what's left keeps its order.
-        place = 0  # where the next link goes back: after each entry before it still listed
-        for entry in range(mu.pdf_array_len(before)):
-            annotation = mu.pdf_array_get(before, entry)
-            # Still listed: the next one goes after it.
-            if mu.pdf_array_find(listed, annotation) >= 0:
-                place += 1
-                continue
-            subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
-            # Another kind of annotation, a comment: it stays gone.
-            if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
-                continue
-            mu.pdf_array_insert(listed, annotation, place)
-            place += 1
+        _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
         self._sync_links(page)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
@@ -1030,9 +1051,37 @@ class PdfFile:
         pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(self.doc[page].this)
         pymupdf.mupdf.pdf_sync_links(pdf_page)
 
+    def _sync_annotations(self, page: int) -> None:
+        """Have MuPDF read the page's annotations again: it keeps its own list, read once."""
+        pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(self.doc[page].this)
+        pymupdf.mupdf.pdf_sync_annots(pdf_page)
+
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
+
+
+def _put_back(
+    listed: pymupdf.mupdf.PdfObj, before: pymupdf.mupdf.PdfObj, kind: pymupdf.mupdf.PdfObj
+) -> None:
+    """Put each annotation of `kind` that `before` lists and `listed` lost back in its place.
+
+    Only deletions happened since `before`, so what's left keeps its order: each goes
+    back after every entry before it that's still listed.
+    """
+    mu = pymupdf.mupdf
+    place = 0  # where the next one goes back
+    for annotation in _items_of(before):
+        # Still listed: the next one goes after it.
+        if mu.pdf_array_find(listed, annotation) >= 0:
+            place += 1
+            continue
+        subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+        # Another kind of annotation: it stays gone.
+        if not mu.pdf_name_eq(subtype, kind):
+            continue
+        mu.pdf_array_insert(listed, annotation, place)
+        place += 1
 
 
 def _own_list_of(

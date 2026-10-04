@@ -407,7 +407,9 @@ class _MuPDFDriver:
         text on the page uses any more: the links go back as they were, and so do
         the fonts this driver named on the page. A comment written on the page over
         the erased letters (a FreeText) goes with them, whatever it says: it can
-        carry the text.
+        carry the text. MuPDF applies every redaction mark on the page, so those the
+        file holds but never applied are set aside meanwhile: they stay, and so does
+        the text under them.
         """
         letters = self._letters(page)
         with self.file.links_kept(page):
