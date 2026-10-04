@@ -1,9 +1,8 @@
 """Google's copy of a document's font: which file it is, fetched once per server, and measured.
 
-Every family on Google Fonts is free to fetch from github.com/google/fonts. The
-list of families, read from one pinned commit, ships as
-`fonts/google-families.json` (rebuilt by `scripts/google_families.py`), so
-matching a name needs no network. Only the file's path leaves the server.
+Every family on Google Fonts is free to fetch from github.com/google/fonts. The family list,
+from one pinned commit, ships as `fonts/google-families.json` (`scripts/google_families.py`
+rebuilds it), so matching needs no network. Only the file's path leaves the server.
 """
 
 from __future__ import annotations
@@ -137,9 +136,8 @@ _retry_record = _RetryRecord()
 class _KeptWidths:
     """Each Google copy's letters and widths, by a digest of the file, oldest first.
 
-    A process keeps them (`_kept_widths`): finding which letters really draw is
-    slow, and the same bytes always give the same answer.
-    It keeps the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
+    Finding which letters draw is slow, so a process keeps them.
+    It keeps only the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
     """
 
     by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
@@ -176,8 +174,8 @@ class GoogleFontController:
     def copy_of(self, own: FontCopy) -> FontCopy:
         """Google's copy of the own copy's font, lending only letters the browser can preview.
 
-        Stands for the same font as the own copy, so it's checked like any other
-        copy. Raises FontUnusable, saying why, when Google has none, or it can't be had.
+        Stands for the own copy's font, so it's checked like any other copy.
+        Raises FontUnusable, saying why, when Google has none or it can't be had.
         """
         # Raises when it isn't one of Google's families, or is a cut it may not make.
         file = self._file_for(own.font)
@@ -212,8 +210,7 @@ class GoogleFontController:
 def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
 
-    Worked out once per process for each file (`_kept_widths`). By the bytes, not
-    the file's name: a test can hand in another font under it.
+    Kept by a digest of the bytes, not the name: a test can hand in another font under it.
     """
     digest = hashlib.sha256(embedded.file).digest()
     return _kept_widths.widths(digest, partial(_measured_widths, embedded))

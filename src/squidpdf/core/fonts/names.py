@@ -1,9 +1,6 @@
 """What a font's name says: its family, its style and its weight.
 
-A PDF names a font as its maker wrote it, "ABCDEE+Calibri-Bold", "Arial,BoldItalic"
-or "Calibri Light Bold", and its description (`FontDescriptor`) may say more. Read
-here once, for the look-alike and for Google's copy alike. Pure functions: no PDF
-is opened here.
+Read here once, so the look-alike and Google's copy read a name alike; it opens no PDF.
 """
 
 from __future__ import annotations
@@ -38,9 +35,7 @@ class _WeightWord:
     weight: int  # 100 to 900
 
 
-# Each weight word; the first match wins, so compound words come first: "SemiBold"
-# isn't read as "Bold", nor "SemiLight" as "Light". IBM Plex's names shorten some:
-# "IBMPlexMono-ExtLt", "-Medm", "-SmBld".
+# Each weight word, IBM Plex's short ones too; the first match wins, so compounds go first.
 _WEIGHT_WORDS = (
     _WeightWord("extralight", 200),
     _WeightWord("ultralight", 200),
@@ -65,12 +60,10 @@ _WEIGHT_WORDS = (
     _WeightWord("text", 450),
 )
 
-# Words in a font's name after the family, and what they say about its style. Bold:
-# a weight word of SemiBold or more, wherever it is.
+# Words in a font's name after the family, and what they say about its style.
 _BOLD_WORDS = tuple(each.word for each in _WEIGHT_WORDS if each.weight >= _BOLD_FROM)
 _ITALIC_WORDS = ("italic", "oblique", "ital")
 # Another weight or width than regular or bold: the letters are wider or narrower.
-# Every weight word but bold's, and the parts of the names of other widths.
 _OTHER_CUT_WORDS = (
     *(each.word for each in _WEIGHT_WORDS if each.weight != _BOLD),
     "medi",
@@ -103,11 +96,7 @@ def strip_subset(font: str) -> str:
 
 
 def _family_and_style(font: str) -> tuple[str, str]:
-    """A font's name as its family and the style words after it.
-
-    `ABCDEE+Calibri-Bold` -> (`Calibri`, `Bold`); `Arial,BoldItalic` and
-    `Calibri Bold` split the same way.
-    """
+    """A font's name as its family and the style words after it."""
     name = strip_subset(font)
     # "Calibri-Bold" and "Arial,Bold": the style comes after the first dash or comma.
     for mark in ("-", ","):
@@ -123,13 +112,10 @@ def _family_and_style(font: str) -> tuple[str, str]:
 
 
 def bare_name(font: str) -> str:
-    """`ABCDEE+Calibri-Bold` -> `calibri`.
+    """A font's family, in lower case with no spaces: the key a family is looked up by.
 
-    Subset prefixes and style suffixes are noise when looking up a *family*.
-    Note this deliberately reads the name; picking a face for a font we don't
-    know must not, because names lie: `NimbusRomNo9L` is a serif despite
-    containing no "roman". Do not use this to identify one font resource on a
-    page, where two different weights share a bare name; use `strip_subset` there.
+    Two weights on a page share it: to tell one font from another, use `strip_subset`.
+    Never guess an unknown font's kind from it: names lie.
     """
     family, _style = _family_and_style(font)
     return family.replace(" ", "").lower()
@@ -138,14 +124,12 @@ def bare_name(font: str) -> str:
 def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]:
     """The style a font's name and description say it is, and whether it's a usual cut.
 
-    Bold when its weight (`weight_of`) is, when its name says bold anywhere,
-    or when the file has the viewer draw it bold (ForceBold). A usual cut is
-    plain regular, bold or italic: a light or narrow cut of a family we know
-    still has other letter widths than the face we ship.
+    A usual cut is plain regular, bold or italic: a light or narrow cut of a
+    family we know still has other letter widths than the face we ship.
     """
     _family_name, style_words = _family_and_style(font)
     style_text = style_words.lower()
-    # "Calibri Light Bold" or "Calibri-Light,Bold": a light font drawn bold.
+    # Bold by name anywhere, even after "Light": a light font drawn bold.
     named_bold = any(word in style_text for word in _BOLD_WORDS)
     forced_bold = descriptor is not None and bool(descriptor.flags & _FORCE_BOLD)
     heavy = weight_of(font, descriptor) >= _BOLD_FROM
@@ -162,14 +146,12 @@ def style_of(font: str, descriptor: FontDescriptor | None) -> tuple[Style, bool]
 def weight_of(font: str, descriptor: FontDescriptor | None) -> int:
     """A font's own weight: from its name, else its description, else regular.
 
-    It may be none of the nine (`WEIGHTS`): between two, as SemiLight's 350 or
-    a Text cut's 450 is, or past either end, as a description's 0 is, since
-    the file may write any number there.
+    It may be none of the nine `WEIGHTS`: between two, or any number a description gives.
     """
     _family_name, style_words = _family_and_style(font)
     style_text = style_words.replace(" ", "").lower()
     named = next((each.weight for each in _WEIGHT_WORDS if each.word in style_text), None)
-    # The name says it: "Poppins-SemiBold".
+    # The name says it.
     if named is not None:
         return named
     # Nothing says it.

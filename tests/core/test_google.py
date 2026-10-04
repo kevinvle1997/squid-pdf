@@ -172,7 +172,7 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
 
 
 def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(poppins_subset):
-    """Kept for the document's life: a traceback's frames would keep the bytes it was handed."""
+    """A failure is kept bare: no traceback, cause or context to hold the font's bytes."""
     unreadable, asked = _google(b"not a font")
     with open_pdf(poppins_subset, sources=FontSources(google=unreadable)) as engine:
         span = next(iter(engine.index()))
