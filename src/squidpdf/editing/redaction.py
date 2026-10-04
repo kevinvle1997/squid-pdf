@@ -21,16 +21,14 @@ class RedactionController:
     def hidden_places(self, engine: Engine) -> dict[str, list[HiddenPlace]]:
         """Where else each redacted span's words have a hidden copy, by span id.
 
-        Render's word on them, read from the document in memory before the
-        edits run: running them takes the words out of each.
+        Ask before the edits run: they take the words out.
         """
         return engine.hidden_places(self.redacted)
 
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's words are gone from the document in memory, by span id.
 
-        Render's early run of the check export makes, before anything is saved,
-        on pages still numbered as in the original.
+        Render's early run of export's check, on pages still numbered as in the original.
         """
         redacted = list(self.redacted)
         left = {span.id for span in _words_left(engine, redacted, redacted=redacted)}
@@ -39,11 +37,7 @@ class RedactionController:
     def check_saved(self, path: str, *, pages: Sequence[int]) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
-        Gone from its box, from the hidden copies on its page, and from the
-        document's own: its title, metadata, bookmarks, comments, form fields
-        and tags. `pages` is the saved file's page order, by original number,
-        as `page_order` worked it out: each span is read on the page it went
-        to, and in the document's own even when its page was left out. Raises
+        `pages` is the saved file's page order, by original number. Raises
         RedactionFailed naming the first span still there, by its original page.
         """
         as_saved = list(_as_saved(self.redacted, pages))
@@ -57,11 +51,9 @@ class RedactionController:
 def _words_left(engine: Engine, placed: list[Span], *, redacted: Sequence[Span]) -> list[Span]:
     """The spans with words still in the file: in their box, or a hidden copy anywhere.
 
-    The one check, which render runs early and export on the saved file, so
-    the warning and the refusal can't drift apart. `placed` are the spans on
-    the pages they're read on, for their boxes and their pages' hidden
-    copies; `redacted` are all of them, their pages kept or not, for the
-    document's own, none of which sits on one page.
+    Render and export share it, so the warning and the refusal can't drift apart. `placed`
+    are the spans on the pages they're read on, for boxes and pages' copies; `redacted`,
+    pages kept or not, for the document's own.
     """
     on_pages = engine.still_there(placed) + engine.still_hidden(placed)
     return on_pages + engine.still_hidden_in_document(redacted)

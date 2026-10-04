@@ -80,11 +80,7 @@ _EVERY_PLACE_SAID = words.render_all(
 def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
     mine, copies, named, said
 ):
-    """Said before the download, which leaves them out: a title or a bookmark isn't on the page.
-
-    Each place once, though the comments and the metadata keep the name twice;
-    then the signatures, which any redaction takes.
-    """
+    """Said before the download: a title isn't on the page. Each place once, then signatures."""
     doc = upload(mine, with_hidden_copies(copies)).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 

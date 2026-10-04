@@ -60,11 +60,7 @@ def test_a_replace_in_a_form_field_is_left_out_and_said_and_the_pages_own_text_i
 
 
 def test_a_redaction_in_a_form_field_takes_its_words_out_of_the_field(mine, form):
-    """A field's value is a copy of its words like any other: the redaction takes them out.
-
-    The field draws what's left, nothing here, so render has nothing to warn
-    of, and the file downloads with the words nowhere in it.
-    """
+    """A field's value is a copy of its words like any other: the redaction takes them out."""
     doc = upload(mine, form).json()
     field = span_starting(doc, 0, "SSN")
     edits = [{"kind": "redact", "span_id": field["id"]}]

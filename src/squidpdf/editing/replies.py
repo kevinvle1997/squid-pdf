@@ -35,11 +35,7 @@ def fit_info(fit: FitReport, said_in: str) -> FitInfo:
 
 
 def redaction_info(redaction: Redaction, said_in: str) -> RedactionInfo:
-    """A redaction drawn, as the browser gets it: its places by name, and what matters in words.
-
-    Words still in the file are said alone: the download is refused, so the
-    places it would leave them out of don't matter yet.
-    """
+    """A redaction drawn, as the browser gets it: its places by name, and what to say of it."""
     return {
         "verified": redaction.verified,
         "hidden_copies": redaction.hidden_copies,
@@ -48,10 +44,7 @@ def redaction_info(redaction: Redaction, said_in: str) -> RedactionInfo:
 
 
 def _said_of(redaction: Redaction, said_in: str) -> list[Message]:
-    """What to say of a redaction drawn: its words still there, else where else they were.
-
-    And that a signed file's signatures go, which aren't a place of a copy.
-    """
+    """What to say of a redaction drawn: its words still there, else where else they were."""
     # Still in the file: the download is refused.
     if not redaction.verified:
         return [Message("not_redacted")]

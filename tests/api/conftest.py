@@ -124,8 +124,7 @@ def around(span: dict) -> dict:
     return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}
 
 
-# The facts of `with_hidden_copies`: the name its page shows, redacted, and the words of
-# their own the hidden copies hold around it, which stay.
+# The facts of `with_hidden_copies`: the name its page shows, which the tests redact.
 REDACTED_NAME = "Ada Quill"
 OTHER_LINE = "Other line"  # the page's other line, which nothing redacts
 CHOSEN = "Bob Smith"  # the choice fields' other option, the one they show
@@ -151,23 +150,18 @@ NAME_COPIES = (
     "xfa",
     "tag",
 )
-# The copies of the name in metadata that isn't read as XML, each made alone: a file keeps
-# one metadata stream.
+# Copies in metadata that isn't read as XML, each made alone: a file has one metadata stream.
 NOT_XML_COPIES = ("not_xml", "not_xml_utf16", "xmp_utf32", "xmp_doctype", "xmp_deep")
-# The ways `with_hidden_copies` signs its page: a signed field, one that certifies the
-# document, and one kept checkable for years (LTV).
+# The ways `with_hidden_copies` signs its page: plain, certifying, and checkable for years.
 SIGNED = ("signature", "certified", "dss")
-# PyMuPDF's PDF_WIDGET_TYPE_TEXT, _LISTBOX, _COMBOBOX, _SIGNATURE and _BUTTON, set at import,
-# so type checkers can't see them
+# PyMuPDF's PDF_WIDGET_TYPE_* values, set at import where type checkers can't see them.
 _TEXT_FIELD = 7
 _LIST_FIELD = 4
 _CHOICE_FIELD = 3
 _SIGNATURE_FIELD = 6
 _BUTTON_FIELD = 1
 _MULTI_SELECT = 1 << 21  # a list box's flag (Ff) that lets it show more than one option
-# Metadata (XMP), as Acrobat writes it: the name as the author (a list of one), and in the
-# description with words of its own. A note to a program (a processing instruction), which
-# XML allows anywhere, also names them.
+# Metadata (XMP) as Acrobat writes it, plus a note to a program; both hold the name.
 _XMP = (
     '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
@@ -182,20 +176,17 @@ _XMP = (
 )
 # Metadata that isn't XML, its tags left unclosed, as a damaged file's.
 _BROKEN_XMP = "<x:xmpmeta><dc:creator>{name}</x:xmpmeta>"
-# Metadata whose DOCTYPE declares the name as a word of its own (an entity), which its text
-# holds only spelled out.
+# Metadata whose DOCTYPE declares the name as a word of its own (an entity), used in its text.
 _DECLARING_XMP = (
     '<!DOCTYPE x [<!ENTITY who "{name}">]>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:dc="http://purl.org/dc/elements/1.1/">'
     "<dc:creator>&who;</dc:creator></x:xmpmeta>"
 )
-# The room a signature leaves for its signer's certificates and its value, zeros here:
-# nothing reads them.
+# The room a signature leaves for its certificates and value, zeros: nothing reads them.
 _SIGNED_BYTES = bytes(64)
-# How deep metadata nests that's nested deeper than any program writes it: far past what
-# Python reads by calls.
+# How deep `xmp_deep` nests: far past how deep Python lets calls go.
 _DEEP = 3000
-# The form again, as XFA's data (its datasets), as a form made for both kinds of viewer has it.
+# The form again, as XFA's data (its datasets).
 _XFA_DATA = (
     '<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">'
     "<xfa:data><form><who>{name}</who></form></xfa:data></xfa:datasets>"
@@ -221,41 +212,8 @@ _NOT_XML = {
 def with_hidden_copies(copies: Collection[str]) -> bytes:
     """A page that shows a name, and keeps a hidden copy of it as each of `copies` too.
 
-    The page's top line is the name; its other line, `OTHER_LINE`, nothing
-    redacts. The copies, as a file names a person: its title, "Notes on" the
-    name, and its author, the name alone (its Info); its metadata (XMP), the
-    name as the author, in the description and in a note to a program; two
-    bookmarks, "Visit by" the name, and the name alone; a sticky note saying
-    "Call" the name, written by the name, on a "Visit", its words also
-    formatted (RC); a comment written on the page below the lines (a
-    FreeText), "Ask" the name; another, whose words say "Ring" but whose
-    drawing still says "Ring" the name, as a file edited without drawing it
-    again leaves one; a text field showing the name, which also resets to
-    it (DV) and keeps it formatted (RV), as a rich text field does; a text
-    field showing the name that names no kind (FT), so MuPDF can't draw it
-    again, though a viewer draws the old drawing; a choice field showing
-    `CHOSEN`, which offers the name too, as a pair: what it saves ("2") and
-    what it shows; a list box showing both, its value a list of the two; a
-    text field showing the name that the form doesn't list, as a
-    half-flattened form leaves one; an empty text field described "Signature
-    of" the name (TU), which a screen reader reads for it; another, its part
-    on the page described "Phone of" the name (the widget's Contents); a
-    signature field not signed yet whose seed values (SV) say the name must
-    sign it; a push button captioned "Email" the
-    name; a stamp whose drawing writes "Seen by" the name only as a string
-    in hex, so its strings must be read one by one; the form's data again
-    as XFA; and the tags, a picture's description (Alt), "Photo of" the
-    name. The comments and the fields sit apart from the lines, so erasing
-    the name's letters can't reach them.
-
-    Each of `NOT_XML_COPIES`, made alone, is metadata holding the name that
-    isn't read as XML: not XML, in UTF-8 or UTF-16; XMP in UTF-32; XMP whose
-    DOCTYPE declares the name; or XMP nested deeper than metadata is read.
-    Each of `SIGNED` signs the page, holding no word of it: a signature
-    field signed; another, which certifies the document, so what the
-    document permits (Perms) names it too; or a third, with what the file
-    keeps to check signatures for years (DSS), a certificate, again for that
-    signature (VRI).
+    The comments and fields sit apart from the lines, so erasing the name's letters
+    can't reach them.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -287,6 +245,7 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         stale = page.add_freetext_annot(
             pymupdf.Rect(320, 300, 560, 320), f"Ring {REDACTED_NAME}", fontsize=12
         )
+        # Its words lose the name, but its drawing, not drawn again, keeps it.
         doc.xref_set_key(stale.xref, "Contents", "(Ring)")
     if "field" in copies:
         field = _add_field(page, "who", REDACTED_NAME, top=400)
@@ -294,6 +253,7 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         doc.xref_set_key(field, "RV", f"(<body><p>{REDACTED_NAME}</p></body>)")
     if "undrawable_field" in copies:
         undrawable = _add_field(page, "sealed", REDACTED_NAME, top=400, left=320)
+        # No kind (FT), so MuPDF can't draw it again; a viewer shows its old drawing.
         doc.xref_set_key(undrawable, "FT", "null")
     if "choice" in copies:
         choice = _add_field(page, "pick", CHOSEN, top=450, kind=_CHOICE_FIELD)
@@ -307,6 +267,7 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         doc.xref_set_key(listed, "I", "[0 1]")
     if "unlisted_field" in copies:
         unlisted = _add_field(page, "signed", REDACTED_NAME, top=500)
+        # Off the form's list, as a half-flattened form leaves one.
         _kind, listed_fields = doc.xref_get_key(doc.pdf_catalog(), "AcroForm/Fields")
         left = listed_fields.replace(f"{unlisted} 0 R", "")
         doc.xref_set_key(doc.pdf_catalog(), "AcroForm/Fields", left)
@@ -392,7 +353,7 @@ def _add_button(page: pymupdf.Page, caption: str) -> None:
 
 
 def _stamp(doc: pymupdf.Document, page: pymupdf.Page, words: str) -> None:
-    """Add a stamp whose drawing writes `words` as a string in hex, its letters' codes."""
+    """Add a stamp whose drawing writes `words` only in hex: found only string by string."""
     stamp = page.add_stamp_annot(pymupdf.Rect(320, 610, 548, 650), stamp=0)
     _kind, drawing = doc.xref_get_key(stamp.xref, "AP/N")
     drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET".encode()

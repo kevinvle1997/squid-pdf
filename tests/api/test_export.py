@@ -475,9 +475,8 @@ def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refu
 ):
     """The user hears it while they can still undo it, and the words never leave in a file.
 
-    A dictionary MuPDF can't read holds the line, so the redaction can't
-    rewrite it. It's on the page, in what a screen reader reads, so render
-    names that place too.
+    A dictionary MuPDF can't read holds the line in what a screen reader reads, so the
+    redaction can't rewrite it.
     """
     doc = upload(mine, _marked_pdf(["unreadable"])).json()
     card = span_starting(doc, 0, "A US card")
@@ -496,16 +495,7 @@ def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refu
 
 
 def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(mine):
-    """The title, metadata, bookmarks, comments, form fields and tags keep hidden copies.
-
-    A screen reader, a search or a copy reads them, so the redacted words go
-    from each, as whole words: the words of their own stay. What a comment or a
-    field writes on the page is drawn again from what's left, and a drawing
-    that still shows the words goes. A field the form doesn't list still shows
-    on the page, so it's found there. A bookmark keeps its title, empty: the
-    file must have one. The form's XFA and a signature field's seed values
-    aren't edited: each goes whole.
-    """
+    """Each hidden copy loses the redacted words and keeps its own, or goes whole."""
     doc = upload(mine, with_hidden_copies(NAME_COPIES)).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
@@ -539,8 +529,7 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
     }
     assert_equal(_kept_in(saved), expected, "what each place holds")
     assert_not_in("Quill", _everything_in(saved), "the name, anywhere in the file")
-    # The stamp, with no drawing of its own, is drawn as MuPDF draws one, and so is the
-    # signature field not signed yet.
+    # MuPDF draws the stamp, its drawing gone, and the unsigned signature field its own way.
     expected_lines = [[OTHER_LINE, "Ask", "Ring", "APPROVED", CHOSEN, CHOSEN, "SIGN", "Email"]]
     assert_equal(
         _lines(saved), expected_lines, "the page's lines, the comments' and the fields'"
@@ -553,9 +542,7 @@ def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
 ):
     """A title or a bookmark is as much a leak as the page: no file, the span named.
 
-    One copy at a time, so the check is shown to read each on its own:
-    metadata that isn't read as XML among them, read whole. Render runs the
-    same check first, so the user hears it before the download.
+    One copy at a time, so the check is shown to read each on its own.
     """
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
@@ -575,10 +562,7 @@ def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
 
 @pytest.mark.parametrize("copy", NOT_XML_COPIES)
 def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine, copy):
-    """It can't be written back without the word as it was, so none of it stays.
-
-    Nor can XMP the XML reader can't read, or whose DOCTYPE declares the word.
-    """
+    """It can't be written back without the word as it was, so none of it stays."""
     doc = upload(mine, with_hidden_copies([copy])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
@@ -594,10 +578,7 @@ def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine,
 def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signed):
     """The redaction rewrites the file, so no signature in it would still hold: each goes.
 
-    Whatever it holds, unread: none here holds the redacted name. So does
-    what a certified document permits (Perms) and what keeps signatures
-    checkable for years (DSS), which are there only for them. Render says so
-    first.
+    None here holds the redacted name. Perms and DSS, there only for them, go too.
     """
     doc = upload(mine, with_hidden_copies([signed])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
@@ -628,18 +609,14 @@ def test_a_signed_document_exported_with_no_redaction_keeps_its_signatures(mine)
 def _signatures_in(pdf: pymupdf.Document) -> tuple[list[str], str, str]:
     """What kind each signature field's value is, then the catalog's Perms and DSS.
 
-    A signature is a dictionary of its own ("xref"); a key the file leaves
-    out reads "null".
+    A signature reads "xref"; a key the file leaves out, "null".
     """
     catalog = pdf.pdf_catalog()
     values = [pdf.xref_get_key(field.xref, "V")[0] for field in pdf[0].widgets()]
     return values, pdf.xref_get_key(catalog, "Perms")[0], pdf.xref_get_key(catalog, "DSS")[0]
 
 
-# Metadata (XMP) as Acrobat writes it: in its packet's wrapper, with typed values, as
-# attributes and as elements: the dates and the identifiers of the document and this
-# version of it, its file type, whether it's trapped, its PDF/A part and level, its PDF
-# version and its page count.
+# Metadata (XMP) as Acrobat writes it: in its packet's wrapper, with typed values of each kind.
 _TYPED_XMP = (
     '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
@@ -658,8 +635,7 @@ _TYPED_XMP = (
     "</rdf:Description></rdf:RDF></x:xmpmeta>"
     '<?xpacket end="w"?>'
 )
-# A line holding each word the packet's wrapper and the typed values are written with:
-# begin, end and id; did; 2024 and 05; application and pdf; false; 12.
+# A line holding each word the packet's wrapper and the typed values are written with.
 _TYPED_LINE = "Begin to end: ID did 2024 05 application PDF False 12"
 
 
@@ -675,11 +651,9 @@ def typed_metadata() -> bytes:
 def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
     mine, typed_metadata
 ):
-    """They say when, which or what kind, not what, as the Info's dates do, so none is a copy.
+    """They say when, which or what kind, not what, so none is a copy.
 
-    Rewritten, a date, an identifier, a file type or a number would no longer
-    be valid, and a wrapper with no id would break the packet a PDF/A file
-    must have. Render names no place the words were also in.
+    Rewritten, they wouldn't be valid, and the packet a PDF/A file must have would break.
     """
     doc = upload(mine, typed_metadata).json()
     line = span_starting(doc, 0, "Begin")

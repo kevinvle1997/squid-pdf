@@ -559,12 +559,8 @@ export interface components {
          * RedactionInfo
          * @description A redaction drawn: whether its words are gone from the file, and where else they were.
          *
-         *     `hidden_copies` are the places the document kept a hidden copy of them,
-         *     each once, and a signed document's signatures, which any redaction
-         *     takes; the download leaves them out once `verified`. `message` says it
-         *     in the reader's words, in one line: that the file can't be downloaded
-         *     when the words are still there, else the places and the signatures;
-         *     None when there's nothing to say.
+         *     `hidden_copies` ends with "signatures" in a signed file: any redaction takes them.
+         *     `message` says it in the reader's words; None when there's nothing to say.
          */
         RedactionInfo: {
             /** Verified */

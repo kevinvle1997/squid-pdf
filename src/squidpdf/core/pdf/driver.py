@@ -170,43 +170,18 @@ class PdfDriver(Protocol):
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
         """Each of the document's own hidden copies that `holding` is true of, and where.
 
-        Those `rewrite_document_hidden_copies` reaches: the strings of what
-        the file says about itself (its Info, less its dates, and its XMP
-        metadata read as XML, less its typed values: dates, identifiers, a
-        file type, a version, a page count), bookmarks' titles, comments'
-        words, authors and subjects, the strings each annotation's drawing
-        writes, a form field's part's captions and its description of itself,
-        form fields' values, one or a list, formatted or not, what they reset
-        to, the options they offer and their descriptions, which a screen
-        reader reads, a signature field's seed values (who may sign it, say),
-        the form's XFA, and the tags' ActualText, Alt and E. A field a page
-        shows counts, whether or not the form lists it. A signature isn't
-        read: `drop_signatures` deletes it whole. Metadata that can't be read
-        as XML, that declares words of its own (a DOCTYPE) or that nests too
-        deep to read through, and words kept in a stream come whole, as one
-        copy: any of it may hold a word. `holding` looks for words, so it's
-        true of any text with a part it's true of, set apart by punctuation: a
-        drawing it's false of, read as written, needn't be read string by
-        string.
+        Those `rewrite_document_hidden_copies` reaches, even a field the form doesn't list.
+        Metadata not read as XML, and words in a stream, come whole. `holding` looks for words:
+        it's true of any text with a part it's true of, set apart by punctuation.
         """
         ...
 
     def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(copy)` for each of the document's hidden copies; one left blank goes.
 
-        A copy `rewritten` leaves as it was stays as the file wrote it. One
-        the library can't write back goes whole once it changes: formatted
-        words, a comment's (RC) or a text field's (RV), whose plain words say
-        the same, the form's XFA, which isn't edited, a signature field's seed
-        values, a dictionary of them, words kept in a stream, and metadata that
-        comes whole. A form field's value left blank stays, empty, and so does
-        a bookmark's title, which the file must have; a choice field's option,
-        or one of a list of values, left showing nothing goes, and the choice
-        of options by place (I) goes with any change to either. A comment or a field that
-        shows its words on the page draws them again, as they now are; an
-        annotation that still draws a word after that has its drawing go, so
-        nothing shows the word. `rewritten` deletes words, so it changes any
-        text with a part it changes, as `holding` above.
+        A field's value or a bookmark's title left blank stays, empty. One the library can't
+        write back goes whole once changed. A comment or field showing its words is drawn again;
+        a drawing still showing a word goes. `rewritten` deletes words, as `holding` finds them.
         """
         ...
 
@@ -217,11 +192,8 @@ class PdfDriver(Protocol):
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one.
 
-        Each signed field's value, what a certifying signature permits or a
-        signature grants a reader (Perms), and what keeps them checkable for
-        years (DSS). Nothing in them is read: the edit that asks for this
-        rewrites the file, so none of them would still hold. A signed field's
-        drawing stays, as any other annotation's.
+        Nothing in them is read: the edit rewrites the file, so none would still hold.
+        A signed field's drawing stays.
         """
         ...
 

@@ -109,13 +109,10 @@ class Engine:
         return [span for span in spans if any(_field_draws(field, span) for field in fields)]
 
     def hidden_places(self, spans: Iterable[Span]) -> dict[str, list[HiddenPlace]]:
-        """Where else each span's words have a hidden copy, by span id: each place one is in.
+        """Where else each span's words have a hidden copy, by span id.
 
-        The hidden copies on its page, what a screen reader reads, and the
-        document's own, each in its place. Read as `drop_hidden_copies` deletes
-        them, so ask before it: whole words in any case, and a word of one
-        letter only within the whole text. A signed document's signatures go
-        with any redaction, whatever they hold, so every span names them.
+        Ask before `drop_hidden_copies` takes them out. A signed document names its
+        signatures for every span: any redaction takes them.
         """
         asked = list(spans)
         # No span: the document's own copies needn't be read.
@@ -265,11 +262,7 @@ class Engine:
     def drop_hidden_copies(self, spans: list[Span]) -> None:
         """Delete these spans' words from every hidden copy, as whole words, and all signatures.
 
-        Those on their pages, and the document's own: its title and metadata,
-        bookmarks, comments, form fields and tags. Every span's words go from
-        the document's own, since none of those sits on one page. A signature
-        goes whatever it holds: the redaction rewrites the file, so it would no
-        longer hold.
+        A signature goes whatever it holds: the redaction rewrites the file, so none would hold.
         """
         # No span: nothing to delete, and a pattern of no words would match everywhere.
         if not spans:
@@ -365,9 +358,7 @@ class Engine:
     def still_hidden_in_document(self, spans: Iterable[Span]) -> list[Span]:
         """The spans with a word of their text still in one of the document's own hidden copies.
 
-        Its title and metadata, bookmarks, comments, form fields and tags,
-        wherever the span's page went: none of those sits on one page. Read as
-        `drop_hidden_copies` deletes them.
+        Read as `drop_hidden_copies` deletes them, whichever pages were kept: none sits on one.
         """
         checked = list(spans)
         # No span, as an export with no redaction: the document's own needn't be read.

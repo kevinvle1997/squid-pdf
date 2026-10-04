@@ -475,12 +475,7 @@ class _MuPDFDriver:
         return self.file.document_hidden_copies(holding)
 
     def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(copy)` for each of the document's hidden copies; one left blank goes.
-
-        A comment or a form field that shows its words on the page is drawn
-        again by MuPDF, as it draws one the user typed in; one MuPDF can't draw
-        has its old drawing go.
-        """
+        """Put `rewritten(copy)` for the document's hidden copies; one left blank goes."""
         self.file.rewrite_document_hidden_copies(rewritten)
 
     def is_signed(self) -> bool:

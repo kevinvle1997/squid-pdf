@@ -107,17 +107,14 @@ class FormField:
     value: str
 
 
-# Where a document keeps a copy of words apart from its pages' text, in the order they're
-# named: its title, the rest of what it says about itself (metadata), bookmarks, comments,
-# form fields, and what a screen reader reads in place of letters or a picture, each said in
-# the reader's words by the sentence `place_<it>`. A plain alias: pydantic reads it.
+# Where a document keeps a hidden copy, in the order render names them, each said by
+# `place_<it>`. A plain alias: pydantic reads it.
 CopyPlace = Literal[
     "title", "metadata", "bookmarks", "comments", "form_fields", "screen_reader_text"
 ]
 COPY_PLACES: tuple[CopyPlace, ...] = get_args(CopyPlace)
-# What a redaction takes its words from, or takes away, as render names it: the places of
-# its hidden copies, then a signed file's signatures, which it takes whatever they hold,
-# said by `signatures_removed`. A plain alias: pydantic reads it.
+# The places of a redaction's hidden copies, then a signed file's signatures, which it takes
+# whatever they hold. A plain alias: pydantic reads it.
 HiddenPlace = Literal[CopyPlace, "signatures"]
 
 
@@ -125,9 +122,7 @@ HiddenPlace = Literal[CopyPlace, "signatures"]
 class HiddenCopy:
     """A copy of words the document keeps apart from its pages' text, and where: a hidden copy.
 
-    What it says about itself, bookmarks, comments, form fields, tags. A
-    screen reader, a search or a copy reads them all the same, so a redacted
-    word left in one is a leak.
+    A screen reader, a search or copy and paste reads it: a redacted word left in one leaks.
     """
 
     place: CopyPlace

@@ -303,8 +303,7 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
     stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
     redacted = [step.span for step in steps if isinstance(step, Erase)]
-    # A redaction's links go too, as one can carry the text it's on (a mailto:),
-    # and its words' hidden copies.
+    # A redaction's links (a mailto: can carry its text) and hidden copies go too.
     engine.unlink(redacted)
     engine.drop_hidden_copies(redacted)
     return [notice for step in steps for notice in _finish_step(engine, step, stuck=stuck)]
