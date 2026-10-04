@@ -219,8 +219,7 @@ def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
 def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter Google's copy draws that the browser can preview, measured in it.
 
-    Only the letters in GLYPH_LIST_RANGES are checked for a shape, in code point
-    order: a large font's whole letter table holds far more, each one an outline to read.
+    Only previewed letters are checked for a shape: a large font holds far more outlines.
     """
     program, coverage = embedded.program, embedded.coverage
     previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
