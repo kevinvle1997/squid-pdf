@@ -135,11 +135,8 @@ def test_nothing_inside_imports_the_package_itself():
     assert_equal(breaking, [], "modules importing the squidpdf package itself")
 
 
-# Core's packages in the one order they import in, lowest first: each imports only from its
-# own row and the rows above it, so none reaches one that builds on it. The driver's
-# Protocol sits above text and fonts, which are written against it; the library that
-# implements it builds on fonts' catalog; the engine imports the rest, and `squidpdf.core`
-# is the door outside callers use.
+# Core's packages, lowest first: each imports only from its own row and the rows above it.
+# `core.pdf.driver` is above `core.pdf`: text and fonts use it, and MuPDF's driver uses fonts.
 _CORE_ORDER = (
     ("squidpdf.core.types", "squidpdf.core.constants"),
     ("squidpdf.core.app",),
@@ -161,11 +158,7 @@ def _core_package(name: str) -> str:
 
 
 def test_each_core_package_imports_only_those_before_it_in_one_order():
-    """The leaves import no other core package, text no fonts, the driver no engine.
-
-    So core has no cycle, and a second library's driver needs nothing of the engine:
-    `_CORE_ORDER` is the order.
-    """
+    """No core package imports one built on it, so no library's driver needs the engine."""
     breaking = sorted(
         {
             f"{module} imports {_core_package(name)}"

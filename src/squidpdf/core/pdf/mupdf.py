@@ -2,8 +2,7 @@
 
 Only primitives here (see `core.pdf.driver`): the hard-to-read MuPDF calls come
 from `core.pdf.lowlevel`, whose `PdfFile` the driver holds, and the everyday ones are below.
-What to make of them is `core.engine`'s, which opens the driver with `open_driver`:
-nothing outside `core` learns that MuPDF is underneath.
+Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is underneath.
 """
 
 from __future__ import annotations
@@ -95,8 +94,7 @@ _TAGS_KEY = "StructTreeRoot"
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 
 # MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
-# errors all derive from one, so the narrower ones go first. `core.engine` says them as
-# the Problems they mean: which failure is which is the library's to know.
+# errors all derive from one, so the narrower ones go first.
 MUPDF_FAILURES = (
     Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
     # Out of memory, or a file it can't open: only its words tell which.
@@ -104,8 +102,7 @@ MUPDF_FAILURES = (
     Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
 )
 
-# The library and its version, for `core.engine`'s BUILD: a new one may draw and judge
-# a page differently.
+# The library and its version, for `core.engine`'s BUILD.
 DRIVER_BUILD = f"mupdf-{pymupdf.mupdf_version}"
 
 

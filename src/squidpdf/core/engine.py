@@ -1,13 +1,7 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The engine is the product's own logic, written against a
-`core.pdf.driver.PdfDriver`'s primitives, so it's the same over any PDF library.
-
-This module is also core's one door to the library, so no other core module
-names the driver: `open_pdf` opens a PDF, `result_of` raises the library's
-failures as the Problems they mean (`CORE_ERRORS`), `BUILD` names what drew a
-page, and `face_widths` measures a face for the font list, where no document
-is open.
+The product's own logic, written against a `core.pdf.driver.PdfDriver`'s primitives,
+so it's the same over any PDF library. Open one with `core.open_pdf`.
 
 The engine speaks only in primitives (remove, draw), so it never learns what a
 Replace or a Redact is, which is what keeps `core` free of feature imports.
@@ -60,8 +54,7 @@ _WORD = re.compile(r"[^\W_]+")
 # Core's own: every failure below the API, said as the Problem it means.
 CORE_ERRORS = ErrorController(MUPDF_FAILURES)
 
-# What drew and judged a page; a new one means earlier images and fidelity may differ.
-# Google's copies are part of it: a new pin lends other letters.
+# What drew and judged a page, Google's pin too: a new one may draw and judge it differently.
 _GOOGLE = GOOGLE_FONTS_COMMIT[:7]
 BUILD = f"{DRIVER_BUILD}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
@@ -431,21 +424,12 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
 
 
 def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
-    """The PDF at `path`, open for editing. Use it in a `with`, or close it.
-
-    `sources` lend a font the letters its copies in the file lack: Google's copy.
-    """
+    """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
     return open_engine(open_driver(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:
-    """What `task()` returns, with the library's own failures raised as the Problems they mean.
-
-    A worker runs its task through this: MuPDF's exceptions hold a pointer, so
-    they can't be sent back from another process, and they mean something a
-    person can be told. `MUPDF_FAILURES` says what; anything else goes up as
-    it is.
-    """
+    """What `task()` returns, with the library's failures raised as the Problems they mean."""
     return CORE_ERRORS.result_of(task)
 
 
@@ -453,8 +437,7 @@ def result_of[T](task: Callable[[], T]) -> T:
 def face_widths(face: Face) -> dict[str, float]:
     """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
 
-    For the font list, where there's no document to open: the same widths the
-    engine gives a span drawn in the face.
+    For the font list, where no document is open: the same widths a span in the face gets.
     """
     return letter_widths(open_face(face), face_letters(face))
 
