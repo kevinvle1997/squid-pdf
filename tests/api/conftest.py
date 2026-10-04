@@ -21,7 +21,7 @@ BASE_URL = "https://testserver"
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
-# A file on the server, as MuPDF names one it couldn't open: a document deleted mid-export.
+# A file on the server, as MuPDF names one it couldn't open.
 SERVER_PATH = "/data/documents/0a1b2c/original.pdf"
 
 
@@ -35,7 +35,7 @@ def _crashes() -> APIRouter:
 
     @router.get("/api/crash-naming-a-path")
     def crash_naming_a_path() -> None:
-        # What core makes of MuPDF's file-system error: a server error, its words in debug.
+        # How core reports MuPDF failing to open a file.
         raise Problem(debug=f"FzErrorSystem: cannot open {SERVER_PATH}: No such file")
 
     return router

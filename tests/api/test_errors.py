@@ -48,7 +48,7 @@ def test_a_crash_is_a_server_error_without_the_traceback(app):
 
 
 def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
-    """A 5xx's debug can name a file on the server; a 4xx's keeps it (the bad request above)."""
+    """A server error's debug can name a file on the server, so only the log gets it."""
     with caplog.at_level(logging.WARNING, logger="squidpdf.api"):
         response = browser().get("/api/crash-naming-a-path")
     assert_problem(response, "server_error", 500)

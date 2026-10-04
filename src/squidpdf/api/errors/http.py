@@ -115,14 +115,13 @@ def _adopt(exc: Exception) -> Problem:
 
 def _debug_sent(problem: Problem) -> str | None:
     """The `debug` the browser gets: a 4xx's; a 5xx's goes to the log instead."""
-    # No why to send.
     if problem.debug is None:
         return None
-    # A failure on our side: its why is for whoever reads the log, not whoever caused it.
+    # Our failure: its why can name a file on the server, so only the log gets it.
     if problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         _logger.warning("Sent %s without its debug: %s", problem.type, problem.debug)
         return None
-    # The request's fault: its why tells the browser's developer what to fix.
+    # The file's or the request's doing: its why tells the developer what to fix.
     return problem.debug
 
 
@@ -130,8 +129,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
     """A Problem as Problem Details, `detail` in `language`; its `debug` sent on a 4xx only.
 
     `code` and `params` are its Message, so the browser can say it in its own words;
-    `code` is always `type`. A 5xx's `debug` is the server's own text, such as MuPDF's
-    naming a file on the server, so it goes to the log with its `type` instead.
+    `code` is always `type`.
     """
     body: ProblemInfo = {
         "type": problem.type,
@@ -139,7 +137,7 @@ def response(problem: Problem, language: str) -> JSONResponse:
         **words.said(problem.message, language),
     }
     debug = _debug_sent(problem)
-    # Left out, not null, when there is none to send.
+    # Left out, not null, when there's none.
     if debug is not None:
         body["debug"] = debug
     return JSONResponse(

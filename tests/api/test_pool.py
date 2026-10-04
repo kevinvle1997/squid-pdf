@@ -434,14 +434,13 @@ def _note_pid_then_fail_on_the_server(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then fails as a missing file does."""
     _note_pid(folder)
     time.sleep(_WORK_S)
-    # What core makes of MuPDF's file-system error: a server error, its words in debug.
     raise Problem(debug=f"FzErrorSystem: cannot open {SERVER_PATH}: No such file")
 
 
 def test_a_render_that_fails_on_the_server_after_its_browser_left_logs_its_debug(
     runner, pool, tmp_path, caplog
 ):
-    """With a caller the API's handler logs a server error's debug; without one, the pool."""
+    """Nobody waits for its answer, so the pool logs the debug the API's handler would have."""
     caplog.set_level(logging.WARNING, logger="squidpdf.api.pool")
 
     async def leave() -> None:
