@@ -13,6 +13,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import partial
 from pathlib import Path
+from types import ModuleType
 
 import pebble.pool.process
 import pymupdf
@@ -26,6 +27,8 @@ from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, upload
 from tests.helpers import (
+    assert_all,
+    assert_at_least,
     assert_at_most,
     assert_equal,
     assert_false,
@@ -54,7 +57,7 @@ def pool(runner: asyncio.Runner) -> Iterator[WorkerPool]:
     """One pool of workers for the module, made in its loop, shut down after."""
     pool = runner.run(_new_pool())
     yield pool
-    pool.close()
+    runner.run(pool.close())
 
 
 async def _new_pool() -> WorkerPool:
@@ -69,7 +72,7 @@ async def _own_pool() -> AsyncIterator[WorkerPool]:
     try:
         yield pool
     finally:
-        pool.close()
+        await pool.close()
 
 
 def _hang() -> None:
@@ -190,24 +193,59 @@ def test_a_task_sent_as_every_worker_dies_goes_again_on_a_new_pool():
     assert_not_in(worker_pid, killed, "the worker that ran the task")
 
 
+_launch_process = pebble.pool.process.launch_process  # pebble's own, before a test patches it
+
+
 def _cannot_start(*_args: object) -> None:
     """A machine with no room for another process."""
     raise OSError("no room for another process")
 
 
-def test_health_says_so_when_no_worker_can_start(tmp_path, monkeypatch):
-    """Its own app: this breaks the pool on purpose."""
+def _dies_as_it_starts(
+    name: str, _function: object, daemon: bool, context: ModuleType, *_args: object
+) -> multiprocessing.Process:
+    """A worker that exits at once, as one does whose memory cap the host refuses."""
+    return _launch_process(name, os._exit, daemon, context, 1)
+
+
+@pytest.mark.parametrize(
+    ("launch", "health_sees_it"),
+    [
+        pytest.param(_cannot_start, True, id="no worker can start"),
+        # Health replaces the broken pool and finds the new one running: it can't tell.
+        pytest.param(_dies_as_it_starts, False, id="every worker dies as it starts"),
+    ],
+)
+def test_pdf_work_says_no_workers_when_no_worker_can_start(
+    tmp_path, monkeypatch, caplog, pdf_bytes, launch, health_sees_it
+):
+    """Its own app, as it breaks the pool: the second page finds the new pool broken too."""
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     app = create_app()
     with TestClient(app, base_url=BASE_URL) as client:
+        doc = upload(client, pdf_bytes).json()
+        page = f"/api/documents/{doc['id']}/pages/0"
+        params = {"scale": 1, "build": doc["build"]}
         _kill_idle_worker(client, app.state.pool)
         with monkeypatch.context() as machine:
-            machine.setattr(pebble.pool.process, "launch_process", _cannot_start)
-            broken = client.get("/api/health")
-        healed = client.get("/api/health")
+            machine.setattr(pebble.pool.process, "launch_process", launch)
+            broken_pages = [client.get(page, params=params) for _ in range(2)]
+            broken_health = client.get("/api/health")
+        healed_page = client.get(page, params=params)
+        healed_health = client.get("/api/health")
 
-    assert_problem(broken, "no_workers", 503)
-    assert_equal(healed.json(), {"status": "ok"}, "health once workers can start again")
+    for broken_page in broken_pages:
+        assert_problem(broken_page, "no_workers", 503)
+    # The answer doesn't say why: the log does, for whoever runs the server.
+    causes = [record for record in caplog.records if record.name == "squidpdf.api.pool"]
+    assert_at_least(
+        len(causes), len(broken_pages), "warnings the pool logged, one a page at least"
+    )
+    assert_all(causes, lambda record: record.exc_info is not None, lambda record: record.msg)
+    if health_sees_it:
+        assert_problem(broken_health, "no_workers", 503)
+    assert_equal(healed_page.status_code, 200, "page image once workers can start again")
+    assert_equal(healed_health.json(), {"status": "ok"}, "health once workers can start again")
 
 
 def _noop() -> None:
@@ -347,15 +385,34 @@ def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [record.getMessage() for record in caplog.records if record.name == "asyncio"]
 
 
-def test_a_render_that_crashes_after_its_browser_left_logs_no_error(
-    runner, pool, tmp_path, caplog
+def _note_pid_then_read_a_broken_font(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then reads a broken font."""
+    _note_pid(folder)
+    time.sleep(_WORK_S)
+    (folder / "done").touch()  # what the test waits for: the failure comes next
+    _read_a_broken_font()
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        pytest.param(_note_pid_then_die, id="its worker crashes"),
+        pytest.param(_note_pid_then_read_a_broken_font, id="the file is damaged"),
+    ],
+)
+def test_a_render_that_fails_on_its_file_after_its_browser_left_logs_no_error(
+    runner, pool, tmp_path, caplog, task
 ):
-    """Nobody waits for its answer, and a crash is a file's doing: a log would be noise."""
+    """Nobody waits for its answer, and the failure is the file's doing: a log is noise."""
 
     async def leave() -> None:
-        worker_pid = await _start_then_leave(pool, tmp_path, _note_pid_then_die)
-        await asyncio.to_thread(_wait_until, lambda: _is_gone(worker_pid), _ENOUGH_S)
-        await asyncio.sleep(_WORK_S)  # for pebble to see it die and say so
+        worker_pid = await _start_then_leave(pool, tmp_path, task)
+
+        def ended() -> bool:
+            return (tmp_path / "done").exists() or _is_gone(worker_pid)
+
+        await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
+        await asyncio.sleep(_WORK_S)  # for pebble to see it end and say how
 
     runner.run(leave())
 
@@ -382,7 +439,7 @@ def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_pa
     async def leave_then_close() -> None:
         pool = start_pool()  # its own: this closes it
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
-        pool.close()
+        await pool.close()
         await asyncio.sleep(_WORK_S)  # for the render's end to come back
 
     asyncio.run(leave_then_close())

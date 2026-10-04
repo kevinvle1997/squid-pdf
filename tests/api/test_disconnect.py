@@ -8,6 +8,7 @@ when the browser goes (or when the answer is done).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 
 from starlette.types import Message, Receive, Scope, Send
@@ -81,6 +82,28 @@ def test_an_answer_already_begun_runs_to_its_end():
     )
 
     assert_equal(sent, ["http.response.start", "http.response.body"], "what was sent")
+
+
+def test_a_request_the_server_cancels_after_its_browser_left_ends_cancelled():
+    """The browser left mid-answer, which isn't why it stops: the cancel is the server's own."""
+
+    async def answers_slowly(_scope: Scope, receive: Receive, send: Send) -> None:
+        """Starts its answer at once, then takes far longer over the rest."""
+        await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await asyncio.sleep(_WORK_S)
+
+    async def cancelled_by_the_server() -> bool:
+        """Whether the request, cancelled after its browser left, ended cancelled."""
+        watched = CancelOnDisconnect(answers_slowly)
+        request = asyncio.ensure_future(watched(_HTTP, _browser_that_leaves(), _nowhere))
+        await asyncio.sleep(_LEAVES_AFTER_S * 4)  # the browser has left, mid-answer
+        request.cancel()
+        with contextlib.suppress(asyncio.CancelledError):  # raised: the server cancelled it
+            await request
+        return request.cancelled()
+
+    assert_true(asyncio.run(cancelled_by_the_server()), "the request ended cancelled")
 
 
 def test_a_get_whose_browser_left_is_stopped(tmp_path, monkeypatch):

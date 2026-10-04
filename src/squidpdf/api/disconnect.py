@@ -33,6 +33,7 @@ class CancelOnDisconnect:
             return
         body_in = asyncio.Event()
         answering = False
+        left = False  # whether the handler was cancelled because the browser left
 
         async def watched_receive() -> Message:
             """The browser's messages, noting when the last of its body has come."""
@@ -55,9 +56,11 @@ class CancelOnDisconnect:
 
         async def cancel_when_left() -> None:
             """After the body, the next message is the browser leaving, or the answer done."""
+            nonlocal left
             await body_in.wait()
             message = await receive()
             if message["type"] == "http.disconnect" and not answering:
+                left = True
                 handler.cancel()
 
         watcher = asyncio.create_task(cancel_when_left())
@@ -65,7 +68,7 @@ class CancelOnDisconnect:
             await handler
         except asyncio.CancelledError:
             # Cancelled because the browser left: nobody to answer. Any other, carry it on.
-            if not watcher.done():
+            if not left:
                 raise
         finally:
             watcher.cancel()

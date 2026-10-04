@@ -13,7 +13,7 @@ class MethodNotAllowed(Problem):
 
 
 class RequestTooLarge(Problem):
-    """An edit list too big to read."""
+    """A request body past `MAX_BODY_BYTES`: any but an upload's, which checks its own size."""
 
     type = "request_too_large"
     status = 413
@@ -27,7 +27,7 @@ class TooSlow(Problem):
 
 
 class NoWorkers(Problem):
-    """No worker can start, so no PDF work can be done: what the health check answers."""
+    """No worker can start or stay up, so no PDF work can be done now."""
 
     type = "no_workers"
     status = 503
@@ -37,9 +37,8 @@ class ServerError(Problem):
     """A bug: the base's own type, status and sentence."""
 
 
-# Not raised yet: kept for the browser, which already branches on it.
 class RateLimited(Problem):
-    """Too many uploads at once."""
+    """Too many uploads from one address in a minute: `UPLOADS_PER_MINUTE`."""
 
     type = "rate_limited"
     status = 429
