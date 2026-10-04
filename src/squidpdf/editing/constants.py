@@ -8,6 +8,11 @@ from __future__ import annotations
 # Render and export requests.
 MAX_EDITS = 10_000
 MAX_TEXT_CHARS = 1_000  # typed in one edit: a replacement or an insert
+# Regions in a render: the browser asks for one per group of edited rows, so at most its edits.
+MAX_REGIONS = MAX_EDITS
+# A page's strips, out to whole pixel rows, total at most this many times its image's rows.
+# The browser's (strips.ts) share no rows and are padded taller than one, so no row is in three.
+MAX_STRIP_ROWS_PER_PAGE_ROW = 2
 
 # Render redraws only the edits whose rows it shows. A redraw can reach this far past
 # its span's box, in its size: an accent above a capital, a substitute's longer tail.

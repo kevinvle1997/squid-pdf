@@ -17,9 +17,12 @@ from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 from squidpdf.editing.types import Strategy
 
-# Unicode's categories for characters that aren't letters on a line: controls (line
-# breaks, tabs) and one half of a pair that only means something whole (an emoji).
-_NOT_ON_A_LINE = frozenset({"Cc", "Cs"})
+# Unicode's categories not on a line: controls, line and paragraph separators, half an emoji.
+# typing.ts's NOT_ON_A_LINE copies this and _BIDI_CONTROLS: change both.
+_NOT_ON_A_LINE = frozenset({"Cc", "Zl", "Zp", "Cs"})
+
+# Bidi embeds, overrides and isolates, which reorder the line; not joiners, which are text.
+_BIDI_CONTROLS = (range(0x202A, 0x202F), range(0x2066, 0x206A))
 
 
 def check_text(text: str) -> None:
@@ -30,8 +33,14 @@ def check_text(text: str) -> None:
     ValueError into a bad request.
     """
     for position, ch in enumerate(text):
-        if unicodedata.category(ch) in _NOT_ON_A_LINE:
+        if not _is_on_a_line(ch):
             raise ValueError(f"text: U+{ord(ch):04X} at {position}; new text is one line")
+
+
+def _is_on_a_line(ch: str) -> bool:
+    """Whether a character can stand in one line of new text."""
+    bidi_control = any(ord(ch) in controls for controls in _BIDI_CONTROLS)
+    return not bidi_control and unicodedata.category(ch) not in _NOT_ON_A_LINE
 
 
 @dataclass(frozen=True, slots=True)

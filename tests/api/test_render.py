@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import base64
+import itertools
 import json
 
 import pymupdf
 import pytest
 
-from squidpdf.core import COPY_PLACES, Engine, Message, words
+from squidpdf.api import constants as api_constants
+from squidpdf.core import COPY_PLACES, Engine, Message, words, write_dense
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.documents import store
+from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
     NAME_COPIES,
     REDACTED_NAME,
@@ -24,6 +27,10 @@ from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
+_LOWERED = 3  # the region limit, lowered so a short list goes over it
+_WIDEST_PT = 14_400  # the longest side a PDF's page can have
+_SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
+_STACKED = 4  # copies of the long contract's page, stacked on one tall page
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
 
 
@@ -102,9 +109,9 @@ def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     edit = {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
-    rendered = _render(mine, doc, [edit], [strip, {"page": 0}]).json()["images"]
-    # One image per region, in the order asked.
-    strip_image, whole_page = rendered[0], rendered[1]
+    # Asked apart: one request never asks for the same rows twice.
+    strip_image = _render(mine, doc, [edit], [strip]).json()["images"][0]
+    whole_page = _render(mine, doc, [edit], [{"page": 0}]).json()["images"][0]
 
     params = {"scale": _SCALE, "build": doc["build"]}
     page_png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
@@ -135,11 +142,22 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
 @pytest.mark.parametrize("kind", ["replace", "insert"])
 @pytest.mark.parametrize(
     "character",
-    ["\n", "\r", "\t", "\ud800"],
-    ids=["line break", "carriage return", "tab", "half an emoji"],
+    ["\n", "\r", "\t", "\ud800", "\u2028", "\u2029", "\u202a", "\u202e", "\u2066", "\u2069"],
+    ids=[
+        "line break",
+        "carriage return",
+        "tab",
+        "half an emoji",
+        "line separator",
+        "paragraph separator",
+        "first bidi embedding",
+        "last bidi override",
+        "first bidi isolate",
+        "last bidi isolate",
+    ],
 )
 def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
-    """A line break would draw a second line over the next; half an emoji draws nothing."""
+    """Each would draw over the next line, draw nothing, or reorder the line."""
     span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
@@ -155,6 +173,29 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
 
     assert_problem(response, "invalid_request", 400)
     assert_in("text", response.json()["debug"], "what a developer reads")
+
+
+@pytest.mark.parametrize("kind", ["replace", "insert"])
+@pytest.mark.parametrize(
+    "character",
+    ["\u200d", "\u200c", "\u202f", "\u206a"],
+    ids=[
+        "zero-width joiner",
+        "zero-width non-joiner",
+        "narrow no-break space, just past the bidi overrides",
+        "the format character just past the bidi isolates",
+    ],
+)
+def test_new_text_with_a_joiner_or_a_narrow_space_is_drawn(mine, doc, kind, character):
+    """Real text, or a format character just outside the refused ranges."""
+    span = span_starting(doc, 0, "Made")
+    replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
+    insert = {**_INSERT, "text": f"Sig{character}ned"}
+    edit = replace if kind == "replace" else insert
+
+    response = _render(mine, doc, [edit], [{"page": 0}])
+
+    assert_equal(response.status_code, 200, f"U+{ord(character):04X} drawn, not refused")
 
 
 def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
@@ -175,6 +216,93 @@ def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
 def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
     """Nothing to draw there: the browser asked for rows the page doesn't have."""
     assert_problem(_render(mine, doc, [], [region]), "invalid_request", 400)
+
+
+def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypatch):
+    """The browser asks for a strip per group of edited rows, so never more than its edits."""
+    monkeypatch.setattr(editing_constants, "MAX_REGIONS", _LOWERED)
+    strips = [{"page": 0, "y0": 100 * row, "y1": 100 * row + 50} for row in range(_LOWERED + 1)]
+
+    response = _render(mine, doc, [], strips)
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("regions", response.json()["debug"], "what a developer reads")
+
+
+@pytest.mark.parametrize(
+    "regions",
+    [
+        [{"page": 0, "y0": 100, "y1": 150}, {"page": 0, "y0": 100, "y1": 150}],
+        [{"page": 0, "y0": 100, "y1": 150}, {"page": 0}],
+        [{"page": 0, "y0": 100, "y1": 150}, {"page": 0, "y0": 140, "y1": 200}],
+        [{"page": 0, "y0": -5, "y1": 50}, {"page": 0, "y0": 0, "y1": 50}],
+    ],
+    ids=[
+        "the same strip twice",
+        "a strip and its page",
+        "strips that overlap",
+        "the same rows",
+    ],
+)
+def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions):
+    """The browser joins rows that touch into one strip, so it never asks for a row twice."""
+    response = _render(mine, doc, [], regions)
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("regions", response.json()["debug"], "what a developer reads")
+
+
+def test_strips_thinner_than_a_pixel_row_are_a_bad_request(mine):
+    """Grown to whole rows, they'd be many times this page, as wide as a PDF's can be."""
+    wide = pymupdf.open()
+    wide.new_page(width=_WIDEST_PT, height=_SHORT_PT)
+    doc = upload(mine, wide.tobytes()).json()
+    count = editing_constants.MAX_REGIONS
+    cuts = [_SHORT_PT * row / count for row in range(count + 1)]
+    slivers = [{"page": 0, "y0": top, "y1": bottom} for top, bottom in itertools.pairwise(cuts)]
+    body = {"edits": [], "scale": max(api_constants.PAGE_SCALES), "regions": slivers}
+
+    response = mine.post(f"/api/documents/{doc['id']}/render", json=body)
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("rows", response.json()["debug"], "what a developer reads")
+
+
+@pytest.fixture
+def tall_page(mine, tmp_path) -> dict:
+    """The long contract's page, stacked on one tall page, as `mine` uploaded it.
+
+    Every drawing of it runs every copy, however few rows it fills.
+    """
+    path = tmp_path / "contract.pdf"
+    write_dense(str(path), pages=1)
+    contract = pymupdf.open(path)
+    width, height = contract[0].rect.width, contract[0].rect.height
+    tall = pymupdf.open()
+    page = tall.new_page(width=width, height=height * _STACKED)
+    for place in range(_STACKED):
+        page.show_pdf_page(
+            pymupdf.Rect(0, height * place, width, height * (place + 1)), contract
+        )
+    return upload(mine, tall.tobytes()).json()
+
+
+def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
+    """Thin strips within every limit: drawn one by one, they'd outlast the timeout."""
+    scale = max(api_constants.PAGE_SCALES)
+    params = {"scale": scale, "build": tall_page["build"]}
+    page_png = mine.get(f"/api/documents/{tall_page['id']}/pages/0", params=params).content
+    # Each strip is drawn out by under two rows, so this many stay within twice the page's.
+    count = pymupdf.Pixmap(page_png).height // 2
+    height = tall_page["pages"][0]["height"]
+    cuts = [height * row / count for row in range(count + 1)]
+    strips = [{"page": 0, "y0": top, "y1": bottom} for top, bottom in itertools.pairwise(cuts)]
+    body = {"edits": [], "scale": scale, "regions": strips}
+
+    response = mine.post(f"/api/documents/{tall_page['id']}/render", json=body)
+
+    assert_equal(response.status_code, 200, "drawn within the render timeout")
+    assert_equal(len(response.json()["images"]), count, "an image per strip")
 
 
 def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkeypatch):
