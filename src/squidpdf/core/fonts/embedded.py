@@ -51,12 +51,14 @@ def remembered[K, V](
     """What `make()` made for `key` the first time, or why it couldn't: made once per key.
 
     A second ask gets the same answer, so a reason is said the same way each time.
+    A failure is kept as its reason alone: the raised one's traceback and cause would
+    keep what `make` held, the font's bytes, for as long as the memo lives.
     """
     if key not in memo:
         try:
             memo[key] = make()
         except FontUnusable as problem:  # `make` couldn't, and says why
-            memo[key] = problem
+            memo[key] = FontUnusable(problem.reason)
     return memo[key]
 
 

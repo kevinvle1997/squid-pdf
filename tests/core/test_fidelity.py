@@ -104,6 +104,8 @@ def test_referenced_font_is_a_substitution(engine):
         ("Poppins-Bold", None, 0, "Poppins Bold", True),
         # A name that says its cut with no dash, as TeX's do: the name alone picks the face.
         ("CMBX10", None, 0, "Latin Modern Roman 10 Bold", True),
+        # A family we ship in a cut we don't: SemiBold draws in Bold, wider or narrower.
+        ("IBMPlexSerif-SmBld", None, 0, "IBM Plex Serif Bold", False),
         # A font we don't know: its kind comes from the PDF's description, not its name.
         ("NimbusSomething", _SERIF_FLAGS, 0, "Liberation Serif Regular", False),
         ("NimbusSomething", None, 0, "Liberation Sans Regular", False),

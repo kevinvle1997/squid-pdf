@@ -19,7 +19,7 @@ from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
-from tests.conftest import drawn_with
+from tests.conftest import drawn_with, name_two_byte_font
 from tests.core.conftest import POPPINS
 from tests.helpers import assert_at_most, assert_equal, assert_true
 
@@ -53,10 +53,7 @@ def in_google_families():
         page.insert_font(fontname=f"f{number}", fontbuffer=_trimmed(line))
         page.insert_text((72, 96 + 20 * number), line, fontname=f"f{number}", fontsize=12)
     for (xref, *_), family in zip(page.get_fonts(), _FAMILIES, strict=True):
-        # The font, and the one inside it, as a real trimmed copy is named.
-        _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
-        for font_xref in (xref, int(descendants.strip("[]").split()[0])):
-            doc.xref_set_key(font_xref, "BaseFont", f"/ABCDEF+{family}")
+        name_two_byte_font(doc, xref, family)
     _, folder = store.create("owner")
     doc.save(folder / store.ORIGINAL)
     return folder

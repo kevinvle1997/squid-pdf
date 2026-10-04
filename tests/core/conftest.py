@@ -15,6 +15,7 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 from squidpdf.core.fonts.catalog import FACES, face_bytes
+from tests.conftest import name_two_byte_font
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
@@ -517,9 +518,7 @@ def poppins_subset(tmp_path_factory) -> str:
     page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
     page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_MERGED_SIZE)
     [(xref, *_)] = page.get_fonts()
-    _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
-    for font_xref in (xref, int(descendants.strip("[]").split()[0])):
-        doc.xref_set_key(font_xref, "BaseFont", "/ABCDEF+Poppins-Regular")
+    name_two_byte_font(doc, xref, "Poppins-Regular")
     path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
     doc.save(path)
     return path

@@ -14,6 +14,7 @@ from functools import partial
 from importlib import resources
 from pathlib import Path
 
+import httpx
 import pymupdf
 import pytest
 from fontTools.fontBuilder import FontBuilder
@@ -31,6 +32,7 @@ from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Fetch,
     GoogleFile,
+    GoogleFontController,
     _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     _google_file,  # noqa: PLC2701 (why Google has no file, per font: no sample uses these)
     _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
@@ -38,6 +40,8 @@ from squidpdf.core.fonts.google import (
     google_fonts,
 )
 from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
+from squidpdf.core.types import FontDescriptor
+from tests.conftest import name_two_byte_font
 from tests.core.conftest import POPPINS, POPPINS_TEXT
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
 
@@ -51,13 +55,15 @@ _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
 _COPIES = 100  # Google copies measured in one worker: far past how many it keeps
 
 
-# Fonts Google has no file to lend for, and why: not a family of its, no cut in this
-# weight and slant (Aclonica has no italic), a variable font whose name is reserved.
-_NOT_GOOGLES = {
-    "Arial": "google_not_listed",
-    "Aclonica-Italic": "google_no_cut",
-    "Assistant-Bold": "google_name_reserved",
-}
+# A font, its description, and why Google has no file for it: Aclonica has no italic,
+# and Roboto, variable only, would be cut at any weight named, even 450 or 0.
+_NOT_GOOGLES = [
+    ("Arial", None, "google_not_listed"),
+    ("Aclonica-Italic", None, "google_no_cut"),
+    ("Assistant-Bold", None, "google_name_reserved"),
+    ("Roboto", FontDescriptor(32, 450.0, 0.0), "google_no_cut"),
+    ("Roboto", FontDescriptor(32, 0.0, 0.0), "google_no_cut"),
+]
 
 
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
@@ -97,6 +103,13 @@ def _fresh_fetch(
 def _failing(url: str) -> bytes:
     """A download that never gets through, as a network down does."""
     raise OSError(f"no route to {url}")
+
+
+def _not_found(url: str) -> bytes:
+    """A download GitHub answers, but without the file."""
+    raise httpx.HTTPStatusError(
+        "404 Not Found", request=httpx.Request("GET", url), response=httpx.Response(404)
+    )
 
 
 def _returning(data: bytes) -> Callable[[str], bytes]:
@@ -157,6 +170,23 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
     whys = [_why_substitute(poppins_subset, fetch) for fetch in (not_fetched, unreadable)]
 
     assert_equal(whys, ["google_not_fetched", "google_unreadable"], "why a similar font draws")
+
+
+def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(pdf):
+    """A failure is kept bare: no traceback, cause or context to hold the font's bytes."""
+    unreadable, _asked = _google(b"not a font")
+    file = GoogleFile(_POPPINS_PATH, "a hash never checked here", None)
+    with open_pdf(pdf) as engine:
+        google_copies = GoogleFontController(engine.driver, unreadable)
+        first, again = google_copies.opened(file), google_copies.opened(file)
+
+    if not isinstance(first, FontUnusable):
+        pytest.fail("bytes that aren't a font were opened")
+    kept = (first.reason.key, first.__traceback__, first.__cause__, first.__context__)
+    assert_equal(
+        kept, ("google_unreadable", None, None, None), "the reason, and what else is kept"
+    )
+    assert_true(again is first, "the second ask is answered as the first was")
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
@@ -348,10 +378,76 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
         for span in engine.index():
             engine.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
-    for font, why in _NOT_GOOGLES.items():
+    for font, descriptor, why in _NOT_GOOGLES:
         with pytest.raises(FontUnusable) as raised:
-            _google_file(font, None)
+            _google_file(font, descriptor)
         assert_equal(raised.value.reason.key, why, f"why Google has no file for {font}")
+
+
+def _described_as(path: str, out: Path, *, name: str, described: dict[str, str]) -> str:
+    """The Poppins fixture at `out`, its font named `name` and described by `described`."""
+    doc = pymupdf.open(path)
+    [(xref, *_)] = doc[0].get_fonts()
+    # A space in a PDF name is written #20.
+    inner = name_two_byte_font(doc, xref, name.replace(" ", "#20"))
+    _kind, descriptor_reference = doc.xref_get_key(inner, "FontDescriptor")
+    descriptor = int(descriptor_reference.split()[0])
+    for key, value in described.items():
+        doc.xref_set_key(descriptor, key, value)
+    doc.save(out)
+    return str(out)
+
+
+# A font's name and description, the file Google is asked for (None: none), the substitute.
+# Flags 33 is the fixture's 32 plus fixed width; 1 << 18 is ForceBold.
+_WEIGHTS_SAID = [
+    ("Poppins-Regular", {"FontWeight": "123456"}, None, "Poppins Bold"),
+    ("Poppins-Regular", {"FontWeight": "-5"}, None, "Poppins Regular"),
+    ("Poppins-Regular", {"FontWeight": "640"}, None, "Poppins Bold"),
+    ("Poppins-Regular", {"Flags": str(32 | 1 << 18)}, "Poppins-Regular.ttf", "Poppins Bold"),
+    ("Poppins-Medium", {"FontWeight": "700"}, "Poppins-Medium.ttf", "Poppins Regular"),
+    ("Poppins-Light,Bold", {}, "Poppins-Light.ttf", "Poppins Bold"),
+    ("Poppins Light Bold", {}, "Poppins-Light.ttf", "Poppins Bold"),
+    ("Syncopate", {"FontWeight": "600"}, None, "Liberation Sans Bold"),
+    ("AbhayaLibre-Black", {}, None, "Liberation Sans Bold"),
+    ("Coustard-SemiBold", {}, None, "Liberation Sans Bold"),
+    ("CourierPrime-Medium", {"Flags": "33"}, None, "Liberation Mono Regular"),
+    ("Poppins-SemiLight", {}, None, "Poppins Regular"),
+    ("FiraCode-Retina", {"Flags": "33"}, None, "Liberation Mono Regular"),
+    ("IBMPlexMono-Text", {"Flags": "33"}, None, "IBM Plex Mono Regular"),
+    ("IBMPlexMono-Medm", {"Flags": "33"}, "IBMPlexMono-Medium.ttf", "IBM Plex Mono Regular"),
+    ("IBMPlexMono-SmBld", {"Flags": "33"}, "IBMPlexMono-SemiBold.ttf", "IBM Plex Mono Bold"),
+    (
+        "IBMPlexMono-ExtLt",
+        {"Flags": "33"},
+        "IBMPlexMono-ExtraLight.ttf",
+        "IBM Plex Mono Regular",
+    ),
+]
+
+
+@pytest.mark.parametrize(("name", "described", "file_name", "face"), _WEIGHTS_SAID)
+def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
+    poppins_subset, tmp_path, name, described, file_name, face
+):
+    """Only the font's own weight is asked for; the substitute is bold when the font is."""
+    path = _described_as(
+        poppins_subset, tmp_path / "described.pdf", name=name, described=described
+    )
+    fetch, asked = _google(None)
+    with open_pdf(path, sources=FontSources(google=fetch)) as engine:
+        span = next(iter(engine.index()))
+        drawn_in = engine.substitute(span, _WANTED, plan=engine.plan_for(span, _WANTED))
+    asked_for = [Path(file.path).name for file in asked]
+    said = _why_substitute(path, fetch)
+
+    # Asked for a file, the fetch hands back nothing; asked for none, Google has no cut.
+    expected = (
+        ([], face, "google_no_cut")
+        if file_name is None
+        else ([file_name], face, "google_not_fetched")
+    )
+    assert_equal((asked_for, drawn_in, said), expected, "the file asked for, the face, why")
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():
@@ -386,6 +482,30 @@ def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
     for _ in range(3):
         _fetched(file, folder=tmp_path, download=failing, retries=retries)
     assert_equal(len(asked), 1, "downloads tried")
+
+
+@pytest.mark.parametrize(
+    ("download", "others_tried"),
+    [(_failing, 0), (_not_found, 1)],
+    ids=["no answer", "an answer without the file"],
+)
+def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
+    tmp_path, download, others_tried
+):
+    """No route to GitHub: every other font would fail as fast. A 404 is that file's alone."""
+    poppins = POPPINS.read_bytes()
+    asked: list[str] = []
+
+    def answering(url: str) -> bytes:
+        asked.append(url)
+        return poppins
+
+    file = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
+    other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    retries = _RetryRecord()
+    _fetched(file, folder=tmp_path, download=download, retries=retries)
+    _fetched(other, folder=tmp_path, download=answering, retries=retries)
+    assert_equal(len(asked), others_tried, "downloads of another file tried")
 
 
 def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
