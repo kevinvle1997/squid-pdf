@@ -23,8 +23,8 @@ from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gap
 from squidpdf.core.types import EM, Face, Span
 
 _WIDTH_DP = 2  # finer than any page can show
-# The bidirectional classes of the scripts written right to left: Hebrew's letters (R),
-# Arabic's (AL), and Arabic digits (AN), which a page's text reads back reversed.
+# Unicode bidirectional classes of Hebrew and Arabic letters (R, AL), and Arabic digits (AN),
+# which read back reversed.
 _RIGHT_TO_LEFT = frozenset({"R", "AL", "AN"})
 
 
@@ -96,7 +96,7 @@ class DrawPlanner:
         # Turned on the page: redraws are level.
         if span.turned:
             return why_approximate("turned_text")
-        # Arabic or Hebrew: redraws set it left to right, and lines merge as if they did.
+        # Arabic or Hebrew: a span is merged and redrawn as if it ran left to right.
         if _in_right_to_left_script(span.text):
             return why_approximate("right_to_left_text")
         # Letters no font we have draws: a redraw leaves them out.

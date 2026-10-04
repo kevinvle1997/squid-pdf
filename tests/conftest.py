@@ -96,12 +96,9 @@ def drawn_with(
     text: str = "Terms of payment",
     face: str | None = None,
 ) -> str:
-    """One line in stored, trimmed Times, drawn with `setting` (e.g. "1.5 Tc") and turned.
+    """One line of `text` in stored, trimmed Times or `face`, drawn with `setting` and `rotate`.
 
-    `setting` goes in the page's drawing just before its text: letter spacing
-    (Tc) and horizontal scaling (Tz) change where each letter lands, not the
-    letters, so the font still draws every one. `face`, one we ship, is stored
-    instead of Times, for a `text` with letters Times lacks.
+    `setting` moves where each letter lands, not which it is, so the font still draws them all.
     """
     font_file = pymupdf.Font("tiro").buffer if face is None else face_bytes(FACES[face])
     doc = pymupdf.open()

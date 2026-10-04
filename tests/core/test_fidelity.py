@@ -431,13 +431,11 @@ def test_every_way_a_span_can_be_approximate_has_its_sentence():
         assert_in(reason, words.CATALOGS[words.ENGLISH], "the ways a span can be approximate")
 
 
-# Hebrew for "hello", its letters stored in the order they're seen, left to right, as
-# files that show it store them: it reads back right to left, as שלום. FreeSerif has them.
+# "Hello" in Hebrew, stored in the order it's seen, left to right, as files store it.
 _HEBREW = {"text": "םולש", "face": "FreeSerif Regular"}
-# "Arabic" in Arabic, shaped and stored the same way, left to right: it reads back as
-# العربية. FreeSerif has the shaped letters.
+# "Arabic" in Arabic, its letters shaped and stored the same way.
 _ARABIC = {"text": "ﺔﻴﺑﺮﻌﻟﺍ", "face": "FreeSerif Regular"}
-# 1250 in Arabic digits, as an Arabic invoice's amount: digits, yet they read back reversed.
+# 1250 in Arabic digits: numbers, yet they read back reversed.
 _ARABIC_DIGITS = {"text": "١٢٥٠", "face": "FreeSerif Regular"}
 
 

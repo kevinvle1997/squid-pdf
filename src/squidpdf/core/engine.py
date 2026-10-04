@@ -67,9 +67,9 @@ class Engine:
     # What the document says.
 
     def index(self) -> SpanIndex:
-        """Every editable span, extracted from the document as it is now, on each call.
+        """Every editable span in the document as it is now.
 
-        Call it once, on the pristine file: an index of an edited one changes the ids.
+        Call it on the pristine file: an edited file's spans get other ids.
         """
         page_count = self.driver.page_count()
         return build_index(self.driver.text_lines(page) for page in range(page_count))
@@ -144,11 +144,8 @@ class Engine:
     def assess(self, index: SpanIndex) -> list[FidelityReport]:
         """Judge every span in the index as exact, approximate or substitute.
 
-        Exact only if the file's copies of the span's font redraw its own text
-        as the page shows it now: `draw` swaps the run otherwise, so a redraw of
-        it would be in the substitute, and it draws level, left to right and
-        closed up, so a line turned, in Arabic or Hebrew, or spaced out would
-        come back unlike itself.
+        Exact only if the file's own font redraws it as the page shows it: a redraw is level,
+        left to right and closed up, so text that isn't comes back unlike itself.
         """
         return [self._assess_one(span) for span in index]
 
@@ -425,9 +422,8 @@ def _middle_inside(box: Rect, area: Rect) -> bool:
 def _any_word_left(text: str, left: str) -> bool:
     """Whether any word of `text`, or all of it, is in `left`, spaces aside.
 
-    A word of one letter is looked for only within the whole text, not alone:
-    "A" is in most labels drawn over a redaction, such as "[REDACTED]". So a
-    span that is one letter is still looked for, as its whole text.
+    A one-letter word counts only within the whole text: redaction labels often hold "A".
+    So a span of one letter is still looked for, as its whole text.
     """
     leftover = "".join(left.split())
     words = [word for word in text.split() if len(word) > 1]
