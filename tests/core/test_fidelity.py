@@ -431,21 +431,42 @@ def test_every_way_a_span_can_be_approximate_has_its_sentence():
         assert_in(reason, words.CATALOGS[words.ENGLISH], "the ways a span can be approximate")
 
 
+# "Hello" in Hebrew, stored in the order it's seen, left to right, as files store it.
+_HEBREW = {"text": "םולש", "face": "FreeSerif Regular"}
+# "Arabic" in Arabic, its letters shaped and stored the same way.
+_ARABIC = {"text": "ﺔﻴﺑﺮﻌﻟﺍ", "face": "FreeSerif Regular"}
+# 1250 in Arabic digits: numbers, yet they read back reversed.
+_ARABIC_DIGITS = {"text": "١٢٥٠", "face": "FreeSerif Regular"}
+
+
 @pytest.mark.parametrize(
-    ("setting", "rotate", "state", "why"),
+    ("line", "state", "why"),
     [
-        ("", 0, "exact", None),
-        ("1.5 Tc", 0, "approximate", "spaced_text"),
-        ("80 Tz", 0, "approximate", "spaced_text"),
-        ("", 90, "approximate", "turned_text"),
+        ({}, "exact", None),
+        ({"setting": "1.5 Tc"}, "approximate", "spaced_text"),
+        ({"setting": "80 Tz"}, "approximate", "spaced_text"),
+        ({"rotate": 90}, "approximate", "turned_text"),
+        ({"rotate": 180}, "approximate", "turned_text"),
+        ({"rotate": 270}, "approximate", "turned_text"),
+        (_HEBREW, "approximate", "right_to_left_text"),
+        (_ARABIC, "approximate", "right_to_left_text"),
+        (_ARABIC_DIGITS, "approximate", "right_to_left_text"),
     ],
-    ids=["as its font sets it", "letter spacing", "narrowed", "turned to read upward"],
+    ids=[
+        "as its font sets it",
+        "letter spacing",
+        "narrowed",
+        "turned to read upward",
+        "turned upside down",
+        "turned to read downward",
+        "in Hebrew",
+        "in Arabic",
+        "in Arabic digits",
+    ],
 )
-def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(
-    tmp_path, setting, rotate, state, why
-):
-    """Its own font draws it, but level and closed up: an edit would look different."""
-    path = drawn_with(str(tmp_path / "line.pdf"), setting=setting, rotate=rotate)
+def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(tmp_path, line, state, why):
+    """Its own font draws it, but a redraw is level, left to right and closed up: unlike it."""
+    path = drawn_with(str(tmp_path / "line.pdf"), **line)
 
     with open_pdf(path) as engine:
         [report] = engine.assess(engine.index())

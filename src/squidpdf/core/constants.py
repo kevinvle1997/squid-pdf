@@ -36,15 +36,8 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 3 also merges copies, which takes time in the square of the pages.
 GARBAGE_COLLECT = 2
 
-# Half of `build`: bump it when the fonts we ship change, so browsers refetch.
-# 2: the real look-alike files (Liberation, Carlito, Caladea, Noto), not base-14.
-# 3: a space a face doesn't map no longer counts as drawable, so letter lists changed.
-# 4: a font with no space of its own gives a space the gap the file drew, so widths changed.
-# 5: a letter another copy of the same font in the file draws counts, so letter lists changed.
-# 6: more families (Poppins, Open Sans, FreeSans, Latin Modern...), so more look-alikes changed.
-# 7: text turned, or spaced unlike its font's own widths, is approximate, not exact.
-# 8: Google's copy of a font lends the letters the file's copies lack, so fidelity changed.
-LIBRARY_VERSION = "8"
+# Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
+LIBRARY_VERSION = "10"
 
 # Google's font collection (github.com/google/fonts) at this commit: the family
 # list in `fonts/google-families.json` is read from it, and every copy is fetched

@@ -229,9 +229,10 @@ class Span:
 
     @property
     def turned(self) -> bool:
-        """True when its line is turned on the page past TURN_TOLERANCE: redraws are level."""
-        _horizontal, vertical = self.direction
-        return abs(vertical) > TURN_TOLERANCE
+        """True when its line isn't level: tilted past TURN_TOLERANCE, or upside down."""
+        horizontal, vertical = self.direction
+        # Upside down has no vertical part, only a leftward one.
+        return horizontal < 0 or abs(vertical) > TURN_TOLERANCE
 
 
 EM = 1000  # widths are given per 1000 em, as PDF font widths are
