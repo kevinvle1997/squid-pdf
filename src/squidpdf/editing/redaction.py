@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 
-from squidpdf.core import Engine, Span, open_pdf
+from squidpdf.core import Engine, HiddenPlace, Span, open_pdf
 from squidpdf.editing.errors import RedactionFailed
 
 
@@ -18,13 +18,21 @@ class RedactionController:
 
     redacted: tuple[Span, ...]  # the spans it follows, numbered as in the original
 
-    def verdicts(self, engine: Engine) -> dict[str, bool]:
-        """Whether each redacted span's text is gone from the document in memory, by span id.
+    def hidden_places(self, engine: Engine) -> dict[str, list[HiddenPlace]]:
+        """Where else each redacted span's words have a hidden copy, by span id.
 
-        Render's early check, before anything is saved, on pages still numbered
-        as in the original.
+        Render's word on them, read from the document in memory before the
+        edits run: running them takes the words out of each.
         """
-        left = {span.id for span in engine.still_there(self.redacted)}
+        return engine.hidden_places(self.redacted)
+
+    def verdicts(self, engine: Engine) -> dict[str, bool]:
+        """Whether each redacted span's words are gone from the document in memory, by span id.
+
+        Render's early run of the check export makes, before anything is saved,
+        on pages still numbered as in the original.
+        """
+        left = {span.id for span in _words_left(engine, list(self.redacted))}
         return {span.id: span.id not in left for span in self.redacted}
 
     def check_saved(self, path: str, *, pages: Sequence[int]) -> None:
@@ -36,10 +44,20 @@ class RedactionController:
         """
         as_saved = list(_as_saved(self.redacted, pages))
         with open_pdf(path) as saved:
-            left = saved.still_there(as_saved) + saved.still_hidden(as_saved)
+            left = _words_left(saved, as_saved)
         if left:
             first = next(span for span in self.redacted if span.id == left[0].id)
             raise RedactionFailed(first.id, first.text, first.page + 1)
+
+
+def _words_left(engine: Engine, placed: list[Span]) -> list[Span]:
+    """The spans with words still in the file: in their box, or a hidden copy on their page.
+
+    The one check, which render runs early and export on the saved file, so
+    the warning and the refusal can't drift apart. `placed` are the spans on
+    the pages they're read on.
+    """
+    return engine.still_there(placed) + engine.still_hidden(placed)
 
 
 def _as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:

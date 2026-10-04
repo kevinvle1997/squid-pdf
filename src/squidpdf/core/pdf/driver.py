@@ -210,6 +210,10 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def is_signed(self) -> bool:
+        """Whether the document holds a signature, or anything `drop_signatures` deletes."""
+        ...
+
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one.
 

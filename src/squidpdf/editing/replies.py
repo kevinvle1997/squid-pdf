@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import assert_never
 
-from squidpdf.core import words
+from squidpdf.core import COPY_PLACES, Message, words
 from squidpdf.editing.fit import FitReport
 from squidpdf.editing.types import (
     FileNotice,
@@ -12,6 +12,8 @@ from squidpdf.editing.types import (
     InsertNotice,
     Notice,
     NoticeInfo,
+    Redaction,
+    RedactionInfo,
     Skipped,
     SkippedInfo,
     SpanNotice,
@@ -30,6 +32,36 @@ def fit_info(fit: FitReport, said_in: str) -> FitInfo:
         "message": words.render_all(parts, said_in),
         "message_parts": [part.as_info() for part in parts],
     }
+
+
+def redaction_info(redaction: Redaction, said_in: str) -> RedactionInfo:
+    """A redaction drawn, as the browser gets it: its places by name, and what matters in words.
+
+    Words still in the file are said alone: the download is refused, so the
+    places it would leave them out of don't matter yet.
+    """
+    return {
+        "verified": redaction.verified,
+        "hidden_copies": redaction.hidden_copies,
+        "message": words.render_all(_said_of(redaction, said_in), said_in),
+    }
+
+
+def _said_of(redaction: Redaction, said_in: str) -> list[Message]:
+    """What to say of a redaction drawn: its words still there, else where else they were.
+
+    And that a signed file's signatures go, which aren't a place of a copy.
+    """
+    # Still in the file: the download is refused.
+    if not redaction.verified:
+        return [Message("not_redacted")]
+    copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
+    named = [words.sentence(f"place_{place}", said_in) for place in copy_places]
+    said = [Message("hidden_copies", {"places": named})] if named else []
+    # A signed file: the redaction takes every signature, whatever it holds.
+    if "signatures" in redaction.hidden_copies:
+        said.append(Message("signatures_removed"))
+    return said
 
 
 def skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:

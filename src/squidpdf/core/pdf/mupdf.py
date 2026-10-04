@@ -483,6 +483,10 @@ class _MuPDFDriver:
         """
         self.file.rewrite_document_hidden_copies(rewritten)
 
+    def is_signed(self) -> bool:
+        """Whether the document holds a signature, or anything `drop_signatures` deletes."""
+        return self.file.is_signed()
+
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
         self.file.drop_signatures()

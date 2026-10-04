@@ -19,6 +19,7 @@ from squidpdf.core import (
     Page,
     Rect,
     Reply,
+    Span,
     Workers,
     words,
 )
@@ -31,11 +32,12 @@ from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve
 from squidpdf.editing.constants import RENDER_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
-from squidpdf.editing.replies import fit_info, notice_info, skipped_info
+from squidpdf.editing.replies import fit_info, notice_info, redaction_info, skipped_info
 from squidpdf.editing.types import (
     DrawnPage,
     ImageInfo,
     Notice,
+    Redaction,
     Region,
     Render,
     Rendered,
@@ -116,21 +118,36 @@ def _draw_regions(
         resolved = resolve(engine, edits, index)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, strips=strips)
-        notices = run(engine, steps) + _said_unredacted(engine, steps)
+        redactions = RedactionController(tuple(_redacted_by(steps)))
+        hidden = redactions.hidden_places(engine)  # before run: it takes the words out
+        notices = run(engine, steps)
+        verdicts = redactions.verdicts(engine)
         images = [
             _draw(engine, region, drawn_page=drawn_pages[region.page]) for region in regions
         ]
 
-    return Rendered(images, fits, resolved.skipped, notices)
+    redaction_per_span = {
+        span_id: Redaction(gone, hidden[span_id]) for span_id, gone in verdicts.items()
+    }
+    return Rendered(
+        images,
+        fits=fits,
+        skipped=resolved.skipped,
+        notices=notices + _said_unredacted(verdicts),
+        redactions=redaction_per_span,
+    )
 
 
-def _said_unredacted(engine: Engine, steps: list[Step]) -> list[Notice]:
-    """A notice for each redaction drawn whose text is still there: the erase couldn't reach it.
+def _redacted_by(steps: list[Step]) -> list[Span]:
+    """The spans the steps redact, in order."""
+    return [step.span for step in steps if isinstance(step, Erase)]
+
+
+def _said_unredacted(verdicts: dict[str, bool]) -> list[Notice]:
+    """A notice for each redaction drawn whose words are still in the file, on the page or not.
 
     Said now, while the user can still undo it: export refuses the file.
     """
-    redacted = tuple(step.span for step in steps if isinstance(step, Erase))
-    verdicts = RedactionController(redacted).verdicts(engine)
     return [
         SpanNotice(span_id, Message("not_redacted"))
         for span_id, gone in verdicts.items()
@@ -168,8 +185,10 @@ def _reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
             {**fit_info(fit, said_in), "edit": position}
             for position, fit in fits.inserts.items()
         ],
-        # Its shape comes with partial redaction; a redaction left in place is a notice now.
-        "redactions": [],
+        "redactions": {
+            span_id: redaction_info(redaction, said_in)
+            for span_id, redaction in rendered.redactions.items()
+        },
         "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
         "notices": [notice_info(notice, said_in) for notice in rendered.notices],
         "build": BUILD,

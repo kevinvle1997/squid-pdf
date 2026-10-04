@@ -27,6 +27,7 @@ from tests.api.conftest import (
     OTHER_LINE,
     REDACTED_NAME,
     SIGNED,
+    around,
     span_starting,
     upload,
     with_hidden_copies,
@@ -469,6 +470,31 @@ def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monk
     assert_equal(response.json()["detail"], said, "what the user reads")
 
 
+def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refused_at_export(
+    mine,
+):
+    """The user hears it while they can still undo it, and the words never leave in a file.
+
+    A dictionary MuPDF can't read holds the line, so the redaction can't
+    rewrite it. It's on the page, in what a screen reader reads, so render
+    names that place too.
+    """
+    doc = upload(mine, _marked_pdf(["unreadable"])).json()
+    card = span_starting(doc, 0, "A US card")
+    edits = [_redact(card)]
+    body = {"edits": edits, "scale": 1, "regions": [around(card)]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    exported = _export(mine, doc, edits)
+
+    said = words.sentence("not_redacted")
+    expected = {"verified": False, "hidden_copies": ["screen_reader_text"], "message": said}
+    assert_equal(rendered["redactions"], {card["id"]: expected}, "what render says of it")
+    notices = [(notice["span_id"], notice["code"]) for notice in rendered["notices"]]
+    assert_equal(notices, [(card["id"], "not_redacted")], "render's notices")
+    assert_problem(exported, "redaction_failed", 422)
+
+
 def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(mine):
     """The title, metadata, bookmarks, comments, form fields and tags keep hidden copies.
 
@@ -544,13 +570,19 @@ def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signe
 
     Whatever it holds, unread: none here holds the redacted name. So does
     what a certified document permits (Perms) and what keeps signatures
-    checkable for years (DSS), which are there only for them.
+    checkable for years (DSS), which are there only for them. Render says so
+    first.
     """
     doc = upload(mine, with_hidden_copies([signed])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
+    body = {"edits": [_redact(name)], "scale": 1, "regions": [around(name)]}
 
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     response = _export(mine, doc, [_redact(name)])
 
+    said = words.sentence("signatures_removed")
+    told = {"verified": True, "hidden_copies": ["signatures"], "message": said}
+    assert_equal(rendered["redactions"], {name["id"]: told}, "what render says of it")
     expected = (["null"], "null", "null")
     assert_equal(_signatures_in(_opened(response)), expected, "the signatures, Perms and DSS")
 
@@ -621,13 +653,17 @@ def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
 
     Rewritten, a date, an identifier, a file type or a number would no longer
     be valid, and a wrapper with no id would break the packet a PDF/A file
-    must have.
+    must have. Render names no place the words were also in.
     """
     doc = upload(mine, typed_metadata).json()
     line = span_starting(doc, 0, "Begin")
+    body = {"edits": [_redact(line)], "scale": 1, "regions": [around(line)]}
 
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     response = _export(mine, doc, [_redact(line)])
 
+    places = rendered["redactions"][line["id"]]["hidden_copies"]
+    assert_equal(places, [], "the places render names")
     assert_equal(_opened(response).get_xml_metadata(), _TYPED_XMP, "the metadata")
 
 

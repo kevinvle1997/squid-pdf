@@ -556,6 +556,25 @@ export interface components {
             kind: "redact";
         };
         /**
+         * RedactionInfo
+         * @description A redaction drawn: whether its words are gone from the file, and where else they were.
+         *
+         *     `hidden_copies` are the places the document kept a hidden copy of them,
+         *     each once, and a signed document's signatures, which any redaction
+         *     takes; the download leaves them out once `verified`. `message` says it
+         *     in the reader's words, in one line: that the file can't be downloaded
+         *     when the words are still there, else the places and the signatures;
+         *     None when there's nothing to say.
+         */
+        RedactionInfo: {
+            /** Verified */
+            verified: boolean;
+            /** Hidden Copies */
+            hidden_copies: ("title" | "metadata" | "bookmarks" | "comments" | "form_fields" | "screen_reader_text" | "signatures")[];
+            /** Message */
+            message: string | null;
+        };
+        /**
          * Region
          * @description What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it.
          */
@@ -572,6 +591,7 @@ export interface components {
          * @description Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
          *
          *     `notices` are edits drawn other than asked, such as in a substitute.
+         *     `redactions` are the redactions drawn, by span id, as `fits` are.
          */
         Render: {
             /** Images */
@@ -584,8 +604,8 @@ export interface components {
             insert_fits: components["schemas"]["InsertFitInfo"][];
             /** Redactions */
             redactions: {
-                [key: string]: string;
-            }[];
+                [key: string]: components["schemas"]["RedactionInfo"];
+            };
             /** Skipped */
             skipped: components["schemas"]["SkippedInfo"][];
             /** Notices */

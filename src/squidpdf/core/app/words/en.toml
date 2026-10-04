@@ -49,8 +49,24 @@ font_not_added = "The file's own font couldn't be used for this edit, so a simil
 left_out = "Left out {letters}: no font we have can draw them."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
-# A redaction whose text is still there once it's drawn, which the erase couldn't reach.
+# A redaction whose words are still in the file once it's drawn: on the page, where the
+# erase couldn't reach them, or in a hidden copy the file won't let us rewrite.
 not_redacted = "This text couldn't be removed, so the file can't be downloaded with this redaction."
+# A redaction's words the file also kept in other places, its hidden copies, which the
+# download leaves out; a part that can't be rewritten without them (formatted words, the
+# form again as XFA, metadata that isn't XML, a drawing that still shows them) goes whole.
+# `{places}` are the places below, each in a word of its own.
+hidden_copies = "These words were also in this file's {places}. The file you download leaves them out; where a part can't be kept without them, that part goes too."
+# Where a file keeps a hidden copy of words, each named in a sentence above.
+place_title = "title"
+place_metadata = "document properties"
+place_bookmarks = "bookmarks"
+place_comments = "comments"
+place_form_fields = "form fields"
+place_screen_reader_text = "text for screen readers"
+# A redaction in a signed file: the download is a new file, so no signature in it would
+# still hold. Each goes, and what the file keeps only to check them.
+signatures_removed = "This file is signed, and a redaction changes it, so the file you download has no signatures."
 # `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
 # Exporting some pages of a tagged file drops its tags.

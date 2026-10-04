@@ -600,6 +600,13 @@ class PdfFile:
                 self._rewrite_entry(drawing, rewritten)
         self._rewrite_metadata(rewritten)
 
+    def is_signed(self) -> bool:
+        """Whether the document holds a signature, or what a signed file keeps for one."""
+        mu = pymupdf.mupdf
+        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        kept = [mu.pdf_dict_gets(root, key) for key in _SIGNATURE_CHECKS]
+        return bool(self._signed_fields(root)) or not all(map(mu.pdf_is_null, kept))
+
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one.
 
