@@ -8,13 +8,15 @@ the sweeper deletes what's gone an hour untouched.
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -37,7 +39,7 @@ from squidpdf.core import (
     open_pdf,
 )
 from squidpdf.documents.constants import IDLE_S
-from squidpdf.documents.errors import Gone
+from squidpdf.documents.errors import Gone, ServerFull
 from squidpdf.documents.types import KeptAnalysis
 
 ORIGINAL = "original.pdf"
@@ -66,12 +68,16 @@ def root() -> Path:
 
 
 def create(owner_digest: str) -> tuple[str, Path]:
-    """A new, empty document folder that answers to this owner."""
+    """A new, empty document folder that answers to this owner; none is left if it fails."""
     # One disk on one box is the only copy: at a second box, this moves to S3.
     doc_id = secrets.token_urlsafe(_ID_BYTES)
     folder = root() / doc_id
     folder.mkdir(parents=True)
-    (folder / _OWNER).write_text(owner_digest)
+    try:
+        (folder / _OWNER).write_text(owner_digest)
+    except BaseException:  # a full disk, say: no reply names it, only the sweep clears it
+        delete(folder)
+        raise
     return doc_id, folder
 
 
@@ -170,28 +176,39 @@ def _idle(folder: Path) -> bool:
         return False
 
 
+@contextmanager
+def full_disk_refused() -> Iterator[None]:
+    """Raise ServerFull for a write the disk has no room left for: full, not broken."""
+    try:
+        yield
+    except OSError as exc:  # raised by a write; only a full disk is ours to name
+        if exc.errno != errno.ENOSPC:
+            raise
+        raise ServerFull from exc
+
+
 def _write_whole(path: Path, data: bytes) -> None:
     """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
 
-    Written beside it, then renamed over it, which the filesystem does at once.
-    A half file (a worker killed mid-write, a full disk) would read as broken
-    JSON on every visit, and every visit restarts the hour, so it would never go.
-    Raises Gone if the document was deleted meanwhile, by its owner or the sweep.
+    Written beside it, then renamed over it, which the filesystem does at once. A half file
+    would read as broken JSON, and each visit restarts the hour, so it would never go.
+    Raises Gone if the document was deleted meanwhile, and ServerFull if the disk is full.
     """
-    try:
-        handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    except FileNotFoundError as exc:  # its folder was deleted since it was found
-        raise Gone from exc
-    try:
-        with os.fdopen(handle, "wb") as out:
-            out.write(data)
-        os.replace(part, path)
-    except FileNotFoundError as exc:  # its folder was deleted mid-write
-        Path(part).unlink(missing_ok=True)  # most likely gone with the folder already
-        raise Gone from exc
-    except BaseException:  # cut short: the old file stays, and the piece goes
-        Path(part).unlink(missing_ok=True)
-        raise
+    with full_disk_refused():
+        try:
+            handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+        except FileNotFoundError as exc:  # its folder was deleted since it was found
+            raise Gone from exc
+        try:
+            with os.fdopen(handle, "wb") as out:
+                out.write(data)
+            os.replace(part, path)
+        except FileNotFoundError as exc:  # its folder was deleted mid-write
+            Path(part).unlink(missing_ok=True)  # most likely gone with the folder already
+            raise Gone from exc
+        except BaseException:  # cut short: the old file stays, and the piece goes
+            Path(part).unlink(missing_ok=True)
+            raise
 
 
 def save_index(folder: Path, index: SpanIndex) -> None:

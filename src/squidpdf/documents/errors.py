@@ -35,7 +35,10 @@ class TooManyPages(Problem):
 
 
 class ServerFull(Problem):
-    """Too little disk is left to keep another upload: refused before any is written."""
+    """Too little disk is left to write on, found before an upload or by a write.
+
+    Even a read can raise it, as it writes the analysis under a new build.
+    """
 
     type = "server_full"
     status = 503

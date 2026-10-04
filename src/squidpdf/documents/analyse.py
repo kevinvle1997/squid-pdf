@@ -23,14 +23,12 @@ from squidpdf.documents.types import (
 )
 
 
-def analyse(folder: str, max_pages: int) -> Analysis:
-    """Judge every span and list each font's letters, under this build, and keep it.
+def analyse(folder: str, max_pages: int) -> KeptAnalysis:
+    """Judge every span and list each font's letters, under this build; keep and return it.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
-
-    The index is built on the first run and reused after, so a new build judges
-    the same spans and every id holds. Raises TooManyPages first, if it has
-    more than `max_pages`.
+    Returned as kept JSON, not a dict per span: that crosses from the worker in a moment.
+    Raises TooManyPages on the first run, past `max_pages`; the index is reused, so ids hold.
     """
     path = Path(folder)
     with store.open_to_analyse(path) as engine:
@@ -71,11 +69,12 @@ def analyse(folder: str, max_pages: int) -> Analysis:
         ],
         "fonts": fonts,
     }
-    store.save_analysis(path, BUILD, kept_analysis(analysis))
-    return analysis
+    kept = _kept_analysis(analysis)
+    store.save_analysis(path, BUILD, kept)
+    return kept
 
 
-def kept_analysis(analysis: Analysis) -> KeptAnalysis:
+def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
     """The analysis as it's kept and sent: its spans apart from the rest."""
     facts: AnalysisFacts = {
         "build": analysis["build"],
