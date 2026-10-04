@@ -119,8 +119,7 @@ class PageWriter:
     ) -> list[Message]:
         """Draw `text` at the span's baseline as `plan` says, and say what came out otherwise.
 
-        `plan` is `text`'s; `plans` measures, and names a substitute if the page won't take
-        the font after all.
+        `plans` measures, and names a substitute if the page won't take the font.
         """
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in

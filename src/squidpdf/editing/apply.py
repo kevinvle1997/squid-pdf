@@ -1,13 +1,7 @@
 """Turn an edit log into engine calls, in named steps.
 
-The engine knows `remove` and `draw`. It does not know what a Replace is, which
-is what keeps `core` free of any feature import. Translating one into the other
-is this module's whole job:
-
-    resolved = resolve(engine, edits, index)  # once: what each edit points at
-    fits = log_fits(engine, resolved)         # what each will look like, planned once
-    steps = plan(engine, resolved, fits)      # Erase, Redraw or Place, per edit shown
-    notices = run(engine, steps)              # every erase, then every draw, as planned
+`core` knows no Replace, so it imports no feature. The steps, in order: `resolve`,
+`log_fits`, `plan`, then `run`.
 """
 
 from __future__ import annotations
@@ -79,7 +73,7 @@ class _Redraw:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Place:
-    """An insert: new text drawn as its fit says where there was none, turned with its page."""
+    """An insert: new text drawn where there was none, as its fit says, turned with its page."""
 
     position: int
     span: Span
@@ -172,10 +166,9 @@ def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
 
 
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
-    """A fit for each span the log leaves replaced and for each insert, drawn or not.
+    """A fit, with its plan, for each replace and insert the log leaves, drawn or not.
 
-    Measurement only, and each line is planned here for `plan` to draw. Call it
-    before `run`: erasing can drop the fonts it measures with.
+    Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
     """
     fits = {
         edited_span.span.id: _fit_of(engine, edited_span) for edited_span in resolved.span_edits
@@ -207,7 +200,7 @@ def plan(
     *,
     strips: Mapping[int, list[Rect]] | None = None,
 ) -> list[Step]:
-    """The steps the edits shown take, each drawn with the plan its fit in `fits` made.
+    """The steps the edits shown take, each drawn with its fit's plan.
 
     `strips` are the rows drawn, by page, or None to draw every edit. A span
     edit shows where its rows meet a strip; turned text, whose redraw is level,

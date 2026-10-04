@@ -87,11 +87,10 @@ class FitReport:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Fitted:
-    """A fit, and the line it was worked out for, as `draw` draws it: one plan for both.
+    """A fit and the plan it measured, which `draw` then draws: one plan for both.
 
-    `report` is what the user is told. `plan` holds the fonts the line is drawn
-    in, so it stays where it was made. A None `size` keeps the span's own;
-    `scale_x` narrows the line from its start.
+    `plan` holds the fonts that draw the line, so it stays in the process that made
+    it. A None `size` keeps the span's own; `scale_x` narrows the line from its start.
     """
 
     report: FitReport
@@ -156,14 +155,10 @@ def insert_span(insert: Insert) -> Span:
 
 
 def insert_fit(engine: Engine, insert: Insert) -> Fitted:
-    """What new text will really look like: in its chosen font, or what draws it instead.
-
-    Nothing to fit against, so only the font and the letters are checked.
-    """
+    """What new text will look like: its font and letters, as there's no width to fit."""
     span = insert_span(insert)
     shipped = insert.font in FACES
-    # Not a face we ship, and not a font of this page's we can use: it can't be used at all.
-    # One that only lacks a letter can: the substitute draws that line, as for a replace.
+    # A font that only lacks a letter is still usable: a substitute draws the line.
     unusable = not shipped and not engine.has_own_font(span)
     typed_plan = engine.plan_for(span, insert.text)
     report = FitReport(
@@ -181,9 +176,9 @@ def replace_fit(
 ) -> Fitted:
     """What would happen if the user typed this, with the ways out if it will not fit.
 
-    `strategy` is kept only if it's one of the ways out offered; otherwise as-is.
+    `strategy` is drawn only if it was offered; otherwise as-is.
     """
-    # One plan for what's typed: the fit asks it everything, and the draw draws it.
+    # One plan for what's typed: the fit reads it, and the draw draws it.
     typed_plan = engine.plan_for(span, text)
     original_width = engine.measure(span, span.text)
     typed_width = engine.width_of(span, typed_plan)
@@ -202,7 +197,7 @@ def replace_fit(
     # Drawn as typed: the span's size, no stretch.
     if drawn_strategy == "as-is":
         return Fitted(report, typed_plan)
-    # Smaller letters, same shape: width goes with size, so it ends where the original did.
+    # Smaller letters: width goes with size, so it ends where the original did.
     if drawn_strategy == "shrink":
         return Fitted(report, typed_plan, size=span.size * original_width / typed_width)
     # The same size, letters squeezed narrower, to the same end.
