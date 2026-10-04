@@ -7,7 +7,7 @@ import pymupdf
 from squidpdf.core import words
 from tests.api.conftest import around, span_starting, upload
 from tests.conftest import FORM_FIELD_VALUE, FORM_HINT, FORM_LINE
-from tests.helpers import assert_equal, assert_problem
+from tests.helpers import assert_equal
 
 _SCALE = 2
 
@@ -59,8 +59,8 @@ def test_a_replace_in_a_form_field_is_left_out_and_said_and_the_pages_own_text_i
     assert_equal(sorted(lines), sorted(expected_lines), "the file's lines")
 
 
-def test_a_redaction_in_a_form_field_is_warned_at_render_and_refused_at_export(mine, form):
-    """The user hears it while they can still undo it, and the text never leaves in a file."""
+def test_a_redaction_in_a_form_field_takes_its_words_out_of_the_field(mine, form):
+    """A field's value is a copy of its words like any other: the redaction takes them out."""
     doc = upload(mine, form).json()
     field = span_starting(doc, 0, "SSN")
     edits = [{"kind": "redact", "span_id": field["id"]}]
@@ -69,7 +69,7 @@ def test_a_redaction_in_a_form_field_is_warned_at_render_and_refused_at_export(m
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
 
-    key = "form_field_not_redacted"
-    expected = [("span", field["id"], key, words.sentence(key))]
-    assert_equal(_said(rendered), expected, "what render tells the user")
-    assert_problem(exported, "redaction_failed", 422)
+    assert_equal(_said(rendered), [], "what render tells the user")
+    saved = pymupdf.open(stream=exported.content, filetype="pdf")
+    assert_equal([widget.field_value for widget in saved[0].widgets()], ["", ""], "the values")
+    assert_equal(saved[0].get_text().splitlines(), [FORM_LINE, FORM_HINT], "the page's lines")

@@ -15,12 +15,16 @@ import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
+from typing import Literal, assert_never
+from xml.dom import minidom
+from xml.parsers.expat import ExpatError
 
 import pymupdf
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.pdf.driver import DriverError
-from squidpdf.core.types import FontCode, GlyphId, Rect
+from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
@@ -60,6 +64,79 @@ _ESCAPED = {
 _HEX_STRING = re.compile(rb"<[^>]*")
 # What a string written in hex reads past: anything but its digits.
 _NOT_HEX = re.compile(rb"[^0-9A-Fa-f]")
+# Printable ASCII and white space, no escape (\) or hex string (<): its strings read as written.
+_PLAIN_DRAWING = re.compile(rb"[^\\<\x00-\x08\x0b\x0e-\x1f\x7f-\xff]*")
+
+# What the file says about itself (its Info) that says when, not what.
+_INFO_DATES = ("CreationDate", "ModDate")
+_INFO_TITLE = "Title"  # its title, which a viewer shows in place of the file's name
+_BOOKMARK_TITLE = "Title"  # what a bookmark reads
+# What leads on from a bookmark: the next at its level, then the first under it.
+_NEXT_BOOKMARKS = ("Next", "First")
+_FIELD_KIDS = ("Kids",)  # what leads on from a form field: the fields and parts under it
+_TAG_KIDS = ("K",)  # what leads on from a tag: the tags and content under it
+_FIELD_VALUE = "V"  # a form field's value
+_FIELD_RESET = "DV"  # what a form field goes back to when the form is reset
+_FIELD_FORMATTED = "RV"  # a text field's value again, formatted, as XHTML
+_FIELD_OPTIONS = "Opt"  # a choice field's options, each its words or a pair of them
+_FIELD_DESCRIPTION = "TU"  # a form field's description, which a screen reader reads for it
+# A signature field's seed values: what a signature put in it must be.
+_FIELD_SEED_VALUES = "SV"
+# An annotation's words: a comment's, or a form field's part's description of itself.
+_ANNOTATION_WORDS = "Contents"
+_COMMENT_LABELS = ("T", "Subj")  # a comment's author and its subject
+_FORMATTED_WORDS = "RC"  # a comment's words again, formatted, as XHTML
+_FIELD_CHOSEN = "I"  # a choice field's chosen options, by their places in its list
+_FORM_XFA = "XFA"  # the form again, as XML (XFA), which some viewers show in its place
+_APPEARANCE = "AP"  # an annotation's drawing (its appearance), kept apart from the page's
+# A form field's part's captions (in its MK): as it rests, hovered and pressed.
+_CAPTIONS = ("CA", "RC", "AC")
+# The namespaces whose attributes XML and RDF read themselves, not text.
+_XML_OWN = (
+    "http://www.w3.org/2000/xmlns/",
+    "http://www.w3.org/XML/1998/namespace",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+)
+# The packet's wrapper around metadata (XMP), a note to a program; it holds no words.
+_XMP_PACKET = "xpacket"
+# XMP properties whose values are typed, not words, by namespace: rewritten, they'd be invalid.
+_XMP_TYPED = {
+    "http://purl.org/dc/elements/1.1/": ("format",),
+    "http://ns.adobe.com/pdf/1.3/": ("PDFVersion", "Trapped"),
+    "http://www.aiim.org/pdfa/ns/id/": ("part", "conformance", "amd", "rev"),
+    "http://www.aiim.org/pdfua/ns/id/": ("part", "amd", "rev"),
+    "http://ns.adobe.com/xap/1.0/t/pg/": (
+        "NPages",
+        "HasVisibleTransparency",
+        "HasVisibleOverprint",
+    ),
+    "http://ns.adobe.com/xap/1.0/rights/": ("Marked",),
+    "http://ns.adobe.com/xap/1.0/": ("CreateDate", "ModifyDate", "MetadataDate", "Rating"),
+    "http://ns.adobe.com/xap/1.0/mm/": (
+        "DocumentID",
+        "InstanceID",
+        "OriginalDocumentID",
+        "VersionID",
+    ),
+    "http://ns.adobe.com/xap/1.0/sType/ResourceRef#": (
+        "documentID",
+        "instanceID",
+        "originalDocumentID",
+        "versionID",
+    ),
+    "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#": ("instanceID", "when"),
+}
+# How deep metadata (XMP) is read as XML; deeper goes whole. XMP nests a dozen or so, and
+# reading or writing it takes a call per level, which Python limits.
+_XML_DEEPEST = 100
+# The encodings XMP may use; what isn't read as XML can't say which, so it's read in each.
+_XMP_ENCODINGS = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
+# What a signed file's catalog keeps only for its signatures, so it goes with them.
+_SIGNATURE_CHECKS = ("Perms", "DSS")
+# How a hidden copy goes back into the file once rewritten (`_rewrite_entry`).
+type _Writing = Literal["text", "required_text", "whole", "field_value", "options", "drawing"]
+# The copies a form field shows on the page: once one changes, the field is drawn again.
+_FIELD_SHOWN: tuple[_Writing, ...] = ("field_value", "options")
 
 # What PyMuPDF raises when MuPDF can't do what it was asked: MuPDF's own errors,
 # which aren't RuntimeErrors, and the RuntimeErrors and ValueErrors PyMuPDF adds.
@@ -239,18 +316,7 @@ class PdfFile:
             ([appearance], _resources_of(appearance))
             for appearance in _appearances_of(page_obj)
         ]
-        # Drawings already waiting, by object number: a form can draw itself.
-        seen: set[int] = set()
-        while waiting:
-            streams, resources = waiting.pop()
-            yield [stream for stream in streams if mu.pdf_is_stream(stream)], resources
-            for drawn, own_resources in _drawn_by(resources):
-                # Already waiting.
-                if mu.pdf_to_num(drawn) in seen:
-                    continue
-                seen.add(mu.pdf_to_num(drawn))
-                # With none of its own, it names its user's resources, read already.
-                waiting.append(([drawn], own_resources))
+        yield from _each_drawing(waiting)
 
     def _rewrite_written(
         self,
@@ -332,6 +398,39 @@ class PdfFile:
         """
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
+    def _strings_written_in(self, drawing: bytes, resources: pymupdf.mupdf.PdfObj) -> list[str]:
+        """Each string `drawing` writes, as text; an image in it is read past.
+
+        After an image MuPDF can't read, every string to the end: nothing says where its
+        bytes end. `resources` are those it names an image's colour space from.
+        """
+        mu = pymupdf.mupdf
+        reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(drawing))
+        lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)  # as `_markings_in` has it
+        found: list[str] = []
+        while True:
+            start = mu.fz_tell(reader)
+            token = mu.pdf_lex(reader, lexbuf)
+            # The end of the drawing.
+            if token == mu.PDF_TOK_EOF:
+                return found
+            # A string: read again from its start, as an object, for its text.
+            if token == mu.PDF_TOK_STRING:
+                mu.fz_seek(reader, start, 0)
+                found.append(_text_of(mu.pdf_parse_stm_obj(self._pdf(), reader, lexbuf)))
+                continue
+            is_operator = token == mu.PDF_TOK_KEYWORD
+            operator = _operator_at(drawing, start, reader) if is_operator else b""
+            # Not an image written into the drawing.
+            if operator != b"BI":
+                continue
+            # An image MuPDF can read: its bytes hold no string, and it reads on after them.
+            if self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources):
+                continue
+            # One it can't: what's left may hold anything.
+            rest = drawing[start:]
+            return found + self._strings_in(rest) + _strings_anywhere_in(rest)
+
     def _markings_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
     ) -> Iterator[tuple[int, int, pymupdf.mupdf.PdfObj | None]]:
@@ -359,9 +458,8 @@ class PdfFile:
                 dictionary = self._dictionary_in(reader, lexbuf)
                 yield start, mu.fz_tell(reader), dictionary
                 continue
-            # An operator is the last word read, past any space or comment before it.
             is_operator = token == mu.PDF_TOK_KEYWORD
-            operator = drawing[start : mu.fz_tell(reader)].split()[-1] if is_operator else b""
+            operator = _operator_at(drawing, start, reader) if is_operator else b""
             # Not an image written into the drawing.
             if operator != b"BI":
                 continue
@@ -430,6 +528,399 @@ class PdfFile:
             return False
         mu.fz_seek(reader, end.end(), 0)
         return True
+
+    def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
+        """Each of the document's own hidden copies that `holding` is true of, and where."""
+        found = [
+            HiddenCopy(entry.place, text)
+            for entry in self._document_entries()
+            for text in self._texts_of(entry, holding)
+        ]
+        found += [HiddenCopy("metadata", text) for text in self._metadata_texts()]
+        return [hidden_copy for hidden_copy in found if holding(hidden_copy.text)]
+
+    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(copy)` for the document's hidden copies; one left blank goes."""
+        mu = pymupdf.mupdf
+        holding = partial(_is_changed_by, rewritten)
+        # Read first: a key deleted mid-walk would move the ones after it.
+        entries = list(self._document_entries())
+        drawings = [entry for entry in entries if entry.writing == "drawing"]
+        drawing_a_word = [drawing for drawing in drawings if self._texts_of(drawing, holding)]
+        changed = [
+            entry
+            for entry in entries
+            if entry.writing != "drawing" and self._rewrite_entry(entry, rewritten)
+        ]
+        redrawn = self._redrawn(changed, drawing_a_word)
+        for page, on_page in redrawn.items():
+            self._draw_again(page, on_page)
+        # Only a drawing that drew a word or was drawn again can draw one now: read those again.
+        drawn_again = {number for on_page in redrawn.values() for number in on_page}
+        for drawing in drawings:
+            if drawing in drawing_a_word or mu.pdf_to_num(drawing.holder) in drawn_again:
+                self._rewrite_entry(drawing, rewritten)
+        self._rewrite_metadata(rewritten)
+
+    def is_signed(self) -> bool:
+        """Whether the document holds a signature, or what a signed file keeps for one."""
+        mu = pymupdf.mupdf
+        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        kept = [mu.pdf_dict_gets(root, key) for key in _SIGNATURE_CHECKS]
+        return bool(self._signed_fields(root)) or not all(map(mu.pdf_is_null, kept))
+
+    def drop_signatures(self) -> None:
+        """Delete every signature, and what the file keeps only to check one."""
+        mu = pymupdf.mupdf
+        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        for field in self._signed_fields(root):
+            mu.pdf_dict_dels(field, _FIELD_VALUE)
+        for key in _SIGNATURE_CHECKS:
+            mu.pdf_dict_dels(root, key)
+
+    def _signed_fields(self, root: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
+        """Each signed form field: one whose value, a signature, is a dictionary."""
+        mu = pymupdf.mupdf
+        return [
+            field
+            for field in self._form_fields(root)
+            if mu.pdf_is_dict(mu.pdf_dict_gets(field, _FIELD_VALUE))
+        ]
+
+    def _document_entries(self) -> Iterator[_Entry]:
+        """Each place the document may keep a hidden copy of its own, and how it's put back."""
+        mu = pymupdf.mupdf
+        trailer = mu.pdf_trailer(self._pdf())
+        root = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Root)
+        info = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Info)
+        for key in map(mu.pdf_to_name, _keys_of(info)):
+            # A date says when, not what.
+            if key in _INFO_DATES:
+                continue
+            yield _Entry("title" if key == _INFO_TITLE else "metadata", info, key, "text")
+        outlines = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_Outlines)
+        for bookmark in _each_reached(
+            mu.pdf_dict_get(outlines, mu.PDF_ENUM_NAME_First), _NEXT_BOOKMARKS
+        ):
+            yield _Entry("bookmarks", bookmark, _BOOKMARK_TITLE, "required_text")
+        yield from self._annotation_entries()
+        for field in self._form_fields(root):
+            yield _Entry("form_fields", field, _FIELD_VALUE, "field_value")
+            yield _Entry("form_fields", field, _FIELD_RESET, "text")
+            yield _Entry("form_fields", field, _FIELD_FORMATTED, "whole")
+            yield _Entry("form_fields", field, _FIELD_OPTIONS, "options")
+            yield _Entry("form_fields", field, _FIELD_DESCRIPTION, "text")
+            yield _Entry("form_fields", field, _FIELD_SEED_VALUES, "whole")
+        # The fields again, as XFA, not edited here: it goes whole once it holds a word.
+        form = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_AcroForm)
+        yield _Entry("form_fields", form, _FORM_XFA, "whole")
+        tags = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_StructTreeRoot)
+        for element in _each_reached(mu.pdf_dict_get(tags, mu.PDF_ENUM_NAME_K), _TAG_KIDS):
+            for key in _HIDDEN_COPY_KEYS:
+                yield _Entry("screen_reader_text", element, key, "text")
+
+    def _annotation_entries(self) -> Iterator[_Entry]:
+        """What each annotation draws, on every page, and each comment's words and labels.
+
+        A form field's part (a widget) counts as a form field; its value is read as the field's.
+        """
+        mu = pymupdf.mupdf
+        for page, annotation in self._each_annotation():
+            widget = _is_widget(annotation)
+            drawn_from_words = widget or _is_free_text(annotation)
+            shown = _Shown(page, mu.pdf_to_num(annotation)) if drawn_from_words else None
+            place: CopyPlace = "form_fields" if widget else "comments"
+            yield _Entry(place, annotation, _APPEARANCE, "drawing", shown=shown)
+            # A form field's part: its captions and its description of itself.
+            if widget:
+                captions = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_MK)
+                for key in _CAPTIONS:
+                    yield _Entry("form_fields", captions, key, "text", shown=shown)
+                yield _Entry("form_fields", annotation, _ANNOTATION_WORDS, "text")
+                continue
+            yield _Entry("comments", annotation, _ANNOTATION_WORDS, "text", shown=shown)
+            for key in _COMMENT_LABELS:
+                yield _Entry("comments", annotation, key, "text", shown=shown)
+            yield _Entry("comments", annotation, _FORMATTED_WORDS, "whole", shown=shown)
+
+    def _form_fields(self, root: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
+        """Each form field once: those the form lists, then those a page shows that it doesn't.
+
+        A broken or half-flattened form can leave off a field that still shows on the page.
+        """
+        mu = pymupdf.mupdf
+        form = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_AcroForm)
+        fields = list(
+            _each_reached(mu.pdf_dict_get(form, mu.PDF_ENUM_NAME_Fields), _FIELD_KIDS)
+        )
+        reached = {mu.pdf_to_num(field) for field in fields}
+        for _page, annotation in self._each_annotation():
+            # A comment or a link, not a form field's part.
+            if not _is_widget(annotation):
+                continue
+            for field in _field_line(annotation):
+                # Reached already, through the form's list or another of its parts.
+                if mu.pdf_to_num(field) in reached:
+                    continue
+                reached.add(mu.pdf_to_num(field))
+                fields.append(field)
+        return fields
+
+    def _each_annotation(self) -> Iterator[tuple[int, pymupdf.mupdf.PdfObj]]:
+        """Each annotation on every page, with its page: comments, links, form fields' parts."""
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        for page in range(mu.pdf_count_pages(pdf)):
+            page_obj = mu.pdf_lookup_page_obj(pdf, page)
+            for annotation in _items_of(mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)):
+                yield page, annotation
+
+    def _texts_of(self, entry: _Entry, holding: Callable[[str], bool]) -> list[str]:
+        """The text `entry` holds: its key's, or the words of its options or drawing."""
+        writing = entry.writing
+        value = pymupdf.mupdf.pdf_dict_gets(entry.holder, entry.key)
+        # Text, or a list of it.
+        if writing == "text":
+            return _texts_in(value)
+        # Text the file must have.
+        if writing == "required_text":
+            return _texts_in(value)
+        # Words that go whole once changed, wherever in it they are.
+        if writing == "whole":
+            return _texts_within(value)
+        # A form field's value: text, or a list of it.
+        if writing == "field_value":
+            return _texts_in(value)
+        # A choice field's options: a list of them.
+        if writing == "options":
+            return [words for option in _items_of(value) for words in _option_words(option)]
+        # An annotation's drawing: the strings it writes.
+        if writing == "drawing":
+            return self._strings_drawn_by(entry.holder, holding)
+        assert_never(writing)
+
+    def _rewrite_entry(self, entry: _Entry, rewritten: Callable[[str], str]) -> bool:
+        """Put `rewritten(copy)` for the copy `entry` holds, as it's put; whether it changed."""
+        mu = pymupdf.mupdf
+        writing = entry.writing
+        # A choice field's options: a list, each option rewritten in it.
+        if writing == "options":
+            return self._rewrite_options(entry.holder, rewritten)
+        # As it was: it stays as the file wrote it.
+        if not _changes(self._texts_of(entry, partial(_is_changed_by, rewritten)), rewritten):
+            return False
+        # Words kept in a stream, which can't be written back in place: gone whole.
+        if mu.pdf_is_stream(mu.pdf_dict_gets(entry.holder, entry.key)):
+            mu.pdf_dict_dels(entry.holder, entry.key)
+            return True
+        # Words that go whole once changed: gone.
+        if writing == "whole":
+            mu.pdf_dict_dels(entry.holder, entry.key)
+            return True
+        # A drawing that still draws a word: gone, so nothing shows it.
+        if writing == "drawing":
+            mu.pdf_dict_dels(entry.holder, entry.key)
+            return True
+        # Plain words, or a list of them: words of their own left stay, else they go.
+        if writing == "text":
+            self._put_words(entry.holder, entry.key, rewritten)
+            return True
+        # Text the file must have: what's left, empty if nothing is.
+        if writing == "required_text":
+            kept = rewritten(mu.pdf_to_text_string(mu.pdf_dict_gets(entry.holder, entry.key)))
+            mu.pdf_dict_puts(entry.holder, entry.key, mu.pdf_new_text_string(kept))
+            return True
+        # A form field's value: set as the form sets it, so the field shows it, even empty.
+        if writing == "field_value":
+            self._set_field_value(entry.holder, rewritten)
+            return True
+        assert_never(writing)
+
+    def _put_words(
+        self, holder: pymupdf.mupdf.PdfObj, key: str, rewritten: Callable[[str], str]
+    ) -> None:
+        """Put `rewritten(words)` for the text under `key`, or for each text in its list.
+
+        A text left blank goes.
+        """
+        mu = pymupdf.mupdf
+        value = mu.pdf_dict_gets(holder, key)
+        # A list of text, as a multi-select list box's value.
+        if mu.pdf_is_array(value):
+            mu.pdf_dict_puts(holder, key, self._rewritten_list(value, rewritten))
+            return
+        _put_text(holder, key, rewritten(mu.pdf_to_text_string(value)))
+
+    def _set_field_value(
+        self, field: pymupdf.mupdf.PdfObj, rewritten: Callable[[str], str]
+    ) -> None:
+        """Set a form field's value to `rewritten(value)`, as the form sets it.
+
+        Its chosen options (I) go: they name places in a list that may have changed.
+        """
+        mu = pymupdf.mupdf
+        mu.pdf_dict_dels(field, _FIELD_CHOSEN)
+        value = mu.pdf_dict_gets(field, _FIELD_VALUE)
+        # A list of values: MuPDF sets only one.
+        if mu.pdf_is_array(value):
+            mu.pdf_dict_puts(field, _FIELD_VALUE, self._rewritten_list(value, rewritten))
+            return
+        kept = rewritten(mu.pdf_to_text_string(value))
+        mu.pdf_set_field_value(self._pdf(), field, kept, 1)  # 1: run no script
+
+    def _rewritten_list(
+        self, written: pymupdf.mupdf.PdfObj, rewritten: Callable[[str], str]
+    ) -> pymupdf.mupdf.PdfObj:
+        """A list with `rewritten(words)` for each text in it; a text left blank goes."""
+        mu = pymupdf.mupdf
+        items = _items_of(written)
+        kept = mu.pdf_new_array(self._pdf(), len(items))
+        for item in items:
+            # Not text: it stays.
+            if not mu.pdf_is_string(item):
+                mu.pdf_array_push(kept, item)
+                continue
+            words = rewritten(mu.pdf_to_text_string(item))
+            # Left blank: a blank line in a list says nothing.
+            if not words:
+                continue
+            mu.pdf_array_push(kept, mu.pdf_new_text_string(words))
+        return kept
+
+    def _rewrite_options(
+        self, field: pymupdf.mupdf.PdfObj, rewritten: Callable[[str], str]
+    ) -> bool:
+        """Put `rewritten(words)` in each of a choice field's options; whether any changed.
+
+        An option left showing nothing goes, and with any change so do the chosen
+        options (I), named by their places in the list.
+        """
+        mu = pymupdf.mupdf
+        written = [_option_words(option) for option in _items_of(_options_of(field))]
+        kept = [[rewritten(words) for words in option] for option in written]
+        # As they were: they stay as the file wrote them.
+        if kept == written:
+            return False
+        options = mu.pdf_new_array(self._pdf(), len(kept))
+        for option in kept:
+            # Showing nothing, or no words at all: it goes.
+            if not option or not option[-1]:
+                continue
+            mu.pdf_array_push(options, _new_option(self._pdf(), option))
+        mu.pdf_dict_put(field, mu.PDF_ENUM_NAME_Opt, options)
+        mu.pdf_dict_dels(field, _FIELD_CHOSEN)
+        return True
+
+    def _redrawn(
+        self, changed: list[_Entry], drawing_a_word: list[_Entry]
+    ) -> dict[int, set[int]]:
+        """Annotations to redraw, by page: those drawn from words, changed or drawing a word."""
+        mu = pymupdf.mupdf
+        fields = {
+            mu.pdf_to_num(entry.holder) for entry in changed if entry.writing in _FIELD_SHOWN
+        }
+        redrawn = self._fields_shown(fields)
+        for entry in [*changed, *drawing_a_word]:
+            # One MuPDF draws from its words, which is shown.
+            if entry.shown is not None:
+                redrawn.setdefault(entry.shown.page, set()).add(entry.shown.annotation)
+        return redrawn
+
+    def _fields_shown(self, fields: set[int]) -> dict[int, set[int]]:
+        """Where each of `fields` shows: the page, and the field's own parts there."""
+        mu = pymupdf.mupdf
+        shown: dict[int, set[int]] = {}
+        # No field changed: no page to read.
+        if not fields:
+            return shown
+        for page, annotation in self._each_annotation():
+            if fields & {mu.pdf_to_num(field) for field in _field_line(annotation)}:
+                shown.setdefault(page, set()).add(mu.pdf_to_num(annotation))
+        return shown
+
+    def _draw_again(self, page: int, annotations: set[int]) -> None:
+        """Have MuPDF draw these annotations on `page` again, from their words.
+
+        One it can't draw keeps its old drawing, which is read again after.
+        """
+        mu = pymupdf.mupdf
+        pdf_page = mu.pdf_page_from_fz_page(self.doc[page].this)
+        for annotation in _annotations_on(pdf_page):
+            if mu.pdf_to_num(mu.pdf_annot_obj(annotation)) in annotations:
+                mu.pdf_dirty_annot(annotation)
+        mu.pdf_update_page(pdf_page)
+
+    def _strings_drawn_by(
+        self, annotation: pymupdf.mupdf.PdfObj, holding: Callable[[str], bool]
+    ) -> list[str]:
+        """Each string an annotation's drawing writes, and the drawings it draws, as text.
+
+        Read as written, not as drawn: another viewer may draw what MuPDF won't.
+        """
+        appearances = [
+            ([appearance], _resources_of(appearance))
+            for appearance in _appearance_streams(annotation)
+        ]
+        drawings = [
+            (_bytes_of(stream), resources)
+            for streams, resources in _each_drawing(appearances)
+            for stream in streams
+        ]
+        return [
+            text
+            for drawing, resources in drawings
+            if _may_hold(drawing, holding)
+            for text in self._strings_written_in(drawing, resources)
+        ]
+
+    def _metadata_texts(self) -> list[str]:
+        """The text in the document's metadata (XMP), each string apart; whole if not XML."""
+        stream = self._metadata_stream()
+        # No metadata stream.
+        if stream is None:
+            return []
+        written = _bytes_of(stream)
+        dom = _xml_of(written)
+        # Not XML: any of it may hold a word, in any encoding it may be in.
+        if dom is None:
+            return [_readings_of(written)]
+        return [str(piece.nodeValue) for piece in _xml_strings(dom)]
+
+    def _rewrite_metadata(self, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(text)` for each string in the metadata (XMP); it goes if not XML."""
+        mu = pymupdf.mupdf
+        stream = self._metadata_stream()
+        # No metadata stream.
+        if stream is None:
+            return
+        written = _bytes_of(stream)
+        dom = _xml_of(written)
+        # Not XML, so not written back: it goes, once anything in it would change.
+        if dom is None:
+            if _changes([_readings_of(written)], rewritten):
+                root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+                mu.pdf_dict_del(root, mu.PDF_ENUM_NAME_Metadata)
+            return
+        changed = False
+        for piece in _xml_strings(dom):
+            text = str(piece.nodeValue)
+            kept = rewritten(text)
+            if kept != text:
+                piece.nodeValue = kept
+                changed = True
+        # Nothing changed: it stays as the file wrote it.
+        if not changed:
+            return
+        # Without an XML declaration, as metadata is written: UTF-8 needs none.
+        new_xml = "".join(node.toxml() for node in dom.childNodes).encode()
+        mu.pdf_update_stream(self._pdf(), stream, mu.fz_new_buffer_from_copied_data(new_xml), 0)
+
+    def _metadata_stream(self) -> pymupdf.mupdf.PdfObj | None:
+        """The document's metadata (XMP), a stream the catalog names; None when it has none."""
+        mu = pymupdf.mupdf
+        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        stream = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_Metadata)
+        return stream if mu.pdf_is_stream(stream) else None
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
         """Point the page's resource name `resource` at font `xref`, already in the file.
@@ -524,12 +1015,42 @@ def _values_of(dictionary: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
 
 
 def _appearances_of(page: pymupdf.mupdf.PdfObj) -> Iterator[pymupdf.mupdf.PdfObj]:
-    """Each appearance of each annotation on the page: the drawing it shows, in each state."""
+    """Each appearance stream of each annotation on the page: plain, hovered and pressed."""
     mu = pymupdf.mupdf
     for annotation in _items_of(mu.pdf_dict_get(page, mu.PDF_ENUM_NAME_Annots)):
-        for appearance in _values_of(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_AP)):
-            # One stream, or one for each state.
-            yield from [appearance] if mu.pdf_is_stream(appearance) else _values_of(appearance)
+        yield from _appearance_streams(annotation)
+
+
+def _appearance_streams(annotation: pymupdf.mupdf.PdfObj) -> Iterator[pymupdf.mupdf.PdfObj]:
+    """Each appearance of an annotation: the drawing it shows, in each state."""
+    mu = pymupdf.mupdf
+    for appearance in _values_of(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_AP)):
+        # One stream, or one for each state, as a checkbox's on and off.
+        yield from [appearance] if mu.pdf_is_stream(appearance) else _values_of(appearance)
+
+
+def _each_drawing(
+    waiting: list[tuple[list[pymupdf.mupdf.PdfObj], pymupdf.mupdf.PdfObj]],
+) -> Iterator[tuple[list[pymupdf.mupdf.PdfObj], pymupdf.mupdf.PdfObj]]:
+    """Each drawing waiting, with its resources, then each drawing they draw, once each."""
+    mu = pymupdf.mupdf
+    # Drawings already waiting, by object number: a form can draw itself.
+    seen: set[int] = set()
+    while waiting:
+        streams, resources = waiting.pop()
+        yield [stream for stream in streams if mu.pdf_is_stream(stream)], resources
+        for drawn, own_resources in _drawn_by(resources):
+            # Already waiting: nothing more to read.
+            if mu.pdf_to_num(drawn) in seen:
+                continue
+            seen.add(mu.pdf_to_num(drawn))
+            # With none of its own, it names its user's resources, read already.
+            waiting.append(([drawn], own_resources))
+
+
+def _operator_at(drawing: bytes, start: int, reader: pymupdf.mupdf.FzStream) -> bytes:
+    """The operator just read from `drawing`: the last word read, past any space or comment."""
+    return drawing[start : pymupdf.mupdf.fz_tell(reader)].split()[-1]
 
 
 # A drawing's stream, and the resources it names things from.
@@ -766,32 +1287,303 @@ def _texts_of(held: bytes) -> list[str]:
 
 def _hidden_copies_in(marking: pymupdf.mupdf.PdfObj) -> list[str]:
     """The hidden copies a marked content's dictionary holds, as text."""
-    mu = pymupdf.mupdf
-    values = [mu.pdf_dict_gets(marking, key) for key in _HIDDEN_COPY_KEYS]
-    return [_text_of(value) for value in values if mu.pdf_is_string(value)]
+    texts = (_text_at(marking, key) for key in _HIDDEN_COPY_KEYS)
+    return [text for text in texts if text is not None]
 
 
 def _rewrite_hidden_copies_in(
     marking: pymupdf.mupdf.PdfObj, rewritten: Callable[[str], str]
 ) -> bool:
     """Put `rewritten(hidden_copy)` for each hidden copy in `marking`; whether any changed."""
-    mu = pymupdf.mupdf
     changed = False
     for key in _HIDDEN_COPY_KEYS:
-        value = mu.pdf_dict_gets(marking, key)
+        hidden_copy = _text_at(marking, key)
         # Not there, or not text.
-        if not mu.pdf_is_string(value):
+        if hidden_copy is None:
             continue
-        hidden_copy = _text_of(value)
         kept = rewritten(hidden_copy)
         # As it was: it stays as the file wrote it.
         if kept == hidden_copy:
             continue
         changed = True
-        # Words of its own left: they stay.
-        if kept:
-            mu.pdf_dict_puts(marking, key, mu.pdf_new_text_string(kept))
-            continue
-        # Nothing left: the key goes.
-        mu.pdf_dict_dels(marking, key)
+        _put_text(marking, key, kept)
     return changed
+
+
+def _text_at(holder: pymupdf.mupdf.PdfObj, key: str) -> str | None:
+    """The text a dictionary holds under `key`; None when it holds none there, or no text."""
+    mu = pymupdf.mupdf
+    value = mu.pdf_dict_gets(holder, key)
+    return _text_of(value) if mu.pdf_is_string(value) else None
+
+
+def _put_text(holder: pymupdf.mupdf.PdfObj, key: str, text: str) -> None:
+    """Put `text` in a dictionary under `key`: words left stay, and with none the key goes."""
+    mu = pymupdf.mupdf
+    # Words of its own left: they stay.
+    if text:
+        mu.pdf_dict_puts(holder, key, mu.pdf_new_text_string(text))
+        return
+    # Nothing left: the key goes.
+    mu.pdf_dict_dels(holder, key)
+
+
+def _keys_of(dictionary: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
+    """Each key in a PDF dictionary, as a name; none when it isn't one."""
+    mu = pymupdf.mupdf
+    return [
+        mu.pdf_dict_get_key(dictionary, place) for place in range(mu.pdf_dict_len(dictionary))
+    ]
+
+
+def _each_reached(
+    start: pymupdf.mupdf.PdfObj, keys: tuple[str, ...]
+) -> Iterator[pymupdf.mupdf.PdfObj]:
+    """Each dictionary reached from `start`, following `keys` and lists from each, once.
+
+    Once: a file's tree can lead back to where it was.
+    """
+    mu = pymupdf.mupdf
+    waiting = [start]
+    seen: set[int] = set()  # objects of their own reached already, by number
+    while waiting:
+        node = waiting.pop()
+        number = mu.pdf_to_num(node)
+        # An object of its own, reached already.
+        if mu.pdf_is_indirect(node) and number in seen:
+            continue
+        seen.add(number)
+        # A list: each of its items is reached.
+        if mu.pdf_is_array(node):
+            waiting += reversed(_items_of(node))
+            continue
+        # Anything else that isn't a dictionary (nothing there, a number) leads nowhere.
+        if not mu.pdf_is_dict(node):
+            continue
+        yield node
+        waiting += reversed([mu.pdf_dict_gets(node, key) for key in keys])
+
+
+def _texts_in(value: pymupdf.mupdf.PdfObj) -> list[str]:
+    """The text a value holds: a string's, a stream's read whole, or each in a list of them."""
+    mu = pymupdf.mupdf
+    items = _items_of(value) if mu.pdf_is_array(value) else [value]
+    return [
+        _held_text_of(item)
+        for item in items
+        if mu.pdf_is_string(item) or mu.pdf_is_stream(item)
+    ]
+
+
+def _texts_within(value: pymupdf.mupdf.PdfObj) -> list[str]:
+    """The text a value holds anywhere in it: in it, and in its lists and dictionaries.
+
+    Each object once: a file's tree can lead back to where it was.
+    """
+    mu = pymupdf.mupdf
+    texts: list[str] = []
+    waiting = [value]
+    seen: set[int] = set()  # objects of their own reached already, by number
+    while waiting:
+        item = waiting.pop()
+        number = mu.pdf_to_num(item)
+        # An object of its own, reached already.
+        if mu.pdf_is_indirect(item) and number in seen:
+            continue
+        seen.add(number)
+        # Text: a string, or a stream read whole.
+        if mu.pdf_is_string(item) or mu.pdf_is_stream(item):
+            texts.append(_held_text_of(item))
+            continue
+        # A list or a dictionary: each of its items is reached, in order.
+        if mu.pdf_is_array(item):
+            waiting += reversed(_items_of(item))
+            continue
+        waiting += reversed(_values_of(item))
+    return texts
+
+
+def _held_text_of(item: pymupdf.mupdf.PdfObj) -> str:
+    """A string's text, all of it, or a stream's read whole, in each encoding it may be in."""
+    mu = pymupdf.mupdf
+    # A string: PDF says how it's encoded.
+    if mu.pdf_is_string(item):
+        return _text_of(item)
+    return _readings_of(_bytes_of(item))
+
+
+def _readings_of(written: bytes) -> str:
+    """Bytes in an encoding they don't name, read in each XMP may use, one after another."""
+    return "\n".join(written.decode(encoding, "replace") for encoding in _XMP_ENCODINGS)
+
+
+def _changes(texts: list[str], rewritten: Callable[[str], str]) -> bool:
+    """Whether `rewritten` changes any of `texts`."""
+    return any(_is_changed_by(rewritten, text) for text in texts)
+
+
+def _is_changed_by(rewritten: Callable[[str], str], text: str) -> bool:
+    """Whether `rewritten` changes `text`: whether it holds a word `rewritten` deletes."""
+    return rewritten(text) != text
+
+
+def _may_hold(drawing: bytes, holding: Callable[[str], bool]) -> bool:
+    """Whether a string in `drawing` may hold a word `holding` looks for.
+
+    A plain drawing `holding` is false of, read whole, holds none: a string's
+    brackets set its words apart.
+    """
+    # Not plain: a string in it may read other than it's written.
+    if _PLAIN_DRAWING.fullmatch(drawing) is None:
+        return True
+    return holding(drawing.decode("ascii"))
+
+
+def _options_of(field: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
+    """A choice field's options, a list; nothing there for any other field."""
+    mu = pymupdf.mupdf
+    return mu.pdf_dict_get(field, mu.PDF_ENUM_NAME_Opt)
+
+
+def _option_words(option: pymupdf.mupdf.PdfObj) -> list[str]:
+    """An option's words: its own, or a pair's, what it saves and then what it shows."""
+    mu = pymupdf.mupdf
+    parts = _items_of(option) if mu.pdf_is_array(option) else [option]
+    return [mu.pdf_to_text_string(part) for part in parts if mu.pdf_is_string(part)]
+
+
+def _new_option(pdf: pymupdf.mupdf.PdfDocument, option: list[str]) -> pymupdf.mupdf.PdfObj:
+    """An option for a choice field: its words alone, or a pair of them, as it came."""
+    mu = pymupdf.mupdf
+    # Its words alone.
+    if len(option) == 1:
+        return mu.pdf_new_text_string(option[0])
+    pair = mu.pdf_new_array(pdf, len(option))
+    for words in option:
+        mu.pdf_array_push(pair, mu.pdf_new_text_string(words))
+    return pair
+
+
+def _is_widget(annotation: pymupdf.mupdf.PdfObj) -> bool:
+    """Whether an annotation is a form field's part on the page (a widget)."""
+    mu = pymupdf.mupdf
+    subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+    return bool(mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Widget))
+
+
+def _is_free_text(annotation: pymupdf.mupdf.PdfObj) -> bool:
+    """Whether an annotation is a comment written on the page (a FreeText)."""
+    mu = pymupdf.mupdf
+    subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+    return bool(mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_FreeText))
+
+
+def _field_line(annotation: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
+    """An annotation, and the fields above it through each one's Parent, from it up."""
+    mu = pymupdf.mupdf
+    line: list[pymupdf.mupdf.PdfObj] = []
+    numbers: set[int] = set()  # those in the line, by their numbers
+    node = annotation
+    # Up to the top, once each: a broken file's parents can go round.
+    while mu.pdf_is_dict(node) and mu.pdf_to_num(node) not in numbers:
+        line.append(node)
+        numbers.add(mu.pdf_to_num(node))
+        node = mu.pdf_dict_get(node, mu.PDF_ENUM_NAME_Parent)
+    return line
+
+
+def _annotations_on(pdf_page: pymupdf.mupdf.PdfPage) -> Iterator[pymupdf.mupdf.PdfAnnot]:
+    """Each annotation MuPDF has loaded on a page: comments, links, then form fields."""
+    mu = pymupdf.mupdf
+    annotation = mu.pdf_first_annot(pdf_page)
+    while annotation.m_internal:
+        yield annotation
+        annotation = mu.pdf_next_annot(annotation)
+    widget = mu.pdf_first_widget(pdf_page)
+    while widget.m_internal:
+        yield widget
+        widget = mu.pdf_next_widget(widget)
+
+
+def _xml_of(written: bytes) -> minidom.Document | None:
+    """XML as written, read; None when it can't be read, declares words, or nests too deep.
+
+    A DOCTYPE is written back as it came, with any words it declares (an entity), so
+    XML with one goes whole.
+    """
+    # Not XML, an unknown encoding, or one expat can't read, as UTF-32, which XMP allows.
+    try:
+        dom = minidom.parseString(written)
+    except ExpatError, LookupError, ValueError:
+        return None
+    # A DOCTYPE: what it declares isn't read.
+    if dom.doctype is not None:
+        return None
+    # Nested too deep to read through.
+    if _nests_deeper(dom, _XML_DEEPEST):
+        return None
+    return dom
+
+
+def _nests_deeper(dom: minidom.Document, levels: int) -> bool:
+    """Whether XML nests more than `levels` deep, read a level at a time, not by calls."""
+    level: list[minidom.Node] = list(dom.childNodes)
+    for _deeper in range(levels):
+        level = [child for node in level for child in node.childNodes]
+    return bool(level)
+
+
+def _xml_strings(node: minidom.Node) -> Iterator[minidom.Node]:
+    """Each piece of text in XML: its text, comments, notes and attributes' values, as nodes.
+
+    Not an attribute XML or RDF reads, the packet's wrapper, or a typed value:
+    rewriting one would break the metadata.
+    """
+    for child in node.childNodes:
+        # The packet's wrapper (xpacket), which says where the metadata starts and ends.
+        if isinstance(child, minidom.ProcessingInstruction) and child.target == _XMP_PACKET:
+            continue
+        # Text (CDATA too), a comment, or a note to a program (a processing instruction).
+        if isinstance(child, minidom.CharacterData | minidom.ProcessingInstruction):
+            yield child
+        # A typed value, which says when, which or what kind, not what.
+        if isinstance(child, minidom.Element) and _is_typed(child):
+            continue
+        # An element: its attributes' values, then what's inside.
+        if isinstance(child, minidom.Element):
+            values = child.attributes.values()
+            yield from (value for value in values if _is_xml_text(value))
+            yield from _xml_strings(child)
+
+
+def _is_typed(node: minidom.Element | minidom.Attr) -> bool:
+    """Whether an XML element or attribute is a typed metadata value, by its name."""
+    # .get: most namespaces name no typed value.
+    return node.localName in _XMP_TYPED.get(node.namespaceURI or "", ())
+
+
+def _is_xml_text(attribute: minidom.Attr) -> bool:
+    """Whether an attribute holds text: not one XML or RDF reads, nor a typed value."""
+    return attribute.namespaceURI not in _XML_OWN and not _is_typed(attribute)
+
+
+@dataclass(frozen=True, slots=True)
+class _Shown:
+    """An annotation MuPDF draws from its words, a widget or a FreeText: its page and number."""
+
+    page: int
+    annotation: int
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _Entry:
+    """A string the document may keep a hidden copy in: where, the dictionary, its key.
+
+    `writing` is how a new copy goes back; `shown`, the annotation to redraw once it changes.
+    """
+
+    place: CopyPlace
+    holder: pymupdf.mupdf.PdfObj
+    key: str
+    writing: _Writing
+    shown: _Shown | None = None

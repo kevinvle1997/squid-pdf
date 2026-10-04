@@ -59,10 +59,12 @@ from squidpdf.core.text.fidelity import (
     reason_of as reason_of,
 )
 from squidpdf.core.types import (
+    COPY_PLACES as COPY_PLACES,
     LEVEL as LEVEL,
     SOLID as SOLID,
     Category as Category,
     Fragment as Fragment,
+    HiddenPlace as HiddenPlace,
     Page as Page,
     QuarterTurn as QuarterTurn,
     Rect as Rect,

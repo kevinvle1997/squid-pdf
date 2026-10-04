@@ -8,10 +8,17 @@ import json
 import pymupdf
 import pytest
 
-from squidpdf.core import Engine, words
+from squidpdf.core import COPY_PLACES, Engine, Message, words
 from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.documents import store
-from tests.api.conftest import around, span_starting
+from tests.api.conftest import (
+    NAME_COPIES,
+    REDACTED_NAME,
+    around,
+    span_starting,
+    upload,
+    with_hidden_copies,
+)
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
@@ -48,6 +55,45 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
     too_long = words.sentence("too_long").format(delta_pt=f"{fit['delta_pt']:.1f}")
     assert_equal(fit["message"], too_long, "the message")
+
+
+# What render says of a redaction whose words a signed file kept in every place.
+_EVERY_PLACE_SAID = words.render_all(
+    [
+        Message(
+            "hidden_copies",
+            {"places": [words.sentence(f"place_{place}") for place in COPY_PLACES]},
+        ),
+        Message("signatures_removed"),
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    ("copies", "named", "said"),
+    [
+        ([*NAME_COPIES, "signature"], [*COPY_PLACES, "signatures"], _EVERY_PLACE_SAID),
+        ((), [], None),
+    ],
+    ids=["kept in every place, and signed", "kept nowhere else"],
+)
+def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
+    mine, copies, named, said
+):
+    """Said before the download: a title isn't on the page. Each place once, then signatures."""
+    doc = upload(mine, with_hidden_copies(copies)).json()
+    name = span_starting(doc, 0, REDACTED_NAME)
+
+    rendered = _render(mine, doc, [{"kind": "redact", "span_id": name["id"]}], [around(name)])
+
+    expected = {"verified": True, "hidden_copies": named, "message": said}
+    assert_equal(rendered.json()["redactions"], {name["id"]: expected}, "what render says")
+
+
+def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():
+    """Each place is said in the reader's words, by `place_<it>`."""
+    for place in COPY_PLACES:
+        assert_in(f"place_{place}", words.CATALOGS[words.ENGLISH], "the places named")
 
 
 def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):

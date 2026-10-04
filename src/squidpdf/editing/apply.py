@@ -302,8 +302,10 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
     # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
     stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
-    # A redaction's links go too, as one can carry the text it's on (a mailto:).
-    engine.unlink([step.span for step in steps if isinstance(step, Erase)])
+    redacted = [step.span for step in steps if isinstance(step, Erase)]
+    # A redaction's links (a mailto: can carry its text) and hidden copies go too.
+    engine.unlink(redacted)
+    engine.drop_hidden_copies(redacted)
     return [notice for step in steps for notice in _finish_step(engine, step, stuck=stuck)]
 
 
@@ -355,14 +357,8 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
 
 
 def apply_edits(engine: Engine, resolved: _Resolved) -> Applied:
-    """Apply every edit on every page, in memory. Nothing is written.
-
-    A redaction's words also leave the hidden copies on its page: only an export
-    needs that, as a render draws none.
-    """
-    applied = Applied(resolved.skipped, run(engine, plan(engine, resolved)))
-    engine.drop_hidden_copies(list(redacted_in(resolved)))
-    return applied
+    """Apply every edit on every page, in memory. Nothing is written."""
+    return Applied(resolved.skipped, run(engine, plan(engine, resolved)))
 
 
 def _insert_span(insert: Insert) -> Span:

@@ -27,7 +27,19 @@ from squidpdf.core.plan import DrawPlan, DrawPlanner
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
-from squidpdf.core.types import Face, FormField, Page, QuarterTurn, Rect, Span, SpanIndex
+from squidpdf.core.types import (
+    COPY_PLACES,
+    CopyPlace,
+    Face,
+    FormField,
+    HiddenCopy,
+    HiddenPlace,
+    Page,
+    QuarterTurn,
+    Rect,
+    Span,
+    SpanIndex,
+)
 from squidpdf.core.writer import PageWriter, Setting
 
 # A word: a run of letters and digits (`\w` without its underscore).
@@ -95,6 +107,34 @@ class Engine:
         if not fields:
             return []
         return [span for span in spans if any(_field_draws(field, span) for field in fields)]
+
+    def hidden_places(self, spans: Iterable[Span]) -> dict[str, list[HiddenPlace]]:
+        """Where else each span's words have a hidden copy, by span id.
+
+        Ask before `drop_hidden_copies` takes them out. A signed document names its
+        signatures for every span: any redaction takes them.
+        """
+        asked = list(spans)
+        # No span: the document's own copies needn't be read.
+        if not asked:
+            return {}
+        holding = partial(_holds, _whole_words(asked))
+        document_copies = self.driver.document_hidden_copies(holding)
+        places: dict[str, list[CopyPlace]] = {}
+        for page, on_page in _by_page(asked).items():
+            places |= self._places_on(page, on_page, document_copies=document_copies)
+        signed: list[HiddenPlace] = ["signatures"] if self.driver.is_signed() else []
+        return {span_id: [*held, *signed] for span_id, held in places.items()}
+
+    def _places_on(
+        self, page: int, spans: list[Span], *, document_copies: list[HiddenCopy]
+    ) -> dict[str, list[CopyPlace]]:
+        """Where each of `spans`, all on `page`, has a hidden copy: there, or the document's."""
+        on_page = [
+            HiddenCopy("screen_reader_text", text) for text in self.driver.hidden_copies(page)
+        ]
+        copies = on_page + document_copies
+        return {span.id: _places_holding(_whole_words([span]), copies) for span in spans}
 
     # What we can promise about it.
 
@@ -220,10 +260,18 @@ class Engine:
             self.driver.drop_links(page, [span.bbox for span in on_page])
 
     def drop_hidden_copies(self, spans: list[Span]) -> None:
-        """Delete these spans' words, as whole words, from the hidden copies on their pages."""
+        """Delete these spans' words from every hidden copy, as whole words, and all signatures.
+
+        A signature goes whatever it holds: the redaction rewrites the file, so none would hold.
+        """
+        # No span: nothing to delete, and a pattern of no words would match everywhere.
+        if not spans:
+            return
         for page, on_page in _by_page(spans).items():
             words = _whole_words(on_page)
             self.driver.rewrite_hidden_copies(page, partial(_without, words))
+        self.driver.rewrite_document_hidden_copies(partial(_without, _whole_words(spans)))
+        self.driver.drop_signatures()
 
     def draw(
         self,
@@ -306,6 +354,22 @@ class Engine:
         """Those of `spans`, all on `page`, with a word of their text in a hidden copy there."""
         hidden_copies = self.driver.hidden_copies(page)
         return [span for span in spans if _any_holds(_whole_words([span]), hidden_copies)]
+
+    def still_hidden_in_document(self, spans: Iterable[Span]) -> list[Span]:
+        """The spans with a word of their text still in one of the document's own hidden copies.
+
+        Read as `drop_hidden_copies` deletes them, whichever pages were kept: none sits on one.
+        """
+        checked = list(spans)
+        # No span, as an export with no redaction: the document's own needn't be read.
+        if not checked:
+            return []
+        document_copies = self.driver.document_hidden_copies(
+            partial(_holds, _whole_words(checked))
+        )
+        return [
+            span for span in checked if _places_holding(_whole_words([span]), document_copies)
+        ]
 
     def close(self) -> None:
         """Release the open document."""
@@ -405,6 +469,12 @@ def _holds(words: re.Pattern[str], hidden_copy: str) -> bool:
 def _any_holds(words: re.Pattern[str], hidden_copies: list[str]) -> bool:
     """Whether any of `hidden_copies` holds one of `words`."""
     return any(_holds(words, hidden_copy) for hidden_copy in hidden_copies)
+
+
+def _places_holding(words: re.Pattern[str], copies: list[HiddenCopy]) -> list[CopyPlace]:
+    """The places of the copies holding any of `words`, each once, in their named order."""
+    held = {hidden_copy.place for hidden_copy in copies if _holds(words, hidden_copy.text)}
+    return [place for place in COPY_PLACES if place in held]
 
 
 def _without(words: re.Pattern[str], hidden_copy: str) -> str:

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 from typing import Any
 
+import pymupdf
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -121,3 +122,270 @@ def around(span: dict) -> dict:
     """A region: the full-width strip over a span's line."""
     box = span["bbox"]
     return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}
+
+
+# The facts of `with_hidden_copies`: the name its page shows, which the tests redact.
+REDACTED_NAME = "Ada Quill"
+OTHER_LINE = "Other line"  # the page's other line, which nothing redacts
+CHOSEN = "Bob Smith"  # the choice fields' other option, the one they show
+# Every copy of the name `with_hidden_copies` can make at once.
+NAME_COPIES = (
+    "title",
+    "author",
+    "xmp",
+    "bookmark",
+    "note",
+    "free_text",
+    "stale_free_text",
+    "field",
+    "undrawable_field",
+    "choice",
+    "multi_choice",
+    "unlisted_field",
+    "tooltip",
+    "widget_contents",
+    "seed_value",
+    "button",
+    "stamp",
+    "xfa",
+    "tag",
+)
+# Copies in metadata that isn't read as XML, each made alone: a file has one metadata stream.
+NOT_XML_COPIES = ("not_xml", "not_xml_utf16", "xmp_utf32", "xmp_doctype", "xmp_deep")
+# The ways `with_hidden_copies` signs its page: plain, certifying, and checkable for years.
+SIGNED = ("signature", "certified", "dss")
+# PyMuPDF's PDF_WIDGET_TYPE_* values, set at import where type checkers can't see them.
+_TEXT_FIELD = 7
+_LIST_FIELD = 4
+_CHOICE_FIELD = 3
+_SIGNATURE_FIELD = 6
+_BUTTON_FIELD = 1
+_MULTI_SELECT = 1 << 21  # a list box's flag (Ff) that lets it show more than one option
+# Metadata (XMP) as Acrobat writes it, plus a note to a program; both hold the name.
+_XMP = (
+    '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+    "<?note Read by {name}?>"
+    '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+    '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+    "<dc:creator><rdf:Seq><rdf:li>{name}</rdf:li></rdf:Seq></dc:creator>"
+    '<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Notes on {name}</rdf:li>'
+    "</rdf:Alt></dc:description>"
+    "</rdf:Description></rdf:RDF></x:xmpmeta>"
+    '<?xpacket end="w"?>'
+)
+# Metadata that isn't XML, its tags left unclosed, as a damaged file's.
+_BROKEN_XMP = "<x:xmpmeta><dc:creator>{name}</x:xmpmeta>"
+# Metadata whose DOCTYPE declares the name as a word of its own (an entity), used in its text.
+_DECLARING_XMP = (
+    '<!DOCTYPE x [<!ENTITY who "{name}">]>'
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+    "<dc:creator>&who;</dc:creator></x:xmpmeta>"
+)
+# The room a signature leaves for its certificates and value, zeros: nothing reads them.
+_SIGNED_BYTES = bytes(64)
+# How deep `xmp_deep` nests: far past how deep Python lets calls go.
+_DEEP = 3000
+# The form again, as XFA's data (its datasets).
+_XFA_DATA = (
+    '<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">'
+    "<xfa:data><form><who>{name}</who></form></xfa:data></xfa:datasets>"
+)
+# Each kind of metadata that isn't read as XML, as its bytes are written.
+_NOT_XML = {
+    "not_xml": _BROKEN_XMP.format(name=REDACTED_NAME).encode(),
+    # UTF-16, with its byte order mark, as XMP may be written.
+    "not_xml_utf16": ("\ufeff" + _BROKEN_XMP.format(name=REDACTED_NAME)).encode("utf-16-le"),
+    # UTF-32, which XMP allows and the XML reader can't read.
+    "xmp_utf32": _XMP.format(name=REDACTED_NAME).encode("utf-32"),
+    "xmp_doctype": _DECLARING_XMP.format(name=REDACTED_NAME).encode(),
+    "xmp_deep": (
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        + "<a>" * _DEEP
+        + REDACTED_NAME
+        + "</a>" * _DEEP
+        + "</x:xmpmeta>"
+    ).encode(),
+}
+
+
+def with_hidden_copies(copies: Collection[str]) -> bytes:
+    """A page that shows a name, and keeps a hidden copy of it as each of `copies` too.
+
+    The comments and fields sit apart from the lines, so erasing the name's letters
+    can't reach them.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), REDACTED_NAME, fontname="helv", fontsize=12)
+    page.insert_text((72, 130), OTHER_LINE, fontname="helv", fontsize=12)
+    info = {}  # what the file says about itself
+    if "title" in copies:
+        info["title"] = f"Notes on {REDACTED_NAME}"
+    if "author" in copies:
+        info["author"] = REDACTED_NAME
+    doc.set_metadata(info)
+    if "xmp" in copies:
+        doc.set_xml_metadata(_XMP.format(name=REDACTED_NAME))
+    for kind, written in _NOT_XML.items():
+        if kind in copies:
+            _set_metadata_bytes(doc, written)
+    if "bookmark" in copies:
+        doc.set_toc([[1, f"Visit by {REDACTED_NAME}", 1], [1, REDACTED_NAME, 1]])
+    if "note" in copies:
+        note = page.add_text_annot((500, 700), f"Call {REDACTED_NAME}")
+        note.set_info(title=REDACTED_NAME, subject="Visit")
+        note.update()
+        doc.xref_set_key(note.xref, "RC", f"(<body><p>Call {REDACTED_NAME}</p></body>)")
+    if "free_text" in copies:
+        page.add_freetext_annot(
+            pymupdf.Rect(72, 300, 300, 320), f"Ask {REDACTED_NAME}", fontsize=12
+        )
+    if "stale_free_text" in copies:
+        stale = page.add_freetext_annot(
+            pymupdf.Rect(320, 300, 560, 320), f"Ring {REDACTED_NAME}", fontsize=12
+        )
+        # Its words lose the name, but its drawing, not drawn again, keeps it.
+        doc.xref_set_key(stale.xref, "Contents", "(Ring)")
+    if "field" in copies:
+        field = _add_field(page, "who", REDACTED_NAME, top=400)
+        doc.xref_set_key(field, "DV", f"({REDACTED_NAME})")
+        doc.xref_set_key(field, "RV", f"(<body><p>{REDACTED_NAME}</p></body>)")
+    if "undrawable_field" in copies:
+        undrawable = _add_field(page, "sealed", REDACTED_NAME, top=400, left=320)
+        # No kind (FT), so MuPDF can't draw it again; a viewer shows its old drawing.
+        doc.xref_set_key(undrawable, "FT", "null")
+    if "choice" in copies:
+        choice = _add_field(page, "pick", CHOSEN, top=450, kind=_CHOICE_FIELD)
+        doc.xref_set_key(choice, "Opt", f"[({CHOSEN}) [(2) ({REDACTED_NAME})]]")
+    if "multi_choice" in copies:
+        both = f"[({CHOSEN}) ({REDACTED_NAME})]"
+        listed = _add_field(page, "team", CHOSEN, top=450, left=320, kind=_LIST_FIELD)
+        doc.xref_set_key(listed, "Ff", str(_MULTI_SELECT))
+        doc.xref_set_key(listed, "Opt", both)
+        doc.xref_set_key(listed, "V", both)
+        doc.xref_set_key(listed, "I", "[0 1]")
+    if "unlisted_field" in copies:
+        unlisted = _add_field(page, "signed", REDACTED_NAME, top=500)
+        # Off the form's list, as a half-flattened form leaves one.
+        _kind, listed_fields = doc.xref_get_key(doc.pdf_catalog(), "AcroForm/Fields")
+        left = listed_fields.replace(f"{unlisted} 0 R", "")
+        doc.xref_set_key(doc.pdf_catalog(), "AcroForm/Fields", left)
+    if "tooltip" in copies:
+        described = _add_field(page, "described", "", top=500, left=320)
+        doc.xref_set_key(described, "TU", f"(Signature of {REDACTED_NAME})")
+    if "widget_contents" in copies:
+        phone = _add_field(page, "phone", "", top=700)
+        doc.xref_set_key(phone, "Contents", f"(Phone of {REDACTED_NAME})")
+    if "seed_value" in copies:
+        to_sign = _add_signature_field(page, name="to_sign", at=(320, 660))
+        signer = f"<</Cert<</SubjectDN[<</CN({REDACTED_NAME})>>]>>>>"
+        doc.xref_set_key(to_sign, "SV", signer)
+    if "button" in copies:
+        _add_button(page, f"Email {REDACTED_NAME}")
+    if "stamp" in copies:
+        _stamp(doc, page, f"Seen by {REDACTED_NAME}")
+    if "signature" in copies:
+        _sign(doc, page, name="signed_by", at=(72, 550))
+    if "certified" in copies:
+        certifying = _sign(doc, page, name="certified_by", at=(320, 550))
+        doc.xref_set_key(doc.pdf_catalog(), "Perms", f"<</DocMDP {certifying} 0 R>>")
+    if "dss" in copies:
+        _sign(doc, page, name="kept_checkable", at=(72, 660))
+        certificate = _new_stream(doc, _SIGNED_BYTES)
+        by_signature = f"/VRI<</{'A' * 40} <</Cert[{certificate} 0 R]>>>>"  # by its hash
+        doc.xref_set_key(
+            doc.pdf_catalog(), "DSS", f"<</Certs[{certificate} 0 R]{by_signature}>>"
+        )
+    if "xfa" in copies:
+        data = _new_stream(doc, _XFA_DATA.format(name=REDACTED_NAME).encode())
+        doc.xref_set_key(doc.pdf_catalog(), "AcroForm/XFA", f"[(datasets) {data} 0 R]")
+    if "tag" in copies:
+        _tag_a_picture(doc, f"Photo of {REDACTED_NAME}")
+    return doc.tobytes()
+
+
+def _set_metadata_bytes(doc: pymupdf.Document, written: bytes) -> None:
+    """Give `doc` metadata of these bytes, as written: PyMuPDF writes text only as UTF-8."""
+    stream = _new_stream(doc, written)
+    doc.xref_set_key(stream, "Type", "/Metadata")
+    doc.xref_set_key(stream, "Subtype", "/XML")
+    doc.xref_set_key(doc.pdf_catalog(), "Metadata", f"{stream} 0 R")
+
+
+def _new_stream(doc: pymupdf.Document, written: bytes) -> int:
+    """A new stream in `doc` holding `written`; its number."""
+    stream = doc.get_new_xref()
+    doc.update_object(stream, "<<>>")
+    doc.update_stream(stream, written, new=True)
+    return stream
+
+
+def _add_field(
+    page: pymupdf.Page,
+    name: str,
+    value: str,
+    *,
+    top: float,
+    left: float = 72,
+    kind: int = _TEXT_FIELD,
+) -> int:
+    """Add a form field `name` showing `value`, its top left at `left`, `top`; its number."""
+    field = pymupdf.Widget()
+    field.field_type = kind
+    field.field_name = name
+    if kind in (_CHOICE_FIELD, _LIST_FIELD):
+        field.choice_values = [value]
+    field.field_value = value
+    field.rect = pymupdf.Rect(left, top, left + 228, top + 20)
+    field.text_fontsize = 12
+    return page.add_widget(field).xref
+
+
+def _add_button(page: pymupdf.Page, caption: str) -> None:
+    """Add a push button captioned `caption`, which its drawing shows."""
+    button = pymupdf.Widget()
+    button.field_type = _BUTTON_FIELD
+    button.field_name = "mail"
+    button.button_caption = caption
+    button.rect = pymupdf.Rect(72, 610, 300, 640)
+    page.add_widget(button)
+
+
+def _stamp(doc: pymupdf.Document, page: pymupdf.Page, words: str) -> None:
+    """Add a stamp whose drawing writes `words` only in hex: found only string by string."""
+    stamp = page.add_stamp_annot(pymupdf.Rect(320, 610, 548, 650), stamp=0)
+    _kind, drawing = doc.xref_get_key(stamp.xref, "AP/N")
+    drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET".encode()
+    doc.update_stream(int(drawing.split()[0]), drawn)
+
+
+def _sign(
+    doc: pymupdf.Document, page: pymupdf.Page, *, name: str, at: tuple[float, float]
+) -> int:
+    """Add signature field `name`, its top left `at`, and sign it; its signature's number."""
+    field = _add_signature_field(page, name=name, at=at)
+    signature = doc.get_new_xref()
+    signed = f"/SubFilter/adbe.pkcs7.detached/Contents<{_SIGNED_BYTES.hex()}>"
+    doc.update_object(signature, f"<</Type/Sig/Filter/Adobe.PPKLite{signed}>>")
+    doc.xref_set_key(field, "V", f"{signature} 0 R")
+    return signature
+
+
+def _add_signature_field(page: pymupdf.Page, *, name: str, at: tuple[float, float]) -> int:
+    """Add signature field `name`, not signed, its top left `at`; its number."""
+    left, top = at
+    field = pymupdf.Widget()
+    field.field_type = _SIGNATURE_FIELD
+    field.field_name = name
+    field.rect = pymupdf.Rect(left, top, left + 228, top + 40)
+    return page.add_widget(field).xref
+
+
+def _tag_a_picture(doc: pymupdf.Document, alt: str) -> None:
+    """Give `doc` tags of one picture described as `alt`: all a screen reader needs of it."""
+    tags = doc.get_new_xref()
+    picture = doc.get_new_xref()
+    doc.update_object(tags, f"<</Type/StructTreeRoot/K {picture} 0 R>>")
+    doc.update_object(picture, f"<</Type/StructElem/S/Figure/P {tags} 0 R/Alt ({alt})>>")
+    doc.xref_set_key(doc.pdf_catalog(), "StructTreeRoot", f"{tags} 0 R")

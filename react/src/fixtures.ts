@@ -103,7 +103,7 @@ export function aReply(fields: Partial<Render> = {}): Render {
     images: [],
     fits: {},
     insert_fits: [],
-    redactions: [],
+    redactions: {},
     skipped: [],
     notices: [],
     build: "build",

@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Literal, NewType
+from typing import Literal, NewType, get_args
 
 from squidpdf.core.constants import TURN_TOLERANCE
 
@@ -105,6 +105,28 @@ class FormField:
 
     box: Rect
     value: str
+
+
+# Where a document keeps a hidden copy, in the order render names them, each said by
+# `place_<it>`. A plain alias: pydantic reads it.
+CopyPlace = Literal[
+    "title", "metadata", "bookmarks", "comments", "form_fields", "screen_reader_text"
+]
+COPY_PLACES: tuple[CopyPlace, ...] = get_args(CopyPlace)
+# The places of a redaction's hidden copies, then a signed file's signatures, which it takes
+# whatever they hold. A plain alias: pydantic reads it.
+HiddenPlace = Literal[CopyPlace, "signatures"]
+
+
+@dataclass(frozen=True, slots=True)
+class HiddenCopy:
+    """A copy of words the document keeps apart from its pages' text, and where: a hidden copy.
+
+    A screen reader, a search or copy and paste reads it: a redacted word left in one leaks.
+    """
+
+    place: CopyPlace
+    text: str
 
 
 @dataclass(frozen=True, slots=True)

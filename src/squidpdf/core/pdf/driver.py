@@ -19,6 +19,7 @@ from squidpdf.core.types import (
     FontDescriptor,
     FontResource,
     FormField,
+    HiddenCopy,
     Page,
     PageFont,
     QuarterTurn,
@@ -163,6 +164,36 @@ class PdfDriver(Protocol):
         A hidden copy is text marked content keeps beside what it draws (ActualText, Alt, E),
         which a screen reader or a search still reads after the letters go. One the library
         can't read whole stays as written; a key written twice keeps only the one it reads.
+        """
+        ...
+
+    def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
+        """Each of the document's own hidden copies that `holding` is true of, and where.
+
+        Those `rewrite_document_hidden_copies` reaches, even a field the form doesn't list.
+        Metadata not read as XML, and words in a stream, come whole. `holding` looks for words:
+        it's true of any text with a part it's true of, set apart by punctuation.
+        """
+        ...
+
+    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
+        """Put `rewritten(copy)` for each of the document's hidden copies; one left blank goes.
+
+        A field's value or a bookmark's title left blank stays, empty. One the library can't
+        write back goes whole once changed. A comment or field showing its words is drawn again;
+        a drawing still showing a word goes. `rewritten` deletes words, as `holding` finds them.
+        """
+        ...
+
+    def is_signed(self) -> bool:
+        """Whether the document holds a signature, or anything `drop_signatures` deletes."""
+        ...
+
+    def drop_signatures(self) -> None:
+        """Delete every signature, and what the file keeps only to check one.
+
+        Nothing in them is read: the edit rewrites the file, so none would still hold.
+        A signed field's drawing stays.
         """
         ...
 

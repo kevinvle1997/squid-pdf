@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from squidpdf.core import Category, Message, MessageInfo, Page, SaidInfo, Style
+from squidpdf.core import Category, HiddenPlace, Message, MessageInfo, Page, SaidInfo, Style
 
 if TYPE_CHECKING:  # fit.py imports this module for Strategy
     from squidpdf.editing.fit import LogFits
@@ -72,6 +72,18 @@ class Applied:
 
 
 @dataclass(frozen=True, slots=True)
+class Redaction:
+    """A redaction drawn: whether its words are gone from the file, and where else they were.
+
+    `hidden_copies` are the places read from the document as it came, then "signatures"
+    if signed.
+    """
+
+    verified: bool
+    hidden_copies: list[HiddenPlace]
+
+
+@dataclass(frozen=True, slots=True)
 class Region:
     """What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it."""
 
@@ -93,12 +105,14 @@ class Rendered:
     """What render worked out, in no one's words yet: the strips, the fits, and the skips.
 
     `notices` are edits drawn other than asked, such as in a substitute.
+    `redactions` are the redactions drawn, by span id.
     """
 
     images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
     fits: LogFits
     skipped: list[Skipped]
     notices: list[Notice]
+    redactions: dict[str, Redaction]
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +163,18 @@ class InsertFitInfo(FitInfo):
     """An insert's fit, named by its place in the list the browser sent."""
 
     edit: int
+
+
+class RedactionInfo(TypedDict):
+    """A redaction drawn: whether its words are gone from the file, and where else they were.
+
+    `hidden_copies` ends with "signatures" in a signed file: any redaction takes them.
+    `message` says it in the reader's words; None when there's nothing to say.
+    """
+
+    verified: bool
+    hidden_copies: list[HiddenPlace]
+    message: str | None
 
 
 class SkippedInfo(MessageInfo):
@@ -219,12 +245,13 @@ class Render(TypedDict):
     """Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
 
     `notices` are edits drawn other than asked, such as in a substitute.
+    `redactions` are the redactions drawn, by span id, as `fits` are.
     """
 
     images: list[ImageInfo]
     fits: dict[str, FitInfo]
     insert_fits: list[InsertFitInfo]
-    redactions: list[dict[str, str]]
+    redactions: dict[str, RedactionInfo]
     skipped: list[SkippedInfo]
     notices: list[NoticeInfo]
     build: str
