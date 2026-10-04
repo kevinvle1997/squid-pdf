@@ -30,26 +30,22 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 
 # The keys of marked content's hidden copies.
 _HIDDEN_COPY_KEYS = ("ActualText", "Alt", "E")
-# Where an image written into a drawing ends, as MuPDF looks for it past the image's
-# bytes: the first EI with a space, a line end, a < or a / after it, or nothing.
+# The EI that ends an image written into a drawing, as MuPDF finds it past the bytes.
 _INLINE_IMAGE_END = re.compile(rb"EI(?=[\x00-\x20</]|\Z)")
-# The marks a string in UTF-16 starts with: big-endian, then little-endian.
+# The marks a string in UTF-16 starts with.
 _UTF16_MARKS = (codecs.BOM_UTF16_BE, codecs.BOM_UTF16_LE)
-# How a string that starts with each mark reads: in UTF-16, either way round, or in UTF-8.
+# The encoding a string reads in, by the mark it starts with.
 _MARKED_CODECS = {
     codecs.BOM_UTF16_BE: "utf-16-be",
     codecs.BOM_UTF16_LE: "utf-16-le",
     codecs.BOM_UTF8: "utf-8",
 }
-# An escape in a string written in brackets: a backslash, then up to three octal digits,
-# or a line end, or one byte.
+# An escape in a string in brackets: octal digits, a line end, or one byte.
 _ESCAPE = re.compile(rb"\\(?:([0-7]{1,3})|(\r\n|.))", re.DOTALL)
-# What such a string reads apart from its bytes: an escape, or a bracket, which opens a
-# string in it or closes one.
+# What a string in brackets reads apart from its bytes: an escape, or a bracket.
 _LITERAL_PART = re.compile(_ESCAPE.pattern + rb"|[()]", re.DOTALL)
 _BRACKET_DEPTH = {b"(": 1, b")": -1}  # how each bracket changes how deep in strings it is
-# What an escape stands for, by what follows its backslash, but octal digits: a line end
-# stands for nothing, as the string goes on on the next line, and any byte not here, itself.
+# What an escape stands for, by what follows the backslash, but octal digits; any other, itself.
 _ESCAPED = {
     b"n": b"\n",
     b"r": b"\r",
@@ -60,7 +56,7 @@ _ESCAPED = {
     b"\r": b"",
     b"\n": b"",
 }
-# A string written in hex, from a < to the > that ends it: each < inside starts one too.
+# A string written in hex, from a < up to the > that ends it.
 _HEX_STRING = re.compile(rb"<[^>]*")
 # What a string written in hex reads past: anything but its digits.
 _NOT_HEX = re.compile(rb"[^0-9A-Fa-f]")
@@ -209,15 +205,7 @@ class PdfFile:
         self._sync_links(page)
 
     def hidden_copies(self, page: int) -> list[str]:
-        """Every hidden copy on the page, as text: those `rewrite_hidden_copies` reaches.
-
-        And each string written in a marked content's dictionary MuPDF reads
-        only in part (it keeps the last of a key written twice); and every
-        string from a dictionary not read whole (`_dictionary_in`), or from an
-        image written into a drawing that MuPDF can't read, to the end of that
-        drawing, read from every place one may start (`_strings_anywhere_in`):
-        any may be one another reader keeps, and a word left in it is a leak.
-        """
+        """Every hidden copy on the page, as text, and each string MuPDF may miss."""
         mu = pymupdf.mupdf
         found: list[str] = []
         for streams, resources in self._drawings(page):
@@ -228,12 +216,7 @@ class PdfFile:
         return found
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
-
-        One in a dictionary not read whole (`_dictionary_in`), or after an image MuPDF
-        can't read, stays as written. A dictionary with a key written twice is written
-        back as MuPDF reads it: the last.
-        """
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
         mu = pymupdf.mupdf
         for streams, resources in self._drawings(page):
             properties = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Properties)
@@ -245,14 +228,11 @@ class PdfFile:
     def _drawings(
         self, page: int
     ) -> Iterator[tuple[list[pymupdf.mupdf.PdfObj], pymupdf.mupdf.PdfObj]]:
-        """The page's drawing, its annotations' appearances, each drawing they draw.
-
-        Each with the resources it names things from, which may be none.
-        """
+        """Each drawing the page and its annotations draw, with the resources it names."""
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
         contents = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Contents)
-        # One stream, or a list of them drawn one after the other.
+        # One stream, or a list of them drawn in turn.
         streams = _items_of(contents) if mu.pdf_is_array(contents) else [contents]
         resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
         waiting = [(streams, resources)] + [
@@ -265,7 +245,7 @@ class PdfFile:
             streams, resources = waiting.pop()
             yield [stream for stream in streams if mu.pdf_is_stream(stream)], resources
             for drawn, own_resources in _drawn_by(resources):
-                # Already waiting: nothing more to read.
+                # Already waiting.
                 if mu.pdf_to_num(drawn) in seen:
                     continue
                 seen.add(mu.pdf_to_num(drawn))
@@ -278,10 +258,7 @@ class PdfFile:
         resources: pymupdf.mupdf.PdfObj,
         rewritten: Callable[[str], str],
     ) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy written in `stream`.
-
-        `resources` are those it names things from, as an image's colour space.
-        """
+        """Put `rewritten(hidden_copy)` for each hidden copy written in `stream`."""
         mu = pymupdf.mupdf
         drawing = _bytes_of(stream)
         pieces: list[bytes] = []
@@ -293,6 +270,7 @@ class PdfFile:
             # Read before the rewrite, which changes `marking`.
             lost_string = self._loses_a_string(marking, written=drawing[start:end])
             changed = _rewrite_hidden_copies_in(marking, rewritten)
+            # Changed, or a string MuPDF drops: as MuPDF reads it, so no reader finds the other.
             if changed or lost_string:
                 pieces += [drawing[kept_to:start], _as_written(marking)]
                 kept_to = end
@@ -307,31 +285,25 @@ class PdfFile:
     def _hidden_copies_written_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
     ) -> list[str]:
-        """The hidden copies written in `drawing`, as `hidden_copies` reads them.
+        """The hidden copies written in `drawing`, and each string in it MuPDF may miss.
 
-        The hidden copies MuPDF reads in each marked content's dictionary,
-        which may be strings of their own; and each string written in one it
-        reads only in part (it keeps the last of a key written twice). After a
-        dictionary not read whole, or an image MuPDF can't read, every string
-        to the end of the drawing, since no reading says where it ends: as
-        MuPDF's lexer reads them, and from every place one may start, since
-        another reader may read the bytes before it otherwise. Only there: any
-        other string, as a language (`/Lang (en-US)`), is none.
+        After a dictionary not read whole, or an image MuPDF can't read, that's every
+        string to the end of the drawing, since nothing says where either ends.
         """
         found: list[str] = []
         unread_from = len(drawing)  # where the first one not read whole starts, if any
         for start, end, marking in self._markings_in(drawing, resources):
             written = drawing[start:end]
-            # Not read whole: it may end anywhere, so any string after its start may be one.
+            # Not read whole: any string after its start may be a hidden copy.
             if marking is None:
                 unread_from = min(unread_from, start)
                 continue
             # One MuPDF reads in part: a string it drops may be one another reader keeps.
             if self._loses_a_string(marking, written=written):
                 found += self._strings_in(written)
-            # Those MuPDF reads, which may be strings of their own, kept apart.
+            # Those MuPDF reads, a string of its own included.
             found += _hidden_copies_in(marking)
-        # Read once, from the first: what follows a later one is part of what follows it.
+        # From the first only: what follows a later one follows it too.
         rest = drawing[unread_from:]
         return found + self._strings_in(rest) + _strings_anywhere_in(rest)
 
@@ -354,30 +326,23 @@ class PdfFile:
                 found.append(_text_of(string))
 
     def _loses_a_string(self, marking: pymupdf.mupdf.PdfObj, *, written: bytes) -> bool:
-        """Whether MuPDF's reading of a dictionary, written as `written`, holds fewer strings.
+        """Whether MuPDF's reading of a dictionary holds fewer strings than `written` does.
 
-        MuPDF keeps only the last of a key written twice, and the other may be a
-        hidden copy that another reader keeps.
+        As with a key written twice: MuPDF keeps the last, another reader the other.
         """
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
     def _markings_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
     ) -> Iterator[tuple[int, int, pymupdf.mupdf.PdfObj | None]]:
-        """Each marked content's dictionary in `drawing`: where it starts and ends, read.
+        """Each marked content's dictionary in `drawing`, read, with where it starts and ends.
 
-        Every dictionary written in a drawing is one, whatever operator comes
-        after it: MuPDF keeps one as what marked content says even before its
-        tag (`<<...>> /Span BDC`). An image's own dictionary, the other kind,
-        is read past with the image. Read by MuPDF's own reader of a drawing
-        (its lexer), so strings, comments and images written into it read as
-        MuPDF draws them. One not read whole (`_dictionary_in`) comes as None,
-        from where it starts to the farther of its two ends; so does all that
-        follows an image MuPDF can't read. `resources` are those the drawing
-        names things from.
+        Read by MuPDF's lexer, its reader of a drawing, so strings and comments read as it draws
+        them. Every dictionary counts, whatever operator follows, as MuPDF keeps one even before
+        its tag. One not read whole comes as None, as does all after an image MuPDF can't read.
         """
         mu = pymupdf.mupdf
-        # No dictionary written in it, so none that marks content: most drawings are so.
+        # No dictionary in it, as in most drawings.
         if b"<<" not in drawing:
             return
         reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(drawing))
@@ -400,10 +365,10 @@ class PdfFile:
             # Not an image written into the drawing.
             if operator != b"BI":
                 continue
-            # An image MuPDF can read: its bytes aren't drawing, and it reads on after them.
+            # An image MuPDF can read: its bytes aren't drawing, so read on past them.
             if self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources):
                 continue
-            # One it can't: it reads no further, and what's left may hold anything.
+            # One it can't: MuPDF reads no further, so the rest may hold anything.
             yield start, len(drawing), None
             return
 
@@ -412,25 +377,17 @@ class PdfFile:
     ) -> pymupdf.mupdf.PdfObj | None:
         """The dictionary `reader` is in, read to its end; None unless it's read whole.
 
-        Read whole: MuPDF's parser and a count of << and >> end at the same >>.
-        They part where the parser stops early, where it can't read on, maybe
-        before strings still in it: raising, as at a key with no value, or not,
-        at an ID where a key goes, as an image's dictionary ends
-        (`<</ActualText (Logo) ID ...>>`). They part too at a >> inside an
-        array (`<</A [ >> ] /ActualText (...)>>`): the parser reads it as an
-        item and reads on, but another reader may end the dictionary there, as
-        the count does. Not read whole, `reader` is left at the farther stop,
-        but both may stop before a string still in it, so where it ends is no
-        reading's to say.
+        Read whole: MuPDF's parser and a count of << and >> end at the same >>. If not,
+        `reader` is left at the farther stop, though a string may still lie past both.
         """
         mu = pymupdf.mupdf
         opened = mu.fz_tell(reader)  # just past its <<
-        # MuPDF's parser raises on a dictionary it can't read, as one with a key and no value.
+        # MuPDF's parser raises on a dictionary it can't read.
         try:
             dictionary = mu.pdf_parse_dict(self._pdf(), reader, lexbuf)
         except mu.FzErrorSyntax:
             dictionary = None
-        parsed_to = mu.fz_tell(reader)  # where the parser stopped
+        parsed_to = mu.fz_tell(reader)
         # Read again, to the first >> that closes it by count.
         mu.fz_seek(reader, opened, 0)
         _read_past_dictionary(reader, lexbuf)
@@ -453,15 +410,13 @@ class PdfFile:
     ) -> bool:
         """Read past an image written into `drawing`, as MuPDF draws it; whether it can.
 
-        `reader` is just past its BI. MuPDF reads its dictionary, up to ID; its
-        bytes, as many as the dictionary says or its filter takes; then the EI
-        after them. `resources` are those it names its colour space from.
+        `reader` is just past its BI.
         """
         mu = pymupdf.mupdf
         # MuPDF raises on an image it can't read: its dictionary, colour space or bytes.
         try:
             dictionary = mu.pdf_parse_dict(self._pdf(), reader, lexbuf)
-            # A carriage return and a line feed after ID are one line end, then the bytes.
+            # A carriage return and line feed after ID are one line end.
             after_id = mu.fz_read_byte(reader)
             two_byte_end = after_id == ord("\r") and mu.fz_peek_byte(reader) == ord("\n")
             if two_byte_end:
@@ -569,15 +524,11 @@ def _values_of(dictionary: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
 
 
 def _appearances_of(page: pymupdf.mupdf.PdfObj) -> Iterator[pymupdf.mupdf.PdfObj]:
-    """Each appearance stream of each annotation on the page: plain, hovered and pressed.
-
-    An annotation's appearance is the drawing it shows on the page, kept in a
-    stream of its own.
-    """
+    """Each appearance of each annotation on the page: the drawing it shows, in each state."""
     mu = pymupdf.mupdf
     for annotation in _items_of(mu.pdf_dict_get(page, mu.PDF_ENUM_NAME_Annots)):
         for appearance in _values_of(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_AP)):
-            # One stream, or one for each state, as a checkbox's on and off.
+            # One stream, or one for each state.
             yield from [appearance] if mu.pdf_is_stream(appearance) else _values_of(appearance)
 
 
@@ -594,20 +545,20 @@ def _drawn_by(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
 
 
 def _forms_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
-    """Each form (XObject) `resources` names; an image holds no drawing."""
+    """Each form (XObject) `resources` names."""
     mu = pymupdf.mupdf
     for xobject in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_XObject)):
         subtype = mu.pdf_dict_get(xobject, mu.PDF_ENUM_NAME_Subtype)
-        # A form, not an image.
+        # A form: an image holds no drawing.
         if mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Form):
             yield xobject, _resources_of(xobject)
 
 
 def _tiling_patterns_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
-    """Each tiling pattern `resources` names; a shading pattern holds no drawing."""
+    """Each tiling pattern `resources` names."""
     mu = pymupdf.mupdf
     for pattern in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Pattern)):
-        # A tiling pattern, not a shading one.
+        # A tiling pattern: a shading one is a plain dictionary.
         if mu.pdf_is_stream(pattern):
             yield pattern, _resources_of(pattern)
 
@@ -618,7 +569,7 @@ def _soft_masks_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
     for state in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_ExtGState)):
         mask = mu.pdf_dict_get(state, mu.PDF_ENUM_NAME_SMask)
         group = mu.pdf_dict_get(mask, mu.PDF_ENUM_NAME_G)
-        # No soft mask, or /None.
+        # A soft mask, not absent or /None.
         if mu.pdf_is_stream(group):
             yield group, _resources_of(group)
 
@@ -649,8 +600,7 @@ def _items_of(array: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
 def _bytes_of(stream: pymupdf.mupdf.PdfObj) -> bytes:
     """A stream's bytes, decoded."""
     mu = pymupdf.mupdf
-    # A copy: a stream changed since the file was read lends its own buffer, and
-    # taking that buffer's bytes would empty the stream.
+    # A copy: a changed stream lends its own buffer; taking its bytes would empty the stream.
     return mu.fz_buffer_extract_copy(mu.pdf_load_stream(stream))
 
 
@@ -659,8 +609,7 @@ def _read_past_dictionary(
 ) -> None:
     """Read on past the >> that closes the dictionary `reader` is in, or to the end if none.
 
-    Counts only << and >>: a >> inside an array closes it here, though MuPDF
-    reads that as an item and reads on.
+    Counts only << and >>, so a >> in an array closes it, though not for MuPDF.
     """
     mu = pymupdf.mupdf
     depth = 1  # dictionaries open: the one `reader` is in, and each in it
@@ -684,10 +633,7 @@ def _load_inline_image(
     reader: pymupdf.mupdf.FzStream,
     resources: pymupdf.mupdf.PdfObj,
 ) -> None:
-    """Read an image's bytes from `reader`, as MuPDF does drawing it (pdf_load_inline_image).
-
-    MuPDF takes the resources as a stack (pdf_resource_stack); here, one of one.
-    """
+    """Read an image's bytes from `reader`, as MuPDF does drawing it."""
     mu = pymupdf.mupdf
     stack = mu.pdf_resource_stack()  # held here: the wrapper below only points at it
     stack.resources = resources.m_internal
@@ -708,14 +654,13 @@ def _as_written(value: pymupdf.mupdf.PdfObj) -> bytes:
 def _text_of(string: pymupdf.mupdf.PdfObj) -> str:
     """A string's text, all of it, each NUL in it read as a space.
 
-    MuPDF's own reading stops at a NUL, but in UTF-16. A NUL means nothing in
-    text, so it reads as what parts two words.
+    MuPDF's own reading stops at a NUL, except in UTF-16; a space keeps the words apart.
     """
     mu = pymupdf.mupdf
-    # A string of its own, an object of the file: written, it would read as its reference.
+    # A string that's an object of the file would be written as its reference.
     string = mu.pdf_resolve_indirect(string)
     written = _as_written(string)
-    # Written as text, it's all printable, so it holds no NUL: MuPDF writes any other as hex.
+    # Written as text, it holds no NUL: MuPDF writes an unprintable string as hex.
     if not written.startswith(b"<"):
         return mu.pdf_to_text_string(string)
     held = bytes.fromhex(written[1:-1].decode())
@@ -729,7 +674,7 @@ def _text_of(string: pymupdf.mupdf.PdfObj) -> str:
 def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     """A PDF string holding exactly these bytes."""
     mu = pymupdf.mupdf
-    # Read from them written as hex: MuPDF's own maker of a string takes text, not bytes.
+    # Parsed from hex: MuPDF's own maker of a string takes text, not bytes.
     written = mu.fz_new_buffer_from_copied_data(b"<" + held.hex().encode() + b">")
     lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)  # as `_markings_in` has it
     # A string belongs to no file, so it's read without one.
@@ -739,24 +684,16 @@ def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
 def _strings_anywhere_in(written: bytes) -> list[str]:
     """Each string in `written`, part of a drawing, as text, wherever a reader may start one.
 
-    A string starts at a ( or a <, and a reader that reads the bytes before
-    one otherwise than MuPDF (as an image's bytes, or as a comment) may start
-    at any of them. So each is read: in brackets (`_literal_strings_in`) and
-    in hex (`_hex_strings_in`), each as text, and from each mark of UTF-16 or
-    UTF-8 in it (`_texts_of`).
+    That's at any ( or <, since a reader may read the bytes before it otherwise than MuPDF.
     """
     held = _literal_strings_in(written) + _hex_strings_in(written)
     return [text for string in held for text in _texts_of(string)]
 
 
 def _literal_strings_in(written: bytes) -> list[bytes]:
-    """The bytes of each string in brackets in `written`, from each (, once.
+    """The bytes of each string in brackets in `written`, through the ) that closes it.
 
-    A string starting at a ( inside another ends inside it, no later, so its
-    bytes are part of that one's, a bracket either side: each is read from
-    the first ( past the end of the one before. Each with the ) that closes
-    it, which reads as no letter; one never closed reads to the end, as a
-    reader that forgives it reads it.
+    One inside another is read only as part of it, since it ends inside it.
     """
     found: list[bytes] = []
     start = written.find(b"(")
@@ -788,13 +725,9 @@ def _unescaped(escape: re.Match[bytes]) -> bytes:
 
 
 def _hex_strings_in(written: bytes) -> list[bytes]:
-    """The bytes of each string in hex in `written`, from each <.
+    """The bytes of each string in hex in `written`, whole and from each < to the next.
 
-    Each is read from its first < to its >, on past a < inside, as MuPDF
-    and pdf.js read on past what's no digit. A reader that starts at a <
-    inside reads a tail of those digits, so reading them from the first
-    digit and from the second holds its bytes too. The digits from each <
-    up to the next are read as well.
+    Each from its first digit and its second too: a reader starting partway lines up with one.
     """
     found: list[bytes] = []
     for string in _HEX_STRING.finditer(written):
@@ -812,13 +745,10 @@ def _bytes_of_hex(digits: bytes) -> bytes:
 
 
 def _texts_of(held: bytes) -> list[str]:
-    """The text of a string holding `held`; and from each mark of UTF-16 or UTF-8 in it.
+    """The text of a string holding `held`, and again in each encoding a mark in it names.
 
-    A string that starts inside it, at a mark, reads in that mark's encoding.
-    So `held` is read in it too, from each of the two bytes a letter of
-    UTF-16 may start on; and again cut at each ), where such a string ends,
-    so a letter it makes with the bytes after it can't join a word. A NUL
-    reads as a space, as `_text_of` reads one.
+    A string may start at a mark inside it, so `held` is read from either byte a UTF-16
+    letter may start on, whole and cut at each ), where such a string ends.
     """
     texts = [_text_of(_string_of(held))]
     for mark, codec in _MARKED_CODECS.items():

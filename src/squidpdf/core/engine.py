@@ -297,9 +297,7 @@ class Engine:
     def still_hidden(self, spans: Iterable[Span]) -> list[Span]:
         """The spans with a word of their text still in a hidden copy on their page.
 
-        Read as `drop_hidden_copies` deletes them: whole words in any case, so
-        "Annual" isn't a leftover "Ann", and a word of one letter only within
-        the whole text.
+        Matched as `drop_hidden_copies` deletes them (`_whole_words`).
         """
         left = (self._hidden_on(page, on_page) for page, on_page in _by_page(spans).items())
         return [span for on_page in left for span in on_page]
@@ -368,18 +366,10 @@ def _any_word_left(text: str, left: str) -> bool:
 
 
 def _whole_words(spans: Iterable[Span]) -> re.Pattern[str]:
-    """The spans' words, each matched only as a whole word, in any case, the longest first.
+    """The spans' words as one pattern: whole words only, in any case, the longest first.
 
-    Each span's text whole, then each of its words of two letters or more. A
-    word of one letter counts only within the whole text, as `_any_word_left`
-    reads it: alone, "a" or "I" is in most sentences. So a whole text of one
-    letter, as a box's "X", goes wherever it stands alone. Longest first, so a
-    whole text goes before its words leave its one-letter words behind.
-
-    Looser than `_any_word_left`, which reads back the page's own letters, as
-    the span has them: a hidden copy is typed. So in any case, since a
-    heading's "JOHN SMITH" is an image's "John Smith", and with ligatures as
-    their letters (`_comparable`).
+    In any case, since a hidden copy is typed, not the page's own letters. Longest
+    first, so a whole text goes whole, its one-letter words with it.
     """
     choices = {choice for span in spans for choice in _word_choices(span.text)}
     longest_first = sorted(choices, key=len, reverse=True)
@@ -390,13 +380,8 @@ def _whole_words(spans: Iterable[Span]) -> re.Pattern[str]:
 def _word_choices(text: str) -> list[str]:
     """`text` whole, then each word of two letters or more, as patterns.
 
-    A word is a run of letters and digits, so what joins two (a space,
-    punctuation, an underscore) is set aside: a line's "O'Brien" with a
-    curly apostrophe is a hidden copy's typed with a straight one, its
-    "4111-1111" a hidden copy's "4111 1111", its "Smith," a file name's
-    "john_smith". The whole text is its words with anything of the kind
-    between; one with no letter or digit, as a lone bullet, is itself,
-    spaces aside.
+    Alone, "a" or "I" is in most sentences. The whole text matches its words with anything
+    but letters and digits between, since a hidden copy may join them otherwise.
     """
     comparable = _comparable(text)
     words = _WORD.findall(comparable)
@@ -405,9 +390,9 @@ def _word_choices(text: str) -> list[str]:
 
 
 def _comparable(text: str) -> str:
-    """`text` with each ligature or styled letter as its plain letters (NFKC): "ﬁ" reads "fi".
+    """`text` with each ligature or styled letter as its plain letters (NFKC).
 
-    A page's letters keep their ligatures, and a hidden copy someone typed doesn't.
+    A page's letters keep their ligatures, and a typed hidden copy doesn't.
     """
     return unicodedata.normalize("NFKC", text)
 
@@ -425,7 +410,7 @@ def _any_holds(words: re.Pattern[str], hidden_copies: list[str]) -> bool:
 def _without(words: re.Pattern[str], hidden_copy: str) -> str:
     """A hidden copy with `words` deleted and the spaces closed up; as it was if none are in it.
 
-    What's left reads as it was compared, its ligatures spelled out.
+    What's left has its ligatures spelled out, as it was compared.
     """
     if not _holds(words, hidden_copy):
         return hidden_copy

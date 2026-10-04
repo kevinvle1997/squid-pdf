@@ -462,21 +462,11 @@ class _MuPDFDriver:
         self.file.drop_links(page, boxes)
 
     def hidden_copies(self, page: int) -> list[str]:
-        """Every hidden copy on the page, as text: those `rewrite_hidden_copies` reaches.
-
-        And each string written in a marked content's dictionary MuPDF reads
-        only in part, and every string from one not read whole, or from an
-        image it can't read, to the end of that drawing: as MuPDF's own reader
-        of a page's drawing reads them, and from every ( and < where another
-        reader may start one.
-        """
+        """Every hidden copy on the page, as text, and each string MuPDF may miss."""
         return self.file.hidden_copies(page)
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
-
-        Read with MuPDF's own reader of a drawing, so the hidden copies are those MuPDF reads.
-        """
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
         self.file.rewrite_hidden_copies(page, rewritten)
 
     def write_codes(

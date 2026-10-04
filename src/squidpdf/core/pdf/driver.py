@@ -150,37 +150,19 @@ class PdfDriver(Protocol):
         ...
 
     def hidden_copies(self, page: int) -> list[str]:
-        """Every hidden copy on the page, as text: those `rewrite_hidden_copies` reaches.
+        """Every hidden copy on the page, as text, and each string the library may miss.
 
-        And each string written in a marked content's dictionary the library
-        reads only in part (it keeps one of a key written twice); and every
-        string from a dictionary the library doesn't read whole (its reading
-        and a count of << and >> end apart, or it can't read it), or from an
-        image written into a drawing that it can't read, to the end of that
-        drawing, read from every ( and < where one may start, since another
-        reader may read the bytes before it otherwise (as an image's, or as a
-        comment): any may be a hidden copy another reader keeps, so a word
-        left there fails a check rather than passing it. A string the library
-        reads in any other key, as a language (`/Lang`), is no hidden copy.
+        Another reader may keep a string the library misses, so a redacted word there fails the
+        check. A string the library reads under another key, as a language, is no hidden copy.
         """
         ...
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one left blank goes.
+        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes.
 
-        A hidden copy is words marked content keeps beside what it draws: what
-        its letters stand for (ActualText), an image's description (Alt), an
-        abbreviation's long form (E). Erasing the letters leaves them, and a
-        screen reader, copy and paste, or a search reads them. Every one the
-        page's drawing reaches, and each drawing it draws: forms (XObjects),
-        tiling patterns, soft masks and Type3 fonts' letters; and the same in
-        each annotation's appearance (the drawing it shows on the page). A
-        hidden copy `rewritten` leaves as it was stays as the file wrote it, as
-        does each in a dictionary the library doesn't read whole (its reading
-        and a count of << and >> end apart, or it can't read it), or after an
-        image it can't read. A dictionary with a key written twice is written
-        back with the one the library reads, so no other reader finds the
-        other. A NUL in a hidden copy reads as a space, as between two words.
+        A hidden copy is text marked content keeps beside what it draws (ActualText, Alt, E),
+        which a screen reader or a search still reads after the letters go. One the library
+        can't read whole stays as written; a key written twice keeps only the one it reads.
         """
         ...
 

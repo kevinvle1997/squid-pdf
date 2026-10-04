@@ -38,7 +38,7 @@ _LINES = ["First page", "Second page", "Third page"]
 _OPENING = "This agreement is made on"  # how the long fixture's first line starts
 _UNTIMED_S = 600  # time enough for any analysis: an upload isn't what's timed here
 _NUMBER = "4111 1111 1111 1111"  # the marked fixture's card number, redacted
-# Its line, drawn with an fi ligature. Its "US" is in the language the kept line names too.
+# Its line, drawn with an fi ligature; its "US" is in the kept line's "en-US" too.
 _CARD_LINE = f"A US card on \ufb01le: {_NUMBER}"
 _CARD = f"A US card on file {_NUMBER}"  # its line as its hidden copies hold it: typed, no colon
 _KEPT = "Keep this line"  # its other line
@@ -53,11 +53,10 @@ _LIGATURES = (
 )
 # A one-dot image written into a drawing, in hex, its end of data (>) against its EI.
 _HEX_IMAGE = "BI /W 1 /H 1 /BPC 8 /CS /G /F /AHx ID 00>EI"
-# A 4 by 4 image written as it is, its 16 bytes after ID and a CR LF, which are one line
-# end. They happen to read " EI (", and to end in an E that an I follows: only their count,
-# from past the whole line end, says where they end.
+# A 4 by 4 image: 16 raw bytes after ID and a carriage return and line feed. They hold " EI ("
+# and end in an E an I follows: only their count, from past the line feed, says where they end.
 _UNFILTERED_IMAGE = "BI /W 4 /H 4 /BPC 8 /CS /G ID\r\n\0 EI (" + "\0" * 9 + "EI ( EI"
-# A form: a drawing of its own, 100 points square, that a page draws as it draws an image.
+# A form: a drawing of its own, 100 points square, that a page draws like an image.
 _FORM = {"Type": "/XObject", "Subtype": "/Form", "BBox": "[0 0 100 100]"}
 # A tiling pattern: painted with its own colours, tiled at even spacing, every 20 points.
 _TILING = {
@@ -75,11 +74,7 @@ _TYPE3 = (
     "/Encoding<</Type/Encoding/Differences[120/x]>>/FirstChar 120/LastChar 120/Widths[1000]"
     "/CharProcs<</x {letter} 0 R>>>>"
 )
-# Where `_marked_pdf` can keep a hidden copy: the page's drawing, a marked point in it, its
-# properties, a form it draws, a tiling pattern it fills with, a soft mask it paints
-# through, a Type3 letter it writes, an annotation's appearance. Then hidden copies written
-# oddly: with a NUL before the line, in a tiling pattern and as a string of its own the
-# properties name; with its dictionary before its tag; and under a key written twice.
+# The places `_marked_pdf` keeps a hidden copy that the redaction can rewrite.
 _PLACES = (
     "drawing",
     "point",
@@ -244,8 +239,7 @@ def marked() -> bytes:
 def _marked_pdf(places: Collection[str]) -> bytes:
     """A tagged page that keeps its card line beside the letters, in each of `places`.
 
-    All but the inline ActualText wrap a square: MuPDF's erase drops marked
-    content it leaves empty, and the Properties it names with it.
+    Most wrap a square: MuPDF's erase drops marked content it leaves empty, and its Properties.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -254,13 +248,10 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     resources_xref = int(resources.split()[0])
     doc.xref_set_key(resources_xref, "Font/Lig", _LIGATURES)
     number = f"({_NUMBER}) Tj"
-    # The kept line, with an ActualText of its own, which stays, and its language, as Word
-    # names it: no hidden copy, so it stays too, though it holds a word of the redacted line.
+    # The kept line, whose ActualText stays, and its language, which is no hidden copy.
     kept = f"<</Lang (en-US) /ActualText ({_KEPT})>>"
     drawing = [f"/Span {kept} BDC BT /helv 12 Tf 72 700 Td ({_KEPT}) Tj ET EMC"]
-    # The page's drawing: the number inside marked content whose ActualText repeats it, as
-    # Word and LaTeX (accsupp) write it, only the number, as MuPDF reads it for the letters
-    # it wraps; and an abbreviation's long form (E) holding the line.
+    # The number, in an ActualText MuPDF reads as its letters; and an E holding the line.
     if "drawing" in places:
         number = f"/Span <</ActualText ({_NUMBER})>> BDC {number} EMC"
         drawing.append(f"/Span <</E ({_CARD})>> BDC {_SQUARE} EMC")
@@ -271,22 +262,19 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     if "properties" in places:
         doc.xref_set_key(resources_xref, "Properties/MC0", f"<</ActualText ({_CARD})>>")
         drawing.append(f"/Span /MC0 BDC {_SQUARE} EMC")
-    # A form the page draws, an image's Alt in it naming the image's file: the line's words
-    # in lower case, joined by underscores. Its own words stay, its "A" of one letter too.
+    # A form with an image's Alt naming its file after the line; its own words stay, "A" too.
     if "form" in places:
         alt = f"/Figure <</Alt (A scan: {_SCAN})>> BDC {_SQUARE} EMC"
         figure = _new_stream(doc, alt, **_FORM)
         doc.xref_set_key(resources_xref, "XObject/Fm0", f"{figure} 0 R")
         drawing.append("/Fm0 Do")
-    # A tiling pattern the page fills a square with. First a dictionary MuPDF can't read, a
-    # key with no value, as a damaged file might have: MuPDF draws on past it, as must we.
+    # A tiling pattern, the line after a dictionary MuPDF can't read but draws on past.
     if "pattern" in places:
         unreadable = f"/Span <</ActualText (Logo) /Bad>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, f"{unreadable} {_AROUND_SQUARE}", **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P0", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P0 scn {_SQUARE}")
-    # A soft mask the page paints a square through. Its group: the drawing whose brightness
-    # says how much shows through.
+    # A soft mask the page paints a square through; its group is a drawing too.
     if "smask" in places:
         group = _new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
         mask = f"<</SMask<</S/Luminosity/G {group} 0 R>>>>"
@@ -305,37 +293,31 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         _kind, appearance = doc.xref_get_key(annotation.xref, "AP/N")
         appearance_drawing = f"{_UNFILTERED_IMAGE} {_AROUND_SQUARE}"
         doc.update_stream(int(appearance.split()[0]), appearance_drawing.encode())
-    # A tiling pattern whose hidden copy has a NUL (\000) before the line, as a careless
-    # producer might write: MuPDF's own reading of such a string stops at it.
+    # A tiling pattern whose hidden copy has a NUL before the line, where MuPDF stops reading.
     if "nul" in places:
         after_nul = f"/Span <</ActualText (Ref\\000{_CARD})>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, after_nul, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P3", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P3 scn {_SQUARE}")
-    # The page's properties, /MC1, naming the same hidden copy as a string of its own (an
-    # object of the file), which MuPDF's reading of a string in a dictionary doesn't follow.
+    # The same as a string of its own (an object of the file), which the properties /MC1 name.
     if "nul_reference" in places:
         string = doc.get_new_xref()
         doc.update_object(string, f"(Ref\\000{_CARD})")
         doc.xref_set_key(resources_xref, "Properties/MC1", f"<</ActualText {string} 0 R>>")
         drawing.append(f"/Span /MC1 BDC {_SQUARE} EMC")
-    # A tiling pattern whose marked content has its dictionary before its tag, which MuPDF
-    # draws as if after it.
+    # A tiling pattern with the dictionary before its tag, which MuPDF reads as if after.
     if "dictionary_first" in places:
         first = f"<</ActualText ({_CARD})>> /Span BDC {_SQUARE} EMC"
         tile = _new_stream(doc, first, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P5", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P5 scn {_SQUARE}")
-    # A tiling pattern whose ActualText is written twice, the line first. MuPDF keeps the
-    # last, "Logo"; a reader that keeps the first, or a search of the drawing, finds the line.
+    # A tiling pattern with ActualText written twice, the line first: MuPDF keeps "Logo".
     if "twice" in places:
         twice = f"/Span <</ActualText ({_CARD}) /ActualText (Logo)>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, twice, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
-    # Alone: a tiling pattern whose dictionary MuPDF can't read holds the line, in UTF-16
-    # written as hex, as Word writes an ActualText. The redaction can't rewrite it, and a
-    # check that read its bytes rather than its text would miss the number.
+    # Alone: a dictionary MuPDF can't read, the line in UTF-16 hex: a check must read its text.
     if "unreadable" in places:
         line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # UTF-16, as hex
         unreadable = f"/Span <</ActualText {line} /Bad>> BDC {_SQUARE} EMC"
@@ -348,45 +330,39 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P2", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P2 scn {_SQUARE}")
-    # Alone: the same, but MuPDF's parser stops, raising nothing, at an ID where a key goes,
-    # as an image's dictionary ends: before the line.
+    # Alone: the same, but MuPDF's parser stops quietly before the line, at an ID.
     if "unreadable_id" in places:
         unreadable = f"/Span <</ActualText (Logo) ID /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P7", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P7 scn {_SQUARE}")
-    # Alone: the same, but with a >> inside an array before the line, which MuPDF reads as
-    # an item and reads on past, and a reader counting only << and >> takes as the end.
+    # Alone: the same, but a >> in an array before the line, which a count takes as the end.
     if "unreadable_array" in places:
         unreadable = f"/Span <</A [ >> ] /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P8", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P8 scn {_SQUARE}")
-    # Alone: the same, then a key that's a string, where MuPDF stops: both readings stop
-    # before the line, so neither says where the dictionary ends.
+    # Alone: the same, then a key that's a string: both readings stop before the line.
     if "unreadable_both" in places:
         unreadable = f"/Span <</A [ >> ] (junk) /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P9", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P9 scn {_SQUARE}")
-    # Alone: a tiling pattern with a one-dot image and no EI after its byte, then the line.
-    # MuPDF reads no further than such an image, so the redaction can't rewrite what's after.
+    # Alone: an image with no EI after its byte, then the line, which MuPDF never reaches.
     if "unreadable_image" in places:
         no_end = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 {_AROUND_SQUARE}"
         tile = _new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P4", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P4 scn {_SQUARE}")
-    # Alone: the same, but the image says it has 100 bytes, spaces after the line giving
-    # them, and its first is a %. A reader that ends it at the first EI reads the line;
-    # MuPDF's reader of a drawing would take the % as a comment, to the end of the line.
+    # Alone: the same, but 100 bytes, the first a %, which MuPDF's reader of a drawing takes as
+    # a comment over the line, though a reader ending the image at the first EI reads the line.
     if "unreadable_image_comment" in places:
         no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID %EI {_AROUND_SQUARE}{' ' * 100}"
         tile = _new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P10", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P10 scn {_SQUARE}")
-    # Alone: the same, but its first byte a (, and the line in UTF-16, each byte in octal,
-    # as Word writes an ActualText. MuPDF's reader of a drawing would take the ( as the
-    # start of a string, with the line's inside it, where its mark of UTF-16 isn't first.
+    # Alone: the same, its first byte a (: MuPDF's reader of a drawing reads one string from it,
+    # the line in UTF-16 octal inside it, its mark of UTF-16 not first.
     if "unreadable_image_string" in places:
         in_utf16 = f"\ufeff{_CARD}".encode("utf-16-be")  # its mark first, as Word has it
         line = "".join(f"\\{byte:03o}" for byte in in_utf16)
@@ -395,10 +371,8 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P11", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P11 scn {_SQUARE}")
-    # Alone: a dictionary not read whole, an image where a value goes, its byte a <, and
-    # the line in UTF-16 written as hex. A reader that ends the image at its EI reads the
-    # line; MuPDF's reader of a drawing would take the < as the start of a string in hex
-    # that reads on past the line's own <, its digits from the first < on odd in number.
+    # Alone: an image where a value goes, its byte a <, then the line as UTF-16 hex: MuPDF's
+    # reader of a drawing reads one hex string from that < past the line's, digits out of step.
     if "unreadable_image_hex" in places:
         image = "BI /W 1 /H 1 /BPC 8 /CS /G ID <EI"
         line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"
@@ -437,18 +411,7 @@ def _hidden_copies_in(pdf: pymupdf.Document) -> list[tuple[str, str]]:
 
 
 def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked):
-    """A screen reader, copy and paste, or a search reads a hidden copy, so it goes too.
-
-    Whole words in any case, the line's ligature read as the letters typed in
-    its hidden copies: the Alt's file name goes, and its own words stay, its
-    word of one letter too, and so does the kept line's hidden copy. One after
-    an image goes too, and one after a NUL, which leaves the words before it,
-    whether written in its dictionary or as a string of its own. One whose
-    dictionary is written before its tag goes, and one under a key written
-    twice, leaving the other. A dictionary MuPDF can't read stays as it was,
-    and the file still comes. The kept line's language is no hidden copy: it
-    stays, though it holds a redacted word.
-    """
+    """A redaction removes its whole words from every hidden copy on its page, and no more."""
     doc = upload(mine, marked).json()
     card = span_starting(doc, 0, "A US card")
 
@@ -483,21 +446,7 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
-    """The letters are gone, but a hidden copy is as much a leak: no file, the span named.
-
-    One place at a time, so the check is shown to read each place on its own:
-    a hidden copy with a NUL before the line is read past it, a string of its
-    own included; one whose dictionary is written before its tag; one under
-    the first of a key written twice, which MuPDF doesn't keep; a dictionary
-    not read whole, which the removal leaves as written, whether MuPDF stops
-    reading it after the line or before, at a key that's a string or at an ID,
-    or reads on past a >> inside an array where a count stops, or both stop
-    before the line; and all that follows an image MuPDF can't read, which
-    the removal leaves too. What follows either is read from wherever a
-    string may start: after a byte of an image that MuPDF's reader of a
-    drawing takes as starting a comment, a string or a string in hex, which
-    a reader that ends the image at its first EI doesn't.
-    """
+    """A hidden copy left in any one place fails the check: no file, the span named."""
     monkeypatch.setattr(app.state, "pool", _InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
     doc = upload(mine, _marked_pdf([place])).json()
