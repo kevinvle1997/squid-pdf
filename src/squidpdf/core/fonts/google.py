@@ -32,7 +32,7 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import FETCH_RETRY_S, FETCH_TIMEOUT_S, GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
-from squidpdf.core.fonts.look_alike import WEIGHTS, bare_name, style_of, weight_of
+from squidpdf.core.fonts.names import WEIGHTS, bare_name, style_of, weight_of
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 

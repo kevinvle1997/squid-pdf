@@ -14,7 +14,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from itertools import chain, repeat
 
-from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.types import Span, TextPiece
 

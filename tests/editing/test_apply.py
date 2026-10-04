@@ -15,7 +15,7 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import Engine, QuarterTurn, Span, SpanIndex, new_text, open_pdf, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
-from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.editing import (
     Applied,
     BadReference,

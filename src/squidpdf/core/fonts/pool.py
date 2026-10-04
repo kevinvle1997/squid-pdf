@@ -23,7 +23,7 @@ from squidpdf.core.constants import (
 )
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.fonts.google import GoogleFile
-from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
 
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.

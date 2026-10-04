@@ -19,7 +19,7 @@ from squidpdf.core import (
     open_pdf,
     words,
 )
-from squidpdf.core.fonts.look_alike import strip_subset
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as

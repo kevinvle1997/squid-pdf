@@ -16,7 +16,8 @@ from functools import partial
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
-from squidpdf.core.fonts.look_alike import look_alike, strip_subset
+from squidpdf.core.fonts.look_alike import look_alike
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.fonts.pool import (
     FontCopy,
     PooledFont,
