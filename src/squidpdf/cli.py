@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import get_args
+from typing import TextIO, get_args
 
 from squidpdf.core import (
     GREEN_RATE_TARGET,
@@ -53,10 +53,18 @@ from squidpdf.editing import (
 )
 from squidpdf.editing.edits import check_text
 
-# Colours for a terminal; none when the output is piped or the reader set NO_COLOR.
-_COLOURED = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+# A terminal's colours: dim, red, green, yellow, and back to plain.
 _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
-_DIM, _RED, _GREEN, _YELLOW, _OFF = _COLOURS if _COLOURED else ("",) * len(_COLOURS)
+
+
+def _colours_of(stream: TextIO) -> tuple[str, ...]:
+    """`_COLOURS` when `stream` is a terminal and NO_COLOR isn't set; blanks otherwise."""
+    coloured = stream.isatty() and "NO_COLOR" not in os.environ
+    return _COLOURS if coloured else ("",) * len(_COLOURS)
+
+
+# Colours for stdout; a failure, on stderr, gets its own in `_fail`.
+_DIM, _RED, _GREEN, _YELLOW, _OFF = _colours_of(sys.stdout)
 
 # How each judgement is marked in `spans`, padded to one width.
 _MARKS: dict[Fidelity, str] = {
@@ -68,7 +76,8 @@ _MARKS: dict[Fidelity, str] = {
 _TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
 _NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
 _NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
-_SAMPLE = "fixtures/sample.pdf"  # the committed sample the tests read
+# The committed sample: the browser's end-to-end test and deploy/check.sh read it.
+_SAMPLE = "fixtures/sample.pdf"
 
 
 def _opened(pdf: str) -> Engine:
@@ -107,13 +116,16 @@ def _summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     counts = Counter(report.state for report in reports)
-    colour = _GREEN if rate >= GREEN_RATE_TARGET else _YELLOW
-    print(
+    tally = (
         f"\n  {len(reports)} spans · {counts['exact']} exact"
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
-        f" · {colour}{rate:.0%} keep the original font{_OFF}"
     )
+    # No text, so no green rate.
+    if rate is None:
+        print(f"{tally} · no text")
+        return
+    print(f"{tally} · {_rate_colour(rate)}{rate:.0%} keep the original font{_OFF}")
 
 
 class _UnknownSpan(Exception):
@@ -184,10 +196,9 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         fitted = not fit.missing and fit.strategy != "as-is"
         refused = not (fit.ok or fitted or args.force)
         if refused:
-            described = words.render_all(fit.describe())
-            refusal = f"  {_RED}{described}{_OFF} {_DIM}(pass --force to do it anyway){_OFF}"
-            print(refusal, file=sys.stderr)
-            return 1
+            # `render_all` gives None for no messages, but a fit that isn't ok always has one.
+            described = str(words.render_all(fit.describe()))
+            return _fail(described, hint="(pass --force to do it anyway)")
 
         # The same save a download gets.
         saved = save_edited(opened.engine, opened.index, edits=[replace], to=args.out)
@@ -208,8 +219,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                 opened.engine, opened.index, edits=[Redact(span.id)], to=args.out
             )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
-            print(f"  {_RED}{failed.detail}{_OFF}", file=sys.stderr)
-            return 1
+            return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
@@ -217,38 +227,57 @@ def _cmd_redact(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True, slots=True)
+class _Row:
+    """One file's line in `report`."""
+
+    path: str
+    read: bool  # whether it opened and was assessed
+    rate: float | None  # its green rate; None if it has no text or wasn't read
+    note: str  # how many spans it has, or why it couldn't be read
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
-    """Green rate across a corpus. Below 80% the promise inverts into an apology."""
-    rows: list[tuple[str, float | None, str]] = []
+    """Green rate across a corpus; exits 1 when it could read no file."""
+    rows: list[_Row] = []
     total = exact_count = 0
     for path in args.pdfs:
         try:
             with _opened(path) as engine:
                 reports = engine.assess(engine.index())
         except Problem as exc:  # damaged or password-protected: says which
-            rows.append((path, None, exc.detail))
+            rows.append(_Row(path, read=False, rate=None, note=exc.detail))
             continue
         except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
-            rows.append((path, None, str(exc)[:_NAME_COL_WIDTH]))
+            rows.append(_Row(path, read=False, rate=None, note=str(exc)[:_NAME_COL_WIDTH]))
             continue
         exact_count += sum(1 for report in reports if report.state == "exact")
         total += len(reports)
-        rows.append((path, green_rate(reports), f"{len(reports)} spans"))
+        rate = green_rate(reports)
+        rows.append(_Row(path, read=True, rate=rate, note=f"{len(reports)} spans"))
 
     print()
-    for path, rate, note in rows:
-        name = posixpath.basename(path)[:_NAME_COL_WIDTH]
-        # The file couldn't be read: `note` says why.
-        if rate is None:
-            print(f"  {_RED}failed{_OFF}   {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
-            continue
-        colour = _rate_colour(rate)
-        print(f"  {colour}{rate:>5.0%}{_OFF}    {name:<{_NAME_COL_PAD}}{_DIM}{note}{_OFF}")
+    for row in rows:
+        print(_line_of(row))
     if total:
         overall = exact_count / total
-        colour = _GREEN if overall >= GREEN_RATE_TARGET else _YELLOW
+        colour = _rate_colour(overall)
         print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
-    return 0
+    read_any = any(row.read for row in rows)
+    return 0 if read_any else 1
+
+
+def _line_of(row: _Row) -> str:
+    """A file's line in `report`: its green rate, its name, and a note."""
+    name = posixpath.basename(row.path)[:_NAME_COL_WIDTH]
+    name_and_note = f"{name:<{_NAME_COL_PAD}}{_DIM}{row.note}{_OFF}"
+    # The file couldn't be read: `note` says why.
+    if not row.read:
+        return f"  {_RED}failed{_OFF}   {name_and_note}"
+    # No text, so no green rate.
+    if row.rate is None:
+        return f"  no text  {name_and_note}"
+    return f"  {_rate_colour(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
 
 
 def _rate_colour(rate: float) -> str:
@@ -274,12 +303,18 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fail(said: str, *, hint: str = "") -> int:
+    """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
+    dim, red, _green, _yellow, off = _colours_of(sys.stderr)
+    shown_hint = f" {dim}{hint}{off}" if hint else ""
+    print(f"  {red}{said}{off}{shown_hint}", file=sys.stderr)
+    return 1
+
+
 def _no_span(span_id: str) -> int:
     """Print the standard error for an unknown span id and return the exit code."""
-    said = words.sentence("no_span")
-    hint = f"{_DIM}({span_id}: run `squidpdf spans` to list them){_OFF}"
-    print(f"  {_RED}{said}{_OFF} {hint}", file=sys.stderr)
-    return 1
+    hint = f"({span_id}: run `squidpdf spans` to list them)"
+    return _fail(words.sentence("no_span"), hint=hint)
 
 
 def _existing_file(path: str) -> str:
@@ -369,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
     if overwrites:
         parser.error(f"-o {args.out} is the PDF being read; save to a new file")
-    # The tests read the committed sample, so a long contract never lands on it.
+    # Others read `_SAMPLE`, so a long contract never replaces it.
     if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
         parser.error(f"--pages would replace {_SAMPLE}; name another file")
     try:
@@ -378,8 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     except _UnknownSpan as unknown:  # the span id typed isn't in the PDF
         return _no_span(unknown.span_id)
     except Problem as exc:  # e.g. the one PDF a command was given won't open
-        print(f"  {_RED}{exc.detail}{_OFF}", file=sys.stderr)
-        return 1
+        return _fail(exc.detail)
 
 
 if __name__ == "__main__":

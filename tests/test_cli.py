@@ -1,21 +1,24 @@
 """The command line, driven the way a person types it.
 
-Each test calls `main()` with the words someone would type after `squidpdf`,
-then checks the exit code, what was printed, and any file it wrote. The
-pieces underneath are tested on their own in tests/core and tests/editing;
-these only check that the commands wire them together.
+Only the wiring is checked; the pieces have tests of their own. Colour needs
+a real terminal, so its tests run the command in a process of its own.
 """
 
 from __future__ import annotations
 
+import os
+import pty
 import shutil
-from typing import get_args
+import subprocess
+import sys
+from typing import Literal, get_args
 
 import pymupdf
 import pytest
 
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Engine, Fidelity, open_pdf, words
+from tests.conftest import named_only
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 
@@ -23,6 +26,46 @@ def _span_id(pdf: str, needle: str) -> str:
     """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
     with open_pdf(pdf) as engine:
         return next(s.id for s in engine.index() if needle in s.text)
+
+
+def _read_until_closed(fd: int) -> str:
+    """Everything written to the terminal whose other end is `fd`, once the writer is gone."""
+    chunks = []
+    while True:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:  # once the writer closes, Linux ends the read with EIO, not b""
+            break
+        if not chunk:
+            break
+        chunks.append(chunk)
+    os.close(fd)
+    return b"".join(chunks).decode()
+
+
+def _run_in_a_terminal(
+    args: list[str], *, terminal: Literal["stdout", "stderr"]
+) -> dict[str, str]:
+    """What `squidpdf <args>` writes to each stream when only `terminal` is a terminal.
+
+    NO_COLOR is unset, as in most shells. The terminal is read only once the
+    command ends, so its output must be short.
+    """
+    reader, writer = pty.openpty()
+    streams = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, terminal: writer}
+    env = {name: value for name, value in os.environ.items() if name != "NO_COLOR"}
+    ran = subprocess.run(
+        [sys.executable, "-m", "squidpdf.cli", *args],
+        stdout=streams["stdout"],
+        stderr=streams["stderr"],
+        env=env,
+        check=False,
+    )
+    os.close(writer)
+    shown = _read_until_closed(reader)
+    if terminal == "stdout":
+        return {"stdout": shown, "stderr": ran.stderr.decode()}
+    return {"stdout": ran.stdout.decode(), "stderr": shown}
 
 
 def _text(path) -> str:
@@ -66,6 +109,31 @@ def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
     assert_equal(code, 1, "exit code of `squidpdf spans` on a damaged PDF")
     assert_in(words.sentence("damaged"), said.err, "what it says")
     assert_not_in("Traceback", said.err, "what it says")
+
+
+@pytest.mark.parametrize(("terminal", "coloured"), [("stdout", False), ("stderr", True)])
+def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal, coloured):
+    """`2> errors.log` keeps no colour codes, even when stdout is a terminal."""
+    broken = tmp_path / "broken.pdf"
+    broken.write_text("not a pdf")
+
+    said = _run_in_a_terminal(["spans", str(broken)], terminal=terminal)
+
+    assert_in(words.sentence("damaged"), said["stderr"], "what it says on stderr")
+    assert_equal(
+        "\033[" in said["stderr"], coloured, f"colour on stderr, {terminal} a terminal"
+    )
+
+
+@pytest.mark.parametrize("command", ["spans", "report"])
+def test_a_rate_below_the_warning_line_is_red_wherever_it_is_shown(tmp_path, command):
+    """`spans` and `report`'s total colour a rate as `report`'s rows do."""
+    named = named_only(str(tmp_path / "named.pdf"), "Calibri")  # drawn in a substitute: 0%
+
+    said = _run_in_a_terminal([command, named], terminal="stdout")
+
+    red = "\033[31m"
+    assert_in(f"{red}0%", said["stdout"], f"the green rate `squidpdf {command}` gives")
 
 
 def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):
@@ -199,6 +267,34 @@ def test_report_rates_each_file_and_carries_on_past_a_bad_one(pdf, tmp_path, cap
     assert_in("spans keep the original font", out, "the report's overall line")
 
 
+def test_report_fails_when_it_could_read_no_file(tmp_path, capsys):
+    """A script running it sees that nothing was measured."""
+    broken = tmp_path / "broken.pdf"
+    broken.write_text("not a pdf")
+
+    code = main(["report", str(broken)])
+
+    assert_equal(code, 1, "exit code of `squidpdf report` with no file it could read")
+    assert_in("failed", capsys.readouterr().out, "the report row for the bad file")
+
+
+@pytest.mark.parametrize("command", ["spans", "report"])
+def test_a_document_with_no_text_has_no_green_rate(tmp_path, capsys, command):
+    """Nothing to edit isn't nothing kept: 0% would mark it red, as if every edit failed."""
+    blank = tmp_path / "blank.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page()
+        doc.save(blank)
+
+    code = main([command, str(blank)])
+
+    out = capsys.readouterr().out
+    assert_equal(code, 0, f"exit code of `squidpdf {command}` on a page with no text")
+    assert_in("no text", out, f"what `squidpdf {command}` says of it")
+    assert_not_in("%", out, f"a green rate in `squidpdf {command}`")
+    assert_not_in("failed", out, f"what `squidpdf {command}` says of a file it read")
+
+
 def test_fixture_writes_a_pdf_the_other_commands_can_read(tmp_path, capsys):
     out_pdf = tmp_path / "sample.pdf"
 
@@ -225,7 +321,7 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
 
 
 def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkeypatch, capsys):
-    """The tests read fixtures/sample.pdf, so a long contract must be saved elsewhere."""
+    """Other checks read the sample."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "fixtures").mkdir()
 

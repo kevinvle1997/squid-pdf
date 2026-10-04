@@ -63,14 +63,13 @@ def reason_of(why: Message) -> ApproximateReason:
     raise ValueError(f"not a way a span can be approximate: {why.key!r}")
 
 
-def green_rate(reports: list[FidelityReport]) -> float:
+def green_rate(reports: list[FidelityReport]) -> float | None:
     """The share of spans that are exact: their own font, set as the page sets them.
 
-    The one number the product is judged on. Below GREEN_RATE_TARGET the
-    promise inverts: substitution becomes the normal case and the signal reads
-    as an apology rather than reassurance.
+    An approximate span keeps its font but not its look, so it counts against the rate.
+    None when there are no spans: 0% would read as every edit failing.
     """
     if not reports:
-        return 0.0
+        return None
     exact_count = sum(1 for report in reports if report.state == "exact")
     return exact_count / len(reports)
