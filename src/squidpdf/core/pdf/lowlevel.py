@@ -98,7 +98,11 @@ class PdfFile:
             mu.ll_pdf_drop_font(font)
 
     def redact(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every letter whose box touches one of `boxes`, and nothing else."""
+        """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
+
+        A comment goes only when it writes its words on the page (a FreeText): a note
+        behind an icon, a highlight or a form field stays.
+        """
         pg = self.doc[page]
         for box in boxes:
             pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
@@ -106,6 +110,64 @@ class PdfFile:
             images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
             graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
         )
+
+    @contextmanager
+    def links_kept(self, page: int) -> Iterator[None]:
+        """Each link the page loses inside the `with` comes back, as it was.
+
+        The same object, in its place in the page's list of annotations (its Annots),
+        so a link keeps its look and what it does, even what PyMuPDF can't describe.
+        Any other annotation the page loses stays gone.
+        """
+        mu = pymupdf.mupdf
+        page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        # The list as it was, a copy that holds on to each entry while MuPDF drops some.
+        before = mu.pdf_copy_array(listed) if mu.pdf_is_array(listed) else None
+        yield
+        # No list before: nothing to put back.
+        if before is None:
+            return
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        # A redaction only deletes, so what's left keeps its order.
+        place = 0  # where the next link goes back: after each entry before it still listed
+        for entry in range(mu.pdf_array_len(before)):
+            annotation = mu.pdf_array_get(before, entry)
+            # Still listed: the next one goes after it.
+            if mu.pdf_array_find(listed, annotation) >= 0:
+                place += 1
+                continue
+            subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+            # Another kind of annotation, a comment: it stays gone.
+            if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
+                continue
+            mu.pdf_array_insert(listed, annotation, place)
+            place += 1
+        self._sync_links(page)
+
+    def drop_links(self, page: int, boxes: list[Rect]) -> None:
+        """Delete every link whose area overlaps one of `boxes`, whatever it does.
+
+        Read from the page's own list of annotations (its Annots): PyMuPDF's list
+        of links leaves out what MuPDF can't follow, a script or a form reset.
+        """
+        mu = pymupdf.mupdf
+        page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        to_page = ~self._to_pdf_matrix(page)
+        boxes_shown = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
+        # From the end, so each deletion leaves the places still to read where they were.
+        for place in reversed(range(mu.pdf_array_len(listed))):
+            annotation = mu.pdf_array_get(listed, place)
+            subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+            # Another kind of annotation: a note, a form field.
+            if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
+                continue
+            rect = mu.pdf_to_rect(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Rect))
+            link_area = pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y1) * to_page
+            if any(link_area.intersects(box) for box in boxes_shown):
+                mu.pdf_array_delete(listed, place)
+        self._sync_links(page)
 
     def restore_font(self, page: int, resource: str, xref: int) -> None:
         """Point the page's resource name `resource` at font `xref`, already in the file.
@@ -153,12 +215,21 @@ class PdfFile:
         Not page.transformation_matrix: on a turned page it forgets where the
         page's box starts.
         """
+        moved = pymupdf.Point(*point) * self._to_pdf_matrix(page)
+        return (moved.x, moved.y)
+
+    def _to_pdf_matrix(self, page: int) -> pymupdf.Matrix:
+        """What turns a point on the page as you see it into the PDF's own coordinates."""
         mu = pymupdf.mupdf
         pg = self.doc[page]
         _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
         mu.pdf_page_transform(mu.pdf_page_from_fz_page(pg.this), _mediabox, page_to_screen)
-        moved = pymupdf.Point(*point) * pg.rotation_matrix * ~pymupdf.Matrix(page_to_screen)
-        return (moved.x, moved.y)
+        return pg.rotation_matrix * ~pymupdf.Matrix(page_to_screen)
+
+    def _sync_links(self, page: int) -> None:
+        """Have MuPDF read the page's links again: it keeps a list of its own, read once."""
+        pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(self.doc[page].this)
+        pymupdf.mupdf.pdf_sync_links(pdf_page)
 
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""

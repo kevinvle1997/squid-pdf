@@ -64,11 +64,14 @@ def stored_file(path: str, page: int, font: str) -> bytes:
     return buffer
 
 
-def named_only(path: str, base_font: str, flags: int | None = None) -> str:
+def named_only(
+    path: str, base_font: str, flags: int | None = None, *, italic_angle: float = 0
+) -> str:
     """One line in a font the file only names, never stores, as Word does with Calibri.
 
     Written in MuPDF's Helvetica, then renamed: nothing here reads the letters'
-    shapes, only the font's name and, when `flags` is given, its description.
+    shapes, only the font's name and, when `flags` is given, its description,
+    which slants by `italic_angle`.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -77,7 +80,8 @@ def named_only(path: str, base_font: str, flags: int | None = None) -> str:
     doc.xref_set_key(xref, "BaseFont", f"/{base_font}")
     if flags is not None:
         descriptor = (
-            f"<</Type/FontDescriptor/FontName/{base_font}/Flags {flags}/ItalicAngle 0>>"
+            f"<</Type/FontDescriptor/FontName/{base_font}/Flags {flags}"
+            f"/ItalicAngle {italic_angle}>>"
         )
         doc.xref_set_key(xref, "FontDescriptor", descriptor)
     doc.save(path)

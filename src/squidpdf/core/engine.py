@@ -178,7 +178,9 @@ class Engine:
         its value, not the page. `then_drawn` are the lines `draw` will draw
         after: what they need is read first, while the page still has it. One
         box per span, not per fragment: the cost grows with the box count, and a
-        span's box covers its fragments. Lines, underlines and links stay.
+        span's box covers its fragments. Lines, underlines and links stay; a
+        comment written on the page over them (a FreeText) goes, as it can carry
+        the text.
         """
         self._read_before_erasing(spans, then_drawn)
         left = (self._erased_on(page, on_page) for page, on_page in _by_page(spans).items())

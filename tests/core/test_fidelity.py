@@ -23,7 +23,7 @@ from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
-from tests.core.conftest import MERGED_TEXTS
+from tests.core.conftest import MERGED_TEXTS, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,
@@ -97,23 +97,25 @@ def test_referenced_font_is_a_substitution(engine):
 
 
 @pytest.mark.parametrize(
-    ("base_font", "flags", "face", "same_widths"),
+    ("base_font", "flags", "italic_angle", "face", "same_widths"),
     [
-        ("Calibri-Bold", None, "Carlito Bold", True),
+        ("Calibri-Bold", None, 0, "Carlito Bold", True),
         # The typeface itself, shipped: its own letters, so its own widths.
-        ("Poppins-Bold", None, "Poppins Bold", True),
+        ("Poppins-Bold", None, 0, "Poppins Bold", True),
         # A name that says its cut with no dash, as TeX's do: the name alone picks the face.
-        ("CMBX10", None, "Latin Modern Roman 10 Bold", True),
+        ("CMBX10", None, 0, "Latin Modern Roman 10 Bold", True),
         # A font we don't know: its kind comes from the PDF's description, not its name.
-        ("NimbusSomething", _SERIF_FLAGS, "Liberation Serif Regular", False),
-        ("NimbusSomething", None, "Liberation Sans Regular", False),
+        ("NimbusSomething", _SERIF_FLAGS, 0, "Liberation Serif Regular", False),
+        ("NimbusSomething", None, 0, "Liberation Sans Regular", False),
+        # Slanted by a fraction of a degree, which read as no slant: it was drawn upright.
+        ("NimbusSomething", _SERIF_FLAGS, -11.5, "Liberation Serif Italic", False),
     ],
 )
 def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
-    tmp_path, base_font, flags, face, same_widths
+    tmp_path, base_font, flags, italic_angle, face, same_widths
 ):
     """Calibri-Bold gets Carlito Bold, the face the report names, not Helvetica."""
-    path = named_only(str(tmp_path / "named.pdf"), base_font, flags)
+    path = named_only(str(tmp_path / "named.pdf"), base_font, flags, italic_angle=italic_angle)
     out = str(tmp_path / "redrawn.pdf")
     # Drawn with nothing asked first: remove() must read the font before erasing it.
     with open_pdf(path) as engine:
@@ -194,6 +196,27 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
         assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
 
 
+@pytest.mark.parametrize(
+    "resource",
+    ["F#201", "F#23AB", "F#E9"],
+    ids=["a space", "a #", "a byte that isn't UTF-8"],
+)
+def test_a_font_whose_resource_name_has_a_space_or_a_hash_redraws_in_itself(tmp_path, resource):
+    """Written as read, "/F 1 12 Tf" broke the page's drawing: the line drew other letters."""
+    path = coded_under(str(tmp_path / "named.pdf"), resource)
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(path) as engine:
+        span = next(span for span in engine.index() if span.text == "ABBA")
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
+        engine.draw(span, "BA AB")
+        engine.save(out)
+
+    lines = sorted((_text(drawn), drawn["font"]) for drawn in _drawn(out))
+    assert_equal(
+        lines, [("BA", "Coded"), ("BA AB", "Coded")], "what each line reads, and in what"
+    )
+
+
 def test_widths_by_code_come_from_the_font_dict(coded):
     """The browser's live check reads widths(), the server measure(); both read /Widths, /W."""
     with open_pdf(coded) as engine:
@@ -217,6 +240,40 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     [drawn] = _drawn(out)
     expected = ("ABC", saved_as("Liberation Sans Regular"))
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
+
+
+def test_a_type0_whose_inner_font_is_listed_apart_keeps_its_description(
+    type0_listed_apart, tmp_path
+):
+    """Read as a simple font, it showed no description: its serif and slant were lost.
+
+    The list of inner fonts (DescendantFonts) was read only when written in place.
+    """
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(type0_listed_apart) as engine:
+        span = next(iter(engine.index()))
+        engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
+        engine.draw(span, "ABC")
+        engine.save(out)
+
+    [drawn] = _drawn(out)
+    expected = ("ABC", saved_as("Liberation Serif Italic"))
+    assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
+
+
+def test_a_type0_whose_inner_font_points_nowhere_doesnt_stop_an_edit(
+    type0_pointing_nowhere, tmp_path
+):
+    """Asked for its description, the damaged font raised "bad xref": the edit never saved."""
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(type0_pointing_nowhere) as engine:
+        span = next(span for span in engine.index() if span.text == "ABBA")
+        engine.remove([span], then_drawn=[LineToDraw(span, "BA AB")])
+        engine.draw(span, "BA AB")
+        engine.save(out)
+
+    lines = sorted(_text(drawn) for drawn in _drawn(out))
+    assert_equal(lines, ["BA", "BA AB"], "what each line reads")
 
 
 def _first_span(engine: Engine) -> Span:

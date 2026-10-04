@@ -60,6 +60,10 @@ from squidpdf.core.types import (
 
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
+# The bytes a PDF name holds as they are: printable, and none that ends a name or
+# starts an escape. Any other is written #xx.
+_PRINTABLE = range(0x21, 0x7F)
+_ENDS_OR_ESCAPES_A_NAME = b"()<>[]{}/%#"
 
 # The object the first entry of an array points at: "[15 0 R]" -> 15.
 _FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
@@ -337,19 +341,38 @@ class _MuPDFDriver:
         )
 
     def _describing_font(self, xref: int) -> int | None:
-        """Where the font's description lives: the font itself, or a Type0's inner font."""
+        """Where the font's description lives: the font itself, or a Type0's inner font.
+
+        None when a Type0's inner font isn't an object of its own in the file.
+        """
         value_type, value = self.doc.xref_get_key(xref, "DescendantFonts")
         # A simple font describes itself.
-        if value_type != "array":
+        if value_type not in ("array", "xref"):
             return xref
+        # The list of inner fonts kept as an object of its own ("12 0 R"): read it there.
+        if value_type == "xref":
+            list_xref = _object_number(value)
+            # A damaged file can point past its last object: there's no list to read.
+            if not self._has_object(list_xref):
+                return None
+            value = self.doc.xref_object(list_xref, compressed=True)
         inner = _FIRST_REFERENCE.match(value)
-        # None when written out in place: rare, and not worth it.
-        return int(inner.group(1)) if inner else None
+        # Written out in place: rare, and not worth it.
+        if inner is None:
+            return None
+        inner_xref = int(inner.group(1))
+        # Pointing past the file's last object, as a damaged file can: nothing to describe it.
+        return inner_xref if self._has_object(inner_xref) else None
+
+    def _has_object(self, xref: int) -> bool:
+        """Whether the file has an object numbered `xref`: none is 0, or past its last."""
+        return 0 < xref < self.doc.xref_length()
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
         value_type, value = self.doc.xref_get_key(xref, key)
-        if value_type not in ("int", "real"):
+        # PyMuPDF calls a number with a fraction (a PDF's real) a "float".
+        if value_type not in ("int", "float"):
             return None
         return float(value)
 
@@ -413,41 +436,30 @@ class _MuPDFDriver:
         erased as a thin strip just above its own letters' baselines, which other
         lines' boxes don't reach. A box that still has letters afterwards (a font
         whose boxes sit oddly) is erased whole, so old text is never left under
-        new. MuPDF also deletes any link a redaction touches, and any font no text
-        on the page uses any more: the links go back, and so do the fonts this
-        driver named on the page.
+        new. MuPDF also deletes every link a redaction touches, and any font no
+        text on the page uses any more: the links go back as they were, and so do
+        the fonts this driver named on the page. A comment written on the page over
+        the erased letters (a FreeText) goes with them, whatever it says: it can
+        carry the text.
         """
-        links = self.doc[page].get_links()
         letters = self._letters(page)
-        # No letter's middle inside: erase the whole box, as nothing else would.
-        self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
-        left = self.text_in(page, boxes)
-        missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
-        # Read again only after a second erase: most boxes are clear after the first.
-        if missed:
-            self.file.redact(page, missed)
+        with self.file.links_kept(page):
+            # No letter's middle inside: erase the whole box, as nothing else would.
+            self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
             left = self.text_in(page, boxes)
-        self._restore_links(page, links)
+            missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
+            # Read again only after a second erase: most boxes are clear after the first.
+            if missed:
+                self.file.redact(page, missed)
+                left = self.text_in(page, boxes)
         # .get: a page the driver named no font on.
         for resource, xref in self.named.get(self.doc[page].xref, {}).items():
             self.file.restore_font(page, resource, xref)
         return left
 
-    def _restore_links(self, page: int, links: list[dict]) -> None:
-        """Add back any of `links`, as get_links read them, that the page no longer has."""
-        pdf_page = self.doc[page]
-        kept = {_link_key(link) for link in pdf_page.get_links()}
-        for link in links:
-            if _link_key(link) not in kept:
-                pdf_page.insert_link(link)
-
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`."""
-        pdf_page = self.doc[page]
-        areas = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
-        for link in pdf_page.get_links():
-            if any(pymupdf.Rect(link["from"]).intersects(area) for area in areas):
-                pdf_page.delete_link(link)
+        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+        self.file.drop_links(page, boxes)
 
     def write_codes(
         self,
@@ -470,7 +482,7 @@ class _MuPDFDriver:
         x, y = self.file.to_pdf_space(page, origin)
         resources = self._resources_of(page, {run.xref for run in runs})
         shown = " ".join(
-            f"/{resources[run.xref]} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            f"{_written_name(resources[run.xref])} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
@@ -555,18 +567,28 @@ class _MuPDFDriver:
     def replace_font_file(self, xref: int, font_file: bytes) -> None:
         """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
         owner = self._describing_font(xref)
-        # Its inner font written out in place: MuPDF never adds one so, so it's someone else's.
+        # Its inner font in place, or nowhere: MuPDF never adds one so, so it's someone else's.
         if owner is None:
-            _value_type, base_font = self.doc.xref_get_key(xref, "BaseFont")
-            said = Message("face_not_trimmed", {"font": base_font.lstrip("/")})
-            raise DriverError(said, debug=f"font {xref} has its inner font in place")
+            raise DriverError(
+                self._why_kept_whole(xref), debug=f"font {xref} has no inner font of its own"
+            )
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self.doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
-        value = next(value for value_type, value in stored if value_type == "xref")
-        file_xref = int(value.split()[0])  # "7 0 R" -> 7
+        value = next((value for value_type, value in stored if value_type == "xref"), None)
+        # No file where MuPDF stores ours: someone else's font.
+        if value is None:
+            raise DriverError(
+                self._why_kept_whole(xref), debug=f"font {xref} has no file to swap"
+            )
+        file_xref = _object_number(value)
         self.doc.update_stream(file_xref, font_file)
-        # A TrueType file states its size before compression, too.
+        # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
+
+    def _why_kept_whole(self, xref: int) -> Message:
+        """Why font `xref` stays whole in the saved file, naming it as the file does."""
+        _value_type, base_font = self.doc.xref_get_key(xref, "BaseFont")
+        return Message("face_not_trimmed", {"font": base_font.lstrip("/")})
 
     def has_tags(self) -> bool:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
@@ -647,11 +669,9 @@ def _letters_inside(letters: list[_Letter], box: Rect) -> str:
     return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
 
 
-def _link_key(link: dict) -> tuple[tuple[str, str], ...]:
-    """What a link from get_links is: where it sits and where it goes, not its object number."""
-    return tuple(
-        sorted((key, repr(value)) for key, value in link.items() if key not in ("xref", "id"))
-    )
+def _object_number(reference: str) -> int:
+    """The object a reference points at: "7 0 R" -> 7."""
+    return int(reference.split()[0])
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
@@ -700,6 +720,22 @@ def _lifted(letter: _Letter) -> list[tuple[float, float]]:
         (middle_x + up_x * height * lift, middle_y + up_y * height * lift)
         for lift in _STRIP_LIFTS
     ]
+
+
+def _written_name(resource: str) -> str:
+    """The resource name `resource` as a page's drawing writes it: "/", then each byte, escaped.
+
+    PyMuPDF hands names back decoded ("/F#201" as "F 1"), a byte that isn't
+    UTF-8 as a stand-in character (a surrogate), so the bytes come back exactly.
+    """
+    raw = resource.encode("utf-8", "surrogateescape")
+    plain = (chr(byte) if _is_plain(byte) else f"#{byte:02X}" for byte in raw)
+    return "/" + "".join(plain)
+
+
+def _is_plain(byte: int) -> bool:
+    """Whether a PDF name can hold `byte` as it is."""
+    return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

@@ -113,8 +113,9 @@ def _embed_by_hand(
     box: str | None = None,
     rotate: int = 0,
     resources: str = "",
+    resource: str = "F1",
 ) -> str:
-    """One page drawing streams["content"] with /F1 as dicts["font"].
+    """One page drawing streams["content"] in dicts["font"], filed under the name `resource`.
 
     Each dict names another object as {its key}; the font program is {file}.
     `resources` goes into the page's resources beside the font.
@@ -129,7 +130,9 @@ def _embed_by_hand(
         doc.update_object(xref[name], obj.format(**refs))
     for name, data in streams.items():
         doc.update_stream(xref[name], data)
-    doc.xref_set_key(page.xref, "Resources", f"<</Font<</F1 {refs['font']}>>{resources}>>")
+    doc.xref_set_key(
+        page.xref, "Resources", f"<</Font<</{resource} {refs['font']}>>{resources}>>"
+    )
     doc.xref_set_key(page.xref, "Contents", refs["content"])
     if box is not None:
         doc.xref_set_key(page.xref, "MediaBox", box)
@@ -176,6 +179,33 @@ def coded_symbol(tmp_path_factory) -> str:
             f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
         },
         box=_OFFSET_BOX,
+    )
+
+
+def coded_under(path: str, resource: str) -> str:
+    """The symbol fixture's ABBA, and BA below it, in a font under the resource name `resource`.
+
+    `resource` is written as a PDF writes a name, a space as #20. Two lines, so
+    that erasing one leaves the font on the page, under that name.
+    """
+    return _embed_by_hand(
+        path,
+        {
+            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
+            "to_unicode": _to_unicode(
+                "<00> <FF>",
+                "1 beginbfrange <20> <21> <0041> endbfrange"
+                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
+            ),
+            "content": f"BT /{resource} 12 Tf 172 700 Td <20212120> Tj ET"
+            f" BT /{resource} 12 Tf 172 600 Td <2120> Tj ET".encode(),
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
+            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
+            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
+        },
+        resource=resource,
     )
 
 
@@ -246,6 +276,67 @@ def coded_type0(tmp_path_factory) -> str:
         box=_OFFSET_BOX,
         rotate=90,
     )
+
+
+@pytest.fixture(scope="module")
+def type0_listed_apart(tmp_path_factory) -> str:
+    """ABBA in a Type0 whose list of inner fonts is an object of its own, as some writers do.
+
+    Its description says serif (Flags 34) and slanted (ItalicAngle -12), which
+    only a font read through that list learns: a letter it lacks then draws in
+    a serif italic.
+    """
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("coded") / "listed-apart.pdf"),
+        {
+            "file": _truetype(None),
+            "to_unicode": _to_unicode(
+                "<0000> <FFFF>",
+                "1 beginbfrange <0001> <0003> [<0041> <0042> <0020>] endbfrange"
+                " 1 beginbfchar <0004> <0043> endbfchar",
+            ),
+            "content": b"BT /F1 12 Tf 172 700 Td <0001000200020001> Tj ET",
+        },
+        {
+            "descriptor": _DESCRIPTOR.replace("{name}", "Coded")
+            .replace("/Flags 4", "/Flags 34")
+            .replace("/ItalicAngle 0", "/ItalicAngle -12"),
+            "cid": "<</Type/Font/Subtype/CIDFontType2/BaseFont/Coded"
+            "/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+            f"/FontDescriptor {{descriptor}}/DW 1000/W[1[{_WIDTHS}]]/CIDToGIDMap/Identity>>",
+            "inner_fonts": "[{cid}]",
+            "font": "<</Type/Font/Subtype/Type0/BaseFont/Coded/Encoding/Identity-H"
+            "/DescendantFonts {inner_fonts}/ToUnicode {to_unicode}>>",
+        },
+    )
+
+
+@pytest.fixture(
+    scope="module",
+    params=["9999 0 R", "[9999 0 R]"],
+    ids=["its list of inner fonts", "its inner font"],
+)
+def type0_pointing_nowhere(tmp_path_factory, request) -> str:
+    """coded_under's ABBA and BA, with a damaged Type0 of the same name listed first.
+
+    The Type0's list of inner fonts, or the inner font in it, points past the
+    file's last object, as a damaged file can. Listed first under the name the
+    line's font has, it's the font asked for a description.
+    """
+    folder = tmp_path_factory.mktemp("nowhere")
+    doc = pymupdf.open(coded_under(str(folder / "coded.pdf"), "F1"))
+    page = doc[0]
+    _value_type, font = doc.xref_get_key(page.xref, "Resources/Font/F1")
+    damaged = doc.get_new_xref()
+    doc.update_object(
+        damaged,
+        "<</Type/Font/Subtype/Type0/BaseFont/Coded/Encoding/Identity-H"
+        f"/DescendantFonts {request.param}>>",
+    )
+    doc.xref_set_key(page.xref, "Resources/Font", f"<</F0 {damaged} 0 R/F1 {font}>>")
+    path = str(folder / "pointing-nowhere.pdf")
+    doc.save(path)
+    return path
 
 
 @pytest.fixture(scope="module")

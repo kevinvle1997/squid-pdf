@@ -12,7 +12,7 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Engine, Span, SpanIndex, new_text, open_pdf, words
+from squidpdf.core import Engine, QuarterTurn, Span, SpanIndex, new_text, open_pdf, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.look_alike import strip_subset
@@ -566,32 +566,86 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     assert_equal(_said(applied.notices), [notice], "what render tells the user")
 
 
-def _linked(path: str) -> str:
-    """A line whose address is a link, and a link elsewhere on the page."""
+# The links on `_linked`'s page, each filed under a name (/NM) saying what it is, as the
+# file writes what it looks like and what it does.
+_LINKS = {
+    # The edited line's three, side by side along it.
+    # A border and a colour of its own, which a link remade from PyMuPDF's list lost.
+    "address": "/Border[0 0 2]/C[1 0 0]/A<</S/URI/URI(mailto:sales@example.com)>>",
+    # A script, which PyMuPDF's list of links leaves out: it never came back.
+    "script": "/A<</S/JavaScript/JS(print\\(\\))>>",
+    # A page that's gone, as a tool that deletes pages leaves it: it came back as page 1.
+    "gone": "/Dest[null/XYZ 0 0 0]",
+    # The other line's, which no edit touches: a form reset, which PyMuPDF's list leaves
+    # out too, so a link looked for in that list was never found to delete.
+    "reset": "/A<</S/ResetForm>>",
+}
+# Where the page is shown from: a box that doesn't start at 0,0, as a cropped page's.
+_CROPPED = "[20 30 590 780]"
+
+
+def _linked(path: str, turn_cw: QuarterTurn) -> str:
+    """A line covered by three links of different kinds, and a link on a second line.
+
+    Each is written by hand, as `_LINKS` says, to be compared whole with what's saved.
+    The page is cropped and turned `turn_cw` once they're written, so each link's area
+    is in the PDF's own coordinates, not the page's as it's shown.
+    """
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 100), "Contact: sales@example.com", fontname="helv", fontsize=12)
-    page.insert_text((72, 200), "Terms online", fontname="helv", fontsize=12)
-    for text, uri in (
-        ("sales@example.com", "mailto:sales@example.com"),
-        ("Terms", "https://x.test"),
-    ):
-        [area] = page.search_for(text)
-        page.insert_link({"kind": pymupdf.LINK_URI, "from": area, "uri": uri})
+    page.insert_text((72, 200), "Clear the form", fontname="helv", fontsize=12)
+    [line] = page.search_for("Contact: sales@example.com")
+    third = line.width / 3
+    areas = [
+        *(
+            pymupdf.Rect(line.x0 + i * third, line.y0, line.x0 + (i + 1) * third, line.y1)
+            for i in range(3)
+        ),
+        page.search_for("Clear the form")[0],
+    ]
+    references = []
+    for (name, written), area in zip(_LINKS.items(), areas, strict=True):
+        x0, y0, x1, y1 = area * page.transformation_matrix  # in the PDF's own coordinates
+        link_xref = doc.get_new_xref()
+        doc.update_object(
+            link_xref,
+            f"<</Type/Annot/Subtype/Link/NM({name})/Rect[{x0} {y0} {x1} {y1}]{written}>>",
+        )
+        references.append(f"{link_xref} 0 R")
+    doc.xref_set_key(page.xref, "Annots", "[" + " ".join(references) + "]")
+    doc.xref_set_key(page.xref, "CropBox", _CROPPED)
+    page.set_rotation(turn_cw)
     doc.save(path)
     return path
 
 
+def _annotations_on(path: str) -> list[tuple[str, str]]:
+    """Each annotation on the first page, in the page's order: its name (/NM), its object.
+
+    The object is as the file writes it, so it's compared whole. The order is the page's
+    tab order, and decides which link a click follows where two overlap, so an edit keeps
+    it too.
+    """
+    doc = pymupdf.open(path)
+    return [
+        (doc.xref_get_key(xref, "NM")[1], doc.xref_object(xref, compressed=True))
+        for xref, _kind, _name in doc[0].annot_xrefs()
+    ]
+
+
+@pytest.mark.parametrize("turn_cw", [0, 90, 180, 270])
 @pytest.mark.parametrize(
-    ("edit", "links"),
-    [
-        ("replace", ["mailto:sales@example.com", "https://x.test"]),
-        ("redact", ["https://x.test"]),
+    ("edit", "kept"),
+    [("replace", list(_LINKS)), ("redact", ["reset"])],
+    ids=[
+        "a replaced line keeps each of its links as it was",
+        "a redacted one loses them: a link can carry the text",
     ],
-    ids=["a replaced line keeps its link", "a redacted one loses it: it can carry the text"],
 )
-def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
-    path = _linked(str(tmp_path / "linked.pdf"))
+def test_an_edit_keeps_the_links_it_should(tmp_path, edit, kept, turn_cw):
+    """Erasing keeps each link whole, in its place; a redaction drops those over its text."""
+    path = _linked(str(tmp_path / "linked.pdf"), turn_cw)
     out = str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
         index = engine.index()
@@ -604,8 +658,11 @@ def test_an_edit_keeps_the_links_it_should(tmp_path, edit, links):
         _apply(engine, [change], index)
         engine.save(out)
 
-    left = [link["uri"] for link in pymupdf.open(out)[0].get_links()]
-    assert_equal(sorted(left), sorted(links), "the page's links")
+    written = _annotations_on(path)
+    expected = [(name, annotation) for name, annotation in written if name in kept]
+    assert_equal(
+        _annotations_on(out), expected, "each link on the page, in order, as the file writes it"
+    )
 
 
 @pytest.mark.parametrize("turn_cw", [90, 180, 270])
