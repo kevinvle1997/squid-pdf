@@ -220,7 +220,7 @@ class PdfFile:
         """
         mu = pymupdf.mupdf
         found: list[str] = []
-        for resources, streams in self._drawings(page):
+        for streams, resources in self._drawings(page):
             for marking in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Properties)):
                 found += _hidden_copies_in(marking)
             for stream in streams:
@@ -235,7 +235,7 @@ class PdfFile:
         back as MuPDF reads it: the last.
         """
         mu = pymupdf.mupdf
-        for resources, streams in self._drawings(page):
+        for streams, resources in self._drawings(page):
             properties = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Properties)
             for marking in _values_of(properties):
                 _rewrite_hidden_copies_in(marking, rewritten)
@@ -244,7 +244,7 @@ class PdfFile:
 
     def _drawings(
         self, page: int
-    ) -> Iterator[tuple[pymupdf.mupdf.PdfObj, list[pymupdf.mupdf.PdfObj]]]:
+    ) -> Iterator[tuple[list[pymupdf.mupdf.PdfObj], pymupdf.mupdf.PdfObj]]:
         """The page's drawing, its annotations' appearances, each drawing they draw.
 
         Each with the resources it names things from, which may be none.
@@ -255,22 +255,22 @@ class PdfFile:
         # One stream, or a list of them drawn one after the other.
         streams = _items_of(contents) if mu.pdf_is_array(contents) else [contents]
         resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        waiting = [(resources, streams)] + [
-            (mu.pdf_dict_get(appearance, mu.PDF_ENUM_NAME_Resources), [appearance])
+        waiting = [(streams, resources)] + [
+            ([appearance], _resources_of(appearance))
             for appearance in _appearances_of(page_obj)
         ]
         # Drawings already waiting, by object number: a form can draw itself.
         seen: set[int] = set()
         while waiting:
-            resources, streams = waiting.pop()
-            yield resources, [stream for stream in streams if mu.pdf_is_stream(stream)]
+            streams, resources = waiting.pop()
+            yield [stream for stream in streams if mu.pdf_is_stream(stream)], resources
             for drawn, own_resources in _drawn_by(resources):
                 # Already waiting: nothing more to read.
                 if mu.pdf_to_num(drawn) in seen:
                     continue
                 seen.add(mu.pdf_to_num(drawn))
                 # With none of its own, it names its user's resources, read already.
-                waiting.append((own_resources, [drawn]))
+                waiting.append(([drawn], own_resources))
 
     def _rewrite_written(
         self,
@@ -581,37 +581,63 @@ def _appearances_of(page: pymupdf.mupdf.PdfObj) -> Iterator[pymupdf.mupdf.PdfObj
             yield from [appearance] if mu.pdf_is_stream(appearance) else _values_of(appearance)
 
 
-def _drawn_by(
-    resources: pymupdf.mupdf.PdfObj,
-) -> Iterator[tuple[pymupdf.mupdf.PdfObj, pymupdf.mupdf.PdfObj]]:
-    """Each drawing `resources` names, with its own resources, if it has any.
+# A drawing's stream, and the resources it names things from.
+type _Drawing = tuple[pymupdf.mupdf.PdfObj, pymupdf.mupdf.PdfObj]
 
-    Forms (XObjects), tiling patterns, soft masks' groups and Type3 fonts'
-    letters: each is a drawing of its own, kept in a stream.
-    """
+
+def _drawn_by(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
+    """Each drawing `resources` names, each kept in a stream of its own."""
+    yield from _forms_in(resources)
+    yield from _tiling_patterns_in(resources)
+    yield from _soft_masks_in(resources)
+    yield from _type3_letters_in(resources)
+
+
+def _forms_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
+    """Each form (XObject) `resources` names; an image holds no drawing."""
     mu = pymupdf.mupdf
-    for drawn in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_XObject)):
-        subtype = mu.pdf_dict_get(drawn, mu.PDF_ENUM_NAME_Subtype)
-        # An image holds no drawing.
+    for xobject in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_XObject)):
+        subtype = mu.pdf_dict_get(xobject, mu.PDF_ENUM_NAME_Subtype)
+        # A form, not an image.
         if mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Form):
-            yield drawn, mu.pdf_dict_get(drawn, mu.PDF_ENUM_NAME_Resources)
+            yield xobject, _resources_of(xobject)
+
+
+def _tiling_patterns_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
+    """Each tiling pattern `resources` names; a shading pattern holds no drawing."""
+    mu = pymupdf.mupdf
     for pattern in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Pattern)):
-        # A shading pattern is a plain dictionary, with no drawing.
+        # A tiling pattern, not a shading one.
         if mu.pdf_is_stream(pattern):
-            yield pattern, mu.pdf_dict_get(pattern, mu.PDF_ENUM_NAME_Resources)
+            yield pattern, _resources_of(pattern)
+
+
+def _soft_masks_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
+    """The drawing of each soft mask the graphics states in `resources` name."""
+    mu = pymupdf.mupdf
     for state in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_ExtGState)):
         mask = mu.pdf_dict_get(state, mu.PDF_ENUM_NAME_SMask)
         group = mu.pdf_dict_get(mask, mu.PDF_ENUM_NAME_G)
         # No soft mask, or /None.
         if mu.pdf_is_stream(group):
-            yield group, mu.pdf_dict_get(group, mu.PDF_ENUM_NAME_Resources)
+            yield group, _resources_of(group)
+
+
+def _type3_letters_in(resources: pymupdf.mupdf.PdfObj) -> Iterator[_Drawing]:
+    """Each letter of each Type3 font `resources` names, with its font's resources."""
+    mu = pymupdf.mupdf
     for font in _values_of(mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Font)):
         subtype = mu.pdf_dict_get(font, mu.PDF_ENUM_NAME_Subtype)
-        # Only a Type3 font draws its letters, each a drawing of its own.
+        # A Type3 font, whose letters are drawings.
         if mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Type3):
             letters = mu.pdf_dict_get(font, mu.PDF_ENUM_NAME_CharProcs)
-            own_resources = mu.pdf_dict_get(font, mu.PDF_ENUM_NAME_Resources)
-            yield from ((letter, own_resources) for letter in _values_of(letters))
+            yield from ((letter, _resources_of(font)) for letter in _values_of(letters))
+
+
+def _resources_of(holder: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
+    """The resources a drawing or a Type3 font names things from; null if none."""
+    mu = pymupdf.mupdf
+    return mu.pdf_dict_get(holder, mu.PDF_ENUM_NAME_Resources)
 
 
 def _items_of(array: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
