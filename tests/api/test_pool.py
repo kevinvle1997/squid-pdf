@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
+import logging
 import multiprocessing
 import os
 import signal
@@ -25,13 +26,14 @@ from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Problem
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
-from tests.api.conftest import BASE_URL, upload
+from tests.api.conftest import BASE_URL, SERVER_PATH, upload
 from tests.helpers import (
     assert_all,
     assert_at_least,
     assert_at_most,
     assert_equal,
     assert_false,
+    assert_in,
     assert_not_in,
     assert_problem,
     assert_true,
@@ -385,6 +387,13 @@ def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [record.getMessage() for record in caplog.records if record.name == "asyncio"]
 
 
+def _pool_log(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """What the pool itself logged."""
+    return [
+        record.getMessage() for record in caplog.records if record.name == "squidpdf.api.pool"
+    ]
+
+
 def _note_pid_then_read_a_broken_font(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then reads a broken font."""
     _note_pid(folder)
@@ -404,6 +413,7 @@ def test_a_render_that_fails_on_its_file_after_its_browser_left_logs_no_error(
     runner, pool, tmp_path, caplog, task
 ):
     """Nobody waits for its answer, and the failure is the file's doing: a log is noise."""
+    caplog.set_level(logging.WARNING, logger="squidpdf.api.pool")
 
     async def leave() -> None:
         worker_pid = await _start_then_leave(pool, tmp_path, task)
@@ -417,6 +427,33 @@ def test_a_render_that_fails_on_its_file_after_its_browser_left_logs_no_error(
     runner.run(leave())
 
     assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged")
+    assert_equal(_pool_log(caplog), [], "what the pool logged")
+
+
+def _note_pid_then_fail_on_the_server(folder: Path) -> None:
+    """Writes down which worker runs it, works _WORK_S, then fails as a missing file does."""
+    _note_pid(folder)
+    time.sleep(_WORK_S)
+    # What core makes of MuPDF's file-system error: a server error, its words in debug.
+    raise Problem(debug=f"FzErrorSystem: cannot open {SERVER_PATH}: No such file")
+
+
+def test_a_render_that_fails_on_the_server_after_its_browser_left_logs_its_debug(
+    runner, pool, tmp_path, caplog
+):
+    """With a caller the API's handler logs a server error's debug; without one, the pool."""
+    caplog.set_level(logging.WARNING, logger="squidpdf.api.pool")
+
+    async def leave() -> None:
+        await _start_then_leave(pool, tmp_path, _note_pid_then_fail_on_the_server)
+        await asyncio.to_thread(_wait_until, lambda: bool(_pool_log(caplog)), _ENOUGH_S)
+
+    runner.run(leave())
+
+    said = "\n".join(_pool_log(caplog))
+    assert_in(SERVER_PATH, said, "what the pool logged of it")
+    assert_in("server_error", said, "the type the log gives it")
+    assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged: it's no bug")
 
 
 def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(
