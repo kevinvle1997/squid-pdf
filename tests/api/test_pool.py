@@ -193,9 +193,7 @@ def test_a_task_sent_as_every_worker_dies_goes_again_on_a_new_pool():
     assert_not_in(worker_pid, killed, "the worker that ran the task")
 
 
-_launch_process = (
-    pebble.pool.process.launch_process
-)  # pebble's own, kept before a test patches it
+_launch_process = pebble.pool.process.launch_process  # pebble's own, before a test patches it
 
 
 def _cannot_start(*_args: object) -> None:
@@ -221,11 +219,7 @@ def _dies_as_it_starts(
 def test_pdf_work_says_no_workers_when_no_worker_can_start(
     tmp_path, monkeypatch, caplog, pdf_bytes, launch, health_sees_it
 ):
-    """Its own app: this breaks the pool on purpose.
-
-    A page is asked for twice: the first finds the pool broken and replaces
-    it, and no worker of the new one starts; the second finds that one broken too.
-    """
+    """Its own app, as it breaks the pool: the second page finds the new pool broken too."""
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     app = create_app()
     with TestClient(app, base_url=BASE_URL) as client:

@@ -33,7 +33,7 @@ class CancelOnDisconnect:
             return
         body_in = asyncio.Event()
         answering = False
-        left = False  # set only when the browser left and its handler was cancelled for it
+        left = False  # whether the handler was cancelled because the browser left
 
         async def watched_receive() -> Message:
             """The browser's messages, noting when the last of its body has come."""

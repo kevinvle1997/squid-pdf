@@ -1,41 +1,18 @@
 """The worker processes every piece of PDF work runs in, never the event loop.
 
-pebble rather than the stdlib pool: it kills a hung worker, where
-concurrent.futures can only stop waiting for one. A hostile PDF can hang MuPDF,
-eat memory or crash it. A hung worker is killed at its timeout, memory past
-the cap fails in the worker, not the server, and a crash takes only its
-worker; each comes back as the Problem that says which.
+pebble rather than the stdlib pool: it kills a hung worker, where concurrent.futures can only
+stop waiting for one. A hostile PDF that hangs MuPDF, eats memory or crashes it does so in its
+worker, not the server, and comes back as the Problem that says which.
 
 What it guarantees. A change that breaks one changes this list in the same diff.
 
-- Time a task spends waiting for a worker counts toward its timeout, since the
-  wait is the caller's. A new worker's start doesn't, up to `WORKER_START_S`:
-  that's the server's. Past both, a task still unanswered is too slow: nothing
-  waits forever.
-- When the caller leaves, a task still waiting is dropped, and a long one
-  (timeout at or past `STOP_WHEN_LEFT_S`) is stopped. A short one finishes in
-  its worker: stopping it would kill the worker, and the next task would wait
-  for a new one.
-- pebble gives up on the whole pool when a worker dies between tasks (the
-  kernel killed it, say). A broken pool is replaced before the next task, under
-  a lock, so two tasks that find it broken build one new pool. `/api/health`
-  goes through the same check (`WorkerPool.ready`).
-- A task the pool broke under before any worker started it goes again, once,
-  on the new pool and to the same deadline. So does one pebble lost, sent as it
-  gave up on the pool: a task waiting for its answer watches its pool, and once
-  a broken one's threads are joined, nothing answers it. The worker makes the
-  try's start file before running the task, read once the old workers are gone,
-  and only a try without one is retried, so a started task never runs twice.
-- A task the pool can't run, because the new pool broke too, no worker can
-  start or stay up, or the pool broke under it once started, is `no_workers`:
-  the server's failure, not a bug and not the file's. The break, or the
-  failed start, is logged with its cause, which can be a bug of ours (a result
-  that can't be sent back).
-- A pool works only in the event loop it was made in (the lifespan's), and
-  refuses any other: its lock and semaphore bind to that loop.
-- pebble's failures become Problems through `constants.WORKER_FAILURES`, asked
-  via `API_ERRORS`, the API's one ErrorController. The PDF library's own come
-  back as the Problems they mean (`core.result_of`).
+- Waiting for a worker counts toward the timeout; its start doesn't, up to `WORKER_START_S`.
+- A caller who leaves drops a waiting task, and stops one timed at `STOP_WHEN_LEFT_S` or more.
+- A broken pool is replaced before the next task, by just one new pool; `ready` does it too.
+- A task the pool broke under or lost before it started goes again, once; none runs twice.
+- A task it can't run, or broke under once started, is `no_workers`; the cause is logged.
+- A pool works only in the event loop it was made in: its lock and semaphore bind to it.
+- pebble's failures become Problems through `constants.WORKER_FAILURES`.
 """
 
 from __future__ import annotations
@@ -66,8 +43,7 @@ from squidpdf.core import Problem, result_of
 
 _logger = logging.getLogger(__name__)
 
-# How a task whose caller left may fail without a bug: pebble's usual failures, and any
-# Problem (too slow, a damaged file, no workers), which a caller gets as its answer, unlogged.
+# A failure a waiting caller gets as its answer, unlogged, is no bug once the caller has left.
 _EXPECTED_WHEN_LEFT: tuple[type[Exception], ...] = (Problem, *constants.WORKER_FAILURE_TYPES)
 
 
@@ -148,7 +124,7 @@ class WorkerPool:
         self.jobs.discard(job)
 
     async def ready(self) -> bool:
-        """Whether the pool takes tasks, once replaced if it broke and its workers started.
+        """Whether the pool takes tasks: replaced first if it broke, then its workers started.
 
         Busy workers still count: a task sent now waits for one to come free.
         """
@@ -170,9 +146,8 @@ class WorkerPool:
     async def _in_worker[T](self, deadline: float, task: Callable[[], T]) -> T:
         """`task()` on a worker set aside for it, killed by pebble at `deadline`.
 
-        Sent a second time, on a new pool, if the pool broke before any worker
-        started it: it did no work, so nothing runs twice. Never a third: if the
-        new pool breaks the same way, no worker can take it.
+        Sent once more, on a new pool, if the pool broke before a worker started it: it
+        did no work, so nothing runs twice.
         """
         with contextlib.suppress(_NeverStarted):  # the pool broke before a worker started it
             return await self._sent(deadline, task)
@@ -184,11 +159,8 @@ class WorkerPool:
     async def _sent[T](self, deadline: float, task: Callable[[], T]) -> T:
         """`task()` sent to the pool, a new one if it broke, killed by pebble at `deadline`.
 
-        Raises _NeverStarted when the pool breaks before any worker starts it, and
-        pebble's BrokenProcessPool when no worker can start, or the pool broke under
-        the task once started: `WORKER_FAILURES` calls that `no_workers`. Raises
-        TimeoutError, which it calls `too_slow`, at pebble's timeout, or past it and
-        a worker's start if pebble never answers a pool that didn't break.
+        Raises _NeverStarted if the pool breaks before a worker starts it; any other
+        failure goes up as it is.
         """
         # Worked out before a broken pool is replaced: that's the server's time, not the task's.
         time_left = deadline - self.loop.time()
@@ -205,7 +177,7 @@ class WorkerPool:
         except RuntimeError as refused:  # raised by pebble: the pool broke, or no worker starts
             _logger.warning("The worker pool refused a task", exc_info=refused)
             raise _NeverStarted() from refused
-        # pebble's timeout answers first; this one ends a wait it never answers, its pool whole.
+        # Only for a wait pebble never answers on an unbroken pool: its timeout comes first.
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
         try:
             async with backstop:
@@ -228,12 +200,11 @@ class WorkerPool:
     async def _answer_from[T](self, pool: ProcessPool, future: ProcessFuture[T]) -> T:
         """pebble's answer to a task sent to `pool`, watching that the pool doesn't lose it.
 
-        Raises BrokenProcessPool when the pool broke and lost the task: pebble
-        aborts only the tasks it holds as it gives up, not one sent just then.
+        Raises BrokenProcessPool if it does: pebble says nothing of a task sent as it gives up.
         """
         answer = asyncio.wrap_future(future)
         try:
-            while pool.active:  # pebble says nothing when it gives up on a pool
+            while pool.active:
                 await asyncio.wait([answer], timeout=constants.BROKEN_POOL_CHECK_S)
                 if answer.done():
                     return answer.result()

@@ -47,7 +47,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         sweeper.cancel()
-        # Waited for, so it has ended before the app has.
+        # Awaited, so it ends before the app does.
         with suppress(asyncio.CancelledError):  # raised: it was cancelled
             await sweeper
         await app.state.pool.close()

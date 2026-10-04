@@ -94,7 +94,7 @@ def test_a_request_the_server_cancels_after_its_browser_left_ends_cancelled():
         await asyncio.sleep(_WORK_S)
 
     async def cancelled_by_the_server() -> bool:
-        """Whether the request ended cancelled, cancelled once its browser had left."""
+        """Whether the request, cancelled after its browser left, ended cancelled."""
         watched = CancelOnDisconnect(answers_slowly)
         request = asyncio.ensure_future(watched(_HTTP, _browser_that_leaves(), _nowhere))
         await asyncio.sleep(_LEAVES_AFTER_S * 4)  # the browser has left, mid-answer
