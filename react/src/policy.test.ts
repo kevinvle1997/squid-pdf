@@ -1,7 +1,4 @@
-// The proxy's Content-Security-Policy allows one inline style, React Aria's own for what can be
-// pressed (usePress), by the hash of its text. An upgrade that changes the text would be blocked
-// in production alone, since nothing else runs behind the proxy: this reads the text from the
-// installed React Aria and checks the Caddyfile allows it.
+// The Caddyfile allows React Aria's inline style by hash, so a changed one breaks only production.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +9,7 @@ const REACT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const USE_PRESS = join(REACT, "node_modules/react-aria/dist/private/interactions/usePress.mjs");
 const CADDYFILE = join(REACT, "../Caddyfile");
 
-/** The text of the style tag usePress adds, as the browser hashes it: its template, filled and trimmed. */
+/** The text of the style tag usePress adds, as the browser hashes it. */
 function pressableStyle(): string {
   const source = readFileSync(USE_PRESS, "utf8");
   const template = /style\.textContent = `([^`]*)`\.trim\(\)/.exec(source)?.[1];

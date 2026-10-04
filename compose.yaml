@@ -1,6 +1,5 @@
 # The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
-# this file (copy env.example). .env holds the domain, the password hash and
-# the app's memory, and is never committed.
+# this file, filled in from env.example and never committed.
 name: squidpdf
 
 services:
@@ -11,30 +10,19 @@ services:
     # Reaps the pool's exited helper processes and passes stop signals on.
     init: true
     environment:
-      # Caddy's X-Forwarded-For names the address Caddy sees: the app believes it from
-      # Caddy's address alone (below), so nothing else that reaches the app can fake the
-      # address it limits. The network below is IPv4 alone, so an IPv6 client reaches Caddy
-      # through Docker's proxy and is seen as the network's gateway, one address for all.
+      # The app believes X-Forwarded-For from Caddy alone, so no one else can fake an address.
+      # The network is IPv4 alone, so every IPv6 client shares one address, the network's gateway.
       # Not in the image: run alone with its port open, anyone could fake the header.
       FORWARDED_ALLOW_IPS: 172.31.255.2
     volumes:
       - documents:/data
     # No ports: only Caddy, on this network, reaches the app.
-    # The whole app's memory: one worker a core of the host, each capped at 1 GiB
-    # (api/constants.py), /tmp's files, and the server's own process, which also holds each
-    # export's bytes as its worker sends them back. It is what the host can give the app
-    # beside Caddy and the system, so .env sets it (env.example says how). No default: one
-    # sized for a larger host never binds on a smaller one, where the host runs out first
-    # and its own out-of-memory killer stops any process, Caddy included. Under a limit that
-    # binds, the kernel kills the app's largest process: most often a worker at its cap,
-    # whose task alone fails and which the pool replaces (api/pool.py). If it kills the main
-    # process instead, the container restarts.
+    # The app's whole memory, /tmp included: no default, as it follows the host (env.example).
     mem_limit: ${SQUIDPDF_APP_MEMORY:?set it in .env from the host's memory, as env.example says}
     # It needs no privilege: it runs as its own user, on a port above 1024.
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # Nothing in the image is written: documents go to /data, and an export is saved in /tmp
-    # while it's made, at most one a worker, so /tmp's size follows the cores too.
+    # Only /data and /tmp are written; /tmp holds an export a worker, so it's sized by cores.
     read_only: true
     tmpfs:
       - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
@@ -79,8 +67,7 @@ networks:
   default:
     ipam:
       config:
-        # A range of its own, so Caddy's address is known. Others get theirs from the top
-        # half, so none can take Caddy's before it starts.
+        # Other containers draw from the top half, so none takes Caddy's address before it starts.
         - subnet: 172.31.255.0/24
           ip_range: 172.31.255.128/25
 

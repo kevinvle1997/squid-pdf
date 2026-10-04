@@ -189,11 +189,7 @@ def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, 
 def test_an_upload_not_sent_as_a_pdf_is_refused_so_no_other_site_can_send_one(
     mine, pdf_bytes, headers
 ):
-    """Another site's page can send these without asking first, with this site's password.
-
-    The browser sends a PDF as one, a type another site can send only after asking, and
-    the API never says yes.
-    """
+    """Another site can send these unasked; as a PDF, it must ask first, and the API says no."""
     before = _kept()
     response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
     assert_problem(response, "not_sent_as_pdf", 415)

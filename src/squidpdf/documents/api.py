@@ -47,9 +47,8 @@ def load(doc_id: str, request: Request) -> Loaded:
 async def _admit_pdf_only(request: Request) -> None:
     """Refuse an upload not sent as application/pdf, before it counts or any of it is read.
 
-    A form, plain text or no type at all is what another site's page can send with
-    this site's password, without asking first; counted, it would use up the
-    user's own uploads for the minute. The browser sends a PDF as one.
+    Another site's page can send a form, plain text or no type without asking first, with
+    this site's password: counted, it would use up the user's uploads for the minute.
     """
     sent_as = request.headers.get("content-type")  # None if the request names no type
     media_type = (sent_as or "").partition(";")[0].strip().lower()

@@ -40,8 +40,7 @@ CMD ["uv", "run", "pytest", "-q"]
 # extra, no dev tools and no tests.
 FROM base AS serve
 
-# Compiled here: compose runs the server on a read-only root, where Python can't keep what
-# it compiles, so each worker would compile every module again as it starts.
+# Compiled here, since on compose's read-only root every worker would compile at start.
 ENV UV_COMPILE_BYTECODE=1
 
 COPY --chown=squid pyproject.toml uv.lock .python-version README.md ./
