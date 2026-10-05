@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import errno
 import io
 import json
@@ -23,7 +24,15 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-from squidpdf.core import FontSources, LineToDraw, index_of, new_text, open_pdf
+from squidpdf.core import (
+    FontSources,
+    LineToDraw,
+    index_of,
+    new_text,
+    open_pdf,
+    start_request,
+    tally_fields,
+)
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT
 from squidpdf.core.fonts import google
 from squidpdf.core.fonts.catalog import FACES, face_bytes
@@ -244,6 +253,38 @@ def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger=google.__name__):
         _fresh_fetch(file, tmp_path, _failing)
     assert_equal(caplog.records, [], "what a hit logs")
+
+
+def test_a_request_tallies_what_googles_copies_cost_it(tmp_path):
+    """A slow analysis says it waited on Google, and how long; a cached copy, that it didn't."""
+    poppins = POPPINS.read_bytes()
+    file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
+    retries = _RetryRecord()  # one worker's, across its requests
+
+    def tallied_by(folder: Path, download: Callable[[str], bytes]) -> list[str]:
+        """What one request tallies asking for the copy."""
+        start_request()
+        _fetched(file, folder=folder, download=download, retries=retries)
+        return sorted(tally_fields())
+
+    # Each in a context of its own, as each request runs in its own task.
+    said = [
+        contextvars.copy_context().run(tallied_by, folder, download)
+        for folder, download in [
+            (tmp_path, _returning(poppins)),
+            (tmp_path, _failing),
+            (tmp_path / "down", _failing),
+            (tmp_path / "down", _failing),
+        ]
+    ]
+
+    expected = [
+        ["google_fetched", "google_ms"],
+        ["google_hit"],
+        ["google_failed", "google_ms"],
+        ["google_failed"],
+    ]
+    assert_equal(said, expected, "a download, the cache, a failure, then one held back")
 
 
 def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(

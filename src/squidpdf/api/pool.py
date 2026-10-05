@@ -13,6 +13,8 @@ What it guarantees. A change that breaks one changes this list in the same diff.
 - A task it can't run, or broke under once started, is `no_workers`; the cause is logged.
 - A pool works only in the event loop it was made in: its lock and semaphore bind to it.
 - pebble's failures become Problems through `constants.WORKER_FAILURES`.
+- A request's line tallies its wait for a worker, and its task's tallies, answered or failed.
+- A task killed at its timeout sends no tallies back.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import multiprocessing
 import shutil
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures.process import BrokenProcessPool
@@ -43,15 +46,37 @@ from squidpdf.core import (
     LogController,
     LogEvent,
     Problem,
+    Tally,
+    WorkerAnswer,
+    add_from_worker,
     current_request_id,
     in_request,
+    ms_since,
     result_of,
+    tallies_carried_by,
+    tally,
 )
 
 _log = LogController.for_module(__name__)
 
 # Failures that are no bug once a task's caller left: a Problem is its caller's answer.
 _EXPECTED_WHEN_LEFT: tuple[type[Exception], ...] = (Problem, *constants.WORKER_FAILURE_TYPES)
+
+
+@dataclass(slots=True)
+class _WorkerWarmth:
+    """Whether a worker process has run a task yet: its first fills every cache."""
+
+    warm: bool = False
+
+    def warm_up(self) -> bool:
+        """Mark the worker warm; whether it was cold."""
+        was_cold, self.warm = not self.warm, True
+        return was_cold
+
+
+# This process's, read only in a worker. Never reset: a new worker is a new process.
+_THIS_WORKER = _WorkerWarmth()
 
 
 class _NeverStarted(Exception):
@@ -100,11 +125,14 @@ class WorkerPool:
         """
         self._require_own_loop()
         deadline = self.loop.time() + timeout
+        waited_from = time.monotonic()
         try:
             async with asyncio.timeout_at(deadline):
                 await self.free.acquire()
         except TimeoutError as waited:  # no worker came free in time
             raise TooSlow() from waited
+        finally:  # a wait given up is the clearest case of a busy server
+            tally(Tally.QUEUED_MS, ms_since(waited_from))
         # Created at once, and the worker given back when it's done, however it ends.
         job = asyncio.create_task(self._in_worker(deadline, task))
         self.jobs.add(job)
@@ -189,7 +217,7 @@ class WorkerPool:
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
         try:
             async with backstop:
-                return await self._answer_from(pool, future)
+                return await self._tallied_answer(pool, future)
         except TimeoutError:  # raised by pebble at the task's timeout, or by the backstop
             if backstop.expired():  # a fault of pebble's, for whoever runs the server
                 _log.write(LogEvent.POOL_NEVER_ANSWERED)
@@ -205,7 +233,21 @@ class WorkerPool:
         finally:
             _forget_start(start)
 
-    async def _answer_from[T](self, pool: ProcessPool, future: ProcessFuture[T]) -> T:
+    async def _tallied_answer[T](
+        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[T]]
+    ) -> T:
+        """The task's result, with what it tallied in its worker added to the request's line."""
+        try:
+            answer = await self._answer_from(pool, future)
+        except Exception as failure:  # the task's own, carrying its tallies, or pebble's
+            add_from_worker(tallies_carried_by(failure))
+            raise
+        add_from_worker(answer.tallies)
+        return answer.result
+
+    async def _answer_from[T](
+        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[T]]
+    ) -> WorkerAnswer[T]:
         """pebble's answer to a task sent to `pool`, watching that the pool doesn't lose it.
 
         Raises BrokenProcessPool if it does: pebble says nothing of a task sent as it gives up.
@@ -250,14 +292,27 @@ def start_pool() -> WorkerPool:
     )
 
 
-def _noted_start[T](start: str, *, request_id: str | None, task: Callable[[], T]) -> T:
+def _noted_start[T](
+    start: str, *, request_id: str | None, task: Callable[[], T]
+) -> WorkerAnswer[T]:
     """In a worker: note that it started `task` by making the file `start`, then run it.
 
-    Its lines carry the id of the request it's for. The library's failures come back as
-    the Problems they mean (`core.result_of`).
+    Its lines carry the id of the request it's for, and what it tallied goes back
+    with it. The library's failures come back as the Problems they mean.
     """
     Path(start).touch()
-    return in_request(request_id, partial(result_of, task))
+    return in_request(request_id, partial(_run_tallied, task))
+
+
+def _run_tallied[T](task: Callable[[], T]) -> T:
+    """In a worker: run `task`, tallying its time and whether the worker was cold."""
+    if _THIS_WORKER.warm_up():
+        tally(Tally.COLD)
+    began = time.monotonic()
+    try:
+        return result_of(task)
+    finally:
+        tally(Tally.WORKER_MS, ms_since(began))
 
 
 def _has_started(start: Path) -> bool:

@@ -27,9 +27,16 @@ from squidpdf.core.app.logs import (
     LogController as LogController,
     LogEvent as LogEvent,
     OwnText as OwnText,
+    Tally as Tally,
+    WorkerAnswer as WorkerAnswer,
+    add_from_worker as add_from_worker,
     current_request_id as current_request_id,
     in_request as in_request,
-    new_request_id as new_request_id,
+    ms_since as ms_since,
+    start_request as start_request,
+    tallies_carried_by as tallies_carried_by,
+    tally as tally,
+    tally_fields as tally_fields,
 )
 from squidpdf.core.app.message import (
     Message as Message,

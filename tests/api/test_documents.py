@@ -29,6 +29,7 @@ from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import BASE_URL, InProcess, upload
+from tests.conftest import log_lines
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -489,9 +490,12 @@ def _a_new_analysis_format(monkeypatch: pytest.MonkeyPatch) -> None:
     "deploy", [_a_new_build, _a_new_analysis_format], ids=["a build", "an analysis format"]
 )
 def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
-    app, mine, doc, monkeypatch, deploy
+    app, mine, doc, monkeypatch, deploy, capsys
 ):
-    """Open documents read on as before: never indexed again, so every span id holds."""
+    """Open documents read on as before: never indexed again, so every span id holds.
+
+    The read that works it out says so on its line, the one spike a deploy makes.
+    """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patches below reach it
 
     def reindex(self):
@@ -513,6 +517,10 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
     assert_equal(ids, [span["id"] for span in doc["spans"]], "span ids across the deploy")
     kept_again = store.load_analysis(folder, read.BUILD)
     assert_true(kept_again is not None, "the analysis, kept again under this build and format")
+    mine.get(f"/api/documents/{doc['id']}")
+    reads = log_lines(capsys.readouterr().out)[-2:]
+    worked_out = ["reanalysed=1" in line.split() for line in reads]
+    assert_equal(worked_out, [True, False], "which read worked the analysis out again")
 
 
 def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_back(

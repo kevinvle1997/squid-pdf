@@ -7,14 +7,16 @@ it has any document's folder hidden.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import logging
 import re
 import secrets
 import sys
+import time
 import traceback
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
 from typing import Any
@@ -29,6 +31,7 @@ _LEVEL_WIDTH = 5  # "ERROR", the longest
 # a document's id, which a library's error or a server error's debug can name.
 _DOCUMENT_FOLDER = re.compile(r"(?<=[/\\])[A-Za-z0-9_-]{22}(?=[/\\'\"\s:]|$)", re.MULTILINE)
 _HIDDEN = "<document>"  # what stands in for one in the log
+_MS_PER_S = 1000
 
 # The request the running code answers, if any: set by the API, read into every line.
 _REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -47,6 +50,21 @@ class Level(Enum):
 INFO, WARN, ERROR = Level.INFO, Level.WARN, Level.ERROR
 # The level's name as a line writes it, by the stdlib's number.
 _LEVEL_NAMES = {level.value: level.name for level in Level}
+
+
+class Tally(StrEnum):
+    """What a request did on the way, tallied onto its line: why a slow one was slow."""
+
+    QUEUED_MS = "queued_ms"  # waiting for a free worker
+    WORKER_MS = "worker_ms"  # at work in one
+    COLD = "cold"  # tasks that were a new worker's first, which fills every cache
+    REANALYSED = "reanalysed"  # analyses worked out again, after a deploy retired them
+    GOOGLE_HIT = "google_hit"  # Google's copies read from the disk cache
+    GOOGLE_FETCHED = "google_fetched"  # downloaded in time
+    GOOGLE_FAILED = (
+        "google_failed"  # none came: failed, late, or held back after a recent failure
+    )
+    GOOGLE_MS = "google_ms"  # waiting on downloads
 
 
 class _Outcome(StrEnum):
@@ -101,6 +119,38 @@ class OwnText:
     """Text the server wrote itself, never read from a file or a request: a route's template."""
 
     text: str
+
+
+@dataclass(slots=True)
+class Tallies:
+    """What one request, or a task of it in a worker, tallied on the way."""
+
+    amounts: dict[Tally, int] = field(default_factory=dict)
+
+    def add(self, tally: Tally, amount: int) -> None:
+        """Add `amount` to `tally`."""
+        self.amounts[tally] = self.amounts.get(tally, 0) + amount  # .get: its first
+
+    def add_all(self, more: Tallies) -> None:
+        """Add everything `more` tallied."""
+        for tally, amount in more.amounts.items():
+            self.add(tally, amount)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerAnswer[T]:
+    """A task's result, and what it tallied in its worker, for its request's line."""
+
+    result: T
+    tallies: Tallies
+
+
+# What the request the running code answers has tallied; None outside a request.
+_TALLIES: contextvars.ContextVar[Tallies | None] = contextvars.ContextVar(
+    "tallies", default=None
+)
+# The attribute a task's failure carries its worker's tallies back to the server in.
+_CARRIED = "squidpdf_tallies"
 
 
 type Field = int | float | bool | Enum | OwnText
@@ -207,10 +257,11 @@ class _Lines(logging.Handler):
             self.handleError(record)
 
 
-def new_request_id() -> str:
-    """Start a request: a random id its lines carry, which links to nothing but the log."""
+def start_request() -> str:
+    """Start a request, nothing tallied yet: a random id its lines carry, linked to nothing."""
     request_id = secrets.token_hex(_REQUEST_ID_BYTES)
     _REQUEST_ID.set(request_id)
+    _TALLIES.set(Tallies())
     return request_id
 
 
@@ -219,7 +270,50 @@ def current_request_id() -> str | None:
     return _REQUEST_ID.get()
 
 
-def in_request[T](request_id: str | None, task: Callable[[], T]) -> T:
-    """`task()`, its lines carrying `request_id`: for a worker, which misses its context."""
+def tally(kind: Tally, amount: int = 1) -> None:
+    """Add to `kind` on the running request's line; outside a request, nothing."""
+    running = _TALLIES.get()
+    if running is not None:
+        running.add(kind, amount)
+
+
+def tally_fields() -> dict[str, int]:
+    """What the running request tallied, as its line's fields, in the order `Tally` lists."""
+    running = _TALLIES.get()
+    amounts = {} if running is None else running.amounts
+    return {tally.value: amounts[tally] for tally in Tally if tally in amounts}
+
+
+def in_request[T](request_id: str | None, task: Callable[[], T]) -> WorkerAnswer[T]:
+    """In a worker: `task()`, its lines carrying `request_id`, and what it tallied.
+
+    A worker misses the request's context, so its tallies go back with the result,
+    or on the failure it raises (`tallies_carried_by`), for the server to add.
+    """
     _REQUEST_ID.set(request_id)
-    return task()
+    tallies = Tallies()
+    _TALLIES.set(tallies)
+    try:
+        return WorkerAnswer(task(), tallies)
+    except Exception as failure:  # the task's: a failed request is often the slow one
+        # One that refuses new attributes goes up as it is, carrying none.
+        with contextlib.suppress(AttributeError):
+            setattr(failure, _CARRIED, tallies)
+        raise
+
+
+def add_from_worker(tallies: Tallies | None) -> None:
+    """Add what a task tallied in its worker to the running request's line."""
+    running = _TALLIES.get()
+    if tallies is not None and running is not None:
+        running.add_all(tallies)
+
+
+def tallies_carried_by(failure: BaseException) -> Tallies | None:
+    """What a task tallied before it failed; None for pebble's own, as at a timeout."""
+    return getattr(failure, _CARRIED, None)  # set by `in_request`, on the task's failures
+
+
+def ms_since(started: float) -> int:
+    """Whole milliseconds since `started`, a `time.monotonic()`."""
+    return round((time.monotonic() - started) * _MS_PER_S)

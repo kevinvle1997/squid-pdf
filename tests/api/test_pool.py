@@ -21,10 +21,17 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
+from squidpdf.api import constants
 from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import WorkerPool, start_pool
-from squidpdf.core import LogController, LogEvent, Problem, new_request_id
+from squidpdf.core import (
+    LogController,
+    LogEvent,
+    Problem,
+    start_request,
+    tally_fields,
+)
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
 from tests.conftest import LOG_LINE, log_lines
@@ -272,22 +279,25 @@ def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
     Timed from the queued task's call: starting and closing the pool is the server's time.
     """
 
-    async def queued_behind_busy_workers() -> tuple[Problem, float]:
+    async def queued_behind_busy_workers() -> tuple[Problem, float, dict[str, int]]:
         async with _own_pool() as pool:  # its own: this one fills every worker
             await pool.run(_ENOUGH_S, _noop)  # every worker started
             busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
             await asyncio.sleep(0)  # they take every worker first
+            start_request()
             started = time.monotonic()
             with pytest.raises(Problem) as caught:
                 await pool.run(_TIMEOUT_S, _noop)
             waited = time.monotonic() - started
             for task in busy:
                 task.cancel()
-            return caught.value, waited
+            return caught.value, waited, tally_fields()
 
-    problem, waited = asyncio.run(queued_behind_busy_workers())
+    problem, waited, tallied = asyncio.run(queued_behind_busy_workers())
     assert_equal(problem.type, "too_slow", "problem for a task that never got a worker")
     assert_at_most(waited, _BUSY_S / 2, "seconds waited, well short of the busy workers' time")
+    # The line of a request that gave up waiting says it waited: the server was busy.
+    assert_equal(list(tallied), ["queued_ms"], "what the request tallied")
 
 
 def test_a_new_workers_start_doesnt_count_toward_the_timeout():
@@ -313,7 +323,7 @@ def test_a_line_logged_in_a_worker_has_the_servers_shape_and_its_requests_id(cap
     """Workers are spawned, so they inherit no configuration and no request: both are passed."""
 
     async def log_in_a_worker() -> str:
-        request = new_request_id()
+        request = start_request()
         async with _own_pool() as pool:  # its own: spawned now, its output captured
             await pool.run(_ENOUGH_S, _log_a_line)
         return request
@@ -326,6 +336,46 @@ def test_a_line_logged_in_a_worker_has_the_servers_shape_and_its_requests_id(cap
         f"WARN  skipped tests.api.test_pool google_fetch_late timeout_s=2 request={request}"
     )
     assert_in(expected, line, "the worker's line")
+
+
+def _raise_a_bug() -> None:
+    """Work that fails with a bug of ours, no Problem."""
+    raise RuntimeError("a bug in the work")
+
+
+def _tallied_by(tasks: list[Callable[[], object]]) -> list[dict[str, int]]:
+    """What each task tallied, each a request of its own on one worker of a pool of one."""
+
+    async def one_request_each() -> list[dict[str, int]]:
+        tallied = []
+        async with _own_pool() as pool:  # its own, with one worker, started now
+            for task in tasks:
+                start_request()
+                with contextlib.suppress(Exception):  # raised by a task that fails
+                    await pool.run(_ENOUGH_S, task)
+                tallied.append(tally_fields())
+        return tallied
+
+    return asyncio.run(one_request_each())
+
+
+def test_only_a_new_workers_first_task_is_tallied_as_cold(monkeypatch):
+    """Its first task fills every cache, so a slow one says so."""
+    monkeypatch.setattr(constants, "WORKERS", 1)  # so the second task has the same worker
+
+    first, second = _tallied_by([os.getpid, os.getpid])
+
+    assert_equal((first.get("cold"), second.get("cold")), (1, None), "cold, by request")
+
+
+@pytest.mark.parametrize("fail", [_read_a_broken_font, _raise_a_bug], ids=["problem", "bug"])
+def test_a_task_that_fails_still_sends_back_what_it_tallied(monkeypatch, fail):
+    """A failed request is often the slow one: its line still says what its worker did."""
+    monkeypatch.setattr(constants, "WORKERS", 1)  # so the task is the worker's first
+
+    [tallied] = _tallied_by([fail])
+
+    assert_equal(sorted(tallied), ["cold", "queued_ms", "worker_ms"], "what it tallied")
 
 
 def _note_pid(folder: Path) -> None:

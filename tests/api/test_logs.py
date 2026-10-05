@@ -29,6 +29,21 @@ def test_a_request_logs_one_line_by_its_route_naming_the_id_its_reply_carries(
     assert_equal(line.split()[-1], f"request={request}", "the id its reply carries")
 
 
+def test_a_request_that_runs_pdf_work_tallies_its_wait_and_its_work_on_its_line(
+    browser, pdf_bytes, capsys
+):
+    """What it tallied in the worker comes back with its result, so a slow line says why."""
+    mine = browser()
+    capsys.readouterr()
+
+    upload(mine, pdf_bytes)
+
+    [line] = log_lines(capsys.readouterr().out)
+    fields = dict(word.split("=") for word in line.split() if "=" in word)
+    assert_in("queued_ms", fields, "the wait for a worker, on the upload's line")
+    assert_in("worker_ms", fields, "the work in it, on the upload's line")
+
+
 def test_the_health_check_logs_nothing(server, capsys):
     """Docker asks every 30 s; a failing check shows in `docker ps` instead."""
     capsys.readouterr()

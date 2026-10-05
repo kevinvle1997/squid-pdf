@@ -10,7 +10,7 @@ from pathlib import Path
 
 import xxhash
 
-from squidpdf.core import BUILD, Reply, Workers, words
+from squidpdf.core import BUILD, Reply, Tally, Workers, tally, words
 from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE
@@ -52,6 +52,7 @@ class ReadController:
         """The analysis kept, worked out first if the build, the tuning or its format is new."""
         kept = await asyncio.to_thread(store.load_analysis, doc.folder, BUILD)
         if kept is None:  # a new build, tuning or format: worked out again over the index
+            tally(Tally.REANALYSED)
             kept = await self._enqueue_analyse(doc.folder)
         return kept
 
