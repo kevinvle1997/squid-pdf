@@ -277,7 +277,7 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     with open_pdf(path) as engine:
         index = engine.index()
         span = next(iter(index))
-        fit = replace_fit(engine, span, "Hi Ωμέγα").report
+        fit = replace_fit(engine, span, "Hi Ωμέγα", room_pt=0.0).report
         applied = _apply(engine, [Replace(span.id, "Hi Ωμέγα")], index)
         engine.save(out)
 
@@ -579,7 +579,7 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     text = span.text.replace("thirty", "中 thirty")
     out = tmp_path / "out.pdf"
 
-    fit = replace_fit(engine, span, text).report
+    fit = replace_fit(engine, span, text, room_pt=0.0).report
     applied = _apply(engine, [Replace(span.id, text)], index)
     engine.save(str(out))
 

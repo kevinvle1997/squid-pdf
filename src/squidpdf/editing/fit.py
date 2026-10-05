@@ -14,6 +14,7 @@ from squidpdf.core import (
     CONDENSE_LIMIT,
     FACES,
     OPTION_KEYS,
+    ROOM_SLACK_PT,
     SHRINK_FLOOR,
     TOLERANCE_PT,
     DrawPlan,
@@ -49,6 +50,7 @@ class FitReport:
     """
 
     delta_pt: float
+    room_pt: float = 0.0  # the free space after it on its line (`core.text.room`)
     missing: list[str] = field(default_factory=list)  # the span's own font lacks these
     options: list[Option] = field(default_factory=list)
     strategy: Strategy = "as-is"
@@ -60,7 +62,12 @@ class FitReport:
     @property
     def ok(self) -> bool:
         """True when the replacement can be drawn as-is, no compromise needed."""
-        return not self.missing and self.delta_pt <= TOLERANCE_PT
+        return not self.missing and not self.too_long
+
+    @property
+    def too_long(self) -> bool:
+        """Whether the line runs past its room by more than the tolerance would allow."""
+        return runs_past(self.delta_pt, self.room_pt)
 
     def describe(self) -> list[Message]:
         """Everything that won't come out as typed, in the order it's told; empty if nothing."""
@@ -76,11 +83,14 @@ class FitReport:
         # Letters nothing can draw.
         if self.left_out:
             parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))
-        if self.delta_pt > TOLERANCE_PT:
-            parts.append(Message("too_long", {"delta_pt": self.delta_pt}))
+        # The part past its room is the part that collides.
+        if self.too_long:
+            parts.append(
+                Message("too_long", {"delta_pt": round(self.delta_pt - self.room_pt, 2)})
+            )
         # The user's choice of way out wasn't one on offer.
         passed_over = self.asked != "as-is" and self.strategy != self.asked
-        if passed_over and self.delta_pt > TOLERANCE_PT:
+        if passed_over and self.too_long:
             parts.append(Message("not_offered"))
         return parts
 
@@ -107,14 +117,20 @@ class LogFits:
     inserts: dict[int, Fitted]  # by the insert's place in the log
 
 
-def options_for(delta_pt: float, original_width: float) -> list[Option]:
+def runs_past(delta_pt: float, room_pt: float) -> bool:
+    """Whether a line `delta_pt` longer runs past its room, or the tolerance if wider."""
+    return delta_pt > max(TOLERANCE_PT, room_pt + ROOM_SLACK_PT)
+
+
+def options_for(delta_pt: float, original_width: float, *, room_pt: float) -> list[Option]:
     """The three ways out of an overflow, in the order worth trying.
 
     Condensing is offered only while it stays invisible, and shrinking only down
     to the floor. Past that it is not a solution, it is a different-looking page.
+    Each ends the line where the original did.
     """
-    # It fits, or there's no width to compare against.
-    if delta_pt <= TOLERANCE_PT or original_width <= 0:
+    # It fits in its room, or there's no width to compare against.
+    if not runs_past(delta_pt, room_pt) or original_width <= 0:
         return []
 
     # What shrinking to fit would scale the size to, and how much condensing squeezes.
@@ -172,21 +188,23 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
 
 
 def replace_fit(
-    engine: Engine, span: Span, text: str, *, strategy: Strategy = "as-is"
+    engine: Engine, span: Span, text: str, *, room_pt: float, strategy: Strategy = "as-is"
 ) -> Fitted:
     """What would happen if the user typed this, with the ways out if it will not fit.
 
-    `strategy` is drawn only if it was offered; otherwise as-is.
+    `room_pt` is the span's room (`Engine.rooms`). `strategy` is drawn only if it
+    was offered; otherwise as-is.
     """
     # One plan for what's typed: the fit reads it, and the draw draws it.
     typed_plan = engine.plan_for(span, text)
     original_width = engine.measure(span, span.text)
     typed_width = engine.width_of(span, typed_plan)
     delta_pt = typed_width - original_width
-    options = options_for(delta_pt, original_width)
+    options = options_for(delta_pt, original_width, room_pt=room_pt)
     drawn_strategy = _strategy_drawn(strategy, options)
     report = FitReport(
         delta_pt=round(delta_pt, 2),
+        room_pt=round(room_pt, 2),
         missing=typed_plan.missing,
         options=options,
         strategy=drawn_strategy,

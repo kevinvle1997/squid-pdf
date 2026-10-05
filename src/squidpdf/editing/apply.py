@@ -51,6 +51,8 @@ class Resolved:
     inserts: list[_ListedInsert]
     # Edits that point at nothing, left out and said why.
     skipped: list[Skipped]
+    # Each edited span's room, read from the original page, by id.
+    rooms: dict[str, float]
     # How many pages the original has, numbered from 0.
     page_count: int
 
@@ -144,7 +146,11 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
             latest[edit.span_id] = _EditedSpan(edit, span)
             continue
         assert_never(edit)
-    return Resolved(list(latest.values()), inserts, skipped, page_count)
+    span_edits = list(latest.values())
+    rooms = engine.rooms(index, [edited_span.span for edited_span in span_edits])
+    return Resolved(
+        span_edits, inserts=inserts, skipped=skipped, rooms=rooms, page_count=page_count
+    )
 
 
 def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
@@ -171,7 +177,10 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
     """
     fits = {
-        edited_span.span.id: _fit_of(engine, edited_span) for edited_span in resolved.span_edits
+        edited_span.span.id: _fit_of(
+            engine, edited_span, room_pt=resolved.rooms[edited_span.span.id]
+        )
+        for edited_span in resolved.span_edits
     }
     return LogFits(
         replaces={span_id: fit for span_id, fit in fits.items() if fit is not None},
@@ -181,12 +190,13 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     )
 
 
-def _fit_of(engine: Engine, edited_span: _EditedSpan) -> Fitted | None:
-    """What a span edit will look like; None for one that draws nothing to fit."""
+def _fit_of(engine: Engine, edited_span: _EditedSpan, *, room_pt: float) -> Fitted | None:
+    """What a span edit will look like, in its room; None for one that draws nothing to fit."""
     edit = edited_span.edit
     # A replace: measured as it will be drawn.
     if isinstance(edit, Replace):
-        return replace_fit(engine, edited_span.span, edit.text, strategy=edit.strategy)
+        span = edited_span.span
+        return replace_fit(engine, span, edit.text, room_pt=room_pt, strategy=edit.strategy)
     # A redaction: nothing is drawn.
     if isinstance(edit, Redact):
         return None

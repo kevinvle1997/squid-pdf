@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from functools import cache, reduce
 from itertools import chain, count
 from operator import or_
+from typing import Any
 
 import pymupdf
 
@@ -84,6 +85,9 @@ _FILE_TYPES: dict[str, FontFileType] = {
     "cid": "cff",
     "pfa": "type1",
 }
+
+# What MuPDF's list of a page's drawing calls names a picture or shading; paths come apart.
+_PICTURE_KINDS = ("fill-image", "fill-imgmask", "fill-shade")
 
 # The kinds of form field that show their value as text, as PyMuPDF names them.
 _TEXT_FIELD_KINDS = ("Text", "ComboBox", "ListBox")
@@ -238,6 +242,22 @@ class _MuPDFDriver:
         """
         letters = self._letters(page)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
+
+    def drawn_boxes(self, page: int) -> list[Rect]:
+        """The box around each thing the page draws but text: lines, shapes and pictures.
+
+        A path is boxed piece by piece, so a grid drawn as one path still has its lines.
+        """
+        pdf_page = self.doc[page]
+        pieces = [
+            _box_of(piece, ink=_ink_of(drawing))
+            for drawing in pdf_page.get_drawings()
+            for piece in drawing["items"]
+        ]
+        pictures = [
+            Rect(*box) for kind, box in pdf_page.get_bboxlog() if kind in _PICTURE_KINDS
+        ]
+        return pieces + pictures
 
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
@@ -710,6 +730,34 @@ def _shows_text(kind: str, value: object) -> bool:
 def _object_number(reference: str) -> int:
     """The object a reference points at: "7 0 R" -> 7."""
     return int(reference.split()[0])
+
+
+def _ink_of(drawing: dict[str, Any]) -> float:
+    """How far a path's ink reaches past its outline: half its stroke, if it's stroked."""
+    # A fill alone, or a hairline, which MuPDF draws as thin as it can.
+    if "s" not in drawing["type"] or not drawing["width"]:
+        return 0.0
+    return drawing["width"] / 2
+
+
+def _box_of(piece: tuple[Any, ...], *, ink: float) -> Rect:
+    """The box around one piece of a path's ink: its outline, grown by `ink` all round."""
+    x0, y0, x1, y1 = _outline_of(piece)
+    return Rect(x0 - ink, y0 - ink, x1 + ink, y1 + ink)
+
+
+def _outline_of(piece: tuple[Any, ...]) -> tuple[float, float, float, float]:
+    """The box around one piece of a path, as get_drawings lists it: a line, a curve, a box."""
+    kind, *shape = piece
+    # A rectangle: its own box.
+    if kind == "re":
+        return tuple(shape[0])
+    # A four-sided shape: the box around it.
+    if kind == "qu":
+        return tuple(shape[0].rect)
+    # A line or a curve: the box around its points.
+    xs, ys = [point.x for point in shape], [point.y for point in shape]
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:

@@ -1,0 +1,97 @@
+{
+  "about": "One span and edit each, read by tests/editing/test_fit.py and react/src/editing/fit.test.ts: the server and the browser must give the same verdict. The rules are the server's own.",
+  "rules": {
+    "tolerance_pt": 4,
+    "room_slack_pt": 0.1,
+    "condense_limit": 0.05,
+    "shrink_floor": 0.9
+  },
+  "cases": [
+    {
+      "what": "ragged right: longer, into the space after it",
+      "original_pt": 100,
+      "delta_pt": 15,
+      "room_pt": 20,
+      "too_long_by": null,
+      "options": []
+    },
+    {
+      "what": "ragged right: past the block's edge",
+      "original_pt": 100,
+      "delta_pt": 25,
+      "room_pt": 20,
+      "too_long_by": 5,
+      "options": [
+        "as-is"
+      ]
+    },
+    {
+      "what": "justified: no room",
+      "original_pt": 100,
+      "delta_pt": 5,
+      "room_pt": 0,
+      "too_long_by": 5,
+      "options": [
+        "shrink",
+        "condense",
+        "as-is"
+      ]
+    },
+    {
+      "what": "a table row: up to the next cell",
+      "original_pt": 100,
+      "delta_pt": 10,
+      "room_pt": 10,
+      "too_long_by": null,
+      "options": []
+    },
+    {
+      "what": "a table row: into the next cell",
+      "original_pt": 100,
+      "delta_pt": 13,
+      "room_pt": 10,
+      "too_long_by": 3,
+      "options": [
+        "as-is"
+      ]
+    },
+    {
+      "what": "less room than the tolerance: the tolerance holds",
+      "original_pt": 100,
+      "delta_pt": 3,
+      "room_pt": 2,
+      "too_long_by": null,
+      "options": []
+    },
+    {
+      "what": "past the tolerance, with a little room: said past the room",
+      "original_pt": 100,
+      "delta_pt": 5,
+      "room_pt": 2,
+      "too_long_by": 3,
+      "options": [
+        "shrink",
+        "condense",
+        "as-is"
+      ]
+    },
+    {
+      "what": "past its room by less than can be seen: not too long",
+      "original_pt": 100,
+      "delta_pt": 20.03,
+      "room_pt": 20,
+      "too_long_by": null,
+      "options": []
+    },
+    {
+      "what": "past its room by a tenth and more: too long",
+      "original_pt": 100,
+      "delta_pt": 20.15,
+      "room_pt": 20,
+      "too_long_by": 0.15,
+      "options": [
+        "as-is"
+      ]
+    }
+  ]
+}

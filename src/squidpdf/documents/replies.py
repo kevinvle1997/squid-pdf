@@ -11,6 +11,7 @@ from squidpdf.core import (
     APPROXIMATE_REASONS,
     CONDENSE_LIMIT,
     OPTION_KEYS,
+    ROOM_SLACK_PT,
     SHRINK_FLOOR,
     TOLERANCE_PT,
     Message,
@@ -73,6 +74,7 @@ def _fit_rules() -> FitRules:
     """The thresholds the browser runs the fit check with: the server's own."""
     return {
         "tolerance_pt": TOLERANCE_PT,
+        "room_slack_pt": ROOM_SLACK_PT,
         "condense_limit": CONDENSE_LIMIT,
         "shrink_floor": SHRINK_FLOOR,
     }

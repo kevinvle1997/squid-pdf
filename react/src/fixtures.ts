@@ -18,7 +18,7 @@ import type {
 export const A4: PageInfo = { width: 595, height: 842, turn_cw: 0 };
 
 /** The server's thresholds, as core/constants.py sets them. */
-export const RULES: FitRules = { tolerance_pt: 4, condense_limit: 0.05, shrink_floor: 0.9 };
+export const RULES: FitRules = { tolerance_pt: 4, room_slack_pt: 0.1, condense_limit: 0.05, shrink_floor: 0.9 };
 
 /** The server's sentences, as core/app/words/en.toml writes them. */
 export const COPY: Copy = {
@@ -46,6 +46,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     origin: [72, 110],
     fidelity: "exact",
     why: null,
+    room_pt: 0,
     form_field: false,
     ...fields,
   };

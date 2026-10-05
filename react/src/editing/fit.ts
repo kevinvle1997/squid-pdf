@@ -8,6 +8,7 @@ import { fill } from "./words";
 
 export interface Fit {
   deltaPt: number; // how much longer than the original, in points; negative is shorter
+  roomPt: number; // the free space after the span on its line: too long is only past it
   missing: string[]; // letters the span's font can't draw, each once, in the order typed
   options: Strategy[]; // the ways out of an overflow, when there is one
 }
@@ -35,9 +36,17 @@ export function missingIn(text: string, glyphs: Record<string, number>): string[
   return [...missing];
 }
 
-/** The ways out of an overflow, in the order worth trying; none when it fits. */
-export function optionsFor(deltaPt: number, originalPt: number, rules: FitRules): Strategy[] {
-  if (deltaPt <= rules.tolerance_pt || originalPt <= 0) return [];
+/** Whether a line `deltaPt` longer runs past its room, or the tolerance if wider: `runs_past` in editing/fit.py. */
+export function runsPast(deltaPt: number, roomPt: number, rules: FitRules): boolean {
+  return deltaPt > Math.max(rules.tolerance_pt, roomPt + rules.room_slack_pt);
+}
+
+/** The ways out of an overflow, in the order worth trying; none when it fits in its room. Each ends where the original did. */
+export function optionsFor(
+  deltaPt: number,
+  { originalPt, roomPt, rules }: { originalPt: number; roomPt: number; rules: FitRules },
+): Strategy[] {
+  if (!runsPast(deltaPt, roomPt, rules) || originalPt <= 0) return [];
   const shrunkTo = originalPt / (originalPt + deltaPt);
   const squeezedBy = deltaPt / originalPt;
   const options: Strategy[] = [];
@@ -51,22 +60,28 @@ export function optionsFor(deltaPt: number, originalPt: number, rules: FitRules)
 export function fitOf(span: SpanInfo, font: FontInfo, text: string, rules: FitRules): Fit {
   const originalPt = widthPt(span.text, font.glyphs, span.size);
   const deltaPt = Math.round((widthPt(text, font.glyphs, span.size) - originalPt) * 100) / 100;
+  const roomPt = span.room_pt;
   return {
     deltaPt,
+    roomPt,
     missing: missingIn(text, font.glyphs),
-    options: optionsFor(deltaPt, originalPt, rules),
+    options: optionsFor(deltaPt, { originalPt, roomPt, rules }),
   };
 }
 
 /** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
 export function troubleKindOf(fit: Fit, rules: FitRules): string {
-  return `${fit.missing.join("")} ${fit.deltaPt > rules.tolerance_pt}`;
+  return `${fit.missing.join("")} ${runsPast(fit.deltaPt, fit.roomPt, rules)}`;
 }
 
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */
 export function troublesOf(fit: Fit, rules: FitRules, copy: Copy, substitute: string): string[] {
   const troubles: string[] = [];
   if (fit.missing.length > 0) troubles.push(fill(copy.missing, { chars: fit.missing, font: substitute }));
-  if (fit.deltaPt > rules.tolerance_pt) troubles.push(fill(copy.too_long, { delta_pt: fit.deltaPt }));
+  // The part past its room is the part that collides.
+  if (runsPast(fit.deltaPt, fit.roomPt, rules)) {
+    const pastRoomPt = Math.round((fit.deltaPt - fit.roomPt) * 100) / 100;
+    troubles.push(fill(copy.too_long, { delta_pt: pastRoomPt }));
+  }
   return troubles;
 }
