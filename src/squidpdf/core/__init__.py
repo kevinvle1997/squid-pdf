@@ -70,6 +70,10 @@ from squidpdf.core.types import (
     Span as Span,
     SpanIndex as SpanIndex,
     Style as Style,
+    index_as_json as index_as_json,
+    index_from_json as index_from_json,
     index_of as index_of,
     new_text as new_text,
+    pages_as_json as pages_as_json,
+    pages_from_json as pages_from_json,
 )

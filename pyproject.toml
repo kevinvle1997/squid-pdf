@@ -11,7 +11,7 @@ dependencies = [
     "pymupdf>=1.28.2,<1.29",
     "fonttools>=4.53",
     "httpx>=0.28",  # fetches Google's copy of a font, in the CLI as in the app
-    "orjson>=3.10",  # the document store's files; the CLI imports the store
+    "orjson>=3.10",  # core keeps spans and pages as JSON, in the store's files
 ]
 
 [project.optional-dependencies]

@@ -1,9 +1,8 @@
-"""What the PDF says. Facts only.
+"""What the PDF says, facts only, and how a span index and a page list are kept as JSON.
 
-A Span holds what the file states and nothing we concluded. Whether an edit here
-will look identical depends on the font library we happen to ship, which is a
-judgement that can change without the document changing, so it lives in
-`core.text.fidelity`, not here.
+A Span holds what the file states and nothing we concluded. Whether an edit will
+look identical is a judgement that can change with the font library we ship,
+without the document changing, so it lives in `core.text.fidelity`, not here.
 """
 
 from __future__ import annotations
@@ -11,7 +10,9 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Literal, NewType, get_args
+from typing import Any, Literal, NewType, get_args
+
+import orjson
 
 from squidpdf.core.constants import TURN_TOLERANCE
 
@@ -356,6 +357,44 @@ class SpanIndex:
 def index_of(spans: Iterable[Span]) -> SpanIndex:
     """The index of a document's spans, given in the order they were extracted."""
     return SpanIndex({span.id: span for span in spans})
+
+
+def index_as_json(index: SpanIndex) -> bytes:
+    """The index as JSON, which `index_from_json` reads back whole."""
+    return orjson.dumps(list(index))
+
+
+def index_from_json(saved: bytes) -> SpanIndex:
+    """The index `index_as_json` wrote, each span as it was."""
+    return index_of(_load_span(span) for span in orjson.loads(saved))
+
+
+def _load_span(saved: dict[str, Any]) -> Span:
+    """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
+    rebuilt: dict[str, Any] = {
+        "color": tuple(saved["color"]),
+        "bbox": Rect(**saved["bbox"]),
+        "origin": tuple(saved["origin"]),
+        "fragments": tuple(_load_fragment(fragment) for fragment in saved["fragments"]),
+        "direction": tuple(saved["direction"]),
+    }
+    return Span(**saved | rebuilt)
+
+
+def _load_fragment(saved: dict[str, Any]) -> Fragment:
+    """One saved fragment, the same way."""
+    rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
+    return Fragment(**saved | rebuilt)
+
+
+def pages_as_json(pages: list[Page]) -> bytes:
+    """The page list as JSON, which `pages_from_json` reads back whole."""
+    return orjson.dumps(pages)
+
+
+def pages_from_json(saved: bytes) -> list[Page]:
+    """The page list `pages_as_json` wrote; a page's fields are all plain."""
+    return [Page(**page) for page in orjson.loads(saved)]
 
 
 # 6 bytes -> 12 hex chars: documents have thousands of spans at most, nowhere

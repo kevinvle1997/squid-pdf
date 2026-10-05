@@ -11,7 +11,7 @@ from pathlib import Path
 import orjson
 import xxhash
 
-from squidpdf.core import BUILD, FidelityReport, MessageInfo, Span, reason_of
+from squidpdf.core import BUILD, Engine, FidelityReport, MessageInfo, Span, SpanIndex, reason_of
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import (
@@ -24,40 +24,56 @@ from squidpdf.documents.types import (
 )
 
 
-def analyse(folder: str, max_pages: int) -> KeptAnalysis:
-    """Judge every span and list each font's letters, under this build; keep and return it.
+def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
+    """Index a new upload, keep its pages, and analyse it.
 
-    Kept in no language: each sentence as its code and facts, said when it's sent.
-    Returned as kept JSON, not a dict per span: that crosses from the worker in a moment.
-    A saved index keeps ids through a new build or retune. Raises TooManyPages past `max_pages`.
+    The one place an index is built, so no span id the browser holds ever moves.
+    Raises TooManyPages past `max_pages`, before reading a page.
     """
     path = Path(folder)
     with store.open_to_analyse(path) as engine:
-        index = store.load_index(path)
-        if index is None:
-            if engine.page_count() > max_pages:
-                raise TooManyPages(max_pages)
-            index = engine.index()
-            store.save_index(path, index)
-            store.save_pages(path, engine.pages())
-        reports = {report.span_id: report for report in engine.assess(index)}
-        # Text a form field draws: said before any edit, since an edit to it is left out.
-        form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
-        # Index order: the first span in each font speaks for it.
-        first_span_of_font: dict[str, Span] = {}
-        for span in index:
-            first_span_of_font.setdefault(span.font, span)
-        fonts: list[FontFacts] = [
-            {
-                "name": span.font,
-                "substitute": reports[span.id].substitute,
-                "why": _substitute_why(reports[span.id]),
-                "same_widths": reports[span.id].same_widths,
-                "glyphs": engine.widths(span),
-            }
-            for span in first_span_of_font.values()
-        ]
+        if engine.page_count() > max_pages:
+            raise TooManyPages(max_pages)
+        index = engine.index()
+        store.save_index(path, index)
+        store.save_pages(path, engine.pages())
+        return _analysed(engine, path, index)
 
+
+def analyse(folder: str) -> KeptAnalysis:
+    """Analyse a stored document again, under this build, over the index kept at upload.
+
+    Raises Gone if that index was deleted or kept in another format.
+    """
+    path = Path(folder)
+    index = store.require_index(path)
+    with store.open_to_analyse(path) as engine:
+        return _analysed(engine, path, index)
+
+
+def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
+    """Judge every span and list each font's letters, under this build; keep and return it.
+
+    Kept in no language: each sentence as its code and facts, said when it's sent.
+    Handed back as its JSON, so it leaves the worker fast and the reply sends its spans as is.
+    """
+    reports = {report.span_id: report for report in engine.assess(index)}
+    # Text a form field draws: said before any edit, since an edit to it is left out.
+    form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
+    # Index order: the first span in each font speaks for it.
+    first_span_of_font: dict[str, Span] = {}
+    for span in index:
+        first_span_of_font.setdefault(span.font, span)
+    fonts: list[FontFacts] = [
+        {
+            "name": span.font,
+            "substitute": reports[span.id].substitute,
+            "why": _substitute_why(reports[span.id]),
+            "same_widths": reports[span.id].same_widths,
+            "glyphs": engine.widths(span),
+        }
+        for span in first_span_of_font.values()
+    ]
     analysis: Analysis = {
         "build": BUILD,
         "pages": [
