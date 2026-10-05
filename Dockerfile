@@ -57,6 +57,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --start-interval=1s \
     CMD ["python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
 
 # One process; all PDF work runs in its worker pool. Keep-alive outlasts Caddy's two idle
-# minutes, so the proxy never reuses a connection the app has just closed.
+# minutes, so the proxy never reuses a connection the app has just closed. The app logs
+# each request itself (`api/access.py`), by route, never by a path naming a document.
 CMD ["uvicorn", "squidpdf.api.app:create_app", "--factory", \
-     "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "130"]
+     "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "130", \
+     "--no-access-log"]

@@ -20,6 +20,17 @@ from squidpdf.core.app.errors import (
     TooHeavy as TooHeavy,
     Unreadable as Unreadable,
 )
+from squidpdf.core.app.logs import (
+    ERROR as ERROR,
+    INFO as INFO,
+    WARN as WARN,
+    LogController as LogController,
+    LogEvent as LogEvent,
+    OwnText as OwnText,
+    current_request_id as current_request_id,
+    in_request as in_request,
+    new_request_id as new_request_id,
+)
 from squidpdf.core.app.message import (
     Message as Message,
     MessageInfo as MessageInfo,

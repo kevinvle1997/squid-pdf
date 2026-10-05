@@ -42,7 +42,7 @@ from squidpdf.core.fonts.google import (
 from squidpdf.core.types import FontDescriptor
 from tests.conftest import name_two_byte_font
 from tests.core.conftest import POPPINS, POPPINS_TEXT
-from tests.helpers import assert_at_most, assert_equal, assert_false, assert_true
+from tests.helpers import assert_at_most, assert_equal, assert_false, assert_in, assert_true
 
 _WANTED = "Yearly Hello"  # Y, a and y aren't in the file's copy of Poppins
 _LACKED = ["Y", "a", "y"]
@@ -173,7 +173,7 @@ def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
     with caplog.at_level(logging.WARNING):
         got = _fresh_fetch(file, tmp_path, _failing)
     assert_equal(got, None, "what a failed fetch hands back")
-    assert_true("fetch failed" in caplog.text, "the failure was logged")
+    assert_in("google_fetch_failed", caplog.text, "the failure was logged")
 
 
 def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset):
@@ -232,13 +232,11 @@ def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
         _fetched(file, folder=tmp_path, download=None, retries=_RetryRecord())
         _fresh_fetch(file, tmp_path, _returning(poppins))
     lines = [record.getMessage() for record in caplog.records]
-    misses = [line for line in lines if "Google cache miss" in line]
+    misses = [line for line in lines if "google_cache_missed" in line]
+    miss = f"skipped core.fonts.google google_cache_missed font={file.source}"
     assert_equal(
         misses,
-        [
-            f"Google cache miss: {file.source} (cache only)",
-            f"Google cache miss: {file.source} (may download)",
-        ],
+        [f"{miss} may_download=false", f"{miss} may_download=true"],
         "one line per miss, render's then analysis's",
     )
 
@@ -263,7 +261,7 @@ def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
         got = _fresh_fetch(file, tmp_path, _returning(poppins))
 
     assert_true(got == poppins, "the checked download was handed back")
-    assert_true("not cached" in caplog.text, "the failure was logged")
+    assert_in("google_not_cached", caplog.text, "the failure was logged")
     assert_equal([path for path in tmp_path.rglob("*") if path.is_file()], [], "files left")
 
 
@@ -280,7 +278,7 @@ def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, cap
 
     assert_true(got == poppins, "Google's copy was handed back")
     assert_true("damaged" in caplog.text, "the bad copy was logged")
-    assert_false("cache miss" in caplog.text, "a damaged copy logged as a miss too")
+    assert_false("google_cache_missed" in caplog.text, "a damaged copy logged as a miss too")
     assert_true(cached.read_bytes() == poppins, "the cache holds Google's copy after")
 
 

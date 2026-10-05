@@ -72,6 +72,7 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf", "fastapi", _WEB),
         ("squidpdf", "starlette", _WEB),
         ("squidpdf", "pydantic", _WEB),
+        ("squidpdf", "logging", ["squidpdf.core.app.logs"]),
     ],
     ids=[
         "only core/pdf/ talks to MuPDF",
@@ -87,6 +88,7 @@ def _within(name: str, package: str) -> bool:
         "only the web layer imports FastAPI",
         "only the web layer imports Starlette",
         "only the web layer imports Pydantic",
+        "only LogController logs, so every line has its shape and no document",
     ],
 )
 def test_the_import_rule_holds(importers, imported, allowed):
@@ -98,6 +100,18 @@ def test_the_import_rule_holds(importers, imported, allowed):
         and any(_within(name, imported) for name in imports)
     ]
     assert_equal(breaking, [], f"modules in {importers} importing {imported}")
+
+
+def test_only_logcontroller_calls_the_event_loops_exception_handler():
+    """asyncio logs what that handler is given, past LogController and the import rule above."""
+    breaking = [
+        module
+        for module, tree in _TREES.items()
+        if module != "squidpdf.core.app.logs"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr == "call_exception_handler"
+    ]
+    assert_equal(breaking, [], "modules calling the event loop's exception handler")
 
 
 # Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.

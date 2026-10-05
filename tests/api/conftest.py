@@ -21,8 +21,11 @@ BASE_URL = "https://testserver"
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
 
 
-# A file on the server, as MuPDF names one it couldn't open.
-SERVER_PATH = "/data/documents/0a1b2c/original.pdf"
+# A document's file on the server, as MuPDF names one it couldn't open, and as the log
+# writes it: the folder is the document's id, which the log never says.
+DOCUMENT_ID = "q3Xy-9Lk2_vB7mWnR4tPzA"
+SERVER_PATH = f"/data/{DOCUMENT_ID}/original.pdf"
+LOGGED_PATH = "/data/<document>/original.pdf"
 
 
 def _crashes() -> APIRouter:

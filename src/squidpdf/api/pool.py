@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import multiprocessing
 import shutil
 import sys
@@ -39,9 +38,18 @@ from pebble import ProcessFuture, ProcessPool
 from squidpdf.api import constants
 from squidpdf.api.errors import NoWorkers, TooSlow
 from squidpdf.api.errors.http import API_ERRORS
-from squidpdf.core import Problem, result_of
+from squidpdf.core import (
+    ERROR,
+    WARN,
+    LogController,
+    LogEvent,
+    Problem,
+    current_request_id,
+    in_request,
+    result_of,
+)
 
-_logger = logging.getLogger(__name__)
+_log = LogController.for_module(__name__)
 
 # Failures that are no bug once a task's caller left: a Problem is its caller's answer.
 _EXPECTED_WHEN_LEFT: tuple[type[Exception], ...] = (Problem, *constants.WORKER_FAILURE_TYPES)
@@ -169,13 +177,14 @@ class WorkerPool:
         try:
             pool = await self._running()
         except BrokenProcessPool as broke:  # raised by pebble when no worker process can start
-            _logger.warning("No worker could start", exc_info=broke)
+            _log.failed(WARN, LogEvent.NO_WORKER_STARTED, broke)
             raise
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
-            future = pool.submit(partial(_noted_start, str(start), task), time_left)
+            job = partial(_noted_start, str(start), request_id=current_request_id(), task=task)
+            future = pool.submit(job, time_left)
         except RuntimeError as refused:  # raised by pebble: the pool broke, or no worker starts
-            _logger.warning("The worker pool refused a task", exc_info=refused)
+            _log.failed(WARN, LogEvent.POOL_REFUSED_TASK, refused)
             raise _NeverStarted() from refused
         # Only for a wait pebble never answers on an unbroken pool: its timeout comes first.
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
@@ -184,11 +193,11 @@ class WorkerPool:
                 return await self._answer_from(pool, future)
         except TimeoutError:  # raised by pebble at the task's timeout, or by the backstop
             if backstop.expired():  # a fault of pebble's, for whoever runs the server
-                _logger.warning("The worker pool never answered a task, past its timeout")
+                _log.skipped(WARN, LogEvent.POOL_NEVER_ANSWERED)
             raise
         except BrokenProcessPool as broke:  # the pool broke: pebble says so, or lost the task
             # Its cause can be a bug of ours, such as a result that can't be sent back.
-            _logger.warning("The worker pool broke under a task", exc_info=broke)
+            _log.failed(WARN, LogEvent.POOL_BROKE, broke)
             # Its workers stopped first, so none can still start the task once it's looked at.
             await self._running()
             if not _has_started(start):
@@ -242,13 +251,14 @@ def start_pool() -> WorkerPool:
     )
 
 
-def _noted_start[T](start: str, task: Callable[[], T]) -> T:
+def _noted_start[T](start: str, *, request_id: str | None, task: Callable[[], T]) -> T:
     """In a worker: note that it started `task` by making the file `start`, then run it.
 
-    The library's failures come back as the Problems they mean (`core.result_of`).
+    Its lines carry the id of the request it's for. The library's failures come back as
+    the Problems they mean (`core.result_of`).
     """
     Path(start).touch()
-    return result_of(task)
+    return in_request(request_id, partial(result_of, task))
 
 
 def _has_started(start: Path) -> bool:
@@ -266,7 +276,7 @@ def _process_pool() -> ProcessPool:
     return ProcessPool(
         max_workers=constants.WORKERS,
         max_tasks=constants.TASKS_PER_WORKER,
-        initializer=_limit_memory,
+        initializer=_start_worker,
         # Spawn: a fork of a threaded server can inherit a held lock and hang.
         # The cast because pebble types `context` as a module; it takes any.
         context=cast(ModuleType, multiprocessing.get_context("spawn")),
@@ -281,29 +291,35 @@ def _log_unexpected[T](job: asyncio.Task[T]) -> None:
     if job.cancelled():
         return
     failure = job.exception()  # read here, so asyncio doesn't log it as never read
-    if isinstance(failure, Problem):
-        _log_server_debug(failure)
-    expected = failure is None or isinstance(failure, _EXPECTED_WHEN_LEFT)
-    if expected:
+    if failure is None:
         return
-    message = "a task whose caller left failed"
-    job.get_loop().call_exception_handler(
-        {"message": message, "exception": failure, "task": job}
-    )
+    # The server's own failure: its debug is for the log, as the API's handler does.
+    if _has_server_debug(failure):
+        _log.failed(WARN, LogEvent.TASK_FAILED_CALLER_LEFT, failure)
+        return
+    # The file's or the request's doing, or pebble's: its caller's answer, no news.
+    if isinstance(failure, _EXPECTED_WHEN_LEFT):
+        return
+    _log.failed(ERROR, LogEvent.TASK_FAILED_CALLER_LEFT, failure)
 
 
-def _log_server_debug(problem: Problem) -> None:
-    """Log a 5xx Problem's debug with its type, as the API's handler does."""
-    on_our_side = problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR
-    # A 4xx is the file's or the request's doing, so a log of it is noise.
-    if not on_our_side or problem.debug is None:
-        return
-    _logger.warning("A task whose caller left failed with %s: %s", problem.type, problem.debug)
+def _has_server_debug(failure: BaseException) -> bool:
+    """Whether a failure is a server error's Problem, with a debug for the log."""
+    if not isinstance(failure, Problem):
+        return False
+    on_our_side = failure.status >= status.HTTP_500_INTERNAL_SERVER_ERROR
+    return on_our_side and failure.debug is not None
 
 
 def current(request: Request) -> WorkerPool:
     """The app's pool, started with it. A route's dependency."""
     return request.app.state.pool
+
+
+def _start_worker() -> None:
+    """Set a new worker up: its lines formatted as the server's, its memory capped."""
+    LogController.configure()
+    _limit_memory()
 
 
 def _limit_memory() -> None:
