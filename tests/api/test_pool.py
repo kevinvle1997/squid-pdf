@@ -154,7 +154,8 @@ def _kill_idle_worker(client: TestClient, pool: WorkerPool) -> None:
         pytest.fail("the client hasn't started the app")
     idle_pid = client.portal.call(pool.run, _ENOUGH_S, os.getpid)
     os.kill(idle_pid, signal.SIGKILL)
-    _wait_until(lambda: _is_gone(idle_pid), _ENOUGH_S)
+    gone = _wait_until(lambda: _is_gone(idle_pid), _ENOUGH_S)
+    assert_true(gone, f"the killed worker was reaped within {_ENOUGH_S} s")
 
 
 def test_the_api_works_on_after_an_idle_worker_is_killed(tmp_path, monkeypatch, pdf_bytes):
@@ -263,22 +264,27 @@ def test_a_pool_works_only_in_the_event_loop_it_was_made_in(pool):
 
 
 def test_time_spent_waiting_for_a_worker_counts_toward_the_timeout():
-    """Waiting behind other tasks is the caller's time, so it counts."""
+    """Waiting behind other tasks is the caller's time, so it counts.
 
-    async def queued_behind_busy_workers() -> None:
+    Timed from the queued task's call: starting and closing the pool is the server's time.
+    """
+
+    async def queued_behind_busy_workers() -> tuple[Problem, float]:
         async with _own_pool() as pool:  # its own: this one fills every worker
+            await pool.run(_ENOUGH_S, _noop)  # every worker started
             busy = [asyncio.ensure_future(pool.run(_BUSY_S, _hang)) for _ in range(WORKERS)]
             await asyncio.sleep(0)  # they take every worker first
-            await pool.run(_TIMEOUT_S, _noop)
+            started = time.monotonic()
+            with pytest.raises(Problem) as caught:
+                await pool.run(_TIMEOUT_S, _noop)
+            waited = time.monotonic() - started
             for task in busy:
                 task.cancel()
+            return caught.value, waited
 
-    started = time.monotonic()
-    with pytest.raises(Problem) as caught:
-        asyncio.run(queued_behind_busy_workers())
-    waited = time.monotonic() - started
-    assert_equal(caught.value.type, "too_slow", "problem for a task that never got a worker")
-    assert_at_most(waited, _BUSY_S, "seconds waited, which the busy workers would have taken")
+    problem, waited = asyncio.run(queued_behind_busy_workers())
+    assert_equal(problem.type, "too_slow", "problem for a task that never got a worker")
+    assert_at_most(waited, _BUSY_S / 2, "seconds waited, well short of the busy workers' time")
 
 
 def test_a_new_workers_start_doesnt_count_toward_the_timeout():
@@ -381,6 +387,16 @@ async def _start_then_leave(
     return int((folder / "pid").read_text())
 
 
+async def _wait_until_every_task_ends(pool: WorkerPool) -> None:
+    """Wait in `pool`'s loop for its tasks to end, then a turn more for their done callbacks."""
+    deadline = time.monotonic() + _ENOUGH_S
+    while pool.jobs:
+        if time.monotonic() > deadline:
+            pytest.fail(f"a task still running {_ENOUGH_S} s after its caller left")
+        await asyncio.sleep(_POLL_S)
+    await asyncio.sleep(0)
+
+
 def _asyncio_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
     """What asyncio logged, once every finished task has been collected."""
     gc.collect()  # a task's unread error is logged when the task is collected
@@ -398,7 +414,6 @@ def _note_pid_then_read_a_broken_font(folder: Path) -> None:
     """Writes down which worker runs it, works _WORK_S, then reads a broken font."""
     _note_pid(folder)
     time.sleep(_WORK_S)
-    (folder / "done").touch()  # what the test waits for: the failure comes next
     _read_a_broken_font()
 
 
@@ -416,13 +431,8 @@ def test_a_render_that_fails_on_its_file_after_its_browser_left_logs_no_error(
     caplog.set_level(logging.WARNING, logger="squidpdf.api.pool")
 
     async def leave() -> None:
-        worker_pid = await _start_then_leave(pool, tmp_path, task)
-
-        def ended() -> bool:
-            return (tmp_path / "done").exists() or _is_gone(worker_pid)
-
-        await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
-        await asyncio.sleep(_WORK_S)  # for pebble to see it end and say how
+        await _start_then_leave(pool, tmp_path, task)
+        await _wait_until_every_task_ends(pool)  # pebble saw it end and said how
 
     runner.run(leave())
 
@@ -476,7 +486,7 @@ def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_pa
         pool = start_pool()  # its own: this closes it
         await _start_then_leave(pool, tmp_path, _note_pid_then_work)
         await pool.close()
-        await asyncio.sleep(_WORK_S)  # for the render's end to come back
+        await _wait_until_every_task_ends(pool)  # the render's end came back
 
     asyncio.run(leave_then_close())
 

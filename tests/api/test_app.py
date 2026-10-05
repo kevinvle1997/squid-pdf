@@ -5,17 +5,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
-from squidpdf.api.app import create_app
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_problem
 
 
-def test_health_answers_once_the_app_has_started():
-    with TestClient(create_app()) as client:
-        response = client.get("/api/health")
+def test_health_answers_once_the_app_has_started(browser):
+    response = browser().get("/api/health")
     assert_equal(response.status_code, 200, "health status")
     assert_equal(response.json(), {"status": "ok"}, "health body")
 
