@@ -2,8 +2,7 @@
 
 Only primitives here (see `core.pdf.driver`): the hard-to-read MuPDF calls come
 from `core.pdf.lowlevel`, whose `PdfFile` the driver holds, and the everyday ones are below.
-What to make of them is `core.engine`'s. `open_pdf` is the one way in:
-nothing outside `core` learns that MuPDF is underneath.
+Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is underneath.
 """
 
 from __future__ import annotations
@@ -17,21 +16,11 @@ from operator import or_
 
 import pymupdf
 
-from squidpdf.core.app.errors import (
-    Damaged,
-    Encrypted,
-    ErrorController,
-    Failure,
-    TooHeavy,
-    machine_failure,
-)
+from squidpdf.core.app.errors import Damaged, Encrypted, Failure, TooHeavy, machine_failure
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import GARBAGE_COLLECT, GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
-from squidpdf.core.engine import Engine, open_engine
+from squidpdf.core.constants import GARBAGE_COLLECT
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.document import NO_SOURCES, FontSources
-from squidpdf.core.fonts.substitute import face_letters
-from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.pdf.lowlevel import (
     MUPDF_ERRORS,
     MUPDF_OWN_ERRORS,
@@ -39,7 +28,6 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_TOO_HEAVY,
     PdfFile,
 )
-from squidpdf.core.plan import letter_widths
 from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
@@ -107,48 +95,15 @@ _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it remo
 
 # MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
 # errors all derive from one, so the narrower ones go first.
-_MUPDF_FAILURES = (
+MUPDF_FAILURES = (
     Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
     # Out of memory, or a file it can't open: only its words tell which.
     Failure(raised=MUPDF_SYSTEM_ERRORS, problem=machine_failure),
     Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
 )
-# Core's own: every failure below the API, said as the Problem it means.
-CORE_ERRORS = ErrorController(_MUPDF_FAILURES)
 
-# What drew and judged a page; a new one means earlier images and fidelity may differ.
-# Google's copies are part of it: a new pin lends other letters.
-_GOOGLE = GOOGLE_FONTS_COMMIT[:7]
-BUILD = f"mupdf-{pymupdf.mupdf_version}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
-
-
-def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
-    """The PDF at `path`, open for editing. Use it in a `with`, or close it.
-
-    `sources` lend a font the letters its copies in the file lack: Google's copy.
-    """
-    return open_engine(_open_driver(path), sources=sources)
-
-
-def result_of[T](task: Callable[[], T]) -> T:
-    """What `task()` returns, with MuPDF's own failures raised as the Problems they mean.
-
-    A worker runs its task through this: MuPDF's exceptions hold a pointer, so
-    they can't be sent back from another process, and they mean something a
-    person can be told. `_MUPDF_FAILURES` says what; anything else goes up as
-    it is.
-    """
-    return CORE_ERRORS.result_of(task)
-
-
-@cache
-def face_widths(face: Face) -> dict[str, float]:
-    """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
-
-    For the font list, where there's no document to open: the same widths the
-    engine gives a span drawn in the face.
-    """
-    return letter_widths(_open_face(face), face_letters(face))
+# The library and its version, for `core.engine`'s BUILD.
+DRIVER_BUILD = f"mupdf-{pymupdf.mupdf_version}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -184,12 +139,12 @@ def _mupdf_font(font_file: bytes) -> _MuPDFFont:
 
 
 @cache
-def _open_face(face: Face) -> _MuPDFFont:
+def open_face(face: Face) -> FontProgram:
     """A face we ship, opened once per process: it measures what `add_font` draws."""
     return _mupdf_font(face_bytes(face))
 
 
-def _open_driver(path: str) -> _MuPDFDriver:
+def open_driver(path: str) -> PdfDriver:
     """The PDF at `path`, open in MuPDF, only ever as a PDF.
 
     Raises FileNotFoundError when it's gone, Encrypted behind a password, and
@@ -218,7 +173,7 @@ def _open_driver(path: str) -> _MuPDFDriver:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _MuPDFDriver:
-    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `_open_driver`."""
+    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `open_driver`."""
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
@@ -412,9 +367,9 @@ class _MuPDFDriver:
         except MUPDF_ERRORS as exc:  # MuPDF can't read the bytes as a font
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
 
-    def face_font(self, face: Face) -> _MuPDFFont:
+    def face_font(self, face: Face) -> FontProgram:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
-        return _open_face(face)
+        return open_face(face)
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
         """Add a font to the page under the resource name `resource`, or one like it if taken.

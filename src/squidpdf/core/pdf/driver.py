@@ -1,9 +1,8 @@
 """What the engine asks of a PDF library: the seam another library would fill.
 
-Primitives only: read what the file says, change it, draw on it, save it. What
-to make of it (spans, fidelity, substitutes, fits) is `core.engine`'s, the same
-over any driver. PyMuPDF is AGPL; a permissive rewrite would implement these
-two protocols over pypdfium2 and pikepdf, and nothing else.
+Primitives only: read what the file says, change it, draw on it, save it. What to make of it is
+`core.engine`'s, the same over any driver. PyMuPDF is AGPL; a permissive rewrite would implement
+these two protocols over pypdfium2 and pikepdf, and give the engine what `core.pdf.mupdf` does.
 """
 
 from __future__ import annotations
@@ -64,12 +63,11 @@ class FontProgram(Protocol):
 
 
 class PdfDriver(Protocol):
-    """A PDF open in a library. `core.pdf.mupdf.MuPDFDriver` is the one there is.
+    """A PDF open in a library. `core.pdf.mupdf`'s is the one there is.
 
-    Pages count from 0. Boxes and points are in points, top-left origin, on the
-    page unrotated. A font the library can't use raises DriverError, saying
-    why, and the engine falls back rather than crashing. Anything else the
-    library raises goes up to `result_of`, which says what it means.
+    Pages count from 0. Boxes and points are in points, top-left origin, on the page unrotated.
+    A font the library can't use raises DriverError, saying why, and the engine falls back
+    rather than crashing. Anything else goes up to `result_of`, which says what it means.
     """
 
     def page_count(self) -> int:

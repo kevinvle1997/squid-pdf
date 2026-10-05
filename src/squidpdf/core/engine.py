@@ -13,17 +13,23 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cache, partial
 from typing import assert_never
 
+from squidpdf.core.app.errors import ErrorController
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.document import DocumentFonts, FontSources
+from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
+from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
+from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import PdfDriver
-from squidpdf.core.plan import DrawPlan, DrawPlanner
+
+# The one import that names the driver: another PDF library is swapped in here.
+from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
+from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
@@ -44,6 +50,13 @@ from squidpdf.core.writer import PageWriter, Setting
 
 # A word: a run of letters and digits (`\w` without its underscore).
 _WORD = re.compile(r"[^\W_]+")
+
+# Core's own: every failure below the API, said as the Problem it means.
+CORE_ERRORS = ErrorController(MUPDF_FAILURES)
+
+# What drew and judged a page, Google's pin too: a new one may draw and judge it differently.
+_GOOGLE = GOOGLE_FONTS_COMMIT[:7]
+BUILD = f"{DRIVER_BUILD}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -408,6 +421,25 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     return Engine(
         driver, fonts=fonts, plans=DrawPlanner(fonts, driver), writer=PageWriter(driver)
     )
+
+
+def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
+    """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
+    return open_engine(open_driver(path), sources=sources)
+
+
+def result_of[T](task: Callable[[], T]) -> T:
+    """What `task()` returns, with the library's failures raised as the Problems they mean."""
+    return CORE_ERRORS.result_of(task)
+
+
+@cache
+def face_widths(face: Face) -> dict[str, float]:
+    """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
+
+    For the font list, where no document is open: the same widths a span in the face gets.
+    """
+    return letter_widths(open_face(face), face_letters(face))
 
 
 def _by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
