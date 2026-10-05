@@ -58,6 +58,7 @@ _FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
 _EDGE_PT = 0.5  # how far past the original's end a fitted run may land, in points
 _HEIGHT_PT = 0.1  # finer than the shrink changes a line's height, coarser than rounding
 _SAME_WIDTH_PT = 0.25  # how far a same-width redraw's ends may move: far below visible
+_SAME_START_PT = 0.25  # how far a redrawn line's start may move: far below visible
 _ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to the file
 # A TrueType font's hinting: code that snaps letters to the screen's pixels.
 _HINTING = ("fpgm", "prep", "cvt ")
@@ -468,6 +469,31 @@ def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, sp
     assert_not_in("48,500", left, "the edited line's old text")
 
 
+def test_an_edit_leaves_the_text_under_the_files_own_redaction_mark(tmp_path):
+    # The file holds a redaction mark over the last line, never applied: its owner's to apply.
+    doc = pymupdf.open(_three_lines(str(tmp_path / "lines.pdf"), spacing=1.2, font="helv"))
+    page = doc[0]
+    page.add_redact_annot(page.search_for(_LINES[2])[0], fill=(0, 0, 0))
+    path = str(tmp_path / "marked.pdf")
+    doc.save(path)
+    out = str(tmp_path / "out.pdf")
+    with open_pdf(path) as engine:
+        index = engine.index()
+        [first] = [span for span in index if span.text == _LINES[0]]
+        _apply(engine, [Replace(first.id, "Line above the changed one")], index)
+        engine.save(out)
+
+    saved = pymupdf.open(out)[0]
+    left = saved.get_text()
+    assert_in(_LINES[1], left, "the line between")
+    assert_in(_LINES[2], left, "the line under the file's own mark")
+    assert_equal(
+        [annotation.type[1] for annotation in saved.annots()],
+        ["Redact"],
+        "the file's own mark, still there and still not applied",
+    )
+
+
 def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
     # "Jones" starts half a point inside the colon's box, as kerning leaves it.
     doc = pymupdf.open()
@@ -580,21 +606,23 @@ _LINKS = {
     # out too, so a link looked for in that list was never found to delete.
     "reset": "/A<</S/ResetForm>>",
 }
-# Where the page is shown from: a box that doesn't start at 0,0, as a cropped page's.
-_CROPPED = "[20 30 590 780]"
+# Where the page is shown from: not from 0,0, and past the paper (its MediaBox) on two sides.
+_CROPPED = "[20 30 640 900]"
 
 
 def _linked(path: str, turn_cw: QuarterTurn) -> str:
     """A line covered by three links of different kinds, and a link on a second line.
 
-    Each is written by hand, as `_LINKS` says, to be compared whole with what's saved.
-    The page is cropped and turned `turn_cw` once they're written, so each link's area
-    is in the PDF's own coordinates, not the page's as it's shown.
+    Each written by hand, as `_LINKS` says; the page is cropped and turned after, so their
+    areas are in the PDF's own coordinates. The lines' font is stored in the file, trimmed,
+    so a replace draws in the file's own codes.
     """
     doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_text((72, 100), "Contact: sales@example.com", fontname="helv", fontsize=12)
-    page.insert_text((72, 200), "Clear the form", fontname="helv", fontsize=12)
+    # "emb" is only the font's resource name.
+    page.insert_font(fontname="emb", fontbuffer=face_bytes(FACES["Liberation Sans Regular"]))
+    page.insert_text((72, 100), "Contact: sales@example.com", fontname="emb", fontsize=12)
+    page.insert_text((72, 200), "Clear the form", fontname="emb", fontsize=12)
     [line] = page.search_for("Contact: sales@example.com")
     third = line.width / 3
     areas = [
@@ -614,10 +642,17 @@ def _linked(path: str, turn_cw: QuarterTurn) -> str:
         )
         references.append(f"{link_xref} 0 R")
     doc.xref_set_key(page.xref, "Annots", "[" + " ".join(references) + "]")
+    doc.subset_fonts(verbose=False)
     doc.xref_set_key(page.xref, "CropBox", _CROPPED)
     page.set_rotation(turn_cw)
     doc.save(path)
     return path
+
+
+def _line_starts(path: str) -> dict[str, tuple[float, float]]:
+    """Where each line on the first page starts, on its baseline, by its first word."""
+    blocks = pymupdf.open(path)[0].get_text("dict")["blocks"]
+    return {span["text"].split()[0]: span["origin"] for span in each_span(blocks)}
 
 
 def _annotations_on(path: str) -> list[tuple[str, str]]:
@@ -636,15 +671,20 @@ def _annotations_on(path: str) -> list[tuple[str, str]]:
 
 @pytest.mark.parametrize("turn_cw", [0, 90, 180, 270])
 @pytest.mark.parametrize(
-    ("edit", "kept"),
-    [("replace", list(_LINKS)), ("redact", ["reset"])],
+    ("edit", "kept", "words"),
+    [
+        ("replace", list(_LINKS), ["Clear", "Contact:", "form", "help@example.com", "the"]),
+        ("redact", ["reset"], ["Clear", "form", "the"]),
+    ],
     ids=[
         "a replaced line keeps each of its links as it was",
         "a redacted one loses them: a link can carry the text",
     ],
 )
-def test_an_edit_keeps_the_links_it_should(tmp_path, edit, kept, turn_cw):
-    """Erasing keeps each link whole, in its place; a redaction drops those over its text."""
+def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
+    tmp_path, edit, kept, words, turn_cw
+):
+    """An edit takes only its line; a replace keeps each link, a redaction drops those on it."""
     path = _linked(str(tmp_path / "linked.pdf"), turn_cw)
     out = str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
@@ -663,6 +703,16 @@ def test_an_edit_keeps_the_links_it_should(tmp_path, edit, kept, turn_cw):
     assert_equal(
         _annotations_on(out), expected, "each link on the page, in order, as the file writes it"
     )
+    said = sorted(pymupdf.open(out)[0].get_text().split())
+    assert_equal(said, words, "the edited line's words gone, and the other line's kept")
+    # A line redrawn in the file's own codes starts where the old one did.
+    original_starts = _line_starts(path)
+    for first_word, (x, y) in _line_starts(out).items():
+        original_x, original_y = original_starts[first_word]
+        assert_close(
+            x, original_x, _SAME_START_PT, f"points {first_word!r}'s line moved across"
+        )
+        assert_close(y, original_y, _SAME_START_PT, f"points {first_word!r}'s line moved down")
 
 
 @pytest.mark.parametrize("turn_cw", [90, 180, 270])

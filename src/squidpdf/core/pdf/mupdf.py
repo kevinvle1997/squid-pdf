@@ -7,7 +7,9 @@ Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is
 
 from __future__ import annotations
 
+import math
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from functools import cache, reduce
@@ -177,10 +179,8 @@ class _MuPDFDriver:
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
-    # The fonts this driver named on each page, by resource name, for erase_text to
-    # keep: those add_font added, and the file's own a code write named again.
-    # By the page's own object, whose number stays when the pages are renumbered.
-    named: dict[int, dict[str, int]] = field(default_factory=dict, repr=False)
+    # What this driver did to each page, by its object, whose number survives renumbering.
+    changed: dict[int, _ChangedPage] = field(default_factory=dict, repr=False)
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -235,7 +235,7 @@ class _MuPDFDriver:
         A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
         letters = self._letters(page)
-        return [_letters_inside(letters, box) for box in boxes]
+        return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
@@ -252,10 +252,10 @@ class _MuPDFDriver:
             if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int) -> list[_Letter]:
-        """Every letter on the page, in reading order."""
+    def _letters(self, page: int) -> _PageLetters:
+        """Every letter on the page, to find by where it sits."""
         blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        return list(_each_letter(blocks))
+        return _page_letters(list(_each_letter(blocks)))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, including inside forms."""
@@ -384,42 +384,31 @@ class _MuPDFDriver:
             xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._keep_named(page, free_name, xref)
+        self._changed_page(page).keep_named(free_name, xref)
         return FontResource(free_name, xref)
 
-    def _keep_named(self, page: int, resource: str, xref: int) -> None:
-        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
-        self.named.setdefault(self.doc[page].xref, {})[resource] = xref
+    def _changed_page(self, page: int) -> _ChangedPage:
+        """What this driver did to the page so far, kept from the first change on."""
+        return self.changed.setdefault(self.doc[page].xref, _ChangedPage())
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside each box, for real.
 
-        The same letters `text_in` reads, so what's erased is what's checked, and
-        what's returned is what's left in each box: letters no erase reaches, as a
-        form field's. MuPDF deletes every letter whose box a redaction touches,
-        and a letter's box runs from its font's ascender to its descender: at
-        usual line spacing it reaches the lines above and below. So each box is
-        erased as a thin strip just above its own letters' baselines, which other
-        lines' boxes don't reach. A box that still has letters afterwards (a font
-        whose boxes sit oddly) is erased whole, so old text is never left under
-        new. MuPDF also deletes every link a redaction touches, and any font no
-        text on the page uses any more: the links go back as they were, and so do
-        the fonts this driver named on the page. A comment written on the page over
-        the erased letters (a FreeText) goes with them, whatever it says: it can
-        carry the text.
+        Each box is erased as a thin strip above its letters' baselines, since a redaction
+        takes every letter its box touches, and a letter's box can reach the lines around it.
+        A box with letters left is then erased whole, so old text is never left under new.
         """
         letters = self._letters(page)
         with self.file.links_kept(page):
             # No letter's middle inside: erase the whole box, as nothing else would.
-            self.file.redact(page, [_strip_through(letters, box) or box for box in boxes])
+            self.file.redact(page, [_strip_along(letters.inside(box)) or box for box in boxes])
             left = self.text_in(page, boxes)
             missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
             # Read again only after a second erase: most boxes are clear after the first.
             if missed:
                 self.file.redact(page, missed)
                 left = self.text_in(page, boxes)
-        # .get: a page the driver named no font on.
-        for resource, xref in self.named.get(self.doc[page].xref, {}).items():
+        for resource, xref in self._changed_page(page).named.items():
             self.file.restore_font(page, resource, xref)
         return left
 
@@ -500,7 +489,7 @@ class _MuPDFDriver:
         for xref in sorted(xrefs - named.keys()):
             resource = self._free_name(page, f"C{xref}")
             self.file.restore_font(page, resource, xref)
-            self._keep_named(page, resource, xref)
+            self._changed_page(page).keep_named(resource, xref)
             named[xref] = resource
         return named
 
@@ -539,7 +528,11 @@ class _MuPDFDriver:
                 rotate=turn_ccw,
                 morph=(at, pymupdf.Matrix(scale_x, 1)),
             )
-        shape.commit(overlay=True)
+        # No letter written (empty new text): nothing to add.
+        if not shape.text_cont:
+            return
+        # Not by the shape's commit, which reads the whole page.
+        self._add_content(page, shape.text_cont.encode())
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
@@ -597,16 +590,31 @@ class _MuPDFDriver:
         The page's own drawing is wrapped first, so its settings (color,
         position) can't leak into ours.
         """
-        pdf_page = self.doc[page]
+        self._changed_page(page).wrap(self.doc[page])
+        self.file.add_drawing(page, stream)
+
+
+@dataclass(slots=True)
+class _ChangedPage:
+    """What the driver did to one page, for its later changes to know."""
+
+    # Each font it named on the page, by resource name, for erase_text to keep.
+    named: dict[str, int] = field(default_factory=dict)
+    # Whether the page's own drawing is known to put back each setting it changes.
+    balanced: bool = False
+
+    def keep_named(self, resource: str, xref: int) -> None:
+        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
+        self.named[resource] = xref
+
+    def wrap(self, pdf_page: pymupdf.Page) -> None:
+        """Wrap the page's own drawing, the first time, so its settings can't leak into ours."""
+        # Checked once, as that reads the whole page; nothing the driver does unbalances it.
+        if self.balanced:
+            return
         if not pdf_page.is_wrapped:
             pdf_page.wrap_contents()
-        xref = self.doc.get_new_xref()
-        self.doc.update_object(xref, "<<>>")
-        self.doc.update_stream(xref, stream)
-        parts = [*pdf_page.get_contents(), xref]
-        self.doc.xref_set_key(
-            pdf_page.xref, "Contents", "[" + " ".join(f"{p} 0 R" for p in parts) + "]"
-        )
+        self.balanced = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -617,6 +625,47 @@ class _Letter:
     box: tuple[float, float, float, float]  # x0, y0, x1, y1, from ascender to descender
     origin: tuple[float, float]  # where it starts, on its baseline
     direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _PageLetters:
+    """A page's letters, found by where their middle is. Made by `_page_letters`."""
+
+    in_order: list[_Letter] = field(repr=False)  # in reading order
+    # Each letter's middle, top first: those level with a box are one slice, found by halving.
+    middles_top_down: list[_Middle] = field(repr=False)
+
+    def inside(self, box: Rect) -> list[_Letter]:
+        """The letters whose middle is inside `box`, in reading order."""
+        first = bisect_left(self.middles_top_down, box.y0, key=_y_of)
+        past = bisect_right(self.middles_top_down, box.y1, key=_y_of)
+        across = self.middles_top_down[first:past]
+        places = sorted(middle.place for middle in across if box.x0 <= middle.x <= box.x1)
+        return [self.in_order[place] for place in places]
+
+
+@dataclass(frozen=True, slots=True)
+class _Middle:
+    """Where a letter's middle is on the page, and the letter's place in reading order."""
+
+    x: float
+    y: float
+    place: int
+
+
+def _page_letters(letters: list[_Letter]) -> _PageLetters:
+    """`letters`, in reading order, sorted by where their middle is too."""
+    middles = (_Middle(*_middle_of(letter.box), place) for place, letter in enumerate(letters))
+    # A middle that isn't a number is inside no box, and would leave the order unsorted.
+    numbers = (
+        middle for middle in middles if not (math.isnan(middle.x) or math.isnan(middle.y))
+    )
+    return _PageLetters(letters, sorted(numbers, key=_y_of))
+
+
+def _y_of(middle: _Middle) -> float:
+    """How far down the page a letter's middle is."""
+    return middle.y
 
 
 def _each_line(blocks: list[dict]) -> Iterator[dict]:
@@ -654,11 +703,6 @@ def _shows_text(kind: str, value: object) -> bool:
     return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
-def _letters_inside(letters: list[_Letter], box: Rect) -> str:
-    """The letters whose middle is inside `box`, in order."""
-    return "".join(letter.text for letter in letters if _middle_inside(letter.box, box))
-
-
 def _object_number(reference: str) -> int:
     """The object a reference points at: "7 0 R" -> 7."""
     return int(reference.split()[0])
@@ -670,23 +714,9 @@ def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
     return (x0 + x1) / 2, (y0 + y1) / 2
 
 
-def _middle_inside(bbox: tuple[float, float, float, float], box: Rect) -> bool:
-    """Whether the middle of `bbox` lies inside `box`."""
-    x, y = _middle_of(bbox)
-    return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
-
-
-def _strip_through(letters: list[_Letter], box: Rect) -> Rect | None:
-    """A thin box along the letters whose middle is in `box`, just above their baselines.
-
-    None when no letter's middle is there.
-    """
-    points = [
-        point
-        for letter in letters
-        if _middle_inside(letter.box, box)
-        for point in _lifted(letter)
-    ]
+def _strip_along(letters: list[_Letter]) -> Rect | None:
+    """A thin box along `letters`, just above their baselines; None when there are none."""
+    points = [point for letter in letters for point in _lifted(letter)]
     if not points:
         return None
     xs, ys = [x for x, _y in points], [y for _x, y in points]

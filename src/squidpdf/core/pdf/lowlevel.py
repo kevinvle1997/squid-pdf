@@ -212,16 +212,52 @@ class PdfFile:
     def redact(self, page: int, boxes: list[Rect]) -> None:
         """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
 
-        A comment goes only when it writes its words on the page (a FreeText): a note
-        behind an icon, a highlight or a form field stays.
+        Only a comment that writes its words on the page (a FreeText) goes. A redaction
+        mark the file already holds stays unapplied: applying it is not this edit's call.
         """
-        pg = self.doc[page]
-        for box in boxes:
-            pg.add_redact_annot(pymupdf.Rect(box.x0, box.y0, box.x1, box.y1))
-        pg.apply_redactions(
-            images=pymupdf.mupdf.PDF_REDACT_IMAGE_NONE,
-            graphics=pymupdf.mupdf.PDF_REDACT_LINE_ART_NONE,
-        )
+        mu = pymupdf.mupdf
+        # MuPDF applies every mark on the page, so only ours may be there.
+        with self._file_marks_aside(page):
+            # Unturned: a box is read unturned, and MuPDF places a mark as it's shown.
+            with self._unturned(page) as pdf_page:
+                # MuPDF's own calls, as PyMuPDF's read every mark on the page again per box.
+                for box in boxes:
+                    mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
+                    mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
+            options = mu.PdfRedactOptions()
+            options.black_boxes = 0  # nothing drawn where the letters were
+            options.text = mu.PDF_REDACT_TEXT_REMOVE
+            options.image_method = mu.PDF_REDACT_IMAGE_NONE
+            options.line_art = mu.PDF_REDACT_LINE_ART_NONE
+            mu.pdf_redact_page(self._pdf(), pdf_page, options)
+
+    @contextmanager
+    def _file_marks_aside(self, page: int) -> Iterator[None]:
+        """The page's redaction marks, out of its Annots in the `with`, back in place after."""
+        mu = pymupdf.mupdf
+        page_obj = mu.pdf_lookup_page_obj(self._pdf(), page)
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        marks = [
+            place
+            for place, annotation in enumerate(_items_of(listed))
+            if mu.pdf_name_eq(
+                mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype), mu.PDF_ENUM_NAME_Redact
+            )
+        ]
+        # No mark of the file's own: nothing to set aside.
+        if not marks:
+            yield
+            return
+        # The list as it was, a copy that holds on to each mark while it's out.
+        before = mu.pdf_copy_array(listed)
+        # From the end, so each deletion leaves the places still to read where they were.
+        for place in reversed(marks):
+            mu.pdf_array_delete(listed, place)
+        self._sync_annotations(page)
+        yield
+        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+        _put_back(listed, before, mu.PDF_ENUM_NAME_Redact)
+        self._sync_annotations(page)
 
     @contextmanager
     def links_kept(self, page: int) -> Iterator[None]:
@@ -241,20 +277,7 @@ class PdfFile:
         if before is None:
             return
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        # A redaction only deletes, so what's left keeps its order.
-        place = 0  # where the next link goes back: after each entry before it still listed
-        for entry in range(mu.pdf_array_len(before)):
-            annotation = mu.pdf_array_get(before, entry)
-            # Still listed: the next one goes after it.
-            if mu.pdf_array_find(listed, annotation) >= 0:
-                place += 1
-                continue
-            subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
-            # Another kind of annotation, a comment: it stays gone.
-            if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
-                continue
-            mu.pdf_array_insert(listed, annotation, place)
-            place += 1
+        _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
         self._sync_links(page)
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
@@ -962,8 +985,28 @@ class PdfFile:
         mu.pdf_dict_puts(states, name, state)
         return name
 
+    def add_drawing(self, page: int, drawing: bytes) -> None:
+        """Add `drawing` last in the page's list of drawings (its Contents), so it's on top.
+
+        Added to the page's own list, not by writing the list out again: each edit adds one.
+        """
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        page_obj = mu.pdf_lookup_page_obj(pdf, page)
+        added = mu.pdf_add_stream(
+            pdf, mu.fz_new_buffer_from_copied_data(drawing), mu.PdfObj(), 0
+        )
+        contents = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Contents)
+        # A list of the page's own, written in place: the drawing goes last.
+        if mu.pdf_is_array(contents) and not mu.pdf_is_indirect(contents):
+            mu.pdf_array_push(contents, added)
+            return
+        listed = _own_list_of(pdf, contents)
+        mu.pdf_array_push(listed, added)
+        mu.pdf_dict_put(page_obj, mu.PDF_ENUM_NAME_Contents, listed)
+
     def to_pdf_space(self, page: int, point: tuple[float, float]) -> tuple[float, float]:
-        """Turn a point on the page as you see it into the PDF's own coordinates.
+        """Turn a point on the page, read unturned, into the PDF's own coordinates.
 
         Not page.transformation_matrix: on a turned page it forgets where the
         page's box starts.
@@ -972,21 +1015,81 @@ class PdfFile:
         return (moved.x, moved.y)
 
     def _to_pdf_matrix(self, page: int) -> pymupdf.Matrix:
-        """What turns a point on the page as you see it into the PDF's own coordinates."""
+        """What turns a point on the page, read unturned, into the PDF's own coordinates."""
         mu = pymupdf.mupdf
+        with self._unturned(page) as pdf_page:
+            _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
+            mu.pdf_page_transform(pdf_page, _mediabox, page_to_screen)
+        return ~pymupdf.Matrix(page_to_screen)
+
+    @contextmanager
+    def _unturned(self, page: int) -> Iterator[pymupdf.mupdf.PdfPage]:
+        """The page with its turn (its Rotate) taken off inside the `with`, put back after.
+
+        Not PyMuPDF's rotation_matrix: it turns from the whole crop box, MuPDF from the part on
+        the paper (the MediaBox), so they differ on a page cropped past its paper.
+        """
         pg = self.doc[page]
-        _mediabox, page_to_screen = mu.FzRect(), mu.FzMatrix()
-        mu.pdf_page_transform(mu.pdf_page_from_fz_page(pg.this), _mediabox, page_to_screen)
-        return pg.rotation_matrix * ~pymupdf.Matrix(page_to_screen)
+        turn_cw = pg.rotation
+        # A page not turned is left as it is, with no Rotate written.
+        if turn_cw:
+            pg.set_rotation(0)
+        try:
+            yield pymupdf.mupdf.pdf_page_from_fz_page(pg.this)
+        finally:
+            if turn_cw:
+                pg.set_rotation(turn_cw)
 
     def _sync_links(self, page: int) -> None:
         """Have MuPDF read the page's links again: it keeps a list of its own, read once."""
         pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(self.doc[page].this)
         pymupdf.mupdf.pdf_sync_links(pdf_page)
 
+    def _sync_annotations(self, page: int) -> None:
+        """Have MuPDF read the page's annotations again: it keeps its own list, read once."""
+        pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(self.doc[page].this)
+        pymupdf.mupdf.pdf_sync_annots(pdf_page)
+
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
+
+
+def _put_back(
+    listed: pymupdf.mupdf.PdfObj, before: pymupdf.mupdf.PdfObj, kind: pymupdf.mupdf.PdfObj
+) -> None:
+    """Put each annotation of `kind` that `before` lists and `listed` lost back in its place.
+
+    Only deletions happened since `before`, so what's left keeps its order.
+    """
+    mu = pymupdf.mupdf
+    place = 0  # where the next one goes back
+    for annotation in _items_of(before):
+        # Still listed: the next one goes after it.
+        if mu.pdf_array_find(listed, annotation) >= 0:
+            place += 1
+            continue
+        subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+        # Another kind of annotation: it stays gone.
+        if not mu.pdf_name_eq(subtype, kind):
+            continue
+        mu.pdf_array_insert(listed, annotation, place)
+        place += 1
+
+
+def _own_list_of(
+    pdf: pymupdf.mupdf.PdfDocument, contents: pymupdf.mupdf.PdfObj
+) -> pymupdf.mupdf.PdfObj:
+    """A new list, written in place, of the drawings a page's Contents names."""
+    mu = pymupdf.mupdf
+    # A list kept apart, which another page may share: a copy, the page's alone.
+    if mu.pdf_is_array(contents):
+        return mu.pdf_copy_array(contents)
+    listed = mu.pdf_new_array(pdf, 1)
+    # One drawing, listed first; an empty m_internal means none.
+    if contents.m_internal:
+        mu.pdf_array_push(listed, contents)
+    return listed
 
 
 def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
