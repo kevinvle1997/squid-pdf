@@ -176,11 +176,33 @@ def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, 
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"content-type": "text/plain"},
+        {"content-type": "application/x-www-form-urlencoded"},
+        {"content-type": "multipart/form-data; boundary=x"},
+    ],
+    ids=["no type", "text", "a form", "a form with a file"],
+)
+def test_an_upload_not_sent_as_a_pdf_is_refused_so_no_other_site_can_send_one(
+    mine, pdf_bytes, headers
+):
+    """Another site can send these unasked; as a PDF, it must ask first, and the API says no."""
+    before = _kept()
+    response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
+    assert_problem(response, "not_sent_as_pdf", 415)
+    assert_equal(_kept(), before, "documents on disk after a refusal")
+
+
 def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monkeypatch):
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
     before = _kept()
     chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])  # no length up front: it streams
-    response = mine.post("/api/documents", content=chunks)
+    response = mine.post(
+        "/api/documents", content=chunks, headers={"content-type": "application/pdf"}
+    )
     assert_problem(response, "too_large", 413)
     said = words.sentence("too_large").format(mb=constants.MAX_FILE_MB)
     assert_equal(response.json()["detail"], said, "the refusal")

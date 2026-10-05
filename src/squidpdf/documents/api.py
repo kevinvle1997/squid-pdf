@@ -20,6 +20,7 @@ from squidpdf.api.routing import controller_with_workers, listed_header, respons
 from squidpdf.core import NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
+from squidpdf.documents.errors import NotSentAsPdf
 from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import EXPIRES_HEADER, ReadController
 from squidpdf.documents.types import Document, Loaded
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/api/documents")
 _logger = logging.getLogger(__name__)
 
 _JSON = "application/json"
+_PDF = "application/pdf"  # the type the browser sends an upload as
 
 
 def load(doc_id: str, request: Request) -> Loaded:
@@ -42,12 +44,24 @@ def load(doc_id: str, request: Request) -> Loaded:
     return Loaded(doc_id, folder, store.touch(folder))
 
 
-# Counted before anything else, so a flood is refused before any of it is read.
+async def _admit_pdf_only(request: Request) -> None:
+    """Refuse an upload not sent as application/pdf, before it counts or any of it is read.
+
+    Another site's page can send a form, plain text or no type without asking first, with
+    this site's password: counted, it would use up the user's uploads for the minute.
+    """
+    sent_as = request.headers.get("content-type")  # None if the request names no type
+    media_type = (sent_as or "").partition(";")[0].strip().lower()
+    if media_type != _PDF:
+        raise NotSentAsPdf(debug=f"sent as {sent_as!r}")
+
+
+# Its type checked, then counted, before anything else: neither reads any of the body.
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=Document,
-    dependencies=[Depends(rate.admit_upload)],
+    dependencies=[Depends(_admit_pdf_only), Depends(rate.admit_upload)],
 )
 async def upload(
     request: Request,
@@ -59,7 +73,7 @@ async def upload(
     said_in: ReaderLanguage,
     response: Response,
 ) -> Response:
-    """A raw PDF body, no multipart and no filename. Answers with every span judged."""
+    """A raw PDF sent as application/pdf, no filename. Answers with every span judged."""
     reply = await upload_controller.upload(
         owner.digest(token),
         declared=declared_size(request),

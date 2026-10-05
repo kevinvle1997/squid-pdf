@@ -52,6 +52,17 @@ def test_an_address_past_its_uploads_a_minute_is_told_to_wait_and_others_are_not
     assert_equal(os.listdir(store.root()), [], "documents on disk")
 
 
+def test_an_upload_not_sent_as_a_pdf_is_refused_before_it_counts(one_upload_a_minute):
+    """Another site's page can send one without asking: counted, it would use up the minute."""
+    browser = browser_on(one_upload_a_minute, client=(_ONE, 1))
+    sent_as_text = browser.post(
+        "/api/documents", content=_NOT_A_PDF, headers={"content-type": "text/plain"}
+    )
+    assert_problem(sent_as_text, "not_sent_as_pdf", 415)
+    # Admitted, and refused only for what it holds.
+    assert_problem(upload(browser, _NOT_A_PDF), "not_a_pdf", 415)
+
+
 def test_an_ipv6_address_counts_with_the_rest_of_its_64(one_upload_a_minute):
     """One home or machine gets a whole /64: counted apart, each address could flood."""
     first, neighbour, elsewhere = (

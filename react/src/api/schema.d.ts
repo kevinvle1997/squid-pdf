@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Upload
-         * @description A raw PDF body, no multipart and no filename. Answers with every span judged.
+         * @description A raw PDF sent as application/pdf, no filename. Answers with every span judged.
          */
         post: operations["upload_api_documents_post"];
         delete?: never;
@@ -523,7 +523,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_reference" | "damaged" | "encrypted" | "invalid_request" | "method_not_allowed" | "no_such_page" | "no_workers" | "not_a_pdf" | "not_found" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_pages" | "too_slow";
+            type: "bad_reference" | "damaged" | "encrypted" | "invalid_request" | "method_not_allowed" | "no_such_page" | "no_workers" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */

@@ -69,10 +69,22 @@ pass "/api/health answers through the gate: $status in ${seconds}s"
   fail "the reply's X-Content-Type-Options is '$(header x-content-type-options)'"
 pass "the proxy sends HSTS and nosniff"
 
+for docs in /api/docs /api/openapi.json; do
+  read -r status seconds < <(call "${signed_in[@]}" "$base$docs")
+  [[ $status == 404 ]] || fail "the API's $docs answered $status through the proxy, not 404"
+done
+pass "the API's docs aren't served through the proxy"
+
 read -r status seconds < <(call "${signed_in[@]}" "$base/")
 [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
   fail "the browser app answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "the browser app is served: $status in ${seconds}s"
+# header() drops spaces, so the directive is matched without them.
+[[ $(header content-security-policy) == *"frame-ancestors'none'"* ]] ||
+  fail "the page's Content-Security-Policy is '$(header content-security-policy)'"
+[[ -n $(header referrer-policy) && -n $(header permissions-policy) ]] ||
+  fail "the page has no Referrer-Policy or Permissions-Policy"
+pass "the page carries a Content-Security-Policy that refuses framing"
 
 read -r status seconds < <(call "${signed_in[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")

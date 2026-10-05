@@ -40,11 +40,15 @@ CMD ["uv", "run", "pytest", "-q"]
 # extra, no dev tools and no tests.
 FROM base AS serve
 
+# Compiled here, since on compose's read-only root every worker would compile at start.
+ENV UV_COMPILE_BYTECODE=1
+
 COPY --chown=squid pyproject.toml uv.lock .python-version README.md ./
 RUN uv sync --locked --extra api --no-dev --no-install-project
 
+# The project is installed editable, so its own modules are compiled where they are.
 COPY --chown=squid src/ src/
-RUN uv sync --locked --extra api --no-dev
+RUN uv sync --locked --extra api --no-dev && python -m compileall -q src
 
 EXPOSE 8000
 

@@ -1,5 +1,7 @@
 # The one way in: HTTPS, compression, and a password until the app opens to the public.
 {
+	# Nothing here needs to trust a local run's certificate, and the container is read-only.
+	skip_install_trust
 	servers {
 		# A body sent a trickle at a time holds a connection and an upload open for as long as
 		# it lasts, and the app can't tell slow from stalled. Ten minutes for the whole request
@@ -24,10 +26,20 @@
 		Strict-Transport-Security "max-age=31536000"
 		# Each reply is the type it says: a browser never guesses a PDF or PNG is a page.
 		X-Content-Type-Options "nosniff"
+		# Only the app's own files and render's strips (data: URLs), so injected script never runs.
+		# The hash allows React Aria's style tag (react/src/policy.test.ts). No site may frame a page.
+		Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-38RhXrc7EdReTKsOm23ZPOCUgniTUUcjky8QOOrQx6o='; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		# Another site never learns which page a request came from; ours still do.
+		Referrer-Policy "same-origin"
+		# The app uses none of these, so nothing on a page may ask for them.
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=()"
 	}
 
 	# No body cap here: the app enforces its own, and must see them.
 	handle /api/* {
+		# The API's docs are for development: nothing that runs behind the proxy asks for them.
+		@docs path /api/docs /api/docs/* /api/openapi.json
+		respond @docs 404
 		reverse_proxy app:8000
 	}
 

@@ -107,7 +107,9 @@ def test_a_document_with_no_text_says_so_with_its_code(pseudo, mine):
 
 def test_a_problem_is_said_in_the_language_asked_for_with_its_code(pseudo, mine):
     response = mine.post(
-        "/api/documents", content=b"Dear Sir, please find attached.", headers=_in(PSEUDO)
+        "/api/documents",
+        content=b"Dear Sir, please find attached.",
+        headers={"content-type": "application/pdf", **_in(PSEUDO)},
     )
     assert_problem(response, "not_a_pdf", 415)
     body = response.json()
