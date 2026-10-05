@@ -637,6 +637,11 @@ class _Letter:
     direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
 
 
+# A letter's middle, down then across, and its place in reading order. A plain tuple:
+# it sorts at C speed, so a page read for one edit costs about what a scan of it did.
+type _Middle = tuple[float, float, int]
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class _PageLetters:
     """A page's letters, found by where their middle is. Made by `_page_letters`."""
@@ -647,35 +652,24 @@ class _PageLetters:
 
     def inside(self, box: Rect) -> list[_Letter]:
         """The letters whose middle is inside `box`, in reading order."""
-        first = bisect_left(self.middles_top_down, box.y0, key=_y_of)
-        past = bisect_right(self.middles_top_down, box.y1, key=_y_of)
+        # The lowest key at the box's top and the highest at its bottom, so both edges count.
+        first = bisect_left(self.middles_top_down, (box.y0, -math.inf, -math.inf))
+        past = bisect_right(self.middles_top_down, (box.y1, math.inf, math.inf))
         across = self.middles_top_down[first:past]
-        places = sorted(middle.place for middle in across if box.x0 <= middle.x <= box.x1)
+        places = sorted(place for _down, x, place in across if box.x0 <= x <= box.x1)
         return [self.in_order[place] for place in places]
-
-
-@dataclass(frozen=True, slots=True)
-class _Middle:
-    """Where a letter's middle is on the page, and the letter's place in reading order."""
-
-    x: float
-    y: float
-    place: int
 
 
 def _page_letters(letters: list[_Letter]) -> _PageLetters:
     """`letters`, in reading order, sorted by where their middle is too."""
-    middles = (_Middle(*_middle_of(letter.box), place) for place, letter in enumerate(letters))
+    middles = (_middle_of(letter.box) for letter in letters)
     # A middle that isn't a number is inside no box, and would leave the order unsorted.
-    numbers = (
-        middle for middle in middles if not (math.isnan(middle.x) or math.isnan(middle.y))
-    )
-    return _PageLetters(letters, sorted(numbers, key=_y_of))
-
-
-def _y_of(middle: _Middle) -> float:
-    """How far down the page a letter's middle is."""
-    return middle.y
+    numbers = [
+        (y, x, place)
+        for place, (x, y) in enumerate(middles)
+        if not (math.isnan(x) or math.isnan(y))
+    ]
+    return _PageLetters(letters, sorted(numbers))
 
 
 def _each_line(blocks: list[dict]) -> Iterator[dict]:
