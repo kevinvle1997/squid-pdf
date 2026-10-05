@@ -8,26 +8,14 @@ copies; the pool takes each in only when a letter needs it.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from functools import partial
 from itertools import chain, groupby
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import (
-    GLYPH_LIST_RANGES,
-    KEYBOARD_RANGES,
-    SAME_FONT_SHARED,
-    SAME_WIDTH,
-)
+from squidpdf.core.constants import KEYBOARD_RANGES, SAME_FONT_SHARED, SAME_WIDTH
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
-from squidpdf.core.fonts.google import GoogleFile
-from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.types import EM, CodedFont, PageFont
-
-# How many of Google's copies a process keeps the letters of: each is a few tens of KB.
-_GOOGLE_COPIES_KEPT = 32
 
 # The copies that may lend the own copy letters, in the order they lend, given the
 # letters lent so far: whether a later one is worth opening can depend on them. A
@@ -35,39 +23,8 @@ _GOOGLE_COPIES_KEPT = 32
 type _Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
 
 
-@dataclass(slots=True)
-class _KeptWidths:
-    """Each Google copy's letters and widths, by a digest of the file, oldest first.
-
-    A process keeps them (`_kept_widths`): finding which letters really draw is
-    slow, and the same bytes always give the same answer.
-    It keeps the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
-    """
-
-    by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
-
-    def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
-        """The widths of the copy `digest` names, measured on first use."""
-        # Kept already: this process has measured these bytes.
-        if digest in self.by_digest:
-            return self.by_digest[digest]
-        # Full: forget the one kept longest.
-        if len(self.by_digest) >= _GOOGLE_COPIES_KEPT:
-            del self.by_digest[next(iter(self.by_digest))]
-        widths = self.by_digest[digest] = make()
-        return widths
-
-    def forget(self) -> None:
-        """Forget every copy's widths, as a fresh record."""
-        self.by_digest.clear()
-
-
-# This process's widths of Google's copies.
-_kept_widths = _KeptWidths()
-
-
 @dataclass(frozen=True, slots=True)
-class _Lent:
+class Lent:
     """Where a copy lent from outside the file came from, and what the reader calls it."""
 
     source: str  # what it's cached and added to a page as, e.g. Google's path and weight
@@ -82,7 +39,7 @@ class FontCopy:
     embedded: EmbeddedFont
     # Each letter it really draws, and its width per 1000 em.
     widths: dict[str, float] = field(repr=False)
-    lent: _Lent | None = None  # set when it's lent from outside the file, as Google's copy is
+    lent: Lent | None = None  # set when it's lent from outside the file, as Google's copy is
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,37 +210,6 @@ def font_copy(font: PageFont, embedded: EmbeddedFont) -> FontCopy:
         return FontCopy(font, embedded, {ch: coded.letters[ch].width for ch in letters})
     program = embedded.program
     return FontCopy(font, embedded, {ch: program.advance(ch) * EM for ch in letters})
-
-
-def google_copy(own: FontCopy, embedded: EmbeddedFont, file: GoogleFile) -> FontCopy:
-    """Google's copy of the own copy's font, lending only letters the browser can preview.
-
-    Stands for the same font as the own copy, so it's checked like any other copy.
-    """
-    lent = _Lent(file.source, strip_subset(own.font.name))
-    return FontCopy(own.font, embedded, _google_widths(embedded), lent)
-
-
-def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
-    """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
-
-    Worked out once per process for each file (`_kept_widths`). By the bytes, not
-    the file's name: a test can hand in another font under it.
-    """
-    digest = hashlib.sha256(embedded.file).digest()
-    return _kept_widths.widths(digest, partial(_measured_widths, embedded))
-
-
-def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
-    """Each letter Google's copy draws that the browser can preview, measured in it."""
-    program = embedded.program
-    letters = [ch for ch in embedded.coverage.drawable() if _in_glyph_list(ch)]
-    return {ch: program.advance(ch) * EM for ch in letters}
-
-
-def _in_glyph_list(ch: str) -> bool:
-    """Whether `ch` is in GLYPH_LIST_RANGES, the letters the browser is sent widths for."""
-    return any(ord(ch) in block for block in GLYPH_LIST_RANGES)
 
 
 def copy_source(copy: FontCopy) -> str:

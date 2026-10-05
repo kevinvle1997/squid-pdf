@@ -10,11 +10,10 @@ functions: no PDF is opened here.
 from __future__ import annotations
 
 import statistics
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain, repeat
 
-from squidpdf.core.fonts.look_alike import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.types import Span, TextPiece
 
@@ -30,12 +29,6 @@ class Word:
 def lacks_space(font: FontProgram) -> bool:
     """Whether the font has no space of its own, so its words are placed one by one."""
     return not font.maps(" ")
-
-
-def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
-    """Every piece of a page's text, line by line."""
-    for line in lines:
-        yield from line
 
 
 def _gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
@@ -60,15 +53,14 @@ def span_gaps(span: Span, font: FontProgram) -> list[float]:
     ]
 
 
-def usual_gap(lines: list[list[TextPiece]], *, font_name: str, font: FontProgram) -> float:
-    """The median gap the page leaves for a space in `font_name`, subset prefix aside.
+def usual_gap(pieces: Iterable[TextPiece], *, font: FontProgram) -> float:
+    """The median gap `pieces`, all in one font, leave for a space, measured in `font`.
 
     With no gap to go by, the library's own figure.
     """
     gaps = [
         gap
-        for piece in _each_piece(lines)
-        if strip_subset(piece.font) == font_name
+        for piece in pieces
         for gap in _gaps_in(piece.text, width=piece.box.width, font=font, size=piece.size)
     ]
     return statistics.median(gaps) if gaps else font.advance(" ")

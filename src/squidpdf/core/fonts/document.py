@@ -16,12 +16,12 @@ from functools import partial
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
-from squidpdf.core.fonts.look_alike import look_alike, strip_subset
+from squidpdf.core.fonts.look_alike import look_alike
+from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.fonts.pool import (
     FontCopy,
     PooledFont,
     font_copy,
-    google_copy,
     lacks_a_keyboard_letter,
     pooled_font,
 )
@@ -234,7 +234,7 @@ class DocumentFonts:
         yield from (copy for copy in opened if isinstance(copy, FontCopy))
         # From outside the file, in order. The user's own copy of a font, once
         # they can attach one, goes before Google's. Without Google, there are none.
-        from_outside = () if self.google is None else (partial(self._google_copy, self.google),)
+        from_outside = () if self.google is None else (self.google.copy_of,)
         for copy_from in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
@@ -245,19 +245,6 @@ class DocumentFonts:
                 lent = no_copy
             # Without a copy there, nothing is lent, but why goes to the pool, to be said.
             yield lent
-
-    def _google_copy(self, google: GoogleFontController, own: FontCopy) -> FontCopy:
-        """Google's copy of the own copy's font.
-
-        Raises FontUnusable, saying why, when Google has none, or it can't be had.
-        """
-        # Raises when it isn't one of Google's families, or is a cut it may not make.
-        file = google.file_for(own.font)
-        embedded = google.opened(file)
-        # Not fetched, or not readable: said as it was the first time it was asked for.
-        if isinstance(embedded, FontUnusable):
-            raise FontUnusable(embedded.reason)
-        return google_copy(own, embedded, file)
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
@@ -322,9 +309,19 @@ class DocumentFonts:
         return self._facts(span.page).usual_gap((font_name, font), measure)
 
     def _usual_gap_on(self, page: int, *, font_name: str, font: FontProgram) -> float:
-        """The page's usual gap for a space in the font `font_name`, measured in `font`."""
-        return usual_gap(self.page_lines(page), font_name=font_name, font=font)
+        """The page's usual gap for a space in `font_name`, subset prefix aside, in `font`."""
+        lines = self.page_lines(page)
+        in_font = [
+            piece for piece in _each_piece(lines) if strip_subset(piece.font) == font_name
+        ]
+        return usual_gap(in_font, font=font)
 
     def page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""
         return self._facts(page).text_lines(partial(self.driver.text_lines, page))
+
+
+def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
+    """Every piece of a page's text, line by line."""
+    for line in lines:
+        yield from line
