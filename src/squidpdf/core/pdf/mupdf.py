@@ -73,6 +73,8 @@ _KINDS: dict[str, FontKind] = {
     "MMType1": "type1",
     "Type3": "type3",
 }
+# The name MuPDF's text gives a Type3 font with no /Name, by its object.
+_UNNAMED_TYPE3 = "Type3 ({xref} 0 R)"
 # How a font's program is stored, as PyMuPDF names it, in our words. "cid" is a CFF
 # whose shapes are numbered, not named.
 _FILE_TYPES: dict[str, FontFileType] = {
@@ -258,12 +260,12 @@ class _MuPDFDriver:
         return _page_letters(list(_each_letter(blocks)))
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, including inside forms."""
+        """Every font the page uses, forms included; a Type3 by the name its text reads."""
         listed = self.doc[page].get_fonts(full=True)
         return [
             PageFont(
                 xref=xref,
-                name=name,
+                name=name if kind != "Type3" else self._type3_name(xref),
                 # .get: a font with no kind, or one the PDF format has no name for.
                 kind=_KINDS.get(kind, "other"),
                 # .get: "n/a" when only named, or stored in a way MuPDF can't name.
@@ -274,6 +276,14 @@ class _MuPDFDriver:
             )
             for xref, file_type, kind, name, resource, encoding, referencer in listed
         ]
+
+    def _type3_name(self, xref: int) -> str:
+        """A Type3 font's name as its text reads it: its /Name, never the /BaseFont listed."""
+        value_type, value = self.doc.xref_get_key(xref, "Name")
+        # No /Name, which a Type3 font needn't have.
+        if value_type != "name":
+            return _UNNAMED_TYPE3.format(xref=xref)
+        return value.removeprefix("/")
 
     def font_bytes(self, xref: int) -> bytes:
         """The font file stored in the PDF. Raises DriverError when MuPDF can't read it out."""

@@ -358,6 +358,32 @@ def corrupt(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="module")
+def type3(tmp_path_factory) -> str:
+    """The word Hi in a Type3 font that names itself only in its description, as a Bold.
+
+    Each letter is the same square drawing: nothing reads the shapes. Only H and
+    i have a width; the codes between are unused. /BaseFont isn't read for a
+    Type3 font's text, and with no /Name its text calls it by its object.
+    """
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("type3") / "type3.pdf"),
+        {
+            "content": b"BT /F1 12 Tf 72 700 Td (Hi) Tj ET",
+            "letter": b"600 0 0 0 600 700 d1 0 0 600 700 re f",
+        },
+        {
+            "descriptor": "<</Type/FontDescriptor/FontName/ABCDEF+Drawn-Bold/Flags 32"
+            "/FontWeight 700/ItalicAngle 0/FontBBox[0 0 600 700]>>",
+            "font": "<</Type/Font/Subtype/Type3/BaseFont/Drawn-Bold/FontBBox[0 0 600 700]"
+            "/FontMatrix[0.001 0 0 0.001 0 0]/FirstChar 72/LastChar 105"
+            "/Encoding<</Type/Encoding/Differences[72/H 105/i]>>"
+            "/Widths[600 " + "0 " * 32 + "600]/CharProcs<</H {letter}/i {letter}>>"
+            "/FontDescriptor {descriptor}>>",
+        },
+    )
+
+
+@pytest.fixture(scope="module")
 def gapped(tmp_path_factory) -> str:
     """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
 

@@ -26,6 +26,7 @@ font_not_in_file = "This font isn't stored in the file, so a similar font stands
 font_unreadable = "This font is stored in the file but can't be read, so a similar font stands in for it."
 font_no_letter_list = "This font is stored in the file without saying which shape is which letter, so a similar font stands in for it."
 font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
+font_letters_are_drawings = "This font is stored in the file as a drawing of each letter, not as a font we can write new text with, so a similar font stands in for it."
 font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
 # Why another copy by the font's name, in the file or Google's, lends it no letter.
 copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
