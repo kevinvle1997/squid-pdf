@@ -141,6 +141,21 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     assert_true(len(lending[0]) < len(POPPINS.read_bytes()), "Google's copy was trimmed")
 
 
+def test_googles_copy_lends_only_the_letters_it_draws(poppins_subset):
+    """Google's Poppins draws a Y but no Ω, though the browser previews both: only Y lends."""
+    fetch, _asked = _google(POPPINS.read_bytes())
+    with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
+        span = next(iter(engine.index()))
+        missing = engine.plan_for(span, "YΩ").missing
+        widths = engine.widths(span)
+
+    assert_equal(
+        (missing, "Ω" in widths, "Y" in widths),
+        (["Ω"], False, True),
+        "missing, and whether Ω and Y have a width",
+    )
+
+
 def test_a_google_copy_with_other_widths_lends_nothing(poppins_subset):
     """Liberation Sans handed back as Poppins: its letters are other widths, so none lend."""
     fetch, _asked = _google(face_bytes(FACES["Liberation Sans Regular"]))

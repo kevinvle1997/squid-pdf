@@ -217,15 +217,13 @@ def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
 
 
 def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
-    """Each letter Google's copy draws that the browser can preview, measured in it."""
-    program = embedded.program
-    letters = [ch for ch in embedded.coverage.drawable() if _in_glyph_list(ch)]
-    return {ch: program.advance(ch) * EM for ch in letters}
+    """Each letter Google's copy draws that the browser can preview, measured in it.
 
-
-def _in_glyph_list(ch: str) -> bool:
-    """Whether `ch` is in GLYPH_LIST_RANGES, the letters the browser is sent widths for."""
-    return any(ord(ch) in block for block in GLYPH_LIST_RANGES)
+    Only previewed letters are checked for a shape: a large font holds far more outlines.
+    """
+    program, coverage = embedded.program, embedded.coverage
+    previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
+    return {ch: program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
 
 
 @cache
