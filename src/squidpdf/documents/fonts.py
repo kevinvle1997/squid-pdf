@@ -61,7 +61,7 @@ class AttachController:
         if declared_too_large:
             raise TooLarge(constants.MAX_FONT_MB)
         attached = await asyncio.to_thread(store.attached_files, doc.folder)
-        one_too_many = name not in attached and len(attached) >= constants.MAX_FONTS
+        one_too_many = name not in attached and len(attached.paths) >= constants.MAX_FONTS
         if one_too_many:
             raise TooManyFonts(constants.MAX_FONTS)
         arriving = await asyncio.to_thread(store.arriving_font, doc.folder)
@@ -114,7 +114,7 @@ def _attach_font(folder: str, *, name: str, arrived: str) -> KeptAnalysis:
     with store.fonts_locked(path):
         # Counted again under the lock: two attaches at once each passed the count before it.
         attached = store.attached_files(path)
-        if name not in attached and len(attached) >= constants.MAX_FONTS:
+        if name not in attached and len(attached.paths) >= constants.MAX_FONTS:
             raise TooManyFonts(constants.MAX_FONTS)
         with store.open_original(path) as engine:
             why = engine.why_not_its_font(span, font_file)

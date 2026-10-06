@@ -65,6 +65,8 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+_NAME_CUT_AT = 31  # bytes of a font's name MuPDF keeps for the text it reads
+_PREFIX_PLUS_AT = 6  # where PyMuPDF looks for the "+" that ends a subset prefix
 
 # A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
 _KINDS: dict[str, FontKind] = {
@@ -230,8 +232,12 @@ class _MuPDFDriver:
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
         blocks = self.doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
+        whole_by_cut = _whole_names([font.name for font in self.fonts(page)])
         return [
-            [_text_piece(raw, direction=line["dir"]) for raw in line["spans"]]
+            [
+                _text_piece(raw, direction=line["dir"], whole_by_cut=whole_by_cut)
+                for raw in line["spans"]
+            ]
             for line in _each_line(blocks)
         ]
 
@@ -716,11 +722,39 @@ def _each_letter(blocks: list[dict]) -> Iterator[_Letter]:
                 yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
-def _text_piece(raw: dict, *, direction: tuple[float, float]) -> TextPiece:
-    """One piece of text from get_text("dict"), named, on a line that reads `direction`."""
+def _whole_names(listed: list[str]) -> dict[str, str]:
+    """Each name the text reads for a font of `listed`, cut, to the whole name it was cut from.
+
+    A cut two names share stays as it is, since nothing tells them apart.
+    """
+    by_cut: dict[str, set[str]] = {}
+    for name in listed:
+        by_cut.setdefault(_as_pymupdf_names(_cut_of(name)), set()).add(_as_pymupdf_names(name))
+    return {cut: whole for cut, (whole, *others) in by_cut.items() if not others}
+
+
+def _cut_of(name: str) -> str:
+    """`name` as MuPDF keeps it for the text it reads; PyMuPDF reads each byte as a letter."""
+    return name[:_NAME_CUT_AT]
+
+
+def _as_pymupdf_names(name: str) -> str:
+    """`name` as PyMuPDF names a piece's font: without a subset prefix it finds.
+
+    Its own rule, not `strip_subset`'s: a "+" anywhere else stays.
+    """
+    has_prefix = name[_PREFIX_PLUS_AT : _PREFIX_PLUS_AT + 1] == "+"
+    return name[_PREFIX_PLUS_AT + 1 :] if has_prefix else name
+
+
+def _text_piece(
+    raw: dict, *, direction: tuple[float, float], whole_by_cut: dict[str, str]
+) -> TextPiece:
+    """One piece of text from get_text("dict"), its font's name whole, on a `direction` line."""
     return TextPiece(
         text=raw["text"],
-        font=raw["font"],
+        # .get: a font the page doesn't list, such as one only a form's appearance draws.
+        font=whole_by_cut.get(raw["font"], raw["font"]),
         size=raw["size"],
         color=_rgb(raw["color"]),
         opacity=raw["alpha"] / _BYTE_MAX,

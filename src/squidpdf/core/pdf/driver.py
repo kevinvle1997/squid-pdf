@@ -90,7 +90,10 @@ class PdfDriver(Protocol):
         ...
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
-        """Each line of text on the page, split into the pieces it is drawn in."""
+        """Each line of text on the page, split into the pieces it is drawn in.
+
+        A piece's font name is whole wherever the page lists the font it was cut from.
+        """
         ...
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:

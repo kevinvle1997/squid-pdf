@@ -6,9 +6,9 @@ A copy they attach lends before Google's, and is the own copy of a font the file
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import partial
+from typing import Protocol
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.coverage import coverage_of
@@ -21,13 +21,25 @@ from squidpdf.core.types import PageFont
 _SOURCE = "attached {name}"  # how an attached copy is told from other copies of its font
 
 
+class FontFiles(Protocol):
+    """The user's font files, each asked for by the name of the font it's for; never listed."""
+
+    def __contains__(self, font_name: str, /) -> bool:
+        """Whether there's a file for `font_name`."""
+        ...
+
+    def __getitem__(self, font_name: str, /) -> bytes:
+        """The file for `font_name`. Raises KeyError when there's none."""
+        ...
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class AttachedFonts:
     """The user's copies of a document's fonts, each opened once, when first asked for."""
 
     driver: PdfDriver  # the document's, whose width lists a named font is checked against
     # Each font file, by the name of the document's font it's for, subset prefix aside.
-    files: Mapping[str, bytes] = field(repr=False)
+    files: FontFiles = field(repr=False)
     # Each one opened, or why it can't be, by that name.
     opened: dict[str, EmbeddedFont | FontUnusable] = field(default_factory=dict, repr=False)
 
