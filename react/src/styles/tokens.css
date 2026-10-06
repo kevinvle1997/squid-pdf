@@ -44,10 +44,12 @@
   --bar-height: 44px;
   --margin-width: 104px; /* beside a page, where its changes are noted */
 
-  /* What sits over what, by role: the field and its chip over the page, the bar over both. */
+  /* What sits over what, by role: the field and its chip over the page, the bar over both,
+     and what opens from the bar over that. */
   --z-field: 30;
   --z-chip: 40;
   --z-bar: 60;
+  --z-float: 70; /* what opens from the bar: the document's fonts */
   --z-skip: 100;
 }
 /* A media query can't read a variable: every narrow layout is `@media (max-width: 820px)`, and

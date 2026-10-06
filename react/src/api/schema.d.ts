@@ -222,6 +222,10 @@ export interface components {
             substitute: string;
             /** Substitute Same Widths */
             substitute_same_widths: string;
+            /** Drawn In Your Copy */
+            drawn_in_your_copy: string;
+            /** Drawn In Own Copy */
+            drawn_in_own_copy: string;
             /** Undo Redaction */
             undo_redaction: string;
             /** Reopened */

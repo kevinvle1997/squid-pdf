@@ -1,12 +1,15 @@
 import { type FocusEvent, type KeyboardEvent, useRef } from "react";
-import { Input, TextField } from "react-aria-components";
+import { isFileDropItem, useDrop } from "react-aria";
+import { FileTrigger, Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
+import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
+import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
 import { finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
@@ -29,6 +32,17 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const glyphs = font?.glyphs ?? {};
 
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("; "));
+  const offered = useEditorState(offersCopy);
+  const attaching = useEditorState((state) => state.attaching !== null);
+  const field = useRef<HTMLInputElement>(null);
+  // A font file dropped on the field is the user's copy of the span's font.
+  const { dropProps } = useDrop({
+    ref: field,
+    onDrop: (event) => {
+      const dropped = event.items.filter(isFileDropItem).map((item) => item.getFile());
+      void attachDropped(editor, span.font, dropped);
+    },
+  });
 
   // Once, as the field takes focus: the caret goes where the press was, the word under it,
   // or everything from the keyboard. Later focus keeps the caret where the user put it.
@@ -60,26 +74,48 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         className={styles.field}
       >
         <Input
+          {...dropProps}
+          ref={field}
           autoFocus
           onFocus={place}
           className={trouble !== "" ? styles.troubleInput : styles.input}
           spellCheck={false}
           autoComplete="off"
           onKeyDown={onKeyDown}
-          onBlur={() => finish(editor, true)}
+          // Only leaving the field ends the typing: a file picker takes the window's focus, not the field's.
+          onBlur={() => {
+            if (document.hasFocus()) finish(editor, true);
+          }}
           style={{ ...spanTextStyle(span, info, face), width: points(wide, info) }}
         />
       </TextField>
-      <div className={styles.chip} aria-hidden="true" style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
+      <div className={styles.chip} style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
         {trouble !== "" ? (
-          <span className={styles.bad}>
+          <span className={styles.bad} aria-hidden="true">
             <Warn>{trouble}</Warn>
           </span>
         ) : (
-          <>
+          <span className={styles.facts} aria-hidden="true">
             <span>{face}</span>
             <Num>{SIZE.format(span.size)} pt</Num>
-          </>
+          </span>
+        )}
+        {offered && (
+          // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
+          <span className={styles.offer}>
+            Have this font?
+            <FileTrigger
+              acceptedFileTypes={FONT_FILES}
+              onSelect={(files) => {
+                const file = files?.[0];
+                if (file !== undefined) void attachFont(editor, span.font, file);
+              }}
+            >
+              <Button preventFocusOnPress excludeFromTabOrder isDisabled={attaching}>
+                Use your copy
+              </Button>
+            </FileTrigger>
+          </span>
         )}
       </div>
     </>

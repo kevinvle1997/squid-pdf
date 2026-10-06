@@ -1,0 +1,22 @@
+/* Floats from the bar: a shadow, no hairline, as a note does (design.md, Surfaces). */
+.popover {
+  z-index: var(--z-float);
+  max-width: min(420px, calc(100vw - 2 * var(--s4)));
+  background: var(--strip);
+  box-shadow: var(--lift-2);
+}
+.popover[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
+.popover[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
+.dialog { padding: var(--s3); outline: none; }
+.list { display: flex; flex-direction: column; gap: var(--s3); margin: 0; padding: 0; list-style: none; }
+.font {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  gap: var(--s1) var(--s3);
+}
+.name { font-weight: 600; overflow-wrap: anywhere; }
+.drawnBy { grid-column: 1; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.5; }
+.font > :global(button) { grid-column: 2; grid-row: 1 / span 2; }
+.refused { grid-column: 1 / -1; font-size: var(--fs-sm); line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) {
+  .popover[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
+}

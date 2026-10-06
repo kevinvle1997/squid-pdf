@@ -74,6 +74,23 @@ export async function stillThere(docId: string): Promise<boolean> {
   }
 }
 
+/** The user's own copy of one of the document's fonts, by its listed name; the document judged again. */
+export async function putFont(docId: string, fontName: string, file: Blob): Promise<Document> {
+  const response = await send(`/api/documents/${docId}/fonts/${encodeURIComponent(fontName)}`, {
+    method: "PUT",
+    body: file,
+  });
+  return (await response.json()) as Document;
+}
+
+/** The user's copy of one of the document's fonts removed; the document judged again. */
+export async function deleteFont(docId: string, fontName: string): Promise<Document> {
+  const response = await send(`/api/documents/${docId}/fonts/${encodeURIComponent(fontName)}`, {
+    method: "DELETE",
+  });
+  return (await response.json()) as Document;
+}
+
 /** A page of the original, unrotated, `scale` pixels per point. Cached for the hour. */
 export function pageUrl(doc: Document, page: number, scale: number): string {
   const query = new URLSearchParams({ scale: String(scale), build: doc.build });

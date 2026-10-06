@@ -118,6 +118,12 @@ export class RenderQueue {
     void this.#draw(reading);
   }
 
+  /** Draw every edited page again, though its edits didn't change: what draws them did. */
+  redraw(reading: Reading): void {
+    this.#drawn = { ...this.#drawn, from: new Map() };
+    this.draw(reading);
+  }
+
   /** Stop: what's in flight is dropped, and nothing is asked for again until the next draw. */
   stop(): void {
     this.#asking?.abort();

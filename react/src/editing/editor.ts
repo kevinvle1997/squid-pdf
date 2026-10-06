@@ -5,6 +5,7 @@ import { ProblemError } from "../api/client";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
+import { reattach } from "./fonts";
 import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
 import { NO_NOTICES, type Notices, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
@@ -46,11 +47,14 @@ export interface EditorState {
   readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
   readonly said: string; // what a screen reader hears, for what the page doesn't show
   readonly exporting: boolean;
+  readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
+  readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
 }
 
 export interface Editor {
   readonly store: Store<EditorState>;
   readonly file: File;
+  readonly attached: Map<string, Blob>; // the user's copies of its fonts, beside the PDF, by font
   readonly reopener: Reopener;
   readonly queue: RenderQueue;
 }
@@ -82,13 +86,17 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
     said: "",
     exporting: false,
+    attaching: null,
+    focusFont: null,
   });
   // The server no longer had the document, and it opened again: the same spans, under a new id.
-  const reopener = new Reopener(file, opened, (doc) =>
-    store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } }),
-  );
+  const reopener = new Reopener(file, opened, (doc) => {
+    store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } });
+    void reattach(editor, doc);
+  });
   const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => store.set({ drawn }) });
-  return { store, file, reopener, queue };
+  const editor: Editor = { store, file, attached: new Map(), reopener, queue };
+  return editor;
 }
 
 /**
@@ -104,8 +112,8 @@ export function change(editor: Editor, action: HistoryAction, also: Partial<Edit
     return;
   }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
-  // What the last export or reopening said is stale once the user edits again.
-  const notices = { ...state.notices, export: null, reopen: null };
+  // What the last export, reopening or refused copy said is stale once the user edits again.
+  const notices = { ...state.notices, export: null, reopen: null, font: null };
   store.set({ history, reading, notices, ...also });
   queue.draw(reading);
 }
