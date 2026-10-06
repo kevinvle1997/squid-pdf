@@ -1,7 +1,5 @@
-// The document as the server holds it: for an hour after it was last touched. Once the hour
-// has run out, the server answers 404, and the file this browser still has opens it again;
-// span ids are the same, so every edit still applies. The one place that knows it: render,
-// export and a failed page image all go through here.
+// Once the server no longer has the document (its hour ran out, or a deploy retired it), it
+// answers 404, and this browser's file opens it again under the same span ids.
 import { ProblemError, stillThere, upload } from "../api/client";
 import type { Document } from "../api/types";
 
