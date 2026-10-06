@@ -245,3 +245,13 @@ def test_attaching_a_copy_leaves_the_documents_lines_as_they_were(mine, poppins_
     assert_equal(
         [span["text"] for span in attached["spans"]], [POPPINS_TEXT], "the document's lines"
     )
+
+
+def test_a_font_named_with_a_slash_is_still_the_documents(mine, tmp_path):
+    """A PDF writes `/` in a name as `#2F`: in the path it must stay a name, not a step."""
+    path = named_only(str(tmp_path / "slash.pdf"), "Odd#2FName")
+    doc = upload(mine, Path(path).read_bytes()).json()
+
+    refused = _attach(mine, doc, _only_font(doc)["name"], face_bytes(FACES["Carlito Regular"]))
+
+    assert_problem(refused, "font_unchecked", 422)

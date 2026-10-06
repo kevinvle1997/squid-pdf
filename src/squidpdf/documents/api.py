@@ -117,7 +117,7 @@ def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     store.delete(doc.folder)
 
 
-@router.put("/{doc_id}/fonts/{font_name}", response_model=Document)
+@router.put("/{doc_id}/fonts/{font_name:path}", response_model=Document)
 async def attach_font(
     doc: Annotated[Loaded, Depends(load)],
     *,
@@ -139,7 +139,7 @@ async def attach_font(
     return response_of(reply, media_type=_JSON)
 
 
-@router.delete("/{doc_id}/fonts/{font_name}", response_model=Document)
+@router.delete("/{doc_id}/fonts/{font_name:path}", response_model=Document)
 async def detach_font(
     doc: Annotated[Loaded, Depends(load)],
     *,
