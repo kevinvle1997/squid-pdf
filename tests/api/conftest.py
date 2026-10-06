@@ -44,8 +44,10 @@ def _crashes() -> APIRouter:
     return router
 
 
-# Every test uploads from one address, far more often than a browser may: plenty for the suite.
+# Every test sends from one address, far more, and more at once, than a browser may: plenty
+# for the suite.
 _SUITE_UPLOADS_PER_MINUTE = 10_000
+_SUITE_AT_ONCE = 1_000
 
 
 @pytest.fixture(scope="session")
@@ -57,8 +59,10 @@ def session_app(tmp_path_factory) -> Iterator[FastAPI]:
     """
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_DATA", str(tmp_path_factory.mktemp("data")))
-        # The per-address upload limit reads this when each upload comes in.
+        # The per-address limits read these when each request comes in.
         env.setattr(api_constants, "UPLOADS_PER_MINUTE", _SUITE_UPLOADS_PER_MINUTE)
+        env.setattr(api_constants, "UPLOADS_UNDER_WAY", _SUITE_AT_ONCE)
+        env.setattr(api_constants, "JOBS_AT_WORK", _SUITE_AT_ONCE)
         app = create_app()
         app.include_router(_crashes())
         yield app

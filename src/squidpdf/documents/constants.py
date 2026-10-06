@@ -8,7 +8,7 @@ _MB = 1024 * 1024
 MAX_FILE_MB = 100  # as the refusal says it
 MAX_FILE_BYTES = MAX_FILE_MB * _MB
 MAX_PAGES = 1_000
-# Uploads refused below this, less a whole file per upload under way: kept documents write too.
+# Uploads refused below this, less what each under way may yet write: kept documents write too.
 MIN_FREE_BYTES = 2 * 1024 * _MB
 
 # The user's own copies of the document's fonts: starting values.

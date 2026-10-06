@@ -114,7 +114,7 @@ bad_reference = "A redaction points at text that isn't in this document: {span_i
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."
 method_not_allowed = "Something went wrong sending this to us. Reload the page and try again."
-rate_limited = "Too many files at once. Try again in a minute."
+rate_limited = "Too much at once from here. Try again in a minute."
 # support@example.com is a placeholder until there's a real inbox: the same in every language.
 too_slow = "This took too long, so we stopped. Try again, and if it keeps happening, email support@example.com."
 too_heavy = "This PDF needs more memory than we can give it. If it keeps happening, email support@example.com."

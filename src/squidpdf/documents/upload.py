@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from collections.abc import AsyncIterable, Awaitable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
@@ -27,7 +27,7 @@ _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 class _UploadsUnderWay:
     """The disk the uploads under way may yet take, held against the free-disk floor."""
 
-    held_bytes: int = 0  # a whole file for each upload under way
+    held_bytes: int = 0  # what each upload under way may yet write
 
     @contextmanager
     def holding(self, size: int, *, free: int) -> Iterator[None]:
@@ -54,6 +54,18 @@ class _UploadsUnderWay:
 _uploads_under_way = _UploadsUnderWay()
 
 
+@asynccontextmanager
+async def disk_held(declared: int | None, *, most: int) -> AsyncIterator[None]:
+    """Hold the disk an upload may yet write, against the floor, while the block runs.
+
+    That's its `declared` size, which the server reads no more than, or `most` when
+    it streams without one. Raises ServerFull if the floor has no room for it.
+    """
+    free = await asyncio.to_thread(_documents_disk_free)
+    with _uploads_under_way.holding(most if declared is None else declared, free=free):
+        yield
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class UploadController:
     """Upload, from request to reply."""
@@ -78,16 +90,12 @@ class UploadController:
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
-        free = await asyncio.to_thread(_documents_disk_free)
-        # Until its file is in, each upload under way may yet write a whole one.
-        with (
-            _uploads_under_way.holding(constants.MAX_FILE_BYTES, free=free),
-            store.full_disk_refused(),
-        ):
-            doc_id, folder = await asyncio.to_thread(store.create, owner_digest)
-            await _deleted_if_it_fails(
-                folder, _save_original(chunks, to=folder / store.ORIGINAL)
-            )
+        async with disk_held(declared, most=constants.MAX_FILE_BYTES):
+            with store.full_disk_refused():
+                doc_id, folder = await asyncio.to_thread(store.create, owner_digest)
+                await _deleted_if_it_fails(
+                    folder, _save_original(chunks, to=folder / store.ORIGINAL)
+                )
         kept = await _deleted_if_it_fails(folder, self._enqueue_analyse(folder))
         # Deleted if it fails too: a browser that leaves first never gets the id.
         # Off the server's thread: it reads every font's letters and writes them out again.

@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field
 
 from squidpdf.api import constants as limits
 from squidpdf.api.language import ReaderLanguage
-from squidpdf.api.routing import controller_with_workers, listed_header, response_of
+from squidpdf.api.routing import (
+    controller_with_app_workers,
+    controller_with_workers,
+    listed_header,
+    response_of,
+)
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.edits import Edit
@@ -50,7 +55,8 @@ class ExportBody(BaseModel):
 async def fonts(
     build: str,
     font_list_controller: Annotated[
-        FontListController, Depends(controller_with_workers(FontListController))
+        # Measured once per build, for everyone: no address's turn.
+        FontListController, Depends(controller_with_app_workers(FontListController))
     ],
 ) -> Response:
     """Every face new text can be drawn in, by family, with each letter's width."""

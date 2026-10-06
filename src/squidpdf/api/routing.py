@@ -14,7 +14,7 @@ from typing import Annotated, Any
 import orjson
 from fastapi import Depends, Response
 
-from squidpdf.api import pool
+from squidpdf.api import pool, rate
 from squidpdf.core import Reply, Workers
 
 
@@ -22,14 +22,28 @@ def controller_with_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers
     """A route's dependency: a new `cls` for each request, built with the app's workers.
 
     Used as `Depends(controller_with_workers(RenderController))`. Made once, when
-    the route is defined; FastAPI calls what it returns on every request.
+    the route is defined; FastAPI calls what it returns on every request. Each job
+    the controller sends waits for one of its address's turns.
     """
 
-    def with_the_apps_workers(workers: Annotated[Workers, Depends(pool.current)]) -> C:
+    def with_the_apps_workers(workers: Annotated[Workers, Depends(rate.workers_in_turn)]) -> C:
         """The controller, built with the app's workers."""
         return cls(workers)
 
     return with_the_apps_workers
+
+
+def controller_with_app_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers], C]:
+    """A route's dependency, as `controller_with_workers`, for a job run once for everyone.
+
+    Its job takes no address's turn: the first to ask would otherwise run everyone's on theirs.
+    """
+
+    def with_the_apps_own_workers(workers: Annotated[Workers, Depends(pool.current)]) -> C:
+        """The controller, built with the app's workers."""
+        return cls(workers)
+
+    return with_the_apps_own_workers
 
 
 def response_of[T](

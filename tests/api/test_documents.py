@@ -292,6 +292,22 @@ def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
     assert_equal(upload(mine, pdf_bytes).status_code, 201, "an upload after two refused")
 
 
+def test_an_upload_holds_the_size_it_states_against_the_floor(mine, pdf_bytes, monkeypatch):
+    """A small file passes where a whole one wouldn't; one stating no size holds a whole one."""
+    disk = shutil.disk_usage(store.root())
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
+    # Room for this file, not for a whole-disk one; half a disk either way, as above.
+    monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total // 2)
+
+    stated = upload(mine, pdf_bytes)
+    unstated = mine.post(
+        "/api/documents", content=iter([pdf_bytes]), headers={"content-type": "application/pdf"}
+    )
+
+    assert_equal(stated.status_code, 201, "an upload stating its size")
+    assert_problem(unstated, "server_full", 503)
+
+
 def test_uploads_under_way_that_forget_equal_fresh_ones():
     """Forgetting the uploads under way leaves a fresh record."""
     under_way = _UploadsUnderWay()
