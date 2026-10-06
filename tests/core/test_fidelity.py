@@ -215,7 +215,9 @@ def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_p
         abs(x1 - x0) + abs(y1 - y0), _ORIGIN_TOLERANCE_PT, "points the first glyph moved"
     )
     with open_pdf(out) as saved:
-        assert_equal(saved.still_there([span]), [], "the old text left in the saved file")
+        assert_equal(
+            saved.redaction.still_there([span]), [], "the old text left in the saved file"
+        )
 
 
 @pytest.mark.parametrize(
@@ -245,7 +247,7 @@ def test_widths_by_code_come_from_the_font_dict(coded):
         span = next(iter(engine.index()))
         assert_equal(engine.widths(span), _ADVANCES, "letters it draws, to their advances")
         width = sum(_ADVANCES[ch] for ch in "BA AB") * _SIZE / _EM
-        assert_equal(round(engine.measure(span, "BA AB"), 4), width, "measured width")
+        assert_equal(round(engine.fit.measure(span, "BA AB"), 4), width, "measured width")
 
 
 def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_path):
@@ -253,7 +255,7 @@ def test_a_letter_a_coded_font_lacks_sends_the_run_to_the_substitute(coded, tmp_
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(coded) as engine:
         span = next(iter(engine.index()))
-        missing = engine.plan_for(span, "ABCD").missing
+        missing = engine.fit.plan_for(span, "ABCD").missing
         engine.remove([span], then_drawn=[LineToDraw(span, "ABC")])
         engine.draw(span, "ABC")
         engine.save(out)
@@ -331,7 +333,7 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     """Redraw page 0's line as _POOLED: what the fit says is missing, and new text's state."""
     with open_pdf(path) as engine:
         span = _first_span(engine)
-        missing = engine.plan_for(span, _POOLED).missing
+        missing = engine.fit.plan_for(span, _POOLED).missing
         new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
         [report] = engine.assess(index_of([new]))
         engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
@@ -376,7 +378,7 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_equal(len(names), 1, "names the fixture's two copies go by, prefix aside")
     with open_pdf(merged_unlike) as engine:
         span = _first_span(engine)
-        missing = engine.plan_for(span, _POOLED).missing
+        missing = engine.fit.plan_for(span, _POOLED).missing
         listed = engine.widths(span)
         why = _why_new(engine, span, _POOLED)
 
@@ -389,7 +391,7 @@ def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
     with open_pdf(merged_apart) as engine:
         span = _first_span(engine)
-        missing = engine.plan_for(span, "Yak Hello").missing
+        missing = engine.fit.plan_for(span, "Yak Hello").missing
         why = _why_new(engine, span, "Yak Hello")
 
     assert_equal(missing, ["Y", "a", "k"], "letters page 0's Times lacks")
@@ -401,7 +403,7 @@ def test_widths_list_the_pooled_letters_and_measure_agrees(merged):
     with open_pdf(merged) as engine:
         own, other = list(engine.index())
         widths, others = engine.widths(own), engine.widths(other)
-        measured = engine.measure(own, _POOLED)
+        measured = engine.fit.measure(own, _POOLED)
 
     every_letter = set("".join(MERGED_TEXTS))
     assert_equal(every_letter - widths.keys(), set(), "letters the pooled list leaves out")

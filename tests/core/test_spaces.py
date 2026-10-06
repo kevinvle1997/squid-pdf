@@ -78,7 +78,7 @@ def test_what_is_measured_is_what_is_drawn(gapped, tmp_path, line, text):
     out = str(tmp_path / "longer.pdf")
     with open_pdf(gapped) as engine:
         span = list(engine.index())[line]
-        measured = engine.measure(span, text)
+        measured = engine.fit.measure(span, text)
         widths = engine.widths(span)
     _redraw(gapped, out, line, text)
 

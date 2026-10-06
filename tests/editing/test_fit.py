@@ -27,7 +27,7 @@ def test_check_reports_overflow_with_options(engine):
     span = next(s for s in index if s.page == EMBEDDED_PAGE)
     longer = span.text + " and"
     assert_equal(
-        engine.plan_for(span, longer).missing, [], "missing chars, isolating the width case"
+        engine.fit.plan_for(span, longer).missing, [], "missing chars, isolating the width case"
     )
     fit = replace_fit(engine, span, longer, room_pt=0.0).report
     assert_false(fit.ok, "fit.ok for text that overflows the line")

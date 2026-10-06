@@ -208,7 +208,7 @@ _CORE_ORDER = (
     ("squidpdf.core.fonts",),
     ("squidpdf.core.pdf",),
     ("squidpdf.core.plan",),
-    ("squidpdf.core.writer",),
+    ("squidpdf.core.writer", "squidpdf.core.fit", "squidpdf.core.redaction"),
     ("squidpdf.core.engine",),
     ("squidpdf.core",),
 )
