@@ -24,9 +24,10 @@ from fastapi.testclient import TestClient
 from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import WorkerPool, start_pool
-from squidpdf.core import Problem
+from squidpdf.core import LogController, LogEvent, Problem, new_request_id
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
-from tests.api.conftest import BASE_URL, SERVER_PATH, upload
+from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
+from tests.conftest import LOG_LINE, log_lines
 from tests.helpers import (
     assert_all,
     assert_at_least,
@@ -244,7 +245,9 @@ def test_pdf_work_says_no_workers_when_no_worker_can_start(
     assert_at_least(
         len(causes), len(broken_pages), "warnings the pool logged, one a page at least"
     )
-    assert_all(causes, lambda record: record.exc_info is not None, lambda record: record.msg)
+    assert_all(
+        causes, lambda record: "Traceback" in record.getMessage(), lambda record: record.msg
+    )
     if health_sees_it:
         assert_problem(broken_health, "no_workers", 503)
     assert_equal(healed_page.status_code, 200, "page image once workers can start again")
@@ -296,6 +299,33 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
 
     worker_pid = asyncio.run(first_task())
     assert_true(worker_pid != os.getpid(), "the task ran in a worker")
+
+
+def _log_a_line() -> None:
+    """In a worker: one line, as Google's fetch would write one there."""
+    # Named under the package, as every module is, so the server's handler writes it.
+    LogController.for_module("squidpdf.tests.api.test_pool").write(
+        LogEvent.GOOGLE_FETCH_LATE, timeout_s=2
+    )
+
+
+def test_a_line_logged_in_a_worker_has_the_servers_shape_and_its_requests_id(capfd):
+    """Workers are spawned, so they inherit no configuration and no request: both are passed."""
+
+    async def log_in_a_worker() -> str:
+        request = new_request_id()
+        async with _own_pool() as pool:  # its own: spawned now, its output captured
+            await pool.run(_ENOUGH_S, _log_a_line)
+        return request
+
+    request = asyncio.run(log_in_a_worker())
+
+    [line] = log_lines(capfd.readouterr().out)
+    assert_true(LOG_LINE.fullmatch(line) is not None, f"{line!r} has the shape")
+    expected = (
+        f"WARN  skipped tests.api.test_pool google_fetch_late timeout_s=2 request={request}"
+    )
+    assert_in(expected, line, "the worker's line")
 
 
 def _note_pid(folder: Path) -> None:
@@ -460,7 +490,8 @@ def test_a_render_that_fails_on_the_server_after_its_browser_left_logs_its_debug
     runner.run(leave())
 
     said = "\n".join(_pool_log(caplog))
-    assert_in(SERVER_PATH, said, "what the pool logged of it")
+    assert_in(LOGGED_PATH, said, "what the pool logged of it")
+    assert_not_in(DOCUMENT_ID, said, "the document's id, in the log")
     assert_in("server_error", said, "the type the log gives it")
     assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged: it's no bug")
 
@@ -469,14 +500,22 @@ def test_a_render_that_hits_a_bug_after_its_browser_left_is_logged(
     runner, pool, tmp_path, caplog
 ):
     """Nobody waits for its answer, but a bug in our own code must still show in the log."""
+    caplog.set_level(logging.WARNING, logger="squidpdf.api.pool")
 
     async def leave() -> None:
         await _start_then_leave(pool, tmp_path, _note_pid_then_raise)
-        await asyncio.to_thread(_wait_until, lambda: bool(_asyncio_errors(caplog)), _ENOUGH_S)
+        await asyncio.to_thread(_wait_until, lambda: bool(_pool_log(caplog)), _ENOUGH_S)
 
     runner.run(leave())
 
-    assert_equal(len(_asyncio_errors(caplog)), 1, "errors asyncio logged")
+    errors = [
+        record.getMessage() for record in caplog.records if record.levelno == logging.ERROR
+    ]
+    [said] = errors
+    line, traceback_text = said.split("\n", 1)
+    assert_equal(line, "failed  api.pool task_failed_caller_left", "the error the pool logged")
+    assert_in("Traceback", traceback_text, "the bug's traceback, after its line")
+    assert_equal(_asyncio_errors(caplog), [], "errors asyncio logged: the pool said it")
 
 
 def test_closing_the_pool_under_a_render_whose_browser_left_logs_no_error(tmp_path, caplog):

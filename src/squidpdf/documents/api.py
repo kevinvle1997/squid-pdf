@@ -8,7 +8,6 @@ the dependency every route on a document starts with; editing reuses it.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -17,7 +16,7 @@ from squidpdf.api import constants as limits, owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
-from squidpdf.core import NotFound
+from squidpdf.core import LogController, LogEvent, NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
@@ -28,7 +27,7 @@ from squidpdf.documents.upload import UploadController
 
 router = APIRouter(prefix="/api/documents")
 
-_logger = logging.getLogger(__name__)
+_log = LogController.for_module(__name__)
 
 _JSON = "application/json"
 _PDF = "application/pdf"  # the type the browser sends an upload as
@@ -147,5 +146,5 @@ async def sweep_forever() -> None:
         await asyncio.sleep(SWEEP_EVERY_S)
         try:
             await asyncio.to_thread(store.sweep)
-        except Exception:  # one bad pass must not end expiry for good
-            _logger.exception("A sweep failed; the next runs in %s s", SWEEP_EVERY_S)
+        except Exception as failure:  # noqa: BLE001 (one bad pass must not end expiry)
+            _log.write(LogEvent.SWEEP_FAILED, failure, next_in_s=SWEEP_EVERY_S)

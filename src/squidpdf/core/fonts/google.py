@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import logging
 import os
 import queue
 import tempfile
@@ -27,6 +26,7 @@ import httpx
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
+from squidpdf.core.app.logs import LogController, LogEvent, OwnText
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     FETCH_RETRY_S,
@@ -41,7 +41,7 @@ from squidpdf.core.fonts.pool import FontCopy, Lent
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import EM, FontDescriptor, PageFont
 
-_logger = logging.getLogger(__name__)
+_log = LogController.for_module(__name__)
 
 _RAW = "https://raw.githubusercontent.com/google/fonts"
 # Set to anything: never fetch. For tests, and a server with no way out.
@@ -49,8 +49,6 @@ _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 _EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network is down
-# One INFO line per cache miss, worded the same every time so a grep counts them.
-_CACHE_MISS = "Google cache miss: %s (%s)"
 # How many of Google's copies a process keeps the letters of: each is a few tens of KB.
 _GOOGLE_COPIES_KEPT = 32
 
@@ -293,8 +291,12 @@ def _fetched(
         cached_copy = _read_cached_copy(cached_path, file)
     except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
         # Counted by grep: how often the cache is empty, and whether this call may download.
-        next_step = "cache only" if download is None else "may download"
-        _logger.info(_CACHE_MISS, file.source, next_step)
+        may_download = download is not None
+        _log.write(
+            LogEvent.GOOGLE_CACHE_MISSED,
+            font=OwnText(file.source),
+            may_download=may_download,
+        )
         cached_copy = None
     # In the cache and sound: nothing to download. A damaged copy is logged where it's read.
     if cached_copy is not None:
@@ -312,7 +314,9 @@ def _fetched(
     try:
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
-        _logger.warning("No Google copy of %s: not ready in %s s", file.path, FETCH_TIMEOUT_S)
+        _log.write(
+            LogEvent.GOOGLE_FETCH_LATE, font=OwnText(file.path), timeout_s=FETCH_TIMEOUT_S
+        )
         font_file = None
     # Had: nothing to hold back.
     if font_file is not None:
@@ -364,24 +368,22 @@ def _download_checked_and_cut(file: GoogleFile, fetching: _Fetching) -> bytes | 
     """`file` downloaded, checked against git's hash, and cut if variable; None on a failure."""
     try:
         whole = fetching.download(raw_url(file.path))
-    except httpx.HTTPStatusError:  # GitHub answered, without the file: the network works
-        _logger.warning(
-            "No Google copy of %s: GitHub answered without it", file.path, exc_info=True
-        )
+    except httpx.HTTPStatusError as missing:  # GitHub answered, without the file: it works
+        _log.write(LogEvent.GOOGLE_NOT_ON_GITHUB, missing, font=OwnText(file.path))
         fetching.retries.note_answer(fetching.answered)
         return None
-    except Exception:  # no answer: a network fails in many ways; logged, the substitute draws
-        _logger.warning("No Google copy of %s: fetch failed", file.path, exc_info=True)
+    except Exception as no_answer:  # noqa: BLE001 (no answer: a network fails in many ways)
+        _log.write(LogEvent.GOOGLE_FETCH_FAILED, no_answer, font=OwnText(file.path))
         return None
     # The network works after all: a wait that ran out held back every file for nothing.
     fetching.retries.note_answer(fetching.answered)
     if blob_hash(whole) != file.blob:
-        _logger.warning("No Google copy of %s: not the file the pinned commit has", file.path)
+        _log.write(LogEvent.GOOGLE_WRONG_FILE, font=OwnText(file.path))
         return None
     try:
         return whole if file.weight is None else _cut(whole, file.weight)
-    except Exception:  # fontTools raises many kinds on a font it can't cut; logged
-        _logger.warning("No Google copy of %s: can't be cut", file.source, exc_info=True)
+    except Exception as uncut:  # noqa: BLE001 (fontTools fails in many ways on a font)
+        _log.write(LogEvent.GOOGLE_CUT_FAILED, uncut, font=OwnText(file.source))
         return None
 
 
@@ -397,11 +399,11 @@ def _read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     expected_hash = file.blob if file.weight is None else _hash_beside(cached_path).read_text()
     if blob_hash(font_file) == expected_hash:
         return font_file
-    _logger.warning("Google's copy of %s in the cache is damaged: fetched again", file.source)
+    _log.write(LogEvent.GOOGLE_CACHE_DAMAGED, font=OwnText(file.source))
     try:
         cached_path.unlink(missing_ok=True)
-    except OSError:  # a read-only disk: the bad copy stays, and is passed over each time
-        _logger.warning("Damaged copy of %s can't be deleted", file.source, exc_info=True)
+    except OSError as kept:  # a read-only disk: the bad copy stays, passed over each time
+        _log.write(LogEvent.GOOGLE_DAMAGED_KEPT, kept, font=OwnText(file.source))
     return None
 
 
@@ -442,8 +444,8 @@ def _kept(path: Path, font_file: bytes) -> None:
             part = Path(partial_file.name)
             partial_file.write(font_file)
         os.replace(part, path)
-    except OSError:  # a full disk, a read-only one: the copy still lends, uncached
-        _logger.warning("Google's copy of %s not cached", path.name, exc_info=True)
+    except OSError as unwritten:  # a full disk, a read-only one: the copy still lends, uncached
+        _log.write(LogEvent.GOOGLE_NOT_CACHED, unwritten, font=OwnText(path.name))
         if part is not None:
             part.unlink(missing_ok=True)
 

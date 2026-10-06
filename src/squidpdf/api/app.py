@@ -13,12 +13,14 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
 
+from squidpdf.api.access import AccessLog
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
-from squidpdf.api.errors.http import ProblemInfo, install
+from squidpdf.api.errors.http import BugBoundary, ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentUploads
+from squidpdf.core import LogController
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
 
@@ -55,6 +57,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """A fresh app, so each test gets its own."""
+    LogController.configure()
     app = FastAPI(
         title="squid-pdf",
         lifespan=_lifespan,
@@ -70,7 +73,7 @@ def create_app() -> FastAPI:
     # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
     upload_path = app.url_path_for(documents.upload.__name__)
     app.add_middleware(BodyLimit, streamed=frozenset([upload_path]))
-    # Outermost, so it sees the body come in however BodyLimit reads it.
+    # Outside BodyLimit, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
     @app.get("/api/health", responses=_PROBLEM_RESPONSES)
@@ -82,4 +85,9 @@ def create_app() -> FastAPI:
             raise NoWorkers()
         return {"status": "ok"}
 
+    # Just inside the access log, so a bug's 500 is logged by it, and never raised past it.
+    app.add_middleware(BugBoundary)
+    # Outermost, so a request its browser left is logged too. The healthcheck's every
+    # 30 s isn't: a failing one shows in `docker ps`.
+    app.add_middleware(AccessLog, unlogged=frozenset([app.url_path_for(health.__name__)]))
     return app

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Annotated, Any, NotRequired, TypedDict, cast
 
 from fastapi import FastAPI, Request, Response
@@ -13,6 +13,7 @@ from pydantic import Field
 from pydantic.json_schema import JsonDict
 from starlette import status
 from starlette.exceptions import HTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from squidpdf.api.constants import WORKER_FAILURES
 from squidpdf.api.errors.generic import MethodNotAllowed, ServerError
@@ -21,13 +22,15 @@ from squidpdf.core import (
     CORE_ERRORS,
     Failure,
     InvalidRequest,
+    LogController,
+    LogEvent,
     NotFound,
     Param,
     Problem,
     words,
 )
 
-_logger = logging.getLogger(__name__)
+_log = LogController.for_module(__name__)
 
 
 def _each_subclass_of(problem: type[Problem]) -> Iterator[type[Problem]]:
@@ -103,12 +106,13 @@ API_ERRORS = CORE_ERRORS.with_rows(*WORKER_FAILURES, *_FRAMEWORK_FAILURES)
 
 
 def _adopt(exc: Exception) -> Problem:
-    """Any exception as the Problem `API_ERRORS` says it means; a bug if nothing claims it."""
+    """Any exception as the Problem `API_ERRORS` says it means; a bug, logged, if none does."""
     if isinstance(exc, Problem):
         return exc
     claimed = API_ERRORS.problem_if_claimed(exc)
-    # A bug: said without its text, which is for the log. Starlette logs the traceback after.
+    # A bug: said without its text, which is for the log, with the request it broke.
     if claimed is None:
+        _log.write(LogEvent.UNHANDLED, exc)
         return ServerError()
     return claimed
 
@@ -119,7 +123,7 @@ def _debug_sent(problem: Problem) -> str | None:
         return None
     # Our failure: its why can name a file on the server, so only the log gets it.
     if problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR:
-        _logger.warning("Sent %s without its debug: %s", problem.type, problem.debug)
+        _log.write(LogEvent.PROBLEM_SENT_WITHOUT_DEBUG, problem)
         return None
     # The file's or the request's doing: its why tells the developer what to fix.
     return problem.debug
@@ -157,6 +161,39 @@ async def _handle(request: Request, exc: Exception) -> Response:
     if isinstance(exc, HTTPException) and exc.headers:
         answer.headers.update(exc.headers)
     return answer
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class BugBoundary:
+    """Where a bug stops: answered here, as a 500, never raised past the app and logged again.
+
+    Starlette's own catch-all answers outside every middleware, then raises the bug
+    on to the server, which logs its traceback a second time, without its request.
+    """
+
+    app: ASGIApp  # every request it handles has its bugs answered
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Run the request; a bug before its answer begins is answered as its Problem."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        answering = False
+
+        async def watched_send(message: Message) -> None:
+            """The answer, noting when it has begun: from then on there's none to give."""
+            nonlocal answering
+            answering = answering or message["type"] == "http.response.start"
+            await send(message)
+
+        try:
+            await self.app(scope, receive, watched_send)
+        except Exception as bug:  # any bug of ours: answered as a 500, logged once
+            # Half an answer is out: nothing to answer with, so it goes on up.
+            if answering:
+                raise
+            answer = await _handle(Request(scope), bug)
+            await answer(scope, receive, send)
 
 
 def _describe(item: dict[str, Any]) -> str:

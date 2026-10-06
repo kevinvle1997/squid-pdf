@@ -10,7 +10,7 @@ from squidpdf.api.app import create_app
 from squidpdf.api.errors import ServerError
 from squidpdf.core import NotFound, Problem, words
 from squidpdf.documents.errors import Gone
-from tests.api.conftest import BASE_URL, SERVER_PATH, upload
+from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_problem
 
 
@@ -54,7 +54,8 @@ def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
     assert_problem(response, "server_error", 500)
     assert_not_in("debug", response.json(), "what a server error sends")
     assert_not_in(SERVER_PATH, response.text, "the body of a server error")
-    assert_in(SERVER_PATH, caplog.text, "what the server's log says of it")
+    assert_in(LOGGED_PATH, caplog.text, "what the server's log says of it")
+    assert_not_in(DOCUMENT_ID, caplog.text, "the document's id, in the log")
     assert_in("server_error", caplog.text, "the type the log gives it")
 
 

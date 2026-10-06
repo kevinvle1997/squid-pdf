@@ -26,6 +26,20 @@ EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
 
 
+# A log line's fixed shape: time (UTC), level, outcome, module, event, then key=value fields.
+LOG_LINE = re.compile(
+    r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (INFO |WARN |ERROR) (noted  |skipped|failed ) "
+    r"[a-z_.]+ [a-z_]+( [a-z_]+=\S+)*"
+)
+# Where each line starts, when a traceback or a debug follows it on the lines after.
+_LOG_LINE_START = re.compile(r"^\d{4}-\d\d-\d\dT", re.MULTILINE)
+
+
+def log_lines(output: str) -> list[str]:
+    """The first line of each log entry in captured output; what follows one isn't counted."""
+    return [line for line in output.splitlines() if _LOG_LINE_START.match(line)]
+
+
 @pytest.fixture(scope="session", autouse=True)
 def no_fetch() -> Iterator[None]:
     """Nothing in the suite reaches Google: set before any worker starts, so they inherit it."""
