@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
+import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
 import type { Render } from "../../api/types";
 import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../../fixtures";
 import { EditorShell } from "./EditorShell";
@@ -13,6 +13,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   render: vi.fn(),
   stillThere: vi.fn(async () => true),
   putFont: vi.fn(),
+  exportPdf: vi.fn(),
 }));
 
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
@@ -74,6 +75,19 @@ describe("the bar", () => {
     const exportButton = screen.getByRole("button", { name: /Export/ }).element();
     expect(exportButton.getBoundingClientRect().height).toBeLessThan(40);
     await page.viewport(wide, tall);
+  });
+});
+
+describe("export", () => {
+  test("says it's under way only past the quiet spell, so a quick one shows nothing", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(exportPdf).mockReturnValue(new Promise(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    await screen.getByRole("button", { name: /Export/ }).click();
+    const exporting = screen.getByRole("banner").getByText("Exporting");
+    await expect.element(exporting).toBeInTheDocument();
+    await expect.element(exporting).not.toBeVisible();
+    await expect.element(exporting).toBeVisible();
   });
 });
 

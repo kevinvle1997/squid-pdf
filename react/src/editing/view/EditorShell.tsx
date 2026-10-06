@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Document } from "../../api/types";
+import { QUIET_MS } from "../../documents/constants";
 import { Button } from "../../ui/Button";
 import { Notice } from "../../ui/Notice";
 import { SkipLink } from "../../ui/SkipLink";
@@ -90,6 +91,12 @@ function Bar() {
           </>
         )}
       </span>
+      {exporting && (
+        // Hidden for the quiet spell by CSS, as opening a file is, so a quick export shows nothing.
+        <span className={styles.exporting} style={{ animationDelay: `${QUIET_MS}ms` }}>
+          Exporting
+        </span>
+      )}
       <Fonts />
       <Button onPress={() => void exportNow(editor)} isDisabled={exporting}>
         Export <kbd>{COMMAND}S</kbd>
