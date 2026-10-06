@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
@@ -9,6 +10,8 @@ import { defineConfig } from "vite";
 const api: Record<string, string> = process.env.VITEST
   ? {}
   : { "/api": process.env.SQUIDPDF_API ?? "http://127.0.0.1:8000" };
+// A folder with key.pem and cert.pem: the end to end tests serve over HTTPS, as Caddy does.
+const tls = process.env.SQUIDPDF_TLS;
 
 export default defineConfig({
   plugins: [react()],
@@ -29,7 +32,10 @@ export default defineConfig({
     // The preview draws in the very font files the server draws with, from src/squidpdf/fonts.
     fs: { allow: [".."] },
   },
-  preview: { proxy: api },
+  preview: {
+    proxy: api,
+    https: tls ? { key: readFileSync(`${tls}/key.pem`), cert: readFileSync(`${tls}/cert.pem`) } : undefined,
+  },
   test: {
     projects: [
       // The logic: no React, no DOM, in node.
