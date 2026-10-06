@@ -1,13 +1,14 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, the owner's hash, the span index, the page list, and the analysis
-for each `build` and tuning, its spans and its digest in files of their own. Each file worked
-out from the original is named for its format. Its mtime, touched each visit, is the idle clock.
+A folder holds the original, its owner's hash, index, page list, the user's copies of its
+fonts, and the analysis per `build`, tuning and set of copies. Each file worked out from the
+original is named for its format. Its mtime, touched each visit, is the idle clock.
 """
 
 from __future__ import annotations
 
 import errno
+import fcntl
 import hashlib
 import os
 import re
@@ -15,7 +16,7 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
@@ -43,6 +44,11 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
+# The user's own copies of a document's fonts, in its folder, each `<name in hex>.<digest>`.
+_ATTACHED = "fonts"
+_ARRIVING = ".arriving-"  # a copy still coming in, or being checked: not attached yet
+_ATTACHED_LOCK = ".fonts-lock"  # held by whoever attaches or removes a copy, and analyses
+_ATTACHED_DIGEST_SIZE = 8  # bytes of a copy's digest, and of a set's, in a file's name
 # Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
@@ -86,14 +92,110 @@ def find(doc_id: str) -> tuple[Path, str] | None:
     return folder, owner_digest
 
 
-def open_to_analyse(folder: Path) -> Engine:
+@dataclass(frozen=True, slots=True, eq=False)
+class AttachedFiles(Mapping[str, bytes]):
+    """The user's own copies of a document's fonts, by the font's name: each read when asked.
+
+    A render needs only the copies its fonts lend from, so none is read before then.
+    """
+
+    paths: dict[str, Path]  # each copy's file, by the name of the font it's for
+
+    @property
+    def key(self) -> str:
+        """What tells this set of copies from another, for the analysis's file names."""
+        names = "/".join(sorted(path.name for path in self.paths.values()))
+        return hashlib.blake2s(names.encode(), digest_size=_ATTACHED_DIGEST_SIZE).hexdigest()
+
+    def __getitem__(self, font_name: str) -> bytes:
+        """The copy for `font_name`. Raises KeyError if it was removed since it was listed."""
+        try:
+            return self.paths[font_name].read_bytes()
+        except FileNotFoundError as exc:  # removed or replaced since: no copy, not no document
+            raise KeyError(font_name) from exc
+
+    def __contains__(self, font_name: object) -> bool:
+        """Whether there's a copy for `font_name`, read without reading it."""
+        return font_name in self.paths
+
+    def __iter__(self) -> Iterator[str]:
+        """The names of the fonts there's a copy for."""
+        return iter(self.paths)
+
+    def __len__(self) -> int:
+        """How many copies there are."""
+        return len(self.paths)
+
+
+def attached_files(folder: Path) -> AttachedFiles:
+    """The user's own copies of the document's fonts, listed now, each read when asked for."""
+    try:
+        listed = list((folder / _ATTACHED).iterdir())
+    except FileNotFoundError:  # none was ever attached, or the document was deleted
+        return AttachedFiles({})
+    # A dot first: one still arriving, not attached yet.
+    kept = [path for path in listed if not path.name.startswith(".")]
+    return AttachedFiles({_font_name_of(path): path for path in kept})
+
+
+def arriving_font(folder: Path) -> Path:
+    """A new, empty file for a copy to come into, in the document's folder: it goes with it."""
+    attached = folder / _ATTACHED
+    with full_disk_refused():
+        try:
+            attached.mkdir(exist_ok=True)
+            handle, arriving = tempfile.mkstemp(dir=attached, prefix=_ARRIVING)
+        except FileNotFoundError as exc:  # the document was deleted since it was found
+            raise Gone from exc
+    os.close(handle)
+    return Path(arriving)
+
+
+def keep_font(folder: Path, font_name: str, arrived: Path) -> None:
+    """Attach the copy that `arrived` for `font_name`, in place of any it had."""
+    digest = hashlib.blake2s(arrived.read_bytes(), digest_size=_ATTACHED_DIGEST_SIZE)
+    kept = folder / _ATTACHED / f"{font_name.encode().hex()}.{digest.hexdigest()}"
+    try:
+        os.replace(arrived, kept)
+    except FileNotFoundError as exc:  # the document was deleted mid-way
+        raise Gone from exc
+    drop_font(folder, font_name, keeping=kept)
+
+
+def drop_font(folder: Path, font_name: str, *, keeping: Path | None = None) -> None:
+    """Remove the user's copy of `font_name`, all but `keeping`; nothing if there's none."""
+    for path in attached_files(folder).paths.values():
+        if _font_name_of(path) == font_name and path != keeping:
+            path.unlink(missing_ok=True)
+
+
+@contextmanager
+def fonts_locked(folder: Path) -> Iterator[None]:
+    """Hold the document's copies still: one attach or removal at a time, across workers."""
+    try:
+        lock = (folder / _ATTACHED_LOCK).open("a")
+    except FileNotFoundError as exc:  # the document was deleted since it was found
+        raise Gone from exc
+    with lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # released as the file closes
+        yield
+
+
+def _font_name_of(path: Path) -> str:
+    """The name of the font a kept copy is for, read back from its file's name."""
+    name_in_hex, _digest = path.name.split(".")
+    return bytes.fromhex(name_in_hex).decode()
+
+
+def open_to_analyse(folder: Path, attached: AttachedFiles) -> Engine:
     """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
 
     The one open that downloads Google's copies of its fonts, into the cache
     beside the documents (the sweep passes over it). Every other open reads
     that cache alone, so it lends what the analysis fetched and never waits.
     """
-    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS))
+    google = google_fonts(folder=root() / _GOOGLE_FONTS)
+    sources = FontSources(google=google, attached=attached)
     try:
         return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
@@ -106,7 +208,8 @@ def open_original(folder: Path) -> Engine:
     Google's copy of a font lends the letters its copies in the file lack, from
     the cache the analysis filled: a render never waits on the network.
     """
-    sources = FontSources(google=google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True))
+    google = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
+    sources = FontSources(google=google, attached=attached_files(folder))
     try:
         return open_pdf(str(folder / ORIGINAL), sources=sources)
     except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
@@ -279,32 +382,36 @@ def load_pages(folder: Path) -> list[Page]:
     return pages_from_json(saved)
 
 
-def save_analysis(folder: Path, build: str, kept: KeptAnalysis) -> None:
-    """Keep what was worked out under this build; another build or tuning works it out again.
+def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
+    """Keep what was worked out under this build and set of copies (`AttachedFiles.key`).
 
-    The digest last: a 304 reads it alone, so its file says the rest is there.
+    Another build, tuning or set of copies works it out again. The digest last: a
+    304 reads it alone, so its file says the rest is there.
     """
-    _write_whole(folder / _spans_file(build), kept.spans)
-    _write_whole(folder / _analysis_file(build), kept.facts)
-    _write_whole(folder / _digest_file(build), kept.digest.encode())
+    judged_with = f"{build}.{attached}"
+    _write_whole(folder / _spans_file(judged_with), kept.spans)
+    _write_whole(folder / _analysis_file(judged_with), kept.facts)
+    _write_whole(folder / _digest_file(judged_with), kept.digest.encode())
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
-    """The analysis saved under this build and format, or None if not worked out in them."""
+    """The analysis saved under this build, format and the copies attached now, or None."""
+    judged_with = f"{build}.{attached_files(folder).key}"
     try:
-        digest = (folder / _digest_file(build)).read_text()
-        facts = (folder / _analysis_file(build)).read_bytes()
-        spans = (folder / _spans_file(build)).read_bytes()
-    except FileNotFoundError:  # a new build or format, or never analysed
+        digest = (folder / _digest_file(judged_with)).read_text()
+        facts = (folder / _analysis_file(judged_with)).read_bytes()
+        spans = (folder / _spans_file(judged_with)).read_bytes()
+    except FileNotFoundError:  # a new build, format or set of copies, or never analysed
         return None
     return KeptAnalysis(facts, spans, digest)
 
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
-    """The analysis's digest under this build and format, or None if not worked out in them."""
+    """The analysis's digest under this build, format and copies attached now, or None."""
+    judged_with = f"{build}.{attached_files(folder).key}"
     try:
-        return (folder / _digest_file(build)).read_text()
-    except FileNotFoundError:  # a new build or format, or never analysed
+        return (folder / _digest_file(judged_with)).read_text()
+    except FileNotFoundError:  # a new build, format or set of copies, or never analysed
         return None
 
 

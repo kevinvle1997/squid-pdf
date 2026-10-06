@@ -5,10 +5,11 @@ from __future__ import annotations
 import io
 import re
 from collections.abc import Iterator
+from pathlib import Path
 
 import pymupdf
 import pytest
-from fontTools.subset import Subsetter
+from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
 from squidpdf.core import open_pdf, words
@@ -19,6 +20,9 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 pytest.register_assert_rewrite("tests.helpers")
 
 _POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
+_WIDTH_LIST_CODES = range(32, 127)  # the codes a width list covers: the keyboard's letters
+_WIDTH_LIST_EM = 1000  # a width list's unit: a thousandth of the size
+_POPPINS_SIZE = 14.0
 
 # The sample's two pages, counted from 0 as spans count them.
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
@@ -99,6 +103,28 @@ def named_only(
         )
         doc.xref_set_key(xref, "FontDescriptor", descriptor)
     doc.save(path)
+    return path
+
+
+def named_with_widths(path: str, face: str, *, base_font: str) -> str:
+    """One line in a font the file only names, with the width list Word writes for it.
+
+    The widths are `face`'s, a face we ship, for codes 32 to 126 in the usual
+    encoding: Liberation Sans's are Arial's, so "Arial" names a font its file matches.
+    """
+    program = pymupdf.Font(fontbuffer=face_bytes(FACES[face]))
+    widths = [
+        round(program.text_length(chr(code), fontsize=1) * _WIDTH_LIST_EM)
+        for code in _WIDTH_LIST_CODES
+    ]
+    path = named_only(path, base_font)
+    doc = pymupdf.open(path)
+    [(xref, *_rest)] = doc[0].get_fonts()
+    doc.xref_set_key(xref, "Subtype", "/TrueType")
+    doc.xref_set_key(xref, "FirstChar", str(_WIDTH_LIST_CODES.start))
+    doc.xref_set_key(xref, "LastChar", str(_WIDTH_LIST_CODES.stop - 1))
+    doc.xref_set_key(xref, "Widths", "[" + " ".join(map(str, widths)) + "]")
+    doc.saveIncr()
     return path
 
 
@@ -276,3 +302,35 @@ def pseudo(monkeypatch) -> str:
     }
     monkeypatch.setitem(words.CATALOGS, PSEUDO, catalog)
     return PSEUDO
+
+
+# Poppins as Google's collection has it, with its licence beside it: the whole font.
+POPPINS = Path(__file__).parent / "core" / "fonts" / "Poppins-Regular.ttf"
+# What the Poppins fixture's page draws; "Yearly Hello" needs Y, a and y besides.
+POPPINS_TEXT = "Hello there"
+
+
+@pytest.fixture(scope="module")
+def poppins_subset(tmp_path_factory) -> str:
+    """One line in a trimmed copy of Poppins, named as a real trimmed copy is.
+
+    Trimmed with fontTools, which keeps its letter table, so the engine writes
+    it by letter. MuPDF files an added font as "Poppins Regular"; a real file
+    names it `ABCDEF+Poppins-Regular`, so that's the name it's given, on the
+    font and the one inside it.
+    """
+    trimmer = Subsetter(Options())
+    trimmer.populate(text=POPPINS_TEXT)
+    font = TTFont(POPPINS)
+    trimmer.subset(font)
+    trimmed_file = io.BytesIO()
+    font.save(trimmed_file)
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
+    page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_POPPINS_SIZE)
+    [(xref, *_)] = page.get_fonts()
+    name_two_byte_font(doc, xref, "Poppins-Regular")
+    path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
+    doc.save(path)
+    return path

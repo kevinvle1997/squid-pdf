@@ -20,8 +20,7 @@ from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
-from tests.conftest import drawn_with, name_two_byte_font
-from tests.core.conftest import POPPINS
+from tests.conftest import POPPINS, drawn_with, name_two_byte_font
 from tests.helpers import assert_at_most, assert_equal
 
 # Three of Google's families, each its own file there; Montserrat's is variable, so it'd be cut.

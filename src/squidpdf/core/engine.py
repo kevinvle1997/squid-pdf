@@ -20,6 +20,7 @@ from squidpdf.core.app.errors import ErrorController
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.fit import LineFit
+from squidpdf.core.fonts.attached import AttachedFonts
 from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
@@ -182,6 +183,10 @@ class Engine:
             same_widths=match.same_widths and drawn_in == match.face,
         )
 
+    def why_not_its_font(self, span: Span, font_file: bytes) -> Message | None:
+        """Why `font_file` isn't the span's font, as the user's own copy; None when it is."""
+        return self.fonts.why_not_its_font(span, font_file)
+
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em."""
         return self.plans.widths(span)
@@ -318,7 +323,8 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     """
     fetch = sources.google
     google = None if fetch is None else GoogleFontController(driver, fetch)
-    fonts = DocumentFonts(driver, google)
+    attached = AttachedFonts(driver, sources.attached)
+    fonts = DocumentFonts(driver, attached=attached, google=google)
     plans = DrawPlanner(fonts, driver)
     return Engine(
         driver,

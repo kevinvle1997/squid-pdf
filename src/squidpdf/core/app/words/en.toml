@@ -32,6 +32,10 @@ font_cant_write = "This font is stored in the file in a way we can't write new t
 copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
 copy_too_few_shared = "Another copy of this font has the letters needed here, but too few letters in common with this one to be sure it's the same font, so a similar font stands in for it."
 copy_other_widths = "Another font by this name has the letters needed here, but its letters are a different width, so a similar font stands in for it."
+# Why the user's own copy of a font can't stand in for one the file only names.
+font_no_width_list = "This font isn't stored in the file, and the file doesn't list how wide its letters are, so no copy of it can be checked against it."
+attached_unreadable = "The copy of this font you added can't be read as a font, so a similar font stands in for it."
+attached_removed = "The copy of this font you added was just removed, so a similar font stands in for it."
 # Why Google Fonts can't lend a font the letters its copy in the file lacks: the file's
 # reason, then Google's. One per font.
 google_not_listed = "The file's copy of this font can't draw every letter here, and Google Fonts has no font by this name to lend them, so a similar font stands in for it."
@@ -93,6 +97,11 @@ not_a_pdf = "This isn't a PDF."
 not_sent_as_pdf = "Send the file as a PDF (Content-Type application/pdf)."
 too_large = "This file is over {mb} MB."
 too_many_pages = "This PDF has more than {pages} pages."
+font_mismatch = "This isn't the font the document uses. Its letters are a different width."
+not_a_font = "This file can't be read as a font. Use a .ttf or .otf file."
+font_unchecked = "This document only names this font, without saying how wide its letters are, so there's nothing to check your copy against."
+too_many_fonts = "A document can keep {count} of your own fonts at most. Remove one first."
+no_such_font = "This document doesn't use a font by that name."
 encrypted = "This PDF is password-protected. Open it with the password and save a copy first."
 damaged = "This PDF is damaged and can't be opened."
 not_found = "Nothing here. It may have expired."  # never shown: the browser re-uploads

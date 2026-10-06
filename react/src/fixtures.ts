@@ -61,6 +61,7 @@ export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
     why_code: null,
     why_params: {},
     same_widths: true,
+    attached: false,
     glyphs: {},
     ...fields,
   };

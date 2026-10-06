@@ -20,6 +20,7 @@ from squidpdf.core import LogController, LogEvent, NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
+from squidpdf.documents.fonts import AttachController, DetachController
 from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import EXPIRES_HEADER, ReadController
 from squidpdf.documents.types import Document, Loaded
@@ -114,6 +115,43 @@ async def read(
 def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     """The document and everything worked out from it, now rather than in an hour."""
     store.delete(doc.folder)
+
+
+@router.put("/{doc_id}/fonts/{font_name:path}", response_model=Document)
+async def attach_font(
+    doc: Annotated[Loaded, Depends(load)],
+    *,
+    font_name: str,
+    request: Request,
+    attach_controller: Annotated[
+        AttachController, Depends(controller_with_workers(AttachController))
+    ],
+    said_in: ReaderLanguage,
+) -> Response:
+    """The user's own copy of a document font, raw TrueType or OpenType; spans judged again."""
+    reply = await attach_controller.attach(
+        doc,
+        font_name=font_name,
+        declared=declared_size(request),
+        chunks=request.stream(),
+        said_in=said_in,
+    )
+    return response_of(reply, media_type=_JSON)
+
+
+@router.delete("/{doc_id}/fonts/{font_name:path}", response_model=Document)
+async def detach_font(
+    doc: Annotated[Loaded, Depends(load)],
+    *,
+    font_name: str,
+    detach_controller: Annotated[
+        DetachController, Depends(controller_with_workers(DetachController))
+    ],
+    said_in: ReaderLanguage,
+) -> Response:
+    """The user's copy of a document font removed; every span judged again."""
+    reply = await detach_controller.detach(doc, font_name=font_name, said_in=said_in)
+    return response_of(reply, media_type=_JSON)
 
 
 @router.get(

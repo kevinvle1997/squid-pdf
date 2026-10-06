@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 from starlette.requests import ClientDisconnect
+from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from squidpdf.api import constants as limits
@@ -42,15 +43,17 @@ class BodyLimit:
     builds it, as `BodyLimit(app, streamed=...)`.
     """
 
-    app: ASGIApp  # guarded, all but the POSTs to `streamed`
-    # The paths that read their own body as it streams, with their own limit (uploads):
-    # theirs passes through unread.
-    streamed: frozenset[str]
+    app: ASGIApp  # guarded, all but the requests `streamed` answers
+    # The routes that read their own body as it streams, with their own limit (an upload, a
+    # font): theirs passes through unread. A route matches its method and path both.
+    streamed: tuple[BaseRoute, ...]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Answer too large or a bad size; otherwise hand the app the body, read whole."""
-        is_post = scope["type"] == "http" and scope["method"] == "POST"
-        if scope["type"] != "http" or (is_post and scope["path"] in self.streamed):
+        streams_its_own = scope["type"] == "http" and any(
+            route.matches(scope)[0] == Match.FULL for route in self.streamed
+        )
+        if scope["type"] != "http" or streams_its_own:
             await self.app(scope, receive, send)
             return
         request = Request(scope)

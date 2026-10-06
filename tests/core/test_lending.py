@@ -10,7 +10,7 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from squidpdf.core.types import PageFont
-from tests.core.conftest import POPPINS
+from tests.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in
 
 _SIZE = 14.0
@@ -116,3 +116,20 @@ def test_googles_copy_is_measured_by_its_bytes_not_its_name(poppins_subset):
     assert_equal(
         missing_with_impostor, ["Y", "a", "y"], "letters another font by its name leaves"
     )
+
+
+def test_the_users_copy_lends_before_googles_so_google_is_never_asked(poppins_subset):
+    """It's likely the very release the document used, and it saves a fetch."""
+    asked: list[GoogleFile] = []
+
+    def fetch(file: GoogleFile) -> bytes:
+        asked.append(file)
+        return POPPINS.read_bytes()
+
+    sources = FontSources(google=fetch, attached={"Poppins-Regular": POPPINS.read_bytes()})
+    with open_pdf(poppins_subset, sources=sources) as engine:
+        span = next(iter(engine.index()))
+        missing = engine.fit.plan_for(span, "Yearly Hello").missing
+
+    assert_equal(missing, [], "letters no copy draws")
+    assert_equal(asked, [], "files asked of Google")

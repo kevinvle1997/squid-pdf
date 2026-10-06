@@ -11,7 +11,16 @@ from pathlib import Path
 import orjson
 import xxhash
 
-from squidpdf.core import BUILD, Engine, FidelityReport, MessageInfo, Span, SpanIndex, reason_of
+from squidpdf.core import (
+    BUILD,
+    Engine,
+    FidelityReport,
+    MessageInfo,
+    Span,
+    SpanIndex,
+    reason_of,
+    strip_subset,
+)
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import (
@@ -31,13 +40,14 @@ def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
     Raises TooManyPages past `max_pages`, before reading a page.
     """
     path = Path(folder)
-    with store.open_to_analyse(path) as engine:
+    attached = store.attached_files(path)
+    with store.open_to_analyse(path, attached) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
         index = engine.index()
         store.save_index(path, index)
         store.save_pages(path, engine.pages())
-        return _analysed(engine, path, index)
+        return _analysed(engine, path, index, attached=attached)
 
 
 def analyse(folder: str) -> KeptAnalysis:
@@ -47,12 +57,17 @@ def analyse(folder: str) -> KeptAnalysis:
     """
     path = Path(folder)
     index = store.require_index(path)
-    with store.open_to_analyse(path) as engine:
-        return _analysed(engine, path, index)
+    attached = store.attached_files(path)
+    with store.open_to_analyse(path, attached) as engine:
+        return _analysed(engine, path, index, attached=attached)
 
 
-def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
+def _analysed(
+    engine: Engine, path: Path, index: SpanIndex, *, attached: store.AttachedFiles
+) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
+
+    Kept under the set of the user's copies it was judged with, `attached`.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
     Handed back as its JSON, so it leaves the worker fast and the reply sends its spans as is.
@@ -72,6 +87,7 @@ def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
             "substitute": reports[span.id].substitute,
             "why": _substitute_why(reports[span.id]),
             "same_widths": reports[span.id].same_widths,
+            "attached": strip_subset(span.font) in attached,
             "glyphs": engine.widths(span),
         }
         for span in first_span_of_font.values()
@@ -94,7 +110,7 @@ def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
         "fonts": fonts,
     }
     kept = _kept_analysis(analysis)
-    store.save_analysis(path, BUILD, kept)
+    store.save_analysis(path, BUILD, kept, attached=attached.key)
     return kept
 
 

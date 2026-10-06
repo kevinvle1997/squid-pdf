@@ -135,6 +135,14 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def listed_widths(self, xref: int) -> dict[str, float] | None:
+        """Each letter the font's width list gives a width, per 1000 em; None without a list.
+
+        The list is `/Widths`, or a two-byte font's `/W`, read whether the font is stored or
+        only named. Raises DriverError when the library can't load the font.
+        """
+        ...
+
     def open_font(self, font_file: bytes) -> FontProgram:
         """Open a font file to measure with. Raises DriverError when it isn't one."""
         ...

@@ -12,6 +12,45 @@ class NotAPdf(Problem):
     status = 415
 
 
+class FontMismatch(Problem):
+    """The user's copy of a font isn't the one the document uses: its letters' widths differ."""
+
+    type = "font_mismatch"
+    status = 422
+
+
+class NotAFont(Problem):
+    """The user's copy of a font can't be read as a font at all."""
+
+    type = "not_a_font"
+    status = 422
+
+
+class FontUnchecked(Problem):
+    """A font the file only names with no width list: nothing to check the copy against."""
+
+    type = "font_unchecked"
+    status = 422
+
+
+class TooManyFonts(Problem):
+    """The document has as many of the user's own font copies as it keeps."""
+
+    type = "too_many_fonts"
+    status = 422
+
+    def __init__(self, count: int) -> None:
+        """Name the limit it reached."""
+        super().__init__(count=count)
+
+
+class NoSuchFont(Problem):
+    """A font the document doesn't use: a copy of it would lend nothing."""
+
+    type = "no_such_font"
+    status = 422
+
+
 class NotSentAsPdf(Problem):
     """Not sent as application/pdf, whatever the upload holds: refused before it's counted."""
 

@@ -10,6 +10,7 @@ what to do with it.
 from __future__ import annotations
 
 import codecs
+import ctypes
 import re
 import sys
 from collections.abc import Callable, Iterator
@@ -31,6 +32,14 @@ _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacit
 _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
 
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
+# A number, or a bracket, in a two-byte font's width list (`/W`).
+_W_TOKEN = re.compile(r"\[|\]|-?\d+(?:\.\d+)?")
+_RUN_TOKENS = 3  # `first last w`: a run of CIDs all one width
+_TWO_BYTE_CODES = 65536  # a two-byte font has codes 0-65535
+_WHOLE_NUMBER = re.compile(r"-?\d+")
+_IDENTITY_ENCODINGS = ("/Identity-H", "/Identity-V")  # a two-byte font whose codes are its CIDs
+# An object reference, `12 0 R`: the number is what's kept.
+_OBJECT_REFERENCE = re.compile(r"(\d+) \d+ R")
 
 # The keys of marked content's hidden copies.
 _HIDDEN_COPY_KEYS = ("ActualText", "Alt", "E")
@@ -175,6 +184,59 @@ class PdfFile:
                 code_count = font.cid_to_gid_len or font.font.glyph_count
             codes = (_font_code(font, value) for value in range(code_count))
             return [code for code in codes if code is not None]
+
+    def listed_widths(self, xref: int) -> dict[str, float] | None:
+        """Each letter the font's width list gives a width, per 1000 em, lowest code first.
+
+        None when it has no list: `/Widths` for a simple font, `/W` on a two-byte font's
+        one inside. A width of 0 is a code the file never draws, and is left out.
+        """
+        listed = self._listed_codes(xref)
+        if listed is None:
+            return None
+        widths: dict[str, float] = {}
+        with self._mupdf_font_record(xref) as font:
+            for code in listed:
+                cid = pymupdf.mupdf.ll_pdf_lookup_cmap(font.encoding, code)
+                letter = _letter_of(font, code, cid)
+                width = pymupdf.mupdf.ll_pdf_lookup_hmtx(font, cid).w
+                if letter is not None and width > 0:
+                    widths.setdefault(letter, width)  # lowest code first: the one a page writes
+        return widths
+
+    def _listed_codes(self, xref: int) -> range | list[int] | None:
+        """The codes the font's width list gives widths for; None without one that reads."""
+        # A simple font: its list runs from FirstChar to LastChar, within its byte.
+        if self._entry(xref, "Widths") is not None:
+            first = _whole_number(self._entry(xref, "FirstChar"))
+            last = _whole_number(self._entry(xref, "LastChar"))
+            if first is None or last is None:
+                return None
+            return range(max(first, 0), min(last, _ONE_BYTE_CODES - 1) + 1)
+        descendants = self._entry(xref, "DescendantFonts")
+        # Neither kind of list: the reader falls back on widths of its own.
+        if descendants is None:
+            return None
+        # `/W` lists CIDs: only by Identity is a code its CID, so its letter can be read.
+        if self._entry(xref, "Encoding") not in _IDENTITY_ENCODINGS:
+            return None
+        inner = _OBJECT_REFERENCE.search(descendants)
+        # The one inside written in place, not as an object of its own: rare, and not read.
+        if inner is None or "<<" in descendants:
+            return None
+        w = self._entry(int(inner.group(1)), "W")
+        return None if w is None else _cids_in(w)
+
+    def _entry(self, xref: int, key: str) -> str | None:
+        """An object's entry as written, a reference to another followed; None when absent."""
+        value_type, value = self.doc.xref_get_key(xref, key)
+        if value_type == _PDF_NULL:
+            return None
+        # Kept in an object of its own, `9 0 R`: what that object holds.
+        referenced = _OBJECT_REFERENCE.search(value) if value_type == "xref" else None
+        if referenced is not None:
+            return self.doc.xref_object(int(referenced.group(1)), compressed=True)
+        return value
 
     def text_font_name(self, xref: int) -> str | None:
         """The name text in font `xref` is read under, often the font file's own.
@@ -1107,6 +1169,57 @@ def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None
         glyph=GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid)),
         width=mu.ll_pdf_lookup_hmtx(font, cid).w,
     )
+
+
+def _letter_of(font: pymupdf.mupdf.pdf_font_desc, code: int, cid: int) -> str | None:
+    """The letter a code is, by the font's letter list, else by MuPDF's from its encoding.
+
+    None when neither says, or the code is several letters (like "fi").
+    """
+    mu = pymupdf.mupdf
+    # Its letter list (ToUnicode), when it has one.
+    if font.to_unicode is not None:
+        codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, code)
+        return chr(codepoint) if 0 <= codepoint <= sys.maxunicode else None
+    # MuPDF's own, worked out from the encoding's letter names: a C array, read in place.
+    if cid >= font.cid_to_ucs_len:
+        return None
+    codepoint = ctypes.cast(int(font.cid_to_ucs), ctypes.POINTER(ctypes.c_ushort))[cid]
+    return chr(codepoint) if codepoint else None
+
+
+def _cids_in(w: str) -> list[int] | None:
+    """Every CID a two-byte font's `/W` gives a width: `c [w1 w2 ...]` or `first last w`.
+
+    None when it doesn't read as either. A run past the codes a font can have stops there.
+    """
+    tokens = _W_TOKEN.findall(w)[1:-1]  # inside the list's own brackets
+    cids: set[int] = set()
+    place = 0
+    try:
+        while place < len(tokens):
+            first = max(int(float(tokens[place])), 0)
+            following = tokens[place + 1]
+            # `c [w1 w2 ...]`: one CID per width, from c on.
+            if following == "[":
+                closing = tokens.index("]", place + 2)
+                last = first + closing - place - 3
+                place = closing + 1
+            # `first last w`: every CID from first to last, all one width.
+            else:
+                last = int(float(following))
+                place += _RUN_TOKENS
+            cids.update(range(first, min(last, _TWO_BYTE_CODES - 1) + 1))
+    except IndexError, ValueError:  # raised by a list cut short or a word where a number goes
+        return None
+    return sorted(cids)
+
+
+def _whole_number(value: str | None) -> int | None:
+    """An entry that's a whole number, as one; None for anything else, or nothing."""
+    if value is None or not _WHOLE_NUMBER.fullmatch(value):
+        return None
+    return int(value)
 
 
 def _values_of(dictionary: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:

@@ -11,9 +11,15 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from itertools import chain, groupby
+from typing import Protocol
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import KEYBOARD_RANGES, SAME_FONT_SHARED, SAME_WIDTH
+from squidpdf.core.constants import (
+    GLYPH_LIST_RANGES,
+    KEYBOARD_RANGES,
+    SAME_FONT_SHARED,
+    SAME_WIDTH,
+)
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.types import EM, CodedFont, PageFont
 
@@ -40,6 +46,18 @@ class FontCopy:
     # Each letter it really draws, and its width per 1000 em.
     widths: dict[str, float] = field(repr=False)
     lent: Lent | None = None  # set when it's lent from outside the file, as Google's copy is
+
+
+class Lender(Protocol):
+    """A source of copies from outside the file, asked in order for letters the file's lack."""
+
+    def copy_of(self, own: FontCopy) -> FontCopy | None:
+        """Its copy of the own copy's font, to be checked like any other.
+
+        None when it has none and that's no news (nothing attached); raises
+        FontUnusable, saying why, when it has none for a reason worth saying.
+        """
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,7 +201,7 @@ class PooledFont:
         if isinstance(other, FontUnusable):
             self.not_lent.append(other.reason)
             return
-        why = _why_turned_away(other, own=self.own, letters=self.taken_in)
+        why = why_turned_away(other, own=self.own, letters=self.taken_in)
         # Only the same name: it lends nothing, and keeps why for the report.
         if why is not None:
             self.turned_away.append(_TurnedAway(other, why))
@@ -225,7 +243,36 @@ def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
     return any(ch not in letters for ch in keyboard)
 
 
-def _why_turned_away(
+def previewed_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter a copy from outside draws that the browser can preview, per 1000 em.
+
+    Only previewed letters are checked for a shape: a large font holds far more outlines.
+    """
+    program, coverage = embedded.program, embedded.coverage
+    previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
+    return {ch: program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
+
+
+def why_unlike_listed(copy: FontCopy, listed: Mapping[str, float] | None) -> Message | None:
+    """Why `copy` isn't the font a width list describes; None when it is.
+
+    The same rule as `why_turned_away`: at least SAME_FONT_SHARED letters
+    shared, each as wide within SAME_WIDTH. No list: nothing to vouch for it.
+    """
+    if listed is None:
+        return Message("font_no_width_list")
+    shared = [ch for ch in copy.widths if ch in listed and not ch.isspace()]
+    # Too few in common: nothing to vouch for it.
+    if len(shared) < SAME_FONT_SHARED:
+        return Message("copy_too_few_shared")
+    widths_differ = any(abs(copy.widths[ch] - listed[ch]) > SAME_WIDTH for ch in shared)
+    # A letter both have is another width: a different font under the same name.
+    if widths_differ:
+        return Message("copy_other_widths")
+    return None
+
+
+def why_turned_away(
     other: FontCopy, *, own: FontCopy, letters: Mapping[str, FontCopy]
 ) -> Message | None:
     """Why `other` isn't the same font as the pool so far, only the same name; None when it is.

@@ -380,6 +380,14 @@ class _MuPDFDriver:
         """
         return self.file.font_codes(xref, code_bytes)
 
+    def listed_widths(self, xref: int) -> dict[str, float] | None:
+        """Each letter the font's width list gives a width, per 1000 em; None without a list.
+
+        Read from MuPDF's own record of the font. Raises DriverError when MuPDF
+        can't load it.
+        """
+        return self.file.listed_widths(xref)
+
     def text_font_name(self, xref: int) -> str | None:
         """The name text in font `xref` reads, often the font file's own; None if unreadable.
 
