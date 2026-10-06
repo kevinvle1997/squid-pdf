@@ -1,4 +1,12 @@
-import { type DragEvent, type DragEventHandler, type FocusEvent, type KeyboardEvent, useRef } from "react";
+import {
+  type DragEvent,
+  type DragEventHandler,
+  type FocusEvent,
+  type KeyboardEvent,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import { isFileDropItem, useDrop } from "react-aria";
 import { FileTrigger, Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
@@ -13,7 +21,7 @@ import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { boxOf, points, spanTextStyle } from "./geometry";
+import { boxOf, fieldScaleOf, points, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -36,6 +44,22 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);
+  const [scale, setScale] = useState(1);
+  // As the page is shown wider or narrower, what the field scales by to show the span's size.
+  const watchPage = useCallback(
+    (input: HTMLInputElement | null) => {
+      field.current = input;
+      const layer = input?.offsetParent;
+      if (input == null || !(layer instanceof HTMLElement)) return;
+      const shown = new ResizeObserver(() => {
+        const fontPx = parseFloat(getComputedStyle(input).fontSize);
+        setScale(fieldScaleOf(span.size, { pageWidthPt: info.width, shownPx: layer.clientWidth, fontPx }));
+      });
+      shown.observe(layer);
+      return () => shown.disconnect();
+    },
+    [span.size, info.width],
+  );
   // A font file dropped on the field is the user's copy of the span's font.
   const { dropProps } = useDrop({
     ref: field,
@@ -69,6 +93,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   }
 
   const box = boxOf(span.bbox, info);
+  // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
+  const { fontSize, height, ...where } = spanTextStyle(span, info, face);
   // Half an em spare: the preview face's widths are close to the server's, not always equal.
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
   return (
@@ -85,7 +111,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           onDragOver={filesOnly(dropProps.onDragOver)}
           onDragLeave={filesOnly(dropProps.onDragLeave)}
           onDrop={filesOnly(dropProps.onDrop)}
-          ref={field}
+          ref={watchPage}
           autoFocus
           onFocus={place}
           className={trouble !== "" ? styles.troubleInput : styles.input}
@@ -96,7 +122,13 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           onBlur={() => {
             if (document.hasFocus()) finish(editor, true);
           }}
-          style={{ ...spanTextStyle(span, info, face), width: points(wide, info) }}
+          style={{
+            ...where,
+            "--field-size": fontSize,
+            "--field-width": points(wide, info),
+            "--field-height": height,
+            "--field-scale": scale,
+          }}
         />
       </TextField>
       <div className={styles.chip} style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>

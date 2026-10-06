@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -134,6 +134,29 @@ describe("a page", () => {
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     await expect.element(field).toBeInTheDocument();
     below.remove();
+  });
+
+  test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      const screen = await draw();
+      await editSpan(screen);
+      const field = screen.getByRole("textbox").element();
+      expect(getComputedStyle(field).fontSize).toBe("16px");
+      // The span's box, as wide as the page is shown: what the field must look like on it.
+      const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
+      if (layer === undefined) throw new Error("no page image");
+      const spanPx = (pt: number) => (pt / A4.width) * layer.width;
+      const drawn = field.getBoundingClientRect();
+      expect(drawn.height).toBeCloseTo(spanPx(span.bbox.y1 - span.bbox.y0), 0);
+      expect(drawn.left).toBeCloseTo(layer.left + spanPx(span.bbox.x0), 0);
+      // Its letters drawn at the span's size: 16 px, scaled down.
+      const scale = new DOMMatrix(getComputedStyle(field).transform).a;
+      expect(16 * scale).toBeCloseTo(spanPx(span.size), 1);
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
   });
 
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {
