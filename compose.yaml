@@ -1,5 +1,8 @@
 # The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
 # this file, filled in from env.example and never committed.
+#
+# The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
+# published port hands every IPv6 client on from one address, and they share one count.
 name: squidpdf
 
 services:
@@ -11,9 +14,8 @@ services:
     init: true
     environment:
       # The app believes X-Forwarded-For from Caddy alone, so no one else can fake an address.
-      # The network is IPv4 alone, so every IPv6 client shares one address, the network's gateway.
       # Not in the image: run alone with its port open, anyone could fake the header.
-      FORWARDED_ALLOW_IPS: 172.31.255.2
+      FORWARDED_ALLOW_IPS: 172.31.255.2,fd52:74a:91b1::2
     volumes:
       - documents:/data
     # No ports: only Caddy, on this network, reaches the app.
@@ -49,6 +51,7 @@ services:
       default:
         # Fixed, so the app knows which address is Caddy's.
         ipv4_address: 172.31.255.2
+        ipv6_address: fd52:74a:91b1::2
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Its certificates. Kept, so a restart doesn't ask the CA for new ones.
@@ -65,11 +68,16 @@ services:
 
 networks:
   default:
+    # So Caddy sees each IPv6 client's own address, and the app counts it by its /64.
+    enable_ipv6: true
     ipam:
       config:
         # Other containers draw from the top half, so none takes Caddy's address before it starts.
         - subnet: 172.31.255.0/24
           ip_range: 172.31.255.128/25
+        # A private range (ULA), drawn at random as RFC 4193 asks, halved the same way.
+        - subnet: fd52:74a:91b1::/64
+          ip_range: fd52:74a:91b1:0:8000::/65
 
 volumes:
   # Uploaded documents, each deleted after an hour untouched.
