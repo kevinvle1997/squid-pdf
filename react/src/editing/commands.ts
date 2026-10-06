@@ -1,6 +1,6 @@
 // Keyboard shortcuts, wherever focus is: one table, read by one listener in EditorShell, so a
 // new binding is a row. Cmd+F, Cmd+Delete and the arrows join it with find and redaction.
-import { change, type Editor } from "./editor";
+import { type Editor, redo, undo } from "./editor";
 import { exportNow } from "./export";
 
 export interface Command {
@@ -9,13 +9,11 @@ export interface Command {
   readonly run: (editor: Editor) => void;
 }
 
-const redo = (editor: Editor) => change(editor, { kind: "redo" });
-
 export const COMMANDS: readonly Command[] = [
   // Export takes the words being typed along.
   { keys: "mod+s", whileTyping: true, run: (editor) => void exportNow(editor) },
   // In a text field, undo and redo are the field's own.
-  { keys: "mod+z", whileTyping: false, run: (editor) => change(editor, { kind: "undo" }) },
+  { keys: "mod+z", whileTyping: false, run: undo },
   { keys: "mod+shift+z", whileTyping: false, run: redo },
   { keys: "mod+y", whileTyping: false, run: redo },
 ];

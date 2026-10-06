@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { change, changedCount, createEditor, type Editor, putBack, substitutedCount } from "./editor";
+import { changedCount, createEditor, type Editor, putBack, redo, substitutedCount, undo } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
 import { edit, finish, troublesIn, typeInto } from "./typing";
@@ -46,7 +46,7 @@ describe("an edit", () => {
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
-    expect(editor.store.get().said).toBe("Changed to now");
+    expect(editor.store.get().said.text).toBe("Changed to now");
   });
 
   test("a trouble is said as it appears or changes, not as its numbers tick by with each letter", () => {
@@ -55,11 +55,11 @@ describe("an edit", () => {
     editor = createEditor(FILE, doc, 2);
     edit(editor, "ab", null);
     typeInto(editor, "abab");
-    expect(editor.store.get().said).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe("10.0 pt too long");
     typeInto(editor, "ababa");
-    expect(editor.store.get().said).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe("10.0 pt too long");
     typeInto(editor, "ababac");
-    expect(editor.store.get().said).toContain("no c in this font");
+    expect(editor.store.get().said.text).toContain("no c in this font");
   });
 
   test("typing into text a form field draws says at once that an edit here is left out", () => {
@@ -102,15 +102,44 @@ describe("an edit", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
-  test("undo, redo and putting a span back from its margin note", () => {
+  test("undo and redo say what the span reads now and bring it into view, and focus stays where it is", () => {
     typed("own", "one");
     typed("own", "two");
-    change(editor, { kind: "undo" });
+    undo(editor);
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
-    change(editor, { kind: "redo" });
+    expect(editor.store.get().said.text).toBe("Back to one");
+    expect(editor.store.get().scrollTo?.spanId).toBe("own");
+    expect(editor.store.get().focusTo).toBeNull();
+    redo(editor);
+    expect(editor.store.get().said.text).toBe("Changed to two");
+    undo(editor);
+    undo(editor);
+    expect(editor.store.get().said.text).toBe("Back to was own");
+    // Nothing left to undo: nothing said, nothing brought into view.
+    const before = editor.store.get();
+    undo(editor);
+    expect(editor.store.get().said).toBe(before.said);
+    expect(editor.store.get().scrollTo).toBe(before.scrollTo);
+  });
+
+  test("the same words said again are heard again, and the same span brought into view again", () => {
+    typed("own", "one");
+    undo(editor);
+    const first = editor.store.get();
+    redo(editor);
+    undo(editor);
+    const again = editor.store.get();
+    expect(again.said.text).toBe(first.said.text);
+    expect(again.said.count).not.toBe(first.said.count);
+    expect(again.scrollTo?.count).not.toBe(first.scrollTo?.count);
+  });
+
+  test("putting a span back from its margin note says so and sends focus there", () => {
+    typed("own", "one");
     putBack(editor, "own");
     expect(editor.store.get().reading.spans.has("own")).toBe(false);
-    expect(editor.store.get().said).toBe("Put back was own");
+    expect(editor.store.get().said.text).toBe("Put back was own");
+    expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 
   test("the bar counts changes, and the ones drawn in a similar font", () => {

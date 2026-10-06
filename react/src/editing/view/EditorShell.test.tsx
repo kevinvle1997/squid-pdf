@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { ProblemError, putFont, render as renderOnServer } from "../../api/client";
+import { ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
 import type { Render } from "../../api/types";
-import { aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../../fixtures";
+import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../../fixtures";
 import { EditorShell } from "./EditorShell";
 
 vi.mock(import("../../api/client"), async (original) => ({
@@ -56,6 +56,51 @@ describe("the editor", () => {
     );
     await expect.element(screen.getByText(notices[0]?.detail ?? "")).toBeVisible();
     await expect.element(screen.getByText(notices[1]?.detail ?? "")).toBeVisible();
+  });
+});
+
+describe("the bar", () => {
+  test("says when the document couldn't be opened again, where the document's name is", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const unreachable = "We can't work on files right now. Try again in a few minutes.";
+    vi.mocked(stillThere).mockRejectedValueOnce(new ProblemError(aProblem(503, unreachable)));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    // The page image fails to load here, as it does once the server has lost the document.
+    await expect.element(screen.getByRole("banner").getByText(unreachable)).toBeVisible();
+    expect(screen.getByText(unreachable).elements()).toHaveLength(1);
+    // The sentence wraps; the bar's buttons keep their one line.
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(900, 700);
+    const exportButton = screen.getByRole("button", { name: /Export/ }).element();
+    expect(exportButton.getBoundingClientRect().height).toBeLessThan(40);
+    await page.viewport(wide, tall);
+  });
+});
+
+describe("undo and redo", () => {
+  test("are heard, the same words again too, and bring their span into view while focus stays", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    // The span is on the third page, well below the first screen.
+    const far = aSpan({ ...span, page: 2 });
+    const doc = aDoc({ spans: [far], fonts: [aFont("Times-Roman")], pages: [A4, A4, A4] });
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={doc} />);
+    screen.getByRole("region", { name: "Page 3" }).element().scrollIntoView();
+    await change(screen, "is here");
+    await userEvent.keyboard("{Control>}z{/Control}");
+    const status = screen.getByRole("status");
+    await expect.element(status).toHaveTextContent("Back to was here");
+    const firstSaid = status.element().firstElementChild;
+
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.element(status).toHaveTextContent("Changed to is here");
+    const focused = document.activeElement;
+    window.scrollTo(0, 0);
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(status).toHaveTextContent("Back to was here");
+    expect(status.element().firstElementChild).not.toBe(firstSaid);
+    await vi.waitFor(() => expect(window.scrollY).toBeGreaterThan(0));
+    expect(document.activeElement).toBe(focused);
   });
 });
 

@@ -8,7 +8,7 @@ describe("the lines under the bar", () => {
     const notices = {
       document: [warn("Signed.")],
       export: plain("Downloaded contract.pdf."),
-      reopen: null,
+      reopen: plain("Opened again."), // said in the bar, not under it
       font: null,
     };
     const drawn = {

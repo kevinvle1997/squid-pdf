@@ -2,7 +2,7 @@
 import { exportPdf, ProblemError } from "../api/client";
 import type { Edit } from "../api/types";
 import { reportBug } from "../bugs";
-import type { Editor } from "./editor";
+import { type Editor, spoken } from "./editor";
 import { type Notice, plain, warn } from "./notices";
 import { finish } from "./typing";
 
@@ -22,7 +22,7 @@ export async function exportNow(editor: Editor): Promise<void> {
   finish(editor, true);
   store.set({ exporting: true });
   const notice = await downloaded(editor, store.get().reading.edits);
-  store.set({ exporting: false, notices: { ...store.get().notices, export: notice }, said: notice.text });
+  store.set({ exporting: false, notices: { ...store.get().notices, export: notice }, said: spoken(notice.text) });
 }
 
 /** Export `edits` and download the file; what to say of it, warned when it didn't all go. */

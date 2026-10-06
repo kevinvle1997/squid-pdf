@@ -3,7 +3,7 @@
 import { deleteFont, ProblemError, putFont } from "../api/client";
 import type { Document } from "../api/types";
 import { reportBug } from "../bugs";
-import { type Editor, type EditorState, layoutOf } from "./editor";
+import { type Editor, type EditorState, layoutOf, spoken } from "./editor";
 import { missingIn } from "./fit";
 
 const SUBSET_PREFIX = /^[A-Z]{6}\+/; // a trimmed copy's name starts ABCDEF+
@@ -29,7 +29,7 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
   try {
     const doc = await editor.reopener.withDocument((current) => putFont(current.id, fontName, file));
     editor.attached.set(fontName, file);
-    judgedAgain(editor, doc, { said: `Your copy of ${shownName(fontName)} is in use`, focusFont: fontName });
+    judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is in use`), focusFont: fontName });
   } catch (error) {
     refused(editor, fontName, error);
   }
@@ -59,7 +59,7 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
   editor.attached.delete(fontName);
   try {
     const doc = await editor.reopener.withDocument((current) => deleteFont(current.id, fontName));
-    judgedAgain(editor, doc, { said: `Your copy of ${shownName(fontName)} is removed`, focusFont: fontName });
+    judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is removed`), focusFont: fontName });
   } catch (error) {
     if (file !== undefined) editor.attached.set(fontName, file);
     refused(editor, fontName, error);
@@ -110,6 +110,6 @@ function refused(editor: Editor, fontName: string, error: unknown): void {
   editor.store.set({
     notices: { ...notices, font: { tone: "warn", text, font: fontName } },
     attaching: null,
-    said: text,
+    said: spoken(text),
   });
 }

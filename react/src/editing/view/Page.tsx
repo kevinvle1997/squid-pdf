@@ -4,7 +4,7 @@ import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import { type EditorState, type FocusTo, imageFailed } from "../editor";
+import { type EditorState, type FocusTo, imageFailed, type ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
@@ -62,6 +62,7 @@ interface PageState {
   readonly src: string; // the page image
   readonly typingIn: string | null; // the span being typed into, when it's here
   readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
+  readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly copy: Copy;
@@ -78,6 +79,8 @@ function pageState(state: EditorState, index: number): PageState {
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
     focusTo:
       state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
+    scrollTo:
+      state.scrollTo !== null && state.layout.spans.get(state.scrollTo.spanId)?.page === index ? state.scrollTo : null,
     fonts: state.layout.fonts,
     copy: state.doc.copy,
   };
@@ -120,6 +123,7 @@ export const Page = memo(function Page({ index, info }: Props) {
           />
         ))}
         <Previews page={page} info={info} />
+        {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {sheet.near && <Marks page={page} info={info} />}
       </Sheet>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="list" label={label} />
@@ -144,6 +148,19 @@ function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTM
       </div>
     </div>
   );
+}
+
+/**
+ * Over the span undo or redo changed, brought into view once, as it's first drawn: it stays,
+ * and the page drawing again mustn't pull the view back. Nothing scrolls if it's in view.
+ */
+function ScrollAnchor({ page, info }: { page: PageState; info: PageInfo }) {
+  const bringIntoView = useCallback((anchor: HTMLSpanElement | null) => {
+    anchor?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
+  const span = page.spans.find((each) => each.id === page.scrollTo?.spanId);
+  if (span === undefined) return null;
+  return <span className={styles.anchor} aria-hidden="true" style={boxOf(span.bbox, info)} ref={bringIntoView} />;
 }
 
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */

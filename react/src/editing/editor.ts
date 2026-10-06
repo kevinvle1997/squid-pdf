@@ -6,7 +6,16 @@ import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
 import { reattach } from "./fonts";
-import { EMPTY_HISTORY, entriesOf, type History, type HistoryAction, historyReducer, touching } from "./history";
+import {
+  EMPTY_HISTORY,
+  entriesOf,
+  type History,
+  type HistoryAction,
+  historyReducer,
+  type Step,
+  spanOf,
+  touching,
+} from "./history";
 import { NO_NOTICES, type Notices, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
@@ -28,6 +37,32 @@ export interface FocusTo {
   readonly spanId: string;
 }
 
+/** Words for a screen reader, counted: the same words said again are heard again. */
+export interface Spoken {
+  readonly text: string;
+  readonly count: number;
+}
+
+/** A span its page brings into view, if it's off screen: what undo or redo changed. Counted, as `Spoken` is. */
+export interface ScrollTo {
+  readonly spanId: string;
+  readonly count: number;
+}
+
+// The last count given, for the whole page: two editors' counts never meet, so one will do.
+let counted = 0;
+
+/** `text`, to be said now. */
+export function spoken(text: string): Spoken {
+  counted += 1;
+  return { text, count: counted };
+}
+
+function scrollingTo(spanId: string): ScrollTo {
+  counted += 1;
+  return { spanId, count: counted };
+}
+
 /** The document's spans and fonts, looked up by what the page needs. */
 export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
@@ -45,7 +80,8 @@ export interface EditorState {
   readonly draft: Draft | null;
   readonly focusTo: FocusTo | null;
   readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
-  readonly said: string; // what a screen reader hears, for what the page doesn't show
+  readonly said: Spoken; // what a screen reader hears, for what the page doesn't show
+  readonly scrollTo: ScrollTo | null;
   readonly exporting: boolean;
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
@@ -84,7 +120,8 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     draft: null,
     focusTo: null,
     notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
-    said: "",
+    said: { text: "", count: 0 },
+    scrollTo: null,
     exporting: false,
     attaching: null,
     focusFont: null,
@@ -99,22 +136,25 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   return editor;
 }
 
+/** The rest of an action, or what it is once the history's read: what undo says the span reads. */
+type Also = Partial<EditorState> | ((reading: Reading) => Partial<EditorState>);
+
 /**
  * Every change to the history comes through here, and redraws what it changed. `also` is the
  * rest of the action that made it, so what's drawn never sees one half without the other.
  */
-export function change(editor: Editor, action: HistoryAction, also: Partial<EditorState> = {}): void {
+export function change(editor: Editor, action: HistoryAction, also: Also = {}): void {
   const { store, queue } = editor;
   const state = store.get();
   const history = historyReducer(state.history, action);
   if (history === state.history) {
-    if (Object.keys(also).length > 0) store.set(also);
+    if (typeof also !== "function" && Object.keys(also).length > 0) store.set(also);
     return;
   }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export, reopening or refused copy said is stale once the user edits again.
   const notices = { ...state.notices, export: null, reopen: null, font: null };
-  store.set({ history, reading, notices, ...also });
+  store.set({ history, reading, notices, ...(typeof also === "function" ? also(reading) : also) });
   queue.draw(reading);
 }
 
@@ -124,8 +164,33 @@ export function putBack(editor: Editor, spanId: string): void {
   change(
     editor,
     { kind: "remove", ids: touching(history, spanId) },
-    { said: `Put back ${layout.spans.get(spanId)?.text ?? ""}`, focusTo: { spanId } },
+    { said: spoken(`Put back ${layout.spans.get(spanId)?.text ?? ""}`), focusTo: { spanId } },
   );
+}
+
+/** Take off the last thing done; say what its span reads now and bring it into view. Focus stays. */
+export function undo(editor: Editor): void {
+  const step = editor.store.get().history.done.at(-1);
+  stepped(editor, { kind: "undo" }, { step, words: "Back to" });
+}
+
+/** Bring back the last thing undone, said and brought into view as undo does. */
+export function redo(editor: Editor): void {
+  const step = editor.store.get().history.undone.at(-1);
+  stepped(editor, { kind: "redo" }, { step, words: "Changed to" });
+}
+
+function stepped(editor: Editor, action: HistoryAction, { step, words }: { step: Step | undefined; words: string }) {
+  const spanId = step?.map((entry) => spanOf(entry.edit)).find((id) => id !== undefined);
+  if (step === undefined || spanId === undefined) {
+    change(editor, action);
+    return;
+  }
+  const original = editor.store.get().layout.spans.get(spanId)?.text ?? "";
+  change(editor, action, (reading) => ({
+    said: spoken(`${words} ${reading.spans.get(spanId)?.text ?? original}`),
+    scrollTo: scrollingTo(spanId),
+  }));
 }
 
 /** Focus has left the span it was sent to: the next visit is an ordinary one. */
@@ -140,7 +205,7 @@ export function closeEditor(editor: Editor): void {
 
 /** Tell a screen reader, for what the page doesn't show. */
 export function say(editor: Editor, text: string): void {
-  editor.store.set({ said: text });
+  editor.store.set({ said: spoken(text) });
 }
 
 /** A page image failed: the document may have gone. */

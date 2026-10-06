@@ -68,6 +68,8 @@ function Bar() {
   const changed = useEditorState(changedCount);
   const substituted = useEditorState(substitutedCount);
   const exporting = useEditorState((state) => state.exporting);
+  // The document opened again, or couldn't: said in the bar's status, beside the counts.
+  const reopen = useEditorState((state) => state.notices.reopen);
   return (
     <header className={styles.bar}>
       <Wordmark />
@@ -76,6 +78,9 @@ function Bar() {
         <span className={styles.meta}>{counted(pages, { one: "page", other: "pages" })}</span>
       </span>
       <span className={styles.grow} />
+      {reopen !== null && (
+        <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
+      )}
       <span className={styles.status}>
         {changed > 0 && counted(changed, { one: "change", other: "changes" })}
         {substituted > 0 && (
@@ -116,5 +121,6 @@ function Pages() {
 }
 
 function Said() {
-  return <Status>{useEditorState((state) => state.said)}</Status>;
+  const said = useEditorState((state) => state.said);
+  return <Status count={said.count}>{said.text}</Status>;
 }

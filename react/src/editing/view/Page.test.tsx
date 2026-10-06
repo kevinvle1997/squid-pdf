@@ -6,7 +6,7 @@ import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aReply, aSpan, COPY } from "../../fixtures";
-import { createEditor, type Editor } from "../editor";
+import { createEditor, type Editor, undo } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -97,6 +97,26 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
     expect(editor.store.get().reading.spans.size).toBe(0);
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
+  });
+
+  test("undo brings its span into view once: scrolled away after, the page doesn't pull it back", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    undo(editor);
+    await vi.waitFor(() => expect(window.scrollY).toBeLessThan(1000));
+    window.scrollTo(0, 15000);
+    // The page draws again: its image goes as it leaves, and the server's verdict lands.
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    editor.store.set({ drawn: { ...editor.store.get().drawn, fits: new Map([[0, { s1: aFit({}) }]]) } });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(window.scrollY).toBe(15000);
+    below.remove();
   });
 
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {

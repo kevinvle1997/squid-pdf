@@ -72,7 +72,7 @@ describe("the user's own copy of a font", () => {
     const changed = editor.store.get();
 
     expect(noticeLines(refused.notices, refused.drawn)).toEqual([{ tone: "warn", text: MISMATCH }]);
-    expect(refused.said).toBe(MISMATCH);
+    expect(refused.said.text).toBe(MISMATCH);
     expect(refused.notices.font?.font).toBe("Arial");
     expect(refused.doc).toBe(DOC);
     expect(editor.attached.has("Arial")).toBe(false);

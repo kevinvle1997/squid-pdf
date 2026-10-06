@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import { change, type Editor, type EditorState } from "./editor";
+import { change, type Editor, type EditorState, spoken } from "./editor";
 import { previewFaceOf } from "./faces";
 import { fitOf, troubleKindOf, troublesOf } from "./fit";
 
@@ -41,7 +41,7 @@ export function typeInto(editor: Editor, typed: string): void {
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
   // A trouble is said as it appears or changes, not as its numbers tick by with each letter.
-  const said = now.kind !== was.kind && now.said.length > 0 ? now.said.join("; ") : state.said;
+  const said = now.kind !== was.kind && now.said.length > 0 ? spoken(now.said.join("; ")) : state.said;
   store.set({ draft: { ...state.draft, text }, said });
 }
 
@@ -61,5 +61,5 @@ export function finish(editor: Editor, keep: boolean, { returnFocus = false } = 
     return;
   }
   const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text };
-  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: `Changed to ${draft.text}` });
+  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: spoken(`Changed to ${draft.text}`) });
 }
