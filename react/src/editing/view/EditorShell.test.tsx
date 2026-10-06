@@ -5,7 +5,7 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
 import type { Render } from "../../api/types";
-import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../../fixtures";
+import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice, COPY } from "../../fixtures";
 import { EditorShell } from "./EditorShell";
 
 vi.mock(import("../../api/client"), async (original) => ({
@@ -88,6 +88,21 @@ describe("export", () => {
     await expect.element(exporting).toBeInTheDocument();
     await expect.element(exporting).not.toBeVisible();
     await expect.element(exporting).toBeVisible();
+  });
+});
+
+describe("an emptied span", () => {
+  test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    await change(screen, "");
+    // Shown in the chip, the first on the page, and heard through the status.
+    await expect.element(screen.getByText(COPY.empty).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(COPY.empty);
+    await expect.element(screen.getByRole("textbox")).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
   });
 });
 

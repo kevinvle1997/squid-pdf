@@ -58,6 +58,8 @@ font_not_added = "The file's own font couldn't be used for this edit, so a simil
 left_out = "Left out {letters}: no font we have can draw them."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
+# Said by the browser while the field it's typed in is empty: taking text out isn't a change.
+empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
 # A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
 not_redacted = "This text couldn't be removed, so the file can't be downloaded with this redaction."
 # `{places}` are the places below, each in a word of its own.

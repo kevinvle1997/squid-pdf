@@ -10,7 +10,7 @@ import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
-import { finish, troublesIn, typeInto } from "../typing";
+import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { boxOf, points, spanTextStyle } from "./geometry";
@@ -63,7 +63,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter" && event.key !== "Escape") return;
     event.preventDefault();
-    finish(editor, event.key === "Enter", { returnFocus: true });
+    if (event.key === "Enter") enter(editor);
+    else finish(editor, false, { returnFocus: true });
   }
 
   const box = boxOf(span.bbox, info);

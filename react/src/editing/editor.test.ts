@@ -5,7 +5,7 @@ import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { changedCount, createEditor, type Editor, putBack, redo, substitutedCount, undo, unexported } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
-import { edit, finish, troublesIn, typeInto } from "./typing";
+import { edit, enter, finish, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -76,6 +76,24 @@ describe("an edit", () => {
     // As pasted: a chat wraps a phone number in bidi controls; Pages breaks lines with U+2028.
     typed("own", "\u202A+1 555\t0100\u202C Invoices are\u2028due\u2029by\u0085May");
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("+1 555 0100 Invoices are due by May");
+  });
+
+  test("emptied, the field says it can't be, and Enter keeps it open; Escape still leaves it as it was", () => {
+    edit(editor, "own", null);
+    typeInto(editor, "  ");
+    expect(editor.store.get().said.text).toBe(COPY.empty);
+    expect(troublesIn(editor.store.get(), "  ").said).toEqual([COPY.empty]);
+    const said = editor.store.get().said;
+    enter(editor);
+    expect(editor.store.get().draft?.text).toBe("  ");
+    // Said again, for a screen reader pressing Enter: the field stays.
+    expect(editor.store.get().said.text).toBe(COPY.empty);
+    expect(editor.store.get().said.count).not.toBe(said.count);
+    typeInto(editor, "now");
+    enter(editor);
+    expect(editor.store.get().draft).toBeNull();
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
+    expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {

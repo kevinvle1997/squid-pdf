@@ -22,6 +22,8 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   const { fit: rules, copy } = state.doc;
   // A form field draws it, not the page: whatever is typed, the edit is left out.
   if (span.form_field) return { said: [copy.form_field_not_edited], kind: "form field" };
+  // Taking text out isn't a change: said while the field is empty.
+  if (isEmpty(text)) return { said: [copy.empty], kind: "empty" };
   const fit = fitOf(span, { font, text, rules });
   const substitute = font.substitute ?? previewFaceOf(font);
   return { said: troublesOf(fit, { rules, copy, substitute }), kind: troubleKindOf(fit, rules) };
@@ -45,6 +47,21 @@ export function typeInto(editor: Editor, typed: string): void {
   store.set({ draft: { ...state.draft, text }, said });
 }
 
+/** Enter: what was typed goes in and focus goes back to the span, unless the field is empty, which stays open. */
+export function enter(editor: Editor): void {
+  const { draft, doc } = editor.store.get();
+  if (draft !== null && isEmpty(draft.text)) {
+    editor.store.set({ said: spoken(doc.copy.empty) });
+    return;
+  }
+  finish(editor, true, { returnFocus: true });
+}
+
+/** Whether typed text says nothing: no change, since taking text out is redaction's job. */
+function isEmpty(text: string): boolean {
+  return text.trim() === "";
+}
+
 /**
  * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
  * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
@@ -56,7 +73,7 @@ export function finish(editor: Editor, keep: boolean, { returnFocus = false } = 
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
   const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || draft.text === was || draft.text.trim() === "") {
+  if (!keep || draft.text === was || isEmpty(draft.text)) {
     store.set(ended);
     return;
   }
