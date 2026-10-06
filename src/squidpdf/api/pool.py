@@ -225,6 +225,7 @@ class WorkerPool:
         # Raised by pebble: the pool broke, or no worker or pipe could be had for a new one.
         except (RuntimeError, OSError) as refused:
             _log.write(LogEvent.POOL_REFUSED_TASK, refused)
+            pool.stop()  # broken, or half started: the next try gets a new one
             raise _NeverStarted() from refused
         # Only for a wait pebble never answers on an unbroken pool: its timeout comes first.
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
@@ -375,12 +376,15 @@ def _run_tallied[T](task: Callable[[], T]) -> T:
 def _is_active(pool: ProcessPool) -> bool:
     """Whether pebble's pool takes tasks, starting a new one first.
 
-    Raises BrokenProcessPool when a new one can't start its pipes, threads or workers.
+    Raises BrokenProcessPool when a new one can't start its pipes, threads or workers,
+    and stops it: the next task gets a new pool, not this one started again.
     """
     try:
         return pool.active
     # Raised by pebble starting a new pool: no files left for its pipes, no thread to start.
     except (OSError, RuntimeError) as cant_start:
+        # Started again, it would wire its workers to the pipes of the start that failed.
+        pool.stop()
         raise BrokenProcessPool("The worker pool couldn't start") from cant_start
 
 
