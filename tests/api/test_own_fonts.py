@@ -21,6 +21,7 @@ from tests.conftest import (
     named_with_widths,
 )
 from tests.helpers import (
+    assert_at_least,
     assert_at_most,
     assert_equal,
     assert_false,
@@ -263,12 +264,19 @@ def test_a_font_named_with_a_slash_is_still_the_documents(mine, tmp_path):
     assert_problem(refused, "font_unchecked", 422)
 
 
-_LONGEST_NAME = "Arial" + "X" * 122  # a PDF's names run to 127 bytes; MuPDF keeps 31
-
-
-def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(mine, tmp_path):
+@pytest.mark.parametrize(
+    "long_name",
+    [
+        "Arial" + "X" * 122,  # a PDF's names run to 127 bytes; MuPDF keeps 31
+        "Arial" + "#C3#A9" * 20,  # é, as two bytes each
+        "AB+Arial" + "X" * 40,  # a "+" that starts no subset prefix
+    ],
+)
+def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(
+    mine, tmp_path, long_name
+):
     path = named_with_widths(
-        str(tmp_path / "long.pdf"), "Liberation Sans Regular", base_font=_LONGEST_NAME
+        str(tmp_path / "long.pdf"), "Liberation Sans Regular", base_font=long_name
     )
     doc = upload(mine, Path(path).read_bytes()).json()
     font = _only_font(doc)
@@ -276,7 +284,7 @@ def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(mine
     attached = _attach(mine, doc, font["name"], face_bytes(FACES["Liberation Sans Regular"]))
     removed = mine.delete(_font_url(doc, font["name"]))
 
-    assert_equal(font["name"], _LONGEST_NAME, "the font's name, as the page lists it")
+    assert_at_least(len(font["name"]), 32, "letters in the font's name, past what MuPDF keeps")
     assert_equal(attached.status_code, 200, "status of the attach")
     assert_true(_only_font(attached.json())["attached"], "the font, said attached")
     assert_false(_only_font(removed.json())["attached"], "the font, said attached once removed")
@@ -284,6 +292,7 @@ def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(mine
 
 
 def test_a_font_stored_under_a_long_name_is_read_by_it(mine, tmp_path):
+    # A stored font, named as a real trimmed copy is, past what MuPDF keeps of a name.
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())

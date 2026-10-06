@@ -111,28 +111,18 @@ class AttachedFiles:
     def __getitem__(self, font_name: str) -> bytes:
         """The copy for `font_name`. Raises KeyError if it was removed since it was listed."""
         try:
-            return self.paths[_digest_of_name(font_name)].read_bytes()
+            return self.paths[_name_digest_of(font_name)].read_bytes()
         except FileNotFoundError as exc:  # removed or replaced since: no copy, not no document
             raise KeyError(font_name) from exc
 
-    def __contains__(self, font_name: object) -> bool:
+    def __contains__(self, font_name: str) -> bool:
         """Whether there's a copy for `font_name`, read without reading it."""
-        return isinstance(font_name, str) and _digest_of_name(font_name) in self.paths
-
-    def __len__(self) -> int:
-        """How many copies there are."""
-        return len(self.paths)
+        return _name_digest_of(font_name) in self.paths
 
 
 def attached_files(folder: Path) -> AttachedFiles:
     """The user's own copies of the document's fonts, listed now, each read when asked for."""
-    try:
-        listed = list((folder / _ATTACHED).iterdir())
-    except FileNotFoundError:  # none was ever attached, or the document was deleted
-        return AttachedFiles({})
-    # A dot first: one still arriving, not attached yet.
-    kept = [path for path in listed if not path.name.startswith(".")]
-    return AttachedFiles({_name_digest_in(path): path for path in kept})
+    return AttachedFiles({_name_digest_in(path): path for path in _kept_copies(folder)})
 
 
 def arriving_font(folder: Path) -> Path:
@@ -151,7 +141,7 @@ def arriving_font(folder: Path) -> Path:
 def keep_font(folder: Path, font_name: str, arrived: Path) -> None:
     """Attach the copy that `arrived` for `font_name`, in place of any it had."""
     digest = hashlib.blake2s(arrived.read_bytes(), digest_size=_ATTACHED_DIGEST_SIZE)
-    kept = folder / _ATTACHED / f"{_digest_of_name(font_name)}.{digest.hexdigest()}"
+    kept = folder / _ATTACHED / f"{_name_digest_of(font_name)}.{digest.hexdigest()}"
     try:
         os.replace(arrived, kept)
     except FileNotFoundError as exc:  # the document was deleted mid-way
@@ -161,8 +151,10 @@ def keep_font(folder: Path, font_name: str, arrived: Path) -> None:
 
 def drop_font(folder: Path, font_name: str, *, keeping: Path | None = None) -> None:
     """Remove the user's copy of `font_name`, all but `keeping`; nothing if there's none."""
-    for name_digest, path in attached_files(folder).paths.items():
-        if name_digest == _digest_of_name(font_name) and path != keeping:
+    name_digest = _name_digest_of(font_name)
+    # Every file, not one per font: mid-replacement, a font has two.
+    for path in _kept_copies(folder):
+        if _name_digest_in(path) == name_digest and path != keeping:
             path.unlink(missing_ok=True)
 
 
@@ -178,9 +170,21 @@ def fonts_locked(folder: Path) -> Iterator[None]:
         yield
 
 
-def _digest_of_name(font_name: str) -> str:
+def _kept_copies(folder: Path) -> list[Path]:
+    """Every copy kept in the document's folder, as its files lie."""
+    try:
+        listed = list((folder / _ATTACHED).iterdir())
+    except FileNotFoundError:  # none was ever attached, or the document was deleted
+        return []
+    # A dot first: one still arriving, not attached yet.
+    return [path for path in listed if not path.name.startswith(".")]
+
+
+def _name_digest_of(font_name: str) -> str:
     """What a copy's file is named for: its font's name, at a length any name has."""
-    return hashlib.blake2s(font_name.encode(), digest_size=_ATTACHED_DIGEST_SIZE).hexdigest()
+    # A name read from a file can hold a lone surrogate, which strict UTF-8 refuses.
+    named = font_name.encode(errors="surrogatepass")
+    return hashlib.blake2s(named, digest_size=_ATTACHED_DIGEST_SIZE).hexdigest()
 
 
 def _name_digest_in(path: Path) -> str:

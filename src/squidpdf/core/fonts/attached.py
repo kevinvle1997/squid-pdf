@@ -24,7 +24,7 @@ _SOURCE = "attached {name}"  # how an attached copy is told from other copies of
 class FontFiles(Protocol):
     """The user's font files, each asked for by the name of the font it's for; never listed."""
 
-    def __contains__(self, font_name: object, /) -> bool:
+    def __contains__(self, font_name: str, /) -> bool:
         """Whether there's a file for `font_name`."""
         ...
 

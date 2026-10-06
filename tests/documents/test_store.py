@@ -274,3 +274,19 @@ def test_a_copy_of_a_font_removed_after_it_was_listed_reads_as_no_copy_not_no_do
     with pytest.raises(KeyError):
         listed["Arial"]
     assert_equal(store.find(doc_id), (folder, "owner"), "the document, found")
+
+
+def test_a_copy_replaced_again_and_again_then_removed_leaves_none(tmp_path):
+    """Each replacement drops the copy before it, whichever the folder lists first."""
+    folder = tmp_path / "doc"
+    folder.mkdir()
+    for round_number in range(20):
+        arrived = store.arriving_font(folder)
+        arrived.write_bytes(b"copy %d" % round_number)
+        store.keep_font(folder, "Arial", arrived)
+
+    kept_before = len(store.attached_files(folder).paths)
+    store.drop_font(folder, "Arial")
+
+    assert_equal(kept_before, 1, "copies kept for one font")
+    assert_equal(list((folder / "fonts").glob("[!.]*")), [], "copies left once removed")
