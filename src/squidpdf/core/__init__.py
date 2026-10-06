@@ -70,6 +70,7 @@ from squidpdf.core.engine import (
 from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
 from squidpdf.core.fonts.document import FontSources as FontSources
 from squidpdf.core.fonts.google import google_fonts as google_fonts
+from squidpdf.core.fonts.names import strip_subset as strip_subset
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
 from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.redaction import RedactionCheck as RedactionCheck

@@ -11,6 +11,11 @@ MAX_PAGES = 1_000
 # Uploads refused below this, less a whole file per upload under way: kept documents write too.
 MIN_FREE_BYTES = 2 * 1024 * _MB
 
+# The user's own copies of the document's fonts: starting values.
+MAX_FONT_MB = 25  # as the refusal says it
+MAX_FONT_BYTES = MAX_FONT_MB * _MB
+MAX_FONTS = 20  # the user's own copies kept per document
+
 # Workers. Past a timeout the task is killed and the user told it took too long.
 ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or again after a deploy
 PAGE_IMAGE_TIMEOUT_S = 10
@@ -23,11 +28,11 @@ PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unchanged
 
 # The shape of a document's reply: bump it when that changes, so an old copy gets no 304.
-REPLY_VERSION = 2
+REPLY_VERSION = 3
 # How a span index and page list are kept: bump it when either changes shape. One kept in
 # another reads as gone, never indexed again, and the browser opens it again from its copy.
 DOCUMENT_FORMAT = 1
 # How an analysis is kept: bump it when it changes shape; an old one is worked out again.
-ANALYSIS_FORMAT = 2
+ANALYSIS_FORMAT = 3
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

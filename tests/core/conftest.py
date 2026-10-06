@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from string import Formatter
 
 import pymupdf
 import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.subset import Options, Subsetter
-from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from tests.conftest import name_two_byte_font
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
@@ -516,38 +512,6 @@ def merged_unlike(tmp_path_factory) -> str:
     renamed = path.replace(".pdf", "-renamed.pdf")
     doc.save(renamed)
     return renamed
-
-
-# Poppins as Google's collection has it, with its licence beside it: the whole font.
-POPPINS = Path(__file__).parent / "fonts" / "Poppins-Regular.ttf"
-# What the Poppins fixture's page draws; "Yearly Hello" needs Y, a and y besides.
-POPPINS_TEXT = "Hello there"
-
-
-@pytest.fixture(scope="module")
-def poppins_subset(tmp_path_factory) -> str:
-    """One line in a trimmed copy of Poppins, named as a real trimmed copy is.
-
-    Trimmed with fontTools, which keeps its letter table, so the engine writes
-    it by letter. MuPDF files an added font as "Poppins Regular"; a real file
-    names it `ABCDEF+Poppins-Regular`, so that's the name it's given, on the
-    font and the one inside it.
-    """
-    trimmer = Subsetter(Options())
-    trimmer.populate(text=POPPINS_TEXT)
-    font = TTFont(POPPINS)
-    trimmer.subset(font)
-    trimmed_file = io.BytesIO()
-    font.save(trimmed_file)
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
-    page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_MERGED_SIZE)
-    [(xref, *_)] = page.get_fonts()
-    name_two_byte_font(doc, xref, "Poppins-Regular")
-    path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
-    doc.save(path)
-    return path
 
 
 def placeholders(sentence: str) -> frozenset[str]:

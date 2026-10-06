@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
+from fastapi.routing import APIRoute
 
 from squidpdf.api.access import AccessLog
 from squidpdf.api.body import BodyLimit
@@ -70,9 +71,17 @@ def create_app() -> FastAPI:
     app.include_router(documents.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing.fonts_router, responses=_PROBLEM_RESPONSES)
-    # By the route's name, so moving it can't quietly hold uploads to the edit list's limit.
-    upload_path = app.url_path_for(documents.upload.__name__)
-    app.add_middleware(BodyLimit, streamed=frozenset([upload_path]))
+    # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
+    streamed = {documents.upload.__name__, documents.attach_font.__name__}
+    streamed_routes = tuple(
+        route
+        for route in documents.router.routes
+        if isinstance(route, APIRoute) and route.name in streamed
+    )
+    # A name that no longer finds its route would hold that body to the edit list's limit.
+    if len(streamed_routes) != len(streamed):
+        raise RuntimeError(f"routes that stream their own body: {sorted(streamed)}, not found")
+    app.add_middleware(BodyLimit, streamed=streamed_routes)
     # Outside BodyLimit, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 

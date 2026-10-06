@@ -49,8 +49,7 @@ from squidpdf.core.fonts.google import (
     google_fonts,
 )
 from squidpdf.core.types import FontDescriptor
-from tests.conftest import name_two_byte_font
-from tests.core.conftest import POPPINS, POPPINS_TEXT
+from tests.conftest import POPPINS, POPPINS_TEXT, name_two_byte_font
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_in, assert_true
 
 _WANTED = "Yearly Hello"  # Y, a and y aren't in the file's copy of Poppins

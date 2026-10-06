@@ -1,10 +1,9 @@
 """The document's fonts: each span's own, pooled, its look-alike, and its gaps.
 
-What the engine knows about fonts, read through the driver once and kept. A
-copy of a font is opened once per listing, not once per page, so a font every
-page shares is read and parsed once. A span's font is its page's copy pooled
-with every other copy of it in the file (`core.fonts.pool`), so a letter one copy
-lacks can come from another, and last with Google's copy, if it has one.
+What the engine knows about fonts, read through the driver once and kept, each copy
+once per listing. A span's font is its page's copy pooled with every other copy of it
+in the file (`core.fonts.pool`), then the user's copy, then Google's, each lending what
+the copies before it lack.
 """
 
 from __future__ import annotations
@@ -14,16 +13,19 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from squidpdf.core.app.message import Message
+from squidpdf.core.fonts.attached import AttachedFonts
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike
 from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.fonts.pool import (
     FontCopy,
+    Lender,
     PooledFont,
     font_copy,
     lacks_a_keyboard_letter,
     pooled_font,
+    why_turned_away,
 )
 from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
@@ -31,15 +33,17 @@ from squidpdf.core.text.spacing import usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class FontSources:
     """Where a document's fonts may borrow letters from outside the file, chosen at the edge.
 
     One record from `open_pdf` down, so a new source is one more field here, not
-    another keyword through every signature on the way.
+    another keyword through every signature on the way. `eq=False`: it holds font files.
     """
 
     google: Fetch | None = None  # Google's copies, fetched or read from the cache
+    # The user's own copies, by the name of the document's font each is for, subset aside.
+    attached: Mapping[str, bytes] = field(default_factory=dict, repr=False)
 
 
 # No sources: only the file's own copies lend.
@@ -133,7 +137,9 @@ class DocumentFonts:
     """The fonts a document's spans are written in, and the look-alike we ship for each."""
 
     driver: PdfDriver
-    # Google's copies of the document's fonts. None: only the file's own copies lend.
+    # The user's own copies of the document's fonts, if they attached any.
+    attached: AttachedFonts
+    # Google's copies of the document's fonts. None: only the file's and the user's lend.
     google: GoogleFontController | None
     cache: _FontCache = field(default_factory=_FontCache, repr=False)
 
@@ -212,9 +218,15 @@ class DocumentFonts:
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
         """Open the page's copy of the font, then pool the copies that lend it letters with it.
 
-        Raises FontUnusable, saying why, when the page's copy can't be used.
+        A font the page only names has the user's copy as its own, if they attached
+        one. Raises FontUnusable, saying why, when there's no copy to use.
         """
         own = self._opened(page_font)
+        only_named = isinstance(own, FontUnusable) and not page_font.is_embedded
+        # Only named: the user's copy is its own, checked against the page's width list.
+        if only_named:
+            attached = self.attached.own_for(page_font)
+            own = own if attached is None else attached
         if isinstance(own, FontUnusable):
             raise FontUnusable(own.reason)
         return pooled_font(own, partial(self._lenders, page, own))
@@ -229,22 +241,22 @@ class DocumentFonts:
         someone could type, each as the copy or why there's none to be had. A
         face we ship is the engine's last resort, not a lender.
         """
-        opened = (self._opened(font) for font in self._other_copies(page, own.font))
-        # A copy we can't open lends no letters; the span's own still draws what it can.
-        yield from (copy for copy in opened if isinstance(copy, FontCopy))
-        # From outside the file, in order. The user's own copy of a font, once
-        # they can attach one, goes before Google's. Without Google, there are none.
-        from_outside = () if self.google is None else (self.google.copy_of,)
-        for copy_from in from_outside:
+        yield from self._file_copies(page, own, letters)
+        # From outside the file, in order: the user's copy goes before Google's, saving a fetch.
+        from_outside: list[Lender] = [self.attached]
+        if self.google is not None:
+            from_outside.append(self.google)
+        for lender in from_outside:
             # Only a letter someone could type is worth fetching a copy for.
             if not lacks_a_keyboard_letter(letters):
                 return
             try:
-                lent: FontCopy | FontUnusable = copy_from(own)
+                lent: FontCopy | FontUnusable | None = lender.copy_of(own)
             except FontUnusable as no_copy:  # raised when there's no copy to be had there
                 lent = no_copy
             # Without a copy there, nothing is lent, but why goes to the pool, to be said.
-            yield lent
+            if lent is not None:
+                yield lent
 
     def _opened(self, font: PageFont) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened once, or why we can't use it."""
@@ -277,6 +289,47 @@ class DocumentFonts:
         )
         for other_page in nearest_first:
             yield from self._facts(other_page).fonts
+
+    def why_not_its_font(self, span: Span, font_file: bytes) -> Message | None:
+        """Why `font_file` isn't the span's font, as the user's copy of it; None when it is.
+
+        Checked against the file's copies of it, every one, or the page's width list
+        when it's only named: the rule every copy that lends is held to.
+        """
+        page_font = self.page_font(span)
+        # Not on the page: new text, in no font of the document's.
+        if page_font is None:
+            return Message("font_not_in_file")
+        candidate = AttachedFonts(self.driver, {strip_subset(page_font.name): font_file})
+        own = self._opened(page_font)
+        try:
+            # Only named: checked against the page's width list.
+            only_named = isinstance(own, FontUnusable) and not page_font.is_embedded
+            if only_named:
+                candidate.own_for(page_font)
+                return None
+            # Stored, but no copy we can use: nothing to check it against.
+            if isinstance(own, FontUnusable):
+                return own.reason
+            in_file = pooled_font(own, partial(self._file_copies, span.page, own))
+            copy = candidate.copy_of(own)
+        except FontUnusable as refused:  # it isn't the font, or isn't a font at all
+            return refused.reason
+        # The span's font has no name `copy_of` keys by: not the user's to attach.
+        if copy is None:
+            return Message("font_not_in_file")
+        return why_turned_away(copy, own=own, letters=in_file.letters)
+
+    def _file_copies(
+        self, page: int, own: FontCopy, _letters: Mapping[str, FontCopy]
+    ) -> Iterator[FontCopy]:
+        """The file's other copies of the own copy's font, nearest page first.
+
+        Takes the pool's letters so far, as `pooled_font` hands a lender: not needed here.
+        """
+        opened = (self._opened(font) for font in self._other_copies(page, own.font))
+        # A copy we can't open lends no letters; the span's own still draws what it can.
+        return (copy for copy in opened if isinstance(copy, FontCopy))
 
     def look_alike(self, span: Span) -> LookAlike:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""

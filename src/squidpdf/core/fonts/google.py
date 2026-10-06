@@ -31,15 +31,14 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     FETCH_RETRY_S,
     FETCH_TIMEOUT_S,
-    GLYPH_LIST_RANGES,
     GOOGLE_FONTS_COMMIT,
 )
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
 from squidpdf.core.fonts.names import WEIGHTS, bare_name, strip_subset, style_of, weight_of
-from squidpdf.core.fonts.pool import FontCopy, Lent
+from squidpdf.core.fonts.pool import FontCopy, Lent, previewed_widths
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
-from squidpdf.core.types import EM, FontDescriptor, PageFont
+from squidpdf.core.types import FontDescriptor, PageFont
 
 _log = LogController.for_module(__name__)
 
@@ -211,17 +210,7 @@ def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
     Kept by a digest of the bytes, not the name: a test can hand in another font under it.
     """
     digest = hashlib.sha256(embedded.file).digest()
-    return _kept_widths.widths(digest, partial(_measured_widths, embedded))
-
-
-def _measured_widths(embedded: EmbeddedFont) -> dict[str, float]:
-    """Each letter Google's copy draws that the browser can preview, measured in it.
-
-    Only previewed letters are checked for a shape: a large font holds far more outlines.
-    """
-    program, coverage = embedded.program, embedded.coverage
-    previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
-    return {ch: program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
+    return _kept_widths.widths(digest, partial(previewed_widths, embedded))
 
 
 @cache

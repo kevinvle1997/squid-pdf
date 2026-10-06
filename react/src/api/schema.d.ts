@@ -48,6 +48,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/fonts/{font_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Attach Font
+         * @description The user's own copy of a document font, raw TrueType or OpenType; spans judged again.
+         */
+        put: operations["attach_font_api_documents__doc_id__fonts__font_name__put"];
+        post?: never;
+        /**
+         * Detach Font
+         * @description The user's copy of a document font removed; every span judged again.
+         */
+        delete: operations["detach_font_api_documents__doc_id__fonts__font_name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/pages/{n}": {
         parameters: {
             query?: never;
@@ -372,6 +396,8 @@ export interface components {
             };
             /** Same Widths */
             same_widths: boolean;
+            /** Attached */
+            attached: boolean;
             /** Glyphs */
             glyphs: {
                 [key: string]: number;
@@ -525,7 +551,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_reference" | "damaged" | "encrypted" | "invalid_request" | "method_not_allowed" | "no_such_page" | "no_workers" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_pages" | "too_slow";
+            type: "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "method_not_allowed" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_failed" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -816,6 +842,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    attach_font_api_documents__doc_id__fonts__font_name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                font_name: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    detach_font_api_documents__doc_id__fonts__font_name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                font_name: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
             };
             /** @description Problem Details: what went wrong, in the reader's words */
             default: {
