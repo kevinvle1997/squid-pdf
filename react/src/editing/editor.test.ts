@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { changedCount, createEditor, type Editor, putBack, redo, substitutedCount, undo } from "./editor";
+import { changedCount, createEditor, type Editor, putBack, redo, substitutedCount, undo, unexported } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
 import { edit, finish, troublesIn, typeInto } from "./typing";
@@ -165,6 +165,31 @@ describe("export", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
     expect(editor.store.get().notices.export).toEqual(plain("Downloaded contract.pdf."));
     expect(editor.store.get().exporting).toBe(false);
+  });
+
+  test("edits are unexported from the first one until an export takes them, and again after an undo", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    expect(unexported(editor.store.get())).toBe(false);
+    typed("own", "now");
+    expect(unexported(editor.store.get())).toBe(true);
+    await exportNow(editor);
+    expect(unexported(editor.store.get())).toBe(false);
+    undo(editor);
+    expect(unexported(editor.store.get())).toBe(true);
+  });
+
+  test("words still being typed are unexported too, but a field opened and left as it was isn't", () => {
+    edit(editor, "own", null);
+    expect(unexported(editor.store.get())).toBe(false);
+    typeInto(editor, "now");
+    expect(unexported(editor.store.get())).toBe(true);
+  });
+
+  test("an export that failed leaves its edits unexported", async () => {
+    vi.mocked(exportPdf).mockRejectedValue(new ProblemError(aProblem(503, "Try again.")));
+    typed("own", "now");
+    await exportNow(editor);
+    expect(unexported(editor.store.get())).toBe(true);
   });
 
   test("edits the server left out are said, as a warning", async () => {

@@ -21,19 +21,25 @@ export async function exportNow(editor: Editor): Promise<void> {
   if (store.get().exporting) return;
   finish(editor, true);
   store.set({ exporting: true });
-  const notice = await downloaded(editor, store.get().reading.edits);
-  store.set({ exporting: false, notices: { ...store.get().notices, export: notice }, said: spoken(notice.text) });
+  const edits = store.get().reading.edits;
+  const { notice, went } = await downloaded(editor, edits);
+  store.set({
+    exporting: false,
+    ...(went && { exported: edits }),
+    notices: { ...store.get().notices, export: notice },
+    said: spoken(notice.text),
+  });
 }
 
-/** Export `edits` and download the file; what to say of it, warned when it didn't all go. */
-async function downloaded(editor: Editor, edits: readonly Edit[]): Promise<Notice> {
+/** Export `edits` and download the file; what to say of it, warned when it didn't all go, and whether it went. */
+async function downloaded(editor: Editor, edits: readonly Edit[]): Promise<{ notice: Notice; went: boolean }> {
   const { store, reopener, file } = editor;
   try {
     const exported = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits]));
     download(exported.pdf, file.name);
-    if (exported.skipped.length > 0) return warn(store.get().doc.copy.export_left_out);
-    return plain(exported.notices[0]?.detail ?? `Downloaded ${file.name}.`);
+    if (exported.skipped.length > 0) return { notice: warn(store.get().doc.copy.export_left_out), went: true };
+    return { notice: plain(exported.notices[0]?.detail ?? `Downloaded ${file.name}.`), went: true };
   } catch (error) {
-    return warn(error instanceof ProblemError ? error.problem.detail : reportBug(error));
+    return { notice: warn(error instanceof ProblemError ? error.problem.detail : reportBug(error)), went: false };
   }
 }

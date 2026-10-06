@@ -91,6 +91,22 @@ describe("export", () => {
   });
 });
 
+describe("leaving the page", () => {
+  test("asks first only while there are edits since the last export", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    const leave = () => {
+      const leaving = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(leaving);
+      return leaving.defaultPrevented;
+    };
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    expect(leave()).toBe(false);
+    await change(screen, "is here");
+    expect(leave()).toBe(true);
+  });
+});
+
 describe("undo and redo", () => {
   test("are heard, the same words again too, and bring their span into view while focus stays", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));

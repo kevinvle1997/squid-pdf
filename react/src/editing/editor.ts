@@ -2,7 +2,7 @@
 // function of the editor in the module named for it (typing, export); this one holds the
 // state and the change every edit, undo and put-back goes through.
 import { ProblemError } from "../api/client";
-import type { Document, FontInfo, SpanInfo } from "../api/types";
+import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
 import { reattach } from "./fonts";
@@ -83,6 +83,7 @@ export interface EditorState {
   readonly said: Spoken; // what a screen reader hears, for what the page doesn't show
   readonly scrollTo: ScrollTo | null;
   readonly exporting: boolean;
+  readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
 }
@@ -123,6 +124,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     said: { text: "", count: 0 },
     scrollTo: null,
     exporting: false,
+    exported: UNEDITED.edits,
     attaching: null,
     focusFont: null,
   });
@@ -215,6 +217,16 @@ export function imageFailed(editor: Editor): void {
     const { notices } = editor.store.get();
     editor.store.set({ notices: { ...notices, reopen: warn(text) } });
   });
+}
+
+/** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
+export function unexported(state: EditorState): boolean {
+  const { edits, spans } = state.reading;
+  const { draft, layout, exported } = state;
+  const reads = draft === null ? undefined : (spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text);
+  // Closing the tab ends no typing: what's in the field never reaches the history.
+  if (draft !== null && draft.text !== reads) return true;
+  return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 
 /** How many spans read other than the original. */
