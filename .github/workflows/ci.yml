@@ -160,6 +160,12 @@ jobs:
         shell: bash
         run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
+      # Each wrong password costs the proxy a bcrypt compare: capped, guessing can't take the app's cores.
+      - name: The proxy's CPU cap
+        run: |
+          cap=$(docker inspect "$(docker compose ps -q proxy)" --format '{{.HostConfig.NanoCpus}}')
+          (( cap > 0 )) || { echo "the proxy runs with no CPU cap"; exit 1; }
+
       # Two IPv6 clients in different /64s, given to the runner, count apart through the
       # published port: one uses up its minute's uploads, and the other is still let in.
       - name: IPv6 clients count apart
