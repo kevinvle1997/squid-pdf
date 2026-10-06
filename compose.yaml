@@ -59,6 +59,8 @@ services:
       - caddy-config:/config
     # It streams bodies through rather than holding them.
     mem_limit: 512m
+    # A core at most: each wrong password costs a bcrypt compare, so guessing can't take the app's.
+    cpus: 1
     # Only the right to listen on 80 and 443: its program carries it, and won't start without.
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]
