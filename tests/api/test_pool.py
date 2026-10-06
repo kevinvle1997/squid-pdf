@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import gc
 import logging
 import multiprocessing
@@ -128,9 +129,19 @@ def test_work_past_its_timeout_is_killed_and_called_too_slow(runner, pool):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="the memory ceiling is Linux only")
-def test_work_past_the_memory_ceiling_is_called_too_heavy(runner, pool):
+def _return_too_much_to_send_back() -> bytes:
+    """Work whose result fits under the memory ceiling, but not beside its copy to send back."""
+    return bytes(WORKER_MEMORY_BYTES * 3 // 5)
+
+
+@pytest.mark.parametrize(
+    "task",
+    [_overeat, _return_too_much_to_send_back],
+    ids=["work that overeats", "a result too big to send back"],
+)
+def test_work_past_the_memory_ceiling_is_called_too_heavy(runner, pool, task):
     with pytest.raises(Problem) as caught:
-        runner.run(pool.run(_ENOUGH_S, _overeat))
+        runner.run(pool.run(_ENOUGH_S, task))
     assert_equal(caught.value.type, "too_heavy", "problem for a task past the memory ceiling")
 
 
@@ -204,6 +215,78 @@ def test_a_task_sent_as_every_worker_dies_goes_again_on_a_new_pool():
     assert_not_in(worker_pid, killed, "the worker that ran the task")
 
 
+class _RefusesPickling:
+    """A result whose pickling fails with neither of the two errors pebble's worker catches."""
+
+    def __reduce__(self) -> str:
+        raise ValueError("refuses pickling")
+
+
+def _cannot_rebuild() -> None:
+    """What `_PicklesButWontRebuild` is read back with: it fails."""
+    raise RuntimeError("cannot rebuild")
+
+
+class _PicklesButWontRebuild:
+    """A result that pickles in the worker, then fails as the server reads it back."""
+
+    def __reduce__(self) -> tuple[Callable[[], None], tuple[()]]:
+        return _cannot_rebuild, ()
+
+
+class _TwoPartFailure(Exception):
+    """A failure Python can't read back: unpickling calls it with its message alone."""
+
+    def __init__(self, first: str, second: str) -> None:
+        super().__init__(f"{first} {second}")
+
+
+def _return_what_refuses_pickling() -> _RefusesPickling:
+    """Work whose result can't be pickled to go back."""
+    return _RefusesPickling()
+
+
+def _return_what_wont_rebuild() -> _PicklesButWontRebuild:
+    """Work whose result goes back, then can't be read."""
+    return _PicklesButWontRebuild()
+
+
+def _raise_what_wont_rebuild() -> None:
+    """Work that fails with an error that goes back, then can't be read."""
+    raise _TwoPartFailure("our", "bug")
+
+
+@pytest.mark.parametrize(
+    "task",
+    [_return_what_refuses_pickling, _return_what_wont_rebuild, _raise_what_wont_rebuild],
+    ids=[
+        "a result that can't be pickled",
+        "a result that can't be read back",
+        "a failure that can't be read back",
+    ],
+)
+def test_an_answer_that_cannot_make_the_trip_back_is_our_bug_and_the_pool_works_on(task):
+    """Not damaged, too slow or no workers: each blames the file or the load, and hides ours.
+
+    Its own pool: pebble left to read such an answer back breaks its pool, or stops
+    answering anything at all while it still looks whole.
+    """
+
+    async def sent_then_more() -> tuple[BaseException, float]:
+        async with _own_pool() as pool:
+            with pytest.raises(Exception) as caught:  # any but a Problem: checked below
+                await pool.run(_ENOUGH_S, task)
+            began = time.monotonic()
+            await pool.run(_ENOUGH_S, _noop)
+            return caught.value, time.monotonic() - began
+
+    failure, next_took = asyncio.run(sent_then_more())
+
+    assert_false(isinstance(failure, Problem), f"a Problem for our own bug: {failure!r}")
+    assert_in("can't make the trip back", str(failure), "what the server error says")
+    assert_at_most(next_took, _BUSY_S, "seconds the next task took")
+
+
 _launch_process = pebble.pool.process.launch_process  # pebble's own, before a test patches it
 
 
@@ -219,16 +302,30 @@ def _dies_as_it_starts(
     return _launch_process(name, os._exit, daemon, context, 1)
 
 
+def _no_thread(*_args: object) -> None:
+    """A server out of threads: a new pool can't start the ones that run it."""
+    raise RuntimeError("can't start new thread")
+
+
+def _no_channels(*_args: object) -> None:
+    """A server out of open files: a new pool can't open the pipes to its workers."""
+    raise OSError(errno.EMFILE, "Too many open files")
+
+
 @pytest.mark.parametrize(
-    ("launch", "health_sees_it"),
+    ("patched", "replacement", "health_sees_it"),
     [
-        pytest.param(_cannot_start, True, id="no worker can start"),
+        pytest.param("launch_process", _cannot_start, True, id="no worker can start"),
         # Health replaces the broken pool and finds the new one running: it can't tell.
-        pytest.param(_dies_as_it_starts, False, id="every worker dies as it starts"),
+        pytest.param(
+            "launch_process", _dies_as_it_starts, False, id="every worker dies as it starts"
+        ),
+        pytest.param("channels", _no_channels, True, id="a new pool can't open its pipes"),
+        pytest.param("launch_thread", _no_thread, True, id="a new pool can't start a thread"),
     ],
 )
 def test_pdf_work_says_no_workers_when_no_worker_can_start(
-    tmp_path, monkeypatch, caplog, pdf_bytes, launch, health_sees_it
+    tmp_path, monkeypatch, caplog, pdf_bytes, patched, replacement, health_sees_it
 ):
     """Its own app, as it breaks the pool: the second page finds the new pool broken too."""
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
@@ -239,7 +336,7 @@ def test_pdf_work_says_no_workers_when_no_worker_can_start(
         params = {"scale": 1, "build": doc["build"]}
         _kill_idle_worker(client, app.state.pool)
         with monkeypatch.context() as machine:
-            machine.setattr(pebble.pool.process, "launch_process", launch)
+            machine.setattr(pebble.pool.process, patched, replacement)
             broken_pages = [client.get(page, params=params) for _ in range(2)]
             broken_health = client.get("/api/health")
         healed_page = client.get(page, params=params)

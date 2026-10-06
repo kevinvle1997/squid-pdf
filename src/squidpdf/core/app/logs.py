@@ -296,9 +296,7 @@ def in_request[T](request_id: str | None, task: Callable[[], T]) -> WorkerAnswer
     try:
         return WorkerAnswer(task(), tallies)
     except Exception as failure:  # the task's: a failed request is often the slow one
-        # One that refuses new attributes goes up as it is, carrying none.
-        with contextlib.suppress(AttributeError):
-            setattr(failure, _CARRIED, tallies)
+        carried(failure, tallies)
         raise
 
 
@@ -309,9 +307,17 @@ def add_from_worker(tallies: Tallies | None) -> None:
         running.add_all(tallies)
 
 
+def carried[E: BaseException](failure: E, tallies: Tallies | None) -> E:
+    """`failure`, carrying what its task tallied in its worker back to the server."""
+    # One that refuses new attributes goes up as it is, carrying none.
+    with contextlib.suppress(AttributeError):
+        setattr(failure, _CARRIED, tallies)
+    return failure
+
+
 def tallies_carried_by(failure: BaseException) -> Tallies | None:
     """What a task tallied before it failed; None for pebble's own, as at a timeout."""
-    return getattr(failure, _CARRIED, None)  # set by `in_request`, on the task's failures
+    return getattr(failure, _CARRIED, None)  # set by `carried`, on a task's failures
 
 
 def ms_since(started: float) -> int:
