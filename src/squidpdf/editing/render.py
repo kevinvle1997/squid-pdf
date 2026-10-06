@@ -5,6 +5,7 @@ No web framework here, so a worker can import it.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import math
 from collections import Counter
@@ -68,7 +69,8 @@ class RenderController:
         """
         check_edits(edits)
         _check_region_count(regions)
-        pages = store.load_pages(doc.folder)
+        # Read and parsed from disk: off the server's thread.
+        pages = await asyncio.to_thread(store.load_pages, doc.folder)
         _check_regions(regions, pages)
         # Only the pages drawn go to the worker, so it needn't read the page list again,
         # each at its page image's scale, so a strip and the image line up.

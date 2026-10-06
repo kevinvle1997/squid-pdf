@@ -1,4 +1,4 @@
-"""The rules the docstrings state, checked: what may import what, and how a class holds state.
+"""The rules the docstrings state, checked: what may import, what runs on the loop, and state.
 
 Read from the source, so a rule holds however deep an import hides, even one
 inside a function.
@@ -112,6 +112,55 @@ def test_only_logcontroller_calls_the_event_loops_exception_handler():
         if isinstance(node, ast.Attribute) and node.attr == "call_exception_handler"
     ]
     assert_equal(breaking, [], "modules calling the event loop's exception handler")
+
+
+def _in_body(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:
+    """Every node a coroutine runs itself, not those of a function defined inside it."""
+    waiting: list[ast.AST] = list(function.body)
+    while waiting:
+        node = waiting.pop()
+        yield node
+        # Defined here but run elsewhere: its body isn't the coroutine's.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        waiting.extend(ast.iter_child_nodes(node))
+
+
+# The store's names a coroutine may call itself: they touch no disk.
+_STORE_ON_THE_LOOP = {
+    "full_disk_refused",  # only names a full disk, for writes made in a thread
+}
+
+
+def _store_name_called(node: ast.AST) -> str | None:
+    """The `store.<name>` a node calls, or None when it calls nothing of the store's."""
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+        return None
+    called = node.func
+    of_store = isinstance(called.value, ast.Name) and called.value.id == "store"
+    return called.attr if of_store else None
+
+
+def _store_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
+    """Each coroutine in `tree` and the `store.<name>` it calls itself, on the event loop."""
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.AsyncFunctionDef):
+            continue
+        for node in _in_body(function):
+            name = _store_name_called(node)
+            if name is not None:
+                yield function.name, name
+
+
+def test_a_coroutine_reaches_the_store_only_through_a_thread():
+    """A coroutine never calls the store itself: the store reads the disk, unseen by ruff."""
+    breaking = [
+        f"{module}.{coroutine}: store.{name}"
+        for module, tree in _TREES.items()
+        for coroutine, name in _store_calls(tree)
+        if name not in _STORE_ON_THE_LOOP
+    ]
+    assert_equal(breaking, [], "store calls on the event loop, not through asyncio.to_thread")
 
 
 # Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.

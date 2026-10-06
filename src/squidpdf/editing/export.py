@@ -48,7 +48,9 @@ class ExportController:
         """
         check_edits(edits)
         if pages is not None:
-            _check_pages(pages, len(store.load_pages(doc.folder)))
+            # Read and parsed from disk: off the server's thread.
+            saved_pages = await asyncio.to_thread(store.load_pages, doc.folder)
+            _check_pages(pages, len(saved_pages))
         # The server's folder, not the worker's: a worker killed at its timeout
         # runs no cleanup, and the edited file must not outlive the document.
         # Made here on the loop, one mkdir: an await could be cancelled after it
