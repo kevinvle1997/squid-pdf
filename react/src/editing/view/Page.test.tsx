@@ -84,6 +84,37 @@ describe("a page", () => {
     expect(getComputedStyle(said.element()).color).toBe(getComputedStyle(warn).color);
   });
 
+  test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}");
+    // Capitals: the span's font has only lower case, so its widths count none of them.
+    await userEvent.keyboard(" AND A GOOD DEAL MORE");
+    const field = screen.getByRole("textbox").element() as HTMLInputElement;
+    await expect.element(screen.getByRole("textbox")).toHaveValue(`${WORDS} AND A GOOD DEAL MORE`);
+    // A pixel spare: the field's width in points rounds to whole pixels either way.
+    expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1);
+    expect(field.scrollLeft).toBe(0);
+  });
+
+  test("a face that finishes loading after the field opens sizes the field again", async () => {
+    const measure = vi.spyOn(CanvasRenderingContext2D.prototype, "measureText");
+    measure.mockReturnValue({ width: 0 } as TextMetrics);
+    try {
+      const screen = await draw();
+      await editSpan(screen);
+      await userEvent.keyboard("{End} AND MORE");
+      const field = screen.getByRole("textbox").element();
+      const before = field.clientWidth;
+      // As wide as the face that loaded draws it: the font's own widths count none of these capitals.
+      measure.mockReturnValue({ width: 400 } as TextMetrics);
+      document.fonts.dispatchEvent(new Event("loadingdone"));
+      await vi.waitFor(() => expect(field.clientWidth).toBeGreaterThan(before));
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
   test("Enter keeps the edit and puts focus back on the span; its margin note puts it back, and focus with it", async () => {
     const screen = await draw();
     await editSpan(screen);
