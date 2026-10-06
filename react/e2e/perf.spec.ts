@@ -1,7 +1,8 @@
 // The performance probe: typing, the render settling and scrolling, on a long contract in
-// the built app, with the CPU slowed to a mid-range laptop's. It logs what it measures and
-// asserts nothing: numbers are compared by hand, before and after a change, and kept out of
-// this repository (CLAUDE.md: measure before optimising). Run it with `npm run perf`.
+// the built app, with the CPU slowed to a mid-range laptop's and, once the file is open, the
+// network to a desk's. It logs what it measures and asserts nothing: numbers are compared by
+// hand, before and after a change, and kept out of this repository (CLAUDE.md: measure before
+// optimising). Run it with `npm run perf`.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +13,12 @@ import { type CDPSession, expect, type Page, test } from "@playwright/test";
 const LINE = "This agreement is made on 14 March 2026 between";
 const PAGES = 30; // "tens of pages": the size the editor is built for
 const SLOWDOWN = 4; // DevTools' "mid-tier mobile"; a laptop on battery is close
+// A fast network, as the budgets promise: broadband at a desk, not a train, where the settle
+// would fail by construction. The API is local, so every byte of the delay is these.
+const LATENCY_MS = 40; // a round trip to a server a country away
+const DOWN_MBIT = 10; // broadband's slower end
+const UP_MBIT = 5;
+const BYTES_PER_MBIT = 1_000_000 / 8;
 const TYPED = "abcdefghijklmnopqrst";
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -150,6 +157,13 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
 
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: SLOWDOWN });
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: LATENCY_MS,
+    downloadThroughput: DOWN_MBIT * BYTES_PER_MBIT,
+    uploadThroughput: UP_MBIT * BYTES_PER_MBIT,
+  });
   await cdp.send("Performance.enable");
 
   // Timed with nothing else running in the page.
@@ -199,6 +213,7 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   const report = {
     pages: PAGES,
     slowdown: SLOWDOWN,
+    network: { latencyMs: LATENCY_MS, downMbit: DOWN_MBIT, upMbit: UP_MBIT },
     marksMountedAtRest: marks,
     keystrokeToFrameMs: summary(typing.latencies),
     longTasksWhileTypingMs: summary(typing.longTasks),
