@@ -250,7 +250,7 @@ class _Row:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    """Green rate across a corpus; exits 1 when it could read no file."""
+    """Green rate across a corpus; exits 1 when it measured no file."""
     rows: list[_Row] = []
     total = exact_count = 0
     for path in args.pdfs:
@@ -275,8 +275,8 @@ def _cmd_report(args: argparse.Namespace) -> int:
         overall = exact_count / total
         colour = _rate_colour(overall)
         print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
-    read_any = any(row.read for row in rows)
-    return 0 if read_any else 1
+    # Every file unreadable or without text: no rate, which a script must see as a failure.
+    return 0 if total else 1
 
 
 def _line_of(row: _Row) -> str:
