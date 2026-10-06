@@ -15,3 +15,26 @@ export function notePlaces(changes: readonly SpanReading[], gapPt: number): numb
   }
   return places;
 }
+
+/** The words of `original` an edit to `now` changed: those left out, else the word beside what went in. */
+export function changedWordsIn(original: string, now: string): string {
+  const originalWords = [...original.matchAll(/\S+/g)];
+  const nowWords = [...now.matchAll(/\S+/g)].map(([word]) => word);
+  const keptAtStart = sharedCount(originalWords, nowWords, Math.min(originalWords.length, nowWords.length));
+  const roomAtEnd = Math.min(originalWords.length, nowWords.length) - keptAtStart;
+  const keptAtEnd = sharedCount(originalWords.toReversed(), nowWords.toReversed(), roomAtEnd);
+  const changed = originalWords.slice(keptAtStart, originalWords.length - keptAtEnd);
+  // Words only went in: nothing of the original changed, so name the word they went in beside.
+  const first = changed[0] ?? originalWords[Math.max(keptAtStart - 1, 0)];
+  // An original of no words: nothing shorter to show.
+  if (first === undefined) return original;
+  const last = changed.at(-1) ?? first;
+  return original.slice(first.index, last.index + last[0].length);
+}
+
+/** How many of `words` from the start, up to `limit`, `now` has too, in the same places. */
+function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], limit: number): number {
+  let count = 0;
+  while (count < limit && words[count]?.[0] === now[count]) count++;
+  return count;
+}

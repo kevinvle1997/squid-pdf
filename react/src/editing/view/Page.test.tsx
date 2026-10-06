@@ -245,6 +245,17 @@ describe("a page", () => {
     expect(sheet?.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
 
+  test("on a wide screen, a margin note shows only the words the edit changed, and its name the whole line", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
+    await expect.element(note).toBeVisible();
+    expect(note.element().textContent).toBe("was");
+  });
+
   test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
     const substituted = aSpan({
       id: "s3",

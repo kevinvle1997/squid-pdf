@@ -1,7 +1,7 @@
 import { Button } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
-import { notePlaces } from "../margin";
+import { changedWordsIn, notePlaces } from "../margin";
 import type { SpanReading } from "../project";
 import { useEditor } from "./context";
 import styles from "./Margin.module.css";
@@ -29,7 +29,7 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
       aria-label={`Undo: “${now}” goes back to “${span.text}”`}
       onPress={() => putBack(editor, span.id)}
     >
-      <span className={styles.old}>{span.text}</span>
+      <span className={styles.old}>{shape === "margin" ? changedWordsIn(span.text, now) : span.text}</span>
       {shape === "list" && <span className={styles.now}>{now}</span>}
       <i className={styles.bar} aria-hidden="true" />
     </Button>
