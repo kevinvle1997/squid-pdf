@@ -102,6 +102,8 @@ export const Page = memo(function Page({ index, info }: Props) {
   const changes = page.edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
   const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
+  // The page being typed in keeps its marks, and so the field, however far it's scrolled.
+  const keepMarks = sheet.near || page.typingIn !== null;
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
@@ -124,7 +126,7 @@ export const Page = memo(function Page({ index, info }: Props) {
         ))}
         <Previews page={page} info={info} />
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
-        {sheet.near && <Marks page={page} info={info} />}
+        {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="list" label={label} />
     </section>

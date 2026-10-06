@@ -119,6 +119,23 @@ describe("a page", () => {
     below.remove();
   });
 
+  test("the field stays while the page it's on is scrolled far away", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    const field = screen.getByRole("textbox");
+    await expect.element(field).toBeInTheDocument();
+    // Far enough below that the page is past the margin pages are drawn within.
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    window.scrollTo(0, 15000);
+    // The image goes as the page leaves; the field the user typed in doesn't.
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    await expect.element(field).toBeInTheDocument();
+    below.remove();
+  });
+
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {
     const screen = await draw();
     await editSpan(screen);
