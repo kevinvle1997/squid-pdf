@@ -16,7 +16,7 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
@@ -44,11 +44,12 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
-# The user's own copies of a document's fonts, in its folder, each `<name in hex>.<digest>`.
+# The user's own copies of a document's fonts, in its folder, each `<name's digest>.<digest>`:
+# a name runs to 127 bytes, too long for a file's name in hex.
 _ATTACHED = "fonts"
 _ARRIVING = ".arriving-"  # a copy still coming in, or being checked: not attached yet
 _ATTACHED_LOCK = ".fonts-lock"  # held by whoever attaches or removes a copy, and analyses
-_ATTACHED_DIGEST_SIZE = 8  # bytes of a copy's digest, and of a set's, in a file's name
+_ATTACHED_DIGEST_SIZE = 8  # bytes of each digest in a copy's file name, and of a set's
 # Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
 _ID_BYTES = 16
@@ -93,13 +94,13 @@ def find(doc_id: str) -> tuple[Path, str] | None:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class AttachedFiles(Mapping[str, bytes]):
+class AttachedFiles:
     """The user's own copies of a document's fonts, by the font's name: each read when asked.
 
     A render needs only the copies its fonts lend from, so none is read before then.
     """
 
-    paths: dict[str, Path]  # each copy's file, by the name of the font it's for
+    paths: dict[str, Path]  # each copy's file, by the digest of its font's name
 
     @property
     def key(self) -> str:
@@ -110,17 +111,13 @@ class AttachedFiles(Mapping[str, bytes]):
     def __getitem__(self, font_name: str) -> bytes:
         """The copy for `font_name`. Raises KeyError if it was removed since it was listed."""
         try:
-            return self.paths[font_name].read_bytes()
+            return self.paths[_digest_of_name(font_name)].read_bytes()
         except FileNotFoundError as exc:  # removed or replaced since: no copy, not no document
             raise KeyError(font_name) from exc
 
     def __contains__(self, font_name: object) -> bool:
         """Whether there's a copy for `font_name`, read without reading it."""
-        return font_name in self.paths
-
-    def __iter__(self) -> Iterator[str]:
-        """The names of the fonts there's a copy for."""
-        return iter(self.paths)
+        return isinstance(font_name, str) and _digest_of_name(font_name) in self.paths
 
     def __len__(self) -> int:
         """How many copies there are."""
@@ -135,7 +132,7 @@ def attached_files(folder: Path) -> AttachedFiles:
         return AttachedFiles({})
     # A dot first: one still arriving, not attached yet.
     kept = [path for path in listed if not path.name.startswith(".")]
-    return AttachedFiles({_font_name_of(path): path for path in kept})
+    return AttachedFiles({_name_digest_in(path): path for path in kept})
 
 
 def arriving_font(folder: Path) -> Path:
@@ -154,7 +151,7 @@ def arriving_font(folder: Path) -> Path:
 def keep_font(folder: Path, font_name: str, arrived: Path) -> None:
     """Attach the copy that `arrived` for `font_name`, in place of any it had."""
     digest = hashlib.blake2s(arrived.read_bytes(), digest_size=_ATTACHED_DIGEST_SIZE)
-    kept = folder / _ATTACHED / f"{font_name.encode().hex()}.{digest.hexdigest()}"
+    kept = folder / _ATTACHED / f"{_digest_of_name(font_name)}.{digest.hexdigest()}"
     try:
         os.replace(arrived, kept)
     except FileNotFoundError as exc:  # the document was deleted mid-way
@@ -164,8 +161,8 @@ def keep_font(folder: Path, font_name: str, arrived: Path) -> None:
 
 def drop_font(folder: Path, font_name: str, *, keeping: Path | None = None) -> None:
     """Remove the user's copy of `font_name`, all but `keeping`; nothing if there's none."""
-    for path in attached_files(folder).paths.values():
-        if _font_name_of(path) == font_name and path != keeping:
+    for name_digest, path in attached_files(folder).paths.items():
+        if name_digest == _digest_of_name(font_name) and path != keeping:
             path.unlink(missing_ok=True)
 
 
@@ -181,10 +178,15 @@ def fonts_locked(folder: Path) -> Iterator[None]:
         yield
 
 
-def _font_name_of(path: Path) -> str:
-    """The name of the font a kept copy is for, read back from its file's name."""
-    name_in_hex, _digest = path.name.split(".")
-    return bytes.fromhex(name_in_hex).decode()
+def _digest_of_name(font_name: str) -> str:
+    """What a copy's file is named for: its font's name, at a length any name has."""
+    return hashlib.blake2s(font_name.encode(), digest_size=_ATTACHED_DIGEST_SIZE).hexdigest()
+
+
+def _name_digest_in(path: Path) -> str:
+    """The digest of the name of the font a kept copy is for, from its file's name."""
+    name_digest, _digest = path.name.split(".")
+    return name_digest
 
 
 def open_to_analyse(folder: Path, attached: AttachedFiles) -> Engine:

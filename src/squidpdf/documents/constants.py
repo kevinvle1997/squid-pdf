@@ -31,7 +31,7 @@ DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unch
 REPLY_VERSION = 3
 # How a span index and page list are kept: bump it when either changes shape. One kept in
 # another reads as gone, never indexed again, and the browser opens it again from its copy.
-DOCUMENT_FORMAT = 1
+DOCUMENT_FORMAT = 2
 # How an analysis is kept: bump it when it changes shape; an old one is worked out again.
 ANALYSIS_FORMAT = 3
 

@@ -13,7 +13,13 @@ from squidpdf.api import constants as limits
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import constants, store
 from tests.api.conftest import upload
-from tests.conftest import POPPINS, POPPINS_TEXT, named_only, named_with_widths
+from tests.conftest import (
+    POPPINS,
+    POPPINS_TEXT,
+    name_two_byte_font,
+    named_only,
+    named_with_widths,
+)
 from tests.helpers import (
     assert_at_most,
     assert_equal,
@@ -255,3 +261,39 @@ def test_a_font_named_with_a_slash_is_still_the_documents(mine, tmp_path):
     refused = _attach(mine, doc, _only_font(doc)["name"], face_bytes(FACES["Carlito Regular"]))
 
     assert_problem(refused, "font_unchecked", 422)
+
+
+_LONGEST_NAME = "Arial" + "X" * 122  # a PDF's names run to 127 bytes; MuPDF keeps 31
+
+
+def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(mine, tmp_path):
+    path = named_with_widths(
+        str(tmp_path / "long.pdf"), "Liberation Sans Regular", base_font=_LONGEST_NAME
+    )
+    doc = upload(mine, Path(path).read_bytes()).json()
+    font = _only_font(doc)
+
+    attached = _attach(mine, doc, font["name"], face_bytes(FACES["Liberation Sans Regular"]))
+    removed = mine.delete(_font_url(doc, font["name"]))
+
+    assert_equal(font["name"], _LONGEST_NAME, "the font's name, as the page lists it")
+    assert_equal(attached.status_code, 200, "status of the attach")
+    assert_true(_only_font(attached.json())["attached"], "the font, said attached")
+    assert_false(_only_font(removed.json())["attached"], "the font, said attached once removed")
+    assert_equal(_kept_fonts(doc), [], "font files kept once removed")
+
+
+def test_a_font_stored_under_a_long_name_is_read_by_it(mine, tmp_path):
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())
+    page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=12)
+    [(xref, *_)] = page.get_fonts()
+    name_two_byte_font(doc, xref, "Poppins-Regular" + "X" * 105)
+    path = tmp_path / "long.pdf"
+    doc.save(path)
+
+    font = _only_font(upload(mine, path.read_bytes()).json())
+
+    assert_equal(len(font["name"].encode()), 120, "bytes in the font's name, as listed")
+    assert_equal(font["why_code"], None, "why the font can't draw an edit")

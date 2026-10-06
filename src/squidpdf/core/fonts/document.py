@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.attached import AttachedFonts
+from squidpdf.core.fonts.attached import AttachedFonts, FontFiles
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
 from squidpdf.core.fonts.look_alike import look_alike
@@ -43,7 +43,7 @@ class FontSources:
 
     google: Fetch | None = None  # Google's copies, fetched or read from the cache
     # The user's own copies, by the name of the document's font each is for, subset aside.
-    attached: Mapping[str, bytes] = field(default_factory=dict, repr=False)
+    attached: FontFiles = field(default_factory=dict[str, bytes], repr=False)
 
 
 # No sources: only the file's own copies lend.
