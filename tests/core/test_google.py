@@ -89,7 +89,7 @@ def _missing(path: str, fetch: Fetch) -> list[str]:
     """What the fit says the first span can't draw of _WANTED, with `fetch` to Google."""
     with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
-        return eng.plan_for(span, _WANTED).missing
+        return eng.fit.plan_for(span, _WANTED).missing
 
 
 def _why_substitute(path: str, fetch: Fetch) -> str | None:
@@ -133,7 +133,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        missing = engine.plan_for(span, _WANTED).missing
+        missing = engine.fit.plan_for(span, _WANTED).missing
         [report] = engine.assess(engine.index())
         engine.remove([span], then_drawn=[LineToDraw(span, _WANTED)])
         engine.draw(span, _WANTED)
@@ -155,7 +155,7 @@ def test_googles_copy_lends_only_the_letters_it_draws(poppins_subset):
     fetch, _asked = _google(POPPINS.read_bytes())
     with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        missing = engine.plan_for(span, "YΩ").missing
+        missing = engine.fit.plan_for(span, "YΩ").missing
         widths = engine.widths(span)
 
     assert_equal(
@@ -434,7 +434,7 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     fetch, asked = _google(POPPINS.read_bytes())
     with open_pdf(pdf, sources=FontSources(google=fetch)) as engine:
         for span in engine.index():
-            engine.plan_for(span, "Ωxyzq")
+            engine.fit.plan_for(span, "Ωxyzq")
     assert_equal(asked, [], "files fetched")
     for font, descriptor, why in _NOT_GOOGLES:
         with pytest.raises(FontUnusable) as raised:
@@ -495,7 +495,7 @@ def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
     fetch, asked = _google(None)
     with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        drawn_in = engine.substitute(span, _WANTED, plan=engine.plan_for(span, _WANTED))
+        drawn_in = engine.fit.substitute(span, _WANTED, plan=engine.fit.plan_for(span, _WANTED))
     asked_for = [Path(file.path).name for file in asked]
     said = _why_substitute(path, fetch)
 

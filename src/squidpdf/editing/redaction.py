@@ -23,7 +23,7 @@ class RedactionController:
 
         Ask before the edits run: they take the words out.
         """
-        return engine.hidden_places(self.redacted)
+        return engine.redaction.hidden_places(self.redacted)
 
     def verdicts(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's words are gone from the document in memory, by span id.
@@ -55,8 +55,8 @@ def _words_left(engine: Engine, placed: list[Span], *, redacted: Sequence[Span])
     are the spans on the pages they're read on, for boxes and pages' copies; `redacted`,
     pages kept or not, for the document's own.
     """
-    on_pages = engine.still_there(placed) + engine.still_hidden(placed)
-    return on_pages + engine.still_hidden_in_document(redacted)
+    on_pages = engine.redaction.still_there(placed) + engine.redaction.still_hidden(placed)
+    return on_pages + engine.redaction.still_hidden_in_document(redacted)
 
 
 def _as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:

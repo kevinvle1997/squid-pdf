@@ -166,10 +166,14 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
     doc.save(covered)
 
     with open_pdf(str(covered)) as engine:
-        assert_equal(engine.still_there([span]), [span], "text under a black box, still there")
+        assert_equal(
+            engine.redaction.still_there([span]), [span], "text under a black box, still there"
+        )
         engine.remove([span], then_drawn=[])
         assert_equal(
-            engine.still_there([span]), [], "the same text really removed, still there"
+            engine.redaction.still_there([span]),
+            [],
+            "the same text really removed, still there",
         )
 
 
@@ -337,7 +341,7 @@ def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_pa
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
 
     fit = insert_fit(engine, insert).report
-    measured = engine.measure(_insert_as_span(insert), text)
+    measured = engine.fit.measure(_insert_as_span(insert), text)
     _apply(engine, [insert], engine.index())
     engine.save(str(out))
 

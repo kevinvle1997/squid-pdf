@@ -70,6 +70,7 @@ from squidpdf.core.fonts.document import FontSources as FontSources
 from squidpdf.core.fonts.google import google_fonts as google_fonts
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
 from squidpdf.core.plan import DrawPlan as DrawPlan
+from squidpdf.core.redaction import RedactionCheck as RedactionCheck
 from squidpdf.core.text.fidelity import (
     APPROXIMATE_REASONS as APPROXIMATE_REASONS,
     ApproximateReason as ApproximateReason,

@@ -27,7 +27,7 @@ def test_a_redraw_keeps_the_originals_opacity(request, tmp_path, fixture, text, 
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(request.getfixturevalue(fixture)) as engine:
         [span] = engine.index()
-        missing = engine.plan_for(span, text).missing
+        missing = engine.fit.plan_for(span, text).missing
         engine.remove([span], then_drawn=[LineToDraw(span, text)])
         engine.draw(span, text)
         engine.save(out)

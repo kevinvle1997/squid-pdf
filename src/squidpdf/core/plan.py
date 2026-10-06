@@ -146,9 +146,9 @@ class DrawPlanner:
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em.
 
-        The same font `measure` uses, so the browser's sum agrees with it, except
+        The same font `LineFit.measure` uses, so the browser's sum agrees with it, except
         in a font with no space: a space here is the page's usual gap, where
-        `measure` keeps the line's own, so a justified line can differ.
+        `LineFit.measure` keeps the line's own, so a justified line can differ.
         """
         pooled = self.fonts.own(span)
 

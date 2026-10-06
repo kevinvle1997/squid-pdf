@@ -17,7 +17,7 @@ import pymupdf
 import pytest
 
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
-from squidpdf.core import Engine, Fidelity, open_pdf, words
+from squidpdf.core import Fidelity, RedactionCheck, open_pdf, words
 from tests.conftest import named_only
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
@@ -230,7 +230,7 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
     pdf, tmp_path, monkeypatch, capsys
 ):
     """Text still in the saved file means no file is kept."""
-    monkeypatch.setattr(Engine, "still_there", lambda _engine, spans: list(spans))
+    monkeypatch.setattr(RedactionCheck, "still_there", lambda _check, spans: list(spans))
     out_pdf = tmp_path / "redacted.pdf"
 
     code = main(["redact", pdf, _span_id(pdf, "Invoices"), "-o", str(out_pdf)])

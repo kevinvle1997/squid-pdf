@@ -35,9 +35,9 @@ def test_subsetted_font_reports_emptied_glyphs_as_missing(engine):
     """
     span = next(s for s in engine.index() if s.page == EMBEDDED_PAGE)
     assert_in(
-        "é", engine.plan_for(span, "Février").missing, "accented character in a Latin word"
+        "é", engine.fit.plan_for(span, "Février").missing, "accented character in a Latin word"
     )
-    assert_equal(engine.plan_for(span, "March").missing, [], "an all-covered word")
+    assert_equal(engine.fit.plan_for(span, "March").missing, [], "an all-covered word")
 
 
 def test_a_substitute_lists_what_its_look_alike_really_draws(engine):
@@ -49,10 +49,12 @@ def test_a_substitute_lists_what_its_look_alike_really_draws(engine):
     assert_in("Ω", widths, "a Greek letter")
     assert_not_in(_NOWHERE, widths, "a letter no face we ship draws")
     # So a fit on it is honest: what it says is missing agrees with the table.
-    missing = engine.plan_for(span, f"Février → 2026 {_NOWHERE}").missing
+    missing = engine.fit.plan_for(span, f"Février → 2026 {_NOWHERE}").missing
     assert_equal(missing, [_NOWHERE], "missing from the substitute")
     assert_equal(
-        engine.plan_for(span, "".join(widths)).missing, [], "missing from what widths() lists"
+        engine.fit.plan_for(span, "".join(widths)).missing,
+        [],
+        "missing from what widths() lists",
     )
 
 
@@ -77,7 +79,7 @@ def test_glyph_advances_agree_with_the_server_measure(engine):
         from_table = sum(widths[ch] for ch in word) * span.size / _EM
         assert_equal(
             from_table,
-            pytest.approx(engine.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
+            pytest.approx(engine.fit.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
             f"width of {word!r} in {span.font}",
         )
 
@@ -94,7 +96,7 @@ def test_a_ligature_a_stored_font_draws_counts_as_drawn(tmp_path):
 
     with open_pdf(path) as engine:
         [span] = engine.index()
-        assert_equal(engine.plan_for(span, span.text).missing, [], "letters the font lacks")
+        assert_equal(engine.fit.plan_for(span, span.text).missing, [], "letters the font lacks")
 
 
 def _built_of_parts(*, parts_drawn: bool) -> bytes:
@@ -165,8 +167,8 @@ def test_a_letter_typed_in_two_pieces_is_the_one_the_font_has(tmp_path):
 
     with open_pdf(path) as engine:
         [span] = engine.index()
-        assert_equal(engine.plan_for(span, in_pieces).missing, [], "letters the font lacks")
-        assert_equal(engine.plan_for(span, in_pieces).left_out, [], "letters left out")
+        assert_equal(engine.fit.plan_for(span, in_pieces).missing, [], "letters the font lacks")
+        assert_equal(engine.fit.plan_for(span, in_pieces).left_out, [], "letters left out")
 
 
 def test_a_font_coverage_cant_read_draws_what_the_library_lists():

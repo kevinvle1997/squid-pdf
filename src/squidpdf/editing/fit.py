@@ -175,13 +175,13 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
     span = insert_span(insert)
     shipped = insert.font in FACES
     # A font that only lacks a letter is still usable: a substitute draws the line.
-    unusable = not shipped and not engine.has_own_font(span)
-    typed_plan = engine.plan_for(span, insert.text)
+    unusable = not shipped and not engine.fit.has_own_font(span)
+    typed_plan = engine.fit.plan_for(span, insert.text)
     report = FitReport(
         delta_pt=0.0,
         missing=[] if unusable else typed_plan.missing,
         left_out=typed_plan.left_out,
-        substitute=engine.substitute(span, insert.text, plan=typed_plan),
+        substitute=engine.fit.substitute(span, insert.text, plan=typed_plan),
         unavailable=insert.font if unusable else "",
     )
     return Fitted(report, typed_plan)
@@ -196,9 +196,9 @@ def replace_fit(
     was offered; otherwise as-is.
     """
     # One plan for what's typed: the fit reads it, and the draw draws it.
-    typed_plan = engine.plan_for(span, text)
-    original_width = engine.measure(span, span.text)
-    typed_width = engine.width_of(span, typed_plan)
+    typed_plan = engine.fit.plan_for(span, text)
+    original_width = engine.fit.measure(span, span.text)
+    typed_width = engine.fit.width_of(span, typed_plan)
     delta_pt = typed_width - original_width
     options = options_for(delta_pt, original_width, room_pt=room_pt)
     drawn_strategy = _strategy_drawn(strategy, options)
@@ -209,7 +209,7 @@ def replace_fit(
         options=options,
         strategy=drawn_strategy,
         left_out=typed_plan.left_out,
-        substitute=engine.substitute(span, text, plan=typed_plan),
+        substitute=engine.fit.substitute(span, text, plan=typed_plan),
         asked=strategy,
     )
     # Drawn as typed: the span's size, no stretch.

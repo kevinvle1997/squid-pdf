@@ -359,6 +359,14 @@ def index_of(spans: Iterable[Span]) -> SpanIndex:
     return SpanIndex({span.id: span for span in spans})
 
 
+def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
+    """`spans` grouped by page, each page's in the order given."""
+    grouped: dict[int, list[Span]] = {}
+    for span in spans:
+        grouped.setdefault(span.page, []).append(span)
+    return grouped
+
+
 def index_as_json(index: SpanIndex) -> bytes:
     """The index as JSON, which `index_from_json` reads back whole."""
     return orjson.dumps(list(index))

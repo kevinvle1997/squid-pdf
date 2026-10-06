@@ -28,7 +28,7 @@ def test_a_removal_that_left_some_words_in_the_box_is_still_there(tmp_path):
     doc.save(leaky)
 
     with open_pdf(leaky) as saved:
-        left = saved.still_there([span])
+        left = saved.redaction.still_there([span])
 
     assert_equal(left, [span], "spans with some of their text still in their box")
 
@@ -47,6 +47,6 @@ def test_a_label_drawn_over_a_removal_is_not_its_text_left_behind(tmp_path):
         engine.save(saved_path)
 
     with open_pdf(saved_path) as saved:
-        left = saved.still_there([span])
+        left = saved.redaction.still_there([span])
 
     assert_equal(left, [], "spans with some of their text still in their box")
