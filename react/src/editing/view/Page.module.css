@@ -23,6 +23,8 @@
 }
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }
+/* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
+.anchor { position: absolute; pointer-events: none; }
 /* The page never themes: the marks and previews on it use the page's own tokens. */
 .preview {
   position: absolute;

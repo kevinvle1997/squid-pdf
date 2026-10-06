@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { change, changedCount, createEditor, type Editor, putBack, substitutedCount } from "./editor";
+import { changedCount, createEditor, type Editor, putBack, redo, undo, unexported, warnedCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
-import { edit, finish, troublesIn, typeInto } from "./typing";
+import { edit, enter, finish, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -46,7 +46,7 @@ describe("an edit", () => {
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
-    expect(editor.store.get().said).toBe("Changed to now");
+    expect(editor.store.get().said.text).toBe("Changed to now");
   });
 
   test("a trouble is said as it appears or changes, not as its numbers tick by with each letter", () => {
@@ -55,11 +55,11 @@ describe("an edit", () => {
     editor = createEditor(FILE, doc, 2);
     edit(editor, "ab", null);
     typeInto(editor, "abab");
-    expect(editor.store.get().said).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe("10.0 pt too long");
     typeInto(editor, "ababa");
-    expect(editor.store.get().said).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe("10.0 pt too long");
     typeInto(editor, "ababac");
-    expect(editor.store.get().said).toContain("no c in this font");
+    expect(editor.store.get().said.text).toContain("no c in this font");
   });
 
   test("typing into text a form field draws says at once that an edit here is left out", () => {
@@ -76,6 +76,24 @@ describe("an edit", () => {
     // As pasted: a chat wraps a phone number in bidi controls; Pages breaks lines with U+2028.
     typed("own", "\u202A+1 555\t0100\u202C Invoices are\u2028due\u2029by\u0085May");
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("+1 555 0100 Invoices are due by May");
+  });
+
+  test("emptied, the field says it can't be, and Enter keeps it open; Escape still leaves it as it was", () => {
+    edit(editor, "own", null);
+    typeInto(editor, "  ");
+    expect(editor.store.get().said.text).toBe(COPY.empty);
+    expect(troublesIn(editor.store.get(), "  ").said).toEqual([COPY.empty]);
+    const said = editor.store.get().said;
+    enter(editor);
+    expect(editor.store.get().draft?.text).toBe("  ");
+    // Said again, for a screen reader pressing Enter: the field stays.
+    expect(editor.store.get().said.text).toBe(COPY.empty);
+    expect(editor.store.get().said.count).not.toBe(said.count);
+    typeInto(editor, "now");
+    enter(editor);
+    expect(editor.store.get().draft).toBeNull();
+    expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
+    expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {
@@ -102,23 +120,64 @@ describe("an edit", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
-  test("undo, redo and putting a span back from its margin note", () => {
+  test("undo and redo say what the span reads now and bring it into view, and focus stays where it is", () => {
     typed("own", "one");
     typed("own", "two");
-    change(editor, { kind: "undo" });
+    undo(editor);
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
-    change(editor, { kind: "redo" });
-    putBack(editor, "own");
-    expect(editor.store.get().reading.spans.has("own")).toBe(false);
-    expect(editor.store.get().said).toBe("Put back was own");
+    expect(editor.store.get().said.text).toBe("Back to one");
+    expect(editor.store.get().scrollTo?.spanId).toBe("own");
+    expect(editor.store.get().focusTo).toBeNull();
+    redo(editor);
+    expect(editor.store.get().said.text).toBe("Changed to two");
+    undo(editor);
+    undo(editor);
+    expect(editor.store.get().said.text).toBe("Back to was own");
+    // Nothing left to undo: nothing said, nothing brought into view.
+    const before = editor.store.get();
+    undo(editor);
+    expect(editor.store.get().said).toBe(before.said);
+    expect(editor.store.get().scrollTo).toBe(before.scrollTo);
   });
 
-  test("the bar counts changes, and the ones drawn in a similar font", () => {
+  test("the same words said again are heard again, and the same span brought into view again", () => {
+    typed("own", "one");
+    undo(editor);
+    const first = editor.store.get();
+    redo(editor);
+    undo(editor);
+    const again = editor.store.get();
+    expect(again.said.text).toBe(first.said.text);
+    expect(again.said.count).not.toBe(first.said.count);
+    expect(again.scrollTo?.count).not.toBe(first.scrollTo?.count);
+  });
+
+  test("putting a span back from its margin note says so and sends focus there", () => {
+    typed("own", "one");
+    putBack(editor, "own");
+    expect(editor.store.get().reading.spans.has("own")).toBe(false);
+    expect(editor.store.get().said.text).toBe("Put back was own");
+    expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
+  });
+
+  test("the bar counts changes, and the ones that won't match: in a similar font, or once one won't, looking different", () => {
     typed("own", "now");
     typed("substituted", "now");
-    const state = editor.store.get();
-    expect(changedCount(state)).toBe(2);
-    expect(substitutedCount(state)).toBe(1);
+    expect(changedCount(editor.store.get())).toBe(2);
+    expect(warnedCount(editor.store.get())).toEqual({ count: 1, label: "in a similar font" });
+    const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    editor = createEditor(FILE, aDoc({ spans: [...DOC.spans, turned], fonts: DOC.fonts }), 2);
+    typed("substituted", "now");
+    typed("turned", "now");
+    expect(warnedCount(editor.store.get())).toEqual({ count: 2, label: "will look different" });
+  });
+
+  test("typing into text that won't match says why, before any trouble of its own", () => {
+    const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    const glyphs = Object.fromEntries([..."was turned"].map((letter) => [letter, 500]));
+    editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
+    edit(editor, "turned", null);
+    expect(troublesIn(editor.store.get(), "was turned").said).toEqual([COPY.approximate.turned_text]);
   });
 });
 
@@ -136,6 +195,31 @@ describe("export", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
     expect(editor.store.get().notices.export).toEqual(plain("Downloaded contract.pdf."));
     expect(editor.store.get().exporting).toBe(false);
+  });
+
+  test("edits are unexported from the first one until an export takes them, and again after an undo", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    expect(unexported(editor.store.get())).toBe(false);
+    typed("own", "now");
+    expect(unexported(editor.store.get())).toBe(true);
+    await exportNow(editor);
+    expect(unexported(editor.store.get())).toBe(false);
+    undo(editor);
+    expect(unexported(editor.store.get())).toBe(true);
+  });
+
+  test("words still being typed are unexported too, but a field opened and left as it was isn't", () => {
+    edit(editor, "own", null);
+    expect(unexported(editor.store.get())).toBe(false);
+    typeInto(editor, "now");
+    expect(unexported(editor.store.get())).toBe(true);
+  });
+
+  test("an export that failed leaves its edits unexported", async () => {
+    vi.mocked(exportPdf).mockRejectedValue(new ProblemError(aProblem(503, "Try again.")));
+    typed("own", "now");
+    await exportNow(editor);
+    expect(unexported(editor.store.get())).toBe(true);
   });
 
   test("edits the server left out are said, as a warning", async () => {

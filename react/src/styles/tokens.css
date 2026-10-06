@@ -30,6 +30,7 @@
   --fs-sm: .75rem;      /* labels, notes, status */
   --fs-base: .8125rem;  /* body */
   --fs-lg: .9375rem;    /* titles */
+  --fs-input: .8125rem; /* a field typed into: the body's, but 16 px on a touch screen, below */
 
   --ui: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -54,8 +55,9 @@
 }
 /* A media query can't read a variable: every narrow layout is `@media (max-width: 820px)`, and
    stylesheets.test.ts keeps them the same, as it keeps the two dark blocks below the same. */
+/* iOS zooms into a field set under 16 px: the one size past the four steps. */
 @media (pointer: coarse) {
-  :root { --hit: 44px; }
+  :root { --hit: 44px; --fs-input: 1rem; }
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {

@@ -30,6 +30,19 @@ export function shownSize(page: PageInfo): [wide: number, tall: number] {
   return turned ? [page.height, page.width] : [page.width, page.height];
 }
 
+/**
+ * How far a field set at `fontPx` scales down to show a span's `sizePt` on a page `pageWidthPt`
+ * wide, shown `shownPx` wide: what a touch screen's field is drawn at.
+ */
+export function fieldScaleOf(
+  sizePt: number,
+  { pageWidthPt, shownPx, fontPx }: { pageWidthPt: number; shownPx: number; fontPx: number },
+): number {
+  // Not laid out yet: a scale of nothing would hide the field.
+  if (fontPx <= 0 || pageWidthPt <= 0 || shownPx <= 0) return 1;
+  return ((sizePt / pageWidthPt) * shownPx) / fontPx;
+}
+
 /** A PDF colour, each part from 0 to 1, as CSS. */
 export function rgbOf(color: readonly number[]): string {
   const [red = 0, green = 0, blue = 0] = color;

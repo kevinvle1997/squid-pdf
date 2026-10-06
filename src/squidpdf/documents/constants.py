@@ -28,7 +28,7 @@ PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unchanged
 
 # The shape of a document's reply: bump it when that changes, so an old copy gets no 304.
-REPLY_VERSION = 3
+REPLY_VERSION = 4
 # How an original, its span index and page list are kept: bump it when one changes. One kept
 # in another reads as gone, never indexed again, and the browser opens it again from its copy.
 DOCUMENT_FORMAT = 3

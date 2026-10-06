@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aReply, aSpan, COPY } from "../../fixtures";
-import { createEditor, type Editor } from "../editor";
+import { createEditor, type Editor, undo } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -99,6 +99,66 @@ describe("a page", () => {
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
   });
 
+  test("undo brings its span into view once: scrolled away after, the page doesn't pull it back", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    undo(editor);
+    await vi.waitFor(() => expect(window.scrollY).toBeLessThan(1000));
+    window.scrollTo(0, 15000);
+    // The page draws again: its image goes as it leaves, and the server's verdict lands.
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    editor.store.set({ drawn: { ...editor.store.get().drawn, fits: new Map([[0, { s1: aFit({}) }]]) } });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(window.scrollY).toBe(15000);
+    below.remove();
+  });
+
+  test("the field stays while the page it's on is scrolled far away", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    const field = screen.getByRole("textbox");
+    await expect.element(field).toBeInTheDocument();
+    // Far enough below that the page is past the margin pages are drawn within.
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    window.scrollTo(0, 15000);
+    // The image goes as the page leaves; the field the user typed in doesn't.
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    await expect.element(field).toBeInTheDocument();
+    below.remove();
+  });
+
+  test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      const screen = await draw();
+      await editSpan(screen);
+      const field = screen.getByRole("textbox").element();
+      expect(getComputedStyle(field).fontSize).toBe("16px");
+      // The span's box, as wide as the page is shown: what the field must look like on it.
+      const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
+      if (layer === undefined) throw new Error("no page image");
+      const spanPx = (pt: number) => (pt / A4.width) * layer.width;
+      const drawn = field.getBoundingClientRect();
+      expect(drawn.height).toBeCloseTo(spanPx(span.bbox.y1 - span.bbox.y0), 0);
+      expect(drawn.left).toBeCloseTo(layer.left + spanPx(span.bbox.x0), 0);
+      // Its letters drawn at the span's size: 16 px, scaled down.
+      const scale = new DOMMatrix(getComputedStyle(field).transform).a;
+      expect(16 * scale).toBeCloseTo(spanPx(span.size), 1);
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
+  });
+
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {
     const screen = await draw();
     await editSpan(screen);
@@ -180,6 +240,33 @@ describe("a page", () => {
     expect(line.backgroundImage).toContain("repeating-linear-gradient");
     await mark.hover();
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
+  });
+
+  test("text an edit won't match has the dashed warning line, and its note says why, warned", async () => {
+    const turned = aSpan({
+      id: "s4",
+      text: "Turned",
+      fidelity: "approximate",
+      why: { code: "turned_text", params: {} },
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [turned], fonts: [aFont("Times-Roman")] }),
+      2,
+    );
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "Turned" });
+    await expect.element(mark).toBeInTheDocument();
+    const line = getComputedStyle(mark.element(), "::after");
+    expect(line.backgroundImage).toContain("repeating-linear-gradient");
+    await mark.hover();
+    const note = screen.getByText(COPY.approximate.turned_text ?? "");
+    await expect.element(note).toBeVisible();
+    const warn = document.body.appendChild(document.createElement("span"));
+    warn.style.color = "var(--warn)";
+    expect(getComputedStyle(note.element()).color).toBe(getComputedStyle(warn).color);
+    warn.remove();
   });
 
   test("a click shows a span's note; a click's focus alone doesn't", async () => {

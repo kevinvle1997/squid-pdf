@@ -1,8 +1,9 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import { change, type Editor, type EditorState } from "./editor";
+import { change, type Editor, type EditorState, spoken } from "./editor";
 import { previewFaceOf } from "./faces";
 import { fitOf, troubleKindOf, troublesOf } from "./fit";
+import { approximateSaid } from "./marks";
 
 /** Start typing into a span, from what it reads now. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {
@@ -22,9 +23,16 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   const { fit: rules, copy } = state.doc;
   // A form field draws it, not the page: whatever is typed, the edit is left out.
   if (span.form_field) return { said: [copy.form_field_not_edited], kind: "form field" };
+  // Taking text out isn't a change: said while the field is empty.
+  if (isEmpty(text)) return { said: [copy.empty], kind: "empty" };
   const fit = fitOf(span, { font, text, rules });
   const substitute = font.substitute ?? previewFaceOf(font);
-  return { said: troublesOf(fit, { rules, copy, substitute }), kind: troubleKindOf(fit, rules) };
+  // Whatever is typed, an edit here won't match the text around it: said first.
+  const approximate = span.why === null ? [] : [approximateSaid(span.why, copy)];
+  return {
+    said: [...approximate, ...troublesOf(fit, { rules, copy, substitute })],
+    kind: troubleKindOf(fit, rules),
+  };
 }
 
 // A tab or any line break shows as a gap, so a space keeps the words apart.
@@ -41,8 +49,23 @@ export function typeInto(editor: Editor, typed: string): void {
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
   // A trouble is said as it appears or changes, not as its numbers tick by with each letter.
-  const said = now.kind !== was.kind && now.said.length > 0 ? now.said.join("; ") : state.said;
+  const said = now.kind !== was.kind && now.said.length > 0 ? spoken(now.said.join("; ")) : state.said;
   store.set({ draft: { ...state.draft, text }, said });
+}
+
+/** Enter: what was typed goes in and focus goes back to the span, unless the field is empty, which stays open. */
+export function enter(editor: Editor): void {
+  const { draft, doc } = editor.store.get();
+  if (draft !== null && isEmpty(draft.text)) {
+    editor.store.set({ said: spoken(doc.copy.empty) });
+    return;
+  }
+  finish(editor, true, { returnFocus: true });
+}
+
+/** Whether typed text says nothing: no change, since taking text out is redaction's job. */
+function isEmpty(text: string): boolean {
+  return text.trim() === "";
 }
 
 /**
@@ -56,10 +79,10 @@ export function finish(editor: Editor, keep: boolean, { returnFocus = false } = 
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
   const was = reading.spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || draft.text === was || draft.text.trim() === "") {
+  if (!keep || draft.text === was || isEmpty(draft.text)) {
     store.set(ended);
     return;
   }
   const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text };
-  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: `Changed to ${draft.text}` });
+  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: spoken(`Changed to ${draft.text}`) });
 }

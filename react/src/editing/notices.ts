@@ -17,7 +17,7 @@ export interface FontNotice extends Notice {
 export interface Notices {
   readonly document: readonly Notice[]; // what opening the file found: for as long as it's open
   readonly export: Notice | null; // the last export: until the next change
-  readonly reopen: Notice | null; // the document opened again, or couldn't: until the next change
+  readonly reopen: Notice | null; // the document opened again, or couldn't: in the bar, until the next change
   readonly font: FontNotice | null; // the user's copy of a font refused: until the next change
 }
 
@@ -26,7 +26,7 @@ export const NO_NOTICES: Notices = { document: [], export: null, reopen: null, f
 export const warn = (text: string): Notice => ({ tone: "warn", text });
 export const plain = (text: string): Notice => ({ tone: "plain", text });
 
-/** Everything to say now, warnings first, each sentence once. */
+/** Everything to say under the bar now, warnings first, each sentence once; reopening is said in it. */
 export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
   const fromRender = [
     ...(drawn.failed === null ? [] : [drawn.failed]),
@@ -34,7 +34,7 @@ export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
     ...drawn.skipped.map((skipped) => skipped.detail),
   ].map(warn);
   const font = notices.font === null ? null : warn(notices.font.text);
-  const all = [...notices.document, ...fromRender, notices.export, notices.reopen, font].filter(
+  const all = [...notices.document, ...fromRender, notices.export, font].filter(
     (notice): notice is Notice => notice !== null,
   );
   const once = [...new Map(all.map((notice) => [notice.text, notice])).values()];

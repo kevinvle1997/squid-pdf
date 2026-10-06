@@ -52,6 +52,8 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(
         copy["missing"], pseudo_sentence(words.sentence("missing")), "a sentence to fill"
     )
+    empty = copy["empty"]
+    assert_equal(empty, pseudo_sentence(words.sentence("empty")), "a sentence said as typed")
     shrink = copy["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
     turned = copy["approximate"]["turned_text"]

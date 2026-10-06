@@ -161,6 +161,7 @@ class Copy(TypedDict):
     reopened: str
     export_left_out: str
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
+    empty: str  # said while the text typed into a span is empty
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]
