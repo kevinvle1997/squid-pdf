@@ -155,7 +155,7 @@ export class RenderQueue {
       drawing.push(page);
       regions.push(...regionsFor(page, info, edits));
     }
-    if (bare.length > 0) this.#landed(reading, bare, [], null);
+    if (bare.length > 0) this.#landed(reading, bare, { landing: [], said: null });
     if (drawing.length === 0) return;
 
     const ask = new AbortController();
@@ -169,7 +169,7 @@ export class RenderQueue {
       const strips = reply.images.map(({ page, y }, index) => ({ page, y, src: srcs[index] ?? "" }));
       if (ask.signal.aborted) return;
       this.#asking = null;
-      this.#landed(reading, drawing, strips, reply);
+      this.#landed(reading, drawing, { landing: strips, said: reply });
     } catch (error) {
       if (ask.signal.aborted) return;
       this.#asking = null;
@@ -180,7 +180,11 @@ export class RenderQueue {
   }
 
   /** `pages` now show `reading`, in `landing`; `said` is the server's reply, or null for pages it wasn't asked about. */
-  #landed(reading: Reading, pages: readonly number[], landing: readonly Strip[], said: Said | null) {
+  #landed(
+    reading: Reading,
+    pages: readonly number[],
+    { landing, said }: { landing: readonly Strip[]; said: Said | null },
+  ) {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);

@@ -19,20 +19,22 @@ describe("the fit check", () => {
   });
 
   test("text as long as the original fits exactly", () => {
-    const fit = fitOf(span, font, "jihgfedcba", RULES);
+    const fit = fitOf(span, { font, text: "jihgfedcba", rules: RULES });
     expect(fit).toEqual({ deltaPt: 0, roomPt: 0, missing: [], options: [] });
   });
 
   test("a little longer is within the tolerance: nothing to say, nothing to offer", () => {
-    const fit = fitOf(span, font, "abcdefghij.", RULES);
+    const fit = fitOf(span, { font, text: "abcdefghij.", rules: RULES });
     expect(fit.deltaPt).toBe(3);
     expect(fit.options).toEqual([]);
-    expect(troublesOf(fit, RULES, copy, "Liberation Serif Regular")).toEqual([]);
+    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([]);
   });
 
   test("too long names how much, in the server's sentence", () => {
-    const fit = fitOf(span, font, "abcdefghijk", RULES);
-    expect(troublesOf(fit, RULES, copy, "Liberation Serif Regular")).toEqual(["5.0 pt too long"]);
+    const fit = fitOf(span, { font, text: "abcdefghijk", rules: RULES });
+    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
+      "5.0 pt too long",
+    ]);
   });
 
   test("a letter the font lacks is named once, and a space never is", () => {
@@ -58,7 +60,7 @@ describe("a line is too long only past its room, as the server says", () => {
   test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_by, options }) => {
     const fit = { deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
     const said = too_long_by === null ? [] : [fill(copy.too_long, { delta_pt: too_long_by })];
-    expect(troublesOf(fit, shared.rules, copy, "Liberation Serif Regular")).toEqual(said);
+    expect(troublesOf(fit, { rules: shared.rules, copy, substitute: "Liberation Serif Regular" })).toEqual(said);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
   });
 });

@@ -13,6 +13,10 @@
   },
   "linter": {
     "rules": {
+      "complexity": {
+        // More than three arguments: those past the first one or two go in one object (rules/frontend/react.md, Calls).
+        "useMaxParams": { "level": "error", "options": { "max": 3 } }
+      },
       "correctness": {
         "useExhaustiveDependencies": "error",
         "useHookAtTopLevel": "error"
