@@ -48,8 +48,11 @@ class Problem(Exception):
         return self.said_in(words.ENGLISH)
 
     def __reduce__(self) -> tuple[Any, ...]:
-        """Raised in a worker, it reaches the server whole: `fill` isn't in `args`."""
-        return _rebuild, (type(self), self.debug, self.fill)
+        """Raised in a worker, it reaches the server whole: `fill` isn't in `args`.
+
+        Its attributes go too, so it carries what its task tallied (`core.in_request`).
+        """
+        return _rebuild, (type(self), self.debug, self.fill), self.__dict__
 
 
 def _rebuild(cls: type[Problem], debug: str | None, fill: dict[str, Param]) -> Problem:

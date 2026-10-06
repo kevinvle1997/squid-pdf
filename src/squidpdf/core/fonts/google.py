@@ -26,7 +26,7 @@ import httpx
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
-from squidpdf.core.app.logs import LogController, LogEvent, OwnText
+from squidpdf.core.app.logs import LogController, LogEvent, OwnText, Tally, ms_since, tally
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     FETCH_RETRY_S,
@@ -300,6 +300,7 @@ def _fetched(
         cached_copy = None
     # In the cache and sound: nothing to download. A damaged copy is logged where it's read.
     if cached_copy is not None:
+        tally(Tally.GOOGLE_HIT)
         return cached_copy
     # The cache alone: render and export lend what analysis fetched, and never wait.
     if download is None:
@@ -307,10 +308,12 @@ def _fetched(
     now = time.monotonic()
     # Failed a moment ago: not worth another wait yet.
     if retries.holds(file.source, now):
+        tally(Tally.GOOGLE_FAILED)
         return None
     fetching = _Fetching(cached_path=cached_path, download=download, retries=retries)
     # A daemon: one still hanging never keeps the worker from exiting.
     threading.Thread(target=_download_and_cache, args=(file, fetching), daemon=True).start()
+    waited_from = time.monotonic()
     try:
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
@@ -318,9 +321,12 @@ def _fetched(
             LogEvent.GOOGLE_FETCH_LATE, font=OwnText(file.path), timeout_s=FETCH_TIMEOUT_S
         )
         font_file = None
+    tally(Tally.GOOGLE_MS, ms_since(waited_from))
     # Had: nothing to hold back.
     if font_file is not None:
+        tally(Tally.GOOGLE_FETCHED)
         return font_file
+    tally(Tally.GOOGLE_FAILED)
     # None came, or none in time: held back, every file if the network never answered.
     retries.hold(file.source, now + FETCH_RETRY_S, answered=fetching.answered)
     return None
