@@ -28,7 +28,6 @@
   background: var(--strip); box-shadow: var(--lift-1);
   font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
   white-space: nowrap; line-height: 1;
-  font-variant-numeric: tabular-nums;
   pointer-events: none;
   animation: arrive var(--dur-move) var(--ease-out);
 }

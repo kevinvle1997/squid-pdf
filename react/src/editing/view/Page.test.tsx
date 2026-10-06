@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import "@fontsource/schibsted-grotesk/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { render as renderOnServer } from "../../api/client";
@@ -82,6 +83,26 @@ describe("a page", () => {
     const warn = document.body.appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
     expect(getComputedStyle(said.element()).color).toBe(getComputedStyle(warn).color);
+  });
+
+  test("a number in the chip's sentence keeps its dot tight, as running text does", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}xyz");
+    const said = screen.getByText("30.0 pt too long");
+    await expect.element(said).toBeVisible();
+    await document.fonts.ready;
+    const words = said.element().lastChild;
+    if (!(words instanceof Text)) throw new Error("no sentence in the chip");
+    const widthOf = (at: number) => {
+      const letter = document.createRange();
+      letter.setStart(words, at);
+      letter.setEnd(words, at + 1);
+      return letter.getBoundingClientRect().width;
+    };
+    // The interface face's own dot is half a digit wide; tabular figures make it a whole one.
+    const at = words.data.indexOf(".");
+    expect(widthOf(at)).toBeLessThan(widthOf(at - 1) * 0.75);
   });
 
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
