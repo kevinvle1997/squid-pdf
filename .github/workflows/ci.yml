@@ -160,7 +160,7 @@ jobs:
         shell: bash
         run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
-      # Each wrong password costs the proxy a bcrypt compare: capped, guessing can't take the app's cores.
+      # The cap compose.yaml gives the proxy (it says why) is on the running container.
       - name: The proxy's CPU cap
         run: |
           cap=$(docker inspect "$(docker compose ps -q proxy)" --format '{{.HostConfig.NanoCpus}}')
