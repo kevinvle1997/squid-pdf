@@ -163,7 +163,6 @@ jobs:
       # Two IPv6 clients in different /64s, given to the runner, count apart through the
       # published port: one uses up its minute's uploads, and the other is still let in.
       - name: IPv6 clients count apart
-        shell: bash
         run: |
           first=fd8b:2c41:e0d5:1::1
           second=fd8b:2c41:e0d5:2::1
@@ -175,7 +174,7 @@ jobs:
           upload_from() {
             curl --silent --output /dev/null --write-out '%{http_code}' --cacert /tmp/root.crt \
               --config /tmp/login --interface "$1" --resolve "localhost:443:[$1]" \
-              --header 'content-type: application/pdf' --data-binary '' https://localhost/api/documents
+              --header 'content-type: application/pdf' --data-binary '' https://localhost/api/documents || true
           }
           # What the app answers an empty upload it lets in; 000, had curl not reached it.
           let_in=$(upload_from "$first")
