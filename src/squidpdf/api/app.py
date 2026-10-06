@@ -17,7 +17,7 @@ from squidpdf.api.access import AccessLog
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
-from squidpdf.api.errors.http import AnswerBugs, ProblemInfo, install
+from squidpdf.api.errors.http import BugBoundary, ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentUploads
 from squidpdf.core import LogController
@@ -86,7 +86,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     # Just inside the access log, so a bug's 500 is logged by it, and never raised past it.
-    app.add_middleware(AnswerBugs)
+    app.add_middleware(BugBoundary)
     # Outermost, so a request its browser left is logged too. The healthcheck's every
     # 30 s isn't: a failing one shows in `docker ps`.
     app.add_middleware(AccessLog, unlogged=frozenset([app.url_path_for(health.__name__)]))

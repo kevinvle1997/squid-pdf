@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
+from typing import Any
 
 from squidpdf.core.app.errors import Problem
 
@@ -87,7 +88,15 @@ class OwnText:
 
 
 type Field = int | float | bool | Enum | OwnText
-_FIELD_TYPES = (int, float, bool, Enum, OwnText)
+# How a field of each type is written. Looked up along the value's ancestry, so a bool is
+# written as one before it's an int, and an enum of strings as an enum; a plain str has none.
+_WRITTEN: dict[type, Callable[[Any], str]] = {
+    bool: lambda yes: "true" if yes else "false",
+    int: str,
+    float: str,
+    Enum: lambda ours: str(ours.value),  # ours, so its value is ours too
+    OwnText: lambda own: own.text,
+}
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -150,20 +159,12 @@ class LogController:
 
 def _written(value: Field) -> str:
     """A field's value as the line writes it. Raises TypeError for anything but a Field."""
-    # A str may be a file's words; one of ours comes as an enum or OwnText.
-    plain_string = isinstance(value, str) and not isinstance(value, Enum)
-    if plain_string or not isinstance(value, _FIELD_TYPES):
+    ancestry = type(value).__mro__
+    write = next((_WRITTEN[kind] for kind in ancestry if kind in _WRITTEN), None)
+    # A str may be a file's words: one of ours comes as an enum or OwnText.
+    if write is None:
         raise TypeError(f"a log field can't be a {type(value).__name__}")
-    # Before int: a bool is one.
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    # Ours, so its value is ours too.
-    if isinstance(value, Enum):
-        return str(value.value)
-    if isinstance(value, OwnText):
-        return value.text
-    # A number.
-    return str(value)
+    return write(value)
 
 
 def _what_failed(failure: BaseException) -> str:

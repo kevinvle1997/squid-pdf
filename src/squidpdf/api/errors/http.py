@@ -166,8 +166,8 @@ async def _handle(request: Request, exc: Exception) -> Response:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class AnswerBugs:
-    """Answers a bug here, as a 500, so it isn't raised on past the app and logged again.
+class BugBoundary:
+    """Where a bug stops: answered here, as a 500, never raised past the app and logged again.
 
     Starlette's own catch-all answers outside every middleware, then raises the bug
     on to the server, which logs its traceback a second time, without its request.
