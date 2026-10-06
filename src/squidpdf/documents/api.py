@@ -16,7 +16,7 @@ from squidpdf.api import constants as limits, owner, rate
 from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
-from squidpdf.core import ERROR, LogController, LogEvent, NotFound
+from squidpdf.core import LogController, LogEvent, NotFound
 from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
@@ -147,4 +147,4 @@ async def sweep_forever() -> None:
         try:
             await asyncio.to_thread(store.sweep)
         except Exception as failure:  # noqa: BLE001 (one bad pass must not end expiry)
-            _log.failed(ERROR, LogEvent.SWEEP_FAILED, failure, next_in_s=SWEEP_EVERY_S)
+            _log.write(LogEvent.SWEEP_FAILED, failure, next_in_s=SWEEP_EVERY_S)

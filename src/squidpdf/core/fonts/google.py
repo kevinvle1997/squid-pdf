@@ -26,7 +26,7 @@ import httpx
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
-from squidpdf.core.app.logs import INFO, WARN, LogController, LogEvent, OwnText
+from squidpdf.core.app.logs import LogController, LogEvent, OwnText
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     FETCH_RETRY_S,
@@ -292,8 +292,7 @@ def _fetched(
     except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
         # Counted by grep: how often the cache is empty, and whether this call may download.
         may_download = download is not None
-        _log.skipped(
-            INFO,
+        _log.write(
             LogEvent.GOOGLE_CACHE_MISSED,
             font=OwnText(file.source),
             may_download=may_download,
@@ -315,8 +314,8 @@ def _fetched(
     try:
         font_file = fetching.answer.get(timeout=FETCH_TIMEOUT_S)
     except queue.Empty:  # not ready by the deadline: it carries on, and caches what it gets
-        _log.skipped(
-            WARN, LogEvent.GOOGLE_FETCH_LATE, font=OwnText(file.path), timeout_s=FETCH_TIMEOUT_S
+        _log.write(
+            LogEvent.GOOGLE_FETCH_LATE, font=OwnText(file.path), timeout_s=FETCH_TIMEOUT_S
         )
         font_file = None
     # Had: nothing to hold back.
@@ -370,21 +369,21 @@ def _download_checked_and_cut(file: GoogleFile, fetching: _Fetching) -> bytes | 
     try:
         whole = fetching.download(raw_url(file.path))
     except httpx.HTTPStatusError as missing:  # GitHub answered, without the file: it works
-        _log.failed(WARN, LogEvent.GOOGLE_NOT_ON_GITHUB, missing, font=OwnText(file.path))
+        _log.write(LogEvent.GOOGLE_NOT_ON_GITHUB, missing, font=OwnText(file.path))
         fetching.retries.note_answer(fetching.answered)
         return None
     except Exception as no_answer:  # noqa: BLE001 (no answer: a network fails in many ways)
-        _log.failed(WARN, LogEvent.GOOGLE_FETCH_FAILED, no_answer, font=OwnText(file.path))
+        _log.write(LogEvent.GOOGLE_FETCH_FAILED, no_answer, font=OwnText(file.path))
         return None
     # The network works after all: a wait that ran out held back every file for nothing.
     fetching.retries.note_answer(fetching.answered)
     if blob_hash(whole) != file.blob:
-        _log.skipped(WARN, LogEvent.GOOGLE_WRONG_FILE, font=OwnText(file.path))
+        _log.write(LogEvent.GOOGLE_WRONG_FILE, font=OwnText(file.path))
         return None
     try:
         return whole if file.weight is None else _cut(whole, file.weight)
     except Exception as uncut:  # noqa: BLE001 (fontTools fails in many ways on a font)
-        _log.failed(WARN, LogEvent.GOOGLE_CUT_FAILED, uncut, font=OwnText(file.source))
+        _log.write(LogEvent.GOOGLE_CUT_FAILED, uncut, font=OwnText(file.source))
         return None
 
 
@@ -400,11 +399,11 @@ def _read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     expected_hash = file.blob if file.weight is None else _hash_beside(cached_path).read_text()
     if blob_hash(font_file) == expected_hash:
         return font_file
-    _log.skipped(WARN, LogEvent.GOOGLE_CACHE_DAMAGED, font=OwnText(file.source))
+    _log.write(LogEvent.GOOGLE_CACHE_DAMAGED, font=OwnText(file.source))
     try:
         cached_path.unlink(missing_ok=True)
     except OSError as kept:  # a read-only disk: the bad copy stays, passed over each time
-        _log.failed(WARN, LogEvent.GOOGLE_DAMAGED_KEPT, kept, font=OwnText(file.source))
+        _log.write(LogEvent.GOOGLE_DAMAGED_KEPT, kept, font=OwnText(file.source))
     return None
 
 
@@ -446,7 +445,7 @@ def _kept(path: Path, font_file: bytes) -> None:
             partial_file.write(font_file)
         os.replace(part, path)
     except OSError as unwritten:  # a full disk, a read-only one: the copy still lends, uncached
-        _log.failed(WARN, LogEvent.GOOGLE_NOT_CACHED, unwritten, font=OwnText(path.name))
+        _log.write(LogEvent.GOOGLE_NOT_CACHED, unwritten, font=OwnText(path.name))
         if part is not None:
             part.unlink(missing_ok=True)
 

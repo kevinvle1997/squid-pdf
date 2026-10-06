@@ -39,7 +39,6 @@ from squidpdf.api import constants
 from squidpdf.api.errors import NoWorkers, TooSlow
 from squidpdf.api.errors.http import API_ERRORS
 from squidpdf.core import (
-    ERROR,
     WARN,
     LogController,
     LogEvent,
@@ -177,14 +176,14 @@ class WorkerPool:
         try:
             pool = await self._running()
         except BrokenProcessPool as broke:  # raised by pebble when no worker process can start
-            _log.failed(WARN, LogEvent.NO_WORKER_STARTED, broke)
+            _log.write(LogEvent.NO_WORKER_STARTED, broke)
             raise
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
             job = partial(_noted_start, str(start), request_id=current_request_id(), task=task)
             future = pool.submit(job, time_left)
         except RuntimeError as refused:  # raised by pebble: the pool broke, or no worker starts
-            _log.failed(WARN, LogEvent.POOL_REFUSED_TASK, refused)
+            _log.write(LogEvent.POOL_REFUSED_TASK, refused)
             raise _NeverStarted() from refused
         # Only for a wait pebble never answers on an unbroken pool: its timeout comes first.
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
@@ -193,11 +192,11 @@ class WorkerPool:
                 return await self._answer_from(pool, future)
         except TimeoutError:  # raised by pebble at the task's timeout, or by the backstop
             if backstop.expired():  # a fault of pebble's, for whoever runs the server
-                _log.skipped(WARN, LogEvent.POOL_NEVER_ANSWERED)
+                _log.write(LogEvent.POOL_NEVER_ANSWERED)
             raise
         except BrokenProcessPool as broke:  # the pool broke: pebble says so, or lost the task
             # Its cause can be a bug of ours, such as a result that can't be sent back.
-            _log.failed(WARN, LogEvent.POOL_BROKE, broke)
+            _log.write(LogEvent.POOL_BROKE, broke)
             # Its workers stopped first, so none can still start the task once it's looked at.
             await self._running()
             if not _has_started(start):
@@ -295,12 +294,12 @@ def _log_unexpected[T](job: asyncio.Task[T]) -> None:
         return
     # The server's own failure: its debug is for the log, as the API's handler does.
     if _has_server_debug(failure):
-        _log.failed(WARN, LogEvent.TASK_FAILED_CALLER_LEFT, failure)
+        _log.write(LogEvent.TASK_FAILED_CALLER_LEFT, failure, level=WARN)
         return
     # The file's or the request's doing, or pebble's: its caller's answer, no news.
     if isinstance(failure, _EXPECTED_WHEN_LEFT):
         return
-    _log.failed(ERROR, LogEvent.TASK_FAILED_CALLER_LEFT, failure)
+    _log.write(LogEvent.TASK_FAILED_CALLER_LEFT, failure)
 
 
 def _has_server_debug(failure: BaseException) -> bool:

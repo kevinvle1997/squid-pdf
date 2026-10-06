@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import WorkerPool, start_pool
-from squidpdf.core import WARN, LogController, LogEvent, Problem, new_request_id
+from squidpdf.core import LogController, LogEvent, Problem, new_request_id
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
 from tests.conftest import LOG_LINE, log_lines
@@ -304,8 +304,8 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
 def _log_a_line() -> None:
     """In a worker: one line, as Google's fetch would write one there."""
     # Named under the package, as every module is, so the server's handler writes it.
-    LogController.for_module("squidpdf.tests.api.test_pool").skipped(
-        WARN, LogEvent.GOOGLE_FETCH_LATE, timeout_s=2
+    LogController.for_module("squidpdf.tests.api.test_pool").write(
+        LogEvent.GOOGLE_FETCH_LATE, timeout_s=2
     )
 
 

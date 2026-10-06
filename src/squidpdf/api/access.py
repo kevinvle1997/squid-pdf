@@ -65,4 +65,6 @@ def _log_request(scope: Scope, *, status: int, started: float) -> None:
     named_method = {} if method is None else {"method": method}
     level = ERROR if status >= _SERVER_ERROR else INFO
     ms = round((time.monotonic() - started) * _MS_PER_S)
-    _log.noted(level, LogEvent.REQUEST_DONE, **named_method, **template, status=status, ms=ms)
+    _log.write(
+        LogEvent.REQUEST_DONE, level=level, **named_method, **template, status=status, ms=ms
+    )

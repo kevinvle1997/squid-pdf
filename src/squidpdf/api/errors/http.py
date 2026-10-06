@@ -20,8 +20,6 @@ from squidpdf.api.errors.generic import MethodNotAllowed, ServerError
 from squidpdf.api.language import language_of
 from squidpdf.core import (
     CORE_ERRORS,
-    ERROR,
-    WARN,
     Failure,
     InvalidRequest,
     LogController,
@@ -114,7 +112,7 @@ def _adopt(exc: Exception) -> Problem:
     claimed = API_ERRORS.problem_if_claimed(exc)
     # A bug: said without its text, which is for the log, with the request it broke.
     if claimed is None:
-        _log.failed(ERROR, LogEvent.UNHANDLED, exc)
+        _log.write(LogEvent.UNHANDLED, exc)
         return ServerError()
     return claimed
 
@@ -125,7 +123,7 @@ def _debug_sent(problem: Problem) -> str | None:
         return None
     # Our failure: its why can name a file on the server, so only the log gets it.
     if problem.status >= status.HTTP_500_INTERNAL_SERVER_ERROR:
-        _log.failed(WARN, LogEvent.PROBLEM_SENT_WITHOUT_DEBUG, problem)
+        _log.write(LogEvent.PROBLEM_SENT_WITHOUT_DEBUG, problem)
         return None
     # The file's or the request's doing: its why tells the developer what to fix.
     return problem.debug

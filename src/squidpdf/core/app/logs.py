@@ -37,7 +37,7 @@ _REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 
 
 class Level(Enum):
-    """How much a line matters, chosen by its caller: there's no default."""
+    """How much a line matters: its event's usual level, unless the call says otherwise."""
 
     INFO = logging.INFO
     WARN = logging.WARNING
@@ -49,35 +49,51 @@ INFO, WARN, ERROR = Level.INFO, Level.WARN, Level.ERROR
 _LEVEL_NAMES = {level.value: level.name for level in Level}
 
 
-class LogEvent(StrEnum):
-    """Everything the server can say in its log, each written as its value."""
-
-    REQUEST_DONE = "request_done"
-    UNHANDLED = "unhandled"
-    PROBLEM_SENT_WITHOUT_DEBUG = "problem_sent_without_debug"
-    TASK_FAILED_CALLER_LEFT = "task_failed_caller_left"
-    NO_WORKER_STARTED = "no_worker_started"
-    POOL_REFUSED_TASK = "pool_refused_task"
-    POOL_NEVER_ANSWERED = "pool_never_answered"
-    POOL_BROKE = "pool_broke"
-    SWEEP_FAILED = "sweep_failed"
-    GOOGLE_CACHE_MISSED = "google_cache_missed"
-    GOOGLE_FETCH_LATE = "google_fetch_late"
-    GOOGLE_FETCH_FAILED = "google_fetch_failed"
-    GOOGLE_NOT_ON_GITHUB = "google_not_on_github"
-    GOOGLE_WRONG_FILE = "google_wrong_file"
-    GOOGLE_CUT_FAILED = "google_cut_failed"
-    GOOGLE_CACHE_DAMAGED = "google_cache_damaged"
-    GOOGLE_DAMAGED_KEPT = "google_damaged_kept"
-    GOOGLE_NOT_CACHED = "google_not_cached"
-
-
 class _Outcome(StrEnum):
     """What happened, the column a grep finds a line by, whatever its level."""
 
-    NOTED = "noted"
-    SKIPPED = "skipped"
-    FAILED = "failed"
+    NOTED = "noted"  # something happened as it should, worth a line
+    SKIPPED = "skipped"  # something was left undone, and the work went on without it
+    FAILED = "failed"  # something went wrong: its traceback follows the line
+
+
+NOTED, SKIPPED, FAILED = _Outcome.NOTED, _Outcome.SKIPPED, _Outcome.FAILED
+
+
+@dataclass(frozen=True, slots=True)
+class _EventFacts:
+    """An event's word in the line, what happened, and how much it usually matters."""
+
+    written: str
+    outcome: _Outcome
+    level: Level  # a call can say this one matters more, or less
+
+
+class LogEvent(Enum):
+    """Everything the server can say in its log: its word, what happened, its usual level.
+
+    One list, so an event always has the same outcome, and a grep finds it at one level
+    unless a call says this one matters more or less.
+    """
+
+    REQUEST_DONE = _EventFacts("request_done", NOTED, INFO)
+    UNHANDLED = _EventFacts("unhandled", FAILED, ERROR)
+    PROBLEM_SENT_WITHOUT_DEBUG = _EventFacts("problem_sent_without_debug", FAILED, WARN)
+    TASK_FAILED_CALLER_LEFT = _EventFacts("task_failed_caller_left", FAILED, ERROR)
+    NO_WORKER_STARTED = _EventFacts("no_worker_started", FAILED, WARN)
+    POOL_REFUSED_TASK = _EventFacts("pool_refused_task", FAILED, WARN)
+    POOL_NEVER_ANSWERED = _EventFacts("pool_never_answered", SKIPPED, WARN)
+    POOL_BROKE = _EventFacts("pool_broke", FAILED, WARN)
+    SWEEP_FAILED = _EventFacts("sweep_failed", FAILED, ERROR)
+    GOOGLE_CACHE_MISSED = _EventFacts("google_cache_missed", SKIPPED, INFO)
+    GOOGLE_FETCH_LATE = _EventFacts("google_fetch_late", SKIPPED, WARN)
+    GOOGLE_FETCH_FAILED = _EventFacts("google_fetch_failed", FAILED, WARN)
+    GOOGLE_NOT_ON_GITHUB = _EventFacts("google_not_on_github", FAILED, WARN)
+    GOOGLE_WRONG_FILE = _EventFacts("google_wrong_file", SKIPPED, WARN)
+    GOOGLE_CUT_FAILED = _EventFacts("google_cut_failed", FAILED, WARN)
+    GOOGLE_CACHE_DAMAGED = _EventFacts("google_cache_damaged", SKIPPED, WARN)
+    GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
+    GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +117,7 @@ _WRITTEN: dict[type, Callable[[Any], str]] = {
 
 @dataclass(frozen=True, slots=True, eq=False)
 class LogController:
-    """Where a module logs: one line per outcome, its level said by the caller."""
+    """Where a module logs: one line per event, at its usual level unless the call says."""
 
     logger: logging.Logger
     module: str  # the module's name under the package, as the line shows it
@@ -111,31 +127,24 @@ class LogController:
         """The controller for module `name`, as `__name__` gives it."""
         return cls(logging.getLogger(name), module=name.removeprefix(f"{_ROOT}."))
 
-    def noted(self, level: Level, event: LogEvent, **fields: Field) -> None:
-        """Something happened as it should, worth a line."""
-        self._log(_Outcome.NOTED, level, event, fields=fields)
-
-    def skipped(self, level: Level, event: LogEvent, **fields: Field) -> None:
-        """Something was left undone, and the work went on without it."""
-        self._log(_Outcome.SKIPPED, level, event, fields=fields)
-
-    def failed(
-        self, level: Level, event: LogEvent, failure: BaseException, **fields: Field
-    ) -> None:
-        """Something went wrong; its traceback, and a Problem's debug, follow the line."""
-        self._log(_Outcome.FAILED, level, event, fields=fields, failure=failure)
-
-    def _log(
+    def write(
         self,
-        outcome: _Outcome,
-        level: Level,
         event: LogEvent,
-        *,
-        fields: dict[str, Field],
         failure: BaseException | None = None,
+        /,
+        *,
+        level: Level | None = None,
+        **fields: Field,
     ) -> None:
-        """One line, its fields checked, with the request it's for; what failed after it."""
-        words = [f"{outcome:<{_OUTCOME_WIDTH}}", self.module, event.value]
+        """One line for `event`, its fields checked, with the request it's for.
+
+        A failed event takes what failed, whose traceback and a Problem's debug
+        follow the line; any other takes none. Raises TypeError when that's wrong.
+        """
+        facts = event.value
+        if (failure is not None) != (facts.outcome is FAILED):
+            raise TypeError(f"{facts.written}: what failed goes with a failed event, and only")
+        words = [f"{facts.outcome:<{_OUTCOME_WIDTH}}", self.module, facts.written]
         words += [f"{key}={_written(value)}" for key, value in fields.items()]
         # A Problem's type is ours, and names what went wrong as the browser was told.
         if isinstance(failure, Problem):
@@ -146,7 +155,7 @@ class LogController:
         line = " ".join(words)
         if failure is not None:
             line += "\n" + _DOCUMENT_FOLDER.sub(_HIDDEN, _what_failed(failure))
-        self.logger.log(level.value, line)
+        self.logger.log((level or facts.level).value, line)
 
     @staticmethod
     def configure() -> None:
