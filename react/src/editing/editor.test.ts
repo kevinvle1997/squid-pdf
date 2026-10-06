@@ -93,7 +93,12 @@ describe("an edit", () => {
     const { notices } = editor.store.get();
     editor.store.set({ notices: { ...notices, export: plain("Downloaded contract.pdf."), reopen: plain("Opened.") } });
     typed("own", "now");
-    expect(editor.store.get().notices).toEqual({ document: [warn(found.detail)], export: null, reopen: null });
+    expect(editor.store.get().notices).toEqual({
+      document: [warn(found.detail)],
+      export: null,
+      reopen: null,
+      font: null,
+    });
     expect(render).toHaveBeenCalledTimes(1);
   });
 

@@ -152,6 +152,8 @@ class Copy(TypedDict):
     too_long: str
     substitute: str  # when the substitute's letters may be another width
     substitute_same_widths: str  # when they are exactly as wide: `same_widths` on the font
+    drawn_in_your_copy: str  # a font the user attached their own copy of
+    drawn_in_own_copy: str  # a font whose copy in the file draws edits
     undo_redaction: str
     reopened: str
     export_left_out: str

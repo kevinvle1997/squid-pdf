@@ -15,6 +15,7 @@ import { noticeLines } from "../notices";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
+import { Fonts } from "./Fonts";
 import { Page } from "./Page";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
@@ -84,6 +85,7 @@ function Bar() {
           </>
         )}
       </span>
+      <Fonts />
       <Button onPress={() => void exportNow(editor)} isDisabled={exporting}>
         Export <kbd>{COMMAND}S</kbd>
       </Button>

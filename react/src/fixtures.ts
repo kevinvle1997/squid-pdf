@@ -26,6 +26,8 @@ export const COPY: Copy = {
   too_long: "{delta_pt} pt too long",
   substitute: "Edits here use {font}, which may be a different width from the original.",
   substitute_same_widths: "Edits here use {font}, whose letters are the same width as the original's.",
+  drawn_in_your_copy: "Edits here use your copy of this font.",
+  drawn_in_own_copy: "Edits here use the file's own copy of this font.",
   undo_redaction: "This text is redacted. Editing it undoes the redaction. Edit it anyway?",
   reopened: "The server no longer had this document, so it was opened again from this browser.",
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",

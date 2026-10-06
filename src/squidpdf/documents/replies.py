@@ -109,6 +109,8 @@ def _copy_in(said_in: str) -> Copy:
         "too_long": words.sentence("too_long", said_in),
         "substitute": words.sentence("substitute", said_in),
         "substitute_same_widths": words.sentence("substitute_same_widths", said_in),
+        "drawn_in_your_copy": words.sentence("drawn_in_your_copy", said_in),
+        "drawn_in_own_copy": words.sentence("drawn_in_own_copy", said_in),
         "undo_redaction": words.sentence("undo_redaction", said_in),
         "reopened": words.sentence("reopened", said_in),
         "export_left_out": words.sentence("export_left_out", said_in),

@@ -5,7 +5,12 @@ import { NOTHING_DRAWN } from "./render";
 
 describe("the lines under the bar", () => {
   test("every source is said, warnings first, and a sentence twice is said once", () => {
-    const notices = { document: [warn("Signed.")], export: plain("Downloaded contract.pdf."), reopen: null };
+    const notices = {
+      document: [warn("Signed.")],
+      export: plain("Downloaded contract.pdf."),
+      reopen: null,
+      font: null,
+    };
     const drawn = {
       ...NOTHING_DRAWN,
       notices: new Map([
