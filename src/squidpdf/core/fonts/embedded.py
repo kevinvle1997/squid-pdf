@@ -76,6 +76,9 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
     counts if its letter list (ToUnicode) says which code draws each letter;
     `draw` then writes those codes.
     """
+    # Letters drawn by little drawings in the file: no font program to write new ones with.
+    if page_font.kind == "type3":
+        raise FontUnusable(Message("font_letters_are_drawings"))
     # Not in the file at all: only named.
     if not page_font.is_embedded:
         raise FontUnusable(Message("font_not_in_file"))

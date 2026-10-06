@@ -106,7 +106,7 @@ class PdfDriver(Protocol):
         ...
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, including inside forms."""
+        """Every font the page uses, forms included; a Type3 by the name its text reads."""
         ...
 
     def text_font_name(self, xref: int) -> str | None:

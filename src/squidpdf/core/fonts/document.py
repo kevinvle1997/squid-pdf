@@ -251,10 +251,7 @@ class DocumentFonts:
         return self.cache.copy(font, partial(self._open_copy, font))
 
     def _open_copy(self, font: PageFont) -> FontCopy:
-        """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't.
-
-        It may not be stored, be unreadable, or have no way to be written to.
-        """
+        """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't."""
         return font_copy(font, open_embedded(self.driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:

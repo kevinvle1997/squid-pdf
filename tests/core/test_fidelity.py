@@ -170,6 +170,26 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
     assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
 
 
+def test_a_type3_font_is_a_substitute_in_its_own_weight_saying_why(type3, tmp_path):
+    """Its letters are drawings. Unmatched, it said "not stored" and redrew Regular."""
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(type3) as engine:
+        span = next(iter(engine.index()))
+        [report] = engine.assess(engine.index())
+        engine.remove([span], then_drawn=[LineToDraw(span, "Hi there")])
+        engine.draw(span, "Hi there")
+        engine.save(out)
+
+    expected = ("substitute", words.sentence("font_letters_are_drawings"))
+    assert_equal((report.state, _said(report)), expected, "fidelity, and why")
+    assert_equal(
+        report.substitute, "Liberation Sans Bold", "the face it names, Bold as described"
+    )
+    [drawn] = _drawn(out)
+    expected_drawn = ("Hi there", saved_as("Liberation Sans Bold"))
+    assert_equal((_text(drawn), drawn["font"]), expected_drawn, "what redrew, and in what")
+
+
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
     """No letter can be looked up in it, but its ToUnicode says which code writes each.
 
