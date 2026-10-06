@@ -11,6 +11,7 @@ What it guarantees. A change that breaks one changes this list in the same diff.
 - A broken pool is replaced before the next task, by just one new pool; `ready` does it too.
 - A task the pool broke under or lost before it started goes again, once; none runs twice.
 - A task it can't run, or broke under once started, is `no_workers`; the cause is logged.
+- An answer that can't make the trip back is a server error, and the pool works on.
 - A pool works only in the event loop it was made in: its lock and semaphore bind to it.
 - pebble's failures become Problems through `constants.WORKER_FAILURES`.
 - A request's line tallies its wait for a worker, and its task's tallies, answered or failed.
@@ -21,7 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import multiprocessing
+import pickle
 import shutil
 import sys
 import tempfile
@@ -46,9 +49,11 @@ from squidpdf.core import (
     LogController,
     LogEvent,
     Problem,
+    Tallies,
     Tally,
     WorkerAnswer,
     add_from_worker,
+    carried,
     current_request_id,
     in_request,
     ms_since,
@@ -81,6 +86,13 @@ _THIS_WORKER = _WorkerWarmth()
 
 class _NeverStarted(Exception):
     """The pool broke before any worker started the task, so the task did no work."""
+
+
+class _CantMakeTheTrip(Exception):
+    """A task's result or failure that can't be pickled or read back: our bug, not pebble's.
+
+    Made by `_cant_make_the_trip`, with one message, so it makes the trip itself.
+    """
 
 
 @dataclass(slots=True)
@@ -165,14 +177,14 @@ class WorkerPool:
         """
         self._require_own_loop()
         try:
-            return (await self._running()).active  # starts a new pool's workers
-        except BrokenProcessPool:  # raised by pebble when it can't start a worker process
+            return _is_active(await self._running())  # starts a new pool's workers
+        except BrokenProcessPool:  # raised when a new pool can't start its workers
             return False
 
     async def _running(self) -> ProcessPool:
         """The pool, or a new one if a worker died between tasks and broke it."""
         async with self.replacing:
-            if not self.slot.pool.active:  # pebble stops taking tasks for good after that
+            if not _is_active(self.slot.pool):  # pebble stops taking tasks for good after that
                 broken = self.slot.replace()
                 broken.stop()
                 await asyncio.to_thread(broken.join)  # waits for pebble's own threads
@@ -203,15 +215,17 @@ class WorkerPool:
             raise TooSlow()
         try:
             pool = await self._running()
-        except BrokenProcessPool as broke:  # raised by pebble when no worker process can start
+        except BrokenProcessPool as broke:  # raised when no worker process or pipe can be had
             _log.write(LogEvent.NO_WORKER_STARTED, broke)
             raise
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
             job = partial(_noted_start, str(start), request_id=current_request_id(), task=task)
             future = pool.submit(job, time_left)
-        except RuntimeError as refused:  # raised by pebble: the pool broke, or no worker starts
+        # Raised by pebble: the pool broke, or no worker or pipe could be had for a new one.
+        except (RuntimeError, OSError) as refused:
             _log.write(LogEvent.POOL_REFUSED_TASK, refused)
+            pool.stop()  # broken, or half started: the next try gets a new one
             raise _NeverStarted() from refused
         # Only for a wait pebble never answers on an unbroken pool: its timeout comes first.
         backstop = asyncio.timeout(time_left + constants.WORKER_START_S)
@@ -223,7 +237,6 @@ class WorkerPool:
                 _log.write(LogEvent.POOL_NEVER_ANSWERED)
             raise
         except BrokenProcessPool as broke:  # the pool broke: pebble says so, or lost the task
-            # Its cause can be a bug of ours, such as a result that can't be sent back.
             _log.write(LogEvent.POOL_BROKE, broke)
             # Its workers stopped first, so none can still start the task once it's looked at.
             await self._running()
@@ -234,7 +247,7 @@ class WorkerPool:
             _forget_start(start)
 
     async def _tallied_answer[T](
-        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[T]]
+        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[bytes]]
     ) -> T:
         """The task's result, with what it tallied in its worker added to the request's line."""
         try:
@@ -243,11 +256,13 @@ class WorkerPool:
             add_from_worker(tallies_carried_by(failure))
             raise
         add_from_worker(answer.tallies)
-        return answer.result
+        # Off the loop: it may hold a whole file.
+        result = await asyncio.to_thread(_read_back, answer.result)
+        return cast(T, result)  # pickled from `task()`, which returns a T
 
-    async def _answer_from[T](
-        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[T]]
-    ) -> WorkerAnswer[T]:
+    async def _answer_from(
+        self, pool: ProcessPool, future: ProcessFuture[WorkerAnswer[bytes]]
+    ) -> WorkerAnswer[bytes]:
         """pebble's answer to a task sent to `pool`, watching that the pool doesn't lose it.
 
         Raises BrokenProcessPool if it does: pebble says nothing of a task sent as it gives up.
@@ -294,14 +309,57 @@ def start_pool() -> WorkerPool:
 
 def _noted_start[T](
     start: str, *, request_id: str | None, task: Callable[[], T]
-) -> WorkerAnswer[T]:
+) -> WorkerAnswer[bytes]:
     """In a worker: note that it started `task` by making the file `start`, then run it.
 
     Its lines carry the id of the request it's for, and what it tallied goes back
-    with it. The library's failures come back as the Problems they mean.
+    with it. Its result is pickled here: pebble's threads then never read one of ours.
     """
     Path(start).touch()
-    return in_request(request_id, partial(_run_tallied, task))
+    try:
+        answer = in_request(request_id, partial(_run_tallied, task))
+    except Exception as failure:  # the task's own, which pebble sends back as it is
+        _require_trip(failure)
+        raise
+    return WorkerAnswer(_pickled(answer.result, tallies=answer.tallies), answer.tallies)
+
+
+def _pickled(result: object, *, tallies: Tallies) -> bytes:
+    """In a worker: `result` as bytes to send back, or _CantMakeTheTrip carrying `tallies`."""
+    # Into a stream, not `pickle.dumps`, whose buffer grows past the result's size.
+    sent_back = io.BytesIO()
+    try:
+        pickle.Pickler(sent_back, protocol=pickle.HIGHEST_PROTOCOL).dump(result)
+    except MemoryError:  # past the worker's memory ceiling: too heavy, as any task is
+        raise
+    except Exception as problem:  # pickling can fail in many ways on an object
+        unsent = _cant_make_the_trip(type(result).__name__, problem)
+        raise carried(unsent, tallies) from problem
+    return sent_back.getvalue()  # the stream's own buffer, not a copy
+
+
+def _require_trip(failure: Exception) -> None:
+    """In a worker: raise _CantMakeTheTrip in `failure`'s place unless it can make the trip."""
+    try:
+        pickle.loads(pickle.dumps(failure))  # our own bytes, made just now
+    except MemoryError:  # past the worker's memory ceiling: too heavy, as any task is
+        raise
+    except Exception as problem:  # pickling or reading back can fail in many ways
+        unsent = _cant_make_the_trip(type(failure).__name__, problem)
+        raise carried(unsent, tallies_carried_by(failure)) from problem
+
+
+def _cant_make_the_trip(kind: str, problem: Exception) -> _CantMakeTheTrip:
+    """What kind of answer can't go back, and what stopped it: never the answer's own words."""
+    return _CantMakeTheTrip(f"{kind} can't make the trip back: {type(problem).__name__}")
+
+
+def _read_back(sent_back: bytes) -> object:
+    """A task's result as it was, or _CantMakeTheTrip if it can't be read back."""
+    try:
+        return pickle.loads(sent_back)  # our own worker's, made by `_pickled`
+    except Exception as problem:  # reading back can fail in many ways on an object
+        raise _cant_make_the_trip("a task's result", problem) from problem
 
 
 def _run_tallied[T](task: Callable[[], T]) -> T:
@@ -313,6 +371,21 @@ def _run_tallied[T](task: Callable[[], T]) -> T:
         return result_of(task)
     finally:
         tally(Tally.WORKER_MS, ms_since(began))
+
+
+def _is_active(pool: ProcessPool) -> bool:
+    """Whether pebble's pool takes tasks, starting a new one first.
+
+    Raises BrokenProcessPool when a new one can't start its pipes, threads or workers,
+    and stops it: the next task gets a new pool, not this one started again.
+    """
+    try:
+        return pool.active
+    # Raised by pebble starting a new pool: no files left for its pipes, no thread to start.
+    except (OSError, RuntimeError) as cant_start:
+        # Started again, it would wire its workers to the pipes of the start that failed.
+        pool.stop()
+        raise BrokenProcessPool("The worker pool couldn't start") from cant_start
 
 
 def _has_started(start: Path) -> bool:

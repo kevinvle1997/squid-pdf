@@ -27,7 +27,7 @@ export const COPY: Copy = {
   substitute: "Edits here use {font}, which may be a different width from the original.",
   substitute_same_widths: "Edits here use {font}, whose letters are the same width as the original's.",
   undo_redaction: "This text is redacted. Editing it undoes the redaction. Edit it anyway?",
-  reopened: "This document's hour ran out, so it was opened again from this browser.",
+  reopened: "The server no longer had this document, so it was opened again from this browser.",
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   options: {},

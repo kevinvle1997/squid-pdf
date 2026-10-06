@@ -523,23 +523,33 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
     assert_equal(worked_out, [True, False], "which read worked the analysis out again")
 
 
+class _NoWorkerAsked:
+    """A pool that fails the test if it's asked: a busy one would answer too_slow instead."""
+
+    async def run(self, _timeout, _task):
+        pytest.fail("a worker was asked about a document already gone")
+
+
 def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_back(
     app, mine, doc, monkeypatch
 ):
-    """Not found, whatever is asked first, so the browser opens each again from its copy.
+    """Not found, whatever is asked first and before any worker, so the browser opens it again.
 
     An index is built only at upload, so no span id the browser holds moves. A page is
     refused too: answered while a read worked the document out again, it would never load.
     """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
+    monkeypatch.setattr(app.state, "pool", _NoWorkerAsked())
     monkeypatch.setattr(constants, "DOCUMENT_FORMAT", constants.DOCUMENT_FORMAT + 1)
     with pytest.raises(Gone):  # the index kept before reads as not there
         store.require_index(store.root() / doc["id"])
     url = f"/api/documents/{doc['id']}"
     page_params = {"scale": 1, "build": doc["build"]}
+    whole_page = {"edits": [], "regions": [{"page": 0}], "scale": 1}
 
     assert_problem(mine.get(f"{url}/pages/0", params=page_params), "not_found", 404)
     assert_problem(mine.get(url), "not_found", 404)
+    assert_problem(mine.post(f"{url}/render", json=whole_page), "not_found", 404)
+    assert_problem(mine.post(f"{url}/export", json={"edits": []}), "not_found", 404)
     # Nothing the read did brought it back.
     assert_problem(mine.get(f"{url}/pages/0", params=page_params), "not_found", 404)
 

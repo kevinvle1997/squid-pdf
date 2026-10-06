@@ -77,9 +77,13 @@ def find(doc_id: str) -> tuple[Path, str] | None:
         return None
     folder = root() / doc_id
     try:
-        return folder, (folder / _OWNER).read_text()
+        owner_digest = (folder / _OWNER).read_text()
     except FileNotFoundError:  # unknown, or swept a moment ago
         return None
+    # Its index is kept in another format: it reads as gone, so the browser opens it again.
+    if not (folder / _index_file()).exists():
+        return None
+    return folder, owner_digest
 
 
 def open_to_analyse(folder: Path) -> Engine:

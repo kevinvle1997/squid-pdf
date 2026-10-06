@@ -70,8 +70,9 @@ face_not_trimmed = "{font} went into the file whole, not only the letters used, 
 tags_dropped = "The tags that tell screen readers how to read this file went with the pages left out, so this file has none."
 
 # Said by the browser after its own steps, not the server's.
-# The document's hour ran out mid-edit, and the browser uploaded its copy again.
-reopened = "This document's hour ran out, so it was opened again from this browser."
+# The server no longer had the document mid-edit (its hour ran out, or a deploy retired it),
+# and the browser uploaded its copy again.
+reopened = "The server no longer had this document, so it was opened again from this browser."
 # An export that left some edits out, because they point at nothing in the document.
 export_left_out = "Downloaded, but some changes were left out: they point at text that isn't in this document."
 

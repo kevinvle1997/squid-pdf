@@ -62,7 +62,7 @@ export function upload(file: Blob, onProgress: (sent: number, total: number) => 
   });
 }
 
-/** Whether the server still has the document: false once its hour has run out. */
+/** Whether the server still has the document: false once its hour has run out, or a deploy retired it. */
 export async function stillThere(docId: string): Promise<boolean> {
   try {
     await send(`/api/documents/${docId}`, { method: "GET" });

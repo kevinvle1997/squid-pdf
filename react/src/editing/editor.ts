@@ -83,7 +83,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     said: "",
     exporting: false,
   });
-  // The hour ran out and the document opened again: the same spans, under a new id.
+  // The server no longer had the document, and it opened again: the same spans, under a new id.
   const reopener = new Reopener(file, opened, (doc) =>
     store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } }),
   );
