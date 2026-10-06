@@ -495,13 +495,13 @@ def _note_pid_then_work(folder: Path) -> None:
 
 def _leave_while_it_works(
     runner: asyncio.Runner, pool: WorkerPool, folder: Path, timeout: float
-) -> int:
+) -> tuple[int, bool]:
     """Start a task, leave once it's working, and wait until it's done or its worker gone.
 
-    Returns the worker's process id.
+    Returns the worker's process id, and whether the task was done as the caller was let go.
     """
 
-    async def leave() -> int:
+    async def leave() -> tuple[int, bool]:
         task = partial(_note_pid_then_work, folder)
         caller = asyncio.ensure_future(pool.run(timeout, task))
         while not (folder / "pid").exists():
@@ -509,6 +509,7 @@ def _leave_while_it_works(
         caller.cancel()
         with contextlib.suppress(asyncio.CancelledError):  # raised: we cancelled it
             await caller
+        done_when_let_go = (folder / "done").exists()
         worker_pid = int((folder / "pid").read_text())
 
         def ended() -> bool:
@@ -516,22 +517,29 @@ def _leave_while_it_works(
 
         # Inside the loop: when it ends, anything still running is cancelled.
         await asyncio.to_thread(_wait_until, ended, _ENOUGH_S)
-        return worker_pid
+        return worker_pid, done_when_let_go
 
     return runner.run(leave())
 
 
 def test_a_render_whose_browser_left_finishes_and_keeps_its_worker(runner, pool, tmp_path):
-    """Stopping it would kill its worker, and the next task would wait for a new one."""
-    worker_pid = _leave_while_it_works(runner, pool, tmp_path, RENDER_TIMEOUT_S)
+    """Stopping it would kill its worker, and the next task would wait for a new one.
 
-    assert_true((tmp_path / "done").exists(), "the render finished its work")
+    Its caller is let go only then, so whatever counts its jobs counts this one till then.
+    """
+    worker_pid, done_when_let_go = _leave_while_it_works(
+        runner, pool, tmp_path, RENDER_TIMEOUT_S
+    )
+
+    assert_true(done_when_let_go, "the render had finished its work as its caller was let go")
     assert_false(_is_gone(worker_pid), "the render's worker is still alive")
 
 
 def test_an_export_whose_browser_left_is_stopped(runner, pool, tmp_path):
     """Long enough that stopping it is worth a new worker."""
-    worker_pid = _leave_while_it_works(runner, pool, tmp_path, EXPORT_TIMEOUT_S)
+    worker_pid, _done_when_let_go = _leave_while_it_works(
+        runner, pool, tmp_path, EXPORT_TIMEOUT_S
+    )
 
     assert_true(_is_gone(worker_pid), "the export's worker was stopped")
     assert_false((tmp_path / "done").exists(), "the export didn't run to its end")

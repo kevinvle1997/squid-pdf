@@ -26,6 +26,7 @@ from squidpdf.documents.errors import (
 )
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.types import KeptAnalysis, Loaded
+from squidpdf.documents.upload import disk_held
 
 # Why the engine turned a copy away, by its reason, as the Problem that tells the user; any
 # other reason (another width, too few letters shared) is a mismatch.
@@ -53,7 +54,8 @@ class AttachController:
         """Keep `chunks` as the copy of `font_name`, if it's that font; judge every span again.
 
         `declared` is the size the request states. Refuses a file too large, one
-        more copy than a document keeps, and a file that isn't the font, keeping nothing.
+        more copy than a document keeps, and a file that isn't the font, keeping nothing;
+        and any file while the disk is nearly full, as an upload is.
         """
         name = strip_subset(font_name)
         # Read as module attributes, so a test can lower the limits.
@@ -66,7 +68,8 @@ class AttachController:
             raise TooManyFonts(constants.MAX_FONTS)
         arriving = await asyncio.to_thread(store.arriving_font, doc.folder)
         try:
-            await _save_font(chunks, to=arriving)
+            async with disk_held(declared, most=constants.MAX_FONT_BYTES):
+                await _save_font(chunks, to=arriving)
             kept = await self._enqueue_attach_font(doc.folder, name=name, arrived=arriving)
         finally:
             # Kept under its name by now, or refused: either way, nothing to keep here.

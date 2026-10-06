@@ -21,9 +21,16 @@ PAGE_SCALES = (1, 2, 3, 4)
 
 # Uploads. Their size and page limits are documents' own.
 UPLOADS_PER_MINUTE = 20  # per IP
+# Per IP, PDFs and copies of fonts together: each holds disk against the floor until it's in.
+UPLOADS_UNDER_WAY = 2
 
 # Every request body but an upload's or a font's, which check their own size.
 MAX_BODY_BYTES = 5 * _MB
+
+# Each address's requests to routes that run a job, so one can't hold every worker. Past
+# those at work, the rest wait their turn holding none: page images near the view ask at once.
+JOBS_AT_WORK = 3  # per IP
+JOBS_WAITING = 30  # per IP, beyond those at work; past both, refused
 
 # Workers. Each feature's timeouts are in its own constants.py.
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each

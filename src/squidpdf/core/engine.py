@@ -91,6 +91,10 @@ class Engine:
         """How many pages the document has, without reading any of them."""
         return self.driver.page_count()
 
+    def drop_active_content(self) -> bool:
+        """Delete what acts on its own or reaches outside the file; whether there was any."""
+        return self.driver.drop_active_content()
+
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
         return self.driver.pages()

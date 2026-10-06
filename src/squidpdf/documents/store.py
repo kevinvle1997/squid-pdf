@@ -42,6 +42,8 @@ from squidpdf.documents.types import KeptAnalysis
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
+# There only when the original had what acts on its own taken out (`drop_active_content`).
+_ACTIVE_CONTENT_DROPPED = "active-content-dropped"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
 # The user's own copies of a document's fonts, in its folder, each `<name's digest>.<digest>`:
@@ -290,6 +292,25 @@ def full_disk_refused() -> Iterator[None]:
         raise ServerFull from exc
 
 
+def replace_original(folder: Path, write: Callable[[str], object]) -> None:
+    """Put the file `write` writes, to the path it's handed, in place of the original.
+
+    In one step, as `_write_whole` writes: whoever reads the original meanwhile reads all
+    of the old one or of the new. The path is a `str`, as the engine's save takes it.
+    """
+    _replace_whole(folder / ORIGINAL, lambda part: write(str(part)))
+
+
+def keep_active_content_dropped(folder: Path) -> None:
+    """Note that the original had what acts on its own taken out, for each reply to say."""
+    _write_whole(folder / _ACTIVE_CONTENT_DROPPED, b"")
+
+
+def active_content_dropped(folder: Path) -> bool:
+    """Whether the original had what acts on its own taken out when it came in."""
+    return (folder / _ACTIVE_CONTENT_DROPPED).exists()
+
+
 def _write_whole(path: Path, data: bytes) -> None:
     """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
 
@@ -297,14 +318,19 @@ def _write_whole(path: Path, data: bytes) -> None:
     would read as broken JSON, and each visit restarts the hour, so it would never go.
     Raises Gone if the document was deleted meanwhile, and ServerFull if the disk is full.
     """
+    _replace_whole(path, lambda part: part.write_bytes(data))
+
+
+def _replace_whole(path: Path, write: Callable[[Path], object]) -> None:
+    """Put what `write` writes to a file beside `path` in its place, renamed over it at once."""
     with full_disk_refused():
         try:
             handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
         except FileNotFoundError as exc:  # its folder was deleted since it was found
             raise Gone from exc
+        os.close(handle)  # `write` opens it by its path
         try:
-            with os.fdopen(handle, "wb") as out:
-                out.write(data)
+            write(Path(part))
             os.replace(part, path)
         except FileNotFoundError as exc:  # its folder was deleted mid-write
             Path(part).unlink(missing_ok=True)  # most likely gone with the folder already

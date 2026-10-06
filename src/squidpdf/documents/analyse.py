@@ -34,20 +34,36 @@ from squidpdf.documents.types import (
 
 
 def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
-    """Index a new upload, keep its pages, and analyse it.
+    """Take out what acts on its own, index the new upload, keep its pages, and analyse it.
 
     The one place an index is built, so no span id the browser holds ever moves.
     Raises TooManyPages past `max_pages`, before reading a page.
     """
     path = Path(folder)
+    _take_in(path, max_pages)
     attached = store.attached_files(path)
     with store.open_to_analyse(path, attached) as engine:
-        if engine.page_count() > max_pages:
-            raise TooManyPages(max_pages)
         index = engine.index()
         store.save_index(path, index)
         store.save_pages(path, engine.pages())
         return _analysed(engine, path, index, attached=attached)
+
+
+def _take_in(path: Path, max_pages: int) -> None:
+    """Refuse a file past `max_pages`; rewrite one with what acts on its own, without it.
+
+    Before the index, so every span id is the rewritten file's. Nothing here needs what
+    goes, and a viewer would run it from the file the user downloads.
+    """
+    with store.open_original(path) as engine:
+        if engine.page_count() > max_pages:
+            raise TooManyPages(max_pages)
+        # Nothing to take out: the original stays exactly as it was sent.
+        if not engine.drop_active_content():
+            return
+        # Nothing was added, so saving says nothing.
+        store.replace_original(path, engine.save)
+    store.keep_active_content_dropped(path)
 
 
 def analyse(folder: str) -> KeptAnalysis:
@@ -94,6 +110,7 @@ def _analysed(
     ]
     analysis: Analysis = {
         "build": BUILD,
+        "active_content_dropped": store.active_content_dropped(path),
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(path)
@@ -118,6 +135,7 @@ def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
     """The analysis as kept and sent: its spans apart from the rest, and a digest of both."""
     facts: AnalysisFacts = {
         "build": analysis["build"],
+        "active_content_dropped": analysis["active_content_dropped"],
         "pages": analysis["pages"],
         "fonts": analysis["fonts"],
     }

@@ -114,7 +114,7 @@ bad_reference = "A redaction points at text that isn't in this document: {span_i
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."
 method_not_allowed = "Something went wrong sending this to us. Reload the page and try again."
-rate_limited = "Too many files at once. Try again in a minute."
+rate_limited = "Too much at once from here. Try again in a minute."
 # support@example.com is a placeholder until there's a real inbox: the same in every language.
 too_slow = "This took too long, so we stopped. Try again, and if it keeps happening, email support@example.com."
 too_heavy = "This PDF needs more memory than we can give it. If it keeps happening, email support@example.com."
@@ -127,6 +127,7 @@ no_workers = "We can't work on files right now. Try again in a few minutes."
 
 # A notice on an upload that worked, but may not be what the user expected.
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
+active_content_dropped = "This PDF had scripts, attached files or links that open other files. They're taken out, so the file you download has none."
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
 # A list whose placeholder has no join_<its name> here is joined as items.

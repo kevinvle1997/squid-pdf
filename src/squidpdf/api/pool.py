@@ -8,6 +8,7 @@ What it guarantees. A change that breaks one changes this list in the same diff.
 
 - Waiting for a worker counts toward the timeout; its start doesn't, up to `WORKER_START_S`.
 - A caller who leaves drops a waiting task, and stops one timed at `STOP_WHEN_LEFT_S` or more.
+- A caller who leaves is let go once its worker is, so what counts its jobs counts it till then.
 - A broken pool is replaced before the next task, by just one new pool; `ready` does it too.
 - A task the pool broke under or lost before it started goes again, once; none runs twice.
 - A task it can't run, or broke under once started, is `no_workers`; the cause is logged.
@@ -156,6 +157,8 @@ class WorkerPool:
             if timeout >= constants.STOP_WHEN_LEFT_S:
                 job.cancel()  # does nothing to a task that has finished
             job.add_done_callback(_log_unexpected)
+            # Its worker is busy till then: a turn held by the caller lasts as long.
+            await asyncio.wait([job])
             raise
         # pebble's failures as the Problems they mean; a bug goes up as it is, to be logged.
         return API_ERRORS.result_of(job.result)

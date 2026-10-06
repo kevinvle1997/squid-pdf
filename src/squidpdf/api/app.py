@@ -20,7 +20,7 @@ from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
 from squidpdf.api.errors.http import BugBoundary, ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
-from squidpdf.api.rate import RecentUploads
+from squidpdf.api.rate import RecentUploads, Turns
 from squidpdf.core import LogController
 from squidpdf.documents import api as documents
 from squidpdf.editing import api as editing
@@ -43,8 +43,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Workers and the expiry sweeper start with the app and stop with it."""
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = start_pool()
-    # Uploads by address, kept per app, so each app (a test's too) counts its own.
+    # What each address has going, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentUploads()
+    app.state.upload_turns = Turns()
+    app.state.job_turns = Turns()
     sweeper = asyncio.create_task(documents.sweep_forever())
     try:
         yield

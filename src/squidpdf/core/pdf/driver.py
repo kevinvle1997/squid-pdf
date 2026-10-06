@@ -267,6 +267,14 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def drop_active_content(self) -> bool:
+        """Delete what acts on its own or reaches outside the file; whether there was any.
+
+        Scripts, actions but a move within the file or a link to the web, attached files,
+        and a stream kept in another file. A link's box stays.
+        """
+        ...
+
     def has_tags(self) -> bool:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
         ...

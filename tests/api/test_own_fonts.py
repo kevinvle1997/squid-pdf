@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from urllib.parse import quote
 
@@ -218,6 +219,18 @@ def test_a_font_past_the_limit_on_other_bodies_still_comes_in(mine, poppins_doc,
     attached = _attach(mine, poppins_doc, font["name"], POPPINS.read_bytes())
 
     assert_equal(attached.status_code, 200, "status of an attach past the edit list's limit")
+
+
+def test_a_font_is_refused_while_the_disk_is_nearly_full(mine, poppins_doc, monkeypatch):
+    """A copy streams to disk as an upload does, so it holds against the same floor."""
+    whole_disk = shutil.disk_usage(store.root()).total
+    monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
+    font = _only_font(poppins_doc)
+
+    refused = _attach(mine, poppins_doc, font["name"], POPPINS.read_bytes())
+
+    assert_problem(refused, "server_full", 503)
+    assert_equal(_kept_fonts(poppins_doc), [], "font files kept after a refusal")
 
 
 def test_more_fonts_than_a_document_keeps_are_refused(mine, poppins_doc, monkeypatch):

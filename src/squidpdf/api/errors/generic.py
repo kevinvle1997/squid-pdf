@@ -38,7 +38,7 @@ class ServerError(Problem):
 
 
 class RateLimited(Problem):
-    """Too many uploads from one address in a minute: `UPLOADS_PER_MINUTE`."""
+    """Too much from one address: uploads this minute, uploads at once, or jobs waiting."""
 
     type = "rate_limited"
     status = 429

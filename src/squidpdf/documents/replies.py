@@ -50,7 +50,11 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
         "expires_at": time_of(expires_at),
         "fit": _fit_rules(),
         "copy": _copy_in(said_in),
-        "notices": _notices_in(has_text=kept.spans != _NO_SPANS, said_in=said_in),
+        "notices": _notices_in(
+            has_text=kept.spans != _NO_SPANS,
+            active_content_dropped=facts["active_content_dropped"],
+            said_in=said_in,
+        ),
     }
     return orjson.dumps({**body, "spans": orjson.Fragment(kept.spans)})
 
@@ -123,9 +127,15 @@ def _copy_in(said_in: str) -> Copy:
     }
 
 
-def _notices_in(*, has_text: bool, said_in: str) -> list[DocumentNoticeInfo]:
+def _notices_in(
+    *, has_text: bool, active_content_dropped: bool, said_in: str
+) -> list[DocumentNoticeInfo]:
     """What may not be what the user expected of this document, in `said_in`."""
+    said: list[Message] = []
     # A scan has no text layer: say so, rather than show a page nothing on can be edited.
-    if has_text:
-        return []
-    return [{"type": "no_text", **words.said(Message("no_text"), said_in)}]
+    if not has_text:
+        said.append(Message("no_text"))
+    # Taken out when it came in: the file downloaded lacks what the user's had.
+    if active_content_dropped:
+        said.append(Message("active_content_dropped"))
+    return [{"type": message.key, **words.said(message, said_in)} for message in said]

@@ -56,12 +56,17 @@ async def _admit_pdf_only(request: Request) -> None:
         raise NotSentAsPdf(debug=f"sent as {sent_as!r}")
 
 
-# Its type checked, then counted, before anything else: neither reads any of the body.
+# Its type checked, then counted, before anything else: none reads any of the body. Under
+# way before it counts for the minute, so one refused as too many at once spends none.
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=Document,
-    dependencies=[Depends(_admit_pdf_only), Depends(rate.admit_upload)],
+    dependencies=[
+        Depends(_admit_pdf_only),
+        Depends(rate.upload_turn),
+        Depends(rate.admit_upload),
+    ],
 )
 async def upload(
     request: Request,
@@ -117,7 +122,12 @@ def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
     store.delete(doc.folder)
 
 
-@router.put("/{doc_id}/fonts/{font_name:path}", response_model=Document)
+# Under way as an upload is: it streams to disk, however slowly it's sent.
+@router.put(
+    "/{doc_id}/fonts/{font_name:path}",
+    response_model=Document,
+    dependencies=[Depends(rate.upload_turn)],
+)
 async def attach_font(
     doc: Annotated[Loaded, Depends(load)],
     *,
