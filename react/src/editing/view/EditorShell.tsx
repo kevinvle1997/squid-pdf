@@ -9,10 +9,11 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { changedCount, closeEditor, createEditor, substitutedCount, unexported } from "../editor";
+import { changedCount, closeEditor, createEditor, unexported, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { noticeLines } from "../notices";
+import { shallowEqual } from "../store";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
@@ -73,7 +74,7 @@ function Bar() {
   const editor = useEditor();
   const pages = useEditorState((state) => state.doc.pages.length);
   const changed = useEditorState(changedCount);
-  const substituted = useEditorState(substitutedCount);
+  const warned = useEditorState(warnedCount, shallowEqual);
   const exporting = useEditorState((state) => state.exporting);
   // The document opened again, or couldn't: said in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
@@ -90,10 +91,10 @@ function Bar() {
       )}
       <span className={styles.status}>
         {changed > 0 && counted(changed, { one: "change", other: "changes" })}
-        {substituted > 0 && (
+        {warned.count > 0 && (
           <>
             {" · "}
-            <Warn>{substituted}</Warn> in a similar font
+            <Warn>{warned.count}</Warn> {warned.label}
           </>
         )}
       </span>

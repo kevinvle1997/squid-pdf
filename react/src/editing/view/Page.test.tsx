@@ -219,6 +219,33 @@ describe("a page", () => {
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });
 
+  test("text an edit won't match has the dashed warning line, and its note says why, warned", async () => {
+    const turned = aSpan({
+      id: "s4",
+      text: "Turned",
+      fidelity: "approximate",
+      why: { code: "turned_text", params: {} },
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [turned], fonts: [aFont("Times-Roman")] }),
+      2,
+    );
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "Turned" });
+    await expect.element(mark).toBeInTheDocument();
+    const line = getComputedStyle(mark.element(), "::after");
+    expect(line.backgroundImage).toContain("repeating-linear-gradient");
+    await mark.hover();
+    const note = screen.getByText(COPY.approximate.turned_text ?? "");
+    await expect.element(note).toBeVisible();
+    const warn = document.body.appendChild(document.createElement("span"));
+    warn.style.color = "var(--warn)";
+    expect(getComputedStyle(note.element()).color).toBe(getComputedStyle(warn).color);
+    warn.remove();
+  });
+
   test("a click shows a span's note; a click's focus alone doesn't", async () => {
     const substituted = aSpan({
       id: "s3",

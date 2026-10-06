@@ -189,6 +189,27 @@ describe("the user's own copy of a font", () => {
     await expect.element(screen.getByRole("button", { name: "Use your copy" })).toBeVisible();
   });
 
+  test("shares the chip with why an edit won't match, side by side, neither over the other", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    // The file's own Times draws it, turned on the page, and has no Y.
+    const turned = aSpan({ ...span, fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    const own = aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={own} />);
+    await typeInto(screen, "was Yes");
+
+    const offer = screen.getByRole("button", { name: "Use your copy" });
+    const why = screen.getByText(COPY.approximate.turned_text ?? "", { exact: false }).first();
+    await expect.element(offer).toBeVisible();
+    await expect.element(why).toBeVisible();
+    const said = why.element().getBoundingClientRect();
+    const pressed = offer.element().getBoundingClientRect();
+    const apart = pressed.left >= said.right || pressed.top >= said.bottom;
+    expect(apart).toBe(true);
+    // On the page, not past its edge: the offer stays where a pointer can reach it.
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element().getBoundingClientRect();
+    expect(pressed.right).toBeLessThanOrEqual(sheet.right);
+  });
+
   test("a font file dropped on the field is the user's copy of the span's font", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);

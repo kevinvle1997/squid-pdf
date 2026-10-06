@@ -31,7 +31,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
-  const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("; "));
+  // One trouble a line: a sentence of the server's, then the fit's own.
+  const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);

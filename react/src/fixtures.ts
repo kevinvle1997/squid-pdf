@@ -34,7 +34,9 @@ export const COPY: Copy = {
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",
   options: {},
-  approximate: {},
+  approximate: {
+    turned_text: "This text is turned on the page, and edits are drawn level, so an edit here will look different.",
+  },
 };
 
 /** A line of ten-point Times near the top of the first page, reading "was <id>". */

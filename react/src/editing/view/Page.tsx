@@ -213,6 +213,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
     formField: span.form_field,
+    why: span.why,
     font: page.fonts.get(span.font),
     edited: readings.get(span.id),
     fit: page.fits[span.id],

@@ -234,13 +234,19 @@ export function changedCount(state: EditorState): number {
   return state.reading.spans.size;
 }
 
-/** How many changed spans are drawn in a substitute (the reader's "similar font"), not the file's own. */
-export function substitutedCount(state: EditorState): number {
+/**
+ * How many changed spans won't match: drawn in a substitute (the reader's "similar font"), or in
+ * their own font but unlike the text around them. Once one is the latter, all "will look different".
+ */
+export function warnedCount(state: EditorState): { count: number; label: string } {
   let count = 0;
+  let approximate = false;
   for (const { span, replaced } of state.reading.spans.values()) {
     const inSubstitute = state.layout.fonts.get(span.font)?.substitute != null;
     const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
-    if (replaced && (inSubstitute || missing.length > 0)) count++;
+    if (!replaced) continue;
+    if (span.why !== null) approximate = true;
+    if (inSubstitute || missing.length > 0 || span.why !== null) count++;
   }
-  return count;
+  return { count, label: approximate ? "will look different" : "in a similar font" };
 }

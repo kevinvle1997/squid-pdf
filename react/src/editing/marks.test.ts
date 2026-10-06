@@ -13,8 +13,9 @@ const substitutedFont = aFont("Arial", {
 
 describe("what a span's mark shows", () => {
   test("a span in its own font, unedited, has nothing to say", () => {
-    expect(lookOf({ formField: false, font: ownFont, edited: undefined, fit: undefined, copy })).toEqual({
+    expect(lookOf({ formField: false, why: null, font: ownFont, edited: undefined, fit: undefined, copy })).toEqual({
       substituted: false,
+      approximate: false,
       formField: false,
       changed: false,
       trouble: false,
@@ -23,7 +24,14 @@ describe("what a span's mark shows", () => {
   });
 
   test("before any edit, a similar font is said, and warned when its widths differ", () => {
-    const look = lookOf({ formField: false, font: substitutedFont, edited: undefined, fit: undefined, copy });
+    const look = lookOf({
+      formField: false,
+      why: null,
+      font: substitutedFont,
+      edited: undefined,
+      fit: undefined,
+      copy,
+    });
     expect(look.substituted).toBe(true);
     expect(look.note).toEqual({
       warn: true,
@@ -34,21 +42,28 @@ describe("what a span's mark shows", () => {
 
   test("after an edit, the server's verdict comes first, and only while the span is still changed", () => {
     const fit = aFit({ message: "2.0 pt too long, so it was shrunk" });
-    expect(lookOf({ formField: false, font: substitutedFont, edited: changed, fit, copy })).toMatchObject({
+    expect(lookOf({ formField: false, why: null, font: substitutedFont, edited: changed, fit, copy })).toMatchObject({
       changed: true,
       trouble: true,
       note: { warn: true, said: "2.0 pt too long, so it was shrunk", why: null },
     });
     // Put back, before its page is drawn again: the old verdict no longer applies.
-    expect(lookOf({ formField: false, font: ownFont, edited: undefined, fit, copy })).toMatchObject({
+    expect(lookOf({ formField: false, why: null, font: ownFont, edited: undefined, fit, copy })).toMatchObject({
       trouble: false,
       note: null,
     });
   });
 
   test("before any edit, text a form field draws says an edit here is left out, whatever its font", () => {
-    const look = lookOf({ formField: true, font: substitutedFont, edited: undefined, fit: undefined, copy });
+    const look = lookOf({ formField: true, why: null, font: substitutedFont, edited: undefined, fit: undefined, copy });
     expect(look.formField).toBe(true);
     expect(look.note).toEqual({ warn: true, said: copy.form_field_not_edited, why: null });
+  });
+
+  test("before any edit, text the file's own font draws but an edit won't match says why, warned", () => {
+    const why = { code: "turned_text" as const, params: {} };
+    const look = lookOf({ formField: false, why, font: ownFont, edited: undefined, fit: undefined, copy });
+    expect(look.approximate).toBe(true);
+    expect(look.note).toEqual({ warn: true, said: copy.approximate.turned_text, why: null });
   });
 });

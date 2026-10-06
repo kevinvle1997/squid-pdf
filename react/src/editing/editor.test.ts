@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { changedCount, createEditor, type Editor, putBack, redo, substitutedCount, undo, unexported } from "./editor";
+import { changedCount, createEditor, type Editor, putBack, redo, undo, unexported, warnedCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
 import { edit, enter, finish, troublesIn, typeInto } from "./typing";
@@ -160,12 +160,24 @@ describe("an edit", () => {
     expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 
-  test("the bar counts changes, and the ones drawn in a similar font", () => {
+  test("the bar counts changes, and the ones that won't match: in a similar font, or once one won't, looking different", () => {
     typed("own", "now");
     typed("substituted", "now");
-    const state = editor.store.get();
-    expect(changedCount(state)).toBe(2);
-    expect(substitutedCount(state)).toBe(1);
+    expect(changedCount(editor.store.get())).toBe(2);
+    expect(warnedCount(editor.store.get())).toEqual({ count: 1, label: "in a similar font" });
+    const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    editor = createEditor(FILE, aDoc({ spans: [...DOC.spans, turned], fonts: DOC.fonts }), 2);
+    typed("substituted", "now");
+    typed("turned", "now");
+    expect(warnedCount(editor.store.get())).toEqual({ count: 2, label: "will look different" });
+  });
+
+  test("typing into text that won't match says why, before any trouble of its own", () => {
+    const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    const glyphs = Object.fromEntries([..."was turned"].map((letter) => [letter, 500]));
+    editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
+    edit(editor, "turned", null);
+    expect(troublesIn(editor.store.get(), "was turned").said).toEqual([COPY.approximate.turned_text]);
   });
 });
 

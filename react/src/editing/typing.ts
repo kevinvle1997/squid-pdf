@@ -3,6 +3,7 @@
 import { change, type Editor, type EditorState, spoken } from "./editor";
 import { previewFaceOf } from "./faces";
 import { fitOf, troubleKindOf, troublesOf } from "./fit";
+import { approximateSaid } from "./marks";
 
 /** Start typing into a span, from what it reads now. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {
@@ -26,7 +27,12 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   if (isEmpty(text)) return { said: [copy.empty], kind: "empty" };
   const fit = fitOf(span, { font, text, rules });
   const substitute = font.substitute ?? previewFaceOf(font);
-  return { said: troublesOf(fit, { rules, copy, substitute }), kind: troubleKindOf(fit, rules) };
+  // Whatever is typed, an edit here won't match the text around it: said first.
+  const approximate = span.why === null ? [] : [approximateSaid(span.why, copy)];
+  return {
+    said: [...approximate, ...troublesOf(fit, { rules, copy, substitute })],
+    kind: troubleKindOf(fit, rules),
+  };
 }
 
 // A tab or any line break shows as a gap, so a space keeps the words apart.
