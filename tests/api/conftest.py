@@ -171,7 +171,6 @@ NAME_COPIES = (
     "seed_value",
     "button",
     "stamp",
-    "xfa",
     "tag",
 )
 # Copies in metadata that isn't read as XML, each made alone: a file has one metadata stream.
@@ -210,11 +209,6 @@ _DECLARING_XMP = (
 _SIGNED_BYTES = bytes(64)
 # How deep `xmp_deep` nests: far past how deep Python lets calls go.
 _DEEP = 3000
-# The form again, as XFA's data (its datasets).
-_XFA_DATA = (
-    '<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">'
-    "<xfa:data><form><who>{name}</who></form></xfa:data></xfa:datasets>"
-)
 # Each kind of metadata that isn't read as XML, as its bytes are written.
 _NOT_XML = {
     "not_xml": _BROKEN_XMP.format(name=REDACTED_NAME).encode(),
@@ -321,9 +315,6 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         doc.xref_set_key(
             doc.pdf_catalog(), "DSS", f"<</Certs[{certificate} 0 R]{by_signature}>>"
         )
-    if "xfa" in copies:
-        data = _new_stream(doc, _XFA_DATA.format(name=REDACTED_NAME).encode())
-        doc.xref_set_key(doc.pdf_catalog(), "AcroForm/XFA", f"[(datasets) {data} 0 R]")
     if "tag" in copies:
         _tag_a_picture(doc, f"Photo of {REDACTED_NAME}")
     return doc.tobytes()

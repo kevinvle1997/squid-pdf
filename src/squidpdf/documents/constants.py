@@ -29,10 +29,10 @@ DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unch
 
 # The shape of a document's reply: bump it when that changes, so an old copy gets no 304.
 REPLY_VERSION = 3
-# How a span index and page list are kept: bump it when either changes shape. One kept in
-# another reads as gone, never indexed again, and the browser opens it again from its copy.
-DOCUMENT_FORMAT = 2
+# How an original, its span index and page list are kept: bump it when one changes. One kept
+# in another reads as gone, never indexed again, and the browser opens it again from its copy.
+DOCUMENT_FORMAT = 3
 # How an analysis is kept: bump it when it changes shape; an old one is worked out again.
-ANALYSIS_FORMAT = 3
+ANALYSIS_FORMAT = 4
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

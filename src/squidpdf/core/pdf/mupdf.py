@@ -582,6 +582,10 @@ class _MuPDFDriver:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
         self.doc.select(pages)
 
+    def drop_active_content(self) -> bool:
+        """Delete what acts on its own or reaches outside the file; whether there was any."""
+        return self.file.drop_active_content()
+
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
         # Object streams compress the plain objects too: a face's width list is most of it.

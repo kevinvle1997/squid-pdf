@@ -110,6 +110,8 @@ class _Analysed(TypedDict):
 class Analysis(_Analysed):
     """Everything worked out from the original under one build, in no language."""
 
+    active_content_dropped: bool  # the original had what acts on its own taken out
+
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
 
@@ -118,6 +120,7 @@ class AnalysisFacts(TypedDict):
     """The analysis less its spans, as kept beside them: read on every visit."""
 
     build: str
+    active_content_dropped: bool
     pages: list[PageInfo]
     fonts: list[FontFacts]
 

@@ -518,7 +518,6 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
         "seed_value": ("null", "null"),
         "button": ("dict", "<</CA(Email)>>"),
         "stamp": ("null", "null"),
-        "xfa": ("null", "null"),
         "tag": ("string", "Photo of"),
     }
     assert_equal(_kept_in(saved), expected, "what each place holds")
@@ -707,7 +706,6 @@ def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
         "seed_value": pdf.xref_get_key(fields["to_sign"].xref, "SV"),
         "button": pdf.xref_get_key(fields["mail"].xref, "MK"),
         "stamp": pdf.xref_get_key(stamp.xref, "AP"),
-        "xfa": pdf.xref_get_key(catalog, "AcroForm/XFA"),
         "tag": pdf.xref_get_key(catalog, "StructTreeRoot/K/Alt"),
     }
 
