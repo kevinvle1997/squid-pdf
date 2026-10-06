@@ -14,7 +14,11 @@ export default defineConfig({
     baseURL: `http://localhost:${WEB_PORT}`,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Safari, where every iOS user is. Only on CI: a cloud session can't install WebKit.
+    ...(process.env.CI ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }] : []),
+  ],
   webServer: [
     {
       command: `cd .. && SQUIDPDF_DATA="$(mktemp -d)" uv run uvicorn squidpdf.api.app:create_app --factory --port ${API_PORT}`,

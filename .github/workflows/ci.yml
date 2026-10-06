@@ -53,8 +53,8 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
-  # The browser app: it lints, its types are the API's OpenAPI, it typechecks, its
-  # unit tests pass, and the core loop works end to end in Chromium against the real API.
+  # The browser app: it lints, its types are the API's OpenAPI, it typechecks, its unit
+  # tests pass, and the core loop works end to end in Chromium and WebKit against the real API.
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -87,23 +87,24 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
-      # The lockfile pins Playwright, and Playwright pins its Chromium.
+      # The lockfile pins Playwright, and Playwright pins its browsers. The key names them,
+      # so a cache saved before one was added can't hit without it.
       - name: Browser cache
         id: browser
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('react/package-lock.json') }}
+          key: playwright-chromium-webkit-${{ runner.os }}-${{ hashFiles('react/package-lock.json') }}
 
-      # Before the tests: the view's tests run in Chromium too.
-      - name: Browser
+      # Before the tests: the view's tests run in Chromium too. WebKit is for the end to end.
+      - name: Browsers
         if: steps.browser.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
-      # The system libraries it needs live outside the cache, so a hit still installs them.
-      - name: Browser's system libraries
+      # The system libraries they need live outside the cache, so a hit still installs them.
+      - name: Browsers' system libraries
         if: steps.browser.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium webkit
 
       - name: Unit and view tests
         run: npm test
