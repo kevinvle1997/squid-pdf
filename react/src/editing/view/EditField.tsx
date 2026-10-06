@@ -1,4 +1,4 @@
-import { type FocusEvent, type KeyboardEvent, useRef } from "react";
+import { type DragEvent, type DragEventHandler, type FocusEvent, type KeyboardEvent, useRef } from "react";
 import { isFileDropItem, useDrop } from "react-aria";
 import { FileTrigger, Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
@@ -43,6 +43,10 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
       void attachDropped(editor, span.font, dropped);
     },
   });
+  // Text dragged here is the field's own to take, as typing is: useDrop would swallow it.
+  const filesOnly = (handler?: DragEventHandler<HTMLInputElement>) => (event: DragEvent<HTMLInputElement>) => {
+    if (event.dataTransfer.types.includes("Files")) handler?.(event);
+  };
 
   // Once, as the field takes focus: the caret goes where the press was, the word under it,
   // or everything from the keyboard. Later focus keeps the caret where the user put it.
@@ -75,6 +79,10 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
       >
         <Input
           {...dropProps}
+          onDragEnter={filesOnly(dropProps.onDragEnter)}
+          onDragOver={filesOnly(dropProps.onDragOver)}
+          onDragLeave={filesOnly(dropProps.onDragLeave)}
+          onDrop={filesOnly(dropProps.onDrop)}
           ref={field}
           autoFocus
           onFocus={place}

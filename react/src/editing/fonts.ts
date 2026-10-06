@@ -54,11 +54,14 @@ export async function attachDropped(
 export async function detachFont(editor: Editor, fontName: string): Promise<void> {
   if (editor.store.get().attaching !== null) return;
   editor.store.set({ attaching: fontName });
+  // Forgotten first, so a document opened again meanwhile doesn't get it back; refused, it's kept.
+  const file = editor.attached.get(fontName);
+  editor.attached.delete(fontName);
   try {
     const doc = await editor.reopener.withDocument((current) => deleteFont(current.id, fontName));
-    editor.attached.delete(fontName);
     judgedAgain(editor, doc, { said: `Your copy of ${shownName(fontName)} is removed`, focusFont: fontName });
   } catch (error) {
+    if (file !== undefined) editor.attached.set(fontName, file);
     refused(editor, fontName, error);
   }
 }
@@ -74,7 +77,8 @@ export async function reattach(editor: Editor, doc: Document): Promise<void> {
       refused(editor, fontName, error);
     }
   }
-  if (judged !== doc) judgedAgain(editor, judged, {});
+  // A refusal above is still said.
+  if (judged !== doc) judgedAgain(editor, judged, { notices: editor.store.get().notices });
 }
 
 /** Focus has reached the fonts list's button it was sent to. */
@@ -99,9 +103,13 @@ function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>):
   queue.redraw(store.get().reading);
 }
 
-/** The server refused what was asked of `fontName`'s copy, or nothing answered: said until the next change. */
+/** The server refused what was asked of `fontName`'s copy, or nothing answered: shown and heard until the next change. */
 function refused(editor: Editor, fontName: string, error: unknown): void {
   const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
   const { notices } = editor.store.get();
-  editor.store.set({ notices: { ...notices, font: { tone: "warn", text, font: fontName } }, attaching: null });
+  editor.store.set({
+    notices: { ...notices, font: { tone: "warn", text, font: fontName } },
+    attaching: null,
+    said: text,
+  });
 }

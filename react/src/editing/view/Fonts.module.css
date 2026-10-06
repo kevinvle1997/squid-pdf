@@ -1,6 +1,8 @@
 /* Floats from the bar: a shadow, no hairline, as a note does (design.md, Surfaces). */
 .popover {
   z-index: var(--z-float);
+  /* Wide enough that a row's button changing its words doesn't resize it under the pointer. */
+  min-width: min(320px, calc(100vw - 2 * var(--s4)));
   max-width: min(420px, calc(100vw - 2 * var(--s4)));
   background: var(--strip);
   box-shadow: var(--lift-2);

@@ -72,6 +72,7 @@ describe("the user's own copy of a font", () => {
     const changed = editor.store.get();
 
     expect(noticeLines(refused.notices, refused.drawn)).toEqual([{ tone: "warn", text: MISMATCH }]);
+    expect(refused.said).toBe(MISMATCH);
     expect(refused.notices.font?.font).toBe("Arial");
     expect(refused.doc).toBe(DOC);
     expect(editor.attached.has("Arial")).toBe(false);
@@ -88,6 +89,40 @@ describe("the user's own copy of a font", () => {
     expect(deleteFont).toHaveBeenCalledWith(DOC.id, "Arial");
     expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(false);
     expect(editor.attached.has("Arial")).toBe(false);
+  });
+
+  test("while its removal is asked, a document opened again doesn't get it back; refused, it's kept", async () => {
+    vi.mocked(putFont).mockResolvedValue(JUDGED_AGAIN);
+    await attachFont(editor, "Arial", FONT_FILE);
+    let removing = false;
+    vi.mocked(deleteFont).mockImplementation(async () => {
+      removing = editor.attached.has("Arial");
+      throw new ProblemError(aProblem(503));
+    });
+
+    await detachFont(editor, "Arial");
+
+    expect(removing).toBe(false);
+    expect(editor.attached.get("Arial")).toBe(FONT_FILE);
+  });
+
+  test("a copy the document opened again refuses is still said once the others are back", async () => {
+    const reopened: Document = { ...DOC, id: "again" };
+    vi.mocked(upload).mockResolvedValue(reopened);
+    vi.mocked(putFont).mockImplementation(async (docId: string, fontName: string) => {
+      if (fontName === "Times") throw new ProblemError(aProblem(422, MISMATCH));
+      return { ...JUDGED_AGAIN, id: docId };
+    });
+    editor.attached.set("Times", FONT_FILE);
+    editor.attached.set("Arial", FONT_FILE);
+
+    await editor.reopener.withDocument(async (doc) => {
+      if (doc.id === DOC.id) throw new ProblemError(aProblem(404));
+      return doc;
+    });
+    await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
+
+    expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
   });
 
   test("a document opened again gets every copy back, as it does the edits", async () => {

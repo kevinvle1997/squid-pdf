@@ -120,6 +120,24 @@ describe("the user's own copy of a font", () => {
     entry.mockRestore();
   });
 
+  test("text dragged onto the field is the field's to take, not a font", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} />);
+    await typeInto(screen, "was Yes");
+
+    const field = screen.getByRole("textbox").element();
+    const dragged = new DataTransfer();
+    dragged.setData("text/plain", "there");
+    dragged.effectAllowed = "copyMove"; // as text dragged from a page allows
+    const events = ["dragenter", "dragover", "drop"].map(
+      (type) => new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dragged }),
+    );
+    for (const event of events) field.dispatchEvent(event);
+
+    expect(events.map((event) => event.defaultPrevented)).toEqual([false, false, false]);
+    expect(putFont).not.toHaveBeenCalled();
+  });
+
   test("a file picker taking the window's focus leaves the typing as it was", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(<EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} />);
