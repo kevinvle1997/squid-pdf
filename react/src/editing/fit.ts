@@ -57,7 +57,7 @@ export function optionsFor(
 }
 
 /** What would happen if `span` read `text` instead. */
-export function fitOf(span: SpanInfo, font: FontInfo, text: string, rules: FitRules): Fit {
+export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; text: string; rules: FitRules }): Fit {
   const originalPt = widthPt(span.text, font.glyphs, span.size);
   const deltaPt = Math.round((widthPt(text, font.glyphs, span.size) - originalPt) * 100) / 100;
   const roomPt = span.room_pt;
@@ -75,7 +75,10 @@ export function troubleKindOf(fit: Fit, rules: FitRules): string {
 }
 
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */
-export function troublesOf(fit: Fit, rules: FitRules, copy: Copy, substitute: string): string[] {
+export function troublesOf(
+  fit: Fit,
+  { rules, copy, substitute }: { rules: FitRules; copy: Copy; substitute: string },
+): string[] {
   const troubles: string[] = [];
   if (fit.missing.length > 0) troubles.push(fill(copy.missing, { chars: fit.missing, font: substitute }));
   // The part past its room is the part that collides.

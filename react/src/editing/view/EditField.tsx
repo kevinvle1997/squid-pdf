@@ -56,7 +56,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     const field = event.currentTarget;
     const at = editor.store.get().draft?.atPt;
     if (at == null) field.select();
-    else field.setSelectionRange(...wordAround(start, letterAt(start, at, glyphs, span.size)));
+    else field.setSelectionRange(...wordAround(start, letterAt(start, at, { glyphs, size: span.size })));
     if (trouble !== "") say(editor, trouble);
   }
 
