@@ -4,6 +4,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   useCallback,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -21,7 +22,7 @@ import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { boxOf, fieldScaleOf, points, spanTextStyle } from "./geometry";
+import { boxOf, fieldScaleOf, points, shownWidthPt, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -45,6 +46,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
+  const [, measureAgain] = useReducer((times: number) => times + 1, 0);
   // As the page is shown wider or narrower, what the field scales by to show the span's size.
   const watchPage = useCallback(
     (input: HTMLInputElement | null) => {
@@ -56,7 +58,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         setScale(fieldScaleOf(span.size, { pageWidthPt: info.width, shownPx: layer.clientWidth, fontPx }));
       });
       shown.observe(layer);
-      return () => shown.disconnect();
+      // A face that loads once the field is open draws its letters wider or narrower than first measured.
+      document.fonts.addEventListener("loadingdone", measureAgain);
+      return () => {
+        shown.disconnect();
+        document.fonts.removeEventListener("loadingdone", measureAgain);
+      };
     },
     [span.size, info.width],
   );
@@ -95,8 +102,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const box = boxOf(span.bbox, info);
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
-  // Half an em spare: the preview face's widths are close to the server's, not always equal.
-  const wide = Math.max(span.bbox.x1 - span.bbox.x0, widthPt(text, glyphs, span.size) + span.size / 2);
+  // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback; half an em spare.
+  const typedWidth = Math.max(widthPt(text, glyphs, span.size), shownWidthPt(text, face, span.size));
+  const wide = Math.max(span.bbox.x1 - span.bbox.x0, typedWidth + span.size / 2);
   return (
     <>
       <TextField

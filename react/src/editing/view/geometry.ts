@@ -1,5 +1,5 @@
-// Where things sit on a page, as CSS. Everything inside the page's layer is in the page's own
-// points, turned into shares of its size, so it scales with the page however wide it's shown.
+// Where things sit on a page, as CSS, and how wide text draws there. Everything inside the page's layer
+// is in the page's own points, turned into shares of its size, so it scales with the page however wide it's shown.
 import type { CSSProperties } from "react";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { familyOf } from "../faces";
@@ -60,4 +60,16 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
     fontFamily: familyOf(face),
     color: rgbOf(span.color),
   };
+}
+
+// One canvas measures every field's text: it draws nothing, so it never joins the page.
+let ruler: CanvasRenderingContext2D | null | undefined;
+
+/** How wide `text` draws in `face` at `sizePt`, in points, as the browser sets it: a letter `face` lacks in its fallback. */
+export function shownWidthPt(text: string, face: string, sizePt: number): number {
+  if (ruler === undefined) ruler = document.createElement("canvas").getContext("2d");
+  if (ruler == null) return 0;
+  // Width grows with size, so text set at `sizePt` px measures in points.
+  ruler.font = `${sizePt}px ${familyOf(face)}`;
+  return ruler.measureText(text).width;
 }
