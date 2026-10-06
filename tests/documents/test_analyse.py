@@ -14,7 +14,7 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import BUILD, FIDELITY_TUNING, Engine, plan
+from squidpdf.core import ANALYSIS_TUNING, BUILD, Engine, plan
 from squidpdf.core.constants import FETCH_TIMEOUT_S
 from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
@@ -150,7 +150,7 @@ def test_a_retune_judges_the_saved_index_again(monkeypatch):
     loose = 1000.0
     # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
     monkeypatch.setattr(plan, "TOLERANCE_PT", loose)
-    monkeypatch.setattr(store, "FIDELITY_TUNING", FIDELITY_TUNING | {"tolerance_pt": loose})
+    monkeypatch.setattr(store, "ANALYSIS_TUNING", ANALYSIS_TUNING | {"tolerance_pt": loose})
 
     kept = store.load_analysis(folder, BUILD)
     [after] = orjson.loads(analyse.analyse(str(folder)).spans)

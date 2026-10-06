@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from squidpdf.core import (
-    FIDELITY_TUNING,
+    ANALYSIS_TUNING,
     Engine,
     FontSources,
     Page,
@@ -344,6 +344,6 @@ def _analysis_kept_as(name: str) -> str:
     One in another format or tuning is worked out again over the same index. The
     document's format is in it too, so a gone document has no analysis to answer from.
     """
-    tuning = repr(FIDELITY_TUNING).encode()
+    tuning = repr(ANALYSIS_TUNING).encode()
     judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
     return _kept_as(f"a{constants.ANALYSIS_FORMAT}.{judged_by}.{name}")

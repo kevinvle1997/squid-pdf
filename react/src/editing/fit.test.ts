@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
+import shared from "../../../tests/editing/fit_cases.json";
 import { aFont, aSpan, COPY as copy, RULES } from "../fixtures";
 import { fitOf, missingIn, optionsFor, troublesOf, widthPt } from "./fit";
+import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
 const HALF = 500;
@@ -18,7 +20,7 @@ describe("the fit check", () => {
 
   test("text as long as the original fits exactly", () => {
     const fit = fitOf(span, font, "jihgfedcba", RULES);
-    expect(fit).toEqual({ deltaPt: 0, missing: [], options: [] });
+    expect(fit).toEqual({ deltaPt: 0, roomPt: 0, missing: [], options: [] });
   });
 
   test("a little longer is within the tolerance: nothing to say, nothing to offer", () => {
@@ -44,9 +46,19 @@ describe("the fit check", () => {
 
   test("the ways out follow the server's floor and limit", () => {
     // 5 pt past 100 pt: shrinking to 95% is above the floor, squeezing 5% is at the limit.
-    expect(optionsFor(5, 100, RULES)).toEqual(["shrink", "condense", "as-is"]);
+    expect(optionsFor(5, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual(["shrink", "condense", "as-is"]);
     // 20 pt past 100 pt: 83% is under the floor, 20% past the limit: only leave it long.
-    expect(optionsFor(20, 100, RULES)).toEqual(["as-is"]);
-    expect(optionsFor(3, 100, RULES)).toEqual([]);
+    expect(optionsFor(20, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual(["as-is"]);
+    expect(optionsFor(3, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual([]);
+  });
+});
+
+// The cases the server's fit check is tested on too (tests/editing/test_fit.py): the same verdict.
+describe("a line is too long only past its room, as the server says", () => {
+  test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_by, options }) => {
+    const fit = { deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
+    const said = too_long_by === null ? [] : [fill(copy.too_long, { delta_pt: too_long_by })];
+    expect(troublesOf(fit, shared.rules, copy, "Liberation Serif Regular")).toEqual(said);
+    expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
   });
 });

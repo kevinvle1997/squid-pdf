@@ -97,6 +97,13 @@ class PdfDriver(Protocol):
         """The letters inside each box on the page, in reading order."""
         ...
 
+    def drawn_boxes(self, page: int) -> list[Rect]:
+        """The box around each thing the page draws but text: lines, shapes and pictures.
+
+        A path is boxed piece by piece, so a grid drawn as one path still has its lines.
+        """
+        ...
+
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
 

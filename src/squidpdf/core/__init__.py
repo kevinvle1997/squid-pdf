@@ -47,11 +47,12 @@ from squidpdf.core.app.message import (
 from squidpdf.core.app.reply import Reply as Reply
 from squidpdf.core.app.workers import Workers as Workers
 from squidpdf.core.constants import (
+    ANALYSIS_TUNING as ANALYSIS_TUNING,
     CONDENSE_LIMIT as CONDENSE_LIMIT,
-    FIDELITY_TUNING as FIDELITY_TUNING,
     GREEN_RATE_TARGET as GREEN_RATE_TARGET,
     GREEN_RATE_WARN as GREEN_RATE_WARN,
     OPTION_KEYS as OPTION_KEYS,
+    ROOM_SLACK_PT as ROOM_SLACK_PT,
     SHRINK_FLOOR as SHRINK_FLOOR,
     TOLERANCE_PT as TOLERANCE_PT,
 )

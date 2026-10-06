@@ -67,6 +67,9 @@ def _dressed(sentence: str) -> bool:
     ("message", "said"),
     [
         (Message("too_long", {"delta_pt": 3.14159}), "3.1 pt too long"),
+        # Rounded up from a half, as the browser's Intl.NumberFormat writes it too.
+        (Message("too_long", {"delta_pt": 2.25}), "2.3 pt too long"),
+        (Message("too_long", {"delta_pt": 1.45}), "1.5 pt too long"),
         (
             Message("missing", {"chars": ["é", "ß"], "font": "Carlito Bold"}),
             "no é or ß in this font, so the line is drawn in Carlito Bold",
@@ -76,7 +79,7 @@ def _dressed(sentence: str) -> bool:
             "Left out 中 文: no font we have can draw them.",
         ),
     ],
-    ids=["a fraction", "characters", "letters"],
+    ids=["a fraction", "a half", "a half just under in binary", "characters", "letters"],
 )
 def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
     assert_equal(words.render(message), said, "the sentence")

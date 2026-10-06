@@ -31,6 +31,7 @@ from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.text.fidelity import FidelityReport
+from squidpdf.core.text.room import rooms_on
 from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import (
@@ -131,6 +132,19 @@ class Engine:
         if not fields:
             return []
         return [span for span in spans if any(_field_draws(field, span) for field in fields)]
+
+    def rooms(self, index: SpanIndex, spans: Iterable[Span]) -> dict[str, float]:
+        """The room of each of `spans`, by id: how far it can run (`core.text.room`).
+
+        Read from the pages as they are, so ask before an erase changes them.
+        """
+        wanted = {span.id for span in spans}
+        rooms: dict[str, float] = {}
+        for page, on_page in _by_page(index).items():
+            if any(span.id in wanted for span in on_page):
+                drawn = self.driver.drawn_boxes(page)
+                rooms |= rooms_on(on_page, drawn, wanted=wanted)
+        return rooms
 
     def hidden_places(self, spans: Iterable[Span]) -> dict[str, list[HiddenPlace]]:
         """Where else each span's words have a hidden copy, by span id.

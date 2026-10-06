@@ -60,6 +60,8 @@ def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
     reports = {report.span_id: report for report in engine.assess(index)}
     # Text a form field draws: said before any edit, since an edit to it is left out.
     form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
+    # How far each line can run before it's too long: the browser's fit check needs it.
+    rooms = engine.rooms(index, index)
     # Index order: the first span in each font speaks for it.
     first_span_of_font: dict[str, Span] = {}
     for span in index:
@@ -81,7 +83,12 @@ def _analysed(engine: Engine, path: Path, index: SpanIndex) -> KeptAnalysis:
             for page in store.load_pages(path)
         ],
         "spans": [
-            _span_info(span, reports[span.id], form_field=span.id in form_field_span_ids)
+            _span_info(
+                span,
+                reports[span.id],
+                room_pt=rooms[span.id],
+                form_field=span.id in form_field_span_ids,
+            )
             for span in index
         ],
         "fonts": fonts,
@@ -120,10 +127,13 @@ def _approximate_why(report: FidelityReport) -> ApproximateInfo | None:
     return {"code": reason_of(report.why), "params": report.why.params}
 
 
-def _span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanInfo:
+def _span_info(
+    span: Span, report: FidelityReport, *, room_pt: float, form_field: bool
+) -> SpanInfo:
     """One span as the browser gets it, with how well it keeps its own font.
 
-    `form_field` when a form field draws it, not the page.
+    `room_pt` is how far its line can run (`Engine.rooms`); `form_field` when a
+    form field draws it, not the page.
     """
     box = span.bbox
     return {
@@ -137,5 +147,6 @@ def _span_info(span: Span, report: FidelityReport, *, form_field: bool) -> SpanI
         "origin": list(span.origin),
         "fidelity": report.state,
         "why": _approximate_why(report),
+        "room_pt": round(room_pt, 2),
         "form_field": form_field,
     }

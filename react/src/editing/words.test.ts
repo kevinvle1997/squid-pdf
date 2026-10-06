@@ -11,6 +11,9 @@ describe("filling the server's sentences", () => {
 
   test("a width is said to one decimal place", () => {
     expect(fill("{delta_pt} pt too long", { delta_pt: 4.36 })).toBe("4.4 pt too long");
+    // A half rounds up, as the server writes it (core/app/words).
+    expect(fill("{delta_pt} pt too long", { delta_pt: 2.25 })).toBe("2.3 pt too long");
+    expect(fill("{delta_pt} pt too long", { delta_pt: 1.45 })).toBe("1.5 pt too long");
   });
 
   test("a placeholder with no fact is left as it is", () => {

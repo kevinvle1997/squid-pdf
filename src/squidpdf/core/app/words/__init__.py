@@ -13,12 +13,15 @@ from __future__ import annotations
 import tomllib
 import unicodedata
 from collections.abc import Iterable, Mapping
+from decimal import ROUND_HALF_UP, Decimal
 from importlib import resources
 from importlib.resources.abc import Traversable
 
 from squidpdf.core.app.message import Message, Param, SaidInfo
 
 ENGLISH = "en"
+
+_ONE_PLACE = Decimal("0.1")  # how finely a number is written in a sentence
 
 
 def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
@@ -88,9 +91,10 @@ def _written_out(name: str, value: Param, language: str) -> str:
         joiner = sentence(f"join_{name}", language, default=sentence("join_items", language))
         return joiner.join(_visible(item, language) for item in value)
     if isinstance(value, float):
-        # One decimal place, written with the language's own mark: "6.8", or "6,8" where
-        # a comma is the decimal mark.
-        return f"{value:.1f}".replace(".", sentence("decimal_separator", language))
+        # One place, a half rounded up from its shortest decimal form, as the browser does,
+        # with the language's own mark: "6.8", or "6,8" where a comma is the decimal mark.
+        one_place = Decimal(str(value)).quantize(_ONE_PLACE, rounding=ROUND_HALF_UP)
+        return str(one_place).replace(".", sentence("decimal_separator", language))
     return str(value)
 
 

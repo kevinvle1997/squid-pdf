@@ -25,6 +25,27 @@ SAME_FONT_SHARED = 3
 
 # Fit. The server's check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
+# Past its room by less than this, a line isn't too long: the warning, to a tenth of a
+# point, would say 0.0, and nobody could see the difference.
+ROOM_SLACK_PT = 0.1
+
+# Room: how far a line runs to the right before it reaches anything, read from the page.
+ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairline is no wall
+# Left edges this close start one block, right ones make a justified edge: over a
+# PDF's rounding, under any indent a reader would see.
+ROOM_EDGE_PT = 1.0
+# Steps down a block this close, as a share, are one leading: a paragraph's lines
+# vary a little, a gap between paragraphs is far more.
+ROOM_LEADING_SLACK = 0.2
+# A step down past this many line heights starts another block: double spacing is
+# still one paragraph, a heading's space above usually isn't.
+ROOM_BLOCK_STEP_LINES = 2.5
+# A gap this many ems wide on a line starts another column: far wider than any space
+# between words, even in justified text.
+ROOM_COLUMN_EM = 2.0
+# Line art taller than this many of a page's tallest lines (a frame, a column rule) is
+# searched apart, so it doesn't widen the search through a chart's many short strokes.
+ROOM_TALL_ART_LINES = 4.0
 
 # A line turned further than this (the sine of its angle, about half a degree) isn't
 # redrawn as it was: redraws are level, and half a degree drifts 4 pt over a page's width.
@@ -51,9 +72,14 @@ FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
 
-# The numbers fidelity is judged by: an analysis is kept under them, so add any new one here.
-FIDELITY_TUNING = {
+# The numbers an analysis is worked out by: it's kept under them, so add any new one here.
+ANALYSIS_TUNING = {
     "tolerance_pt": TOLERANCE_PT,
+    "room_touch_pt": ROOM_TOUCH_PT,
+    "room_edge_pt": ROOM_EDGE_PT,
+    "room_leading_slack": ROOM_LEADING_SLACK,
+    "room_block_step_lines": ROOM_BLOCK_STEP_LINES,
+    "room_column_em": ROOM_COLUMN_EM,
     "turn_tolerance": TURN_TOLERANCE,
     "same_width": SAME_WIDTH,
     "same_font_shared": SAME_FONT_SHARED,

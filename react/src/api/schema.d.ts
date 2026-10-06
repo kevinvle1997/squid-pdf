@@ -344,6 +344,8 @@ export interface components {
         FitRules: {
             /** Tolerance Pt */
             tolerance_pt: number;
+            /** Room Slack Pt */
+            room_slack_pt: number;
             /** Condense Limit */
             condense_limit: number;
             /** Shrink Floor */
@@ -694,6 +696,8 @@ export interface components {
              */
             fidelity: "exact" | "approximate" | "substitute";
             why: components["schemas"]["ApproximateInfo"] | null;
+            /** Room Pt */
+            room_pt: number;
             /** Form Field */
             form_field: boolean;
         };

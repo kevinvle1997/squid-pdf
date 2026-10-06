@@ -60,6 +60,7 @@ class SpanInfo(TypedDict):
     origin: list[float]
     fidelity: Fidelity
     why: ApproximateInfo | None
+    room_pt: float  # the free space after it on its line: too long is only past it
     form_field: bool
 
 
@@ -137,6 +138,7 @@ class FitRules(TypedDict):
     """The thresholds the browser runs the fit check with, the server's own."""
 
     tolerance_pt: float
+    room_slack_pt: float
     condense_limit: float
     shrink_floor: float
 
