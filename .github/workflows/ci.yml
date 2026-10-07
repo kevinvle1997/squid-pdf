@@ -219,7 +219,9 @@ jobs:
         with:
           sync: --no-dev
 
+      # bash by name turns on pipefail, so a report that measured nothing isn't hidden by tee.
       - name: Green rate
+        shell: bash
         run: |
           uv run --no-dev squidpdf fixture /tmp/sample.pdf
           uv run --no-dev squidpdf report /tmp/sample.pdf | tee /tmp/report.txt

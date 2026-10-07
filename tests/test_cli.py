@@ -278,9 +278,12 @@ def test_report_fails_when_it_could_read_no_file(tmp_path, capsys):
     assert_in("failed", capsys.readouterr().out, "the report row for the bad file")
 
 
-@pytest.mark.parametrize("command", ["spans", "report"])
-def test_a_document_with_no_text_has_no_green_rate(tmp_path, capsys, command):
-    """Nothing to edit isn't nothing kept: 0% would mark it red, as if every edit failed."""
+@pytest.mark.parametrize(("command", "exit_code"), [("spans", 0), ("report", 1)])
+def test_a_document_with_no_text_has_no_green_rate(tmp_path, capsys, command, exit_code):
+    """Nothing to edit isn't nothing kept: 0% would mark it red, as if every edit failed.
+
+    `report` fails all the same, having measured nothing, so a script running it sees it.
+    """
     blank = tmp_path / "blank.pdf"
     with pymupdf.open() as doc:
         doc.new_page()
@@ -289,7 +292,7 @@ def test_a_document_with_no_text_has_no_green_rate(tmp_path, capsys, command):
     code = main([command, str(blank)])
 
     out = capsys.readouterr().out
-    assert_equal(code, 0, f"exit code of `squidpdf {command}` on a page with no text")
+    assert_equal(code, exit_code, f"exit code of `squidpdf {command}` on a page with no text")
     assert_in("no text", out, f"what `squidpdf {command}` says of it")
     assert_not_in("%", out, f"a green rate in `squidpdf {command}`")
     assert_not_in("failed", out, f"what `squidpdf {command}` says of a file it read")
