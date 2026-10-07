@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import tempfile
@@ -434,6 +435,16 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, tagged, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P16", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P16 scn {_SQUARE}")
+    # Alone: the same, its pixels written as ASCII85, all plain, its text an EI and the line: a
+    # reader ends it at its ~>, or once it has its pixels, so the line is only pixels.
+    if "a85_holding_end" in places:
+        text = f"EI\n({_CARD})"
+        pixels = base64.a85decode(text.encode(), ignorechars=b" \n")
+        image = f"BI /W {len(pixels)} /H 1 /BPC 8 /CS /G /F /A85 ID {text}~> EI"
+        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
+        tile = _new_stream(doc, tagged, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P19", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P19 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
     contents = _new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
@@ -536,12 +547,13 @@ def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monk
     assert_equal(response.json()["detail"], said, "what the user reads")
 
 
-def test_an_image_whose_bytes_only_hold_an_ei_still_downloads(mine):
+@pytest.mark.parametrize("place", ["image_holding_end", "a85_holding_end"])
+def test_an_image_whose_bytes_only_hold_an_ei_still_downloads(mine, place):
     """Compressed bytes can hold an EI by chance; read as drawing, a short word would match.
 
     Here the line itself sits past it, where no reader reads the bytes as drawing.
     """
-    doc = upload(mine, _marked_pdf(["image_holding_end"])).json()
+    doc = upload(mine, _marked_pdf([place])).json()
     card = span_starting(doc, 0, "A US card")
 
     response = _export(mine, doc, [_redact(card)])

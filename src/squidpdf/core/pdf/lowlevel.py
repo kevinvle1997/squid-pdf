@@ -13,7 +13,6 @@ import codecs
 import ctypes
 import re
 import sys
-import zlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ import pymupdf
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
 from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
@@ -53,11 +53,8 @@ _EI_BEFORE_DRAWING = re.compile(
 # How many bytes sooner than MuPDF another reader may end an image's counted bytes: it
 # reads a line end after ID as one byte, or its decoder needs fewer bytes ahead.
 _SOONER_BY = 16
-# The names a compressed image's filter may have, in full or as an inline image writes it.
-_FLATE = ("FlateDecode", "Fl")
-_FILTER_KEYS = ("F", "Filter")  # an inline image's filter, as it writes the key
+_FILTER_KEYS = ("F", "Filter")  # an inline image's filters, as it writes the key
 _BITS_IN_A_BYTE = 8
-_FLATE_STEP = 4096  # bytes fed to the decoder at a time, before byte by byte
 # The marks a string in UTF-16 starts with.
 _UTF16_MARKS = (codecs.BOM_UTF16_BE, codecs.BOM_UTF16_LE)
 # The encoding a string reads in, by the mark it starts with.
@@ -652,17 +649,21 @@ class PdfFile:
             )
         except mu.FzErrorSyntax, mu.FzErrorFormat:
             return None
-        counted_to = mu.fz_tell(reader)
-        end = _INLINE_IMAGE_END.search(drawing, counted_to)
+        end = _INLINE_IMAGE_END.search(drawing, mu.fz_tell(reader))
         # No EI after its bytes: MuPDF reads no further.
         if end is None:
             return None
         mu.fz_seek(reader, end.end(), 0)
         written = drawing[image_from : end.start()]
-        counted = _fewest_counted(
-            dictionary, loaded, written=written, counted=counted_to - image_from
+        filters = _filters_of(dictionary)
+        # Each row's bytes, rounded up; a predictor's byte a row is left out, the safe side.
+        row = -(-loaded.w() * loaded.n() * loaded.bpc() // _BITS_IN_A_BYTE)
+        counted = fewest_giving(written, filters, row * loaded.h())
+        return _InlineImage(
+            written,
+            counted=max(counted - _SOONER_BY, 0),
+            marks_its_end=marks_its_end(filters),
         )
-        return _InlineImage(written, counted=counted)
 
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
         """Each of the document's own hidden copies that `holding` is true of, and where."""
@@ -1442,55 +1443,17 @@ def _load_inline_image(
     return mu.pdf_load_inline_image(pdf, mu.PdfResourceStack(stack), dictionary, reader)
 
 
-def _fewest_counted(
-    dictionary: pymupdf.mupdf.PdfObj,
-    loaded: pymupdf.mupdf.FzImage,
-    *,
-    written: bytes,
-    counted: int,
-) -> int:
-    """The fewest of an image's bytes, of the `counted` MuPDF read, another reader may count.
-
-    A compressed one ends once its pixels do, which may be before its compressed bytes end.
-    Under any filter but Flate, which can't be sized here, that may be at its first byte.
-    """
+def _filters_of(dictionary: pymupdf.mupdf.PdfObj) -> list[str]:
+    """An inline image's filters, by name, in the order they're undone; none if it has none."""
     mu = pymupdf.mupdf
-    filters = (mu.pdf_dict_gets(dictionary, key) for key in _FILTER_KEYS)
-    # None: not compressed. A list of filters, as any other, is a filter we don't size.
-    image_filter = next((value for value in filters if not mu.pdf_is_null(value)), None)
-    # Not compressed: as many as MuPDF read, or a few fewer.
+    written = (mu.pdf_dict_gets(dictionary, key) for key in _FILTER_KEYS)
+    # Null: neither key is there.
+    image_filter = next((value for value in written if not mu.pdf_is_null(value)), None)
     if image_filter is None:
-        return max(counted - _SOONER_BY, 0)
-    is_flate = mu.pdf_is_name(image_filter) and mu.pdf_to_name(image_filter) in _FLATE
-    # Flate: as many as give its pixels, or a few fewer.
-    if is_flate:
-        # Each row's bytes, rounded up; a predictor's byte a row is left out, the safe side.
-        row = -(-loaded.w() * loaded.n() * loaded.bpc() // _BITS_IN_A_BYTE)
-        return max(_flate_bytes_for(written, row * loaded.h()) - _SOONER_BY, 0)
-    return 0
-
-
-def _flate_bytes_for(compressed: bytes, wanted: int) -> int:
-    """How few of `compressed` give `wanted` bytes once decompressed; 0 if they can't."""
-    decoder = zlib.decompressobj()
-    given = 0  # bytes decompressed so far
-    # zlib raises on bytes it can't decompress.
-    try:
-        for start in range(0, len(compressed), _FLATE_STEP):
-            before = decoder.copy()  # to feed this step again byte by byte
-            step = len(decoder.decompress(compressed[start : start + _FLATE_STEP]))
-            # Not there yet within this step.
-            if given + step < wanted:
-                given += step
-                continue
-            for taken, byte in enumerate(compressed[start : start + _FLATE_STEP], start=1):
-                given += len(before.decompress(bytes([byte])))
-                # Enough: its pixels end with this byte.
-                if given >= wanted:
-                    return start + taken
-    except zlib.error:
-        return 0
-    return 0
+        return []
+    filters = _items_of(image_filter) if mu.pdf_is_array(image_filter) else [image_filter]
+    # Anything but a name reads as "", a filter no reader sizes.
+    return [mu.pdf_to_name(item) for item in filters]
 
 
 def _as_written(value: pymupdf.mupdf.PdfObj) -> bytes:
@@ -1551,7 +1514,7 @@ def _strings_past_an_end_in(image: _InlineImage) -> list[str]:
     ends: list[int] = []
     before_drawing = _EI_BEFORE_DRAWING.search(image.written)
     # A reader that doesn't count them ends it at an EI followed by what reads as drawing.
-    if before_drawing is not None:
+    if before_drawing is not None and not image.marks_its_end:
         ends.append(before_drawing.end())
     past_count = image.written.find(b"EI", image.counted)
     # One that counts them ends it at the first EI after, whatever follows.
@@ -1989,6 +1952,9 @@ class _InlineImage:
 
     written: bytes  # its bytes, from past its ID to the EI MuPDF ends it at
     counted: int  # the fewest of them a reader that counts its bytes may take as the image
+    marks_its_end: (
+        bool  # whether its filter ends it, so a reader that doesn't count looks for that
+    )
 
 
 @dataclass(frozen=True, slots=True)
