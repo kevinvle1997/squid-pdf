@@ -13,7 +13,15 @@ const api: Record<string, string> = process.env.VITEST
 // A folder with key.pem and cert.pem: the end to end tests serve over HTTPS, as Caddy does.
 const tls = process.env.SQUIDPDF_TLS;
 
-export default defineConfig({
+/** The Content-Security-Policy Caddy sends, read from its one home, the Caddyfile. */
+function caddyPolicy(): string {
+  const caddyfile = new URL("../Caddyfile", import.meta.url);
+  const policy = /Content-Security-Policy "([^"]+)"/.exec(readFileSync(caddyfile, "utf8"))?.[1];
+  if (policy === undefined) throw new Error(`No Content-Security-Policy in ${caddyfile.pathname}`);
+  return policy;
+}
+
+export default defineConfig(({ isPreview }) => ({
   plugins: [react()],
   // Bundled up front, so a test never reloads halfway with a second copy of React.
   optimizeDeps: {
@@ -35,6 +43,9 @@ export default defineConfig({
   preview: {
     proxy: api,
     https: tls ? { key: readFileSync(`${tls}/key.pem`), cert: readFileSync(`${tls}/cert.pem`) } : undefined,
+    // Caddy's policy, so the end to end tests fail on what it refuses (e2e/policy.ts). Preview only:
+    // the dev server's hot reload injects inline script, and the web image's build has no Caddyfile.
+    headers: isPreview ? { "Content-Security-Policy": caddyPolicy() } : undefined,
   },
   test: {
     projects: [
@@ -51,4 +62,4 @@ export default defineConfig({
       },
     ],
   },
-});
+}));
