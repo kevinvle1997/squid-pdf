@@ -400,6 +400,22 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P14", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P14 scn {_SQUARE}")
+    # Alone: a one-byte image, then an EI and a [, where MuPDF looks on for an EI after a space
+    # but a reader taking the first EI past its bytes ends it, and reads the line.
+    if "image_end_bracket" in places:
+        image = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 EI[ ] pop {_AROUND_SQUARE} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P15", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P15 scn {_SQUARE}")
+    # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
+    # after it, as compressed bytes may: no reader ends it there, so the line is only bytes.
+    if "image_holding_end" in places:
+        held = f"EI \xff ({_CARD}) \xff"
+        image = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {held:<100} EI"
+        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
+        tile = _new_stream(doc, tagged, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P16", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P16 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
     contents = _new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
@@ -465,6 +481,7 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
         "unreadable_image_hex",
         "image_bytes",
         "plain_in_utf16",
+        "image_end_bracket",
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
@@ -479,6 +496,19 @@ def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monk
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=_CARD_LINE, page=1)
     assert_equal(response.json()["detail"], said, "what the user reads")
+
+
+def test_an_image_whose_bytes_only_hold_an_ei_still_downloads(mine):
+    """Compressed bytes can hold an EI by chance; read as drawing, a short word would match.
+
+    Here the line itself sits past it, where no reader reads the bytes as drawing.
+    """
+    doc = upload(mine, _marked_pdf(["image_holding_end"])).json()
+    card = span_starting(doc, 0, "A US card")
+
+    response = _export(mine, doc, [_redact(card)])
+
+    assert_equal(_lines(_opened(response)), [[_KEPT]], "the page's lines")
 
 
 def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refused_at_export(
