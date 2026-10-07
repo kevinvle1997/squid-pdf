@@ -6,6 +6,7 @@ import json
 import re
 import tempfile
 import time
+import zlib
 from collections.abc import Collection, Iterator
 from pathlib import Path
 from unittest import mock
@@ -68,6 +69,8 @@ _HEX_IMAGE = "BI /W 1 /H 1 /BPC 8 /CS /G /F /AHx ID 00>EI"
 # A 4 by 4 image: 16 raw bytes after ID and a carriage return and line feed. They hold " EI ("
 # and end in an E an I follows: only their count, from past the line feed, says where they end.
 _UNFILTERED_IMAGE = "BI /W 4 /H 4 /BPC 8 /CS /G ID\r\n\0 EI (" + "\0" * 9 + "EI ( EI"
+# zlib's header: deflate, with no dictionary and the least compression.
+_ZLIB_HEADER = b"\x78\x01"
 # A form: a drawing of its own, 100 points square, that a page draws like an image.
 _FORM = {"Type": "/XObject", "Subtype": "/Form", "BBox": "[0 0 100 100]"}
 # A tiling pattern: painted with its own colours, tiled at even spacing, every 20 points.
@@ -407,6 +410,21 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, image, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P15", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P15 scn {_SQUARE}")
+    # Alone: a one-dot image compressed (Flate), its dot in a block of its own and the line
+    # after an EI in the next: MuPDF reads every block, a reader stopping at the dot reads on.
+    if "image_flate_tail" in places:
+        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
+        compressed = b"BI /W 1 /H 1 /BPC 8 /CS /G /F /Fl ID " + _stored_flate(b"\0", tail)
+        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P17", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P17 scn {_SQUARE}")
+    # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
+    # so its dots end before "I", but a reader skipping one ends them before "EI[".
+    if "image_crlf" in places:
+        image = f"BI /W 2 /H 1 /BPC 8 /CS /G ID\r\n\0EI[ ] pop {_AROUND_SQUARE} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P18", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P18 scn {_SQUARE}")
     # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
     # after it, as compressed bytes may: no reader ends it there, so the line is only bytes.
     if "image_holding_end" in places:
@@ -422,14 +440,32 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     return doc.tobytes()
 
 
-def _new_stream(doc: pymupdf.Document, drawing: str, **keys: str) -> int:
+def _new_stream(doc: pymupdf.Document, drawing: str | bytes, **keys: str) -> int:
     """A new stream in `doc` holding `drawing`, with these keys; its number."""
     xref = doc.get_new_xref()
     doc.update_object(xref, "<<>>")
-    doc.update_stream(xref, drawing.encode())
+    doc.update_stream(xref, drawing if isinstance(drawing, bytes) else drawing.encode())
     for key, value in keys.items():
         doc.xref_set_key(xref, key, value)
     return xref
+
+
+def _stored_flate(*blocks: bytes) -> bytes:
+    """A zlib stream of `blocks`, each stored as it is: a decoder gives each once it's read."""
+    stored = [_stored_block(block, last=False) for block in blocks]
+    checksum = zlib.adler32(b"".join(blocks)).to_bytes(4, "big")
+    return _ZLIB_HEADER + b"".join(stored) + _stored_block(b"", last=True) + checksum
+
+
+def _stored_block(block: bytes, *, last: bool) -> bytes:
+    """A deflate block holding `block` as it is: whether it's last, its size, then inverted."""
+    size = len(block)
+    return (
+        bytes([last])
+        + size.to_bytes(2, "little")
+        + (size ^ 0xFFFF).to_bytes(2, "little")
+        + block
+    )
 
 
 def _everything_in(pdf: pymupdf.Document) -> str:
@@ -482,6 +518,8 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
         "image_bytes",
         "plain_in_utf16",
         "image_end_bracket",
+        "image_flate_tail",
+        "image_crlf",
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
