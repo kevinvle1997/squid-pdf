@@ -385,6 +385,21 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P12", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P12 scn {_SQUARE}")
+    # Alone: an image MuPDF reads, its 200 bytes counted, holding the line after an EI: a
+    # reader ending the image at its first EI reads the line as marked content.
+    if "image_bytes" in places:
+        image = f"BI /W 200 /H 1 /BPC 8 /CS /G ID {f'EI {_AROUND_SQUARE}':<200} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P13", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P13 scn {_SQUARE}")
+    # Alone: an image with no EI after its bytes, the first a ( and then a mark of UTF-16, so
+    # its string reads only as UTF-16; a reader ending the image at the EI reads the line plain.
+    if "plain_in_utf16" in places:
+        in_string = f"(\\376\\377 EI {_AROUND_SQUARE})"
+        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {in_string}{' ' * 100}"
+        tile = _new_stream(doc, no_end, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P14", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P14 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
     contents = _new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
@@ -448,6 +463,8 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
         "unreadable_image_comment",
         "unreadable_image_string",
         "unreadable_image_hex",
+        "image_bytes",
+        "plain_in_utf16",
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
@@ -529,7 +546,7 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
     )
 
 
-@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES])
+@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES, "stamp_in_image"])
 def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
     app, mine, monkeypatch, copy
 ):

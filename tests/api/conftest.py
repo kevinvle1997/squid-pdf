@@ -303,6 +303,8 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         _add_button(page, f"Email {REDACTED_NAME}")
     if "stamp" in copies:
         _stamp(doc, page, f"Seen by {REDACTED_NAME}")
+    if "stamp_in_image" in copies:
+        _stamp(doc, page, f"Seen by {REDACTED_NAME}", in_image=True)
     if "signature" in copies:
         _sign(doc, page, name="signed_by", at=(72, 550))
     if "certified" in copies:
@@ -367,12 +369,17 @@ def _add_button(page: pymupdf.Page, caption: str) -> None:
     page.add_widget(button)
 
 
-def _stamp(doc: pymupdf.Document, page: pymupdf.Page, words: str) -> None:
+def _stamp(
+    doc: pymupdf.Document, page: pymupdf.Page, words: str, *, in_image: bool = False
+) -> None:
     """Add a stamp whose drawing writes `words` only in hex: found only string by string."""
     stamp = page.add_stamp_annot(pymupdf.Rect(320, 610, 548, 650), stamp=0)
     _kind, drawing = doc.xref_get_key(stamp.xref, "AP/N")
-    drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET".encode()
-    doc.update_stream(int(drawing.split()[0]), drawn)
+    drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET"
+    # Inside an image's 100 bytes, after an EI: MuPDF reads past them, another reader in them.
+    if in_image:
+        drawn = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {f'EI {drawn}':<100} EI"
+    doc.update_stream(int(drawing.split()[0]), drawn.encode())
 
 
 def _sign(
