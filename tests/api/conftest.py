@@ -372,7 +372,10 @@ def _add_button(page: pymupdf.Page, caption: str) -> None:
 def _stamp(
     doc: pymupdf.Document, page: pymupdf.Page, words: str, *, in_image: bool = False
 ) -> None:
-    """Add a stamp whose drawing writes `words` only in hex: found only string by string."""
+    """Add a stamp whose drawing writes `words` only in hex, in an image if `in_image`.
+
+    Found only string by string.
+    """
     stamp = page.add_stamp_annot(pymupdf.Rect(320, 610, 548, 650), stamp=0)
     _kind, drawing = doc.xref_get_key(stamp.xref, "AP/N")
     drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET"

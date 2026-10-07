@@ -198,7 +198,7 @@ def _put_at(saved: Path, out: str) -> None:
             staged = Path(beside) / "saved.pdf"
             shutil.copyfile(saved, staged)
             staged.replace(out)
-    except OSError as failed:  # no permission, no room, a disk only for reading: it says which
+    except OSError as failed:  # no permission, no room, a read-only disk: the system says which
         raise _NotSaved(out, failed.strerror or str(failed)) from None
 
 

@@ -509,7 +509,7 @@ class PdfFile:
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
     def _strings_written_in(self, drawing: bytes, resources: pymupdf.mupdf.PdfObj) -> list[str]:
-        """Each string `drawing` writes, as text; an image is read past, but for an EI in it.
+        """Each string `drawing` writes, as text, and each in an image's bytes past an EI.
 
         After an image MuPDF can't read, every string to the end: nothing says where its
         bytes end. `resources` are those it names an image's colour space from.
@@ -546,7 +546,7 @@ class PdfFile:
     def _markings_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
     ) -> Iterator[tuple[int, int, pymupdf.mupdf.PdfObj | bytes | None]]:
-        """Each marked content's dictionary in `drawing`, read, with where it starts and ends.
+        """Each marked content's dictionary and image's bytes in `drawing`, and where each is.
 
         Read by MuPDF's lexer, as it draws them. Every dictionary counts, as MuPDF keeps one
         even before its tag; one not read whole comes as None, as does all after an image MuPDF
@@ -1544,7 +1544,7 @@ def _texts_of(held: bytes) -> list[str]:
     letter may start on, whole and cut at each ), where such a string ends.
     """
     texts = [_text_of(_string_of(held))]
-    # A UTF-16 mark first reads it only as UTF-16: a space first reads a plain string in it too.
+    # A UTF-16 mark makes it read only as UTF-16; a space before the mark reads it plain.
     if held[:2] in _UTF16_MARKS:
         texts.append(_text_of(_string_of(b" " + held)))
     for mark, codec in _MARKED_CODECS.items():
