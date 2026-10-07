@@ -194,7 +194,10 @@ def _saved_apart(out: str) -> Iterator[str]:
 def _put_at(saved: Path, out: str) -> None:
     """Put the file at `saved` at `out` whole: copied beside it, then moved in at once."""
     try:
-        with tempfile.TemporaryDirectory(dir=Path(out).parent) as beside:
+        # A folder left behind isn't worth calling a saved file unsaved.
+        with tempfile.TemporaryDirectory(
+            dir=Path(out).parent, ignore_cleanup_errors=True
+        ) as beside:
             staged = Path(beside) / "saved.pdf"
             shutil.copyfile(saved, staged)
             staged.replace(out)
