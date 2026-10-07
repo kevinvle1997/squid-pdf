@@ -16,7 +16,9 @@ from __future__ import annotations
 import argparse
 import os
 import posixpath
+import shutil
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -32,6 +34,7 @@ from squidpdf.core import (
     Fidelity,
     FidelityReport,
     FontSources,
+    Message,
     Problem,
     Span,
     SpanIndex,
@@ -137,6 +140,16 @@ class _UnknownSpan(Exception):
         self.span_id = span_id
 
 
+class _NotSaved(Exception):
+    """The file was made, but couldn't be put where the command was told to save it."""
+
+    def __init__(self, path: str, why: str) -> None:
+        """Name the path, and why, as the system says it."""
+        super().__init__(path)
+        self.path = path
+        self.why = why
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class _Opened:
     """A PDF open in the engine, its spans, and the one a command was given."""
@@ -164,6 +177,29 @@ def _room_of(opened: _Opened) -> float:
     """The room the span has on its line, as the app works it out."""
     span = opened.span
     return opened.engine.rooms(opened.index, [span])[span.id]
+
+
+@contextmanager
+def _saved_apart(out: str) -> Iterator[str]:
+    """A path to save to apart from `out`, its file put at `out` once the save and checks pass.
+
+    So a failed save or check leaves `out` as it was. Raises _NotSaved if `out` can't be had.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        saved = Path(scratch) / "saved.pdf"
+        yield str(saved)
+        _put_at(saved, out)
+
+
+def _put_at(saved: Path, out: str) -> None:
+    """Put the file at `saved` at `out` whole: copied beside it, then moved in at once."""
+    try:
+        with tempfile.TemporaryDirectory(dir=Path(out).parent) as beside:
+            staged = Path(beside) / "saved.pdf"
+            shutil.copyfile(saved, staged)
+            staged.replace(out)
+    except OSError as failed:  # no permission, no room, a disk only for reading: it says which
+        raise _NotSaved(out, failed.strerror or str(failed)) from None
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
@@ -213,7 +249,8 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             return _fail(described, hint="(pass --force to do it anyway)")
 
         # The same save a download gets.
-        saved = save_edited(opened.engine, opened.index, edits=[replace], to=args.out)
+        with _saved_apart(args.out) as to:
+            saved = save_edited(opened.engine, opened.index, edits=[replace], to=to)
     print(f"\n  {span.text!r} -> {args.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
@@ -227,9 +264,8 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         span = opened.span
         # The same save and check a download gets.
         try:
-            saved = save_edited(
-                opened.engine, opened.index, edits=[Redact(span.id)], to=args.out
-            )
+            with _saved_apart(args.out) as to:
+                saved = save_edited(opened.engine, opened.index, edits=[Redact(span.id)], to=to)
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
@@ -424,6 +460,10 @@ def main(argv: list[str] | None = None) -> int:
         return result_of(partial(args.fn, args))
     except _UnknownSpan as unknown:  # the span id typed isn't in the PDF
         return _no_span(unknown.span_id)
+    except _NotSaved as failed:  # the file was made, but its path can't be written
+        return _fail(
+            words.render(Message("not_saved", {"path": failed.path, "why": failed.why}))
+        )
     except Problem as exc:  # e.g. the one PDF a command was given won't open
         return _fail(exc.detail)
 
