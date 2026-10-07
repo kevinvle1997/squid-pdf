@@ -3,7 +3,8 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./policy";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
 const LINE = "This agreement is made on 14 March 2026 between";
