@@ -160,6 +160,34 @@ jobs:
         shell: bash
         run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
+      # Two IPv6 clients in different /64s, given to the runner, count apart through the
+      # published port: one uses up its minute's uploads, and the other is still let in.
+      - name: IPv6 clients count apart
+        run: |
+          first=fd8b:2c41:e0d5:1::1
+          second=fd8b:2c41:e0d5:2::1
+          sudo ip -6 addr add "$first/128" dev lo
+          sudo ip -6 addr add "$second/128" dev lo
+          # The password goes to curl in a file, as deploy/check.sh does.
+          (umask 077 && printf 'user = "ci:%s"\n' "$SQUIDPDF_PASSWORD" > /tmp/login)
+          # An empty upload is counted before its body is read, and costs the app nothing.
+          upload_from() {
+            curl --silent --output /dev/null --write-out '%{http_code}' --cacert /tmp/root.crt \
+              --config /tmp/login --interface "$1" --resolve "localhost:443:[$1]" \
+              --header 'content-type: application/pdf' --data-binary '' https://localhost/api/documents || true
+          }
+          # What the app answers an empty upload it lets in; 000, had curl not reached it.
+          let_in=$(upload_from "$first")
+          [[ $let_in =~ ^4 && $let_in != 429 ]] || { echo "an empty upload answered $let_in"; exit 1; }
+          for _ in $(seq 100); do
+            status=$(upload_from "$first")
+            [[ $status == 429 ]] && break
+          done
+          [[ $status == 429 ]] || { echo "100 uploads from $first were never refused"; exit 1; }
+          status=$(upload_from "$second")
+          [[ $status == "$let_in" ]] || { echo "$second answered $status, not $let_in: one count"; exit 1; }
+          echo "$first used up its uploads; $second, in another /64, was still let in"
+
       - name: Report
         run: |
           {
