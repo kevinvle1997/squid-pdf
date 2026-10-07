@@ -29,6 +29,8 @@ export const test = base.extend<{ policyKept: undefined }>({
         });
       });
       await use(undefined);
+      // A round trip through the page, so a refusal its last step raised has been reported.
+      if (!page.isClosed()) await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
       expect(refusals, "the page did something the Caddyfile's Content-Security-Policy refuses").toEqual([]);
     },
     { auto: true },

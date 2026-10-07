@@ -27,5 +27,25 @@
       }
     }
   },
+  "overrides": [
+    {
+      // Every end to end test fails on what the Caddyfile's policy refuses, so each takes its `test` from there.
+      "includes": ["e2e/**", "!e2e/policy.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@playwright/test": { "importNames": ["test"], "message": "Take `test` from ./policy." }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }
