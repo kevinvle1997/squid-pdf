@@ -53,7 +53,9 @@ _EI_BEFORE_DRAWING = re.compile(
 # How many bytes sooner than MuPDF another reader may end an image's counted bytes: it
 # reads a line end after ID as one byte, or its decoder needs fewer bytes ahead.
 _SOONER_BY = 16
-_FILTER_KEYS = ("F", "Filter")  # an inline image's filters, as it writes the key
+# An inline image's filters, under either key, in the order each reader looks: MuPDF and
+# Poppler read /Filter first, pdf.js /F.
+_FILTER_KEYS = (("Filter", "F"), ("F", "Filter"))
 _BITS_IN_A_BYTE = 8
 # The marks a string in UTF-16 starts with.
 _UTF16_MARKS = (codecs.BOM_UTF16_BE, codecs.BOM_UTF16_LE)
@@ -655,14 +657,15 @@ class PdfFile:
             return None
         mu.fz_seek(reader, end.end(), 0)
         written = drawing[image_from : end.start()]
-        filters = _filters_of(dictionary)
+        readings = [_filters_of(dictionary, keys) for keys in _FILTER_KEYS]
         # Each row's bytes, rounded up; a predictor's byte a row is left out, the safe side.
         row = -(-loaded.w() * loaded.n() * loaded.bpc() // _BITS_IN_A_BYTE)
-        counted = fewest_giving(written, filters, row * loaded.h())
+        # The fewest any reading gives, and an end of its own only if every reading marks one.
+        counted = min(fewest_giving(written, filters, row * loaded.h()) for filters in readings)
         return _InlineImage(
             written,
             counted=max(counted - _SOONER_BY, 0),
-            marks_its_end=marks_its_end(filters),
+            marks_its_end=all(marks_its_end(filters) for filters in readings),
         )
 
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
@@ -1443,10 +1446,10 @@ def _load_inline_image(
     return mu.pdf_load_inline_image(pdf, mu.PdfResourceStack(stack), dictionary, reader)
 
 
-def _filters_of(dictionary: pymupdf.mupdf.PdfObj) -> list[str]:
-    """An inline image's filters, by name, in the order they're undone; none if it has none."""
+def _filters_of(dictionary: pymupdf.mupdf.PdfObj, keys: tuple[str, str]) -> list[str]:
+    """An image's filters under the first of `keys` it has, by name, in the order undone."""
     mu = pymupdf.mupdf
-    written = (mu.pdf_dict_gets(dictionary, key) for key in _FILTER_KEYS)
+    written = (mu.pdf_dict_gets(dictionary, key) for key in keys)
     # Null: neither key is there.
     image_filter = next((value for value in written if not mu.pdf_is_null(value)), None)
     if image_filter is None:

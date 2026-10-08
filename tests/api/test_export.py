@@ -419,6 +419,24 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, compressed + b" EI", **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P17", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P17 scn {_SQUARE}")
+    # Alone: the same, its filter under both keys: /Filter, Flate, which MuPDF and Poppler read,
+    # and /F, ASCII85, whose count of the same bytes would reach past the line.
+    if "image_both_keys" in places:
+        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
+        dots = _stored_flate(b"A" * 100, tail)
+        compressed = b"BI /W 100 /H 1 /BPC 8 /CS /G /F /A85 /Filter /Fl ID " + dots
+        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P20", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P20 scn {_SQUARE}")
+    # Alone: four dots in hex, but for letters that aren't hex digits, which a reader takes as
+    # 0s: it has its dots before "EI[", where a count of hex digits alone runs past the line.
+    if "image_hex_letters" in places:
+        image = (
+            f"BI /W 4 /H 1 /BPC 8 /CS /G /F /AHx ID 00gggggg00EI[ ] pop {_AROUND_SQUARE} > EI"
+        )
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P21", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P21 scn {_SQUARE}")
     # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
     # so its dots end before "I", but a reader skipping one ends them before "EI[".
     if "image_crlf" in places:
@@ -531,6 +549,8 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
         "image_end_bracket",
         "image_flate_tail",
         "image_crlf",
+        "image_both_keys",
+        "image_hex_letters",
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):

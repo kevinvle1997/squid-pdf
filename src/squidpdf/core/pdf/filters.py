@@ -14,11 +14,14 @@ from dataclasses import dataclass
 
 _FLATE_STEP = 4096  # bytes fed to Flate's decoder at a time, before byte by byte
 _A85_GROUP = 5  # characters in a group of ASCII85, which give a byte fewer
-_A85_LETTERS = range(ord("!"), ord("u") + 1)  # what an ASCII85 group is written in
+_WHITE_SPACE = b" \t\n\r\x00\x0c"  # what ASCII85 and ASCIIHex read past
 _A85_ZEROS = ord("z")  # one character for a group of four zero bytes
 _A85_END = ord("~")  # where ASCII85 ends, written ~>
 _HEX_END = ord(">")  # where ASCIIHex ends
 _HEX_DIGITS = b"0123456789abcdefABCDEF"
+# How many bytes a filter undone before the last may give per byte written, at most: past
+# that, a bomb would fill a worker's memory, so they're cut there, and may size nothing.
+_DECODED_PER_BYTE = 8
 _RUN_END = 128  # the length byte that ends RunLength
 _RUN_REPEATS = 257  # a length byte past 128 repeats the next byte this less it times
 # Filters whose bytes mark their own end, which a reader that doesn't count them looks for.
@@ -32,7 +35,7 @@ class _Filter:
     """How a filter's bytes read back: how few give so many, and what all of them give."""
 
     fewest: Callable[[bytes, int], int | None]  # None: they never give so many
-    decoded: Callable[[bytes], bytes]
+    decoded: Callable[[bytes, int], bytes]  # what they give, up to so many
 
 
 def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
@@ -48,10 +51,11 @@ def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
         return 0
     steps = [_FILTERS[name] for name in filters]
     inputs = [written]  # each filter's bytes: what the ones undone before it give
+    at_most = len(written) * _DECODED_PER_BYTE
     # zlib, and base64's ASCII85, raise on bytes they can't read.
     try:
         for step in steps[:-1]:
-            inputs.append(step.decoded(inputs[-1]))
+            inputs.append(step.decoded(inputs[-1], at_most))
         for step, given in zip(reversed(steps), reversed(inputs), strict=True):
             fewest = step.fewest(given, wanted)
             # They never give so many: nothing says where a reader stops.
@@ -87,9 +91,9 @@ def _flate_fewest(written: bytes, wanted: int) -> int | None:
     return None
 
 
-def _flate_decoded(written: bytes) -> bytes:
-    """What Flate's bytes give, as far as they can be read."""
-    return zlib.decompressobj().decompress(written)
+def _flate_decoded(written: bytes, at_most: int) -> bytes:
+    """What Flate's bytes give, as far as they can be read, up to `at_most`."""
+    return zlib.decompressobj().decompress(written, at_most)
 
 
 def _a85_fewest(written: bytes, wanted: int) -> int | None:
@@ -101,11 +105,15 @@ def _a85_fewest(written: bytes, wanted: int) -> int | None:
         if byte == _A85_END:
             ends_here = in_group > 0 and given + in_group - 1 >= wanted
             return taken if ends_here else None
+        # White space, read past.
+        if byte in _WHITE_SPACE:
+            continue
+        is_zeros = byte == _A85_ZEROS and in_group == 0
         # A group of zeros, in one character.
-        if byte == _A85_ZEROS and in_group == 0:
+        if is_zeros:
             given += _A85_GROUP - 1
-        # One character of a group.
-        if byte in _A85_LETTERS:
+        # One character of a group: any other, as a reader that takes any into one counts it.
+        if not is_zeros:
             in_group += 1
         # A group is whole.
         if in_group == _A85_GROUP:
@@ -117,10 +125,10 @@ def _a85_fewest(written: bytes, wanted: int) -> int | None:
     return None
 
 
-def _a85_decoded(written: bytes) -> bytes:
-    """What ASCII85's characters give, to its end."""
+def _a85_decoded(written: bytes, at_most: int) -> bytes:
+    """What ASCII85's characters give, to its end, up to `at_most`."""
     before_end = written.split(b"~", 1)[0]
-    return base64.a85decode(before_end, ignorechars=b" \t\n\r\x00\x0c")
+    return base64.a85decode(before_end, ignorechars=_WHITE_SPACE)[:at_most]
 
 
 def _hex_fewest(written: bytes, wanted: int) -> int | None:
@@ -130,17 +138,21 @@ def _hex_fewest(written: bytes, wanted: int) -> int | None:
         # Its end: a digit left alone gives a byte too.
         if byte == _HEX_END:
             return taken if -(-digits // 2) >= wanted else None
-        digits += byte in _HEX_DIGITS
+        # Any but white space, as a reader that reads it as a 0 counts it.
+        digits += byte not in _WHITE_SPACE
         # Enough: they end with this digit.
         if digits // 2 >= wanted:
             return taken
     return None
 
 
-def _hex_decoded(written: bytes) -> bytes:
-    """What ASCIIHex's characters give, to its end, a digit left alone read with a 0 after."""
+def _hex_decoded(written: bytes, at_most: int) -> bytes:
+    """What ASCIIHex's characters give, to its end, up to `at_most`.
+
+    A digit left alone is read with a 0 after it.
+    """
     digits = bytes(byte for byte in written.split(b">", 1)[0] if byte in _HEX_DIGITS)
-    return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
+    return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())[:at_most]
 
 
 def _run_length_fewest(written: bytes, wanted: int) -> int | None:
@@ -167,11 +179,11 @@ def _run_length_fewest(written: bytes, wanted: int) -> int | None:
     return None
 
 
-def _run_length_decoded(written: bytes) -> bytes:
-    """What RunLength's bytes give, to its end."""
+def _run_length_decoded(written: bytes, at_most: int) -> bytes:
+    """What RunLength's bytes give, to its end, up to `at_most`."""
     given = bytearray()
     at = 0
-    while at < len(written) and written[at] != _RUN_END:
+    while at < len(written) and written[at] != _RUN_END and len(given) < at_most:
         length = written[at]
         # A run of the next byte, repeated.
         if length > _RUN_END:
@@ -180,7 +192,7 @@ def _run_length_decoded(written: bytes) -> bytes:
             continue
         given += written[at + 1 : at + 2 + length]
         at += 2 + length
-    return bytes(given)
+    return bytes(given[:at_most])
 
 
 # Each filter sized here, by its name in full and as an inline image writes it.
