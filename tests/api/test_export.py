@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import tempfile
 import time
+import zlib
 from collections.abc import Collection, Iterator
 from pathlib import Path
 from unittest import mock
@@ -68,6 +70,8 @@ _HEX_IMAGE = "BI /W 1 /H 1 /BPC 8 /CS /G /F /AHx ID 00>EI"
 # A 4 by 4 image: 16 raw bytes after ID and a carriage return and line feed. They hold " EI ("
 # and end in an E an I follows: only their count, from past the line feed, says where they end.
 _UNFILTERED_IMAGE = "BI /W 4 /H 4 /BPC 8 /CS /G ID\r\n\0 EI (" + "\0" * 9 + "EI ( EI"
+# zlib's header: deflate, with no dictionary and the least compression.
+_ZLIB_HEADER = b"\x78\x01"
 # A form: a drawing of its own, 100 points square, that a page draws like an image.
 _FORM = {"Type": "/XObject", "Subtype": "/Form", "BBox": "[0 0 100 100]"}
 # A tiling pattern: painted with its own colours, tiled at even spacing, every 20 points.
@@ -385,20 +389,112 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P12", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P12 scn {_SQUARE}")
+    # Alone: an image MuPDF reads, its 200 bytes counted, holding the line after an EI: a
+    # reader ending the image at its first EI reads the line as marked content.
+    if "image_bytes" in places:
+        image = f"BI /W 200 /H 1 /BPC 8 /CS /G ID {f'EI {_AROUND_SQUARE}':<200} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P13", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P13 scn {_SQUARE}")
+    # Alone: an image with no EI after its bytes, the first a ( and then a mark of UTF-16, so
+    # its string reads only as UTF-16; a reader ending the image at the EI reads the line plain.
+    if "plain_in_utf16" in places:
+        in_string = f"(\\376\\377 EI {_AROUND_SQUARE})"
+        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {in_string}{' ' * 100}"
+        tile = _new_stream(doc, no_end, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P14", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P14 scn {_SQUARE}")
+    # Alone: a one-byte image, then an EI and a [, where MuPDF looks on for an EI after a space
+    # but a reader taking the first EI past its bytes ends it, and reads the line.
+    if "image_end_bracket" in places:
+        image = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 EI[ ] pop {_AROUND_SQUARE} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P15", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P15 scn {_SQUARE}")
+    # Alone: a one-dot image compressed (Flate), its dot in a block of its own and the line
+    # after an EI in the next: MuPDF reads every block, a reader stopping at the dot reads on.
+    if "image_flate_tail" in places:
+        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
+        compressed = b"BI /W 1 /H 1 /BPC 8 /CS /G /F /Fl ID " + _stored_flate(b"\0", tail)
+        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P17", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P17 scn {_SQUARE}")
+    # Alone: the same, its filter under both keys: /Filter, Flate, which MuPDF and Poppler read,
+    # and /F, ASCII85, whose count of the same bytes would reach past the line.
+    if "image_both_keys" in places:
+        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
+        dots = _stored_flate(b"A" * 100, tail)
+        compressed = b"BI /W 100 /H 1 /BPC 8 /CS /G /F /A85 /Filter /Fl ID " + dots
+        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P20", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P20 scn {_SQUARE}")
+    # Alone: four dots in hex, but for letters that aren't hex digits, which a reader takes as
+    # 0s: it has its dots before "EI[", where a count of hex digits alone runs past the line.
+    if "image_hex_letters" in places:
+        image = (
+            f"BI /W 4 /H 1 /BPC 8 /CS /G /F /AHx ID 00gggggg00EI[ ] pop {_AROUND_SQUARE} > EI"
+        )
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P21", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P21 scn {_SQUARE}")
+    # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
+    # so its dots end before "I", but a reader skipping one ends them before "EI[".
+    if "image_crlf" in places:
+        image = f"BI /W 2 /H 1 /BPC 8 /CS /G ID\r\n\0EI[ ] pop {_AROUND_SQUARE} EI"
+        tile = _new_stream(doc, image, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P18", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P18 scn {_SQUARE}")
+    # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
+    # after it, as compressed bytes may: no reader ends it there, so the line is only bytes.
+    if "image_holding_end" in places:
+        held = f"EI \xff ({_CARD}) \xff"
+        image = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {held:<100} EI"
+        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
+        tile = _new_stream(doc, tagged, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P16", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P16 scn {_SQUARE}")
+    # Alone: the same, its pixels written as ASCII85, all plain, its text an EI and the line: a
+    # reader ends it at its ~>, or once it has its pixels, so the line is only pixels.
+    if "a85_holding_end" in places:
+        text = f"EI\n({_CARD})"
+        pixels = base64.a85decode(text.encode(), ignorechars=b" \n")
+        image = f"BI /W {len(pixels)} /H 1 /BPC 8 /CS /G /F /A85 ID {text}~> EI"
+        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
+        tile = _new_stream(doc, tagged, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P19", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P19 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
     contents = _new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
     return doc.tobytes()
 
 
-def _new_stream(doc: pymupdf.Document, drawing: str, **keys: str) -> int:
+def _new_stream(doc: pymupdf.Document, drawing: str | bytes, **keys: str) -> int:
     """A new stream in `doc` holding `drawing`, with these keys; its number."""
     xref = doc.get_new_xref()
     doc.update_object(xref, "<<>>")
-    doc.update_stream(xref, drawing.encode())
+    doc.update_stream(xref, drawing if isinstance(drawing, bytes) else drawing.encode())
     for key, value in keys.items():
         doc.xref_set_key(xref, key, value)
     return xref
+
+
+def _stored_flate(*blocks: bytes) -> bytes:
+    """A zlib stream of `blocks`, each stored as it is: a decoder gives each once it's read."""
+    stored = [_stored_block(block, last=False) for block in blocks]
+    checksum = zlib.adler32(b"".join(blocks)).to_bytes(4, "big")
+    return _ZLIB_HEADER + b"".join(stored) + _stored_block(b"", last=True) + checksum
+
+
+def _stored_block(block: bytes, *, last: bool) -> bytes:
+    """A deflate block holding `block` as it is: whether it's last, its size, then inverted."""
+    size = len(block)
+    return (
+        bytes([last])
+        + size.to_bytes(2, "little")
+        + (size ^ 0xFFFF).to_bytes(2, "little")
+        + block
+    )
 
 
 def _everything_in(pdf: pymupdf.Document) -> str:
@@ -448,6 +544,13 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
         "unreadable_image_comment",
         "unreadable_image_string",
         "unreadable_image_hex",
+        "image_bytes",
+        "plain_in_utf16",
+        "image_end_bracket",
+        "image_flate_tail",
+        "image_crlf",
+        "image_both_keys",
+        "image_hex_letters",
     ],
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
@@ -462,6 +565,20 @@ def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monk
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=_CARD_LINE, page=1)
     assert_equal(response.json()["detail"], said, "what the user reads")
+
+
+@pytest.mark.parametrize("place", ["image_holding_end", "a85_holding_end"])
+def test_an_image_whose_bytes_only_hold_an_ei_still_downloads(mine, place):
+    """Compressed bytes can hold an EI by chance; read as drawing, a short word would match.
+
+    Here the line itself sits past it, where no reader reads the bytes as drawing.
+    """
+    doc = upload(mine, _marked_pdf([place])).json()
+    card = span_starting(doc, 0, "A US card")
+
+    response = _export(mine, doc, [_redact(card)])
+
+    assert_equal(_lines(_opened(response)), [[_KEPT]], "the page's lines")
 
 
 def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refused_at_export(
@@ -529,7 +646,7 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
     )
 
 
-@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES])
+@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES, "stamp_in_image"])
 def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
     app, mine, monkeypatch, copy
 ):
