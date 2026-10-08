@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pymupdf
 import pytest
 
-from squidpdf.core import FontSources, open_pdf
+from squidpdf.core import FontSources, Message, open_pdf
+from squidpdf.core.fonts import pool
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
@@ -20,14 +23,14 @@ _SIZE = 14.0
 _TEXTS = ("Hello there", "Yearly quiz", "Hello Jim, three")
 
 
-def _copy_per_page(path: str) -> str:
-    """Three one-page PDFs, each with its own trimmed copy of Times, joined into one.
+def _copy_per_page(path: str, texts: tuple[str, ...] = _TEXTS) -> str:
+    """One-page PDFs, one per text, each with its own trimmed copy of Times, joined into one.
 
     As merging documents leaves them: each page keeps the copy it came with,
     trimmed (subset) to its own letters, under one name with its own prefix.
     """
     joined = pymupdf.open()
-    for text in _TEXTS:
+    for text in texts:
         single = pymupdf.open()
         page = single.new_page()
         # "own" is only the name the page files the font under.
@@ -91,6 +94,43 @@ def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path, noted):
     assert_equal(after_borrowing, ([first, second], [0, 1]), looked_at)
     assert_in("J", widths, "letters the browser is told the pool draws")
     assert_in(third, read_out, "copies read out once the whole pool is asked for")
+
+
+# Page 1's copy draws the Y, a and y page 0's lacks; pages 2 to 7 repeat page 0's words.
+_REPEATED = ("Hello there", "Yearly quiz", *["Hello there"] * 6)
+
+
+def test_a_pool_takes_in_no_copy_once_it_has_every_letter_the_files_copies_draw(
+    tmp_path, monkeypatch
+):
+    """A merged file keeps a copy per page, and each page's pool took in every other copy.
+
+    Once one pool has seen every copy, the next stops where its letters cover theirs.
+    """
+    path = _copy_per_page(str(tmp_path / "copies.pdf"), _REPEATED)
+    checked: list[int] = []
+    why_turned_away = pool.why_turned_away
+
+    def counted(
+        other: pool.FontCopy, *, own: pool.FontCopy, letters: Mapping[str, pool.FontCopy]
+    ) -> Message | None:
+        checked.append(other.font.xref)
+        return why_turned_away(other, own=own, letters=letters)
+
+    monkeypatch.setattr(pool, "why_turned_away", counted)
+    with open_pdf(path) as engine:
+        on_page = {span.page: span for span in engine.index()}
+        # Page 0's whole pool: every other copy is taken in, so all their letters are known.
+        engine.widths(on_page[0])
+        checked.clear()
+        widths = engine.widths(on_page[1])
+        taken_in = len(checked)
+    with open_pdf(path) as engine:
+        walked_all = engine.widths(next(span for span in engine.index() if span.page == 1))
+
+    # Page 0's copy, the nearest, brings every letter the rest draw: none of them is opened.
+    assert_equal(taken_in, 1, "copies page 1's pool takes in once every copy is known")
+    assert_equal(widths, walked_all, "page 1's letters, against a pool that took in every copy")
 
 
 def _missing_with_google(path: str, font_file: bytes) -> list[str]:
