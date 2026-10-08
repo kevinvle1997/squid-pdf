@@ -24,6 +24,7 @@ from xml.parsers.expat import ExpatError
 import pymupdf
 
 from squidpdf.core.app.message import Message
+from squidpdf.core.constants import IMAGE_SOONER_BY
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
 from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
@@ -50,9 +51,6 @@ _INLINE_IMAGE_END = re.compile(rb"EI(?=[\x00-\x20</]|\Z)")
 _EI_BEFORE_DRAWING = re.compile(
     rb"EI[\t\n\r ](?=[\x00\t\n\r\x20-\x7f]{10}|[\x00\t\n\r\x20-\x7f]*\Z)"
 )
-# How many bytes sooner than MuPDF another reader may end an image's counted bytes: it
-# reads a line end after ID as one byte, or its decoder needs fewer bytes ahead.
-_SOONER_BY = 16
 # An inline image's filters, under either key, in the order each reader looks: MuPDF and
 # Poppler read /Filter first, pdf.js /F.
 _FILTER_KEYS = (("Filter", "F"), ("F", "Filter"))
@@ -664,7 +662,7 @@ class PdfFile:
         counted = min(fewest_giving(written, filters, row * loaded.h()) for filters in readings)
         return _InlineImage(
             written,
-            counted=max(counted - _SOONER_BY, 0),
+            counted=max(counted - IMAGE_SOONER_BY, 0),
             marks_its_end=all(marks_its_end(filters) for filters in readings),
         )
 

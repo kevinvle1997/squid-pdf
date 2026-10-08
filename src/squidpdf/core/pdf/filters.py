@@ -12,6 +12,8 @@ import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from squidpdf.core.constants import DECODED_PER_BYTE
+
 _FLATE_STEP = 4096  # bytes fed to Flate's decoder at a time, before byte by byte
 _A85_GROUP = 5  # characters in a group of ASCII85, which give a byte fewer
 _WHITE_SPACE = b" \t\n\r\x00\x0c"  # what ASCII85 and ASCIIHex read past
@@ -19,9 +21,6 @@ _A85_ZEROS = ord("z")  # one character for a group of four zero bytes
 _A85_END = ord("~")  # where ASCII85 ends, written ~>
 _HEX_END = ord(">")  # where ASCIIHex ends
 _HEX_DIGITS = b"0123456789abcdefABCDEF"
-# How many bytes a filter undone before the last may give per byte written, at most: past
-# that, a bomb would fill a worker's memory, so they're cut there, and may size nothing.
-_DECODED_PER_BYTE = 8
 _RUN_END = 128  # the length byte that ends RunLength
 _RUN_REPEATS = 257  # a length byte past 128 repeats the next byte this less it times
 # Filters whose bytes mark their own end, which a reader that doesn't count them looks for.
@@ -51,7 +50,7 @@ def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
         return 0
     steps = [_FILTERS[name] for name in filters]
     inputs = [written]  # each filter's bytes: what the ones undone before it give
-    at_most = len(written) * _DECODED_PER_BYTE
+    at_most = len(written) * DECODED_PER_BYTE
     # zlib, and base64's ASCII85, raise on bytes they can't read.
     try:
         for step in steps[:-1]:
