@@ -97,7 +97,7 @@ class _FontCache:
 
     A copy of a font by how its page lists it (its object, its name there,
     whether a form uses it), so pages that list it alike share one. A page's
-    own facts by page number.
+    own facts by page number. Every letter a font's copies draw, by its name.
     """
 
     # What each page says, by page number, read when the page is first asked about.
@@ -107,7 +107,7 @@ class _FontCache:
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
     # Every letter some copy of a font draws, by its name, once a walk has opened every copy.
-    copies_letters: dict[str, frozenset[str]] = field(default_factory=dict)
+    every_letter: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
         """What page `number` says, read on first use."""
@@ -123,14 +123,14 @@ class _FontCache:
         """A font's look-alike, by its name and object, chosen on first use."""
         return made_once(self.look_alikes, key, make)
 
-    def letters_of_copies(self, name: str) -> frozenset[str] | None:
-        """Every letter a copy of the font `name` draws; None until a walk has seen them all."""
+    def every_letter_of(self, name: str) -> frozenset[str] | None:
+        """Every letter of the font `name`; None until known."""
         # .get: no pool may have walked every copy yet.
-        return self.copies_letters.get(name)
+        return self.every_letter.get(name)
 
-    def saw_every_copy(self, name: str, letters: frozenset[str]) -> None:
-        """Keep every letter the copies of the font `name` draw, found by walking them all."""
-        self.copies_letters[name] = letters
+    def keep_every_letter(self, name: str, letters: frozenset[str]) -> None:
+        """Keep every letter of the font `name`."""
+        self.every_letter[name] = letters
 
     def forget_pages(self) -> None:
         """Forget everything, as a fresh cache: it was all looked up through page numbers.
@@ -141,7 +141,7 @@ class _FontCache:
         self.pages.clear()
         self.copies.clear()
         self.look_alikes.clear()
-        self.copies_letters.clear()
+        self.every_letter.clear()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -341,18 +341,18 @@ class DocumentFonts:
         hold all theirs: a copy left could lend only a letter it has.
         """
         name = strip_subset(own.font.name)
-        every_letter = self.cache.letters_of_copies(name)
-        seen = set(own.widths)
+        every_letter = self.cache.every_letter_of(name)
+        drawn = set(own.widths)
         for font in self._other_copies(page, own.font):
-            # The pool has every letter a copy draws: the rest would lend it nothing.
-            if every_letter is not None and letters.keys() >= every_letter:
+            pool_has_them_all = every_letter is not None and letters.keys() >= every_letter
+            if pool_has_them_all:
                 return
             copy = self._opened(font)
             # A copy we can't open lends no letters; the span's own still draws what it can.
             if isinstance(copy, FontCopy):
-                seen.update(copy.widths)
+                drawn.update(copy.widths)
                 yield copy
-        self.cache.saw_every_copy(name, frozenset(seen))
+        self.cache.keep_every_letter(name, frozenset(drawn))
 
     def look_alike(self, span: Span) -> LookAlike:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""

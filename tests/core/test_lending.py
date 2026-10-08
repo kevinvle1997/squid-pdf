@@ -103,10 +103,7 @@ _REPEATED = ("Hello there", "Yearly quiz", *["Hello there"] * 6)
 def test_a_pool_takes_in_no_copy_once_it_has_every_letter_the_files_copies_draw(
     tmp_path, monkeypatch
 ):
-    """A merged file keeps a copy per page, and each page's pool took in every other copy.
-
-    Once one pool has seen every copy, the next stops where its letters cover theirs.
-    """
+    """Once a pool has seen every copy of a merged file's font, the next stops early."""
     path = _copy_per_page(str(tmp_path / "copies.pdf"), _REPEATED)
     checked: list[int] = []
     why_turned_away = pool.why_turned_away
