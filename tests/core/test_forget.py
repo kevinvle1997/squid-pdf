@@ -22,7 +22,11 @@ from tests.helpers import assert_equal, assert_every_field_filled
 
 def test_keeping_pages_forgets_the_fonts_read_by_page_number(engine):
     """`keep_pages` renumbers the pages: nothing read through the old numbers may stay."""
-    engine.assess(engine.index())
+    index = engine.index()
+    engine.assess(index)
+    # The browser's letters for each span, as an upload asks: each pool walks every copy.
+    for span in index:
+        engine.widths(span)
     cache = engine.fonts.cache
     assert_every_field_filled(cache, _FontCache(), "the cache once every span is judged")
 
