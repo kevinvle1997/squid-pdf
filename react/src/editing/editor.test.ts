@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { changedCount, createEditor, type Editor, putBack, redo, undo, unexported, warnedCount } from "./editor";
 import { exportNow } from "./export";
 import { plain, warn } from "./notices";
@@ -109,11 +109,13 @@ describe("an edit", () => {
     const found = { code: "signed", params: {}, type: "t", detail: "This file is signed." };
     editor = createEditor(FILE, { ...DOC, notices: [found] }, 2);
     const { notices } = editor.store.get();
-    editor.store.set({ notices: { ...notices, export: plain("Downloaded contract.pdf."), reopen: plain("Opened.") } });
+    editor.store.set({
+      notices: { ...notices, export: [plain("Downloaded contract.pdf.")], reopen: plain("Opened.") },
+    });
     typed("own", "now");
     expect(editor.store.get().notices).toEqual({
       document: [warn(found.detail)],
-      export: null,
+      export: [],
       reopen: null,
       font: null,
     });
@@ -193,7 +195,7 @@ describe("export", () => {
     typeInto(editor, "typed");
     await exportNow(editor);
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
-    expect(editor.store.get().notices.export).toEqual(plain("Downloaded contract.pdf."));
+    expect(editor.store.get().notices.export).toEqual([plain("Downloaded contract.pdf.")]);
     expect(editor.store.get().exporting).toBe(false);
   });
 
@@ -222,18 +224,22 @@ describe("export", () => {
     expect(unexported(editor.store.get())).toBe(true);
   });
 
-  test("edits the server left out are said, as a warning", async () => {
-    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [0], notices: [] });
+  test("edits the server left out are said, as a warning, and so is everything else saving did otherwise", async () => {
+    const tags = "Splitting the file dropped its tags, so a screen reader reads it with less structure.";
+    const signed = "Every signature in this file was removed, since an edit breaks it.";
+    const notices = [aFileNotice(tags), aFileNotice(signed)];
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [0], notices });
     typed("own", "now");
     await exportNow(editor);
-    expect(editor.store.get().notices.export).toEqual(warn(COPY.export_left_out));
+    expect(editor.store.get().notices.export).toEqual([warn(COPY.export_left_out), warn(tags), warn(signed)]);
+    expect(editor.store.get().said.text).toBe(`${COPY.export_left_out} ${tags} ${signed}`);
   });
 
   test("a bug in export is said and logged, not thrown, and export can be tried again", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(exportPdf).mockRejectedValue(new TypeError("undefined is not a function"));
     await exportNow(editor);
-    expect(editor.store.get().notices.export?.tone).toBe("warn");
+    expect(editor.store.get().notices.export.map((notice) => notice.tone)).toEqual(["warn"]);
     expect(logged).toHaveBeenCalledWith(new TypeError("undefined is not a function"));
     expect(editor.store.get().exporting).toBe(false);
   });
@@ -242,7 +248,7 @@ describe("export", () => {
     const problem = aProblem(422, "Couldn't remove it, so nothing was downloaded.");
     vi.mocked(exportPdf).mockRejectedValue(new ProblemError(problem));
     await exportNow(editor);
-    expect(editor.store.get().notices.export).toEqual(warn(problem.detail));
+    expect(editor.store.get().notices.export).toEqual([warn(problem.detail)]);
     expect(editor.store.get().exporting).toBe(false);
   });
 });

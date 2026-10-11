@@ -3,6 +3,7 @@
 import type {
   Copy,
   Document,
+  FileNoticeInfo,
   FitInfo,
   FitRules,
   FontInfo,
@@ -122,6 +123,11 @@ export function aReply(fields: Partial<Render> = {}): Render {
 /** A span's edit the server drew other than asked, in its words. */
 export function aSpanNotice(detail: string, spanId = "span"): SpanNoticeInfo {
   return { kind: "span", span_id: spanId, code: "notice", params: {}, detail };
+}
+
+/** What saving did to the whole file other than asked, in the server's words. */
+export function aFileNotice(detail: string): FileNoticeInfo {
+  return { kind: "file", code: "notice", params: {}, detail };
 }
 
 /** An edit the server left out, at `edit` in the list sent. */
