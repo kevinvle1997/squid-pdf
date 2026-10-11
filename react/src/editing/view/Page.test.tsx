@@ -262,6 +262,8 @@ describe("a page", () => {
       text: "in Arial",
       font: "Arial",
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+      fidelity: "substitute",
+      substitute: "Liberation Sans Regular",
     });
     const substitutedFont = aFont("Arial", {
       substitute: "Liberation Sans Regular",
@@ -338,6 +340,8 @@ describe("a page", () => {
       text: "in Arial",
       font: "Arial",
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+      fidelity: "substitute",
+      substitute: "Liberation Sans Regular",
     });
     const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular" });
     editor = createEditor(

@@ -242,7 +242,7 @@ export function warnedCount(state: EditorState): { count: number; label: string 
   let count = 0;
   let approximate = false;
   for (const { span, replaced } of state.reading.spans.values()) {
-    const inSubstitute = state.layout.fonts.get(span.font)?.substitute != null;
+    const inSubstitute = span.fidelity === "substitute";
     const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
     if (!replaced) continue;
     if (span.why !== null) approximate = true;

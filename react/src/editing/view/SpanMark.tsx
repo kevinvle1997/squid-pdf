@@ -30,7 +30,7 @@ interface Props {
  */
 export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, focusTo, notes, noteId }: Props) {
   const editor = useEditor();
-  const look = lookOf({ formField: span.form_field, why: span.why, font, edited, fit, copy });
+  const look = lookOf({ span, font, edited, fit, copy });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
   const lastPress = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
