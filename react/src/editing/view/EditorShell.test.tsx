@@ -162,10 +162,10 @@ describe("undo and redo", () => {
 // Arial only named: a similar font stands in, and its letters are the ones the page lists.
 const LETTERS = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
 const NAMED = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs: LETTERS });
-const ARIAL_SPAN = aSpan({ ...span, font: "Arial" });
+const ARIAL_SPAN = aSpan({ ...span, font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" });
 const ARIAL_DOC = aDoc({ spans: [ARIAL_SPAN], fonts: [NAMED] });
 const USERS_COPY = aDoc({
-  spans: [ARIAL_SPAN],
+  spans: [{ ...ARIAL_SPAN, fidelity: "exact", substitute: null }],
   fonts: [aFont("Arial", { attached: true, glyphs: { ...LETTERS, Y: 667 } })],
 });
 const FONT_FILE = new File(["a font"], "arial.ttf", { type: "font/ttf" });

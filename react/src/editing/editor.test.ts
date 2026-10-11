@@ -16,7 +16,10 @@ vi.mock(import("../api/client"), async (original) => ({
 }));
 
 const DOC = aDoc({
-  spans: [aSpan({ id: "own", font: "Kept" }), aSpan({ id: "substituted", font: "Named" })],
+  spans: [
+    aSpan({ id: "own", font: "Kept" }),
+    aSpan({ id: "substituted", font: "Named", fidelity: "substitute", substitute: "Liberation Serif Regular" }),
+  ],
   fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
 });
 const FILE = new File(["%PDF-"], "contract.pdf");
@@ -179,10 +182,18 @@ describe("an edit", () => {
     expect(changedCount(editor.store.get())).toBe(2);
     expect(warnedCount(editor.store.get())).toEqual({ count: 1, label: "in a similar font" });
     const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
-    editor = createEditor(FILE, aDoc({ spans: [...DOC.spans, turned], fonts: DOC.fonts }), 2);
+    // Its font's own copy draws the font's first span, but not this one: the span is what's counted.
+    const elsewhere = aSpan({
+      id: "elsewhere",
+      font: "Kept",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+    });
+    editor = createEditor(FILE, aDoc({ spans: [...DOC.spans, turned, elsewhere], fonts: DOC.fonts }), 2);
     typed("substituted", "now");
     typed("turned", "now");
-    expect(warnedCount(editor.store.get())).toEqual({ count: 2, label: "will look different" });
+    typed("elsewhere", "now");
+    expect(warnedCount(editor.store.get())).toEqual({ count: 3, label: "will look different" });
   });
 
   test("typing into text that won't match says why, before any trouble of its own", () => {
