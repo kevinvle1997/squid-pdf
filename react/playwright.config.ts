@@ -9,6 +9,8 @@ const CERTIFICATE = `openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=localho
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
+  // Every spec uploads from one address, and the API refuses one past `UPLOADS_UNDER_WAY` at once.
+  workers: 2,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? "github" : "list",
   use: {
