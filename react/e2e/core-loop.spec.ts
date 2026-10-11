@@ -124,6 +124,35 @@ test("Cmd+S downloads the edited PDF under its own name", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText("Downloaded sample.pdf.");
 });
 
+test("Cmd+Delete redacts a line, and the file downloaded no longer has its words", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: LINE }).focus();
+  await page.keyboard.press("ControlOrMeta+Backspace");
+  await expect(page.getByRole("button", { name: `${LINE} (redacted)` })).toBeFocused();
+  // The server drew it, its words gone from the strip as they'll be from the file.
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const bytes = await readFile(await (await downloading).path());
+  // Read back as any upload is: the line's words aren't in the file's text at all.
+  const reread = await page.evaluate(
+    async (pdf) => {
+      const body = new Uint8Array(pdf);
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "content-type": "application/pdf" },
+        body,
+      });
+      const doc = (await response.json()) as { spans: { text: string }[] };
+      return doc.spans.map((span) => span.text);
+    },
+    [...bytes],
+  );
+  expect(reread.length).toBeGreaterThan(0);
+  expect(reread.join(" ")).not.toContain("This agreement is made");
+});
+
 test("Cmd+S while still typing exports the edit being typed", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: LINE }).focus();

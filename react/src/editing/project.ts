@@ -51,18 +51,26 @@ export function samePage(a: PageEdits | undefined, b: PageEdits | undefined): bo
   );
 }
 
+/** A span that reads differently than its page's strips show: what it reads now, or that it's redacted. */
+export interface Differing {
+  readonly span: SpanInfo;
+  readonly text: string;
+  readonly redacted: boolean;
+}
+
 /**
  * The spans that read differently in `now` than in `then`, with what each reads now: the
  * original's words where `now` has put it back.
  */
-export function differing(now: PageEdits | undefined, then: PageEdits | undefined): { span: SpanInfo; text: string }[] {
+export function differing(now: PageEdits | undefined, then: PageEdits | undefined): Differing[] {
   const was = new Map(then?.spans.map((reading) => [reading.span.id, reading]));
-  const out: { span: SpanInfo; text: string }[] = [];
+  const out: Differing[] = [];
   for (const reading of now?.spans ?? []) {
-    if (!sameSpan(reading, was.get(reading.span.id))) out.push({ span: reading.span, text: reading.text });
-    was.delete(reading.span.id);
+    const { span, text, redacted } = reading;
+    if (!sameSpan(reading, was.get(span.id))) out.push({ span, text, redacted });
+    was.delete(span.id);
   }
-  for (const reading of was.values()) out.push({ span: reading.span, text: reading.span.text });
+  for (const reading of was.values()) out.push({ span: reading.span, text: reading.span.text, redacted: false });
   return out;
 }
 

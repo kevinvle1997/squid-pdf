@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, useSyncExternalStore } from "react";
 import { Button, type PressEvent } from "react-aria-components";
-import type { Copy, FitInfo, FontInfo, PageInfo, SpanInfo } from "../../api/types";
+import type { Copy, FitInfo, FontInfo, PageInfo, RedactionInfo, SpanInfo } from "../../api/types";
 import { DOUBLE_PRESS_MS } from "../constants";
 import { type FocusTo, focusMoved } from "../editor";
 import { lookOf } from "../marks";
@@ -17,6 +17,7 @@ interface Props {
   edited: SpanReading | undefined; // what it reads now, if an edit changed it
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
+  redaction: RedactionInfo | undefined; // the server's verdict on its redaction
   copy: Copy;
   focusTo: FocusTo | null; // focus is sent here: back from its field, or put back from the margin
   notes: Notes; // the page's one note, which this mark shows its own in
@@ -28,9 +29,10 @@ interface Props {
  * The page hands it what it shows, so a page's marks subscribe to nothing of the editor's and
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
-export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, copy, focusTo, notes, noteId }: Props) {
+export const SpanMark = memo(function SpanMark(props: Props) {
+  const { span, info, edited, font, fit, redaction, copy, focusTo, notes, noteId } = props;
   const editor = useEditor();
-  const look = lookOf({ span, font, edited, fit, copy });
+  const look = lookOf({ span, font, edited, fit, redaction, copy });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
   const lastPress = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
@@ -76,6 +78,8 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
     look.formField && styles.formField,
     look.changed && styles.changed,
     look.trouble && styles.trouble,
+    look.redacted && styles.redacted,
+    look.unredacted && styles.unredacted,
   ]
     .filter(Boolean)
     .join(" ");
@@ -84,6 +88,7 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
     <Button
       ref={takeFocus}
       className={className}
+      data-span={span.id}
       style={boxOf(span.bbox, info)}
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}
@@ -104,6 +109,7 @@ export const SpanMark = memo(function SpanMark({ span, info, edited, font, fit, 
       }}
     >
       <span className="vh">{edited?.text ?? span.text}</span>
+      {look.redacted && <span className="vh"> (redacted)</span>}
     </Button>
   );
 });

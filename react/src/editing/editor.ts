@@ -37,6 +37,12 @@ export interface FocusTo {
   readonly spanId: string;
 }
 
+/** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
+export interface Unredacting {
+  readonly spanId: string;
+  readonly atPt: number | null; // where in the span the press was: the word to select, if it's edited
+}
+
 /** Words for a screen reader, counted: the same words said again are heard again. */
 export interface Spoken {
   readonly text: string;
@@ -78,6 +84,7 @@ export interface EditorState {
   readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
   readonly draft: Draft | null;
+  readonly unredacting: Unredacting | null;
   readonly focusTo: FocusTo | null;
   readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
   readonly said: Spoken; // what a screen reader hears, for what the page doesn't show
@@ -119,6 +126,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     reading: UNEDITED,
     drawn: NOTHING_DRAWN,
     draft: null,
+    unredacting: null,
     focusTo: null,
     notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
     said: { text: "", count: 0 },

@@ -69,6 +69,20 @@ describe("the render queue", () => {
     expect(queue.drawn.fits.get(0)).toEqual({ [ONE.id]: aFit() });
   });
 
+  test("a redaction's verdict lands with its page, and goes with it", async () => {
+    const redaction = { kind: "redact" as const, span_id: TWO.id };
+    queue.draw(readingOf(redaction));
+    await settle();
+    const verdict = { verified: false, hidden_copies: [], message: "This text couldn't be removed." };
+    fake.asked[0]?.answer(aReply({ images: [stripFor(1)], redactions: { [TWO.id]: verdict } }));
+    await settle();
+    expect(queue.drawn.redactions.get(1)).toEqual({ [TWO.id]: verdict });
+
+    queue.draw(UNEDITED);
+    await settle();
+    expect(queue.drawn.redactions.has(1)).toBe(false);
+  });
+
   test("a newer change takes over the pages an older request was still drawing", async () => {
     queue.draw(readingOf(replace(ONE)));
     await settle();
