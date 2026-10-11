@@ -22,24 +22,27 @@ export async function exportNow(editor: Editor): Promise<void> {
   finish(editor, true);
   store.set({ exporting: true });
   const edits = store.get().reading.edits;
-  const { notice, went } = await downloaded(editor, edits);
+  const { said, went } = await downloaded(editor, edits);
   store.set({
     exporting: false,
     ...(went && { exported: edits }),
-    notices: { ...store.get().notices, export: notice },
-    said: spoken(notice.text),
+    notices: { ...store.get().notices, export: said },
+    said: spoken(said.map((notice) => notice.text).join(" ")),
   });
 }
 
-/** Export `edits` and download the file; what to say of it, warned when it didn't all go, and whether it went. */
-async function downloaded(editor: Editor, edits: readonly Edit[]): Promise<{ notice: Notice; went: boolean }> {
+/** Export `edits` and download the file; everything to say of it, warned where it isn't as asked, and whether it went. */
+async function downloaded(editor: Editor, edits: readonly Edit[]): Promise<{ said: Notice[]; went: boolean }> {
   const { store, reopener, file } = editor;
   try {
     const exported = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits]));
     download(exported.pdf, file.name);
-    if (exported.skipped.length > 0) return { notice: warn(store.get().doc.copy.export_left_out), went: true };
-    return { notice: plain(exported.notices[0]?.detail ?? `Downloaded ${file.name}.`), went: true };
+    // What saving did to the whole file other than asked, each said: a split dropping its tags, say.
+    const otherwise = exported.notices.map((notice) => warn(notice.detail));
+    const leftOut = exported.skipped.length > 0 ? [warn(store.get().doc.copy.export_left_out)] : [];
+    const said = [...leftOut, ...otherwise];
+    return { said: said.length > 0 ? said : [plain(`Downloaded ${file.name}.`)], went: true };
   } catch (error) {
-    return { notice: warn(error instanceof ProblemError ? error.problem.detail : reportBug(error)), went: false };
+    return { said: [warn(error instanceof ProblemError ? error.problem.detail : reportBug(error))], went: false };
   }
 }

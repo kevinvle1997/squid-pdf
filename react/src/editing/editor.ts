@@ -185,7 +185,7 @@ export function change(editor: Editor, action: HistoryAction, also: Also = {}): 
   }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export, reopening or refused copy said is stale once the user edits again.
-  const notices = { ...state.notices, export: null, reopen: null, font: null };
+  const notices = { ...state.notices, export: [], reopen: null, font: null };
   store.set({ history, reading, notices, ...(typeof also === "function" ? also(reading) : also) });
   queue.draw(reading);
 }

@@ -7,7 +7,7 @@ describe("the lines under the bar", () => {
   test("every source is said, warnings first, and a sentence twice is said once", () => {
     const notices = {
       document: [warn("Signed.")],
-      export: plain("Downloaded contract.pdf."),
+      export: [plain("Downloaded contract.pdf.")],
       reopen: plain("Opened again."), // said in the bar, not under it
       font: null,
     };
