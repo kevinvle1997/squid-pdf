@@ -27,8 +27,23 @@ export function widthPt(text: string, glyphs: Record<string, number>, size: numb
   return (thousandths * size) / 1000;
 }
 
-/** The letters of `text` that `glyphs` doesn't have, each once. A space is never one. */
+/**
+ * `text` spelled as the font has it: as typed, composed or in pieces (é is one letter, or e and an
+ * accent). With none whole in the font, composed, as the faces we ship draw it. `_spelled` in core/plan.py.
+ */
+export function spelledIn(text: string, glyphs: Record<string, number>): string {
+  const composed = text.normalize("NFC");
+  const spellings = [text, composed, text.normalize("NFD")];
+  return spellings.find((spelling) => lackedIn(spelling, glyphs).length === 0) ?? composed;
+}
+
+/** The letters of `text`, as the font spells it, that `glyphs` doesn't have, each once. A space is never one. */
 export function missingIn(text: string, glyphs: Record<string, number>): string[] {
+  return lackedIn(spelledIn(text, glyphs), glyphs);
+}
+
+/** The letters of `text` exactly as typed that `glyphs` doesn't have, each once. */
+function lackedIn(text: string, glyphs: Record<string, number>): string[] {
   const missing = new Set<string>();
   for (const letter of text) {
     if (glyphs[letter] === undefined && !WHITESPACE.test(letter)) missing.add(letter);
@@ -58,13 +73,14 @@ export function optionsFor(
 
 /** What would happen if `span` read `text` instead. */
 export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; text: string; rules: FitRules }): Fit {
+  const spelled = spelledIn(text, font.glyphs);
   const originalPt = widthPt(span.text, font.glyphs, span.size);
-  const deltaPt = Math.round((widthPt(text, font.glyphs, span.size) - originalPt) * 100) / 100;
+  const deltaPt = Math.round((widthPt(spelled, font.glyphs, span.size) - originalPt) * 100) / 100;
   const roomPt = span.room_pt;
   return {
     deltaPt,
     roomPt,
-    missing: missingIn(text, font.glyphs),
+    missing: missingIn(spelled, font.glyphs),
     options: optionsFor(deltaPt, { originalPt, roomPt, rules }),
   };
 }

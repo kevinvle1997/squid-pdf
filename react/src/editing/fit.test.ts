@@ -49,6 +49,20 @@ describe("the fit check", () => {
     ]);
   });
 
+  // The server's own case, test_a_letter_typed_in_two_pieces_is_the_one_the_font_has (tests/core/test_coverage.py).
+  test("a letter typed in two pieces is the one the font has, as the server spells it", () => {
+    const keptWhole = { ...glyphs, C: HALF, Z: HALF, é: HALF, ü: HALF };
+    const inPieces = "Café in Zürich".normalize("NFD");
+    expect(missingIn(inPieces, keptWhole)).toEqual([]);
+    expect(
+      fitOf(span, { font: aFont("Times-Roman", { glyphs: keptWhole }), text: inPieces, rules: RULES }).missing,
+    ).toEqual([]);
+    // Kept in pieces, a letter typed whole is drawn in pieces too.
+    expect(missingIn("é", { ...glyphs, "\u0301": 0 })).toEqual([]);
+    // Neither: the letter it lacks is named whole, as the faces we ship draw it.
+    expect(missingIn(inPieces, glyphs)).toEqual(["C", "é", "Z", "ü"]);
+  });
+
   test("a space the font has no width for still takes room", () => {
     expect(widthPt("a b", { a: HALF, b: HALF }, 10)).toBe(12.5);
   });
