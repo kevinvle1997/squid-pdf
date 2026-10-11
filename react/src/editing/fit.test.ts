@@ -42,6 +42,13 @@ describe("the fit check", () => {
     expect(missingIn("a b", { a: HALF, b: HALF })).toEqual([]);
   });
 
+  test("a missing letter that draws nothing alone is named in the chip, as the server names it", () => {
+    const fit = { deltaPt: 0, roomPt: 0, missing: ["\u00ad", "é"], options: [] };
+    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
+      "no optional hyphen or é in this font, so the line is drawn in Liberation Serif Regular",
+    ]);
+  });
+
   test("a space the font has no width for still takes room", () => {
     expect(widthPt("a b", { a: HALF, b: HALF }, 10)).toBe(12.5);
   });

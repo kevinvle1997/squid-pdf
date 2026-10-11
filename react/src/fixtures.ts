@@ -37,6 +37,7 @@ export const COPY: Copy = {
   approximate: {
     turned_text: "This text is turned on the page, and edits are drawn level, so an edit here will look different.",
   },
+  characters: { "\u00ad": "optional hyphen", "\u202f": "narrow no-break space", "\u0301": "acute accent" },
 };
 
 /** A line of ten-point Times near the top of the first page, reading "was <id>". */

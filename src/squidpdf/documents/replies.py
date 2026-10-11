@@ -125,6 +125,7 @@ def _copy_in(said_in: str) -> Copy:
         "approximate": {
             reason: words.sentence(reason, said_in) for reason in APPROXIMATE_REASONS
         },
+        "characters": words.character_names(said_in),
     }
 
 

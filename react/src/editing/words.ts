@@ -19,6 +19,20 @@ export function fill(sentence: string, facts: Facts): string {
   });
 }
 
+// Draws nothing on its own: a space, an invisible mark, or an accent alone, which would sit on the space before it.
+const DRAWS_NOTHING = /^[\p{C}\p{Z}\s\p{Mn}\p{Me}]$/u;
+
+/**
+ * A character as a person can see it: itself, or its name in `names` (the server's `copy.characters`)
+ * when it draws nothing alone. `_visible` in core/app/words, but for one the catalog doesn't name:
+ * the server says Unicode's name, which the browser hasn't got, so it says the code point.
+ */
+export function shownAs(character: string, names: Readonly<Record<string, string>>): string {
+  if (!DRAWS_NOTHING.test(character)) return character;
+  const codePoint = character.codePointAt(0) ?? 0;
+  return names[character] ?? `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
 const PLURAL = new Intl.PluralRules("en");
 
 /** An interface label for a count: "1 change", "3 changes". */

@@ -246,6 +246,10 @@ export interface components {
             approximate: {
                 [key: string]: string;
             };
+            /** Characters */
+            characters: {
+                [key: string]: string;
+            };
         };
         /**
          * Document
