@@ -58,5 +58,6 @@ function fidelityNote({ span, font, copy }: Omit<Facts, "edited" | "fit">): Note
   const sentence = span.same_widths ? copy.substitute_same_widths : copy.substitute;
   // The font's reason is its first span's: it holds here only if a similar face draws that one too.
   const why = font?.substitute == null ? null : font.why;
-  return { warn: !span.same_widths, said: fill(sentence, { font: span.substitute }), why };
+  // Warned whatever the widths: the file's own font doesn't draw it (`decisions/product.md`, The fidelity contract).
+  return { warn: true, said: fill(sentence, { font: span.substitute }), why };
 }
