@@ -1,6 +1,6 @@
 // What a span's mark shows: its fidelity before any edit (rule 1), and the server's verdict after.
 // A new kind of span (approximate, redacted) is a case here and a class in SpanMark.module.css.
-import type { Copy, FitInfo, FontInfo, SpanInfo } from "../api/types";
+import type { Copy, FitInfo, FontInfo, RedactionInfo, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
 import { fill } from "./words";
 
@@ -18,6 +18,8 @@ export interface Look {
   readonly formField: boolean; // a form field draws it, not the page: an edit here is left out
   readonly changed: boolean; // the user changed its words
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
+  readonly redacted: boolean; // its words are to be taken out of the file
+  readonly unredacted: boolean; // redacted, but the server found its words still there: the download is refused
   readonly note: Note | null; // nothing for a span that keeps its font and went in as typed
 }
 
@@ -26,21 +28,34 @@ interface Facts {
   font: FontInfo | undefined; // for why its own copy can't be used, which the server says per font
   edited: SpanReading | undefined; // what it reads now, if an edit changed it
   fit: FitInfo | undefined; // the server's verdict on its last drawn edit
+  redaction: RedactionInfo | undefined; // the server's verdict on its redaction, once drawn
   copy: Copy;
 }
 
-export function lookOf({ span, font, edited, fit, copy }: Facts): Look {
+export function lookOf({ span, font, edited, fit, redaction, copy }: Facts): Look {
+  const redacted = edited?.redacted ?? false;
   const changed = edited?.replaced ?? false;
   // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
   const verdict = changed ? fit?.message : null;
-  return {
+  const looks = {
     substituted: span.fidelity === "substitute",
     approximate: span.why !== null,
     formField: span.form_field,
     changed,
     trouble: Boolean(verdict),
-    note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote({ span, font, copy }),
+    redacted,
+    unredacted: redacted && redaction?.verified === false,
   };
+  // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
+  if (redacted) return { ...looks, note: redactionNote(redaction) };
+  return { ...looks, note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote({ span, font, copy }) };
+}
+
+/** What a redaction's render found, in the server's words: nothing to say until it's drawn, or when it all went. */
+function redactionNote(redaction: RedactionInfo | undefined): Note | null {
+  if (redaction?.message == null) return null;
+  // Its words left in, a hidden copy taken out, or every signature gone: none is what was asked, so each warns.
+  return { warn: true, said: redaction.message, why: null };
 }
 
 /** Why an edit here would come out unlike the text around it, in the server's words. */
@@ -49,7 +64,7 @@ export function approximateSaid(why: NonNullable<SpanInfo["why"]>, copy: Copy): 
 }
 
 /** What an edit here will come to, before one is made: kept as it was, or drawn in what font. */
-function fidelityNote({ span, font, copy }: Omit<Facts, "edited" | "fit">): Note | null {
+function fidelityNote({ span, font, copy }: Omit<Facts, "edited" | "fit" | "redaction">): Note | null {
   // A form field draws it: no edit changes it yet, whatever its font.
   if (span.form_field) return { warn: true, said: copy.form_field_not_edited, why: null };
   // Its own font draws it, but an edit won't match the text around it.

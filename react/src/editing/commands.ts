@@ -1,12 +1,13 @@
 // Keyboard shortcuts, wherever focus is: one table, read by one listener in EditorShell, so a
-// new binding is a row. Cmd+F, Cmd+Delete and the arrows join it with find and redaction.
+// new binding is a row. Cmd+F and the arrows join it with find and nudging.
 import { type Editor, redo, undo } from "./editor";
 import { exportNow } from "./export";
+import { redact } from "./redaction";
 
 export interface Command {
   readonly keys: string; // as "mod+shift+z"; mod is Cmd or Ctrl, either on any platform
   readonly whileTyping: boolean; // in a text field too, rather than the field's own
-  readonly run: (editor: Editor) => void;
+  readonly run: (editor: Editor, spanId: string | null) => void; // spanId: the span the key was pressed on
 }
 
 export const COMMANDS: readonly Command[] = [
@@ -16,6 +17,9 @@ export const COMMANDS: readonly Command[] = [
   { keys: "mod+z", whileTyping: false, run: undo },
   { keys: "mod+shift+z", whileTyping: false, run: redo },
   { keys: "mod+y", whileTyping: false, run: redo },
+  // Redact the selection, typed in or not: a Mac's Delete is Backspace, and a full keyboard's forward Delete works too.
+  { keys: "mod+backspace", whileTyping: true, run: redact },
+  { keys: "mod+delete", whileTyping: true, run: redact },
 ];
 
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;

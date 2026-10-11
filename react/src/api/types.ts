@@ -19,6 +19,7 @@ export type RenderBody = Schemas["RenderBody"];
 export type Render = Schemas["Render"];
 export type ImageInfo = Schemas["ImageInfo"];
 export type FitInfo = Schemas["FitInfo"];
+export type RedactionInfo = Schemas["RedactionInfo"];
 export type SpanNoticeInfo = Schemas["SpanNoticeInfo"];
 export type FileNoticeInfo = Schemas["FileNoticeInfo"];
 export type NoticeInfo = Render["notices"][number];

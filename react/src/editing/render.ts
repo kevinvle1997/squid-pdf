@@ -4,7 +4,7 @@
 // so the swap never flickers. A page whose render failed stays stale: the next change asks
 // for it again, and so does `retry`, when the connection comes back.
 import { ProblemError, render as renderOnServer } from "../api/client";
-import type { FitInfo, ImageInfo, NoticeInfo, Region, Render, SkippedInfo } from "../api/types";
+import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { reportBug } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
@@ -20,11 +20,15 @@ export interface Strip {
 /** The server's fit for each replaced span on one page, by span id. */
 export type PageFits = Readonly<Record<string, FitInfo>>;
 
+/** The server's verdict on each redacted span on one page, by span id. */
+export type PageRedactions = Readonly<Record<string, RedactionInfo>>;
+
 export interface Drawn {
   readonly strips: ReadonlyMap<number, readonly Strip[]>; // by page
   readonly from: ReadonlyMap<number, Reading>; // by page: the reading its strips were drawn from
   // What a reply says of a page comes and goes with its strips: a page the reply didn't draw keeps its objects, so it isn't drawn again.
   readonly fits: ReadonlyMap<number, PageFits>; // by page: the server's fit for each replaced span on it
+  readonly redactions: ReadonlyMap<number, PageRedactions>; // by page: whether each redaction on it holds
   readonly notices: ReadonlyMap<number, readonly NoticeInfo[]>; // by page: what drawing it did other than asked
   readonly skipped: readonly SkippedInfo[]; // the edits the last reply left out, from every page
   readonly failed: string | null; // why the last render failed, in the server's words, until one lands
@@ -34,16 +38,17 @@ export const NOTHING_DRAWN: Drawn = {
   strips: new Map(),
   from: new Map(),
   fits: new Map(),
+  redactions: new Map(),
   notices: new Map(),
   skipped: [],
   failed: null,
 };
 
 /**
- * What a reply says, less the images. Not read yet: `insert_fits` and `redactions`, since
- * nothing inserts or redacts yet, and `build` and `expires_at`, which the document has.
+ * What a reply says, less the images. Not read yet: `insert_fits`, since nothing inserts yet,
+ * and `build` and `expires_at`, which the document has.
  */
-type Said = Pick<Render, "fits" | "notices" | "skipped">;
+type Said = Pick<Render, "fits" | "redactions" | "notices" | "skipped">;
 
 /** The page a notice is about: its span's, or its insert's. A notice about the whole file names none. */
 function pageOfNotice(reading: Reading, notice: NoticeInfo): number | undefined {
@@ -61,20 +66,30 @@ function pageOfNotice(reading: Reading, notice: NoticeInfo): number | undefined 
   }
 }
 
-/** A reply's fits and notices, by the page each is about. The server sends a fit for every replaced span. */
-function byPage(reading: Reading, said: Said, drawing: readonly number[]) {
-  const fits = new Map<number, Record<string, FitInfo>>();
-  for (const [spanId, fit] of Object.entries(said.fits)) {
+/** Each span's entry in `bySpan`, by the page its span is on. */
+function onPages<V>(reading: Reading, bySpan: Readonly<Record<string, V>>): Map<number, Record<string, V>> {
+  const pages = new Map<number, Record<string, V>>();
+  for (const [spanId, value] of Object.entries(bySpan)) {
     const page = reading.spans.get(spanId)?.span.page;
-    if (page !== undefined) fits.set(page, { ...fits.get(page), [spanId]: fit });
+    if (page !== undefined) pages.set(page, { ...pages.get(page), [spanId]: value });
   }
+  return pages;
+}
+
+/**
+ * A reply's fits, redactions and notices, by the page each is about. The server sends a fit for
+ * every replaced span, and a verdict for every redacted one in the regions drawn.
+ */
+function byPage(reading: Reading, said: Said, drawing: readonly number[]) {
+  const fits = onPages(reading, said.fits);
+  const redactions = onPages(reading, said.redactions);
   const notices = new Map<number, NoticeInfo[]>();
   for (const notice of said.notices) {
     // One that names no page came from drawing these pages all the same: it goes with the first.
     const page = pageOfNotice(reading, notice) ?? drawing[0];
     if (page !== undefined) notices.set(page, [...(notices.get(page) ?? []), notice]);
   }
-  return { fits, notices };
+  return { fits, redactions, notices };
 }
 
 interface Options {
@@ -188,20 +203,22 @@ export class RenderQueue {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);
+    const redactions = new Map(this.#drawn.redactions);
     const notices = new Map(this.#drawn.notices);
-    const landed = byPage(reading, said ?? { fits: {}, notices: [], skipped: [] }, pages);
+    const landed = byPage(reading, said ?? { fits: {}, redactions: {}, notices: [], skipped: [] }, pages);
     for (const page of pages) {
       const onPage = landing.filter((strip) => strip.page === page);
       if (onPage.length > 0) strips.set(page, onPage);
       else strips.delete(page);
       from.set(page, reading);
       setOrDelete(fits, page, landed.fits.get(page));
+      setOrDelete(redactions, page, landed.redactions.get(page));
       setOrDelete(notices, page, landed.notices.get(page));
     }
     // Skipped is of the whole edit list: a reply replaces it, and it goes with the last edit.
     const skipped = said?.skipped ?? (reading.edits.length === 0 ? [] : this.#drawn.skipped);
     const failed = said === null ? this.#drawn.failed : null;
-    this.#drawn = { strips, from, fits, notices, skipped, failed };
+    this.#drawn = { strips, from, fits, redactions, notices, skipped, failed };
     this.#options.drawn(this.#drawn);
   }
 }

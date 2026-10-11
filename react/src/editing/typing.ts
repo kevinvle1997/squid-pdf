@@ -1,18 +1,29 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import { change, type Editor, type EditorState, spoken } from "./editor";
+import type { SpanInfo } from "../api/types";
+import { change, type Draft, type Editor, type EditorState, spoken } from "./editor";
 import { previewFaceOf } from "./faces";
 import { fitOf, troubleKindOf, troublesOf } from "./fit";
 import { approximateSaid } from "./marks";
+import type { Reading } from "./project";
 
-/** Start typing into a span, from what it reads now. */
+/** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {
   const { store } = editor;
-  const { layout, reading } = store.get();
+  const { layout, reading, doc } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
-  const text = reading.spans.get(spanId)?.text ?? span.text;
-  store.set({ draft: { spanId, page: span.page, atPt, text }, focusTo: null });
+  // Un-redacting by accident is a leak: the one edit that asks first (quality.md, Modals and prompts).
+  if (reading.spans.get(spanId)?.redacted) {
+    store.set({ unredacting: { spanId, atPt }, said: spoken(doc.copy.undo_redaction) });
+    return;
+  }
+  store.set({ draft: draftOf(span, { reading, atPt }), focusTo: null, unredacting: null });
+}
+
+/** Typing into `span` as it reads in `reading`, the press `atPt` points from its start. */
+export function draftOf(span: SpanInfo, { reading, atPt }: { reading: Reading; atPt: number | null }): Draft {
+  return { spanId: span.id, page: span.page, atPt, text: reading.spans.get(span.id)?.text ?? span.text };
 }
 
 /** What the draft's span would get wrong reading `text`, in the server's words; nothing when it fits. */

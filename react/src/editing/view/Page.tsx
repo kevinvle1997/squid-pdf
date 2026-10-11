@@ -10,7 +10,7 @@ import { previewFaceOf } from "../faces";
 import { imageFailed, imageLoaded, type PageImage } from "../images";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
-import type { PageFits, Strip } from "../render";
+import type { PageFits, PageRedactions, Strip } from "../render";
 import { shallowEqual } from "../store";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
@@ -19,9 +19,11 @@ import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
+import { UndoRedaction } from "./UndoRedaction";
 
 const NO_SPANS: readonly SpanInfo[] = [];
 const NO_FITS: PageFits = {};
+const NO_REDACTIONS: PageRedactions = {};
 const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
@@ -61,9 +63,11 @@ interface PageState {
   readonly drawnFrom: PageEdits | undefined; // what its strips were drawn from
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
+  readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
   readonly src: string; // the page image
   readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
+  readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
   readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
@@ -78,9 +82,14 @@ function pageState(state: EditorState, index: number): PageState {
     drawnFrom: state.drawn.from.get(index)?.pages.get(index),
     strips: state.drawn.strips.get(index),
     fits: state.drawn.fits.get(index) ?? NO_FITS,
+    redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
     src: pageUrl(state.doc, index, state.scale),
     image: state.images.get(index),
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
+    unredacting:
+      state.unredacting !== null && state.layout.spans.get(state.unredacting.spanId)?.page === index
+        ? state.unredacting.spanId
+        : null,
     focusTo:
       state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
     scrollTo:
@@ -185,9 +194,20 @@ function ScrollAnchor({ page, info }: { page: PageState; info: PageInfo }) {
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */
 function Previews({ page, info }: { page: PageState; info: PageInfo }) {
   const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
-  return previews.map(({ span, text }) => (
-    <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />
-  ));
+  return previews.map(({ span, text, redacted }) =>
+    // A redaction leaves the page bare where its words were, as the download will.
+    redacted ? (
+      <span
+        key={span.id}
+        className={styles.preview}
+        aria-hidden="true"
+        data-preview=""
+        style={boxOf(span.bbox, info)}
+      />
+    ) : (
+      <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />
+    ),
+  );
 }
 
 /** A mark over every span, or the field where one is being typed into, and the one note they share. */
@@ -208,6 +228,7 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             edited={readings.get(span.id)}
             font={page.fonts.get(span.font)}
             fit={page.fits[span.id]}
+            redaction={page.redactions[span.id]}
             copy={page.copy}
             focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
             notes={notes}
@@ -216,6 +237,9 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
         ),
       )}
       <PageNote notes={notes} id={noteId} page={page} readings={readings} />
+      {page.unredacting !== null && (
+        <UndoRedactionAt spanId={page.unredacting} page={page} info={info} readings={readings} />
+      )}
     </>
   );
 }
@@ -233,6 +257,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
     font: page.fonts.get(span.font),
     edited: readings.get(span.id),
     fit: page.fits[span.id],
+    redaction: page.redactions[span.id],
     copy: page.copy,
   });
   if (note === null) return null;
@@ -249,6 +274,19 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
       {note.why}
     </Tooltip>
   );
+}
+
+/** The prompt beside a redacted span the user asked to edit, while it's still redacted. */
+function UndoRedactionAt(props: {
+  spanId: string;
+  page: PageState;
+  info: PageInfo;
+  readings: ReadonlyMap<string, SpanReading>;
+}) {
+  const { spanId, page, info, readings } = props;
+  const span = page.spans.find((each) => each.id === spanId);
+  if (span === undefined || !readings.get(spanId)?.redacted) return null;
+  return <UndoRedaction span={span} info={info} copy={page.copy} />;
 }
 
 /** The browser's drawing of a span's text, while the server's strip under it shows other words. */

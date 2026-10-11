@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { Edit, Insert } from "../api/types";
 import { aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
-import { project, type Reading, samePage, sameSpan } from "./project";
+import { differing, project, type Reading, samePage, sameSpan } from "./project";
 
 const SPANS = [aSpan({ id: "a" }), aSpan({ id: "b" }), aSpan({ id: "c", page: 1 })];
 const replace = (span_id: string, text: string): Edit => ({ kind: "replace", span_id, text });
@@ -10,6 +10,14 @@ const insert: Insert = { kind: "insert", page: 1, origin: [72, 300], text: "Sign
 
 const add = (history: History, ...edits: Edit[]) => historyReducer(history, { kind: "add", edits });
 const read = (history: History, previous?: Reading) => project(SPANS, entriesOf(history), previous);
+
+describe("what differs from a page's strips", () => {
+  test("a redaction is a span to draw bare, and one put back reads as the original again", () => {
+    const redacted = read(add(EMPTY_HISTORY, { kind: "redact", span_id: "a" })).pages.get(0);
+    expect(differing(redacted, undefined)).toEqual([{ span: SPANS[0], text: "was a", redacted: true }]);
+    expect(differing(undefined, redacted)).toEqual([{ span: SPANS[0], text: "was a", redacted: false }]);
+  });
+});
 
 describe("what the document reads as", () => {
   test("with no edits, as it is: nothing changed, nothing to send", () => {

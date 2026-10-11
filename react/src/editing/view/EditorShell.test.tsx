@@ -116,6 +116,32 @@ describe("an emptied span", () => {
   });
 });
 
+describe("redaction", () => {
+  test("Cmd+Delete redacts the span, and editing it asks first, beside it: Escape keeps it, Edit anyway opens it", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    const redacted = screen.getByRole("button", { name: "was here (redacted)" });
+    await expect.element(redacted).toHaveFocus();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Redacted was here");
+
+    await userEvent.keyboard("{Enter}");
+    const asked = screen.getByRole("group", { name: COPY.undo_redaction });
+    await expect.element(asked).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Keep redaction" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(asked).not.toBeInTheDocument();
+    await expect.element(redacted).toHaveFocus();
+
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("button", { name: "Edit anyway" }).click();
+    await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
+  });
+});
+
 describe("leaving the page", () => {
   test("asks first only while there are edits since the last export", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));

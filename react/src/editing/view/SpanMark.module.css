@@ -32,7 +32,16 @@
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* It went in, but not quite as typed: the server said why. */
 .trouble::after { opacity: 1; height: 2px; background: var(--mark-warn); }
+/* Redacted: you did this, so the change's own line, and its tint over the bare page where the words were. */
+/* Hovered too: a redaction is what it is, whatever font drew the words that went. */
+.redacted, .redacted[data-hovered] { background: var(--mark-change-soft); }
+.redacted::after, .redacted[data-hovered]::after { opacity: 1; height: 2px; background: var(--mark-change); }
+/* Redacted, but the server found its words still there: a warning, never the change's colour. */
+.unredacted, .unredacted[data-hovered] { background: var(--mark-warn-soft); }
+.unredacted::after, .unredacted[data-hovered]::after { background: var(--mark-warn); }
 @media (forced-colors: active) {
   .span::after { background: CanvasText; }
-  .changed::after, .trouble::after { background: Highlight; }
+  .changed::after, .trouble::after, .redacted::after { background: Highlight; }
+  /* The tint goes in this mode: a redacted span keeps a box, so it still reads as more than a change. */
+  .redacted { outline: 1px solid Highlight; }
 }

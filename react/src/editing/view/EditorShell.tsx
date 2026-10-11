@@ -30,6 +30,11 @@ function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 }
 
+/** The span a key was pressed on: its mark says which, as `data-span`. */
+function spanOn(target: EventTarget | null): string | null {
+  return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;
+}
+
 /** The open document: every page, every span marked, editable in place, under the bar. */
 export function EditorShell({ file, opened }: { file: File; opened: Document }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
@@ -43,7 +48,7 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
       const command = commandFor(event, isTyping(event.target));
       if (command === undefined) return;
       event.preventDefault();
-      command.run(editor);
+      command.run(editor, spanOn(event.target));
     };
     const online = () => {
       editor.queue.retry();
