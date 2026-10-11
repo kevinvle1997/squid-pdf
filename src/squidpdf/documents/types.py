@@ -60,6 +60,9 @@ class SpanInfo(TypedDict):
     origin: list[float]
     fidelity: Fidelity
     why: ApproximateInfo | None
+    # Its own, not its font's: one font can be stored on one page and only named on another.
+    substitute: str | None  # the face we ship that draws an edit here, when its font can't
+    same_widths: bool  # that face's letters are as wide as the original's
     room_pt: float  # the free space after it on its line: too long is only past it
     form_field: bool
 
