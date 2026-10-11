@@ -12,6 +12,7 @@ import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { changedCount, closeEditor, createEditor, sayOpening, unexported, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
+import { retryImages } from "../images";
 import { noticeLines } from "../notices";
 import { shallowEqual } from "../store";
 import { counted } from "../words";
@@ -44,7 +45,10 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
       event.preventDefault();
       command.run(editor);
     };
-    const online = () => editor.queue.retry();
+    const online = () => {
+      editor.queue.retry();
+      retryImages(editor);
+    };
     // The browser asks before leaving, in its own words. Until this browser keeps the edits too.
     const leaving = (event: BeforeUnloadEvent) => {
       if (unexported(editor.store.get())) event.preventDefault();

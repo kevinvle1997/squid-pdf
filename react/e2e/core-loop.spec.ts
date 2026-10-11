@@ -105,6 +105,27 @@ test("a render lost to the network is asked for again when the connection comes 
   await expect(page.locator("[data-preview]")).toHaveCount(0);
 });
 
+test("a page image the server refuses says why on the page, and comes back with the connection", async ({
+  page,
+  context,
+}) => {
+  const busy = "We can't work on files right now. Try again in a few minutes.";
+  const problem = { type: "no_workers", status: 503, detail: busy, code: "no_workers", params: {} };
+  await page.route("**/pages/**", (route) =>
+    route.fulfill({ status: 503, contentType: "application/problem+json", body: JSON.stringify(problem) }),
+  );
+  await open(page);
+  const first = page.getByRole("region", { name: "Page 1" });
+  await expect(first.getByText(busy)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(busy);
+
+  await page.unroute("**/pages/**");
+  await context.setOffline(true);
+  await context.setOffline(false);
+  await expect(first.getByText(busy)).toHaveCount(0);
+  await expect(first.locator("img").first()).toBeVisible();
+});
+
 test("a change put back from the margin leaves the page as it was", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");

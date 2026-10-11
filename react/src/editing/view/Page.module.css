@@ -23,6 +23,16 @@
 }
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }
+/* Asked for again, unseen: the browser's broken-image sign says nothing the page doesn't say better. */
+.missing { visibility: hidden; }
+/* Why the page's image didn't come, where it would be. The page never themes, so its warning is the mark's. */
+.failed {
+  --warn: var(--mark-warn);
+  position: absolute; inset-inline: 0; top: 50%; transform: translateY(-50%);
+  margin: 0; padding-inline: var(--s5);
+  text-align: center;
+  font-size: var(--fs-sm);
+}
 /* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
 .anchor { position: absolute; pointer-events: none; }
 /* The page never themes: the marks and previews on it use the page's own tokens. */

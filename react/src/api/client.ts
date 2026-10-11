@@ -97,6 +97,11 @@ export function pageUrl(doc: Document, page: number, scale: number): string {
   return `/api/documents/${doc.id}/pages/${page}?${query}`;
 }
 
+/** Ask for a page image again, only to learn why it failed: its Problem is thrown, as every call's is. */
+export async function pageImage(doc: Document, page: number, scale: number): Promise<void> {
+  await send(pageUrl(doc, page, scale), { method: "GET" });
+}
+
 /** The edits drawn on these strips of their pages, and what the server makes of each. */
 export async function render(docId: string, body: RenderBody, signal: AbortSignal): Promise<Render> {
   const response = await send(`/api/documents/${docId}/render`, {

@@ -12,6 +12,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
   render: vi.fn(),
   stillThere: vi.fn(async () => true),
+  pageImage: vi.fn(async () => undefined),
   putFont: vi.fn(),
   exportPdf: vi.fn(),
 }));

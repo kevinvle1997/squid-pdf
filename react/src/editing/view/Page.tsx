@@ -3,9 +3,11 @@ import { useFocusVisible } from "react-aria";
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
+import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import { type EditorState, type FocusTo, imageFailed, type ScrollTo } from "../editor";
+import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
+import { imageFailed, imageLoaded, type PageImage } from "../images";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits, Strip } from "../render";
@@ -60,6 +62,7 @@ interface PageState {
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
   readonly src: string; // the page image
+  readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
   readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
@@ -76,6 +79,7 @@ function pageState(state: EditorState, index: number): PageState {
     strips: state.drawn.strips.get(index),
     fits: state.drawn.fits.get(index) ?? NO_FITS,
     src: pageUrl(state.doc, index, state.scale),
+    image: state.images.get(index),
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
     focusTo:
       state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
@@ -111,8 +115,21 @@ export const Page = memo(function Page({ index, info }: Props) {
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
-          // Decoded off the main thread, so a page coming near doesn't hold up the scroll.
-          <img className={styles.image} src={page.src} alt="" decoding="async" onError={() => imageFailed(editor)} />
+          // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
+          <img
+            key={page.image?.tries ?? 0}
+            className={page.image?.failed == null ? styles.image : `${styles.image} ${styles.missing}`}
+            src={page.src}
+            alt=""
+            decoding="async"
+            onLoad={() => imageLoaded(editor, index)}
+            onError={() => void imageFailed(editor, index)}
+          />
+        )}
+        {page.image?.failed != null && (
+          <p className={styles.failed}>
+            <Warn mark>{page.image.failed}</Warn>
+          </p>
         )}
         {page.strips?.map((strip) => (
           <img

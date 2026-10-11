@@ -1,9 +1,7 @@
 // One open document: its state, and what every action works through. Each action is a
 // function of the editor in the module named for it (typing, export); this one holds the
 // state and the change every edit, undo and put-back goes through.
-import { ProblemError } from "../api/client";
 import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
-import { reportBug } from "../bugs";
 import { Reopener } from "../documents/reopen";
 import { reattach } from "./fonts";
 import {
@@ -16,6 +14,7 @@ import {
   spanOf,
   touching,
 } from "./history";
+import type { PageImage } from "./images";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
@@ -86,6 +85,7 @@ export interface EditorState {
   readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
+  readonly images: ReadonlyMap<number, PageImage>; // by page: each image that failed, until it loads
 }
 
 export interface Editor {
@@ -94,6 +94,7 @@ export interface Editor {
   readonly attached: Map<string, Blob>; // the user's copies of its fonts, beside the PDF, by font
   readonly reopener: Reopener;
   readonly queue: RenderQueue;
+  readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -127,6 +128,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     exported: UNEDITED.edits,
     attaching: null,
     focusFont: null,
+    images: new Map(),
   });
   // The server no longer had the document, and it opened again: the same spans, under a new id,
   // with the user's copies back before anything is drawn or exported from it.
@@ -141,7 +143,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     return judged;
   });
   const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => drawnNow(store, drawn) });
-  const editor: Editor = { store, file, attached: new Map(), reopener, queue };
+  const editor: Editor = { store, file, attached: new Map(), reopener, queue, retries: new Map() };
   return editor;
 }
 
@@ -220,23 +222,16 @@ export function focusMoved(editor: Editor): void {
   editor.store.set({ focusTo: null });
 }
 
-/** The editor is going: a render in flight is dropped rather than landing on nothing. */
+/** The editor is going: a render in flight, and any image still to be asked for, are dropped rather than landing on nothing. */
 export function closeEditor(editor: Editor): void {
   editor.queue.stop();
+  for (const retry of editor.retries.values()) clearTimeout(retry);
+  editor.retries.clear();
 }
 
 /** Tell a screen reader, for what the page doesn't show. */
 export function say(editor: Editor, text: string): void {
   editor.store.set({ said: spoken(text) });
-}
-
-/** A page image failed: the document may have gone. */
-export function imageFailed(editor: Editor): void {
-  editor.reopener.check().catch((error: unknown) => {
-    const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
-    const { notices } = editor.store.get();
-    editor.store.set({ notices: { ...notices, reopen: warn(text) }, said: spoken(text) });
-  });
 }
 
 /** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
