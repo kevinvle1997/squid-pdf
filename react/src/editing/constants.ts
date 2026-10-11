@@ -23,5 +23,12 @@ export const NOTE_DELAY_MS = 250;
 /** Page images load when they come this close to the viewport. */
 export const LAZY_MARGIN = "100% 0px";
 
+/**
+ * A page image that failed is asked for again after this, twice as long each time it fails again,
+ * up to the most: soon enough to come back with a busy server, rarely enough not to add to its load.
+ */
+export const IMAGE_RETRY_FIRST_MS = 2000;
+export const IMAGE_RETRY_MOST_MS = 60_000;
+
 /** A space the font has no width for is counted at this share of the size, as TeX sets it. */
 export const MISSING_SPACE_EM = 0.25;

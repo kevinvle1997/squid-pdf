@@ -4,9 +4,9 @@ import { render } from "vitest-browser-react";
 import "@fontsource/schibsted-grotesk/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { render as renderOnServer } from "../../api/client";
+import { ProblemError, pageImage, render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
-import { A4, aDoc, aFit, aFont, aReply, aSpan, COPY } from "../../fixtures";
+import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
 import { createEditor, type Editor, undo } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
@@ -16,6 +16,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
   render: vi.fn(),
   stillThere: vi.fn(async () => true),
+  pageImage: vi.fn(async () => undefined),
 }));
 
 // The page draws its margin twice each time it's drawn itself, so counting the margin counts the page.
@@ -234,6 +235,14 @@ describe("a page", () => {
     land(aReply({ fits: { [span.id]: aFit() } }));
     await expect.poll(() => editor.store.get().drawn.from.has(0)).toBe(true);
     expect(drawn.margins).toBe(before);
+  });
+
+  test("a page whose image fails says why on the page, in the server's words", async () => {
+    const busy = "We can't work on files right now. Try again in a few minutes.";
+    // No server answers in this test, so the page's image fails as it would with one too busy.
+    vi.mocked(pageImage).mockRejectedValueOnce(new ProblemError(aProblem(503, busy)));
+    const screen = await draw();
+    await expect.element(screen.getByRole("region", { name: "Page 1" }).getByText(busy)).toBeVisible();
   });
 
   test("a page wider than A4 shows at its printed size too", async () => {
