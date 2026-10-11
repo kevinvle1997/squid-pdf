@@ -1,12 +1,16 @@
 // The shapes the API sends and takes, named. All of them come from schema.d.ts,
-// which `npm run types` writes from the server's OpenAPI.
+// which `npm run types` writes from the server's OpenAPI. A field the browser doesn't read
+// says why beside its shape's name.
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
+// Not read: `expires_at`. Nothing shows the hour, and a document the server lost opens again by itself.
 export type Document = Schemas["Document"];
 export type PageInfo = Schemas["PageInfo"];
+// Not read: `origin`. The preview sits in the span's box only until the strip, drawn at `origin`, replaces it.
 export type SpanInfo = Schemas["SpanInfo"];
+// Not read: `why_code` and `why_params`. The note says `why`, the server's sentence, as it is.
 export type FontInfo = Schemas["FontInfo"];
 export type Copy = Schemas["Copy"];
 export type FitRules = Schemas["FitRules"];
@@ -18,8 +22,11 @@ export type Region = Schemas["Region"];
 export type RenderBody = Schemas["RenderBody"];
 export type Render = Schemas["Render"];
 export type ImageInfo = Schemas["ImageInfo"];
+// Not read: `options`, since no way out of an overflow is offered yet; `message_parts`, since the note says `message` whole.
 export type FitInfo = Schemas["FitInfo"];
+// Not read: `hidden_copies`. The note says `message`, which names each place already.
 export type RedactionInfo = Schemas["RedactionInfo"];
+// Not read, on any notice or skip: `code`, `params` and `type`. Each is shown as its `detail`, the server's sentence.
 export type SpanNoticeInfo = Schemas["SpanNoticeInfo"];
 export type FileNoticeInfo = Schemas["FileNoticeInfo"];
 export type NoticeInfo = Render["notices"][number];
