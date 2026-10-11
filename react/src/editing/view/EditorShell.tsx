@@ -9,7 +9,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { changedCount, closeEditor, createEditor, unexported, warnedCount } from "../editor";
+import { changedCount, closeEditor, createEditor, sayOpening, unexported, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { noticeLines } from "../notices";
@@ -33,10 +33,11 @@ function isTyping(target: EventTarget | null): boolean {
 export function EditorShell({ file, opened }: { file: File; opened: Document }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
 
-  // The one effect, for what happens outside React: the preview's faces, shortcuts anywhere, the
-  // connection coming back, leaving the page with edits not exported, and the editor going.
+  // The one effect, for what happens outside React: the preview's faces, the live region on screen,
+  // shortcuts anywhere, the connection coming back, leaving with edits not exported, and the editor going.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc.fonts));
+    sayOpening(editor);
     const key = (event: KeyboardEvent) => {
       const command = commandFor(event, isTyping(event.target));
       if (command === undefined) return;

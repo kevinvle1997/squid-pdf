@@ -6,6 +6,7 @@ import { reportBug } from "../bugs";
 import { isGone } from "../documents/reopen";
 import { type Editor, type EditorState, layoutOf, spoken } from "./editor";
 import { missingIn } from "./fit";
+import type { FontNotice } from "./notices";
 
 const SUBSET_PREFIX = /^[A-Z]{6}\+/; // a trimmed copy's name starts ABCDEF+
 
@@ -69,22 +70,24 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
 
 /**
  * The document opened again as `doc`, with each copy the user gave attached to it again, and
- * whether every one went back. Gone again meanwhile, that's thrown: it's the reopen's failure.
+ * the last refusal, if one wasn't. Gone again meanwhile, that's thrown: it's the reopen's failure.
  */
-export async function reattach(editor: Editor, doc: Document): Promise<{ judged: Document; allBack: boolean }> {
+export async function reattach(
+  editor: Editor,
+  doc: Document,
+): Promise<{ judged: Document; refusal: FontNotice | null }> {
   let judged = doc;
-  let allBack = true;
+  let refusal: FontNotice | null = null;
   for (const [fontName, file] of editor.attached) {
     try {
       judged = await putFont(judged.id, fontName, file);
     } catch (error) {
       if (isGone(error)) throw error;
-      // A copy the new document refuses lends nothing there: said, and the edits still apply.
-      refused(editor, fontName, error);
-      allBack = false;
+      // A copy the new document refuses lends nothing there: said with the reopen, and the edits still apply.
+      refusal = refusalOf(fontName, error);
     }
   }
-  return { judged, allBack };
+  return { judged, refusal };
 }
 
 /** Focus has reached the fonts list's button it was sent to. */
@@ -111,11 +114,13 @@ function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>):
 
 /** The server refused what was asked of `fontName`'s copy, or nothing answered: shown and heard until the next change. */
 function refused(editor: Editor, fontName: string, error: unknown): void {
-  const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+  const refusal = refusalOf(fontName, error);
   const { notices } = editor.store.get();
-  editor.store.set({
-    notices: { ...notices, font: { tone: "warn", text, font: fontName } },
-    attaching: null,
-    said: spoken(text),
-  });
+  editor.store.set({ notices: { ...notices, font: refusal }, attaching: null, said: spoken(refusal.text) });
+}
+
+/** Why `fontName`'s copy was refused, in the server's words, said beside that font too. */
+function refusalOf(fontName: string, error: unknown): FontNotice {
+  const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+  return { tone: "warn", text, font: fontName };
 }

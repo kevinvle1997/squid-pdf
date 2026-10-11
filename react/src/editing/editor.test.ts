@@ -120,6 +120,19 @@ describe("an edit", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  test("a render that fails is heard as well as shown, and the same failure again isn't said twice", async () => {
+    const down = "We can't work on files right now. Try again in a few minutes.";
+    vi.mocked(render).mockRejectedValue(new ProblemError(aProblem(503, down)));
+    typed("own", "now");
+    await vi.waitFor(() => expect(editor.store.get().said.text).toBe(down));
+
+    typed("own", "then");
+    const failedOnce = editor.store.get().drawn;
+    await vi.waitFor(() => expect(editor.store.get().drawn).not.toBe(failedOnce));
+
+    expect(editor.store.get().said.text).toBe("Changed to then");
+  });
+
   test("undo and redo say what the span reads now and bring it into view, and focus stays where it is", () => {
     typed("own", "one");
     typed("own", "two");

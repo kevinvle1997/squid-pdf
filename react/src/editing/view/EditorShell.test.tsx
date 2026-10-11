@@ -34,7 +34,7 @@ async function change(screen: Awaited<ReturnType<typeof render>>, text: string) 
 }
 
 describe("the editor", () => {
-  test("what the server's render says it did other than asked is said under the bar", async () => {
+  test("what the server's render says it did other than asked is shown under the bar, and heard", async () => {
     const drewOtherwise = "This page wouldn't take Times, so the line is drawn in Liberation Serif.";
     const leftOut = "An edit points at text that isn't in this document, so it was left out.";
     vi.mocked(renderOnServer).mockResolvedValue(
@@ -42,11 +42,12 @@ describe("the editor", () => {
     );
     const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
     await change(screen, "is here");
-    await expect.element(screen.getByText(drewOtherwise)).toBeVisible();
-    await expect.element(screen.getByText(leftOut)).toBeVisible();
+    await expect.element(screen.getByText(drewOtherwise, { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByText(leftOut, { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(`${drewOtherwise} ${leftOut}`);
   });
 
-  test("every notice the document opened with is shown, not only the first", async () => {
+  test("every notice the document opened with is shown, not only the first, and heard", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
     const notices = [
       { code: "a", params: {}, type: "t", detail: "Some text is in a font we can't use." },
@@ -55,8 +56,10 @@ describe("the editor", () => {
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={{ ...DOC, notices }} />,
     );
-    await expect.element(screen.getByText(notices[0]?.detail ?? "")).toBeVisible();
-    await expect.element(screen.getByText(notices[1]?.detail ?? "")).toBeVisible();
+    const [first, second] = notices.map((notice) => notice.detail);
+    await expect.element(screen.getByText(first ?? "", { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByText(second ?? "", { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(`${first} ${second}`);
   });
 });
 
@@ -68,7 +71,13 @@ describe("the bar", () => {
     const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
     // The page image fails to load here, as it does once the server has lost the document.
     await expect.element(screen.getByRole("banner").getByText(unreachable)).toBeVisible();
-    expect(screen.getByText(unreachable).elements()).toHaveLength(1);
+    await expect.element(screen.getByRole("status")).toHaveTextContent(unreachable);
+    // Shown once, in the bar: the status only says it.
+    const shown = screen
+      .getByText(unreachable)
+      .elements()
+      .filter((element) => !element.closest("[role=status]"));
+    expect(shown).toHaveLength(1);
     // The sentence wraps; the bar's buttons keep their one line.
     const [wide, tall] = [window.innerWidth, window.innerHeight];
     await page.viewport(900, 700);
