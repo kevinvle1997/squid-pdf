@@ -3,7 +3,8 @@
 import { ProblemError, stillThere, upload } from "../api/client";
 import type { Document } from "../api/types";
 
-function isGone(error: unknown): boolean {
+/** Whether the server answered that it no longer has the document. */
+export function isGone(error: unknown): boolean {
   return error instanceof ProblemError && error.problem.status === 404;
 }
 
@@ -11,10 +12,10 @@ export class Reopener {
   #doc: Document;
   #reopening: Promise<Document> | null = null;
   readonly #file: Blob;
-  readonly #reopened: (doc: Document) => void;
+  readonly #reopened: (doc: Document) => Promise<Document>;
 
-  /** `reopened` hears of each new copy, as it replaces the old. */
-  constructor(file: Blob, opened: Document, reopened: (doc: Document) => void) {
+  /** `reopened` readies each new copy, as the old one had it; what it gives back replaces the old. */
+  constructor(file: Blob, opened: Document, reopened: (doc: Document) => Promise<Document>) {
     this.#file = file;
     this.#doc = opened;
     this.#reopened = reopened;
@@ -51,11 +52,12 @@ export class Reopener {
   }
 
   #reopen(): Promise<Document> {
+    // Nothing runs on the new copy until it's ready: work on a half-ready one would draw differently.
     this.#reopening ??= upload(this.#file, () => undefined)
-      .then((again) => {
-        this.#doc = again;
-        this.#reopened(again);
-        return again;
+      .then(this.#reopened)
+      .then((ready) => {
+        this.#doc = ready;
+        return ready;
       })
       .finally(() => {
         this.#reopening = null;
