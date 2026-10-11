@@ -101,11 +101,14 @@ ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# A new warning fails the suite. These two are our dependencies' own, not ours to fix.
+# A new warning fails the suite. These are our dependencies' own, not ours to fix.
 filterwarnings = [
     "error",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
     "ignore:The anyio.abc.BlockingPortal alias is deprecated",
+    # PyMuPDF's SWIG types, on import. Made an error, it's raised inside the library's
+    # start-up, which then never returns (seen on macOS): the suite hangs, saying nothing.
+    "ignore:builtin type (swigvarlink|SwigPyObject|SwigPyPacked) has no __module__ attribute:DeprecationWarning",
 ]
 
 [tool.mypy]
