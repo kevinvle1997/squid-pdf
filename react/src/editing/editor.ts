@@ -128,10 +128,15 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     attaching: null,
     focusFont: null,
   });
-  // The server no longer had the document, and it opened again: the same spans, under a new id.
-  const reopener = new Reopener(file, opened, (doc) => {
-    store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, reopen: plain(doc.copy.reopened) } });
-    void reattach(editor, doc);
+  // The server no longer had the document, and it opened again: the same spans, under a new id,
+  // with the user's copies back before anything is drawn or exported from it.
+  const reopener = new Reopener(file, opened, async (doc) => {
+    const { judged, allBack } = await reattach(editor, doc);
+    const { notices } = store.get();
+    store.set({ doc: judged, layout: layoutOf(judged), notices: { ...notices, reopen: plain(doc.copy.reopened) } });
+    // Pages drawn with a copy now refused no longer show what export would give.
+    if (!allBack) queue.redraw(store.get().reading);
+    return judged;
   });
   const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => store.set({ drawn }) });
   const editor: Editor = { store, file, attached: new Map(), reopener, queue };

@@ -17,7 +17,10 @@ beforeEach(() => {
   vi.mocked(upload).mockReset().mockResolvedValue(docOf("again"));
   vi.mocked(stillThere).mockReset();
   reopened = [];
-  reopener = new Reopener(FILE, docOf("first"), (doc) => reopened.push(doc));
+  reopener = new Reopener(FILE, docOf("first"), async (doc) => {
+    reopened.push(doc);
+    return doc;
+  });
 });
 
 describe("the document on the server", () => {

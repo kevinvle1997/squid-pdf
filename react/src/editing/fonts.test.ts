@@ -113,16 +113,21 @@ describe("the user's own copy of a font", () => {
       if (fontName === "Times") throw new ProblemError(aProblem(422, MISMATCH));
       return { ...JUDGED_AGAIN, id: docId };
     });
+    vi.mocked(render).mockImplementation(async (docId: string) => {
+      if (docId === DOC.id) throw new ProblemError(aProblem(404));
+      return new Promise<Render>(() => undefined);
+    });
     editor.attached.set("Times", FONT_FILE);
     editor.attached.set("Arial", FONT_FILE);
+    edit(editor, "s1", null);
+    typeInto(editor, "Ho");
+    finish(editor, true);
 
-    await editor.reopener.withDocument(async (doc) => {
-      if (doc.id === DOC.id) throw new ProblemError(aProblem(404));
-      return doc;
-    });
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
+    // The edited page is drawn again without the refused copy, on the document opened again.
+    await vi.waitFor(() => expect(vi.mocked(render).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2));
   });
 
   test("a document opened again gets every copy back, as it does the edits", async () => {
@@ -140,6 +145,35 @@ describe("the user's own copy of a font", () => {
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(putFont).toHaveBeenCalledWith("again", "Arial", FONT_FILE);
+  });
+
+  test("work that found the document gone runs again only once every copy is back", async () => {
+    vi.mocked(upload).mockResolvedValue({ ...DOC, id: "again" });
+    vi.mocked(putFont).mockImplementation(async (docId: string) => ({ ...JUDGED_AGAIN, id: docId }));
+    editor.attached.set("Arial", FONT_FILE);
+
+    const used = await editor.reopener.withDocument(async (doc) => {
+      if (doc.id === DOC.id) throw new ProblemError(aProblem(404));
+      return doc;
+    });
+
+    expect(used.fonts[0]?.attached).toBe(true);
+    expect(editor.store.get().doc).toBe(used);
+  });
+
+  test("a document gone again while its copies go back fails the work, not the font", async () => {
+    vi.mocked(upload).mockResolvedValue({ ...DOC, id: "again" });
+    vi.mocked(putFont).mockRejectedValue(new ProblemError(aProblem(404, "This document is gone.")));
+    editor.attached.set("Arial", FONT_FILE);
+
+    const work = editor.reopener.withDocument(async (doc) => {
+      if (doc.id === DOC.id) throw new ProblemError(aProblem(404));
+      return doc;
+    });
+
+    await expect(work).rejects.toMatchObject({ problem: { detail: "This document is gone." } });
+    expect(editor.store.get().notices.font).toBeNull();
+    expect(editor.attached.get("Arial")).toBe(FONT_FILE);
   });
 });
 
