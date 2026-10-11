@@ -92,7 +92,9 @@ test("a render lost to the network is asked for again when the connection comes 
   await open(page);
   await page.route("**/render", (route) => route.abort("internetdisconnected"));
   await edit(page, "This agreement is made on 2 April 2026 between");
-  await expect(page.getByText("Couldn't reach the server.", { exact: false })).toBeVisible();
+  const unreachable = "Couldn't reach the server.";
+  await expect(page.getByRole("paragraph").filter({ hasText: unreachable })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(unreachable);
   // Until then the browser's own drawing of the edit stays up, over the original.
   await expect(page.locator("[data-preview]")).toHaveCount(1);
 

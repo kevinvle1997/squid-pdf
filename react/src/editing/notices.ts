@@ -40,3 +40,12 @@ export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
   const once = [...new Map(all.map((notice) => [notice.text, notice])).values()];
   return [...once.filter((notice) => notice.tone === "warn"), ...once.filter((notice) => notice.tone === "plain")];
 }
+
+/** The sentences `after` has that `before` didn't, as one thing to hear: empty when none is new. */
+export function newlySaid(before: readonly Notice[], after: readonly Notice[]): string {
+  const known = new Set(before.map((notice) => notice.text));
+  return after
+    .filter((notice) => !known.has(notice.text))
+    .map((notice) => notice.text)
+    .join(" ");
+}

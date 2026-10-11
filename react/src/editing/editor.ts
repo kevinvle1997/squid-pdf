@@ -16,7 +16,7 @@ import {
   spanOf,
   touching,
 } from "./history";
-import { NO_NOTICES, type Notices, plain, warn } from "./notices";
+import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { createStore, type Store } from "./store";
@@ -131,16 +131,31 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   // The server no longer had the document, and it opened again: the same spans, under a new id,
   // with the user's copies back before anything is drawn or exported from it.
   const reopener = new Reopener(file, opened, async (doc) => {
-    const { judged, allBack } = await reattach(editor, doc);
-    const { notices } = store.get();
-    store.set({ doc: judged, layout: layoutOf(judged), notices: { ...notices, reopen: plain(doc.copy.reopened) } });
+    const { judged, refusal } = await reattach(editor, doc);
+    const reopen = plain(doc.copy.reopened);
+    const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
+    const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
+    store.set({ doc: judged, layout: layoutOf(judged), notices, said: spoken(heard) });
     // Pages drawn with a copy now refused no longer show what export would give.
-    if (!allBack) queue.redraw(store.get().reading);
+    if (refusal !== null) queue.redraw(store.get().reading);
     return judged;
   });
-  const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => store.set({ drawn }) });
+  const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => drawnNow(store, drawn) });
   const editor: Editor = { store, file, attached: new Map(), reopener, queue };
   return editor;
+}
+
+/** A render landed or failed: what it drew goes in, and a line it adds under the bar is heard. */
+function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
+  const { notices, drawn: before } = store.get();
+  const heard = newlySaid(noticeLines(notices, before), noticeLines(notices, drawn));
+  store.set({ drawn, ...(heard !== "" && { said: spoken(heard) }) });
+}
+
+/** The editor is on screen: what opening the file found is heard, now its live region is there to say it. */
+export function sayOpening(editor: Editor): void {
+  const found = editor.store.get().notices.document;
+  if (found.length > 0) say(editor, found.map((notice) => notice.text).join(" "));
 }
 
 /** The rest of an action, or what it is once the history's read: what undo says the span reads. */
@@ -220,7 +235,7 @@ export function imageFailed(editor: Editor): void {
   editor.reopener.check().catch((error: unknown) => {
     const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
     const { notices } = editor.store.get();
-    editor.store.set({ notices: { ...notices, reopen: warn(text) } });
+    editor.store.set({ notices: { ...notices, reopen: warn(text) }, said: spoken(text) });
   });
 }
 
