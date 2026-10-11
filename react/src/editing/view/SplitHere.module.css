@@ -1,0 +1,26 @@
+/* In the gap between two pages, on the page's own columns so it sits under the sheet. The gap grows
+   only on a touch screen, where the hit area is taller. */
+.split {
+  display: grid; grid-template-columns: var(--margin-width) minmax(0, 1fr); gap: var(--s4);
+  align-items: center;
+  width: 100%; max-width: calc(var(--margin-width) + var(--s4) + var(--sheet-width));
+  height: max(var(--s7), var(--hit)); margin: calc(-1 * var(--s7)) auto 0;
+}
+.button {
+  grid-column: 2; justify-self: center;
+  position: relative;
+  display: flex; align-items: center; gap: var(--s2);
+  min-height: var(--hit); padding: 0 var(--s2); border: 0; background: none;
+  font: inherit; font-size: var(--fs-sm); color: var(--ink-lo); cursor: pointer;
+}
+/* A dashed rule either side reads as a cut, the way a page's edge does. */
+.button::before, .button::after { content: ""; width: var(--s6); border-top: 1px dashed var(--ink-faint); }
+.button[data-hovered] { color: var(--ink); }
+.button[data-hovered]::before, .button[data-hovered]::after { border-top-color: var(--ink-lo); }
+.button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* Only while an export runs, which the bar says: --ink-faint is for lines, never text. */
+.button[data-disabled] { cursor: default; }
+@media (max-width: 820px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .button { grid-column: 1; }
+}

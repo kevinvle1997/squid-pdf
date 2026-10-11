@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { changedCount, createEditor, type Editor, putBack, redo, undo, unexported, warnedCount } from "./editor";
-import { exportNow } from "./export";
+import { exportNow, partName, splitAfter, splitPages } from "./export";
 import { plain, warn } from "./notices";
 import { edit, enter, finish, troublesIn, typeInto } from "./typing";
 
@@ -208,8 +208,18 @@ describe("an edit", () => {
 });
 
 describe("export", () => {
+  let names: string[];
+
   beforeEach(() => {
-    vi.stubGlobal("document", { createElement: () => ({ click: vi.fn() }) });
+    names = [];
+    // Each download is a link clicked: its name is what the browser saves the file as.
+    const link = {
+      click: vi.fn(function (this: { download: string }) {
+        names.push(this.download);
+      }),
+      download: "",
+    };
+    vi.stubGlobal("document", { createElement: () => link });
     vi.stubGlobal("URL", { createObjectURL: () => "blob:", revokeObjectURL: vi.fn() });
   });
 
@@ -218,7 +228,9 @@ describe("export", () => {
     edit(editor, "own", null);
     typeInto(editor, "typed");
     await exportNow(editor);
-    expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }]);
+    expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }], {
+      pages: undefined,
+    });
     expect(editor.store.get().notices.export).toEqual([plain("Downloaded contract.pdf.")]);
     expect(editor.store.get().exporting).toBe(false);
   });
@@ -274,5 +286,54 @@ describe("export", () => {
     await exportNow(editor);
     expect(editor.store.get().notices.export).toEqual([warn(problem.detail)]);
     expect(editor.store.get().exporting).toBe(false);
+  });
+
+  test("a split downloads two files, every edit in each, named for the pages each holds", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    const threePages = createEditor(FILE, { ...DOC, pages: [A4, A4, A4] }, 2);
+    edit(threePages, "own", null);
+    typeInto(threePages, "now");
+    finish(threePages, true);
+    await splitAfter(threePages, 0);
+    const edits = [{ kind: "replace", span_id: "own", text: "now" }];
+    expect(vi.mocked(exportPdf).mock.calls).toEqual([
+      ["doc", edits, { pages: [0] }],
+      ["doc", edits, { pages: [1, 2] }],
+    ]);
+    expect(names).toEqual(["contract, page 1.pdf", "contract, pages 2–3.pdf"]);
+    expect(threePages.store.get().notices.export).toEqual([
+      plain("Downloaded contract, page 1.pdf."),
+      plain("Downloaded contract, pages 2–3.pdf."),
+    ]);
+    expect(unexported(threePages.store.get())).toBe(false);
+  });
+
+  test("a split says once what both files say, and stops at the first file that fails", async () => {
+    const tags = "The tags that tell screen readers how to read this file went with the pages left out.";
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [aFileNotice(tags)] });
+    const twoPages = createEditor(FILE, { ...DOC, pages: [A4, A4] }, 2);
+    await splitAfter(twoPages, 0);
+    expect(twoPages.store.get().notices.export).toEqual([warn(tags)]);
+
+    vi.mocked(exportPdf)
+      .mockReset()
+      .mockRejectedValue(new ProblemError(aProblem(503, "Try again.")));
+    await splitAfter(twoPages, 0);
+    expect(exportPdf).toHaveBeenCalledTimes(1);
+    expect(twoPages.store.get().notices.export).toEqual([warn("Try again.")]);
+  });
+});
+
+describe("a split's parts", () => {
+  test("are the pages up to the split, and the rest", () => {
+    expect(splitPages(4, 1)).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+  });
+
+  test("are named from the upload, with the pages they hold counted from one", () => {
+    expect(partName("contract.pdf", [0, 1, 2])).toBe("contract, pages 1–3.pdf");
+    expect(partName("Contract.PDF", [3])).toBe("Contract, page 4.pdf");
   });
 });
