@@ -23,7 +23,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `cd .. && SQUIDPDF_DATA="$(mktemp -d)" uv run uvicorn squidpdf.api.app:create_app --factory --port ${API_PORT}`,
+      // Its per-address limits raised: every spec sends from one address (scripts/e2e_api.py).
+      command: `cd .. && SQUIDPDF_DATA="$(mktemp -d)" uv run python scripts/e2e_api.py ${API_PORT}`,
       url: `http://127.0.0.1:${API_PORT}/api/health`,
       reuseExistingServer: !process.env.CI,
     },
