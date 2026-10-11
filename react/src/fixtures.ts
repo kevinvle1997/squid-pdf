@@ -33,7 +33,14 @@ export const COPY: Copy = {
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",
-  options: {},
+  options: {
+    shrink: { label: "Make it slightly smaller", detail: "Reduces the type size just enough to fit." },
+    condense: {
+      label: "Tighten the letters",
+      detail: "Squeezes the spacing by a few percent, which isn't noticeable at this size.",
+    },
+    "as-is": { label: "Leave it long", detail: "Runs {delta_pt} pt past where the original ended." },
+  },
   approximate: {
     turned_text: "This text is turned on the page, and edits are drawn level, so an edit here will look different.",
   },
@@ -65,7 +72,7 @@ export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
     why: null,
     why_code: null,
     why_params: {},
-    same_widths: true,
+    same_widths: false, // as the server sends it when the font's own copy draws: nothing stands in to match
     attached: false,
     glyphs: {},
     ...fields,
@@ -126,7 +133,7 @@ export function aSpanNotice(detail: string, spanId = "span"): SpanNoticeInfo {
 
 /** An edit the server left out, at `edit` in the list sent. */
 export function aSkipped(edit: number, detail: string): SkippedInfo {
-  return { code: "no_span", params: {}, edit, type: "bad-reference", detail };
+  return { code: "no_span", params: {}, edit, type: "bad_reference", detail };
 }
 
 /** A Problem the server answered with. */
