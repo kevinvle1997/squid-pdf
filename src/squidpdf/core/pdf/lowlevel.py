@@ -24,7 +24,9 @@ from xml.parsers.expat import ExpatError
 import pymupdf
 
 from squidpdf.core.app.message import Message
+from squidpdf.core.constants import IMAGE_SOONER_BY
 from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
 from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
@@ -45,6 +47,14 @@ _OBJECT_REFERENCE = re.compile(r"(\d+) \d+ R")
 _HIDDEN_COPY_KEYS = ("ActualText", "Alt", "E")
 # The EI that ends an image written into a drawing, as MuPDF finds it past the bytes.
 _INLINE_IMAGE_END = re.compile(rb"EI(?=[\x00-\x20</]|\Z)")
+# An EI a reader that doesn't count an image's bytes ends it at: a space, then plain bytes.
+_EI_BEFORE_DRAWING = re.compile(
+    rb"EI[\t\n\r ](?=[\x00\t\n\r\x20-\x7f]{10}|[\x00\t\n\r\x20-\x7f]*\Z)"
+)
+# An inline image's filters, under either key, in the order each reader looks: MuPDF and
+# Poppler read /Filter first, pdf.js /F.
+_FILTER_KEYS = (("Filter", "F"), ("F", "Filter"))
+_BITS_IN_A_BYTE = 8
 # The marks a string in UTF-16 starts with.
 _UTF16_MARKS = (codecs.BOM_UTF16_BE, codecs.BOM_UTF16_LE)
 # The encoding a string reads in, by the mark it starts with.
@@ -436,8 +446,8 @@ class PdfFile:
         pieces: list[bytes] = []
         kept_to = 0  # where the drawing is still to be copied from
         for start, end, marking in self._markings_in(drawing, resources):
-            # Not read whole: no reading is every reader's, so it stays, for the check to read.
-            if marking is None:
+            # Not read whole, or an image: no reading is every reader's, so it stays.
+            if not isinstance(marking, pymupdf.mupdf.PdfObj):
                 continue
             # Read before the rewrite, which changes `marking`.
             lost_string = self._loses_a_string(marking, written=drawing[start:end])
@@ -469,6 +479,10 @@ class PdfFile:
             # Not read whole: any string after its start may be a hidden copy.
             if marking is None:
                 unread_from = min(unread_from, start)
+                continue
+            # An image: a reader ending it sooner than MuPDF reads on in its bytes.
+            if isinstance(marking, _InlineImage):
+                found += _strings_past_an_end_in(marking)
                 continue
             # One MuPDF reads in part: a string it drops may be one another reader keeps.
             if self._loses_a_string(marking, written=written):
@@ -505,7 +519,7 @@ class PdfFile:
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
     def _strings_written_in(self, drawing: bytes, resources: pymupdf.mupdf.PdfObj) -> list[str]:
-        """Each string `drawing` writes, as text; an image in it is read past.
+        """Each string `drawing` writes, as text, and in an image where another reader ends it.
 
         After an image MuPDF can't read, every string to the end: nothing says where its
         bytes end. `resources` are those it names an image's colour space from.
@@ -530,8 +544,10 @@ class PdfFile:
             # Not an image written into the drawing.
             if operator != b"BI":
                 continue
-            # An image MuPDF can read: its bytes hold no string, and it reads on after them.
-            if self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources):
+            image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
+            # An image MuPDF can read: it reads on after it, and another reader may in it.
+            if image is not None:
+                found += _strings_past_an_end_in(image)
                 continue
             # One it can't: what's left may hold anything.
             rest = drawing[start:]
@@ -539,12 +555,12 @@ class PdfFile:
 
     def _markings_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
-    ) -> Iterator[tuple[int, int, pymupdf.mupdf.PdfObj | None]]:
-        """Each marked content's dictionary in `drawing`, read, with where it starts and ends.
+    ) -> Iterator[tuple[int, int, pymupdf.mupdf.PdfObj | _InlineImage | None]]:
+        """Each marked content's dictionary and image in `drawing`, and where each is.
 
-        Read by MuPDF's lexer, its reader of a drawing, so strings and comments read as it draws
-        them. Every dictionary counts, whatever operator follows, as MuPDF keeps one even before
-        its tag. One not read whole comes as None, as does all after an image MuPDF can't read.
+        Read by MuPDF's lexer, as it draws them. Every dictionary counts, as MuPDF keeps one
+        even before its tag; one not read whole comes as None, as does all after an image MuPDF
+        can't read. An image it reads comes too, since a reader ending it sooner reads in it.
         """
         mu = pymupdf.mupdf
         # No dictionary in it, as in most drawings.
@@ -569,8 +585,10 @@ class PdfFile:
             # Not an image written into the drawing.
             if operator != b"BI":
                 continue
-            # An image MuPDF can read: its bytes aren't drawing, so read on past them.
-            if self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources):
+            image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
+            # An image MuPDF can read: its bytes aren't drawing to it, so it reads on past them.
+            if image is not None:
+                yield start, mu.fz_tell(reader), image
                 continue
             # One it can't: MuPDF reads no further, so the rest may hold anything.
             yield start, len(drawing), None
@@ -611,8 +629,8 @@ class PdfFile:
         *,
         drawing: bytes,
         resources: pymupdf.mupdf.PdfObj,
-    ) -> bool:
-        """Read past an image written into `drawing`, as MuPDF draws it; whether it can.
+    ) -> _InlineImage | None:
+        """Read past an image written into `drawing`, as MuPDF does: the image, or None if not.
 
         `reader` is just past its BI.
         """
@@ -625,15 +643,28 @@ class PdfFile:
             two_byte_end = after_id == ord("\r") and mu.fz_peek_byte(reader) == ord("\n")
             if two_byte_end:
                 mu.fz_read_byte(reader)
-            _load_inline_image(self._pdf(), dictionary, reader=reader, resources=resources)
+            image_from = mu.fz_tell(reader)
+            loaded = _load_inline_image(
+                self._pdf(), dictionary, reader=reader, resources=resources
+            )
         except mu.FzErrorSyntax, mu.FzErrorFormat:
-            return False
+            return None
         end = _INLINE_IMAGE_END.search(drawing, mu.fz_tell(reader))
         # No EI after its bytes: MuPDF reads no further.
         if end is None:
-            return False
+            return None
         mu.fz_seek(reader, end.end(), 0)
-        return True
+        written = drawing[image_from : end.start()]
+        readings = [_filters_of(dictionary, keys) for keys in _FILTER_KEYS]
+        # Each row's bytes, rounded up; a predictor's byte a row is left out, the safe side.
+        row = -(-loaded.w() * loaded.n() * loaded.bpc() // _BITS_IN_A_BYTE)
+        # The fewest any reading gives, and an end of its own only if every reading marks one.
+        counted = min(fewest_giving(written, filters, row * loaded.h()) for filters in readings)
+        return _InlineImage(
+            written,
+            counted=max(counted - IMAGE_SOONER_BY, 0),
+            marks_its_end=all(marks_its_end(filters) for filters in readings),
+        )
 
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
         """Each of the document's own hidden copies that `holding` is true of, and where."""
@@ -1404,13 +1435,26 @@ def _load_inline_image(
     *,
     reader: pymupdf.mupdf.FzStream,
     resources: pymupdf.mupdf.PdfObj,
-) -> None:
-    """Read an image's bytes from `reader`, as MuPDF does drawing it."""
+) -> pymupdf.mupdf.FzImage:
+    """Read an image's bytes from `reader`, as MuPDF does drawing it: the image."""
     mu = pymupdf.mupdf
     stack = mu.pdf_resource_stack()  # held here: the wrapper below only points at it
     stack.resources = resources.m_internal
     stack.next = None
-    mu.pdf_load_inline_image(pdf, mu.PdfResourceStack(stack), dictionary, reader)
+    return mu.pdf_load_inline_image(pdf, mu.PdfResourceStack(stack), dictionary, reader)
+
+
+def _filters_of(dictionary: pymupdf.mupdf.PdfObj, keys: tuple[str, str]) -> list[str]:
+    """An image's filters under the first of `keys` it has, by name, in the order undone."""
+    mu = pymupdf.mupdf
+    written = (mu.pdf_dict_gets(dictionary, key) for key in keys)
+    # Null: neither key is there.
+    image_filter = next((value for value in written if not mu.pdf_is_null(value)), None)
+    if image_filter is None:
+        return []
+    filters = _items_of(image_filter) if mu.pdf_is_array(image_filter) else [image_filter]
+    # Anything but a name reads as "", a filter no reader sizes.
+    return [mu.pdf_to_name(item) for item in filters]
 
 
 def _as_written(value: pymupdf.mupdf.PdfObj) -> bytes:
@@ -1460,6 +1504,27 @@ def _strings_anywhere_in(written: bytes) -> list[str]:
     """
     held = _literal_strings_in(written) + _hex_strings_in(written)
     return [text for string in held for text in _texts_of(string)]
+
+
+def _strings_past_an_end_in(image: _InlineImage) -> list[str]:
+    """Each string in an image's bytes past where another reader may end it, wherever it starts.
+
+    That reader reads the rest of its bytes as drawing. Only such an end counts, so bytes
+    that merely hold an EI, as compressed ones may, aren't read.
+    """
+    ends: list[int] = []
+    before_drawing = _EI_BEFORE_DRAWING.search(image.written)
+    # A reader that doesn't count them ends it at an EI followed by what reads as drawing.
+    if before_drawing is not None and not image.marks_its_end:
+        ends.append(before_drawing.end())
+    past_count = image.written.find(b"EI", image.counted)
+    # One that counts them ends it at the first EI after, whatever follows.
+    if past_count != -1:
+        ends.append(past_count + len(b"EI"))
+    # Neither: every reader ends it where MuPDF does.
+    if not ends:
+        return []
+    return _strings_anywhere_in(image.written[min(ends) :])
 
 
 def _literal_strings_in(written: bytes) -> list[bytes]:
@@ -1517,12 +1582,15 @@ def _bytes_of_hex(digits: bytes) -> bytes:
 
 
 def _texts_of(held: bytes) -> list[str]:
-    """The text of a string holding `held`, and again in each encoding a mark in it names.
+    """The text of a string holding `held`, plainly too, and in each encoding a mark names.
 
     A string may start at a mark inside it, so `held` is read from either byte a UTF-16
     letter may start on, whole and cut at each ), where such a string ends.
     """
     texts = [_text_of(_string_of(held))]
+    # A UTF-16 mark makes it read only as UTF-16; a space before the mark reads it plain.
+    if held[:2] in _UTF16_MARKS:
+        texts.append(_text_of(_string_of(b" " + held)))
     for mark, codec in _MARKED_CODECS.items():
         # No string in it starts with this mark.
         if mark not in held:
@@ -1877,6 +1945,17 @@ def _is_typed(node: minidom.Element | minidom.Attr) -> bool:
 def _is_xml_text(attribute: minidom.Attr) -> bool:
     """Whether an attribute holds text: not one XML or RDF reads, nor a typed value."""
     return attribute.namespaceURI not in _XML_OWN and not _is_typed(attribute)
+
+
+@dataclass(frozen=True, slots=True)
+class _InlineImage:
+    """An image written into a drawing, which MuPDF reads past."""
+
+    written: bytes  # its bytes, from past its ID to the EI MuPDF ends it at
+    counted: int  # the fewest of them a reader that counts its bytes may take as the image
+    marks_its_end: (
+        bool  # whether its filter ends it, so a reader that doesn't count looks for that
+    )
 
 
 @dataclass(frozen=True, slots=True)

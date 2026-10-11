@@ -115,3 +115,11 @@ OPTION_KEYS = {
     "condense": _OptionKeys(label="condense_label", detail="condense_detail"),
     "as-is": _OptionKeys(label="as_is_label", detail="as_is_detail"),
 }
+
+# Where the redaction check reads an image in a drawing, as another reader than MuPDF ends it.
+# How many bytes sooner than MuPDF another reader may end an image's counted bytes: it reads
+# a line end after ID as one byte, or its decoder needs fewer bytes ahead.
+IMAGE_SOONER_BY = 16
+# How many bytes a filter undone before an image's last may give per byte written, at most:
+# past that, a bomb would fill a worker's memory, so it's cut there, and may size nothing.
+DECODED_PER_BYTE = 8

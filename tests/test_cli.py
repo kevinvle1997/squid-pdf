@@ -6,6 +6,7 @@ a real terminal, so its tests run the command in a process of its own.
 
 from __future__ import annotations
 
+import errno
 import os
 import pty
 import shutil
@@ -17,7 +18,7 @@ import pymupdf
 import pytest
 
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
-from squidpdf.core import Fidelity, RedactionCheck, open_pdf, words
+from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
 from tests.conftest import named_only
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
@@ -241,6 +242,30 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
     assert_equal(code, 1, "exit code of `squidpdf redact` when the text is still there")
     assert_in(said, capsys.readouterr().err, "the redact output")
     assert_false(out_pdf.exists(), "a file kept with the text still in it")
+
+
+def _copy_onto_a_full_disk(*_paths: object) -> None:
+    """Fails as a copy onto a full disk does."""
+    raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+
+def test_a_save_that_cannot_be_written_names_its_path_and_leaves_the_file_as_it_was(
+    pdf, tmp_path, monkeypatch, capsys
+):
+    """A full disk is the user's to clear, so they're told where, not that it was ours."""
+    out_pdf = tmp_path / "edited.pdf"
+    out_pdf.write_bytes(b"what was there")
+    monkeypatch.setattr(shutil, "copyfile", _copy_onto_a_full_disk)
+
+    code = main(["edit", pdf, _span_id(pdf, "thirty days"), "ninety days", "-o", str(out_pdf)])
+
+    said = words.render(
+        Message("not_saved", {"path": str(out_pdf), "why": os.strerror(errno.ENOSPC)})
+    )
+    assert_equal(code, 1, "exit code of `squidpdf edit` when its file can't be written")
+    assert_in(said, capsys.readouterr().err, "the edit output")
+    assert_equal(out_pdf.read_bytes(), b"what was there", "the file at the path after")
+    assert_equal(list(tmp_path.iterdir()), [out_pdf], "the files in its folder after")
 
 
 def test_an_unknown_span_id_fails_and_points_at_spans(pdf, capsys):
