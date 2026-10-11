@@ -24,12 +24,19 @@ describe("what a span's mark shows", () => {
     });
   });
 
-  test("before any edit, a similar font is said, and warned when its widths differ", () => {
+  test("before any edit, a similar font is said and warned, whatever its widths", () => {
     const look = lookOf({ span: substituted, font: substitutedFont, edited: undefined, fit: undefined, copy });
+    const sameWidths = { ...substituted, same_widths: true };
+    const asWide = lookOf({ span: sameWidths, font: substitutedFont, edited: undefined, fit: undefined, copy });
     expect(look.substituted).toBe(true);
     expect(look.note).toEqual({
       warn: true,
       said: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
+      why: "Not embedded.",
+    });
+    expect(asWide.note).toEqual({
+      warn: true,
+      said: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
       why: "Not embedded.",
     });
   });
