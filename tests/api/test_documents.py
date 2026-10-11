@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
 from squidpdf.core import BUILD, Engine, face_widths, words
-from squidpdf.core.fonts.catalog import FACES
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.documents.errors import Gone
@@ -45,6 +45,35 @@ _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 def _kept() -> int:
     """How many documents are on disk."""
     return len(os.listdir(store.root()))
+
+
+def _stored_then_named() -> bytes:
+    """Two pages in one font: its own copy stored on the first, only named on the second.
+
+    As a file merged from two sources can be. The second page is written in MuPDF's
+    Helvetica and given the first's name; nothing reads its letters' shapes.
+    """
+    doc = pymupdf.open()
+    stored = doc.new_page()
+    stored.insert_font(fontname="own", fontbuffer=face_bytes(FACES["Liberation Serif Regular"]))
+    stored.insert_text((72, 96), "Terms of payment", fontname="own", fontsize=12)
+    named = doc.new_page()
+    named.insert_text((72, 96), "Hello there", fontname="helv", fontsize=12)
+    [(named_xref, *_rest)] = named.get_fonts()
+    doc.xref_set_key(named_xref, "BaseFont", "/LiberationSerif")
+    return doc.tobytes()
+
+
+def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mine):
+    doc = upload(mine, _stored_then_named()).json()
+    stored, named = doc["spans"]
+    [font] = doc["fonts"]
+
+    judged = [(span["font"], span["fidelity"]) for span in (stored, named)]
+    assert_equal(judged, [(font["name"], "exact"), (font["name"], "substitute")], "the spans")
+    assert_equal(font["substitute"], None, "the font, as its first span says it")
+    drawn_in = [(span["substitute"], span["same_widths"]) for span in (stored, named)]
+    assert_equal(drawn_in, [(None, False), ("Liberation Serif Regular", True)], "each span's")
 
 
 def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):

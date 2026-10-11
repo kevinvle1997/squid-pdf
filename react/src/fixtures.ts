@@ -51,6 +51,8 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     origin: [72, 110],
     fidelity: "exact",
     why: null,
+    substitute: null,
+    same_widths: false,
     room_pt: 0,
     form_field: false,
     ...fields,

@@ -181,6 +181,8 @@ def _span_info(
         "origin": list(span.origin),
         "fidelity": report.state,
         "why": _approximate_why(report),
+        "substitute": report.substitute,
+        "same_widths": report.same_widths,
         "room_pt": round(room_pt, 2),
         "form_field": form_field,
     }

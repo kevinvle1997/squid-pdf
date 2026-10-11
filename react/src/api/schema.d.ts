@@ -728,6 +728,10 @@ export interface components {
              */
             fidelity: "exact" | "approximate" | "substitute";
             why: components["schemas"]["ApproximateInfo"] | null;
+            /** Substitute */
+            substitute: string | null;
+            /** Same Widths */
+            same_widths: boolean;
             /** Room Pt */
             room_pt: number;
             /** Form Field */
