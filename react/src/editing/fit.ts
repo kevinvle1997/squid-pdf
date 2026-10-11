@@ -4,7 +4,7 @@
 // server's fit arrives with the render and wins.
 import type { Copy, FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { MISSING_SPACE_EM } from "./constants";
-import { fill } from "./words";
+import { fill, shownAs } from "./words";
 
 export interface Fit {
   deltaPt: number; // how much longer than the original, in points; negative is shorter
@@ -80,7 +80,8 @@ export function troublesOf(
   { rules, copy, substitute }: { rules: FitRules; copy: Copy; substitute: string },
 ): string[] {
   const troubles: string[] = [];
-  if (fit.missing.length > 0) troubles.push(fill(copy.missing, { chars: fit.missing, font: substitute }));
+  const chars = fit.missing.map((letter) => shownAs(letter, copy.characters));
+  if (chars.length > 0) troubles.push(fill(copy.missing, { chars, font: substitute }));
   // The part past its room is the part that collides.
   if (runsPast(fit.deltaPt, fit.roomPt, rules)) {
     const pastRoomPt = Math.round((fit.deltaPt - fit.roomPt) * 100) / 100;

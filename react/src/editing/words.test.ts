@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { counted, fill } from "./words";
+import { COPY } from "../fixtures";
+import { counted, fill, shownAs } from "./words";
 
 describe("filling the server's sentences", () => {
   test("missing letters are joined with 'or', as the server says them", () => {
@@ -18,6 +19,22 @@ describe("filling the server's sentences", () => {
 
   test("a placeholder with no fact is left as it is", () => {
     expect(fill("{delta_pt} pt too long", {})).toBe("{delta_pt} pt too long");
+  });
+
+  // The server's own cases, test_a_character_that_draws_nothing_is_named (tests/core/test_words.py).
+  test.each([
+    ["\u202f", "narrow no-break space"],
+    ["\u00ad", "optional hyphen"],
+    ["\x01", "U+0001"],
+    ["\u0301", "acute accent"],
+  ])("a character that draws nothing is named: %j is %s", (character, said) => {
+    expect(shownAs(character, COPY.characters)).toBe(said);
+  });
+
+  test("a letter that draws is itself, and one only Unicode names is said by its code point", () => {
+    expect(shownAs("é", COPY.characters)).toBe("é");
+    // The server says "three-per-em space": the browser has no table of Unicode's names.
+    expect(shownAs("\u2004", COPY.characters)).toBe("U+2004");
   });
 
   test("a count takes its plural from the language's rules, not an added s", () => {

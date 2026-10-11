@@ -22,6 +22,7 @@ from squidpdf.core.app.message import Message, Param, SaidInfo
 ENGLISH = "en"
 
 _ONE_PLACE = Decimal("0.1")  # how finely a number is written in a sentence
+_NAME_PREFIX = "char_u"  # a character's name is under its code point: U+202F's is char_u202f
 
 
 def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
@@ -55,6 +56,18 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
 def catalog(language: str) -> dict[str, str]:
     """Every sentence as `language` says it, English where it has none."""
     return {key: sentence(key, language) for key in _ENGLISH_SENTENCES}
+
+
+def character_names(language: str) -> dict[str, str]:
+    """Each character the catalog names, by itself, as `language` names it.
+
+    How a character that draws nothing alone is said: the browser names one this way too.
+    """
+    return {
+        chr(int(key.removeprefix(_NAME_PREFIX), 16)): sentence(key, language)
+        for key in _ENGLISH_SENTENCES
+        if key.startswith(_NAME_PREFIX)
+    }
 
 
 def render(message: Message, language: str = ENGLISH) -> str:
@@ -117,7 +130,7 @@ def _visible(character: str, language: str = ENGLISH) -> str:
 
 def _name_key(character: str) -> str:
     """The catalog key a character's name is under: U+202F's is `char_u202f`."""
-    return f"char_u{ord(character):04x}"
+    return f"{_NAME_PREFIX}{ord(character):04x}"
 
 
 def _unicode_name(character: str) -> str:

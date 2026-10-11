@@ -168,6 +168,8 @@ class Copy(TypedDict):
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]
+    # Each character the catalog names, by itself: how one that draws nothing alone is said.
+    characters: dict[str, str]
 
 
 class DocumentNoticeInfo(MessageInfo):
