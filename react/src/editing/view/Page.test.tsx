@@ -56,6 +56,19 @@ async function draw(index = 0, info = A4) {
   );
 }
 
+/**
+ * Wait until the page has stopped drawing. Its observers report a frame or more after layout, later
+ * on a busy machine, and the page draws again for each: a count taken before then counts them too.
+ */
+async function settled() {
+  let count: number;
+  do {
+    count = drawn.margins;
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  } while (drawn.margins !== count);
+}
+
 /** Marks come once the page is near the viewport, which its observer says a moment after drawing. */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>) {
   const mark = screen.getByRole("button", { name: WORDS });
@@ -217,6 +230,7 @@ describe("a page", () => {
     await editSpan(screen);
     const field = screen.getByRole("textbox", { name: `Change “${WORDS}”` });
     await expect.element(field).toHaveFocus();
+    await settled();
     const before = drawn.margins;
     await userEvent.keyboard("{End}abc");
     await expect.element(field).toHaveValue(`${WORDS}abc`);
@@ -231,6 +245,7 @@ describe("a page", () => {
     edit(editor, span.id, null);
     typeInto(editor, "is here");
     finish(editor, true);
+    await settled();
     const before = drawn.margins;
     land(aReply({ fits: { [span.id]: aFit() } }));
     await expect.poll(() => editor.store.get().drawn.from.has(0)).toBe(true);
