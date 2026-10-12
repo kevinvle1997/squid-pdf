@@ -582,6 +582,10 @@ class _MuPDFDriver:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
         self.doc.select(pages)
 
+    def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
+        """Set the turn `page` asks for, clockwise, in place of the one it had."""
+        self.doc[page].set_rotation(turn_cw)
+
     def drop_active_content(self) -> bool:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.file.drop_active_content()

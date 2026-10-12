@@ -12,15 +12,27 @@ from typing import assert_never
 
 from squidpdf.core import (
     Engine,
+    InvalidRequest,
     LineToDraw,
     Message,
     QuarterTurn,
     Rect,
     Span,
     SpanIndex,
+    turn_added,
 )
 from squidpdf.editing.constants import REDRAW_REACH_EM
-from squidpdf.editing.edits import Edit, Insert, Redact, Replace, SpanEdit
+from squidpdf.editing.edits import (
+    DeletePage,
+    Edit,
+    Insert,
+    MovePage,
+    PageOp,
+    Redact,
+    Replace,
+    RotatePage,
+    SpanEdit,
+)
 from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import Fitted, LogFits, insert_fit, insert_span, replace_fit
 from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice
@@ -55,6 +67,10 @@ class Resolved:
     rooms: dict[str, float]
     # How many pages the original has, numbered from 0.
     page_count: int
+    # The pages the page ops leave, in the order they leave them, by original number.
+    order: list[int]
+    # How far each page the ops turn is turned on top of its own turn, by original number.
+    turns: dict[int, QuarterTurn]
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +129,18 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
     redacted: set[str] = set()
     inserts: list[_ListedInsert] = []
     skipped: list[Skipped] = []
+    pages = _PageOps(order=list(range(page_count)), turns={})
     for position, edit in enumerate(edits):
+        # A page op naming pages the document has: folded into the pages kept, in list order.
+        if isinstance(edit, RotatePage | DeletePage | MovePage) and _names_pages(
+            edit, page_count
+        ):
+            skipped += [Skipped(position, "bad_reference", why) for why in pages.fold(edit)]
+            continue
+        # A page op naming a page it doesn't have.
+        if isinstance(edit, RotatePage | DeletePage | MovePage):
+            skipped.append(Skipped(position, "bad_reference", Message("no_page")))
+            continue
         # An insert on a page the document has.
         if isinstance(edit, Insert) and is_page(edit.page, page_count):
             inserts.append(_ListedInsert(position, edit))
@@ -149,17 +176,78 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
     span_edits = list(latest.values())
     rooms = engine.rooms(index, [edited_span.span for edited_span in span_edits])
     return Resolved(
-        span_edits, inserts=inserts, skipped=skipped, rooms=rooms, page_count=page_count
+        span_edits,
+        inserts=inserts,
+        skipped=skipped,
+        rooms=rooms,
+        page_count=page_count,
+        order=pages.order,
+        turns=pages.turns,
     )
+
+
+def _names_pages(op: PageOp, page_count: int) -> bool:
+    """Whether every page a page op names is one the document has."""
+    before = op.before if isinstance(op, MovePage) else None
+    return is_page(op.page, page_count) and (before is None or is_page(before, page_count))
+
+
+@dataclass(slots=True)
+class _PageOps:
+    """The page ops folded so far: the pages kept, in order, and how far each is turned."""
+
+    order: list[int]
+    turns: dict[int, QuarterTurn]
+
+    def fold(self, op: PageOp) -> list[Message]:
+        """Fold one more op in; returns why it was left out, if it was.
+
+        An op on a page deleted before it is moot, and ignored, as an edit on it is.
+        """
+        # A page deleted earlier in the list: there's nothing left to turn or move.
+        if op.page not in self.order:
+            return []
+        # A turn: on top of any earlier ones, a whole turn coming back to none.
+        if isinstance(op, RotatePage):
+            self.turns[op.page] = turn_added(self.turns.get(op.page, 0), op.degrees)
+            return []
+        # The last page left: a file can't have none.
+        if isinstance(op, DeletePage) and len(self.order) == 1:
+            return [Message("last_page")]
+        # A page left out.
+        if isinstance(op, DeletePage):
+            self.order.remove(op.page)
+            return []
+        # A move: before another page, or to the end.
+        if isinstance(op, MovePage):
+            self._move(op.page, before=op.before)
+            return []
+        assert_never(op)
+
+    def _move(self, page: int, *, before: int | None) -> None:
+        """Put `page` just before `before`, or last when it's None.
+
+        Before itself, or before a page deleted earlier, it stays where it is: moot.
+        """
+        if before == page or (before is not None and before not in self.order):
+            return
+        self.order.remove(page)
+        self.order.insert(len(self.order) if before is None else self.order.index(before), page)
 
 
 def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
     """The pages the saved file has, in order, by their numbers in the original.
 
     Worked out once, so the pages kept and the redaction check read the same
-    order: `pages` when the request names them, else every page where it was.
+    order: `pages` when the request names them, else the order the page ops leave.
+    `pages` is the final order, so it may not name a page an edit deleted.
     """
-    return list(range(resolved.page_count)) if pages is None else list(pages)
+    if pages is None:
+        return list(resolved.order)
+    deleted = sorted(set(pages) - set(resolved.order))
+    if deleted:
+        raise InvalidRequest(debug=f"pages: {deleted} deleted by an edit")
+    return list(pages)
 
 
 def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
@@ -224,8 +312,16 @@ def plan(
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
     ]
-    # New text reads upright as the page is shown: turned back as far as its page turns.
-    turns_cw = [page.turn_cw for page in engine.pages()] if placed else []
+    # New text reads upright as the page is shown: turned back as far as its page turns,
+    # an edit's turn included.
+    turns_cw = (
+        [
+            turn_added(page.turn_cw, resolved.turns.get(number, 0))
+            for number, page in enumerate(engine.pages())
+        ]
+        if placed
+        else []
+    )
     return [
         *(_step_for(edited_span, fits) for edited_span in shown),
         *(

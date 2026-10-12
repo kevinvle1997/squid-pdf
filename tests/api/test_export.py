@@ -882,6 +882,88 @@ def test_pages_come_out_in_the_order_asked_with_redactions_read_where_they_went(
     assert_equal(_lines(_opened(response)), expected, "each page's lines, in order")
 
 
+def _rotate(page: int, degrees: int) -> dict:
+    """An edit turning `page` clockwise by `degrees`."""
+    return {"kind": "rotate_page", "page": page, "degrees": degrees}
+
+
+def _delete(page: int) -> dict:
+    """An edit leaving `page` out."""
+    return {"kind": "delete_page", "page": page}
+
+
+def _move(page: int, before: int | None) -> dict:
+    """An edit putting `page` before `before`, or last."""
+    return {"kind": "move_page", "page": page, "before": before}
+
+
+@pytest.mark.parametrize(
+    ("ops", "lines", "turns"),
+    [
+        ([_rotate(1, 90)], ["First page", "Second page", "Third page"], [0, 90, 0]),
+        (
+            [_rotate(1, 270), _rotate(1, 180)],
+            ["First page", "Second page", "Third page"],
+            [0, 90, 0],
+        ),
+        ([_delete(1)], ["First page", "Third page"], [0, 0]),
+        ([_move(2, 0)], ["Third page", "First page", "Second page"], [0, 0, 0]),
+        ([_move(0, None)], ["Second page", "Third page", "First page"], [0, 0, 0]),
+    ],
+    ids=["turned", "turned twice, past a whole turn", "left out", "moved before", "moved last"],
+)
+def test_each_page_op_comes_out_in_the_file(mine, three, ops, lines, turns):
+    """Each page's own line, in the order the ops leave, turned as they turn it."""
+    pdf = _opened(_export(mine, three, ops))
+
+    got = [_lines(pdf)[page][-1] for page in range(pdf.page_count)]
+    assert_equal(got, lines, "each page's own line, in order")
+    assert_equal([page.rotation for page in pdf.pages()], turns, "each page's turn")
+
+
+def test_page_ops_fold_in_list_order_and_the_last_page_stays(mine, three):
+    """An op on a page deleted earlier is moot; the last page left stays, and says why."""
+    ops = [_delete(0), _rotate(0, 90), _delete(1), _delete(2)]
+
+    response = _export(mine, three, ops)
+
+    assert_equal(response.headers[_SKIPPED], "3", "the edits left out")
+    assert_equal(_lines(_opened(response)), [[_HEADER, "Third page"]], "the page that stays")
+    render = f"/api/documents/{three['id']}/render"
+    skipped = mine.post(render, json={"edits": ops, "scale": 1, "regions": []}).json()[
+        "skipped"
+    ]
+    said = [(s["edit"], s["code"], s["detail"]) for s in skipped]
+    assert_equal(said, [(3, "last_page", words.sentence("last_page"))], "why it was left out")
+
+
+def test_pages_are_the_final_order_and_may_not_name_a_page_an_edit_deleted(mine, three):
+    """The browser sends the order it shows, so a deleted page there is a request at odds."""
+    moved = _export(mine, three, [_move(0, None)], pages=[0, 2])
+    assert_equal(
+        [lines[-1] for lines in _lines(_opened(moved))],
+        ["First page", "Third page"],
+        "pages asked, in the order asked",
+    )
+
+    assert_problem(_export(mine, three, [_delete(1)], pages=[0, 1]), "invalid_request", 400)
+
+
+def test_a_redaction_is_read_where_the_page_ops_put_its_page(mine, three):
+    """Page 0's header, redacted, moved last and turned: read there, and gone."""
+    ops = [
+        _redact(span_starting(three, 0, _HEADER)),
+        _move(0, None),
+        _rotate(0, 90),
+        _delete(1),
+    ]
+
+    pdf = _opened(_export(mine, three, ops))
+
+    assert_equal(_lines(pdf), [[_HEADER, "Third page"], ["First page"]], "each page's lines")
+    assert_equal([page.rotation for page in pdf.pages()], [0, 90], "each page's turn")
+
+
 def test_a_redaction_on_a_page_left_out_does_not_fail_the_export(mine, three):
     """The page goes, and its text with it: nothing is left to check."""
     response = _export(mine, three, [_redact(span_starting(three, 1, _HEADER))], pages=[2, 0])

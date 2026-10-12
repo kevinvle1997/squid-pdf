@@ -252,6 +252,19 @@ export interface components {
             };
         };
         /**
+         * DeletePage
+         * @description Leave a page out of the file, and everything on it.
+         */
+        DeletePage: {
+            /** Page */
+            page: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "delete_page";
+        };
+        /**
          * Document
          * @description The stored document, as the browser gets it, in the reader's language.
          */
@@ -298,7 +311,7 @@ export interface components {
          */
         ExportBody: {
             /** Edits */
-            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"])[];
+            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
             /** Pages */
             pages?: number[] | null;
         };
@@ -534,6 +547,21 @@ export interface components {
             };
         };
         /**
+         * MovePage
+         * @description Put a page just before page `before`, or after the last page when it's None.
+         */
+        MovePage: {
+            /** Page */
+            page: number;
+            /** Before */
+            before: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "move_page";
+        };
+        /**
          * PageInfo
          * @description A page unrotated, and the turn the browser gives it: clockwise, as the file asks.
          */
@@ -658,7 +686,7 @@ export interface components {
          */
         RenderBody: {
             /** Edits */
-            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"])[];
+            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
             /** Scale */
             scale: number;
             /** Regions */
@@ -680,6 +708,24 @@ export interface components {
              * @enum {string}
              */
             kind: "replace";
+        };
+        /**
+         * RotatePage
+         * @description Turn a page clockwise by `degrees`, on top of the turn the file gives it.
+         */
+        RotatePage: {
+            /** Page */
+            page: number;
+            /**
+             * Degrees
+             * @enum {integer}
+             */
+            degrees: 90 | 180 | 270;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "rotate_page";
         };
         /**
          * SkippedInfo

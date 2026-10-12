@@ -1,6 +1,6 @@
-"""Changing text, removing it, and adding new text.
+"""Changing text, removing it, adding new text, and turning, leaving out or moving pages.
 
-Replace, Redact and Insert share their machinery, so one package owns all three.
+Every edit goes through one list and one machinery, so one package owns them all.
 """
 
 from __future__ import annotations
@@ -11,11 +11,15 @@ from squidpdf.editing.apply import (
     resolve as resolve,
 )
 from squidpdf.editing.edits import (
+    DeletePage as DeletePage,
     Edit as Edit,
     Insert as Insert,
+    MovePage as MovePage,
     PageEdit as PageEdit,
+    PageOp as PageOp,
     Redact as Redact,
     Replace as Replace,
+    RotatePage as RotatePage,
     SpanEdit as SpanEdit,
     Strategy as Strategy,
 )

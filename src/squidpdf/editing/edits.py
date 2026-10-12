@@ -104,11 +104,39 @@ class Insert:
         check_text(self.text)
 
 
+@dataclass(frozen=True, slots=True)
+class RotatePage:
+    """Turn a page clockwise by `degrees`, on top of the turn the file gives it."""
+
+    page: int
+    degrees: Literal[90, 180, 270]
+    kind: Literal["rotate_page"] = "rotate_page"
+
+
+@dataclass(frozen=True, slots=True)
+class DeletePage:
+    """Leave a page out of the file, and everything on it."""
+
+    page: int
+    kind: Literal["delete_page"] = "delete_page"
+
+
+@dataclass(frozen=True, slots=True)
+class MovePage:
+    """Put a page just before page `before`, or after the last page when it's None."""
+
+    page: int
+    before: int | None
+    kind: Literal["move_page"] = "move_page"
+
+
 # Plain aliases, not `type` statements: pydantic gives those a schema, changing the wire's.
 # An edit to text the document has, named by its span.
 SpanEdit = Replace | Redact
+# An edit to a page's place, turn or presence in the file, named by its original number.
+PageOp = RotatePage | DeletePage | MovePage
 # An edit to a page as a whole, named by its page.
-PageEdit = Insert
+PageEdit = Insert | PageOp
 # Every edit the browser can send. Each place that treats kinds differently ends in
 # `assert_never`, so a new kind is a type error until every one handles it.
 Edit = SpanEdit | PageEdit
@@ -126,11 +154,11 @@ def check_edits(edits: list[Edit]) -> None:
 
 
 def _typed_in(edit: Edit) -> str:
-    """The new text an edit carries: empty for a redaction, which draws none."""
+    """The new text an edit carries: empty for a redaction or a page op, which draw none."""
     # A replace or an insert: the text it draws.
     if isinstance(edit, Replace | Insert):
         return edit.text
-    # A redaction: it draws none.
-    if isinstance(edit, Redact):
+    # A redaction or a page op: it draws none.
+    if isinstance(edit, Redact | RotatePage | DeletePage | MovePage):
         return ""
     assert_never(edit)

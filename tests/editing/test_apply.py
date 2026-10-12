@@ -27,10 +27,12 @@ from squidpdf.editing import (
     RedactionController,
     RedactionFailed,
     Replace,
+    RotatePage,
     apply_edits,
     insert_fit,
     replace_fit,
     resolve,
+    save_edited,
 )
 from squidpdf.editing.apply import page_order, redacted_in
 from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
@@ -719,17 +721,24 @@ def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
         assert_close(y, original_y, _SAME_START_PT, f"points {first_word!r}'s line moved down")
 
 
-@pytest.mark.parametrize("turn_cw", [90, 180, 270])
-def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, turn_cw):
-    """Page boxes are unrotated; new text is turned back, so it reads as the page is shown."""
+@pytest.mark.parametrize(
+    ("file_turn", "edit_turn"),
+    [(90, None), (180, None), (270, None), (0, 90), (90, 180)],
+    ids=["file 90", "file 180", "file 270", "an edit's 90", "file 90 and an edit's 180"],
+)
+def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, edit_turn):
+    """Page boxes are unrotated; new text is turned back, so it reads as the page is shown.
+
+    A turn an edit adds counts as the file's own does.
+    """
     doc = pymupdf.open()
-    doc.new_page().set_rotation(turn_cw)
+    doc.new_page().set_rotation(file_turn)
     path, out = str(tmp_path / "turned.pdf"), str(tmp_path / "out.pdf")
     doc.save(path)
     with open_pdf(path) as engine:
         signed = Insert(0, (200, 400), "Signed", size=12, font="Liberation Sans Regular")
-        _apply(engine, [signed], engine.index())
-        engine.save(out)
+        turns = [] if edit_turn is None else [RotatePage(0, edit_turn)]
+        save_edited(engine, engine.index(), edits=[signed, *turns], to=out)
 
     page = pymupdf.open(out)[0]
     [line] = [line for block in page.get_text("dict")["blocks"] for line in block["lines"]]

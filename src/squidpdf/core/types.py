@@ -33,6 +33,13 @@ QUARTER_TURNS: dict[QuarterTurn, tuple[int, int]] = {
     270: (0, -1),
 }
 
+
+def turn_added(turn: QuarterTurn, more: QuarterTurn) -> QuarterTurn:
+    """`turn` turned `more` further, the same way: a whole turn comes back to none."""
+    quarters = list(QUARTER_TURNS)
+    return quarters[(quarters.index(turn) + quarters.index(more)) % len(quarters)]
+
+
 # What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
 # writes each letter as two bytes; "other" is any kind not named here.
 type FontKind = Literal["truetype", "type0", "type1", "type3", "other"]

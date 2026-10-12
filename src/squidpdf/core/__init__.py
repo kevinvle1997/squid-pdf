@@ -99,4 +99,5 @@ from squidpdf.core.types import (
     new_text as new_text,
     pages_as_json as pages_as_json,
     pages_from_json as pages_from_json,
+    turn_added as turn_added,
 )

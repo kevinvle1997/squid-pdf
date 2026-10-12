@@ -19,8 +19,18 @@ def _insert(page: int) -> dict:
     return {"kind": "insert", "page": page, "origin": [72, 700], "text": "Signed", "size": 12}
 
 
+# Each edit that names a page, naming `page`.
+_EDITS = {
+    "an insert": _insert,
+    "a page op": lambda page: {"kind": "delete_page", "page": page},
+    "a move's place": lambda page: {"kind": "move_page", "page": 0, "before": page},
+}
+
+
 @pytest.mark.parametrize("page", [_PAST_THE_END, -1], ids=["past the end", "before the start"])
-@pytest.mark.parametrize("names_it", ["an insert", "a region", "the pages to export"])
+@pytest.mark.parametrize(
+    "names_it", ["an insert", "a page op", "a move's place", "a region", "the pages to export"]
+)
 def test_a_page_the_document_lacks_is_skipped_in_an_edit_and_refused_in_a_request(
     mine, doc, names_it, page
 ):
@@ -28,8 +38,8 @@ def test_a_page_the_document_lacks_is_skipped_in_an_edit_and_refused_in_a_reques
     render = f"/api/documents/{doc['id']}/render"
     export = f"/api/documents/{doc['id']}/export"
 
-    if names_it == "an insert":
-        body = {"edits": [_insert(page)], "scale": _SCALE, "regions": []}
+    if names_it in _EDITS:
+        body = {"edits": [_EDITS[names_it](page)], "scale": _SCALE, "regions": []}
         skipped = mine.post(render, json=body).json()["skipped"]
         got = [(s["edit"], s["type"], s["code"]) for s in skipped]
         assert_equal(got, [(0, "bad_reference", "no_page")], "the edits left out")
