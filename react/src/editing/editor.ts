@@ -3,6 +3,7 @@
 // state and the change every edit, undo and put-back goes through.
 import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
+import { FIND_CLOSED, type FindState, refound } from "./find";
 import { reattach } from "./fonts";
 import {
   EMPTY_HISTORY,
@@ -95,6 +96,7 @@ export interface EditorState {
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
   readonly images: ReadonlyMap<number, PageImage>; // by page: each image that failed, until it loads
+  readonly find: FindState;
 }
 
 export interface Editor {
@@ -104,6 +106,7 @@ export interface Editor {
   readonly reopener: Reopener;
   readonly queue: RenderQueue;
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
+  readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -140,6 +143,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     attaching: null,
     focusFont: null,
     images: new Map(),
+    find: FIND_CLOSED,
   });
   // The server no longer had the document, and it opened again: the same spans, under a new id,
   // with the user's copies back before anything is drawn or exported from it.
@@ -154,7 +158,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     return judged;
   });
   const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => drawnNow(store, drawn) });
-  const editor: Editor = { store, file, attached: new Map(), reopener, queue, retries: new Map() };
+  const editor: Editor = { store, file, attached: new Map(), reopener, queue, retries: new Map(), finding: {} };
   return editor;
 }
 
@@ -193,7 +197,9 @@ export function change(editor: Editor, action: HistoryAction, also: Also = {}): 
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export, reopening or refused copy said is stale once the user edits again.
   const notices = { ...state.notices, export: [], reopen: null, font: null };
-  store.set({ history, reading, notices, ...(typeof also === "function" ? also(reading) : also) });
+  // The places found, found again in what the document now reads.
+  const find = state.find.open ? refound(state, reading) : state.find;
+  store.set({ history, reading, notices, find, ...(typeof also === "function" ? also(reading) : also) });
   queue.draw(reading);
 }
 
@@ -242,6 +248,7 @@ export function closeEditor(editor: Editor): void {
   editor.queue.stop();
   for (const retry of editor.retries.values()) clearTimeout(retry);
   editor.retries.clear();
+  clearTimeout(editor.finding.timer);
 }
 
 /** Tell a screen reader, for what the page doesn't show. */

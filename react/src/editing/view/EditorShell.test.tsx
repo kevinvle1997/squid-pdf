@@ -340,3 +340,26 @@ describe("the user's own copy of a font", () => {
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
   });
 });
+
+describe("find and replace", () => {
+  test("Cmd+F opens find with focus in it; it counts, changes all, and Escape gives focus back to Find", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    const find = screen.getByRole("textbox", { name: "Find" });
+    await expect.element(find).toHaveFocus();
+
+    await userEvent.keyboard("here");
+    await expect.element(screen.getByRole("search").getByText("1 place · all look identical")).toBeVisible();
+    await screen.getByRole("textbox", { name: "Change to" }).fill("there");
+    await screen.getByRole("button", { name: "Change all" }).click();
+    await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
+    await expect.element(screen.getByRole("search").getByText(/^Changed 1 place/)).toBeVisible();
+
+    await screen.getByRole("textbox", { name: "Find" }).click();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("search")).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: /^Find/ })).toHaveFocus();
+  });
+});

@@ -20,6 +20,9 @@ export const DOUBLE_PRESS_MS = 400;
 /** How long a pointer rests on a span before its note shows. Focus shows it at once. */
 export const NOTE_DELAY_MS = 250;
 
+/** Find runs once typing in it stops for this long: soon enough to feel live, late enough to skip each letter. */
+export const FIND_DELAY_MS = 200;
+
 /** Page images load when they come this close to the viewport. */
 export const LAZY_MARGIN = "100% 0px";
 

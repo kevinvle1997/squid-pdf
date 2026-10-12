@@ -1,7 +1,8 @@
 // Keyboard shortcuts, wherever focus is: one table, read by one listener in EditorShell, so a
-// new binding is a row. Cmd+F and the arrows join it with find and nudging.
+// new binding is a row. The arrows join it with nudging.
 import { type Editor, redo, undo } from "./editor";
 import { exportNow } from "./export";
+import { openFind } from "./find";
 import { redact } from "./redaction";
 
 export interface Command {
@@ -13,6 +14,8 @@ export interface Command {
 export const COMMANDS: readonly Command[] = [
   // Export takes the words being typed along.
   { keys: "mod+s", whileTyping: true, run: (editor) => void exportNow(editor) },
+  // Find across the document, from anywhere: the browser's own find can't read the page's words.
+  { keys: "mod+f", whileTyping: true, run: openFind },
   // In a text field, undo and redo are the field's own.
   { keys: "mod+z", whileTyping: false, run: undo },
   { keys: "mod+shift+z", whileTyping: false, run: redo },

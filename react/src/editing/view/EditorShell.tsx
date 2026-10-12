@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { Document } from "../../api/types";
 import { QUIET_MS } from "../../documents/constants";
 import { Button } from "../../ui/Button";
@@ -12,20 +12,21 @@ import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { changedCount, closeEditor, createEditor, sayOpening, unexported, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
+import { openFind } from "../find";
 import { retryImages } from "../images";
 import { noticeLines } from "../notices";
 import { shallowEqual } from "../store";
 import { counted } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
+import { FindBar } from "./FindBar";
 import { Fonts } from "./Fonts";
+import { COMMAND } from "./keys";
 import { Page } from "./Page";
 import { SplitHere } from "./SplitHere";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
-const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
-const COMMAND = APPLE ? "⌘" : "Ctrl ";
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
@@ -73,7 +74,11 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
   return (
     <EditorContext.Provider value={editor}>
       <SkipLink to="pages">Skip to the document</SkipLink>
-      <Bar />
+      {/* Held at the top together, however many rows the bar wraps to. */}
+      <div className={styles.top}>
+        <Bar />
+        <FindBar />
+      </div>
       <NoticeLine />
       <Pages />
       <Said />
@@ -115,11 +120,29 @@ function Bar() {
           Exporting
         </span>
       )}
+      <FindButton />
       <Fonts />
       <Button onPress={() => void exportNow(editor)} isDisabled={exporting}>
         Export <kbd>{COMMAND}S</kbd>
       </Button>
     </header>
+  );
+}
+
+/** Opens find and replace; focus comes back here when the find bar closes from inside. */
+function FindButton() {
+  const editor = useEditor();
+  const closed = useEditorState((state) => state.find.closed);
+  const takeFocus = useCallback(
+    (button: HTMLButtonElement | null) => {
+      if (closed > 0) button?.focus();
+    },
+    [closed],
+  );
+  return (
+    <Button ref={takeFocus} onPress={() => openFind(editor)}>
+      Find <kbd>{COMMAND}F</kbd>
+    </Button>
   );
 }
 
