@@ -62,7 +62,10 @@ export function upload(file: Blob, onProgress: (sent: number, total: number) => 
   });
 }
 
-/** Whether the server still has the document: false once its hour has run out, or a deploy retired it. */
+/**
+ * Whether the server still has the document: false once its hour has run out, or a deploy retired it.
+ * Its `Squid-Expires-At` isn't read: nothing shows the hour.
+ */
 export async function stillThere(docId: string): Promise<boolean> {
   try {
     await send(`/api/documents/${docId}`, { method: "GET" });

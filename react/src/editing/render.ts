@@ -45,8 +45,8 @@ export const NOTHING_DRAWN: Drawn = {
 };
 
 /**
- * What a reply says, less the images. Not read yet: `insert_fits`, since nothing inserts yet,
- * and `build` and `expires_at`, which the document has.
+ * What a reply says, less the images. Not read: `insert_fits`, since nothing inserts yet; `build`,
+ * since a deploy retires the document; and `expires_at`, since nothing shows the hour.
  */
 type Said = Pick<Render, "fits" | "redactions" | "notices" | "skipped">;
 
