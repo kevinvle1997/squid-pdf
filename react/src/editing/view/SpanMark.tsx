@@ -18,6 +18,7 @@ interface Props {
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
   redaction: RedactionInfo | undefined; // the server's verdict on its redaction
+  hit: boolean; // find found it
   copy: Copy;
   focusTo: FocusTo | null; // focus is sent here: back from its field, or put back from the margin
   notes: Notes; // the page's one note, which this mark shows its own in
@@ -30,7 +31,7 @@ interface Props {
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
 export const SpanMark = memo(function SpanMark(props: Props) {
-  const { span, info, edited, font, fit, redaction, copy, focusTo, notes, noteId } = props;
+  const { span, info, edited, font, fit, redaction, hit, copy, focusTo, notes, noteId } = props;
   const editor = useEditor();
   const look = lookOf({ span, font, edited, fit, redaction, copy });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
@@ -80,6 +81,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
     look.trouble && styles.trouble,
     look.redacted && styles.redacted,
     look.unredacted && styles.unredacted,
+    hit && styles.hit,
   ]
     .filter(Boolean)
     .join(" ");

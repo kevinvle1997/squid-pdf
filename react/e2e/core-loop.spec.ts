@@ -207,6 +207,25 @@ test("Split here downloads two files, each with only its pages, and the edit in 
   expect(after.text).not.toContain("9 June 2026");
 });
 
+test("find counts a date on both pages, Change all changes both, and one undo puts both back", async ({ page }) => {
+  await open(page);
+  await page.keyboard.press("Control+f");
+  await page.getByRole("textbox", { name: "Find" }).fill("14 March 2026");
+  const bar = page.getByRole("search", { name: "Find and replace" });
+  await expect(bar.getByText(/^2 places · /)).toBeVisible();
+  await page.getByRole("textbox", { name: "Change to" }).fill("15 March 2026");
+  await bar.getByRole("button", { name: "Change all" }).click();
+  await expect(page.locator("img[data-strip]")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "Delivery begins 15 March 2026 and runs eighteen months.", exact: true }),
+  ).toBeAttached();
+
+  await page.getByRole("textbox", { name: "Find" }).press("Escape");
+  await page.keyboard.press("Control+z");
+  await expect(page.locator("img[data-strip]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: LINE })).toBeVisible();
+});
+
 test("Cmd+S while still typing exports the edit being typed", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: LINE }).focus();

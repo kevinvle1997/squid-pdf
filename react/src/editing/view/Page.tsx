@@ -65,6 +65,7 @@ interface PageState {
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
   readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
+  readonly hits: ReadonlySet<string> | undefined; // the spans find found here, while it's open
   readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
   readonly src: string; // the page image
   readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
@@ -85,6 +86,7 @@ function pageState(state: EditorState, index: number): PageState {
     strips: state.drawn.strips.get(index),
     fits: state.drawn.fits.get(index) ?? NO_FITS,
     redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
+    hits: state.find.hits.get(index),
     settling: state.settling.get(index),
     src: pageUrl(state.doc, index, state.scale),
     image: state.images.get(index),
@@ -250,6 +252,7 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             font={page.fonts.get(span.font)}
             fit={page.fits[span.id]}
             redaction={page.redactions[span.id]}
+            hit={page.hits?.has(span.id) ?? false}
             copy={page.copy}
             focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
             notes={notes}
