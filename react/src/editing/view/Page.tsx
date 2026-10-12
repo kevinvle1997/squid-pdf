@@ -11,6 +11,7 @@ import { imageFailed, imageLoaded, type PageImage } from "../images";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits, PageRedactions, Strip } from "../render";
+import type { Settling } from "../settle";
 import { shallowEqual } from "../store";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
@@ -64,6 +65,7 @@ interface PageState {
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
   readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
+  readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
   readonly src: string; // the page image
   readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
@@ -83,6 +85,7 @@ function pageState(state: EditorState, index: number): PageState {
     strips: state.drawn.strips.get(index),
     fits: state.drawn.fits.get(index) ?? NO_FITS,
     redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
+    settling: state.settling.get(index),
     src: pageUrl(state.doc, index, state.scale),
     image: state.images.get(index),
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
@@ -150,6 +153,7 @@ export const Page = memo(function Page({ index, info }: Props) {
             style={{ top: `${(strip.y / info.height) * 100}%` }}
           />
         ))}
+        <Settles page={page} info={info} />
         <Previews page={page} info={info} />
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
@@ -189,6 +193,23 @@ function ScrollAnchor({ page, info }: { page: PageState; info: PageInfo }) {
   const span = page.spans.find((each) => each.id === page.scrollTo?.spanId);
   if (span === undefined) return null;
   return <span className={styles.anchor} aria-hidden="true" style={boxOf(span.bbox, info)} ref={bringIntoView} />;
+}
+
+/** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
+function Settles({ page, info }: { page: PageState; info: PageInfo }) {
+  const { settling } = page;
+  if (settling === undefined) return null;
+  return page.spans
+    .filter((span) => settling.spanIds.has(span.id))
+    .map((span) => (
+      <span
+        key={`${span.id}:${settling.count}`}
+        className={styles.settle}
+        aria-hidden="true"
+        data-settle=""
+        style={boxOf(span.bbox, info)}
+      />
+    ));
 }
 
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */

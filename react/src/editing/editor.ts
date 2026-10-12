@@ -18,6 +18,7 @@ import type { PageImage } from "./images";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
+import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
 
 /** The text being typed into a span, not yet in the history. */
@@ -82,6 +83,7 @@ export interface EditorState {
   readonly history: History;
   readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
+  readonly settling: ReadonlyMap<number, Settling>; // by page: the spans the last render there disagreed with
   readonly draft: Draft | null;
   readonly unredacting: Unredacting | null;
   readonly focusTo: FocusTo | null;
@@ -126,6 +128,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     history: EMPTY_HISTORY,
     reading: UNEDITED,
     drawn: NOTHING_DRAWN,
+    settling: NOTHING_SETTLING,
     draft: null,
     unredacting: null,
     focusTo: null,
@@ -155,11 +158,15 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   return editor;
 }
 
-/** A render landed or failed: what it drew goes in, and a line it adds under the bar is heard. */
+/**
+ * A render landed or failed: what it drew goes in, where it disagrees with the preview pulses,
+ * and a line it adds under the bar is heard.
+ */
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
-  const { notices, drawn: before } = store.get();
+  const { notices, drawn: before, layout, doc, settling } = store.get();
   const heard = newlySaid(noticeLines(notices, before), noticeLines(notices, drawn));
-  store.set({ drawn, ...(heard !== "" && { said: spoken(heard) }) });
+  const settles = settlingAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, settling });
+  store.set({ drawn, settling: settles, ...(heard !== "" && { said: spoken(heard) }) });
 }
 
 /** The editor is on screen: what opening the file found is heard, now its live region is there to say it. */

@@ -42,6 +42,16 @@
   white-space: pre;
   pointer-events: none;
 }
+/* The settle where a render said other than its preview: its words come up from faint, once. Opacity
+   only, so reduced motion keeps it: it's a cross-fade already, and it's how a disagreement gets seen. */
+.settle {
+  position: absolute;
+  background: var(--sheet);
+  opacity: 0;
+  pointer-events: none;
+  animation: settle var(--dur-settle) var(--ease-out);
+}
+@keyframes settle { from { opacity: .65; } }
 @media (max-width: 820px) {
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
 }

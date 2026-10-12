@@ -237,6 +237,28 @@ describe("a page", () => {
     expect(drawn.margins).toBe(before);
   });
 
+  test("a render that says other than its preview settles over its span; one that agrees swaps in silently", async () => {
+    let land: (reply: Render) => void = () => undefined;
+    vi.mocked(renderOnServer).mockImplementation(() => new Promise<Render>((resolve) => (land = resolve)));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    const settles = () => screen.container.querySelectorAll<HTMLElement>("[data-settle]");
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    // The live check found every letter; the server lacks one.
+    land(aReply({ fits: { [span.id]: aFit({ delta_pt: -10, missing: ["h"] }) } }));
+    await expect.poll(() => settles().length).toBe(1);
+    expect(getComputedStyle(settles()[0] as HTMLElement).animationDuration).toBe("0.4s");
+
+    edit(editor, span.id, null);
+    typeInto(editor, "as here");
+    finish(editor, true);
+    land(aReply({ fits: { [span.id]: aFit({ delta_pt: -5 }) } }));
+    await expect.poll(() => editor.store.get().drawn.fits.get(0)?.[span.id]?.delta_pt).toBe(-5);
+    expect(settles()).toHaveLength(0);
+  });
+
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
     // No server answers in this test, so the page's image fails as it would with one too busy.
