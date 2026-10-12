@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Document } from "../../api/types";
 import { QUIET_MS } from "../../documents/constants";
 import { Button } from "../../ui/Button";
@@ -20,6 +20,7 @@ import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
 import { Fonts } from "./Fonts";
 import { Page } from "./Page";
+import { SplitHere } from "./SplitHere";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
@@ -138,7 +139,10 @@ function Pages() {
   return (
     <main id="pages" className={styles.pages} tabIndex={-1}>
       {pages.map((info, index) => (
-        <Page key={index} index={index} info={info} />
+        <Fragment key={index}>
+          <Page index={index} info={info} />
+          {index < pages.length - 1 && <SplitHere after={index} info={info} />}
+        </Fragment>
       ))}
     </main>
   );

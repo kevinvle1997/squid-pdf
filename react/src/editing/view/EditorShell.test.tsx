@@ -324,4 +324,19 @@ describe("the user's own copy of a font", () => {
     await expect.element(screen.getByRole("dialog").getByText(MISMATCH)).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).not.toBeInTheDocument();
   });
+
+  test("Split here sits between pages only, and splits the document after the page above it", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(exportPdf)
+      .mockReset()
+      .mockReturnValue(new Promise(() => undefined));
+    const opened = { ...DOC, pages: [A4, A4, A4] };
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={opened} />);
+    await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Split after/ }).elements()).toHaveLength(2);
+    await screen.getByRole("button", { name: "Split after page 1" }).click();
+    expect(exportPdf).toHaveBeenCalledWith("doc", [], { pages: [0] });
+    // The second file waits for the first; meanwhile neither split asks again.
+    await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
+  });
 });

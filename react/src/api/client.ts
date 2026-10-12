@@ -122,12 +122,16 @@ export interface Exported {
   notices: FileNoticeInfo[]; // what saving did to the whole file other than asked
 }
 
-/** The edited document as a PDF. The body is the file, so the rest comes in headers. */
-export async function exportPdf(docId: string, edits: Edit[]): Promise<Exported> {
+/** The edited document as a PDF, every page or `pages` in that order. The body is the file, so the rest comes in headers. */
+export async function exportPdf(
+  docId: string,
+  edits: Edit[],
+  { pages }: { pages?: readonly number[] } = {},
+): Promise<Exported> {
   const response = await send(`/api/documents/${docId}/export`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ edits }),
+    body: JSON.stringify(pages === undefined ? { edits } : { edits, pages }),
   });
   const skipped = (response.headers.get("squid-skipped-edits") ?? "")
     .split(",")

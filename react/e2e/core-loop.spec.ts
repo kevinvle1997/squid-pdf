@@ -3,7 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page } from "@playwright/test";
+import { type Download, expect, type Page } from "@playwright/test";
 import { test } from "./policy";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
@@ -174,6 +174,37 @@ test("Cmd+Delete redacts a line, and the file downloaded no longer has its words
   );
   expect(reread.length).toBeGreaterThan(0);
   expect(reread.join(" ")).not.toContain("This agreement is made");
+});
+
+test("Split here downloads two files, each with only its pages, and the edit in the one it's on", async ({ page }) => {
+  await open(page);
+  await edit(page, "This agreement is made on 9 June 2026 between");
+  const downloads: Download[] = [];
+  page.on("download", (download) => downloads.push(download));
+  await page.getByRole("button", { name: "Split after page 1" }).click();
+  await expect.poll(() => downloads.length).toBe(2);
+  const [first, second] = downloads as [Download, Download];
+  expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["sample, page 1.pdf", "sample, page 2.pdf"]);
+  // Each read back as any upload is: one page apiece, and the edit only where its page went.
+  const reread = async (download: Download) => {
+    const bytes = await readFile(await download.path());
+    return page.evaluate(
+      async (pdf) => {
+        const response = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "content-type": "application/pdf" },
+          body: new Uint8Array(pdf),
+        });
+        const doc = (await response.json()) as { pages: unknown[]; spans: { text: string }[] };
+        return { pages: doc.pages.length, text: doc.spans.map((span) => span.text).join(" ") };
+      },
+      [...bytes],
+    );
+  };
+  const [before, after] = [await reread(first), await reread(second)];
+  expect([before.pages, after.pages]).toEqual([1, 1]);
+  expect(before.text).toContain("9 June 2026");
+  expect(after.text).not.toContain("9 June 2026");
 });
 
 test("Cmd+S while still typing exports the edit being typed", async ({ page }) => {
