@@ -79,6 +79,7 @@ class FontFacts(TypedDict):
     substitute: str | None  # the face we ship that draws it instead, e.g. "Carlito Bold"
     why: MessageInfo | None  # why the file's own copy can't be used
     same_widths: bool  # the substitute's letters are as wide as the original's
+    look_alike: str  # the face we ship that draws a line with a letter no copy of it has
     attached: bool  # the user attached their own copy of it
     glyphs: dict[str, float]
 
@@ -95,6 +96,7 @@ class FontInfo(TypedDict):
     why_code: str | None
     why_params: dict[str, Param]
     same_widths: bool
+    look_alike: str  # what the browser previews an edit in, and names when a letter is missing
     attached: bool  # the user attached their own copy of it, which they can remove
     glyphs: dict[str, float]
 

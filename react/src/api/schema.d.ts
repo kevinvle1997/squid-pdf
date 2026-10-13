@@ -406,6 +406,8 @@ export interface components {
             };
             /** Same Widths */
             same_widths: boolean;
+            /** Look Alike */
+            look_alike: string;
             /** Attached */
             attached: boolean;
             /** Glyphs */

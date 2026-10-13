@@ -44,7 +44,7 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
   // The one effect, for what happens outside React: the preview's faces, the live region on screen,
   // shortcuts anywhere, the connection coming back, leaving with edits not exported, and the editor going.
   useEffect(() => {
-    addFaces(facesOf(editor.store.get().doc.fonts));
+    addFaces(facesOf(editor.store.get().doc));
     sayOpening(editor);
     const key = (event: KeyboardEvent) => {
       const command = commandFor(event, isTyping(event.target));

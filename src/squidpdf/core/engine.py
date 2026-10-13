@@ -195,6 +195,10 @@ class Engine:
         """Each letter the span's font really draws, and its width per 1000 em."""
         return self.plans.widths(span)
 
+    def look_alike(self, span: Span) -> str:
+        """The face we ship that draws an edit with a letter no copy of the span's font has."""
+        return self.fonts.look_alike(span).face.name
+
     # Changing it.
 
     def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> list[Span]:

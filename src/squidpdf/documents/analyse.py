@@ -103,6 +103,7 @@ def _analysed(
             "substitute": reports[span.id].substitute,
             "why": _substitute_why(reports[span.id]),
             "same_widths": reports[span.id].same_widths,
+            "look_alike": engine.look_alike(span),
             "attached": strip_subset(span.font) in attached,
             "glyphs": engine.widths(span),
         }

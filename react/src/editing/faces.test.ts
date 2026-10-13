@@ -1,8 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { aFont } from "../fixtures";
+import { aDoc, aFont, aSpan } from "../fixtures";
 import { DEFAULT_FACE, facesOf, fileOf, previewFaceOf } from "./faces";
-
-const font = (name: string, substitute: string | null = null) => aFont(name, { substitute });
 
 describe("preview faces", () => {
   test("a face's file is named as the server names it", () => {
@@ -11,18 +9,26 @@ describe("preview faces", () => {
     expect(fileOf("IBM Plex Mono Regular")).toBe("IBMPlexMono-Regular.ttf");
   });
 
-  test("the face the server draws with is the one previewed", () => {
-    expect(previewFaceOf(font("Calibri", "Carlito Regular"))).toBe("Carlito Regular");
+  test("the face the server draws a span with is the one previewed: the span's own, not its font's first span's", () => {
+    // Stored on one page and only named on another: the font's first span has no similar font, this one has.
+    const calibri = aFont("Calibri", { look_alike: "Carlito Regular" });
+    const named = aSpan({ id: "named", font: "Calibri", substitute: "Carlito Regular" });
+    expect(previewFaceOf(named, calibri)).toBe("Carlito Regular");
   });
 
-  test("a font kept in the file is previewed in a look-alike by its name", () => {
-    expect(previewFaceOf(font("ABCDEE+Arial-BoldMT"))).toBe("Liberation Sans Bold");
-    expect(previewFaceOf(font("CMR10"))).toBe("Liberation Serif Regular");
-    expect(previewFaceOf(font("Courier-Oblique"))).toBe("Liberation Mono Italic");
+  test("a span its file's own font draws previews in the look-alike the server falls back to", () => {
+    const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold" });
+    expect(previewFaceOf(aSpan({ id: "kept", font: lato.name }), lato)).toBe("Lato Bold");
   });
 
-  test("a document's faces are each font's once, and the default for a span whose font isn't known", () => {
-    const fonts = [font("Arial", "Liberation Sans Regular"), font("Helvetica"), font("TimesNewRoman")];
-    expect(facesOf(fonts)).toEqual(new Set([DEFAULT_FACE, "Liberation Sans Regular"]));
+  test("a document's faces are each once: its spans' similar fonts, its fonts' look-alikes, and the default", () => {
+    const doc = aDoc({
+      spans: [
+        aSpan({ id: "a", font: "Arial", substitute: "Liberation Sans Regular" }),
+        aSpan({ id: "b", font: "Arial", substitute: "Liberation Sans Regular" }),
+      ],
+      fonts: [aFont("Arial", { look_alike: "Liberation Sans Regular" }), aFont("Lato", { look_alike: "Lato Regular" })],
+    });
+    expect(facesOf(doc)).toEqual(new Set([DEFAULT_FACE, "Liberation Sans Regular", "Lato Regular"]));
   });
 });

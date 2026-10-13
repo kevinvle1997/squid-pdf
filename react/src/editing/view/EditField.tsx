@@ -18,7 +18,7 @@ import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
-import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
+import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
@@ -36,7 +36,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const text = useEditorState((state) => state.draft?.text ?? "");
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
-  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(font);
+  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, font);
+  // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
+  const drawnIn = span.substitute ?? shownName(span.font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
@@ -146,7 +148,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           </span>
         ) : (
           <span className={styles.facts} aria-hidden="true">
-            <span>{face}</span>
+            <span>{drawnIn}</span>
             <Num>{SIZE.format(span.size)} pt</Num>
           </span>
         )}

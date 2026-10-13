@@ -119,6 +119,18 @@ describe("a page", () => {
     expect(widthOf(at)).toBeLessThan(widthOf(at - 1) * 0.75);
   });
 
+  test("the field names the font that draws it, and a missing letter the face the server draws it in", async () => {
+    // Kept in the file, trimmed to the letters it draws: the server falls back to the Lato we ship.
+    const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold", glyphs });
+    const bold = aSpan({ ...span, font: lato.name });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [bold], fonts: [lato] }), 2);
+    const screen = await draw();
+    await editSpan(screen);
+    await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{End}Q");
+    await expect.element(screen.getByText("no Q in this font, so the line is drawn in Lato Bold")).toBeVisible();
+  });
+
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
     const screen = await draw();
     await editSpan(screen);
