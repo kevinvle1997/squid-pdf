@@ -342,6 +342,24 @@ describe("a page", () => {
     expect(parseFloat(style.lineHeight)).toBeCloseTo(parseFloat(style.height), 0);
   });
 
+  test("an edit the server drew other than typed keeps the change's solid line, with a warning's dashed one under it", async () => {
+    const message = "no h in this font, so the line is drawn in Liberation Serif Regular";
+    vi.mocked(renderOnServer).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ missing: ["h"], message }) } }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    const mark = screen.getByRole("button", { name: "is here" });
+    await expect.poll(() => editor.store.get().drawn.fits.get(0)?.[span.id]?.missing).toEqual(["h"]);
+    const changed = getComputedStyle(mark.element(), "::after");
+    expect(changed.backgroundImage).toBe("none");
+    expect(changed.height).toBe("2px");
+    const warned = getComputedStyle(mark.element(), "::before");
+    expect(warned.backgroundImage).toContain("repeating-linear-gradient");
+    expect(warned.height).toBe("2px");
+  });
+
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
     // No server answers in this test, so the page's image fails as it would with one too busy.
