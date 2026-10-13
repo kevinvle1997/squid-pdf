@@ -122,6 +122,12 @@ def test_a_character_that_draws_nothing_is_named(character, said):
     assert_equal(words.render(left_out), expected, "the sentence naming it")
 
 
+def test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_letter_isnt():
+    fit = Message("missing", {"chars": ["(", "Z", "€"], "font": "Noto Sans Regular"})
+    expected = "no “(” or Z or “€” in this font, so the line is drawn in our Noto Sans Regular"
+    assert_equal(words.render(fit), expected, "the sentence quoting what isn't a letter")
+
+
 def test_a_character_is_named_in_the_reader_s_language(pseudo):
     said = words.render(Message("left_out", {"letters": ["\u202f"]}), pseudo)
     expected = pseudo_sentence("Left out narrow no-break space: no font we have can draw them.")

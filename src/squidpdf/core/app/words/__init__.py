@@ -23,6 +23,8 @@ ENGLISH = "en"
 
 _ONE_PLACE = Decimal("0.1")  # how finely a number is written in a sentence
 _NAME_PREFIX = "char_u"  # a character's name is under its code point: U+202F's is char_u202f
+# Unicode's punctuation and symbols, by the first letter of their category: quoted in a list.
+_QUOTED_CATEGORIES = frozenset("PS")
 
 
 def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
@@ -112,7 +114,7 @@ def _written_out(name: str, value: Param, language: str) -> str:
 
 
 def _visible(character: str, language: str = ENGLISH) -> str:
-    """A character as a person can see it: itself, or its name when it draws nothing alone.
+    """A character as a person sees it: itself, quoted, or its name if it draws nothing alone.
 
     Named in `language`, e.g. "narrow no-break space", when a catalog names
     it; else by Unicode's name, lower case; else, for a control character with
@@ -122,6 +124,9 @@ def _visible(character: str, language: str = ENGLISH) -> str:
     alone = len(character) == 1
     blank = alone and (not character.isprintable() or character.isspace())
     shows = not blank and not (alone and unicodedata.combining(character))
+    # Punctuation or a symbol: quoted, as "no ( or ) in this font" reads as a sentence's own.
+    if shows and alone and unicodedata.category(character)[0] in _QUOTED_CATEGORIES:
+        return _fill(sentence("quoted", language), {"char": character}, language)
     if shows:
         return character
     # Its name in `language` when the catalog has one, else Unicode's.

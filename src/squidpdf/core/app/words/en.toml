@@ -136,6 +136,8 @@ active_content_dropped = "This PDF had scripts, attached files or links that ope
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
 # A list whose placeholder has no join_<its name> here is joined as items.
+# Punctuation or a symbol in a list of characters, quoted so it reads as one: no “(” in this font.
+quoted = "“{char}”"
 join_chars = " or "
 join_letters = " "
 join_items = ", "

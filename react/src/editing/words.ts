@@ -22,12 +22,16 @@ export function fill(sentence: string, facts: Facts): string {
 // Draws nothing on its own: a space, an invisible mark, or an accent alone, which would sit on the space before it.
 const DRAWS_NOTHING = /^[\p{C}\p{Z}\s\p{Mn}\p{Me}]$/u;
 
+// Punctuation or a symbol, quoted as en.toml's `quoted` quotes it, so it reads as a character, not the sentence's.
+const QUOTED = /^[\p{P}\p{S}]$/u;
+
 /**
- * A character as a person can see it: itself, or its name in `names` (the server's `copy.characters`)
- * when it draws nothing alone. `_visible` in core/app/words, but for one the catalog doesn't name:
+ * A character as a person can see it: itself, quoted if punctuation or a symbol, or its name in `names`
+ * (the server's `copy.characters`) when it draws nothing alone. `_visible` in core/app/words, but for one the catalog doesn't name:
  * the server says Unicode's name, which the browser hasn't got, so it says the code point.
  */
 export function shownAs(character: string, names: Readonly<Record<string, string>>): string {
+  if (QUOTED.test(character)) return `\u201c${character}\u201d`;
   if (!DRAWS_NOTHING.test(character)) return character;
   const codePoint = character.codePointAt(0) ?? 0;
   return names[character] ?? `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
