@@ -79,6 +79,11 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     preview = _strip(mine, doc, [replace], delivery)
     changed = preview != _strip(mine, doc, [], delivery)
     assert_true(changed, "the strip over the line shows the fix")
+    # A letter no copy of the font has: drawn in the face the browser previews it in.
+    accented = {**replace, "text": text.replace("March", "Mars é")}
+    body = {"edits": [accented], "scale": _SCALE, "regions": []}
+    said = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()["fits"]
+    assert_in(own["look_alike"], said[delivery["id"]]["message"], "the face that draws é")
 
     # Download: the fix and a redaction, applied to the file itself.
     redact = {"kind": "redact", "span_id": invoices["id"]}

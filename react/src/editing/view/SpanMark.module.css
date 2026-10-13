@@ -19,9 +19,10 @@
 /* On the page the ring is the page's own indigo: the dark theme's would wash out on white. */
 .span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
 /* A substitute draws here ("a similar font"), an edit won't match the text around it ("will look
-   different"), or a form field draws it and an edit is left out: a dashed warning line, always. */
+   different"), or a form field draws it and an edit is left out: a dashed warning line, always. Quiet
+   at rest, but no fainter than a mark's 3:1 on the page: it's Rule 1 before anything is touched. */
 .substitute::after, .approximate::after, .formField::after {
-  opacity: .55; height: 1.5px;
+  opacity: .75; height: 1.5px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 2px, transparent 2px 4px);
 }
 .substitute[data-hovered], .approximate[data-hovered], .formField[data-hovered] { background: var(--mark-warn-soft); }
@@ -30,8 +31,13 @@
 .formField[data-hovered]::after, .formField[data-focus-visible]::after { opacity: 1; }
 /* You changed this. */
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
-/* It went in, but not quite as typed: the server said why. */
-.trouble::after { opacity: 1; height: 2px; background: var(--mark-warn); }
+/* It went in, but not quite as typed: the server said why. The change keeps its solid line, and the
+   warning's dashed one runs under it, so each state shows by its shape, never by colour alone. */
+.trouble::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -5px;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
+}
 /* Redacted: you did this, so the change's own line, and its tint over the bare page where the words were. */
 /* Hovered too: a redaction is what it is, whatever font drew the words that went. */
 .redacted, .redacted[data-hovered] { background: var(--mark-change-soft); }
@@ -44,7 +50,9 @@
 .hit::after { opacity: 1; height: 2px; background: var(--mark-change); }
 @media (forced-colors: active) {
   .span::after { background: CanvasText; }
-  .changed::after, .trouble::after, .redacted::after { background: Highlight; }
+  .changed::after, .redacted::after { background: Highlight; }
+  /* A gradient is dropped in this mode: a dashed border keeps the warning's shape. */
+  .trouble::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
   /* The tint goes in this mode: a redacted span keeps a box, so it still reads as more than a change. */
   .redacted { outline: 1px solid Highlight; }
   /* A place found loses its tint too: a dashed box keeps it apart from a change. */

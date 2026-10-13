@@ -1,0 +1,29 @@
+.checkbox {
+  position: relative;
+  display: inline-flex; align-items: center; gap: var(--s2);
+  font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; cursor: pointer;
+}
+/* The hit area grows past the box and its label without moving what you see. */
+.checkbox::before {
+  content: ""; position: absolute; inset-inline: 0; top: 50%;
+  height: max(100%, var(--hit)); transform: translateY(-50%);
+}
+.box { flex: none; width: var(--s3); height: var(--s3); transition: transform var(--dur-press) var(--ease-out); }
+.box rect { fill: var(--ground); stroke: var(--ink-lo); }
+.box path { fill: none; stroke: var(--strip); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.checkbox[data-hovered] .box rect { stroke: var(--ink); }
+.checkbox[data-selected] { color: var(--ink); }
+.checkbox[data-selected] .box rect { fill: var(--ink); stroke: var(--ink); }
+.checkbox[data-selected] .box path { opacity: 1; }
+.checkbox[data-pressed] .box { transform: scale(.9); }
+.checkbox[data-focus-visible] .box { outline: 2px solid var(--change); outline-offset: 2px; }
+.checkbox[data-disabled] { cursor: default; }
+.checkbox[data-disabled] .box rect { stroke: var(--ink-faint); }
+@media (forced-colors: active) {
+  .box rect { fill: Canvas; stroke: CanvasText; }
+  .checkbox[data-selected] .box rect { fill: Highlight; stroke: Highlight; }
+  .box path { stroke: HighlightText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .checkbox[data-pressed] .box { transform: none; }
+}

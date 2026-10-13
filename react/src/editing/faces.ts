@@ -1,6 +1,6 @@
 // The faces the preview draws in: the very files the server draws with, from
 // src/squidpdf/fonts, so a preview has the widths the render will have.
-import type { FontInfo } from "../api/types";
+import type { Document, FontInfo, SpanInfo } from "../api/types";
 
 // Longest first, so "Bold Italic" isn't read as "Italic".
 const STYLES = ["Bold Italic", "Bold", "Italic", "Regular"];
@@ -13,22 +13,12 @@ export function fileOf(face: string): string {
 }
 
 /**
- * The face to preview a span's edit in: the one the server draws with when the file's own
- * font can't be used. When it can, the browser has no copy of it, so a look-alike picked
- * from the name stands in for the preview only; the server's render replaces it.
+ * The face to preview an edit to `span` in, and the one a letter its font lacks is drawn in: the
+ * face the server draws the span with when the file's own font can't, else the font's look-alike.
+ * The browser has no copy of the file's own font, so the look-alike stands in for the preview only.
  */
-export function previewFaceOf(font: FontInfo): string {
-  if (font.substitute !== null) return font.substitute;
-  const name = font.name;
-  const family = /mono|courier|code/i.test(name)
-    ? "Liberation Mono"
-    : /sans|arial|helvetica|calibri|carlito|grotesk|gothic|verdana|inter|roboto|lato/i.test(name)
-      ? "Liberation Sans"
-      : "Liberation Serif";
-  const bold = /bold|black|heavy|semibold|demi/i.test(name);
-  const italic = /italic|oblique/i.test(name);
-  const style = bold && italic ? "Bold Italic" : bold ? "Bold" : italic ? "Italic" : "Regular";
-  return `${family} ${style}`;
+export function previewFaceOf(span: SpanInfo, font: FontInfo): string {
+  return span.substitute ?? font.look_alike;
 }
 
 const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
@@ -44,9 +34,10 @@ const urlOf = (face: string): string | undefined => FILES[`../../../src/squidpdf
 const familyName = (face: string) => `preview ${face}`;
 const added = new Set<string>();
 
-/** Every face a document's edits can preview in: each font's, and the default. */
-export function facesOf(fonts: readonly FontInfo[]): Set<string> {
-  return new Set([DEFAULT_FACE, ...fonts.map(previewFaceOf)]);
+/** Every face a document's edits can preview in: each span's similar font, each font's look-alike, and the default. */
+export function facesOf({ spans, fonts }: Pick<Document, "spans" | "fonts">): Set<string> {
+  const substitutes = spans.flatMap((span) => span.substitute ?? []);
+  return new Set([DEFAULT_FACE, ...substitutes, ...fonts.map((font) => font.look_alike)]);
 }
 
 /**

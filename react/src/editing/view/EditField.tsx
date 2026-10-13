@@ -18,11 +18,12 @@ import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
-import { attachDropped, attachFont, FONT_FILES, offersCopy } from "../fonts";
+import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
+import { redact } from "../redaction";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { boxOf, fieldScaleOf, points, shownWidthPt, spanTextStyle } from "./geometry";
+import { fieldScaleOf, pinnedUnder, points, shownWidthPt, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -36,7 +37,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const text = useEditorState((state) => state.draft?.text ?? "");
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
-  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(font);
+  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, font);
+  // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
+  const drawnIn = span.substitute ?? shownName(span.font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
 
@@ -99,7 +102,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     else finish(editor, false, { returnFocus: true });
   }
 
-  const box = boxOf(span.bbox, info);
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
   // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback; half an em spare.
@@ -139,14 +141,14 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           }}
         />
       </TextField>
-      <div className={styles.chip} style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
+      <div className={styles.chip} style={{ ...pinnedUnder(span.bbox, info), top: points(span.bbox.y1 + 4, info) }}>
         {trouble !== "" ? (
           <span className={styles.bad} aria-hidden="true">
             <Warn>{trouble}</Warn>
           </span>
         ) : (
           <span className={styles.facts} aria-hidden="true">
-            <span>{face}</span>
+            <span>{drawnIn}</span>
             <Num>{SIZE.format(span.size)} pt</Num>
           </span>
         )}
@@ -167,6 +169,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             </FileTrigger>
           </span>
         )}
+        {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
+        <span className={styles.redact}>
+          <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
+            Redact
+          </Button>
+        </span>
       </div>
     </>
   );

@@ -94,6 +94,7 @@ def _font_info(font: FontFacts, said_in: str) -> FontInfo:
         "why_code": None if why is None else why.key,
         "why_params": {} if why is None else why.params,
         "same_widths": font["same_widths"],
+        "look_alike": font["look_alike"],
         "attached": font["attached"],
         "glyphs": font["glyphs"],
     }

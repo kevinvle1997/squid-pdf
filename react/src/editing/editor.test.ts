@@ -108,12 +108,13 @@ describe("an edit", () => {
     expect(editor.store.get().history.done).toEqual([]);
   });
 
-  test("a change goes to the server to draw; what export and reopening said goes, the document's stays", () => {
+  test("a change goes to the server to draw; what export, reopening and a drop said goes, the document's stays", () => {
     const found = { code: "signed", params: {}, type: "t", detail: "This file is signed." };
     editor = createEditor(FILE, { ...DOC, notices: [found] }, 2);
     const { notices } = editor.store.get();
+    const drop = warn("Only a PDF can be dropped here.");
     editor.store.set({
-      notices: { ...notices, export: [plain("Downloaded contract.pdf.")], reopen: plain("Opened.") },
+      notices: { ...notices, export: [plain("Downloaded contract.pdf.")], reopen: plain("Opened."), drop },
     });
     typed("own", "now");
     expect(editor.store.get().notices).toEqual({
@@ -121,6 +122,7 @@ describe("an edit", () => {
       export: [],
       reopen: null,
       font: null,
+      drop: null,
     });
     expect(render).toHaveBeenCalledTimes(1);
   });

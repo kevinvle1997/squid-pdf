@@ -4,7 +4,20 @@ import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
 import { change, createEditor, type Editor, undo } from "./editor";
-import { changeAll, closeFind, countSaid, findCount, openFind, typeQuery, typeReplacement } from "./find";
+import {
+  changeAll,
+  closeFind,
+  countSaid,
+  type FindOptions,
+  findCount,
+  openFind,
+  placesIn,
+  replacedIn,
+  setMatchCase,
+  setWholeWords,
+  typeQuery,
+  typeReplacement,
+} from "./find";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), render: vi.fn() }));
 
@@ -84,6 +97,22 @@ describe("find", () => {
     expect(editor.store.get().reading.spans.get("similar")).toBeUndefined();
   });
 
+  test("what Change all did stops being said once anything else changes: undo would take that, not the places", () => {
+    typeQuery(editor, DATE);
+    typeReplacement(editor, "14 June");
+    changeAll(editor);
+    expect(editor.store.get().find.changed).toBe(2);
+    change(editor, { kind: "add", edits: [{ kind: "redact", span_id: "other" }] });
+    expect(editor.store.get().find.changed).toBeNull();
+
+    // Closed meanwhile, the bar doesn't say it again when it opens.
+    changeAll(editor);
+    closeFind(editor);
+    undo(editor);
+    openFind(editor);
+    expect(editor.store.get().find.changed).toBeNull();
+  });
+
   test("Change all needs words to change to: emptying a span is redaction's job", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
@@ -108,5 +137,75 @@ describe("find", () => {
     expect(find.open).toBe(false);
     expect(find.hits.size).toBe(0);
     expect(find.closed).toBe(1);
+  });
+});
+
+describe("matching", () => {
+  const ANY = { matchCase: false, wholeWords: false };
+  /** `text` with what reads `find` changed `to`, as "Find" matches with `options`. */
+  const change = (text: string, { find, to, ...options }: { find: string; to: string } & Partial<FindOptions>) =>
+    replacedIn(text, placesIn(text, find, { ...ANY, ...options }), to);
+
+  test("a space, quote or dash the keyboard can't type matches the one it can", () => {
+    const line = "Paid on 14\u00a0March to the Client\u2019s bank \u2013 in full";
+    expect(change(line, { find: "14 March", to: "2 April" })).toBe(
+      "Paid on 2\u00a0April to the Client\u2019s bank \u2013 in full",
+    );
+    expect(change(line, { find: "Client's", to: "Customer's" })).toBe(
+      "Paid on 14\u00a0March to the Customer\u2019s bank \u2013 in full",
+    );
+    expect(change(line, { find: "bank - in", to: "bank, in" })).toBe(
+      "Paid on 14\u00a0March to the Client\u2019s bank, in full",
+    );
+  });
+
+  test("a change is spelled as the page spelled what it replaces: its spaces, quotes and dashes, where all were one kind", () => {
+    expect(change("from 2019\u20132020", { find: "2019-2020", to: "2020-2021" })).toBe("from 2020\u20132021");
+    // A no-break space and a plain one in what was found: nothing to say which the change wants.
+    expect(change("14\u00a0March 2026", { find: "14 March 2026", to: "2 April 2027" })).toBe("2 April 2027");
+    expect(change("the Client\u2019s", { find: "Client\u2019s", to: "Customer's" })).toBe("the Customer\u2019s");
+  });
+
+  test("letters of either case match, unless Match case", () => {
+    expect(change("March and march", { find: "MARCH", to: "June" })).toBe("June and June");
+    expect(change("March and march", { find: "march", to: "june", matchCase: true })).toBe("March and june");
+  });
+
+  test("a match inside a word counts, unless Whole words", () => {
+    expect(change("Ann signed the Annual report", { find: "Ann", to: "Bea" })).toBe("Bea signed the Beaual report");
+    expect(change("Ann signed the Annual report", { find: "Ann", to: "Bea", wholeWords: true })).toBe(
+      "Bea signed the Annual report",
+    );
+  });
+
+  test("a ligature reads as its letters, and is only ever changed whole", () => {
+    expect(change("\ufb01nance", { find: "finance", to: "funds" })).toBe("funds");
+    // Half of one would leave the other letter's half behind.
+    expect(placesIn("\ufb01nance", "f", ANY)).toEqual([]);
+  });
+
+  test("an unseen hyphen or space between letters doesn't stop them matching, and goes with what's changed", () => {
+    expect(change("the infor\u00admation sheet", { find: "information", to: "data" })).toBe("the data sheet");
+    expect(change("a\u200bb", { find: "ab", to: "c" })).toBe("c");
+  });
+
+  test("nothing to find finds nothing", () => {
+    expect(placesIn("anything", "", ANY)).toEqual([]);
+    expect(placesIn("anything", "\u00ad", ANY)).toEqual([]);
+  });
+
+  test("Match case and Whole words find again at once and say the count", () => {
+    typeQuery(editor, "14 MARCH");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    expect(found()).toEqual([[0, ["first", "similar"]]]);
+    setMatchCase(editor, true);
+    expect(editor.store.get().find.matchCase).toBe(true);
+    expect(found()).toEqual([]);
+    expect(editor.store.get().said.text).toBe("Nothing matches");
+    setMatchCase(editor, false);
+    setWholeWords(editor, true);
+    typeQuery(editor, "14 Mar");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    expect(found()).toEqual([]);
   });
 });

@@ -34,10 +34,18 @@ describe("redacting", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
-  test("while typing, it redacts the span typed in, whatever part is selected, and the typed words go", () => {
+  test("while typing, Cmd or Ctrl with Backspace or Delete is the field's own, deleting a word or a line", () => {
     edit(editor, "name", null);
     typeInto(editor, "Jane Smith");
-    expect(pressed({ key: "Backspace", ctrlKey: true }, true)?.keys).toBe("mod+backspace");
+    for (const key of ["Backspace", "Delete"]) {
+      expect(pressed({ key, ctrlKey: true }, true)).toBeUndefined();
+      expect(pressed({ key, metaKey: true }, true)).toBeUndefined();
+    }
+  });
+
+  test("redacting while typing takes the span typed in, whatever part is selected, and the typed words go", () => {
+    edit(editor, "name", null);
+    typeInto(editor, "Jane Smith");
     redact(editor, null);
     const state = editor.store.get();
     expect(state.draft).toBeNull();

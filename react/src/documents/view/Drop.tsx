@@ -1,43 +1,23 @@
-import { useState } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { QUIET_MS } from "../constants";
-import { type Opened, openFile } from "../open";
+import type { Landing } from "../open";
 import styles from "./Drop.module.css";
-
-type State =
-  | { kind: "waiting" }
-  | { kind: "opening"; name: string; sent: number; total: number }
-  | { kind: "failed"; detail: string };
 
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
 
 /** The landing: the whole window takes a dropped PDF. No tool grid, no sign-in. */
-export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => void; onOpening: () => void }) {
-  const [state, setState] = useState<State>({ kind: "waiting" });
-
-  async function open(file: File) {
-    // One file at a time: a second drop mid-upload would race the first to the editor.
-    if (state.kind === "opening") return;
-    onOpening();
-    setState({ kind: "opening", name: file.name, sent: 0, total: file.size });
-    const opening = await openFile(file, (sent, total) =>
-      setState((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
-    );
-    if ("opened" in opening) onOpened(opening.opened);
-    else setState({ kind: "failed", detail: opening.failed });
-  }
-
+export function Drop({ landing, onChoose }: { landing: Landing; onChoose: (file: File) => void }) {
   return (
     <DropZone
       className={styles.zone}
       aria-label="Drop a PDF to open it"
       onDrop={async (event) => {
         const item = event.items.find(isFileDropItem);
-        if (item !== undefined) await open(await item.getFile());
+        if (item !== undefined) onChoose(await item.getFile());
       }}
     >
       <header className={styles.top}>
@@ -45,14 +25,14 @@ export function Drop({ onOpened, onOpening }: { onOpened: (opened: Opened) => vo
       </header>
       <main className={styles.middle}>
         <h1 className={styles.title}>Drop a PDF anywhere to fix its words</h1>
-        <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && open(files[0])}>
-          <Button className={styles.choose} isDisabled={state.kind === "opening"}>
+        <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
+          <Button className={styles.choose} isDisabled={landing.kind === "opening"}>
             Choose a PDF
           </Button>
         </FileTrigger>
         <p className={styles.status} role="status">
-          {state.kind === "opening" && <Progress {...state} />}
-          {state.kind === "failed" && <Warn>{state.detail}</Warn>}
+          {landing.kind === "opening" && <Progress {...landing} />}
+          {landing.kind === "failed" && <Warn>{landing.detail}</Warn>}
         </p>
         <p className={styles.fine}>Your file is deleted an hour after you last touch it.</p>
       </main>

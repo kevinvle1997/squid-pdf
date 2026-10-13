@@ -12,6 +12,12 @@ export interface Opened {
 /** The document, or why it didn't open, in words for the user. */
 export type Opening = { opened: Opened } | { failed: string };
 
+/** What the landing shows: waiting for a file, one on its way to the server, or why the last didn't open. */
+export type Landing =
+  | { kind: "waiting" }
+  | { kind: "opening"; name: string; sent: number; total: number }
+  | { kind: "failed"; detail: string };
+
 export async function openFile(file: File, onProgress: (sent: number, total: number) => void): Promise<Opening> {
   try {
     return { opened: { file, doc: await upload(file, onProgress) } };

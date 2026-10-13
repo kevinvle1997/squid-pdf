@@ -7,6 +7,7 @@ import "../../styles/base.css";
 import { ProblemError, pageImage, render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
+import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
@@ -69,6 +70,20 @@ async function settled() {
   } while (drawn.margins !== count);
 }
 
+/** WCAG contrast against the white page of a line drawn in its gradient's colour at its opacity. */
+function contrastOnWhite(line: CSSStyleDeclaration): number {
+  const [red = 0, green = 0, blue = 0] = (/rgb\((\d+), (\d+), (\d+)\)/.exec(line.backgroundImage) ?? [])
+    .slice(1)
+    .map(Number);
+  const opacity = Number(line.opacity);
+  const linear = (channel: number) => {
+    const shown = (channel * opacity + 255 * (1 - opacity)) / 255;
+    return shown <= 0.04045 ? shown / 12.92 : ((shown + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  return 1.05 / (luminance + 0.05);
+}
+
 /** Marks come once the page is near the viewport, which its observer says a moment after drawing. */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>) {
   const mark = screen.getByRole("button", { name: WORDS });
@@ -119,6 +134,37 @@ describe("a page", () => {
     expect(widthOf(at)).toBeLessThan(widthOf(at - 1) * 0.75);
   });
 
+  test("the field names the font that draws it, and a missing letter the face the server draws it in", async () => {
+    // Kept in the file, trimmed to the letters it draws: the server falls back to the Lato we ship.
+    const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold", glyphs });
+    const bold = aSpan({ ...span, font: lato.name });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [bold], fonts: [lato] }), 2);
+    const screen = await draw();
+    await editSpan(screen);
+    await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{End}Q");
+    await expect.element(screen.getByText("no Q in this font, so the line is drawn in Lato Bold")).toBeVisible();
+  });
+
+  test("a span in a right-hand column has its chip under it, ending where it ends, not squeezed against the page's edge", async () => {
+    await page.viewport(1400, 900);
+    const amount = aSpan({ ...span, text: "was here", bbox: { x0: 480, y0: 100, x1: 560, y1: 124 } });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [amount], fonts: DOC.fonts }), 2);
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}Q");
+    const redact = screen.getByRole("button", { name: "Redact" });
+    await expect.element(redact).toBeVisible();
+    const button = redact.element().getBoundingClientRect();
+    const chip = redact.element().closest("div")?.getBoundingClientRect();
+    const field = screen.getByRole("textbox").element().getBoundingClientRect();
+    if (chip === undefined) throw new Error("no chip");
+    // Its sentence, its offer and Redact on one line, not wrapped into a column at the page's edge.
+    expect(chip.height).toBeLessThan(button.height * 3);
+    // Ending where the span does: its box starts where the field does, and the page shows at its printed size.
+    expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
+  });
+
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
     const screen = await draw();
     await editSpan(screen);
@@ -130,6 +176,17 @@ describe("a page", () => {
     // A pixel spare: the field's width in points rounds to whole pixels either way.
     expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1);
     expect(field.scrollLeft).toBe(0);
+  });
+
+  test("a line typed past the page's edge leaves the page where it is: the sheet never scrolls to the caret", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}");
+    // Far past the right edge of the page, as a long replacement runs.
+    await userEvent.keyboard(" and a good deal more besides, running on past the edge of the page");
+    const sheet = screen.getByRole("textbox").element().closest("section")?.children[1];
+    if (sheet === undefined) throw new Error("no sheet");
+    expect(sheet.scrollLeft).toBe(0);
   });
 
   test("a face that finishes loading after the field opens sizes the field again", async () => {
@@ -163,6 +220,23 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
     expect(editor.store.get().reading.spans.size).toBe(0);
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
+  });
+
+  test("Redact in the field's chip takes the whole span out, typed words and all, and its margin note puts it back", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End} now");
+    await screen.getByRole("button", { name: "Redact" }).click();
+    await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
+    expect(editor.store.get().reading.edits).toEqual([{ kind: "redact", span_id: span.id }]);
+
+    const note = screen.getByRole("button", { name: `Undo: “${WORDS}” is no longer redacted` });
+    await expect.element(note).toBeVisible();
+    expect(note.element().textContent).toBe(WORDS);
+    await note.click();
+    await expect.element(note).not.toBeInTheDocument();
+    expect(editor.store.get().reading.edits).toEqual([]);
   });
 
   test("undo brings its span into view once: scrolled away after, the page doesn't pull it back", async () => {
@@ -199,6 +273,21 @@ describe("a page", () => {
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     await expect.element(field).toBeInTheDocument();
+    below.remove();
+  });
+
+  test("a span holding focus keeps it while its page is scrolled far away, so focus never falls to the page", async () => {
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: WORDS });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    window.scrollTo(0, 15000);
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    await expect.element(mark).toHaveFocus();
     below.remove();
   });
 
@@ -274,6 +363,37 @@ describe("a page", () => {
     expect(settles()).toHaveLength(0);
   });
 
+  test("a preview sets its words on the span's own line, so they don't move when the render lands", async () => {
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    const preview = () => screen.container.querySelector<HTMLElement>("[data-preview]");
+    await expect.poll(() => preview()?.textContent).toBe("is here");
+    // A line as tall as the span's box centres the words in it, as the field does.
+    const style = getComputedStyle(preview() as HTMLElement);
+    expect(parseFloat(style.lineHeight)).toBeCloseTo(parseFloat(style.height), 0);
+  });
+
+  test("an edit the server drew other than typed keeps the change's solid line, with a warning's dashed one under it", async () => {
+    const message = "no h in this font, so the line is drawn in Liberation Serif Regular";
+    vi.mocked(renderOnServer).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ missing: ["h"], message }) } }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    const mark = screen.getByRole("button", { name: "is here" });
+    await expect.poll(() => editor.store.get().drawn.fits.get(0)?.[span.id]?.missing).toEqual(["h"]);
+    const changed = getComputedStyle(mark.element(), "::after");
+    expect(changed.backgroundImage).toBe("none");
+    expect(changed.height).toBe("2px");
+    const warned = getComputedStyle(mark.element(), "::before");
+    expect(warned.backgroundImage).toContain("repeating-linear-gradient");
+    expect(warned.height).toBe("2px");
+  });
+
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
     // No server answers in this test, so the page's image fails as it would with one too busy.
@@ -300,6 +420,17 @@ describe("a page", () => {
     const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
     await expect.element(note).toBeVisible();
     expect(note.element().textContent).toBe("was");
+  });
+
+  test("on a narrow screen, each change is a line under the page that says it's pressed to undo", async () => {
+    await page.viewport(400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const line = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
+    await expect.element(line).toBeVisible();
+    expect(line.element().textContent).toBe(`${WORDS}is hereUndo`);
   });
 
   test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
@@ -349,6 +480,8 @@ describe("a page", () => {
     await expect.element(mark).toBeInTheDocument();
     const line = getComputedStyle(mark.element(), "::after");
     expect(line.backgroundImage).toContain("repeating-linear-gradient");
+    // At rest, before anything is touched, it's the Rule 1 signal: a mark's 3:1 on the white page.
+    expect(contrastOnWhite(line)).toBeGreaterThanOrEqual(3);
     await mark.hover();
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });

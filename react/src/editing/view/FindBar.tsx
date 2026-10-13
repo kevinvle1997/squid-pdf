@@ -1,8 +1,18 @@
 import { useCallback } from "react";
 import { Input, Label, TextField } from "react-aria-components";
 import { Button } from "../../ui/Button";
+import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
-import { changeAll, closeFind, countSaid, findCount, typeQuery, typeReplacement } from "../find";
+import {
+  changeAll,
+  closeFind,
+  countSaid,
+  findCount,
+  setMatchCase,
+  setWholeWords,
+  typeQuery,
+  typeReplacement,
+} from "../find";
 import { shallowEqual } from "../store";
 import { counted } from "../words";
 import { useEditor, useEditorState } from "./context";
@@ -51,11 +61,22 @@ export function FindBar() {
         <Label>Change to</Label>
         <Input className={styles.input} spellCheck={false} autoComplete="off" />
       </TextField>
+      <span className={styles.options}>
+        <Checkbox isSelected={find.matchCase} onChange={(on) => setMatchCase(editor, on)} onKeyDown={closeOnEscape}>
+          Match case
+        </Checkbox>
+        <Checkbox isSelected={find.wholeWords} onChange={(on) => setWholeWords(editor, on)} onKeyDown={closeOnEscape}>
+          Whole words
+        </Checkbox>
+      </span>
       <span className={styles.count}>
         {find.changed !== null ? (
           <>
-            Changed {counted(find.changed, { one: "place", other: "places" })} · <kbd>{COMMAND}Z</kbd> puts{" "}
-            {find.changed === 1 ? "it" : `all ${find.changed}`} back
+            Changed {counted(find.changed, { one: "place", other: "places" })}
+            <span className={styles.undoKey}>
+              {" "}
+              · <kbd>{COMMAND}Z</kbd> puts {find.changed === 1 ? "it" : `all ${find.changed}`} back
+            </span>
           </>
         ) : (
           searched && <Counted places={count.places} unlike={count.unlike} />

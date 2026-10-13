@@ -19,9 +19,10 @@ export interface Notices {
   readonly export: readonly Notice[]; // what the last export said: until the next change
   readonly reopen: Notice | null; // the document opened again, or couldn't: in the bar, until the next change
   readonly font: FontNotice | null; // the user's copy of a font refused: until the next change
+  readonly drop: Notice | null; // a file dropped on the editor that didn't open: until the next change
 }
 
-export const NO_NOTICES: Notices = { document: [], export: [], reopen: null, font: null };
+export const NO_NOTICES: Notices = { document: [], export: [], reopen: null, font: null, drop: null };
 
 export const warn = (text: string): Notice => ({ tone: "warn", text });
 export const plain = (text: string): Notice => ({ tone: "plain", text });
@@ -34,7 +35,7 @@ export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
     ...drawn.skipped.map((skipped) => skipped.detail),
   ].map(warn);
   const font = notices.font === null ? null : warn(notices.font.text);
-  const all = [...notices.document, ...fromRender, ...notices.export, font].filter(
+  const all = [...notices.document, ...fromRender, ...notices.export, font, notices.drop].filter(
     (notice): notice is Notice => notice !== null,
   );
   const once = [...new Map(all.map((notice) => [notice.text, notice])).values()];

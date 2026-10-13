@@ -1,5 +1,5 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
-import { useFocusVisible } from "react-aria";
+import { useFocusVisible, useFocusWithin } from "react-aria";
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
@@ -15,7 +15,7 @@ import type { Settling } from "../settle";
 import { shallowEqual } from "../store";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
-import { boxOf, shownSize, spanTextStyle } from "./geometry";
+import { boxOf, points, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
@@ -117,15 +117,23 @@ export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(info.height);
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
-  const changes = page.edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
+  const changes = page.edits?.spans.filter((reading) => reading.replaced || reading.redacted) ?? NO_CHANGES;
   const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
-  // The page being typed in keeps its marks, and so the field, however far it's scrolled.
-  const keepMarks = sheet.near || page.typingIn !== null;
+  const [focusedIn, setFocusedIn] = useState(false);
+  const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
+  // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
+  // page whose mark has focus, or focus would fall to the document as its mark went.
+  const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
-    <section className={styles.page} aria-label={label} style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}>
+    <section
+      {...focusWithinProps}
+      className={styles.page}
+      aria-label={label}
+      style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}
+    >
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
@@ -327,12 +335,14 @@ function Preview({
 }) {
   if (font === undefined) return null;
   const box = boxOf(span.bbox, info);
+  // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
+  const line = points(span.bbox.y1 - span.bbox.y0, info);
   return (
     <span
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{ ...spanTextStyle(span, info, previewFaceOf(font)), minWidth: box.width, lineHeight: box.height }}
+      style={{ ...spanTextStyle(span, info, previewFaceOf(span, font)), minWidth: box.width, lineHeight: line }}
     >
       {text}
     </span>

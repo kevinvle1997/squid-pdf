@@ -77,6 +77,7 @@ export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
     why_code: null,
     why_params: {},
     same_widths: false, // as the server sends it when the font's own copy draws: nothing stands in to match
+    look_alike: "Liberation Serif Regular", // Times's, as the server matches it
     attached: false,
     glyphs: {},
     ...fields,
