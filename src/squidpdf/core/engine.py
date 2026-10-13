@@ -22,6 +22,7 @@ from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.fit import LineFit
 from squidpdf.core.fonts.attached import AttachedFonts
 from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
+from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.fonts.substitute import face_letters
@@ -33,7 +34,6 @@ from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.redaction import RedactionCheck, any_word_left, whole_words, without
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.room import rooms_on
-from squidpdf.core.text.spacing import lacks_space
 from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import (
     Face,
@@ -176,15 +176,16 @@ class Engine:
 
     def _substitute_report(self, span: Span, drawn_in: Face) -> FidelityReport:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
-        own = self.fonts.own(span)
+        found = self.fonts.lookup(span)
+        why = found.reason if isinstance(found, FontUnusable) else found.why_missing(span.text)
         match = self.fonts.look_alike(span)
         return FidelityReport(
             span.id,
             "substitute",
             span.font,
-            in_file=own is not None,
+            in_file=isinstance(found, PooledFont),
             substitute=drawn_in.name,
-            why=self.fonts.why_not(span) if own is None else own.why_missing(span.text),
+            why=why,
             same_widths=match.same_widths and drawn_in == match.face,
         )
 
@@ -231,10 +232,7 @@ class Engine:
         fonts and gaps are read first, and each line not planned yet is planned.
         """
         for span in spans:
-            own = self.fonts.own(span)
-            self.fonts.look_alike(span)
-            if own is not None and lacks_space(own):
-                self.fonts.usual_gap(span, own)
+            self.fonts.read_before_erasing(span)
         for line in lines:
             # A fit's plan already took in its fonts.
             if line.plan is None:

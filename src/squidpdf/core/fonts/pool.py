@@ -108,8 +108,7 @@ class PooledFont:
     # Why each copy from outside the file asked for couldn't be had, in order.
     not_lent: list[Message] = field(default_factory=list)
 
-    @property
-    def letters(self) -> dict[str, FontCopy]:
+    def every_letter(self) -> dict[str, FontCopy]:
         """Each letter any copy draws, and the copy it comes from, every copy taken in first."""
         for other in self.lenders:
             self._take_in(other)
@@ -121,7 +120,7 @@ class PooledFont:
 
     def listed_letters(self) -> list[int]:
         """Every letter some copy really draws."""
-        return [ord(ch) for ch in self.letters]
+        return [ord(ch) for ch in self.every_letter()]
 
     def advance(self, ch: str) -> float:
         """How far `ch` moves the pen, in ems, in the copy that draws it."""

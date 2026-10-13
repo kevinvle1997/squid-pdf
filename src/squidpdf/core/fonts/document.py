@@ -29,7 +29,7 @@ from squidpdf.core.fonts.pool import (
 )
 from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
-from squidpdf.core.text.spacing import usual_gap
+from squidpdf.core.text.spacing import lacks_space, usual_gap
 from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
 
 
@@ -177,10 +177,13 @@ class DocumentFonts:
         found = self.lookup(span)
         return found if isinstance(found, PooledFont) else None
 
-    def why_not(self, span: Span) -> Message | None:
-        """Why the span's own font can't be used; None when it can."""
-        found = self.lookup(span)
-        return found.reason if isinstance(found, FontUnusable) else None
+    def read_before_erasing(self, span: Span) -> None:
+        """Read what a draw over `span` asks of its font, while its page still has the font."""
+        own = self.own(span)
+        self.look_alike(span)
+        # Measured in the page's own gaps: none of its own to measure.
+        if own is not None and lacks_space(own):
+            self.usual_gap(span, own)
 
     def page_font(self, span: Span) -> PageFont | None:
         """The page's font by the span's font name, subset prefix aside; None when it has none.
@@ -330,7 +333,7 @@ class DocumentFonts:
         # The span's font has no name `copy_of` keys by: not the user's to attach.
         if copy is None:
             return Message("font_not_in_file")
-        return why_turned_away(copy, own=own, letters=in_file.letters)
+        return why_turned_away(copy, own=own, letters=in_file.every_letter())
 
     def _file_copies(
         self, page: int, own: FontCopy, letters: Mapping[str, FontCopy]

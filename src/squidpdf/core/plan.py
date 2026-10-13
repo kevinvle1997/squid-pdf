@@ -158,7 +158,7 @@ class DrawPlanner:
             return letter_widths(self.driver.face_font(face), face_letters(face))
 
         # Each from the copy that draws it: its width list if written by code, else the font.
-        letters = sorted(pooled.letters.items())
+        letters = sorted(pooled.every_letter().items())
         widths = {ch: round(copy.widths[ch], _WIDTH_DP) for ch, copy in letters}
         # Written by letter, with no space of its own: a space is the page's usual gap.
         spaceless = not pooled.is_coded() and lacks_space(pooled)
