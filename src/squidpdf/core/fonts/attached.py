@@ -12,7 +12,7 @@ from typing import Protocol
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.coverage import coverage_of
-from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
+from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, recalled
 from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.fonts.pool import FontCopy, Lent, previewed_widths, why_unlike_listed
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
@@ -70,10 +70,7 @@ class AttachedFonts:
 
     def _copy(self, font: PageFont, name: str) -> FontCopy:
         """The copy attached for `name`, standing for `font`. Raises FontUnusable if no font."""
-        embedded = remembered(self.opened, name, partial(self._open, name))
-        # Not a font: said as it was the first time it was asked for.
-        if isinstance(embedded, FontUnusable):
-            raise FontUnusable(embedded.reason)
+        embedded = recalled(self.opened, name, partial(self._open, name))
         lent = Lent(_SOURCE.format(name=name), name)
         return FontCopy(font, embedded, previewed_widths(embedded), lent)
 

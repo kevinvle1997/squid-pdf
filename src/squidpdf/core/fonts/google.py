@@ -34,7 +34,7 @@ from squidpdf.core.constants import (
     GOOGLE_FONTS_COMMIT,
 )
 from squidpdf.core.fonts.coverage import coverage_of
-from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, remembered
+from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, recalled
 from squidpdf.core.fonts.names import WEIGHTS, bare_name, strip_subset, style_of, weight_of
 from squidpdf.core.fonts.pool import FontCopy, Lent, previewed_widths
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
@@ -176,20 +176,14 @@ class GoogleFontController:
         """
         # Raises when it isn't one of Google's families, or is a cut it may not make.
         file = self._file_for(own.font)
-        embedded = self._opened(file)
-        # Not fetched, or not readable: said as it was the first time it was asked for.
-        if isinstance(embedded, FontUnusable):
-            raise FontUnusable(embedded.reason)
+        # Fetched and opened once: not fetched, or not readable, is said the same each time.
+        embedded = recalled(self.fonts, file.source, partial(self._open, file))
         lent = Lent(file.source, strip_subset(own.font.name))
         return FontCopy(own.font, embedded, _google_widths(embedded), lent)
 
     def _file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
         return _google_file(font.name, self.driver.font_descriptor(font.xref))
-
-    def _opened(self, file: GoogleFile) -> EmbeddedFont | FontUnusable:
-        """`file`, fetched and opened once, or why it can't be had or opened."""
-        return remembered(self.fonts, file.source, partial(self._open, file))
 
     def _open(self, file: GoogleFile) -> EmbeddedFont:
         """`file`, fetched and opened. Raises FontUnusable when it can't be had or opened."""
