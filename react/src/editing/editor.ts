@@ -268,6 +268,22 @@ export function unexported(state: EditorState): boolean {
   return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 
+// Each document's count of the places an edit won't match, worked out once: the bar reads it on every change.
+const UNLIKE = new WeakMap<Document, { count: number; approximate: boolean }>();
+
+/**
+ * Before any change, how many places an edit won't match: drawn in a similar font, or in the file's
+ * own but unlike the text around it (`approximate`). The bar says it, as the mockup's status does.
+ */
+export function unlikeAtRest(doc: Document): { count: number; approximate: boolean } {
+  const kept = UNLIKE.get(doc);
+  if (kept !== undefined) return kept;
+  const unlike = doc.spans.filter((span) => span.substitute !== null || span.why !== null);
+  const counted = { count: unlike.length, approximate: unlike.some((span) => span.why !== null) };
+  UNLIKE.set(doc, counted);
+  return counted;
+}
+
 /** How many spans read other than the original. */
 export function changedCount(state: EditorState): number {
   return state.reading.spans.size;

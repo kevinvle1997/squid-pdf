@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import { changedCount, createEditor, type Editor, putBack, redo, undo, unexported, warnedCount } from "./editor";
+import {
+  changedCount,
+  createEditor,
+  type Editor,
+  putBack,
+  redo,
+  undo,
+  unexported,
+  unlikeAtRest,
+  warnedCount,
+} from "./editor";
 import { exportNow, partName, splitAfter, splitPages } from "./export";
 import { plain, warn } from "./notices";
 import { edit, enter, finish, troublesIn, typeInto } from "./typing";
@@ -206,6 +216,21 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "turned", null);
     expect(troublesIn(editor.store.get(), "was turned").said).toEqual([COPY.approximate.turned_text]);
+  });
+});
+
+describe("before any change", () => {
+  test("the places an edit won't match are counted for the bar: in a similar font, or unlike the text around them", () => {
+    expect(unlikeAtRest(DOC)).toEqual({ count: 1, approximate: false });
+    const turned = aSpan({
+      id: "turned",
+      font: "Kept",
+      fidelity: "approximate",
+      why: { code: "turned_text", params: {} },
+    });
+    expect(unlikeAtRest({ ...DOC, spans: [...DOC.spans, turned] })).toEqual({ count: 2, approximate: true });
+    // Worked out once per document: the bar reads it on every change.
+    expect(unlikeAtRest(DOC)).toBe(unlikeAtRest(DOC));
   });
 });
 

@@ -9,6 +9,7 @@ import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
+import { openFind, typeQuery } from "../find";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -143,7 +144,7 @@ describe("a page", () => {
     await editSpan(screen);
     await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
     await userEvent.keyboard("{End}Q");
-    await expect.element(screen.getByText("no Q in this font, so the line is drawn in Lato Bold")).toBeVisible();
+    await expect.element(screen.getByText("no Q in this font, so the line is drawn in our Lato Bold")).toBeVisible();
   });
 
   test("a span in a right-hand column has its chip under it, ending where it ends, not squeezed against the page's edge", async () => {
@@ -163,6 +164,42 @@ describe("a page", () => {
     expect(chip.height).toBeLessThan(button.height * 3);
     // Ending where the span does: its box starts where the field does, and the page shows at its printed size.
     expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
+  });
+
+  test("the chip says the verdict on what's typed: it looks identical, or a similar font draws it, warned", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await expect.element(screen.getByText("looks identical")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+
+    const arial = aSpan({
+      ...span,
+      id: "s3",
+      text: "in arial",
+      font: "Arial",
+      fidelity: "substitute",
+      substitute: "Liberation Sans Regular",
+    });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }),
+      2,
+    );
+    screen.rerender(
+      <EditorContext.Provider value={editor}>
+        <Page index={0} info={A4} />
+      </EditorContext.Provider>,
+    );
+    const mark = screen.getByRole("button", { name: "in arial" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const similar = screen.getByText("a similar font", { exact: true });
+    await expect.element(similar).toBeVisible();
+    const warn = document.body.appendChild(document.createElement("span"));
+    warn.style.color = "var(--warn)";
+    expect(getComputedStyle(similar.element()).color).toBe(getComputedStyle(warn).color);
+    warn.remove();
   });
 
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
@@ -392,6 +429,18 @@ describe("a page", () => {
     const warned = getComputedStyle(mark.element(), "::before");
     expect(warned.backgroundImage).toContain("repeating-linear-gradient");
     expect(warned.height).toBe("2px");
+  });
+
+  test("find tints only the words it found, not their whole line", async () => {
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    openFind(editor);
+    typeQuery(editor, "here");
+    const found = () => screen.container.querySelector<HTMLElement>("[data-found]");
+    await expect.poll(() => found()).not.toBeNull();
+    // "was here" is eight 10 pt letters from 72 pt: "here" is its last four, from 112 pt to 152 pt.
+    expect(parseFloat(found()?.style.left ?? "")).toBeCloseTo((112 / A4.width) * 100, 3);
+    expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo((40 / A4.width) * 100, 3);
   });
 
   test("a page whose image fails says why on the page, in the server's words", async () => {

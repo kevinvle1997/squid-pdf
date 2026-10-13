@@ -150,6 +150,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           <span className={styles.facts} aria-hidden="true">
             <span>{drawnIn}</span>
             <Num>{SIZE.format(span.size)} pt</Num>
+            {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
+            {span.substitute === null ? <span>looks identical</span> : <Warn>a similar font</Warn>}
           </span>
         )}
         {offered && (

@@ -7,6 +7,7 @@ import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
+import { type Place, placesAcross } from "../find";
 import { imageFailed, imageLoaded, type PageImage } from "../images";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
@@ -65,7 +66,7 @@ interface PageState {
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
   readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
-  readonly hits: ReadonlySet<string> | undefined; // the spans find found here, while it's open
+  readonly hits: ReadonlyMap<string, readonly Place[]> | undefined; // what find found here, by span, while it's open
   readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
   readonly src: string; // the page image
   readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
@@ -248,6 +249,7 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
   return (
     <>
+      {page.hits !== undefined && <Found page={page} info={info} readings={readings} hits={page.hits} />}
       {page.spans.map((span) =>
         span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -260,7 +262,6 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             font={page.fonts.get(span.font)}
             fit={page.fits[span.id]}
             redaction={page.redactions[span.id]}
-            hit={page.hits?.has(span.id) ?? false}
             copy={page.copy}
             focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
             notes={notes}
@@ -274,6 +275,31 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
       )}
     </>
   );
+}
+
+/** The words find found, tinted as the change they're about to be: only those words, not their whole line. */
+function Found(props: {
+  page: PageState;
+  info: PageInfo;
+  readings: ReadonlyMap<string, SpanReading>;
+  hits: ReadonlyMap<string, readonly Place[]>;
+}) {
+  const { page, info, readings, hits } = props;
+  return page.spans.flatMap((span) => {
+    const places = hits.get(span.id);
+    if (places === undefined || span.id === page.typingIn) return [];
+    const text = readings.get(span.id)?.text ?? span.text;
+    const glyphs = page.fonts.get(span.font)?.glyphs ?? {};
+    return placesAcross(span, { text, places, glyphs }).map(({ x0, x1 }) => (
+      <span
+        key={`${span.id}:${x0}`}
+        className={styles.found}
+        aria-hidden="true"
+        data-found=""
+        style={boxOf({ ...span.bbox, x0, x1 }, info)}
+      />
+    ));
+  });
 }
 
 /** The note of the span the page's marks say, over its mark; kept while it closes, for its animation. */

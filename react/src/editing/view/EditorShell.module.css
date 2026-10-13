@@ -36,6 +36,7 @@
   .bar { flex-wrap: wrap; gap: var(--s2) var(--s3); }
   .file { flex: 1 1 auto; border-left: 0; padding-left: 0; }
   .grow { flex-basis: 100%; }
+  .besideCount { display: none; }
   .status, .hint { flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.3; }
   .pages { padding: var(--s4) var(--s4) var(--s7); }
 }

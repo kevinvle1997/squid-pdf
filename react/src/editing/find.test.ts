@@ -11,6 +11,7 @@ import {
   type FindOptions,
   findCount,
   openFind,
+  placesAcross,
   placesIn,
   replacedIn,
   setMatchCase,
@@ -47,7 +48,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const found = () => [...editor.store.get().find.hits].map(([page, ids]) => [page, [...ids]]);
+const found = () => [...editor.store.get().find.hits].map(([page, spans]) => [page, [...spans.keys()]]);
 
 describe("find", () => {
   test("finds once typing stops, in every span that reads it but a form field's or a redaction's", () => {
@@ -187,6 +188,14 @@ describe("matching", () => {
   test("an unseen hyphen or space between letters doesn't stop them matching, and goes with what's changed", () => {
     expect(change("the infor\u00admation sheet", { find: "information", to: "data" })).toBe("the data sheet");
     expect(change("a\u200bb", { find: "ab", to: "c" })).toBe("c");
+  });
+
+  test("a place found sits across its span by its letters' widths, so only the words found are marked", () => {
+    // Ten 5 pt letters across 50 pt: "cdef" is the third to the sixth.
+    const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
+    const glyphs = Object.fromEntries([..."abcdefghij"].map((letter) => [letter, 500]));
+    const places = placesIn(line.text, "cdef", ANY);
+    expect(placesAcross(line, { text: line.text, places, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
   });
 
   test("nothing to find finds nothing", () => {

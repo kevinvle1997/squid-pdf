@@ -23,7 +23,7 @@ export const RULES: FitRules = { tolerance_pt: 4, room_slack_pt: 0.1, condense_l
 
 /** The server's sentences, as core/app/words/en.toml writes them. */
 export const COPY: Copy = {
-  missing: "no {chars} in this font, so the line is drawn in {font}",
+  missing: "no {chars} in this font, so the line is drawn in our {font}",
   too_long: "{delta_pt} pt too long",
   substitute: "Edits here use {font}, which may be a different width from the original.",
   substitute_same_widths: "Edits here use {font}, whose letters are the same width as the original's.",

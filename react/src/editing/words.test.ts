@@ -31,6 +31,11 @@ describe("filling the server's sentences", () => {
     expect(shownAs(character, COPY.characters)).toBe(said);
   });
 
+  // The server's own case, test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_letter_isnt.
+  test("punctuation or a symbol is quoted, so it reads as a character, and a letter isn't", () => {
+    expect(["(", "Z", "€"].map((character) => shownAs(character, COPY.characters))).toEqual(["“(”", "Z", "“€”"]);
+  });
+
   test("a letter that draws is itself, and one only Unicode names is said by its code point", () => {
     expect(shownAs("é", COPY.characters)).toBe("é");
     // The server says "three-per-em space": the browser has no table of Unicode's names.

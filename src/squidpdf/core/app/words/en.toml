@@ -7,7 +7,7 @@
 
 # What's wrong with a replacement.
 # `{font}` is the face that draws the line instead.
-missing = "no {chars} in this font, so the line is drawn in {font}"
+missing = "no {chars} in this font, so the line is drawn in our {font}"
 will_leave_out = "{letters} will be left out: no font we have can draw them"
 chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"
@@ -136,6 +136,8 @@ active_content_dropped = "This PDF had scripts, attached files or links that ope
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
 # A list whose placeholder has no join_<its name> here is joined as items.
+# Punctuation or a symbol in a list of characters, quoted so it reads as one: no “(” in this font.
+quoted = "“{char}”"
 join_chars = " or "
 join_letters = " "
 join_items = ", "
