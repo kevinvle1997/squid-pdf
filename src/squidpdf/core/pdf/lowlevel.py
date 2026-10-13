@@ -683,14 +683,14 @@ class PdfFile:
     def is_signed(self) -> bool:
         """Whether the document holds a signature, or what a signed file keeps for one."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         kept = [mu.pdf_dict_gets(root, key) for key in _SIGNATURE_CHECKS]
         return bool(self._signed_fields(root)) or not all(map(mu.pdf_is_null, kept))
 
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         for field in self._signed_fields(root):
             mu.pdf_dict_dels(field, _FIELD_VALUE)
         for key in _SIGNATURE_CHECKS:
@@ -725,9 +725,8 @@ class PdfFile:
     def _document_entries(self) -> Iterator[_Entry]:
         """Each place the document may keep a hidden copy of its own, and how it's put back."""
         mu = pymupdf.mupdf
-        trailer = mu.pdf_trailer(self._pdf())
-        root = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Root)
-        info = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Info)
+        root = self._root()
+        info = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Info)
         for key in map(mu.pdf_to_name, _keys_of(info)):
             # A date says when, not what.
             if key in _INFO_DATES:
@@ -1030,8 +1029,7 @@ class PdfFile:
         # Not XML, so not written back: it goes, once anything in it would change.
         if dom is None:
             if _changes([_readings_of(written)], rewritten):
-                root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
-                mu.pdf_dict_del(root, mu.PDF_ENUM_NAME_Metadata)
+                mu.pdf_dict_del(self._root(), mu.PDF_ENUM_NAME_Metadata)
             return
         changed = False
         for piece in _xml_strings(dom):
@@ -1050,7 +1048,7 @@ class PdfFile:
     def _metadata_stream(self) -> pymupdf.mupdf.PdfObj | None:
         """The document's metadata (XMP), a stream the catalog names; None when it has none."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         stream = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_Metadata)
         return stream if mu.pdf_is_stream(stream) else None
 
@@ -1062,14 +1060,8 @@ class PdfFile:
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
-        page_obj = mu.pdf_lookup_page_obj(pdf, page)
-        resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        # An empty m_internal means the key isn't there yet, so make it.
-        if not resources.m_internal:
-            resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
-        fonts = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Font)
-        if not fonts.m_internal:
-            fonts = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_Font, 1)
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        fonts = _dictionary_under(resources, mu.PDF_ENUM_NAME_Font)
         mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
 
     def add_opacity(self, page: int, opacity: float) -> str:
@@ -1081,14 +1073,8 @@ class PdfFile:
         pdf = self._pdf()
         permille = round(opacity * _PERMILLE)
         name = f"{_OPACITY_PREFIX}{permille}"
-        page_obj = mu.pdf_lookup_page_obj(pdf, page)
-        resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        # An empty m_internal means the key isn't there yet, so make it.
-        if not resources.m_internal:
-            resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
-        states = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_ExtGState)
-        if not states.m_internal:
-            states = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_ExtGState, 1)
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
         state = mu.pdf_new_dict(pdf, 1)
         mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, permille / _PERMILLE)
         mu.pdf_dict_puts(states, name, state)
@@ -1162,6 +1148,11 @@ class PdfFile:
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
+
+    def _root(self) -> pymupdf.mupdf.PdfObj:
+        """The document's catalog: the dictionary that names its pages, fields and metadata."""
+        mu = pymupdf.mupdf
+        return mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
 
 
 def _put_back(
@@ -1309,6 +1300,28 @@ def _each_drawing(
             seen.add(mu.pdf_to_num(drawn))
             # With none of its own, it names its user's resources, read already.
             waiting.append(([drawn], own_resources))
+
+
+def _page_resources(page: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
+    """The resources `page` draws with, its own or inherited, made empty if it has none."""
+    mu = pymupdf.mupdf
+    resources = mu.pdf_dict_get_inheritable(page, mu.PDF_ENUM_NAME_Resources)
+    # An empty m_internal means the key isn't there yet, so make it.
+    if not resources.m_internal:
+        return mu.pdf_dict_put_dict(page, mu.PDF_ENUM_NAME_Resources, 1)
+    return resources
+
+
+def _dictionary_under(
+    holder: pymupdf.mupdf.PdfObj, key: pymupdf.mupdf.PdfObj
+) -> pymupdf.mupdf.PdfObj:
+    """The dictionary `holder` keeps under the name `key`, made empty if it has none."""
+    mu = pymupdf.mupdf
+    found = mu.pdf_dict_get(holder, key)
+    # An empty m_internal means the key isn't there yet, so make it.
+    if not found.m_internal:
+        return mu.pdf_dict_put_dict(holder, key, 1)
+    return found
 
 
 def _lexer_of(written: bytes) -> tuple[pymupdf.mupdf.FzStream, pymupdf.mupdf.PdfLexbuf]:
@@ -1516,7 +1529,7 @@ def _strings_anywhere_in(written: bytes) -> list[str]:
     That's at any ( or <, since a reader may read the bytes before it otherwise than MuPDF.
     """
     held = _literal_strings_in(written) + _hex_strings_in(written)
-    return [text for string in held for text in _texts_of(string)]
+    return [text for string in held for text in _texts_held_in(string)]
 
 
 def _strings_past_an_end_in(image: _InlineImage) -> list[str]:
@@ -1594,7 +1607,7 @@ def _bytes_of_hex(digits: bytes) -> bytes:
     return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
 
 
-def _texts_of(held: bytes) -> list[str]:
+def _texts_held_in(held: bytes) -> list[str]:
     """The text of a string holding `held`, plainly too, and in each encoding a mark names.
 
     A string may start at a mark inside it, so `held` is read from either byte a UTF-16
