@@ -3,6 +3,7 @@
 // state and the change every edit, undo and put-back goes through.
 import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
+import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, refound } from "./find";
 import { reattach } from "./fonts";
 import {
@@ -105,8 +106,10 @@ export interface Editor {
   readonly attached: Map<string, Blob>; // the user's copies of its fonts, beside the PDF, by font
   readonly reopener: Reopener;
   readonly queue: RenderQueue;
+  readonly near: Set<number>; // the pages near the screen, as each one's sheet finds: drawn first
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
   readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found
+  readonly ahead: ExportAhead; // the export started on the way to pressing Export
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -157,8 +160,19 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     if (refusal !== null) queue.redraw(store.get().reading);
     return judged;
   });
-  const queue = new RenderQueue({ reopener, scale, drawn: (drawn) => drawnNow(store, drawn) });
-  const editor: Editor = { store, file, attached: new Map(), reopener, queue, retries: new Map(), finding: {} };
+  const near = new Set<number>();
+  const queue = new RenderQueue({ reopener, scale, near, drawn: (drawn) => drawnNow(store, drawn) });
+  const editor: Editor = {
+    store,
+    file,
+    attached: new Map(),
+    reopener,
+    queue,
+    near,
+    retries: new Map(),
+    finding: {},
+    ahead: {},
+  };
   return editor;
 }
 
@@ -251,6 +265,8 @@ export function closeEditor(editor: Editor): void {
   for (const retry of editor.retries.values()) clearTimeout(retry);
   editor.retries.clear();
   clearTimeout(editor.finding.timer);
+  clearTimeout(editor.ahead.timer);
+  editor.ahead.started?.ask.abort();
 }
 
 /** Tell a screen reader, for what the page doesn't show. */

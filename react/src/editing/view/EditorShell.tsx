@@ -11,7 +11,7 @@ import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { pdfDropped } from "../dropped";
 import { changedCount, closeEditor, createEditor, sayOpening, unexported, unlikeAtRest, warnedCount } from "../editor";
-import { exportNow } from "../export";
+import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { openFind } from "../find";
 import { retryImages } from "../images";
@@ -164,7 +164,16 @@ function Bar() {
       )}
       <FindButton />
       <Fonts />
-      <Button onPress={() => void exportNow(editor)} isDisabled={exporting}>
+      <Button
+        onPress={() => void exportNow(editor)}
+        // On the way to pressing it, the export starts, for the press to take.
+        onHoverStart={() => exportIntended(editor)}
+        onHoverEnd={() => exportUnintended(editor)}
+        onFocus={() => exportIntended(editor)}
+        onBlur={() => exportUnintended(editor)}
+        onPressStart={() => exportAhead(editor)}
+        isDisabled={exporting}
+      >
         Export <kbd>{COMMAND}S</kbd>
       </Button>
     </header>

@@ -1,6 +1,7 @@
 // The faces the preview draws in: the very files the server draws with, from
 // src/squidpdf/fonts, so a preview has the widths the render will have.
 import type { Document, FontInfo, SpanInfo } from "../api/types";
+import { missingIn } from "./fit";
 
 // Longest first, so "Bold Italic" isn't read as "Italic".
 const STYLES = ["Bold Italic", "Bold", "Italic", "Regular"];
@@ -12,13 +13,20 @@ export function fileOf(face: string): string {
   return `${family.replaceAll(" ", "")}-${style.replaceAll(" ", "")}.ttf`;
 }
 
-/**
- * The face to preview an edit to `span` in, and the one a letter its font lacks is drawn in: the
- * face the server draws the span with when the file's own font can't, else the font's look-alike.
- * The browser has no copy of the file's own font, so the look-alike stands in for the preview only.
- */
-export function previewFaceOf(span: SpanInfo, font: FontInfo): string {
+/** The face a letter no copy of the span's font has is drawn in: the span's similar font, else its font's look-alike. */
+export function fallbackFaceOf(span: SpanInfo, font: FontInfo): string {
   return span.substitute ?? font.look_alike;
+}
+
+/**
+ * The face to preview `text` typed over `span` in: the user's own copy of its font once the server has
+ * taken it and draws the line with it; else the face a missing letter is drawn in, standing in for the
+ * file's own font, which the browser has no copy of, until the server's render replaces it.
+ */
+export function previewFaceOf(span: SpanInfo, { font, text }: { font: FontInfo; text: string }): string {
+  const own = font.attached && ownFaces.has(font.name) && span.substitute === null;
+  if (own && missingIn(text, font.glyphs).length === 0) return `${OWN}${font.name}`;
+  return fallbackFaceOf(span, font);
 }
 
 const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
@@ -33,6 +41,37 @@ export const DEFAULT_FACE = "Liberation Serif Regular";
 const urlOf = (face: string): string | undefined => FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
 const familyName = (face: string) => `preview ${face}`;
 const added = new Set<string>();
+
+// The user's own copies of the document's fonts, on the document to preview in, by font name. A face
+// for one is named apart from ours, whose names are the catalog's.
+const ownFaces = new Map<string, FontFace>();
+const OWN = "your copy of ";
+const ownFamily = (fontName: string) => `preview own ${fontName}`;
+
+/**
+ * Put the user's copy of `fontName` on the document to preview in, read from `file` as it's chosen, so
+ * it's ready by the time the server takes it. Whether the browser could read it as a font.
+ */
+export async function addOwnFace(fontName: string, file: Blob): Promise<boolean> {
+  removeOwnFace(fontName);
+  try {
+    const face = new FontFace(ownFamily(fontName), await file.arrayBuffer());
+    await face.load();
+    document.fonts.add(face);
+    ownFaces.set(fontName, face);
+    return true;
+  } catch {
+    // Not a font the browser reads: the preview stays in the look-alike, and the server says why.
+    return false;
+  }
+}
+
+/** Take the user's copy of `fontName` off the document: refused, or removed. */
+export function removeOwnFace(fontName: string): void {
+  const face = ownFaces.get(fontName);
+  if (face !== undefined) document.fonts.delete(face);
+  ownFaces.delete(fontName);
+}
 
 /** Every face a document's edits can preview in: each span's similar font, each font's look-alike, and the default. */
 export function facesOf({ spans, fonts }: Pick<Document, "spans" | "fonts">): Set<string> {
@@ -57,7 +96,9 @@ export function addFaces(faces: Iterable<string>): void {
   }
 }
 
-/** The CSS font-family that draws `face` in the preview, once `addFaces` has put it on the document. */
+/** The CSS font-family that draws `face` in the preview, once `addFaces` or `addOwnFace` has put it on the document. */
 export function familyOf(face: string): string {
+  const own = face.startsWith(OWN) ? face.slice(OWN.length) : null;
+  if (own !== null && ownFaces.has(own)) return `"${ownFamily(own)}", serif`;
   return urlOf(face) === undefined ? "serif" : `"${familyName(face)}", serif`;
 }

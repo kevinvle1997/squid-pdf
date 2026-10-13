@@ -23,6 +23,12 @@ export const NOTE_DELAY_MS = 250;
 /** Find runs once typing in it stops for this long: soon enough to feel live, late enough to skip each letter. */
 export const FIND_DELAY_MS = 200;
 
+/**
+ * How long the pointer rests on Export, or focus stays on it, before the export starts for the press to
+ * take: longer than passing over it on the way elsewhere, shorter than the reach to press it.
+ */
+export const EXPORT_INTENT_MS = 150;
+
 /** Page images load when they come this close to the viewport. */
 export const LAZY_MARGIN = "100% 0px";
 

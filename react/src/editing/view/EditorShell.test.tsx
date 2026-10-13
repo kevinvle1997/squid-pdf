@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
+import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
 import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
 import type { Render } from "../../api/types";
 import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice, COPY } from "../../fixtures";
@@ -156,6 +157,79 @@ describe("export", () => {
   });
 });
 
+describe("export, started on the way to pressing it", () => {
+  const PDF = { pdf: new Blob(["%PDF-"], { type: "application/pdf" }), skipped: [], notices: [] };
+
+  beforeEach(() => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(exportPdf).mockReset().mockResolvedValue(PDF);
+  });
+
+  test("starts once the pointer rests on Export, and the press takes it: one export, downloaded", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    const exportButton = screen.getByRole("button", { name: /^Export/ });
+    await exportButton.hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(exportPdf).mock.calls[0]?.[1]).toEqual([{ kind: "replace", span_id: span.id, text: "is here" }]);
+
+    await exportButton.click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(1);
+  });
+
+  test("the pointer passing over Export starts nothing", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    // In and out within one task: a test's own pointer moves take longer than passing over does.
+    const exportButton = screen.getByRole("button", { name: /^Export/ }).element();
+    const pointer = { bubbles: true, pointerType: "mouse" };
+    exportButton.dispatchEvent(new PointerEvent("pointerover", { ...pointer, relatedTarget: document.body }));
+    exportButton.dispatchEvent(new PointerEvent("pointerout", { ...pointer, relatedTarget: document.body }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(exportPdf).not.toHaveBeenCalled();
+  });
+
+  test("one started before another change isn't taken: the press exports the edits as they are", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    await screen.getByRole("button", { name: /^Export/ }).hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+    await screen.getByRole("button", { name: "Fonts" }).hover();
+
+    const mark = screen.getByRole("button", { name: "is here" });
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox").fill("is there");
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("button", { name: /^Export/ }).click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(exportPdf).mock.calls[1]?.[1]).toEqual([{ kind: "replace", span_id: span.id, text: "is there" }]);
+  });
+
+  test("one that failed is asked for again by the press", async () => {
+    vi.mocked(exportPdf).mockRejectedValueOnce(new ProblemError(aProblem(503, "The server is busy.")));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    const exportButton = screen.getByRole("button", { name: /^Export/ });
+    await exportButton.hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+
+    await exportButton.click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("an emptied span", () => {
   test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
@@ -282,13 +356,13 @@ async function typeInto(screen: Awaited<ReturnType<typeof render>>, text: string
   await screen.getByRole("textbox").fill(text);
 }
 
-async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>) {
+async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>, file = FONT_FILE) {
   await screen.getByRole("button", { name: "Fonts" }).click();
   await expect.element(screen.getByRole("button", { name: "Use your copy of Arial" })).toBeVisible();
   // FileTrigger's input sits beside its button, unlabelled: the row's one file input.
   const chooser = screen.getByRole("dialog").element().querySelector("input[type=file]");
   if (!(chooser instanceof HTMLInputElement)) throw new Error("no file input in the fonts list");
-  await userEvent.upload(chooser, FONT_FILE);
+  await userEvent.upload(chooser, file);
 }
 
 describe("the user's own copy of a font", () => {
@@ -399,6 +473,26 @@ describe("the user's own copy of a font", () => {
     // The button pressed is gone: focus goes to the one in its place, never to the page's body.
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).toHaveFocus();
     await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+  });
+
+  test("attached, the field draws in it at once, until a letter it lacks is typed", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(putFont).mockResolvedValue(USERS_COPY);
+    // A real font file, so the browser can read it: one of ours, standing in for the user's Arial.
+    const bytes = await (await fetch(SOME_FONT)).arrayBuffer();
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+    );
+    await attachThroughFonts(screen, new File([bytes], "arial.ttf", { type: "font/ttf" }));
+    await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+
+    await typeInto(screen, "was Yes");
+    const field = screen.getByRole("textbox").element();
+    expect(getComputedStyle(field).fontFamily).toContain("preview own Arial");
+    // Your copy has no é: the server draws the line in the look-alike, so the preview does too.
+    await screen.getByRole("textbox").fill("was Yesé");
+    expect(getComputedStyle(field).fontFamily).toContain("preview Liberation Serif Regular");
   });
 
   test("refused, the server's sentence shows beside the font, warned", async () => {

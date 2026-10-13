@@ -37,7 +37,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const text = useEditorState((state) => state.draft?.text ?? "");
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
-  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, font);
+  const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
   const drawnIn = span.substitute ?? shownName(span.font);
   const placed = useRef(false);

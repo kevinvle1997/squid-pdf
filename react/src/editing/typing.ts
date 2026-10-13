@@ -2,7 +2,7 @@
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { SpanInfo } from "../api/types";
 import { change, type Draft, type Editor, type EditorState, spoken } from "./editor";
-import { previewFaceOf } from "./faces";
+import { fallbackFaceOf } from "./faces";
 import { fitOf, troubleKindOf, troublesOf } from "./fit";
 import { approximateSaid } from "./marks";
 import type { Reading } from "./project";
@@ -37,7 +37,7 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   // Taking text out isn't a change: said while the field is empty.
   if (isEmpty(text)) return { said: [copy.empty], kind: "empty" };
   const fit = fitOf(span, { font, text, rules });
-  const substitute = previewFaceOf(span, font);
+  const substitute = fallbackFaceOf(span, font);
   // Whatever is typed, an edit here won't match the text around it: said first.
   const approximate = span.why === null ? [] : [approximateSaid(span.why, copy)];
   return {

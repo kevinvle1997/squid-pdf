@@ -31,6 +31,23 @@ export function pinnedUnder(
   return { left: `${(bbox.x0 / page.width) * 100}%` };
 }
 
+/**
+ * The whole page's image, set inside a box on it so the box shows its own pixels: as wide as the page
+ * is to the box, and moved up and left by where the box starts. Percentages of the box, as it scales.
+ */
+export function cropOf(
+  box: { x0: number; y0: number; x1: number; y1: number },
+  page: { width: number },
+): { width: string; left: string; top: string } {
+  const wide = box.x1 - box.x0;
+  const tall = box.y1 - box.y0;
+  return {
+    width: `${(page.width / wide) * 100}%`,
+    left: `${(-box.x0 / wide) * 100}%`,
+    top: `${(-box.y0 / tall) * 100}%`,
+  };
+}
+
 /** A length in points as CSS, against the page's width: the page layer is a size container. */
 export function points(value: number, page: { width: number }): string {
   return `${(value / page.width) * 100}cqw`;

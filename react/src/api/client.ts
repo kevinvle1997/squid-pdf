@@ -126,12 +126,13 @@ export interface Exported {
 export async function exportPdf(
   docId: string,
   edits: Edit[],
-  { pages }: { pages?: readonly number[] } = {},
+  { pages, signal }: { pages?: readonly number[]; signal?: AbortSignal } = {},
 ): Promise<Exported> {
   const response = await send(`/api/documents/${docId}/export`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(pages === undefined ? { edits } : { edits, pages }),
+    ...(signal !== undefined && { signal }),
   });
   const skipped = (response.headers.get("squid-skipped-edits") ?? "")
     .split(",")

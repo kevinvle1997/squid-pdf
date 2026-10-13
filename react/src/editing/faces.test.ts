@@ -13,12 +13,12 @@ describe("preview faces", () => {
     // Stored on one page and only named on another: the font's first span has no similar font, this one has.
     const calibri = aFont("Calibri", { look_alike: "Carlito Regular" });
     const named = aSpan({ id: "named", font: "Calibri", substitute: "Carlito Regular" });
-    expect(previewFaceOf(named, calibri)).toBe("Carlito Regular");
+    expect(previewFaceOf(named, { font: calibri, text: named.text })).toBe("Carlito Regular");
   });
 
   test("a span its file's own font draws previews in the look-alike the server falls back to", () => {
     const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold" });
-    expect(previewFaceOf(aSpan({ id: "kept", font: lato.name }), lato)).toBe("Lato Bold");
+    expect(previewFaceOf(aSpan({ id: "kept", font: lato.name }), { font: lato, text: "kept" })).toBe("Lato Bold");
   });
 
   test("a document's faces are each once: its spans' similar fonts, its fonts' look-alikes, and the default", () => {

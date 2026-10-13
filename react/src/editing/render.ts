@@ -1,19 +1,21 @@
 // The server's render of each edited row. Typing never waits on it: while a span reads other
 // than its page's strips show, the browser previews it. One request at a time, so an older
 // reply can never land over a newer one, and a strip goes in only once its images can paint,
-// so the swap never flickers. A page whose render failed stays stale: the next change asks
-// for it again, and so does `retry`, when the connection comes back.
+// so the swap never flickers. The pages near the screen are asked for first, on their own,
+// then the rest. A page whose render failed stays stale: the next change asks for it again,
+// and so does `retry`, when the connection comes back.
 import { ProblemError, render as renderOnServer } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { reportBug } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
-import { regionsFor, stalePages } from "./strips";
+import { bottomOf, regionsFor, stalePages } from "./strips";
 
-/** A strip of a page the server drew, ready to paint: its top in points, and its image's address. */
+/** A strip of a page the server drew, ready to paint: its top and bottom in points, and its image's address. */
 export interface Strip {
   readonly page: number;
   readonly y: number;
+  readonly y1: number;
   readonly src: string;
 }
 
@@ -98,6 +100,7 @@ interface Options {
   drawn: (drawn: Drawn) => void; // strips went in or came out, or a render failed
   render?: typeof renderOnServer;
   load?: (image: ImageInfo) => Promise<string>; // its address, once it can paint
+  near?: ReadonlySet<number>; // the pages near the screen, as they come and go: asked for first
 }
 
 /**
@@ -120,7 +123,7 @@ export class RenderQueue {
   readonly #options: Required<Options>;
 
   constructor(options: Options) {
-    this.#options = { render: renderOnServer, load: loaded, ...options };
+    this.#options = { render: renderOnServer, load: loaded, near: new Set(), ...options };
   }
 
   get drawn(): Drawn {
@@ -152,26 +155,25 @@ export class RenderQueue {
   }
 
   async #draw(reading: Reading): Promise<void> {
-    const { reopener, scale, render, load } = this.#options;
+    const { reopener, scale, render, load, near } = this.#options;
     // A newer reading takes over what an older request was still drawing: those pages are still stale.
     this.#asking?.abort();
     this.#asking = null;
-    const drawing: number[] = [];
+    const stale = new Map<number, Region[]>();
     const bare: number[] = [];
-    const regions: Region[] = [];
     for (const page of stalePages(reading, this.#drawn.from)) {
       const edits = reading.pages.get(page);
       const info = reopener.doc.pages[page];
       // Nothing edited on the page any more: the original image beneath is already right.
-      if (edits === undefined || info === undefined) {
-        bare.push(page);
-        continue;
-      }
-      drawing.push(page);
-      regions.push(...regionsFor(page, info, edits));
+      if (edits === undefined || info === undefined) bare.push(page);
+      else stale.set(page, regionsFor(page, info, edits));
     }
     if (bare.length > 0) this.#landed(reading, bare, { landing: [], said: null });
+    // The pages near the screen on their own: a render of every page waits on the slowest.
+    const shown = [...stale.keys()].filter((page) => near.has(page));
+    const drawing = shown.length > 0 ? shown : [...stale.keys()];
     if (drawing.length === 0) return;
+    const regions = drawing.flatMap((page) => stale.get(page) ?? []);
 
     const ask = new AbortController();
     this.#asking = ask;
@@ -181,10 +183,16 @@ export class RenderQueue {
         render(doc.id, { edits: [...reading.edits], scale, regions }, ask.signal),
       );
       const srcs = await Promise.all(reply.images.map(load));
-      const strips = reply.images.map(({ page, y }, index) => ({ page, y, src: srcs[index] ?? "" }));
+      const strips = reply.images.map(({ page, y }, index) => {
+        const info = reopener.doc.pages[page];
+        const y1 = info === undefined ? y : bottomOf({ page, y }, regions, info);
+        return { page, y, y1, src: srcs[index] ?? "" };
+      });
       if (ask.signal.aborted) return;
       this.#asking = null;
       this.#landed(reading, drawing, { landing: strips, said: reply });
+      // Then the rest, still stale: near the screen first again, as it is now.
+      if (drawing.length < stale.size) void this.#draw(reading);
     } catch (error) {
       if (ask.signal.aborted) return;
       this.#asking = null;
