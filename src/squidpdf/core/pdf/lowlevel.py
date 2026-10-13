@@ -755,24 +755,13 @@ class PdfFile:
 
         A form field's part (a widget) counts as a form field; its value is read as the field's.
         """
-        mu = pymupdf.mupdf
         for page, annotation in self._each_annotation():
-            widget = _is_widget(annotation)
-            drawn_from_words = widget or _is_free_text(annotation)
-            shown = _Shown(page, mu.pdf_to_num(annotation)) if drawn_from_words else None
-            place: CopyPlace = "form_fields" if widget else "comments"
-            yield _Entry(place, annotation, _APPEARANCE, "drawing", shown=shown)
-            # A form field's part: its captions and its description of itself.
-            if widget:
-                captions = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_MK)
-                for key in _CAPTIONS:
-                    yield _Entry("form_fields", captions, key, "text", shown=shown)
-                yield _Entry("form_fields", annotation, _ANNOTATION_WORDS, "text")
+            # A form field's part.
+            if _is_widget(annotation):
+                yield from _widget_entries(page, annotation)
                 continue
-            yield _Entry("comments", annotation, _ANNOTATION_WORDS, "text", shown=shown)
-            for key in _COMMENT_LABELS:
-                yield _Entry("comments", annotation, key, "text", shown=shown)
-            yield _Entry("comments", annotation, _FORMATTED_WORDS, "whole", shown=shown)
+            # A comment, a link, or anything else written over the page.
+            yield from _comment_entries(page, annotation)
 
     def _form_fields(self, root: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
         """Each form field once: those the form lists, then those a page shows that it doesn't.
@@ -1026,10 +1015,12 @@ class PdfFile:
             return
         written = _bytes_of(stream)
         dom = _xml_of(written)
-        # Not XML, so not written back: it goes, once anything in it would change.
+        # Not XML, and nothing in it would change: it stays as the file wrote it.
+        if dom is None and not _changes([_readings_of(written)], rewritten):
+            return
+        # Not XML, so not written back: it goes, as something in it would change.
         if dom is None:
-            if _changes([_readings_of(written)], rewritten):
-                mu.pdf_dict_del(self._root(), mu.PDF_ENUM_NAME_Metadata)
+            mu.pdf_dict_del(self._root(), mu.PDF_ENUM_NAME_Metadata)
             return
         changed = False
         for piece in _xml_strings(dom):
@@ -1571,6 +1562,7 @@ def _literal_end(written: bytes, start: int) -> int:
     """Just past the ) that closes the string in brackets at `written[start]`, or the end."""
     depth = 0  # strings open: the one at `start`, and each in it
     for part in _LITERAL_PART.finditer(written, start):
+        # .get: an escape changes no depth.
         depth += _BRACKET_DEPTH.get(part[0], 0)
         # Closed: back out of the one at `start`.
         if depth == 0:
@@ -1939,6 +1931,31 @@ def _nests_deeper(dom: minidom.Document, levels: int) -> bool:
     return bool(level)
 
 
+def _widget_entries(page: int, widget: pymupdf.mupdf.PdfObj) -> Iterator[_Entry]:
+    """What a form field's part draws, its captions, and its description of itself."""
+    mu = pymupdf.mupdf
+    # MuPDF draws it from its words.
+    shown = _Shown(page, mu.pdf_to_num(widget))
+    yield _Entry("form_fields", widget, _APPEARANCE, "drawing", shown=shown)
+    captions = mu.pdf_dict_get(widget, mu.PDF_ENUM_NAME_MK)
+    for key in _CAPTIONS:
+        yield _Entry("form_fields", captions, key, "text", shown=shown)
+    yield _Entry("form_fields", widget, _ANNOTATION_WORDS, "text")
+
+
+def _comment_entries(page: int, annotation: pymupdf.mupdf.PdfObj) -> Iterator[_Entry]:
+    """What a comment draws, its words and its labels."""
+    mu = pymupdf.mupdf
+    # A FreeText MuPDF draws from its words; any other draws as it was written.
+    drawn_from_words = _is_free_text(annotation)
+    shown = _Shown(page, mu.pdf_to_num(annotation)) if drawn_from_words else None
+    yield _Entry("comments", annotation, _APPEARANCE, "drawing", shown=shown)
+    yield _Entry("comments", annotation, _ANNOTATION_WORDS, "text", shown=shown)
+    for key in _COMMENT_LABELS:
+        yield _Entry("comments", annotation, key, "text", shown=shown)
+    yield _Entry("comments", annotation, _FORMATTED_WORDS, "whole", shown=shown)
+
+
 def _xml_strings(node: minidom.Node) -> Iterator[minidom.Node]:
     """Each piece of text in XML: its text, comments, notes and attributes' values, as nodes.
 
@@ -1952,6 +1969,7 @@ def _xml_strings(node: minidom.Node) -> Iterator[minidom.Node]:
         # Text (CDATA too), a comment, or a note to a program (a processing instruction).
         if isinstance(child, minidom.CharacterData | minidom.ProcessingInstruction):
             yield child
+            continue
         # A typed value, which says when, which or what kind, not what.
         if isinstance(child, minidom.Element) and _is_typed(child):
             continue
@@ -1979,9 +1997,8 @@ class _InlineImage:
 
     written: bytes  # its bytes, from past its ID to the EI MuPDF ends it at
     counted: int  # the fewest of them a reader that counts its bytes may take as the image
-    marks_its_end: (
-        bool  # whether its filter ends it, so a reader that doesn't count looks for that
-    )
+    # Whether its filter ends it, so a reader that doesn't count looks for that.
+    marks_its_end: bool
 
 
 @dataclass(frozen=True, slots=True)
