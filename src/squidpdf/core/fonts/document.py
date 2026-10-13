@@ -161,7 +161,7 @@ class DocumentFonts:
 
     def lookup(self, span: Span) -> PooledFont | FontUnusable:
         """The span's font, pooled with its other copies in the file, or why we can't use it."""
-        page_font = self.page_font(span)
+        page_font = self._page_font(span)
         # Not on the page: new text in a font it doesn't have.
         if page_font is None:
             return FontUnusable(Message("font_not_in_file"))
@@ -185,7 +185,7 @@ class DocumentFonts:
         if own is not None and lacks_space(own):
             self.usual_gap(span, own)
 
-    def page_font(self, span: Span) -> PageFont | None:
+    def _page_font(self, span: Span) -> PageFont | None:
         """The page's font by the span's font name, subset prefix aside; None when it has none.
 
         By the name the page lists it under, else by the one its text reads: a
@@ -311,7 +311,7 @@ class DocumentFonts:
         Checked against the file's copies of it, every one, or the page's width list
         when it's only named: the rule every copy that lends is held to.
         """
-        page_font = self.page_font(span)
+        page_font = self._page_font(span)
         # Not on the page: new text, in no font of the document's.
         if page_font is None:
             return Message("font_not_in_file")
@@ -359,7 +359,7 @@ class DocumentFonts:
 
     def look_alike(self, span: Span) -> LookAlike:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""
-        page_font = self.page_font(span)
+        page_font = self._page_font(span)
         xref = None if page_font is None else page_font.xref
         key = (strip_subset(span.font), xref)
         return self.cache.look_alike(key, partial(self._look_alike_of, span.font, xref))
@@ -386,13 +386,13 @@ class DocumentFonts:
 
     def _usual_gap_on(self, page: int, *, font_name: str, font: FontProgram) -> float:
         """The page's usual gap for a space in `font_name`, subset prefix aside, in `font`."""
-        lines = self.page_lines(page)
+        lines = self._page_lines(page)
         in_font = [
             piece for piece in _each_piece(lines) if strip_subset(piece.font) == font_name
         ]
         return usual_gap(in_font, font=font)
 
-    def page_lines(self, page: int) -> list[list[TextPiece]]:
+    def _page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as it was when first asked for, line by line."""
         return self._facts(page).text_lines(partial(self.driver.text_lines, page))
 
