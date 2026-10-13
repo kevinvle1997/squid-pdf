@@ -31,30 +31,38 @@ const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
  * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
- * (pages far off stay empty boxes), and a margin note's height in the page's points.
+ * (pages far off stay empty boxes), and a margin note's height in the page's points. The
+ * pages near it are in `nearPages` too, for the render to ask for first.
  */
-function useSheet(pageHeightPt: number) {
+function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; nearPages: Set<number> }) {
   const [near, setNear] = useState(false);
   const [gapPt, setGapPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
-      const nearby = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
-        rootMargin: LAZY_MARGIN,
-      });
+      const nearby = new IntersectionObserver(
+        ([entry]) => {
+          const isNear = entry?.isIntersecting ?? false;
+          if (isNear) nearPages.add(index);
+          else nearPages.delete(index);
+          setNear(isNear);
+        },
+        { rootMargin: LAZY_MARGIN },
+      );
       const size = new ResizeObserver(([entry]) => {
         const height = entry?.contentRect.height ?? 0;
         // A note is a hit area tall, and --hit is larger on a touch screen.
         const hit = parseFloat(getComputedStyle(sheet).getPropertyValue("--hit")) || 0;
-        setGapPt(height > 0 ? (hit / height) * pageHeightPt : 0);
+        setGapPt(height > 0 ? (hit / height) * heightPt : 0);
       });
       nearby.observe(sheet);
       size.observe(sheet);
       return () => {
         nearby.disconnect();
         size.disconnect();
+        nearPages.delete(index);
       };
     },
-    [pageHeightPt],
+    [index, heightPt, nearPages],
   );
   return { ref, near, gapPt };
 }
@@ -117,7 +125,7 @@ interface Props {
  */
 export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
-  const sheet = useSheet(info.height);
+  const sheet = useSheet(index, { heightPt: info.height, nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans.filter((reading) => reading.replaced || reading.redacted) ?? NO_CHANGES;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and

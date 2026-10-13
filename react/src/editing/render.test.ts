@@ -37,17 +37,23 @@ let drawn: Drawn[];
 let fake: ReturnType<typeof server>;
 let queue: RenderQueue;
 
-beforeEach(() => {
-  drawn = [];
-  fake = server();
-  queue = new RenderQueue({
+/** A queue asking the fake server, with `near` the pages near the screen. */
+function aQueue(near: ReadonlySet<number> = new Set()) {
+  return new RenderQueue({
     reopener: { doc: DOC, withDocument: (use) => use(DOC) },
     scale: 2,
     drawn: (now) => drawn.push(now),
     render: fake.render,
     // A strip's address is its image as sent: these tests don't paint.
     load: async (image) => image.image,
+    near,
   });
+}
+
+beforeEach(() => {
+  drawn = [];
+  fake = server();
+  queue = aQueue();
 });
 
 // Each span's strip, as asked for: two points past its box either side.
@@ -97,6 +103,24 @@ describe("the render queue", () => {
     await settle();
     expect([...queue.drawn.from.keys()].sort()).toEqual([0, 1]);
     expect(queue.drawn.failed).toBeNull();
+  });
+
+  test("the pages near the screen are asked for first, on their own, then the rest", async () => {
+    const near = new Set([1]);
+    queue = aQueue(near);
+    const askedFor = () => fake.asked.map(({ body }) => body.regions.map((region) => region.page));
+    queue.draw(readingOf(replace(ONE), replace(TWO)));
+    await settle();
+    expect(askedFor()).toEqual([[1]]);
+
+    fake.asked[0]?.answer(fake.reply([1]));
+    await settle();
+    expect(queue.drawn.strips.get(1)).toEqual([shown(1)]);
+    expect(askedFor()).toEqual([[1], [0]]);
+    fake.asked[1]?.answer(fake.reply([0]));
+    await settle();
+    expect(queue.drawn.strips.get(0)).toEqual([shown(0)]);
+    expect(fake.asked).toHaveLength(2);
   });
 
   test("a page with nothing left on it goes back to its image at once, without asking", async () => {

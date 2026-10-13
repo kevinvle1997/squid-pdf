@@ -313,6 +313,17 @@ describe("a page", () => {
     below.remove();
   });
 
+  test("a page near the screen is one the render asks for first; scrolled far away, it isn't", async () => {
+    await draw(1);
+    await vi.waitFor(() => expect(editor.near).toEqual(new Set([1])));
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    window.scrollTo(0, 15000);
+    await vi.waitFor(() => expect(editor.near).toEqual(new Set()));
+    below.remove();
+  });
+
   test("a span holding focus keeps it while its page is scrolled far away, so focus never falls to the page", async () => {
     const screen = await draw();
     const mark = screen.getByRole("button", { name: WORDS });
