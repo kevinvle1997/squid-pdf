@@ -69,6 +69,20 @@ async function settled() {
   } while (drawn.margins !== count);
 }
 
+/** WCAG contrast against the white page of a line drawn in its gradient's colour at its opacity. */
+function contrastOnWhite(line: CSSStyleDeclaration): number {
+  const [red = 0, green = 0, blue = 0] = (/rgb\((\d+), (\d+), (\d+)\)/.exec(line.backgroundImage) ?? [])
+    .slice(1)
+    .map(Number);
+  const opacity = Number(line.opacity);
+  const linear = (channel: number) => {
+    const shown = (channel * opacity + 255 * (1 - opacity)) / 255;
+    return shown <= 0.04045 ? shown / 12.92 : ((shown + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  return 1.05 / (luminance + 0.05);
+}
+
 /** Marks come once the page is near the viewport, which its observer says a moment after drawing. */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>) {
   const mark = screen.getByRole("button", { name: WORDS });
@@ -446,6 +460,8 @@ describe("a page", () => {
     await expect.element(mark).toBeInTheDocument();
     const line = getComputedStyle(mark.element(), "::after");
     expect(line.backgroundImage).toContain("repeating-linear-gradient");
+    // At rest, before anything is touched, it's the Rule 1 signal: a mark's 3:1 on the white page.
+    expect(contrastOnWhite(line)).toBeGreaterThanOrEqual(3);
     await mark.hover();
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });
