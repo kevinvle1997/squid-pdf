@@ -277,7 +277,7 @@ class Engine:
         """
         planned = self.plans.plan_for(span, text) if plan is None else plan
         setting = Setting(span.size if size is None else size, scale_x, turn_ccw)
-        return self.writer.draw(span, text, plan=planned, plans=self.plans, setting=setting)
+        return self.writer.draw(span, text, plan=planned, setting=setting)
 
     def turn_pages(self, turns: Mapping[int, QuarterTurn]) -> None:
         """Turn each page in `turns` that much further clockwise, on top of its own turn.
@@ -348,7 +348,7 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
         driver,
         fonts=fonts,
         plans=plans,
-        writer=PageWriter(driver),
+        writer=PageWriter(driver, plans),
         fit=LineFit(fonts, plans),
         redaction=RedactionCheck(driver),
     )
