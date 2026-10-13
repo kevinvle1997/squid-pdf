@@ -202,6 +202,21 @@ describe("a page", () => {
     below.remove();
   });
 
+  test("a span holding focus keeps it while its page is scrolled far away, so focus never falls to the page", async () => {
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: WORDS });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    const below = document.createElement("div");
+    below.style.height = "20000px";
+    document.body.append(below);
+    window.scrollTo(0, 15000);
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    await expect.element(mark).toHaveFocus();
+    below.remove();
+  });
+
   test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     try {

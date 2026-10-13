@@ -1,5 +1,5 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
-import { useFocusVisible } from "react-aria";
+import { useFocusVisible, useFocusWithin } from "react-aria";
 import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
@@ -120,12 +120,20 @@ export const Page = memo(function Page({ index, info }: Props) {
   const changes = page.edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
   const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
-  // The page being typed in keeps its marks, and so the field, however far it's scrolled.
-  const keepMarks = sheet.near || page.typingIn !== null;
+  const [focusedIn, setFocusedIn] = useState(false);
+  const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
+  // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
+  // page whose mark has focus, or focus would fall to the document as its mark went.
+  const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
-    <section className={styles.page} aria-label={label} style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}>
+    <section
+      {...focusWithinProps}
+      className={styles.page}
+      aria-label={label}
+      style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}
+    >
       <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
