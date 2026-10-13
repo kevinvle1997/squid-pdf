@@ -9,6 +9,7 @@ import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
+import { openFind, typeQuery } from "../find";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -428,6 +429,18 @@ describe("a page", () => {
     const warned = getComputedStyle(mark.element(), "::before");
     expect(warned.backgroundImage).toContain("repeating-linear-gradient");
     expect(warned.height).toBe("2px");
+  });
+
+  test("find tints only the words it found, not their whole line", async () => {
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    openFind(editor);
+    typeQuery(editor, "here");
+    const found = () => screen.container.querySelector<HTMLElement>("[data-found]");
+    await expect.poll(() => found()).not.toBeNull();
+    // "was here" is eight 10 pt letters from 72 pt: "here" is its last four, from 112 pt to 152 pt.
+    expect(parseFloat(found()?.style.left ?? "")).toBeCloseTo((112 / A4.width) * 100, 3);
+    expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo((40 / A4.width) * 100, 3);
   });
 
   test("a page whose image fails says why on the page, in the server's words", async () => {

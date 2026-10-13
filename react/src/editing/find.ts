@@ -4,7 +4,7 @@
 import type { SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, type Editor, type EditorState, spoken } from "./editor";
-import { fitOf, runsPast } from "./fit";
+import { fitOf, runsPast, widthPt } from "./fit";
 import type { Reading } from "./project";
 import { finish } from "./typing";
 import { counted } from "./words";
@@ -20,7 +20,7 @@ export interface FindState extends FindOptions {
   readonly query: string; // what's typed in "Find", echoed at once
   readonly replacement: string; // what's typed in "Change to"
   readonly searched: string; // what was found, once typing in "Find" stopped
-  readonly hits: ReadonlyMap<number, ReadonlySet<string>>; // by page: the spans found, for their marks
+  readonly hits: ReadonlyMap<number, ReadonlyMap<string, readonly Place[]>>; // by page: each span found, and where in what it reads
   readonly changed: number | null; // how many places "Change all" just changed, until typing again
   readonly opened: number; // counted: each open puts focus in "Find", even when it's open already
   readonly closed: number; // counted: closing from inside the bar puts focus back on the bar's "Find"
@@ -158,15 +158,41 @@ function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Readi
   return found;
 }
 
-/** The spans found, by page, keeping each page's set where it's the same, so only pages that changed redraw. */
-function hitsOf(found: readonly Found[], before: FindState["hits"]): FindState["hits"] {
-  const pages = new Map<number, Set<string>>();
-  for (const { span } of found) pages.set(span.page, (pages.get(span.page) ?? new Set()).add(span.id));
-  const same = (a: ReadonlySet<string> | undefined, b: ReadonlySet<string>) =>
-    a !== undefined && a.size === b.size && [...b].every((id) => a.has(id));
-  return new Map(
-    [...pages].map(([page, ids]) => [page, same(before.get(page), ids) ? (before.get(page) ?? ids) : ids]),
+/** Whether two spans' places found are the same. */
+function samePlaces(a: readonly Place[] | undefined, b: readonly Place[]): boolean {
+  return (
+    a !== undefined &&
+    a.length === b.length &&
+    b.every((place, i) => place.start === a[i]?.start && place.end === a[i]?.end)
   );
+}
+
+/** The places found, by page and span, keeping each page's map where it's the same, so only pages that changed redraw. */
+function hitsOf(found: readonly Found[], before: FindState["hits"]): FindState["hits"] {
+  const pages = new Map<number, Map<string, readonly Place[]>>();
+  for (const { span, places } of found) pages.set(span.page, (pages.get(span.page) ?? new Map()).set(span.id, places));
+  const same = (a: ReadonlyMap<string, readonly Place[]> | undefined, b: ReadonlyMap<string, readonly Place[]>) =>
+    a !== undefined && a.size === b.size && [...b].every(([id, places]) => samePlaces(a.get(id), places));
+  return new Map(
+    [...pages].map(([page, spans]) => [page, same(before.get(page), spans) ? (before.get(page) ?? spans) : spans]),
+  );
+}
+
+/**
+ * Where each place found sits across its span, in points: its share of the span's width by the widths
+ * of the letters before and in it, so the words found are marked, not the whole line.
+ */
+export function placesAcross(
+  span: SpanInfo,
+  { text, places, glyphs }: { text: string; places: readonly Place[]; glyphs: Record<string, number> },
+): { x0: number; x1: number }[] {
+  const whole = widthPt(text, glyphs, span.size);
+  const wide = span.bbox.x1 - span.bbox.x0;
+  // Measured where the font has widths; else by letter count, the best guess without them.
+  const at = (index: number) =>
+    span.bbox.x0 +
+    (whole > 0 ? widthPt(text.slice(0, index), glyphs, span.size) / whole : index / Math.max(text.length, 1)) * wide;
+  return places.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 
 /** The find bar found again in `reading`: after any change to the history, while it's open. */

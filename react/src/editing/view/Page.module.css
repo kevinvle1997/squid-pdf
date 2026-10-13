@@ -35,6 +35,14 @@
   text-align: center;
   font-size: var(--fs-sm);
 }
+/* Words find found: tinted and underlined as the change they're about to be, until find closes. */
+.found { position: absolute; background: var(--mark-change-soft); mix-blend-mode: multiply; pointer-events: none; }
+.found::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--mark-change); }
+/* The tint goes in high contrast: a dashed box keeps the words found apart from a change. */
+@media (forced-colors: active) {
+  .found { outline: 1px dashed Highlight; }
+  .found::after { background: Highlight; }
+}
 /* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
 .anchor { position: absolute; pointer-events: none; }
 /* The page never themes: the marks and previews on it use the page's own tokens. */

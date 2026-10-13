@@ -45,9 +45,6 @@
 /* Redacted, but the server found its words still there: a warning, never the change's colour. */
 .unredacted, .unredacted[data-hovered] { background: var(--mark-warn-soft); }
 .unredacted::after, .unredacted[data-hovered]::after { background: var(--mark-warn); }
-/* Found by find: tinted and underlined as the change it's about to be, until find closes. */
-.hit { background: var(--mark-change-soft); mix-blend-mode: multiply; }
-.hit::after { opacity: 1; height: 2px; background: var(--mark-change); }
 @media (forced-colors: active) {
   .span::after { background: CanvasText; }
   .changed::after, .redacted::after { background: Highlight; }
@@ -55,7 +52,4 @@
   .trouble::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
   /* The tint goes in this mode: a redacted span keeps a box, so it still reads as more than a change. */
   .redacted { outline: 1px solid Highlight; }
-  /* A place found loses its tint too: a dashed box keeps it apart from a change. */
-  .hit::after { background: Highlight; }
-  .hit { outline: 1px dashed Highlight; }
 }
