@@ -37,7 +37,10 @@ export function spelledIn(text: string, glyphs: Record<string, number>): string 
   return spellings.find((spelling) => lackedIn(spelling, glyphs).length === 0) ?? composed;
 }
 
-/** The letters of `text`, as the font spells it, that `glyphs` doesn't have, each once. A space is never one. */
+/**
+ * The letters of `text`, as the font spells it, that `glyphs` doesn't have, each once: a space too, as the
+ * server counts one, since `glyphs` has a plain space wherever the server draws it.
+ */
 export function missingIn(text: string, glyphs: Record<string, number>): string[] {
   return lackedIn(spelledIn(text, glyphs), glyphs);
 }
@@ -46,7 +49,7 @@ export function missingIn(text: string, glyphs: Record<string, number>): string[
 function lackedIn(text: string, glyphs: Record<string, number>): string[] {
   const missing = new Set<string>();
   for (const letter of text) {
-    if (glyphs[letter] === undefined && !WHITESPACE.test(letter)) missing.add(letter);
+    if (glyphs[letter] === undefined) missing.add(letter);
   }
   return [...missing];
 }

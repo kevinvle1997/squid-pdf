@@ -13,6 +13,16 @@ const glyphs = {
 const font = aFont("Times-Roman", { glyphs });
 const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50, y1: 12 } });
 
+describe("a missing letter", () => {
+  test("is a space too, as the server judges it, when the font has none of that kind", () => {
+    // The server sends a plain space in `glyphs` wherever it draws one, a page's gap in a font with none
+    // included (core/plan.py, `widths`): one not there, or a no-break space not mapped, is missing.
+    expect(missingIn("a a", { a: HALF, "\u00a0": HALF })).toEqual([" "]);
+    expect(missingIn("a\u00a0a", { a: HALF, " ": HALF })).toEqual(["\u00a0"]);
+    expect(missingIn("a a", { a: HALF, " ": HALF })).toEqual([]);
+  });
+});
+
 describe("the fit check", () => {
   test("widths come from the server's letter widths at the span's size", () => {
     expect(widthPt("abcdefghij", glyphs, 10)).toBe(50);
@@ -37,9 +47,8 @@ describe("the fit check", () => {
     ]);
   });
 
-  test("a letter the font lacks is named once, and a space never is", () => {
+  test("a letter the font lacks is named once", () => {
     expect(missingIn("é é ö", glyphs)).toEqual(["é", "ö"]);
-    expect(missingIn("a b", { a: HALF, b: HALF })).toEqual([]);
   });
 
   test("a missing letter that draws nothing alone is named in the chip, as the server names it", () => {
