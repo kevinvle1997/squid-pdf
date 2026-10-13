@@ -17,6 +17,7 @@ import {
   touching,
 } from "./history";
 import type { PageImage } from "./images";
+import { type Keeping, keepUntil, keepWork } from "./keeping";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
@@ -111,6 +112,7 @@ export interface Editor {
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
   readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found
   readonly ahead: ExportAhead; // the export started on the way to pressing Export
+  readonly keeping: Keeping; // what's kept of it in this browser
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -162,7 +164,13 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     return judged;
   });
   const near = new Set<number>();
-  const queue = new RenderQueue({ reopener, scale, near, drawn: (drawn) => drawnNow(store, drawn) });
+  const queue = new RenderQueue({
+    reopener,
+    scale,
+    near,
+    drawn: (drawn) => drawnNow(store, drawn),
+    extended: (expiresAt) => keepUntil(editor, expiresAt),
+  });
   const editor: Editor = {
     store,
     file,
@@ -173,6 +181,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     retries: new Map(),
     finding: {},
     ahead: {},
+    keeping: { file: false, history: null, until: Date.parse(opened.expires_at) },
   };
   return editor;
 }
@@ -218,6 +227,7 @@ export function change(editor: Editor, action: HistoryAction, also: Also = {}): 
   const find = found.changed === null ? found : { ...found, changed: null };
   store.set({ history, reading, notices, find, ...(typeof also === "function" ? also(reading) : also) });
   queue.draw(reading);
+  void keepWork(editor);
 }
 
 /** Put a span back as the document had it, from its margin note; focus goes to the span. */

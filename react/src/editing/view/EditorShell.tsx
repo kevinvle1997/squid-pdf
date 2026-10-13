@@ -10,11 +10,12 @@ import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { pdfDropped } from "../dropped";
-import { changedCount, closeEditor, createEditor, sayOpening, unexported, unlikeAtRest, warnedCount } from "../editor";
+import { changedCount, closeEditor, createEditor, sayOpening, unlikeAtRest, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { openFind } from "../find";
 import { retryImages } from "../images";
+import { atRisk, isWork, resumeWork, takeUp } from "../keeping";
 import { noticeLines } from "../notices";
 import { shallowEqual } from "../store";
 import { counted, formOf } from "../words";
@@ -43,12 +44,24 @@ function carriesFiles(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes("Files") ?? false;
 }
 
+/** The props of the editor: the document opened, what opens a PDF dropped on it, and work kept here to take up. */
+interface Props {
+  file: File;
+  opened: Document;
+  onOpen: (file: File) => void;
+  kept?: { work: unknown; until: number } | undefined;
+}
+
 /**
  * The open document: every page, every span marked, editable in place, under the bar. `onOpen`
- * opens a PDF dropped on it, in its place.
+ * opens a PDF dropped on it, in its place. Opened again from this browser, it takes up the work kept.
  */
-export function EditorShell({ file, opened, onOpen }: { file: File; opened: Document; onOpen: (file: File) => void }) {
-  const [editor] = useState(() => createEditor(file, opened, SCALE));
+export function EditorShell({ file, opened, onOpen, kept }: Props) {
+  const [editor] = useState(() => {
+    const made = createEditor(file, opened, SCALE);
+    if (kept !== undefined && isWork(kept.work)) takeUp(made, { work: kept.work, until: kept.until });
+    return made;
+  });
   const openDropped = useEffectEvent((files: readonly File[]) => {
     const pdf = pdfDropped(editor, files);
     if (pdf !== null) onOpen(pdf);
@@ -59,6 +72,7 @@ export function EditorShell({ file, opened, onOpen }: { file: File; opened: Docu
   // exported, and the editor going.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
+    resumeWork(editor);
     sayOpening(editor);
     const key = (event: KeyboardEvent) => {
       const command = commandFor(event, isTyping(event.target));
@@ -80,9 +94,9 @@ export function EditorShell({ file, opened, onOpen }: { file: File; opened: Docu
       event.preventDefault();
       openDropped([...(event.dataTransfer?.files ?? [])]);
     };
-    // The browser asks before leaving, in its own words. Until this browser keeps the edits too.
+    // The browser asks before leaving, in its own words, only when work would be lost: not kept here yet.
     const leaving = (event: BeforeUnloadEvent) => {
-      if (unexported(editor.store.get())) event.preventDefault();
+      if (atRisk(editor)) event.preventDefault();
     };
     window.addEventListener("keydown", key);
     window.addEventListener("online", online);

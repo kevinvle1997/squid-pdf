@@ -47,8 +47,8 @@ export const NOTHING_DRAWN: Drawn = {
 };
 
 /**
- * What a reply says, less the images. Not read: `insert_fits`, since nothing inserts yet; `build`,
- * since a deploy retires the document; and `expires_at`, since nothing shows the hour.
+ * What a reply says, less the images and `expires_at`, which goes to keeping. Not read: `insert_fits`,
+ * since nothing inserts yet; and `build`, since a deploy retires the document.
  */
 type Said = Pick<Render, "fits" | "redactions" | "notices" | "skipped">;
 
@@ -101,6 +101,7 @@ interface Options {
   render?: typeof renderOnServer;
   load?: (image: ImageInfo) => Promise<string>; // its address, once it can paint
   near?: ReadonlySet<number>; // the pages near the screen, as they come and go: asked for first
+  extended?: (expiresAt: string) => void; // a reply came, and with it when the server's hour now ends
 }
 
 /**
@@ -123,7 +124,7 @@ export class RenderQueue {
   readonly #options: Required<Options>;
 
   constructor(options: Options) {
-    this.#options = { render: renderOnServer, load: loaded, near: new Set(), ...options };
+    this.#options = { render: renderOnServer, load: loaded, near: new Set(), extended: () => undefined, ...options };
   }
 
   get drawn(): Drawn {
@@ -188,6 +189,7 @@ export class RenderQueue {
         const y1 = info === undefined ? y : bottomOf({ page, y }, regions, info);
         return { page, y, y1, src: srcs[index] ?? "" };
       });
+      this.#options.extended(reply.expires_at);
       if (ask.signal.aborted) return;
       this.#asking = null;
       this.#landed(reading, drawing, { landing: strips, said: reply });

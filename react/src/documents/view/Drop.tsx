@@ -8,9 +8,18 @@ import type { Landing } from "../open";
 import styles from "./Drop.module.css";
 
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
+const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
+
+interface Props {
+  landing: Landing;
+  onChoose: (file: File) => void;
+  onReopen: () => void; // the document kept here opens again, with its changes
+  onForget: () => void; // the document kept here is deleted from this browser
+}
 
 /** The landing: the whole window takes a dropped PDF. No tool grid, no sign-in. */
-export function Drop({ landing, onChoose }: { landing: Landing; onChoose: (file: File) => void }) {
+export function Drop({ landing, onChoose, onReopen, onForget }: Props) {
+  const kept = landing.kind === "waiting" ? landing.kept : undefined;
   return (
     <DropZone
       className={styles.zone}
@@ -34,7 +43,20 @@ export function Drop({ landing, onChoose }: { landing: Landing; onChoose: (file:
           {landing.kind === "opening" && <Progress {...landing} />}
           {landing.kind === "failed" && <Warn>{landing.detail}</Warn>}
         </p>
-        <p className={styles.fine}>Your file is deleted an hour after you last touch it.</p>
+        {kept !== undefined && (
+          <div className={styles.kept}>
+            <p className={styles.keptSaid}>
+              Your changes to {kept.name} are kept in this browser until {TIME.format(kept.until)}.
+            </p>
+            <div className={styles.keptActions}>
+              <Button onPress={onReopen}>Open it again</Button>
+              <Button onPress={onForget}>Delete it now</Button>
+            </div>
+          </div>
+        )}
+        <p className={styles.fine}>
+          Your file is deleted an hour after you last touch it, from our server and this browser.
+        </p>
       </main>
     </DropZone>
   );

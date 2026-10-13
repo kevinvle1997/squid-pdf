@@ -74,6 +74,21 @@ test("an edit is drawn by the server, and undo puts the original back", async ({
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
 });
 
+test("a reload loses nothing: the landing offers the document kept here, and it opens again with its change", async ({
+  page,
+}) => {
+  await open(page);
+  const changed = "This agreement is made on 2 April 2026 between";
+  await edit(page, changed);
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  await page.reload();
+
+  await page.getByRole("button", { name: "Open it again" }).click();
+  await expect(page.getByRole("button", { name: changed, exact: true })).toBeVisible();
+  await expect(page.getByText("1 change")).toBeVisible();
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+});
+
 test("a span edited back to its own words is untouched: nothing is drawn over it", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");
