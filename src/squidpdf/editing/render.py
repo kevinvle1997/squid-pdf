@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import math
-from collections import Counter
 from dataclasses import dataclass
 from functools import partial
 from itertools import pairwise
@@ -22,7 +21,6 @@ from squidpdf.core import (
     Page,
     Rect,
     Reply,
-    Span,
     Workers,
     words,
 )
@@ -32,7 +30,7 @@ from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
-from squidpdf.editing.apply import Erase, Step, is_page, log_fits, plan, resolve, run
+from squidpdf.editing.apply import is_page, log_fits, plan, redacted_by, resolve, run
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import fit_info, notice_info, redaction_info, skipped_info
@@ -71,16 +69,16 @@ class RenderController:
         _check_region_count(regions)
         # Read and parsed from disk: off the server's thread.
         pages = await asyncio.to_thread(store.load_pages, doc.folder)
-        _check_regions(regions, pages)
+        strips = _checked_strips(regions, pages)
         # Only the pages drawn go to the worker, so it needn't read the page list again,
         # each at its page image's scale, so a strip and the image line up.
         drawn_pages = {
-            region.page: DrawnPage(pages[region.page], page_scale(pages[region.page], scale))
-            for region in regions
+            number: DrawnPage(pages[number], page_scale(pages[number], scale))
+            for number in strips
         }
-        _check_rows(regions, drawn_pages)
+        _check_rows(strips, drawn_pages)
         rendered = await self._enqueue_draw_regions(
-            doc.folder, edits=edits, regions=regions, drawn_pages=drawn_pages
+            doc.folder, edits=edits, regions=regions, strips=strips, drawn_pages=drawn_pages
         )
         body = _reply_body(rendered, doc.expires_at, said_in)
         return Reply(body, words.language_headers(said_in))
@@ -91,11 +89,17 @@ class RenderController:
         *,
         edits: list[Edit],
         regions: list[Region],
+        strips: dict[int, list[Rect]],
         drawn_pages: dict[int, DrawnPage],
     ) -> Rendered:
         """Draw the regions on a worker."""
         task = partial(
-            _draw_regions, str(folder), edits=edits, regions=regions, drawn_pages=drawn_pages
+            _draw_regions,
+            str(folder),
+            edits=edits,
+            regions=regions,
+            strips=strips,
+            drawn_pages=drawn_pages,
         )
         return await self.workers.run(constants.RENDER_TIMEOUT_S, task)
 
@@ -105,25 +109,20 @@ def _draw_regions(
     *,
     edits: list[Edit],
     regions: list[Region],
+    strips: dict[int, list[Rect]],
     drawn_pages: dict[int, DrawnPage],
 ) -> Rendered:
     """Apply the edits the regions show, then draw each region. Runs in a worker.
 
-    `drawn_pages` are the pages the regions are on, by number.
+    `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
     """
     path = Path(folder)
     index = store.require_index(path)
-    strips: dict[int, list[Rect]] = {}
-    for region in regions:
-        strips.setdefault(region.page, []).append(
-            _strip_of(region, drawn_pages[region.page].page)
-        )
-
     with store.open_original(path) as engine:
         resolved = resolve(engine, edits, index)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)
-        redactions = RedactionController(tuple(_redacted_by(steps)))
+        redactions = RedactionController(tuple(redacted_by(steps)))
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         notices = run(engine, steps)
         verdicts = redactions.verdicts(engine)
@@ -140,11 +139,6 @@ def _draw_regions(
         notices=notices + _said_unredacted(verdicts),
         redactions=redaction_per_span,
     )
-
-
-def _redacted_by(steps: list[Step]) -> list[Span]:
-    """The spans the steps redact, in order."""
-    return [step.span for step in steps if isinstance(step, Erase)]
 
 
 def _said_unredacted(verdicts: dict[str, bool]) -> list[Notice]:
@@ -166,8 +160,8 @@ def _check_region_count(regions: list[Region]) -> None:
         raise InvalidRequest(debug=f"regions: {len(regions)}, at most {constants.MAX_REGIONS}")
 
 
-def _check_regions(regions: list[Region], pages: list[Page]) -> None:
-    """Refuse a region the document can't give, or rows of a page asked for twice."""
+def _checked_strips(regions: list[Region], pages: list[Page]) -> dict[int, list[Rect]]:
+    """The rows each region asks for, by page; refuses rows it can't give or asks for twice."""
     strips: dict[int, list[Rect]] = {}
     for region in regions:
         if not is_page(region.page, len(pages)):
@@ -181,6 +175,7 @@ def _check_regions(regions: list[Region], pages: list[Page]) -> None:
         strips.setdefault(region.page, []).append(strip)
     for page_number, page_strips in strips.items():
         _check_apart(page_number, page_strips)
+    return strips
 
 
 def _check_apart(page_number: int, strips: list[Rect]) -> None:
@@ -192,18 +187,14 @@ def _check_apart(page_number: int, strips: list[Rect]) -> None:
             raise InvalidRequest(debug=debug)
 
 
-def _check_rows(regions: list[Region], drawn_pages: dict[int, DrawnPage]) -> None:
+def _check_rows(strips: dict[int, list[Rect]], drawn_pages: dict[int, DrawnPage]) -> None:
     """Refuse a page's strips whose whole pixel rows add up past their limit.
 
     Each is drawn out to whole rows, so thin slivers would add up to many times the page.
     """
-    asked: Counter[int] = Counter()
-    for region in regions:
-        drawn_page = drawn_pages[region.page]
-        strip = _strip_of(region, drawn_page.page)
-        asked[region.page] += len(_pixel_rows(strip, drawn_page.scale))
-    for number, rows in asked.items():
+    for number, page_strips in strips.items():
         page, scale = drawn_pages[number].page, drawn_pages[number].scale
+        rows = sum(len(_pixel_rows(strip, scale)) for strip in page_strips)
         page_rows = len(_pixel_rows(Rect(0.0, 0.0, page.width, page.height), scale))
         most = constants.MAX_STRIP_ROWS_PER_PAGE_ROW * page_rows
         if rows > most:
