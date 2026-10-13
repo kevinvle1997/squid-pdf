@@ -7,6 +7,7 @@ import "../../styles/base.css";
 import { ProblemError, pageImage, render as renderOnServer } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
+import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { edit, finish, typeInto } from "../typing";
 import { EditorContext } from "./context";
@@ -143,6 +144,25 @@ describe("a page", () => {
     await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
     await userEvent.keyboard("{End}Q");
     await expect.element(screen.getByText("no Q in this font, so the line is drawn in Lato Bold")).toBeVisible();
+  });
+
+  test("a span in a right-hand column has its chip under it, ending where it ends, not squeezed against the page's edge", async () => {
+    await page.viewport(1400, 900);
+    const amount = aSpan({ ...span, text: "was here", bbox: { x0: 480, y0: 100, x1: 560, y1: 124 } });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [amount], fonts: DOC.fonts }), 2);
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}Q");
+    const redact = screen.getByRole("button", { name: "Redact" });
+    await expect.element(redact).toBeVisible();
+    const button = redact.element().getBoundingClientRect();
+    const chip = redact.element().closest("div")?.getBoundingClientRect();
+    const field = screen.getByRole("textbox").element().getBoundingClientRect();
+    if (chip === undefined) throw new Error("no chip");
+    // Its sentence, its offer and Redact on one line, not wrapped into a column at the page's edge.
+    expect(chip.height).toBeLessThan(button.height * 3);
+    // Ending where the span does: its box starts where the field does, and the page shows at its printed size.
+    expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
   });
 
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {

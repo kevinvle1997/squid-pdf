@@ -23,7 +23,7 @@ import { redact } from "../redaction";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { boxOf, fieldScaleOf, points, shownWidthPt, spanTextStyle } from "./geometry";
+import { fieldScaleOf, pinnedUnder, points, shownWidthPt, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -102,7 +102,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     else finish(editor, false, { returnFocus: true });
   }
 
-  const box = boxOf(span.bbox, info);
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
   // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback; half an em spare.
@@ -142,7 +141,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           }}
         />
       </TextField>
-      <div className={styles.chip} style={{ left: box.left, top: points(span.bbox.y1 + 4, info) }}>
+      <div className={styles.chip} style={{ ...pinnedUnder(span.bbox, info), top: points(span.bbox.y1 + 4, info) }}>
         {trouble !== "" ? (
           <span className={styles.bad} aria-hidden="true">
             <Warn>{trouble}</Warn>

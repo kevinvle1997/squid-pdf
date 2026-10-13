@@ -19,6 +19,18 @@ export function boxOf(
   };
 }
 
+/**
+ * Where something set under a box is pinned across the page: at the box's left edge, or, for a box in
+ * the page's right half, at its right edge, so what's set there stays on the page however wide it is.
+ */
+export function pinnedUnder(
+  bbox: { x0: number; x1: number },
+  page: { width: number },
+): { left: string; right?: undefined } | { right: string; left?: undefined } {
+  if (bbox.x0 > page.width / 2) return { right: `${((page.width - bbox.x1) / page.width) * 100}%` };
+  return { left: `${(bbox.x0 / page.width) * 100}%` };
+}
+
 /** A length in points as CSS, against the page's width: the page layer is a size container. */
 export function points(value: number, page: { width: number }): string {
   return `${(value / page.width) * 100}cqw`;
