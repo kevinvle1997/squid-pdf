@@ -74,7 +74,7 @@ class Resolved:
 
 
 @dataclass(frozen=True, slots=True)
-class Erase:
+class _Erase:
     """A redaction: the span's text and its links go, and nothing is drawn in their place."""
 
     span: Span
@@ -100,7 +100,7 @@ class _Place:
 
 
 # What happens to the page for one edit.
-type Step = Erase | _Redraw | _Place
+type Step = _Erase | _Redraw | _Place
 
 
 def is_page(page: int, page_count: int) -> bool:
@@ -373,7 +373,7 @@ def _step_for(edited_span: _EditedSpan, fits: LogFits) -> Step:
     span = edited_span.span
     # A redaction: its text goes, and nothing is drawn.
     if isinstance(edit, Redact):
-        return Erase(span)
+        return _Erase(span)
     # A replace: its text goes, and the new text is drawn as its fit says.
     if isinstance(edit, Replace):
         return _Redraw(span, edit.text, fits.replaces[span.id])
@@ -391,17 +391,22 @@ def run(engine: Engine, steps: Sequence[Step]) -> list[Notice]:
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
     # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
     stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
-    redacted = [step.span for step in steps if isinstance(step, Erase)]
+    redacted = redacted_by(steps)
     # A redaction's links (a mailto: can carry its text) and hidden copies go too.
     engine.unlink(redacted)
     engine.drop_hidden_copies(redacted)
     return [notice for step in steps for notice in _finish_step(engine, step, stuck=stuck)]
 
 
+def redacted_by(steps: Sequence[Step]) -> list[Span]:
+    """The spans the steps redact, in order."""
+    return [step.span for step in steps if isinstance(step, _Erase)]
+
+
 def _erased_by(step: Step) -> Span | None:
     """The span whose text a step erases first; None for one that only draws."""
     # A redaction or a replace: the span's own text goes first.
-    if isinstance(step, Erase | _Redraw):
+    if isinstance(step, _Erase | _Redraw):
         return step.span
     # An insert: there was no text there.
     if isinstance(step, _Place):
@@ -412,7 +417,7 @@ def _erased_by(step: Step) -> Span | None:
 def _drawn_by(step: Step) -> LineToDraw | None:
     """The line a step draws once the erasing is done; None for one that only erases."""
     # A redaction: nothing drawn.
-    if isinstance(step, Erase):
+    if isinstance(step, _Erase):
         return None
     # A replace: its new text, where the old was.
     if isinstance(step, _Redraw):
@@ -429,7 +434,7 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
     `stuck` are the spans whose text the erase couldn't clear.
     """
     # A redaction: nothing to draw.
-    if isinstance(step, Erase):
+    if isinstance(step, _Erase):
         return []
     # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
     if isinstance(step, _Redraw) and step.span.id in stuck:
