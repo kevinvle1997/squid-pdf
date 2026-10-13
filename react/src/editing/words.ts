@@ -39,8 +39,12 @@ export function shownAs(character: string, names: Readonly<Record<string, string
 
 const PLURAL = new Intl.PluralRules("en");
 
+/** The word a count takes: "change" for 1, "changes" for 3. */
+export function formOf(count: number, forms: { one: string; other: string }): string {
+  return PLURAL.select(count) === "one" ? forms.one : forms.other;
+}
+
 /** An interface label for a count: "1 change", "3 changes". */
 export function counted(count: number, forms: { one: string; other: string }): string {
-  const form = PLURAL.select(count) === "one" ? forms.one : forms.other;
-  return `${count} ${form}`;
+  return `${count} ${formOf(count, forms)}`;
 }

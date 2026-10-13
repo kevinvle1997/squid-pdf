@@ -10,14 +10,14 @@ import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { pdfDropped } from "../dropped";
-import { changedCount, closeEditor, createEditor, sayOpening, unexported, warnedCount } from "../editor";
+import { changedCount, closeEditor, createEditor, sayOpening, unexported, unlikeAtRest, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { openFind } from "../find";
 import { retryImages } from "../images";
 import { noticeLines } from "../notices";
 import { shallowEqual } from "../store";
-import { counted } from "../words";
+import { counted, formOf } from "../words";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
@@ -119,6 +119,7 @@ function Bar() {
   const pages = useEditorState((state) => state.doc.pages.length);
   const changed = useEditorState(changedCount);
   const warned = useEditorState(warnedCount, shallowEqual);
+  const atRest = useEditorState((state) => unlikeAtRest(state.doc));
   const exporting = useEditorState((state) => state.exporting);
   // The document opened again, or couldn't: said in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
@@ -133,18 +134,25 @@ function Bar() {
       {reopen !== null && (
         <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
       )}
-      {changed === 0 && warned.count === 0 && (
-        <span className={styles.hint}>
+      {changed === 0 && (
+        // Beside the count before any change, it gives way to it on a narrow screen.
+        <span className={atRest.count > 0 ? `${styles.hint} ${styles.besideCount}` : styles.hint}>
           <span className={styles.click}>Double-click text to change it</span>
           <span className={styles.tap}>Double-tap text to change it</span>
         </span>
       )}
       <span className={styles.status}>
-        {changed > 0 && counted(changed, { one: "change", other: "changes" })}
-        {warned.count > 0 && (
+        {changed === 0 ? (
+          <AtRest {...atRest} />
+        ) : (
           <>
-            {" · "}
-            <Warn>{warned.count}</Warn> {warned.label}
+            {counted(changed, { one: "change", other: "changes" })}
+            {warned.count > 0 && (
+              <>
+                {" · "}
+                <Warn>{warned.count}</Warn> {warned.label}
+              </>
+            )}
           </>
         )}
       </span>
@@ -160,6 +168,17 @@ function Bar() {
         Export <kbd>{COMMAND}S</kbd>
       </Button>
     </header>
+  );
+}
+
+/** Before any change, where an edit won't match, warned (Rule 1, for the whole document): nothing when it all will. */
+function AtRest({ count, approximate }: { count: number; approximate: boolean }) {
+  if (count === 0) return null;
+  const places = formOf(count, { one: "place", other: "places" });
+  return (
+    <>
+      Edits in <Warn>{count}</Warn> {places} {approximate ? "will look different" : "will use a similar font"}
+    </>
   );
 }
 

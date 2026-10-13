@@ -90,6 +90,55 @@ describe("the bar", () => {
     expect(exportButton.getBoundingClientRect().height).toBeLessThan(40);
     await page.viewport(wide, tall);
   });
+
+  test("with nothing changed, it says how to start editing, and stops once something has", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    const hint = screen.getByText("Double-click text to change it");
+    await expect.element(hint).toBeVisible();
+    await change(screen, "is here");
+    await expect.element(hint).not.toBeInTheDocument();
+  });
+
+  test("before any change, it counts the places an edit will use a similar font, warned; then the changes", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+    );
+    const bar = screen.getByRole("banner");
+    await expect.element(bar.getByText("will use a similar font", { exact: false })).toBeVisible();
+    expect(bar.getByText("will use a similar font", { exact: false }).element().textContent).toBe(
+      "Edits in 1 place will use a similar font",
+    );
+    const warn = document.body.appendChild(document.createElement("span"));
+    warn.style.color = "var(--warn)";
+    expect(getComputedStyle(bar.getByText("1", { exact: true }).element()).color).toBe(getComputedStyle(warn).color);
+    warn.remove();
+    await change(screen, "was there");
+    await expect.element(bar.getByText("1 change", { exact: false })).toBeVisible();
+    await expect.element(bar.getByText("will use a similar font", { exact: false })).not.toBeInTheDocument();
+  });
+
+  test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      const screen = await render(
+        <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      );
+      await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
+      await expect.element(screen.getByText("Double-click text to change it")).not.toBeVisible();
+      const key = screen
+        .getByRole("button", { name: /^Export/ })
+        .element()
+        .querySelector("kbd");
+      expect(key === null ? "none" : getComputedStyle(key).display).toBe("none");
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
+  });
 });
 
 describe("export", () => {
@@ -380,38 +429,6 @@ describe("the user's own copy of a font", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [], { pages: [0] });
     // The second file waits for the first; meanwhile neither split asks again.
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
-  });
-});
-
-describe("the bar", () => {
-  test("with nothing changed, it says how to start editing, and stops once something has", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
-    const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
-    );
-    const hint = screen.getByText("Double-click text to change it");
-    await expect.element(hint).toBeVisible();
-    await change(screen, "is here");
-    await expect.element(hint).not.toBeInTheDocument();
-  });
-
-  test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
-    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-    try {
-      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
-      const screen = await render(
-        <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
-      );
-      await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
-      await expect.element(screen.getByText("Double-click text to change it")).not.toBeVisible();
-      const key = screen
-        .getByRole("button", { name: /^Export/ })
-        .element()
-        .querySelector("kbd");
-      expect(key === null ? "none" : getComputedStyle(key).display).toBe("none");
-    } finally {
-      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
-    }
   });
 });
 
