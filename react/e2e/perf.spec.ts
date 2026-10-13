@@ -21,6 +21,7 @@ const DOWN_MBIT = 10; // broadband's slower end
 const UP_MBIT = 5;
 const BYTES_PER_MBIT = 1_000_000 / 8;
 const TYPED = "abcdefghijklmnopqrst";
+const REST_MS = 400; // the pointer on Export before the press: a nominal reach, since the probe can't time a person's
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
 test.skip(!process.env.PERF, "the probe runs on its own: npm run perf");
@@ -380,14 +381,22 @@ test("change all, a burst of undos and export on a long contract", async ({ page
   }
   const undoBurst = await answered(page);
 
-  // Export: the request, and the press to the download.
+  // Export from the keyboard, which gives no warning; then by the pointer, which rests on Export first.
   await reset(page, false);
-  const downloaded = page.waitForEvent("download");
-  const pressed = Date.now();
-  await page.getByRole("button", { name: /^Export/ }).click();
+  let downloaded = page.waitForEvent("download");
+  let pressed = Date.now();
+  await page.keyboard.press("ControlOrMeta+s");
   await downloaded;
-  const pressToDownloadMs = Date.now() - pressed;
-  const exported = await answered(page);
+  const keyed = { pressToDownloadMs: Date.now() - pressed, ...(await answered(page)) };
+  await reset(page, false);
+  const exportButton = page.getByRole("button", { name: /^Export/ });
+  await exportButton.hover();
+  await page.waitForTimeout(REST_MS);
+  downloaded = page.waitForEvent("download");
+  pressed = Date.now();
+  await exportButton.click();
+  await downloaded;
+  const pointed = { restMs: REST_MS, pressToDownloadMs: Date.now() - pressed, ...(await answered(page)) };
 
   const report = {
     pages: PAGES,
@@ -397,7 +406,8 @@ test("change all, a burst of undos and export on a long contract", async ({ page
     oneLineOnOnePage: onePage,
     oneUndo,
     undoBurstOfThree: undoBurst,
-    export: { pressToDownloadMs, ...exported },
+    exportByKey: keyed,
+    exportByPointer: pointed,
   };
   console.log(`perf ${JSON.stringify(report, null, 2)}`);
   await test

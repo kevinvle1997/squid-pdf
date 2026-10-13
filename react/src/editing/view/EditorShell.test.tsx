@@ -157,6 +157,79 @@ describe("export", () => {
   });
 });
 
+describe("export, started on the way to pressing it", () => {
+  const PDF = { pdf: new Blob(["%PDF-"], { type: "application/pdf" }), skipped: [], notices: [] };
+
+  beforeEach(() => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(exportPdf).mockReset().mockResolvedValue(PDF);
+  });
+
+  test("starts once the pointer rests on Export, and the press takes it: one export, downloaded", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    const exportButton = screen.getByRole("button", { name: /^Export/ });
+    await exportButton.hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(exportPdf).mock.calls[0]?.[1]).toEqual([{ kind: "replace", span_id: span.id, text: "is here" }]);
+
+    await exportButton.click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(1);
+  });
+
+  test("the pointer passing over Export starts nothing", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    // In and out within one task: a test's own pointer moves take longer than passing over does.
+    const exportButton = screen.getByRole("button", { name: /^Export/ }).element();
+    const pointer = { bubbles: true, pointerType: "mouse" };
+    exportButton.dispatchEvent(new PointerEvent("pointerover", { ...pointer, relatedTarget: document.body }));
+    exportButton.dispatchEvent(new PointerEvent("pointerout", { ...pointer, relatedTarget: document.body }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(exportPdf).not.toHaveBeenCalled();
+  });
+
+  test("one started before another change isn't taken: the press exports the edits as they are", async () => {
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    await screen.getByRole("button", { name: /^Export/ }).hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+    await screen.getByRole("button", { name: "Fonts" }).hover();
+
+    const mark = screen.getByRole("button", { name: "is here" });
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox").fill("is there");
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("button", { name: /^Export/ }).click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(exportPdf).mock.calls[1]?.[1]).toEqual([{ kind: "replace", span_id: span.id, text: "is there" }]);
+  });
+
+  test("one that failed is asked for again by the press", async () => {
+    vi.mocked(exportPdf).mockRejectedValueOnce(new ProblemError(aProblem(503, "The server is busy.")));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    const exportButton = screen.getByRole("button", { name: /^Export/ });
+    await exportButton.hover();
+    await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
+
+    await exportButton.click();
+    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    expect(exportPdf).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("an emptied span", () => {
   test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));

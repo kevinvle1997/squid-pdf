@@ -1,11 +1,74 @@
 // The edited document, downloaded under its own name, or split in two at a page. An edit still
-// being typed goes in first.
-import { exportPdf, ProblemError } from "../api/client";
+// being typed goes in first. The whole document's export starts on the way to pressing Export,
+// and the press takes it if the edits it was asked with still stand.
+import { type Exported, exportPdf, ProblemError } from "../api/client";
 import type { Edit } from "../api/types";
 import { reportBug } from "../bugs";
+import { EXPORT_INTENT_MS } from "./constants";
 import { type Editor, spoken } from "./editor";
 import { type Notice, plain, warn } from "./notices";
 import { finish } from "./typing";
+
+/** The export started before Export was pressed, and when it starts: the pointer has rested on it a moment. */
+export interface ExportAhead {
+  timer?: ReturnType<typeof setTimeout>;
+  started?: {
+    readonly edits: readonly Edit[]; // the edits it was asked with: the press takes it only for these
+    readonly ask: AbortController;
+    readonly file: Promise<Exported>;
+    answered: boolean;
+  };
+}
+
+/** The pointer rests on Export, or focus does: once it has a moment, the export starts, for the press to take. */
+export function exportIntended(editor: Editor): void {
+  clearTimeout(editor.ahead.timer);
+  editor.ahead.timer = setTimeout(() => exportAhead(editor), EXPORT_INTENT_MS);
+}
+
+/** The pointer or focus left Export unpressed: an export it started, not yet answered, stops. */
+export function exportUnintended(editor: Editor): void {
+  const { ahead } = editor;
+  clearTimeout(ahead.timer);
+  if (ahead.started?.answered !== false) return;
+  ahead.started.ask.abort();
+  ahead.started = undefined;
+}
+
+/** Start the whole document's export now, for the press to take: the press itself is on its way. */
+export function exportAhead(editor: Editor): void {
+  const { store, reopener, ahead } = editor;
+  clearTimeout(ahead.timer);
+  const { exporting, draft, reading } = store.get();
+  // Not while one runs, nor with words still being typed, which the press takes first; and nothing to change, nothing to save.
+  const ready = !exporting && draft === null && reading.edits.length > 0;
+  if (!ready || ahead.started?.edits === reading.edits) return;
+  ahead.started?.ask.abort();
+  const { edits } = reading;
+  const ask = new AbortController();
+  const file = reopener.withDocument((doc) => exportPdf(doc.id, [...edits], { signal: ask.signal }));
+  const started = { edits, ask, file, answered: false };
+  // A failure is the press's to say, once it asks again.
+  file.then(
+    () => {
+      started.answered = true;
+    },
+    () => undefined,
+  );
+  ahead.started = started;
+}
+
+/** The export started ahead for `edits`, the whole document's, taken by the press; one for other edits is stopped. */
+function takenAhead(editor: Editor, edits: readonly Edit[], pages: Part["pages"]): Promise<Exported> | undefined {
+  const { ahead } = editor;
+  clearTimeout(ahead.timer);
+  const started = ahead.started;
+  ahead.started = undefined;
+  if (started === undefined) return undefined;
+  if (started.edits === edits && pages === undefined) return started.file;
+  started.ask.abort();
+  return undefined;
+}
 
 /** One file to download: which pages, in order, or every page; and its name. */
 interface Part {
@@ -83,8 +146,11 @@ async function downloaded(
   { pages, name }: Part,
 ): Promise<{ said: Notice[]; went: boolean }> {
   const { store, reopener } = editor;
+  const asked = () => reopener.withDocument((doc) => exportPdf(doc.id, [...edits], { pages }));
+  // One started ahead that failed is asked for again: the network may be back.
+  const ahead = takenAhead(editor, edits, pages)?.catch(asked);
   try {
-    const file = await reopener.withDocument((doc) => exportPdf(doc.id, [...edits], { pages }));
+    const file = await (ahead ?? asked());
     download(file.pdf, name);
     // What saving did to the whole file other than asked, each said: a split dropping its tags, say.
     const otherwise = file.notices.map((notice) => warn(notice.detail));
