@@ -38,6 +38,7 @@ class CancelOnDisconnect:
         async def watched_receive() -> Message:
             """The browser's messages, noting when the last of its body has come."""
             message = await receive()
+            # .get: ASGI may leave out `more_body` once there's no more.
             if message["type"] != "http.request" or not message.get("more_body", False):
                 body_in.set()
             return message

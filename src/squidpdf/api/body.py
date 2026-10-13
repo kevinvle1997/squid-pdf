@@ -50,10 +50,11 @@ class BodyLimit:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Answer too large or a bad size; otherwise hand the app the body, read whole."""
-        streams_its_own = scope["type"] == "http" and any(
+        # Not a request (the server starting, say), or one whose route reads its own body.
+        passed_on = scope["type"] != "http" or any(
             route.matches(scope)[0] == Match.FULL for route in self.streamed
         )
-        if scope["type"] != "http" or streams_its_own:
+        if passed_on:
             await self.app(scope, receive, send)
             return
         request = Request(scope)
@@ -86,6 +87,7 @@ async def _body_up_to(receive: Receive, limit: int) -> bytes | None:
         # The browser left before sending it all.
         if message["type"] == "http.disconnect":
             raise ClientDisconnect
+        # .get: ASGI may leave out an empty body, and `more_body` once there's no more.
         chunk = message.get("body", b"")
         size += len(chunk)
         if size > limit:

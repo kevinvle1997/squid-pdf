@@ -162,6 +162,7 @@ def _bytes_per_code(font: PageFont) -> int | None:
     """How many bytes each code takes in this font, or None if we can't write it."""
     if font.kind == "type0" and font.encoding != "Identity-H":
         return None  # its codes aren't glyph numbers, so we can't work them out
+    # .get: a kind we can't write by code, as Type1 or Type3, has none.
     return _CODE_BYTES.get(font.kind)
 
 

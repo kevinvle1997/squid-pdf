@@ -61,9 +61,8 @@ class Tally(StrEnum):
     REANALYSED = "reanalysed"  # analyses worked out again, after a deploy retired them
     GOOGLE_HIT = "google_hit"  # Google's copies read from the disk cache
     GOOGLE_FETCHED = "google_fetched"  # downloaded in time
-    GOOGLE_FAILED = (
-        "google_failed"  # none came: failed, late, or held back after a recent failure
-    )
+    # None came: failed, late, or held back after a recent failure.
+    GOOGLE_FAILED = "google_failed"
     GOOGLE_MS = "google_ms"  # waiting on downloads
 
 
