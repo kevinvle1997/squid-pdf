@@ -374,4 +374,23 @@ describe("find and replace", () => {
     await expect.element(screen.getByRole("search")).not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: /^Find/ })).toHaveFocus();
   });
+
+  test("Match case and Whole words are checkboxes beside the fields, and find again as they're ticked", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("HER");
+    const bar = screen.getByRole("search");
+    await expect.element(bar.getByText("1 place · all look identical")).toBeVisible();
+    // A label, as a pointer presses it: the box itself is hidden from the pointer, never from a screen reader.
+    await bar.getByText("Match case").click();
+    await expect.element(bar.getByRole("checkbox", { name: "Match case" })).toBeChecked();
+    await expect.element(bar.getByText("Nothing matches")).toBeVisible();
+    await bar.getByText("Match case").click();
+    await bar.getByText("Whole words").click();
+    await expect.element(bar.getByText("Nothing matches")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(bar).not.toBeInTheDocument();
+  });
 });
