@@ -20,7 +20,7 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.fonts.embedded import FontUnusable, made_once, remembered
+from squidpdf.core.fonts.embedded import FontUnusable, made_once, recalled
 from squidpdf.core.fonts.pool import CodedRun, FontCopy, PooledFont, copy_source
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.plan import DrawPlan, DrawPlanner, coded_in
@@ -56,9 +56,9 @@ class _PageNames:
     # The faces we ship, by (page, face file).
     faces: dict[tuple[int, str], str] = field(default_factory=dict)
 
-    def own_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str | FontUnusable:
-        """The resource name of a copy of a font on a page, added on first use, or why not."""
-        return remembered(self.own, key, add)
+    def own_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str:
+        """A copy of a font's resource name on a page, added on first use; raises why not."""
+        return recalled(self.own, key, add)
 
     def face_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str:
         """The resource name of a face we ship on a page, added on first use."""
@@ -246,10 +246,7 @@ class PageWriter:
         redraw. Raises FontUnusable when the library won't add it.
         """
         key = (page, copy_source(copy))
-        found = self.names.own_resource(key, partial(self._add_copy, page, copy))
-        if isinstance(found, FontUnusable):
-            raise FontUnusable(found.reason)
-        return found
+        return self.names.own_resource(key, partial(self._add_copy, page, copy))
 
     def _add_copy(self, page: int, copy: FontCopy) -> str:
         """Add a copy of a font to a page, and return its resource name.

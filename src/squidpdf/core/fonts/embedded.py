@@ -62,6 +62,15 @@ def remembered[K, V](
     return memo[key]
 
 
+def recalled[K, V](memo: dict[K, V | FontUnusable], key: K, make: Callable[[], V]) -> V:
+    """What `remembered` gives, for a caller that raises the reason it couldn't be made."""
+    found = remembered(memo, key, make)
+    # Couldn't be made: said as it was the first time it was asked for.
+    if isinstance(found, FontUnusable):
+        raise FontUnusable(found.reason)
+    return found
+
+
 def made_once[K, V](memo: dict[K, V], key: K, make: Callable[[], V]) -> V:
     """What `make()` made for `key` the first time: made once per key, then kept."""
     if key not in memo:
