@@ -64,6 +64,15 @@ class _ListedFile:
 
 
 @dataclass(frozen=True, slots=True)
+class _Family:
+    """One of Google's families, as the vendored list has it."""
+
+    folder: str  # under the commit, e.g. "ofl/poppins"
+    reserved_name: bool  # its licence reserves its name, which a cut may not carry
+    files: tuple[_ListedFile, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class GoogleFile:
     """One font file in Google's collection at the pinned commit, and how to draw with it."""
 
@@ -220,6 +229,17 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     A file of another weight is no copy, though a fixed-width one would pass the
     width check. Raises FontUnusable, saying why, when there's none to use.
     """
+    family = _family_of(font)
+    weight = weight_of(font, descriptor)
+    # None of the nine: a file naming a new weight per page would get a cut of each.
+    if weight not in WEIGHTS:
+        raise FontUnusable(Message("google_no_cut"))
+    style, _usual_cut = style_of(font, descriptor)
+    return _file_in(family, weight=weight, italic=style in ("italic", "bold-italic"))
+
+
+def _family_of(font: str) -> _Family:
+    """Google's family of a document's font. Raises FontUnusable when it has none."""
     listed = _family_list()
     key = bare_name(font)
     key = listed["aliases"].get(key, key)  # .get: most families were never renamed
@@ -227,27 +247,28 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if family is None:
         raise FontUnusable(Message("google_not_listed"))
-    weight = weight_of(font, descriptor)
-    # None of the nine: a file naming a new weight per page would get a cut of each.
-    if weight not in WEIGHTS:
-        raise FontUnusable(Message("google_no_cut"))
-    style, _usual_cut = style_of(font, descriptor)
-    italic = style in ("italic", "bold-italic")
-    files = [_ListedFile(*row) for row in family["files"]]  # rows keep the fields' order
-    same_slant = [file for file in files if file.italic == italic]
-    folder = family["folder"]
+    files = tuple(_ListedFile(*row) for row in family["files"])  # rows keep the fields' order
+    return _Family(family["folder"], family["reserved_name"], files)
+
+
+def _file_in(family: _Family, *, weight: int, italic: bool) -> GoogleFile:
+    """The family's file in this weight and slant: a fixed one, else its variable one, cut.
+
+    Raises FontUnusable when it has neither, or may not be cut.
+    """
+    same_slant = [file for file in family.files if file.italic == italic]
     # A fixed file in this weight and slant.
     fixed = next((f for f in same_slant if not f.variable and f.weight == weight), None)
     if fixed is not None:
-        return GoogleFile(f"{folder}/{fixed.name}", fixed.blob, None)
+        return GoogleFile(f"{family.folder}/{fixed.name}", fixed.blob, None)
     variable = next((file for file in same_slant if file.variable), None)
     # Neither: no file in this weight and slant.
     if variable is None:
         raise FontUnusable(Message("google_no_cut"))
     # Variable only, but its licence reserves its name, which a cut may not carry.
-    if family["reserved_name"]:
+    if family.reserved_name:
         raise FontUnusable(Message("google_name_reserved"))
-    return GoogleFile(f"{folder}/{variable.name}", variable.blob, weight)
+    return GoogleFile(f"{family.folder}/{variable.name}", variable.blob, weight)
 
 
 def blob_hash(data: bytes) -> str:
