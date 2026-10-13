@@ -8,7 +8,7 @@ that is not a whole word. Pure functions: no PDF is opened here.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
 from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, TextPiece, index_of, span_id
@@ -24,14 +24,27 @@ def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
     invariant is what keeps span ids stable. Re-extracting after an edit would
     change every id and dangle every reference the client holds.
     """
-    spans: list[Span] = []
+    # A blank group is no span, and takes no place in the count each id is made from.
+    written = [(page, group) for page, group in _each_group(pages) if _text_in(group).strip()]
+    return index_of(
+        _span_from(page, group, ordinal=ordinal)
+        for ordinal, (page, group) in enumerate(written)
+    )
+
+
+def _each_group(
+    pages: Iterable[list[list[TextPiece]]],
+) -> Iterator[tuple[int, list[TextPiece]]]:
+    """Each group of pieces a span may be made from, and its page, in order."""
     for page, lines in enumerate(pages):
         for line in lines:
             for group in _merge(line):
-                span = _span_from(page, group, ordinal=len(spans))
-                if span is not None:
-                    spans.append(span)
-    return index_of(spans)
+                yield page, group
+
+
+def _text_in(group: list[TextPiece]) -> str:
+    """The text a group of pieces writes, as one."""
+    return "".join(piece.text for piece in group)
 
 
 def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
@@ -69,12 +82,9 @@ def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     return _KERNING_PT <= gap <= piece.size * GAP_RATIO
 
 
-def _span_from(page: int, group: list[TextPiece], ordinal: int) -> Span | None:
-    """Turn one merged group of pieces into a Span, or None if blank."""
-    text = "".join(piece.text for piece in group)
-    if not text.strip():
-        return None
-
+def _span_from(page: int, group: list[TextPiece], ordinal: int) -> Span:
+    """Turn one merged group of pieces, not blank, into a Span."""
+    text = _text_in(group)
     fragments = tuple(
         Fragment(text=piece.text, bbox=_round_box(piece.box), origin=_round_point(piece.origin))
         for piece in group
