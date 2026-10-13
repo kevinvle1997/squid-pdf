@@ -143,7 +143,7 @@ describe("a page", () => {
     await editSpan(screen);
     await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
     await userEvent.keyboard("{End}Q");
-    await expect.element(screen.getByText("no Q in this font, so the line is drawn in Lato Bold")).toBeVisible();
+    await expect.element(screen.getByText("no Q in this font, so the line is drawn in our Lato Bold")).toBeVisible();
   });
 
   test("a span in a right-hand column has its chip under it, ending where it ends, not squeezed against the page's edge", async () => {

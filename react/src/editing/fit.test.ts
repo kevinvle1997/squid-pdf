@@ -45,7 +45,7 @@ describe("the fit check", () => {
   test("a missing letter that draws nothing alone is named in the chip, as the server names it", () => {
     const fit = { deltaPt: 0, roomPt: 0, missing: ["\u00ad", "é"], options: [] };
     expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
-      "no optional hyphen or é in this font, so the line is drawn in Liberation Serif Regular",
+      "no optional hyphen or é in this font, so the line is drawn in our Liberation Serif Regular",
     ]);
   });
 

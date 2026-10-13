@@ -7,7 +7,7 @@
 
 # What's wrong with a replacement.
 # `{font}` is the face that draws the line instead.
-missing = "no {chars} in this font, so the line is drawn in {font}"
+missing = "no {chars} in this font, so the line is drawn in our {font}"
 will_leave_out = "{letters} will be left out: no font we have can draw them"
 chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"

@@ -72,7 +72,7 @@ def _dressed(sentence: str) -> bool:
         (Message("too_long", {"delta_pt": 1.45}), "1.5 pt too long"),
         (
             Message("missing", {"chars": ["é", "ß"], "font": "Carlito Bold"}),
-            "no é or ß in this font, so the line is drawn in Carlito Bold",
+            "no é or ß in this font, so the line is drawn in our Carlito Bold",
         ),
         (
             Message("left_out", {"letters": ["中", "文"]}),
@@ -94,7 +94,7 @@ def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeyp
 def test_a_list_with_no_joiner_of_its_own_is_joined_as_items():
     """Only `chars` and `letters` have their own; a new list must not fail when it's said."""
     fit = Message("missing", {"chars": ["é"], "font": ["Carlito Bold", "Arimo Regular"]})
-    expected = "no é in this font, so the line is drawn in Carlito Bold, Arimo Regular"
+    expected = "no é in this font, so the line is drawn in our Carlito Bold, Arimo Regular"
     assert_equal(words.render(fit), expected, "a list with no join_font")
 
 
@@ -115,7 +115,7 @@ def test_a_list_with_no_joiner_of_its_own_is_joined_as_items():
 )
 def test_a_character_that_draws_nothing_is_named(character, said):
     fit = Message("missing", {"chars": ["é", character], "font": "Noto Sans Regular"})
-    expected = f"no é or {said} in this font, so the line is drawn in Noto Sans Regular"
+    expected = f"no é or {said} in this font, so the line is drawn in our Noto Sans Regular"
     assert_equal(words.render(fit), expected, "the sentence naming it")
     left_out = Message("left_out", {"letters": [character]})
     expected = f"Left out {said}: no font we have can draw them."
