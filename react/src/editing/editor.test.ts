@@ -15,7 +15,7 @@ import {
 } from "./editor";
 import { exportNow, partName, splitAfter, splitPages } from "./export";
 import { plain, warn } from "./notices";
-import { edit, enter, finish, troublesIn, typeInto } from "./typing";
+import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -73,6 +73,36 @@ describe("an edit", () => {
     expect(editor.store.get().said.text).toBe("10.0 pt too long");
     typeInto(editor, "ababac");
     expect(editor.store.get().said.text).toContain("no c in this font");
+  });
+
+  test("Up or Down chooses how a long line fits, and the edit takes it while it's offered", () => {
+    // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
+    const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz"].map((letter) => [letter, 500]));
+    const long = aSpan({ id: "long", text: "abcdefghijklmnopqrst" });
+    editor = createEditor(FILE, aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
+    edit(editor, "long", null);
+    typeInto(editor, `${long.text}u`);
+    expect(editor.store.get().said.text).toBe("5.0 pt too long; Up or Down chooses how it fits");
+
+    // From leaving it long, the last, round to the first.
+    expect(stepWayOut(editor, 1)).toBe(true);
+    expect(editor.store.get().said.text).toBe(COPY.options.shrink?.label);
+    expect(troublesIn(editor.store.get(), `${long.text}u`).said).toEqual([]);
+    finish(editor, true);
+    expect(editor.store.get().reading.edits).toEqual([
+      { kind: "replace", span_id: "long", text: `${long.text}u`, strategy: "shrink" },
+    ]);
+
+    // Far longer, only leaving it long is offered: nothing to choose, and the edit is drawn as typed.
+    edit(editor, "long", null);
+    typeInto(editor, `${long.text}uvwxyz`);
+    expect(stepWayOut(editor, 1)).toBe(false);
+    finish(editor, true);
+    expect(editor.store.get().reading.edits.at(-1)).toEqual({
+      kind: "replace",
+      span_id: "long",
+      text: `${long.text}uvwxyz`,
+    });
   });
 
   test("typing into text a form field draws says at once that an edit here is left out", () => {

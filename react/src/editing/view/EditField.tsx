@@ -12,15 +12,16 @@ import { isFileDropItem, useDrop } from "react-aria";
 import { FileTrigger, Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
+import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
-import { widthPt } from "../fit";
+import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
 import { redact } from "../redaction";
-import { enter, finish, troublesIn, typeInto } from "../typing";
+import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { fieldScaleOf, pinnedUnder, points, shownWidthPt, spanTextStyle } from "./geometry";
@@ -42,6 +43,16 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const drawnIn = span.substitute ?? shownName(span.font);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
+  // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
+  const rules = useEditorState((state) => state.doc.fit);
+  const copy = useEditorState((state) => state.doc.copy);
+  const asked = useEditorState((state) => state.draft?.strategy);
+  const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
+  const way = fit === undefined ? "as-is" : wayDrawn(asked, fit);
+  const set = fit === undefined ? { size: 1, scaleX: 1 } : setAs(way, fit);
+  // Leave it long alone is no choice: nothing to offer.
+  const choosable = fit !== undefined && fit.options.length > 1 ? fit.options : [];
+  const ways = choosable.map((id) => ({ id, label: copy.options[id]?.label ?? id }));
 
   // One trouble a line: a sentence of the server's, then the fit's own.
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
@@ -96,6 +107,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // Up and Down choose how a long line fits; while it fits, they're the field's own.
+    const step = { ArrowUp: -1, ArrowDown: 1 } as const;
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && stepWayOut(editor, step[event.key])) {
+      event.preventDefault();
+      return;
+    }
     if (event.key !== "Enter" && event.key !== "Escape") return;
     event.preventDefault();
     if (event.key === "Enter") enter(editor);
@@ -138,6 +155,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             "--field-width": points(wide, info),
             "--field-height": height,
             "--field-scale": scale,
+            "--field-shrink": set.size,
+            "--field-narrow": set.scaleX,
           }}
         />
       </TextField>
@@ -149,9 +168,24 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         ) : (
           <span className={styles.facts} aria-hidden="true">
             <span>{drawnIn}</span>
-            <Num>{SIZE.format(span.size)} pt</Num>
+            <Num>{SIZE.format(span.size * set.size)} pt</Num>
             {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
             {span.substitute === null ? <span>looks identical</span> : <Warn>a similar font</Warn>}
+          </span>
+        )}
+        {ways.length > 0 && (
+          // A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus.
+          <span className={styles.ways}>
+            <Choices
+              label="How it fits"
+              options={ways}
+              chosen={way}
+              onChoose={(next) => chooseWayOut(editor, next)}
+              keepFocus
+            />
+            <span className={styles.wayKeys} aria-hidden="true">
+              <kbd>↑↓</kbd>
+            </span>
           </span>
         )}
         {offered && (

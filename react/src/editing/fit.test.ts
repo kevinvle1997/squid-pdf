@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
 import { aFont, aSpan, COPY as copy, RULES } from "../fixtures";
-import { fitOf, missingIn, optionsFor, troublesOf, widthPt } from "./fit";
+import { fitOf, missingIn, optionsFor, setAs, troublesOf, wayDrawn, widthPt } from "./fit";
 import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
@@ -30,7 +30,7 @@ describe("the fit check", () => {
 
   test("text as long as the original fits exactly", () => {
     const fit = fitOf(span, { font, text: "jihgfedcba", rules: RULES });
-    expect(fit).toEqual({ deltaPt: 0, roomPt: 0, missing: [], options: [] });
+    expect(fit).toEqual({ originalPt: 50, deltaPt: 0, roomPt: 0, missing: [], options: [] });
   });
 
   test("a little longer is within the tolerance: nothing to say, nothing to offer", () => {
@@ -52,7 +52,7 @@ describe("the fit check", () => {
   });
 
   test("a missing letter that draws nothing alone is named in the chip, as the server names it", () => {
-    const fit = { deltaPt: 0, roomPt: 0, missing: ["\u00ad", "é"], options: [] };
+    const fit = { originalPt: 50, deltaPt: 0, roomPt: 0, missing: ["\u00ad", "é"], options: [] };
     expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
       "no optional hyphen or é in this font, so the line is drawn in our Liberation Serif Regular",
     ]);
@@ -85,10 +85,38 @@ describe("the fit check", () => {
   });
 });
 
+describe("a way out", () => {
+  // 5 pt past a 100 pt line: every way out is offered.
+  const long = aSpan({ id: "s2", text: "abcdefghijklmnopqrst", bbox: { x0: 0, y0: 0, x1: 100, y1: 12 } });
+  const fit = fitOf(long, { font, text: "abcdefghijklmnopqrstu", rules: RULES });
+
+  test("is drawn only when it's offered; else the line is drawn as typed, as the server draws it", () => {
+    expect(fit.options).toEqual(["shrink", "condense", "as-is"]);
+    expect(wayDrawn("shrink", fit)).toBe("shrink");
+    expect(wayDrawn(undefined, fit)).toBe("as-is");
+    expect(wayDrawn("condense", { options: ["as-is"] })).toBe("as-is");
+  });
+
+  test("ends the line where the original did: smaller letters, or narrower ones", () => {
+    // 105 pt set to end at 100.
+    expect(setAs("shrink", fit)).toEqual({ size: 100 / 105, scaleX: 1 });
+    expect(setAs("condense", fit)).toEqual({ size: 1, scaleX: 100 / 105 });
+    expect(setAs("as-is", fit)).toEqual({ size: 1, scaleX: 1 });
+  });
+
+  test("taken, the line isn't too long any more; a missing letter still is said", () => {
+    const said = { rules: RULES, copy, substitute: "Liberation Serif Regular" };
+    expect(troublesOf(fit, { ...said, way: "shrink" })).toEqual([]);
+    expect(troublesOf({ ...fit, missing: ["é"] }, { ...said, way: "condense" })).toEqual([
+      "no é in this font, so the line is drawn in our Liberation Serif Regular",
+    ]);
+  });
+});
+
 // The cases the server's fit check is tested on too (tests/editing/test_fit.py): the same verdict.
 describe("a line is too long only past its room, as the server says", () => {
   test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_by, options }) => {
-    const fit = { deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
+    const fit = { originalPt: original_pt, deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
     const said = too_long_by === null ? [] : [fill(copy.too_long, { delta_pt: too_long_by })];
     expect(troublesOf(fit, { rules: shared.rules, copy, substitute: "Liberation Serif Regular" })).toEqual(said);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);

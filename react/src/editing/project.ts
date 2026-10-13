@@ -56,6 +56,7 @@ export interface Differing {
   readonly span: SpanInfo;
   readonly text: string;
   readonly redacted: boolean;
+  readonly strategy: Strategy | undefined; // how a replacement too long is to fit, when one is asked for
 }
 
 /**
@@ -66,11 +67,13 @@ export function differing(now: PageEdits | undefined, then: PageEdits | undefine
   const was = new Map(then?.spans.map((reading) => [reading.span.id, reading]));
   const out: Differing[] = [];
   for (const reading of now?.spans ?? []) {
-    const { span, text, redacted } = reading;
-    if (!sameSpan(reading, was.get(span.id))) out.push({ span, text, redacted });
+    const { span, text, redacted, strategy } = reading;
+    if (!sameSpan(reading, was.get(span.id))) out.push({ span, text, redacted, strategy });
     was.delete(span.id);
   }
-  for (const reading of was.values()) out.push({ span: reading.span, text: reading.span.text, redacted: false });
+  for (const reading of was.values()) {
+    out.push({ span: reading.span, text: reading.span.text, redacted: false, strategy: undefined });
+  }
   return out;
 }
 

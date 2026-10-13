@@ -253,7 +253,7 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
   // Each letter makes it longer; the number on screen ticks, what's said doesn't.
   await field.pressSequentially("xxx");
-  await expect(page.getByRole("status")).toHaveText("5.5 pt too long");
+  await expect(page.getByRole("status")).toHaveText("5.5 pt too long; Up or Down chooses how it fits");
   await field.fill("This agreement is made on 2 April 2026 between");
 
   await page.keyboard.press("Tab");

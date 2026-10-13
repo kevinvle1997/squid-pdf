@@ -7,6 +7,7 @@ import { MISSING_SPACE_EM } from "./constants";
 import { fill, shownAs } from "./words";
 
 export interface Fit {
+  originalPt: number; // how wide the original is, in points: where a way out ends the line
   deltaPt: number; // how much longer than the original, in points; negative is shorter
   roomPt: number; // the free space after the span on its line: too long is only past it
   missing: string[]; // letters the span's font can't draw, each once, in the order typed
@@ -81,11 +82,35 @@ export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; t
   const deltaPt = Math.round((widthPt(spelled, font.glyphs, span.size) - originalPt) * 100) / 100;
   const roomPt = span.room_pt;
   return {
+    originalPt,
     deltaPt,
     roomPt,
     missing: missingIn(spelled, font.glyphs),
     options: optionsFor(deltaPt, { originalPt, roomPt, rules }),
   };
+}
+
+/** The way out drawn: the one asked for if it's offered, else as typed. `_strategy_drawn` in editing/fit.py. */
+export function wayDrawn(asked: Strategy | undefined, { options }: Pick<Fit, "options">): Strategy {
+  return asked !== undefined && options.includes(asked) ? asked : "as-is";
+}
+
+/**
+ * What a way out sets the line at, to end where the original did: its size, and how much narrower its
+ * letters, each as a share of the span's own. `replace_fit` in editing/fit.py.
+ */
+export function setAs(way: Strategy, { originalPt, deltaPt }: Pick<Fit, "originalPt" | "deltaPt">) {
+  const toEnd = originalPt / (originalPt + deltaPt);
+  switch (way) {
+    case "shrink":
+      return { size: toEnd, scaleX: 1 };
+    case "condense":
+      return { size: 1, scaleX: toEnd };
+    case "as-is":
+      return { size: 1, scaleX: 1 };
+    default:
+      return way satisfies never;
+  }
 }
 
 /** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
@@ -96,13 +121,13 @@ export function troubleKindOf(fit: Fit, rules: FitRules): string {
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */
 export function troublesOf(
   fit: Fit,
-  { rules, copy, substitute }: { rules: FitRules; copy: Copy; substitute: string },
+  { rules, copy, substitute, way = "as-is" }: { rules: FitRules; copy: Copy; substitute: string; way?: Strategy },
 ): string[] {
   const troubles: string[] = [];
   const chars = fit.missing.map((letter) => shownAs(letter, copy.characters));
   if (chars.length > 0) troubles.push(fill(copy.missing, { chars, font: substitute }));
-  // The part past its room is the part that collides.
-  if (runsPast(fit.deltaPt, fit.roomPt, rules)) {
+  // The part past its room collides, unless a way out ends it where the original did.
+  if (runsPast(fit.deltaPt, fit.roomPt, rules) && way === "as-is") {
     const pastRoomPt = Math.round((fit.deltaPt - fit.roomPt) * 100) / 100;
     troubles.push(fill(copy.too_long, { delta_pt: pastRoomPt }));
   }
