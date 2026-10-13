@@ -11,14 +11,12 @@ from __future__ import annotations
 from squidpdf.core.app import words as words
 from squidpdf.core.app.errors import (
     Damaged as Damaged,
-    Encrypted as Encrypted,
     ErrorController as ErrorController,
     Failure as Failure,
     InvalidRequest as InvalidRequest,
     NotFound as NotFound,
     Problem as Problem,
     TooHeavy as TooHeavy,
-    Unreadable as Unreadable,
 )
 from squidpdf.core.app.logs import (
     ERROR as ERROR,

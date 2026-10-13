@@ -51,10 +51,10 @@ from squidpdf.editing import (
     RedactionFailed,
     Replace,
     Strategy,
+    check_text,
     replace_fit,
     save_edited,
 )
-from squidpdf.editing.edits import check_text
 
 # A terminal's colours: dim, red, green, yellow, and back to plain.
 _COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")

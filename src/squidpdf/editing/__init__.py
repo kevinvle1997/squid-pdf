@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from squidpdf.editing.apply import (
     apply_edits as apply_edits,
-    log_fits as log_fits,
     resolve as resolve,
 )
 from squidpdf.editing.edits import (
@@ -22,6 +21,7 @@ from squidpdf.editing.edits import (
     RotatePage as RotatePage,
     SpanEdit as SpanEdit,
     Strategy as Strategy,
+    check_text as check_text,
 )
 from squidpdf.editing.errors import (
     BadReference as BadReference,
@@ -29,14 +29,10 @@ from squidpdf.editing.errors import (
     RedactionFailed as RedactionFailed,
 )
 from squidpdf.editing.export import (
-    ExportController as ExportController,
     save_edited as save_edited,
 )
 from squidpdf.editing.fit import (
     FitReport as FitReport,
-    Fitted as Fitted,
-    LogFits as LogFits,
-    Option as Option,
     insert_fit as insert_fit,
     options_for as options_for,
     replace_fit as replace_fit,
@@ -45,5 +41,4 @@ from squidpdf.editing.redaction import RedactionController as RedactionControlle
 from squidpdf.editing.types import (
     Applied as Applied,
     Notice as Notice,
-    Skipped as Skipped,
 )
