@@ -101,32 +101,13 @@ class FontInfo(TypedDict):
     glyphs: dict[str, float]
 
 
-class _Analysed(TypedDict):
-    """What the analysis and the Document the browser gets have alike: build, pages, spans.
-
-    `AnalysisFacts`, the analysis as kept beside its spans, is the rest of it.
-    """
-
-    build: str
-    pages: list[PageInfo]
-    spans: list[SpanInfo]
-
-
-class Analysis(_Analysed):
-    """Everything worked out from the original under one build, in no language."""
-
-    active_content_dropped: bool  # the original had what acts on its own taken out
-
-    # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
-    fonts: list[FontFacts]
-
-
 class AnalysisFacts(TypedDict):
-    """The analysis less its spans, as kept beside them: read on every visit."""
+    """The analysis of the original under one build, less its spans: read on every visit."""
 
     build: str
-    active_content_dropped: bool
+    active_content_dropped: bool  # the original had what acts on its own taken out
     pages: list[PageInfo]
+    # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
 
 
@@ -185,9 +166,12 @@ class DocumentNoticeInfo(MessageInfo):
     detail: str
 
 
-class Document(_Analysed):
+class Document(TypedDict):
     """The stored document, as the browser gets it, in the reader's language."""
 
+    build: str
+    pages: list[PageInfo]
+    spans: list[SpanInfo]
     fonts: list[FontInfo]
 
     id: str

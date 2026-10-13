@@ -90,10 +90,6 @@ class Encrypted(Problem):
     status = 422
 
 
-# The engine can't open or read the file, whichever the reason: catch this for both.
-Unreadable = (Damaged, Encrypted)
-
-
 class TooHeavy(Problem):
     """The work went past the memory ceiling, or past a limit the PDF library keeps."""
 
