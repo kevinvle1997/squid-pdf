@@ -110,22 +110,19 @@ class PageWriter:
     """
 
     driver: PdfDriver
+    # Measures each line, and names a substitute where a page won't take a font.
+    plans: DrawPlanner
     names: _PageNames = field(default_factory=_PageNames)
     # By the face's file, or Google's source for its copy: one font file each.
     added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
-    def draw(
-        self, span: Span, text: str, *, plan: DrawPlan, plans: DrawPlanner, setting: Setting
-    ) -> list[Message]:
-        """Draw `text` at the span's baseline as `plan` says, and say what came out otherwise.
-
-        `plans` measures, and names a substitute if the page won't take the font.
-        """
+    def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> list[Message]:
+        """Draw `text` at the span's baseline as `plan` says; says what came out otherwise."""
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
         # A face we ship draws the whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
-            self._write_in_face(span, drawn_in, text=plan.text, plans=plans, setting=setting)
+            self._write_in_face(span, drawn_in, text=plan.text, setting=setting)
             return _said_left_out(plan.left_out)
         # The file's own font, written by code as the original was.
         if isinstance(drawn_in, PooledFont) and by_code is not None:
@@ -136,20 +133,13 @@ class PageWriter:
             try:
                 resources = self._resources(span.page, drawn_in, plan.text)
             except FontUnusable as problem:  # the page wouldn't take a copy after all
-                substitute = plans.substitute_for(span, text)
+                substitute = self.plans.substitute_for(span, text)
                 self._write_in_face(
-                    span, substitute.face, text=substitute.text, plans=plans, setting=setting
+                    span, substitute.face, text=substitute.text, setting=setting
                 )
                 return [problem.reason, *_said_left_out(substitute.left_out)]
             self._note_lent_letters(drawn_in, plan.text)
-            self._write(
-                span,
-                plan.text,
-                font=drawn_in,
-                resources=resources,
-                plans=plans,
-                setting=setting,
-            )
+            self._write(span, plan.text, font=drawn_in, resources=resources, setting=setting)
             return _said_left_out(plan.left_out)
         assert_never(drawn_in)
 
@@ -179,15 +169,13 @@ class PageWriter:
         self.driver.save(path)
         return notices
 
-    def _write_in_face(
-        self, span: Span, face: Face, *, text: str, plans: DrawPlanner, setting: Setting
-    ) -> None:
+    def _write_in_face(self, span: Span, face: Face, *, text: str, setting: Setting) -> None:
         """Write `text` at the span's baseline in a face we ship."""
         resource = self._face_resource(span.page, face)
         self.added[face.file].note_drawn(text)
         font = self.driver.face_font(face)
         resources = dict.fromkeys(text, resource)
-        self._write(span, text, font=font, resources=resources, plans=plans, setting=setting)
+        self._write(span, text, font=font, resources=resources, setting=setting)
 
     def _write(
         self,
@@ -196,7 +184,6 @@ class PageWriter:
         *,
         font: FontProgram,
         resources: Mapping[str, str],
-        plans: DrawPlanner,
         setting: Setting,
     ) -> None:
         """Write `text` at the span's baseline, placed by `font`'s widths.
@@ -209,7 +196,7 @@ class PageWriter:
         cos, sin = QUARTER_TURNS[setting.turn_ccw]
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
-        words, _width = plans.words_of(span, text, font=font, size=setting.size)
+        words, _width = self.plans.words_of(span, text, font=font, size=setting.size)
         offset_runs = _runs_in(words, resources=resources, font=font, size=setting.size)
         runs = [
             TextRun(run.text, (x + step_x * run.offset, y + step_y * run.offset), run.resource)
