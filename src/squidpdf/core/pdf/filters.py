@@ -107,21 +107,23 @@ def _a85_fewest(written: bytes, wanted: int) -> int | None:
         # White space, read past.
         if byte in _WHITE_SPACE:
             continue
-        is_zeros = byte == _A85_ZEROS and in_group == 0
-        # A group of zeros, in one character.
-        if is_zeros:
-            given += _A85_GROUP - 1
-        # One character of a group: any other, as a reader that takes any into one counts it.
-        if not is_zeros:
-            in_group += 1
-        # A group is whole.
-        if in_group == _A85_GROUP:
-            in_group = 0
-            given += _A85_GROUP - 1
+        given, in_group = _a85_after(byte, given=given, in_group=in_group)
         # Enough: they end with this character.
         if given >= wanted:
             return taken
     return None
+
+
+def _a85_after(byte: int, *, given: int, in_group: int) -> tuple[int, int]:
+    """The bytes whole groups give, and the characters of the group being read, after `byte`."""
+    # A group of zeros, in one character.
+    if byte == _A85_ZEROS and in_group == 0:
+        return given + _A85_GROUP - 1, 0
+    # The character that makes a group whole.
+    if in_group + 1 == _A85_GROUP:
+        return given + _A85_GROUP - 1, 0
+    # One character of a group: any other, as a reader that takes any into one counts it.
+    return given, in_group + 1
 
 
 def _a85_decoded(written: bytes, at_most: int) -> bytes:
@@ -160,18 +162,19 @@ def _run_length_fewest(written: bytes, wanted: int) -> int | None:
     at = 0  # where the next run's length byte is
     while at < len(written) and written[at] != _RUN_END:
         length = written[at]
-        # A run of the next byte, repeated.
-        if length > _RUN_END:
-            given += _RUN_REPEATS - length
-            at += 2
-        # A run of the next bytes as they are: enough may come partway in it.
-        if length < _RUN_END:
-            run = length + 1
-            # Enough within this run: they end with its byte that gives the last.
-            if given + run >= wanted:
-                return at + 1 + wanted - given
+        as_they_are = length < _RUN_END  # else the next byte, repeated
+        run = length + 1
+        # A run of the next bytes as they are, and enough within it: they end with the last.
+        if as_they_are and given + run >= wanted:
+            return at + 1 + wanted - given
+        # A run of the next bytes as they are, short of enough.
+        if as_they_are:
             given += run
             at += 1 + run
+            continue
+        # A run of the next byte, repeated.
+        given += _RUN_REPEATS - length
+        at += 2
         # Enough: they end with this run.
         if given >= wanted:
             return min(at, len(written))
