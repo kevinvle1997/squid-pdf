@@ -132,6 +132,17 @@ describe("a page", () => {
     expect(field.scrollLeft).toBe(0);
   });
 
+  test("a line typed past the page's edge leaves the page where it is: the sheet never scrolls to the caret", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End}");
+    // Far past the right edge of the page, as a long replacement runs.
+    await userEvent.keyboard(" and a good deal more besides, running on past the edge of the page");
+    const sheet = screen.getByRole("textbox").element().closest("section")?.children[1];
+    if (sheet === undefined) throw new Error("no sheet");
+    expect(sheet.scrollLeft).toBe(0);
+  });
+
   test("a face that finishes loading after the field opens sizes the field again", async () => {
     const measure = vi.spyOn(CanvasRenderingContext2D.prototype, "measureText");
     measure.mockReturnValue({ width: 0 } as TextMetrics);

@@ -14,7 +14,9 @@
   max-width: var(--sheet-width);
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
-  overflow: hidden;
+  /* Clipped, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret
+     typed past the page's edge in view, sliding the page out from under the field. */
+  overflow: clip;
 }
 /* The page in its own points: a size container, so a length in points is a cqw. */
 .layer {
