@@ -8,7 +8,7 @@ import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
-  changes: readonly SpanReading[]; // the spans replaced on this page
+  changes: readonly SpanReading[]; // the spans replaced or redacted on this page
   gapPt: number; // a note's height in page points, to keep notes a hit area apart
   shape: "margin" | "list";
   label: string;
@@ -22,15 +22,18 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
   const editor = useEditor();
   if (changes.length === 0) return shape === "margin" ? <div className={styles.margin} /> : null;
 
-  const notes = changes.map(({ span, text: now }) => (
+  const notes = changes.map(({ span, text: now, redacted }) => (
     <Button
       key={span.id}
       className={styles.note}
-      aria-label={`Undo: “${now}” goes back to “${span.text}”`}
+      aria-label={
+        redacted ? `Undo: “${span.text}” is no longer redacted` : `Undo: “${now}” goes back to “${span.text}”`
+      }
       onPress={() => putBack(editor, span.id)}
     >
-      <span className={styles.old}>{shape === "margin" ? changedWordsIn(span.text, now) : span.text}</span>
-      {shape === "list" && <span className={styles.now}>{now}</span>}
+      {/* A redaction takes every word out, so the note strikes them all. */}
+      <span className={styles.old}>{shape === "margin" && !redacted ? changedWordsIn(span.text, now) : span.text}</span>
+      {shape === "list" && <span className={styles.now}>{redacted ? "Redacted" : now}</span>}
       <i className={styles.bar} aria-hidden="true" />
     </Button>
   ));

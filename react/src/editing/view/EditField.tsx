@@ -19,6 +19,7 @@ import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
+import { redact } from "../redaction";
 import { enter, finish, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
@@ -169,6 +170,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             </FileTrigger>
           </span>
         )}
+        {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
+        <span className={styles.redact}>
+          <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
+            Redact
+          </Button>
+        </span>
       </div>
     </>
   );

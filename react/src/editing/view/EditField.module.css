@@ -34,11 +34,12 @@
 /* Each trouble a line of its own; the offer goes under them once the two don't fit side by side. */
 .bad { flex: 1 1 24ch; white-space: pre-line; max-width: 36ch; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
-/* The one part of the chip a pointer can press: the user's own copy of the span's font. */
+/* The parts of the chip a pointer can press: the user's own copy of the span's font, and redacting the span. */
 .offer {
   display: flex; align-items: baseline; gap: var(--s2);
   pointer-events: auto;
 }
+.redact { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
   .chip { animation: fade var(--dur-quick) var(--ease-out); }
 }

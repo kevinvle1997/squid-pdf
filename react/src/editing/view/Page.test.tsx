@@ -188,6 +188,23 @@ describe("a page", () => {
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
   });
 
+  test("Redact in the field's chip takes the whole span out, typed words and all, and its margin note puts it back", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{End} now");
+    await screen.getByRole("button", { name: "Redact" }).click();
+    await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
+    expect(editor.store.get().reading.edits).toEqual([{ kind: "redact", span_id: span.id }]);
+
+    const note = screen.getByRole("button", { name: `Undo: “${WORDS}” is no longer redacted` });
+    await expect.element(note).toBeVisible();
+    expect(note.element().textContent).toBe(WORDS);
+    await note.click();
+    await expect.element(note).not.toBeInTheDocument();
+    expect(editor.store.get().reading.edits).toEqual([]);
+  });
+
   test("undo brings its span into view once: scrolled away after, the page doesn't pull it back", async () => {
     const screen = await draw();
     await editSpan(screen);

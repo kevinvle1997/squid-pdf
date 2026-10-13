@@ -117,7 +117,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(info.height);
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
-  const changes = page.edits?.spans.filter((reading) => reading.replaced) ?? NO_CHANGES;
+  const changes = page.edits?.spans.filter((reading) => reading.replaced || reading.redacted) ?? NO_CHANGES;
   const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
   const [focusedIn, setFocusedIn] = useState(false);

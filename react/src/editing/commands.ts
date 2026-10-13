@@ -21,7 +21,7 @@ export const COMMANDS: readonly Command[] = [
   { keys: "mod+shift+z", whileTyping: false, run: redo },
   { keys: "mod+y", whileTyping: false, run: redo },
   // Redact the span: a Mac's Delete is Backspace, and a full keyboard's forward Delete works too. In a text
-  // field they're the field's own, deleting a word or a line, as they do everywhere else.
+  // field they're the field's own, deleting a word or a line, as they do everywhere else; its chip has Redact.
   { keys: "mod+backspace", whileTyping: false, run: redact },
   { keys: "mod+delete", whileTyping: false, run: redact },
 ];
