@@ -495,21 +495,20 @@ class PdfFile:
 
     def _strings_in(self, written: bytes) -> list[str]:
         """Each string in `written`, part of a drawing, as text."""
+        reader, lexbuf = _lexer_of(written)
+        return [
+            self._string_from(start, reader, lexbuf)
+            for start, token in _tokens_in(reader, lexbuf)
+            if token == pymupdf.mupdf.PDF_TOK_STRING
+        ]
+
+    def _string_from(
+        self, start: int, reader: pymupdf.mupdf.FzStream, lexbuf: pymupdf.mupdf.PdfLexbuf
+    ) -> str:
+        """The text of the string `reader` just read, read again from `start` as an object."""
         mu = pymupdf.mupdf
-        reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(written))
-        lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)  # as `_markings_in` has it
-        found: list[str] = []
-        while True:
-            start = mu.fz_tell(reader)
-            token = mu.pdf_lex(reader, lexbuf)
-            # The end of what's written.
-            if token == mu.PDF_TOK_EOF:
-                return found
-            # A string: read again from its start, as an object, for its text.
-            if token == mu.PDF_TOK_STRING:
-                mu.fz_seek(reader, start, 0)
-                string = mu.pdf_parse_stm_obj(self._pdf(), reader, lexbuf)
-                found.append(_text_of(string))
+        mu.fz_seek(reader, start, 0)
+        return _text_of(mu.pdf_parse_stm_obj(self._pdf(), reader, lexbuf))
 
     def _loses_a_string(self, marking: pymupdf.mupdf.PdfObj, *, written: bytes) -> bool:
         """Whether MuPDF's reading of a dictionary holds fewer strings than `written` does.
@@ -524,25 +523,15 @@ class PdfFile:
         After an image MuPDF can't read, every string to the end: nothing says where its
         bytes end. `resources` are those it names an image's colour space from.
         """
-        mu = pymupdf.mupdf
-        reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(drawing))
-        lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)  # as `_markings_in` has it
+        reader, lexbuf = _lexer_of(drawing)
         found: list[str] = []
-        while True:
-            start = mu.fz_tell(reader)
-            token = mu.pdf_lex(reader, lexbuf)
-            # The end of the drawing.
-            if token == mu.PDF_TOK_EOF:
-                return found
+        for start, token in _tokens_in(reader, lexbuf):
             # A string: read again from its start, as an object, for its text.
-            if token == mu.PDF_TOK_STRING:
-                mu.fz_seek(reader, start, 0)
-                found.append(_text_of(mu.pdf_parse_stm_obj(self._pdf(), reader, lexbuf)))
+            if token == pymupdf.mupdf.PDF_TOK_STRING:
+                found.append(self._string_from(start, reader, lexbuf))
                 continue
-            is_operator = token == mu.PDF_TOK_KEYWORD
-            operator = _operator_at(drawing, start, reader) if is_operator else b""
             # Not an image written into the drawing.
-            if operator != b"BI":
+            if not _starts_image(token, drawing=drawing, start=start, reader=reader):
                 continue
             image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
             # An image MuPDF can read: it reads on after it, and another reader may in it.
@@ -552,6 +541,7 @@ class PdfFile:
             # One it can't: what's left may hold anything.
             rest = drawing[start:]
             return found + self._strings_in(rest) + _strings_anywhere_in(rest)
+        return found
 
     def _markings_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj
@@ -566,24 +556,15 @@ class PdfFile:
         # No dictionary in it, as in most drawings.
         if b"<<" not in drawing:
             return
-        reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(drawing))
-        # Small: the wrapper holds no more, so large overruns it; it grows for a long string.
-        lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)
-        while True:
-            start = mu.fz_tell(reader)
-            token = mu.pdf_lex(reader, lexbuf)
-            # The end of the drawing.
-            if token == mu.PDF_TOK_EOF:
-                return
+        reader, lexbuf = _lexer_of(drawing)
+        for start, token in _tokens_in(reader, lexbuf):
             # A dictionary: read to where it ends.
             if token == mu.PDF_TOK_OPEN_DICT:
                 dictionary = self._dictionary_in(reader, lexbuf)
                 yield start, mu.fz_tell(reader), dictionary
                 continue
-            is_operator = token == mu.PDF_TOK_KEYWORD
-            operator = _operator_at(drawing, start, reader) if is_operator else b""
             # Not an image written into the drawing.
-            if operator != b"BI":
+            if not _starts_image(token, drawing=drawing, start=start, reader=reader):
                 continue
             image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
             # An image MuPDF can read: its bytes aren't drawing to it, so it reads on past them.
@@ -702,14 +683,14 @@ class PdfFile:
     def is_signed(self) -> bool:
         """Whether the document holds a signature, or what a signed file keeps for one."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         kept = [mu.pdf_dict_gets(root, key) for key in _SIGNATURE_CHECKS]
         return bool(self._signed_fields(root)) or not all(map(mu.pdf_is_null, kept))
 
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         for field in self._signed_fields(root):
             mu.pdf_dict_dels(field, _FIELD_VALUE)
         for key in _SIGNATURE_CHECKS:
@@ -744,9 +725,8 @@ class PdfFile:
     def _document_entries(self) -> Iterator[_Entry]:
         """Each place the document may keep a hidden copy of its own, and how it's put back."""
         mu = pymupdf.mupdf
-        trailer = mu.pdf_trailer(self._pdf())
-        root = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Root)
-        info = mu.pdf_dict_get(trailer, mu.PDF_ENUM_NAME_Info)
+        root = self._root()
+        info = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Info)
         for key in map(mu.pdf_to_name, _keys_of(info)):
             # A date says when, not what.
             if key in _INFO_DATES:
@@ -1049,8 +1029,7 @@ class PdfFile:
         # Not XML, so not written back: it goes, once anything in it would change.
         if dom is None:
             if _changes([_readings_of(written)], rewritten):
-                root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
-                mu.pdf_dict_del(root, mu.PDF_ENUM_NAME_Metadata)
+                mu.pdf_dict_del(self._root(), mu.PDF_ENUM_NAME_Metadata)
             return
         changed = False
         for piece in _xml_strings(dom):
@@ -1069,7 +1048,7 @@ class PdfFile:
     def _metadata_stream(self) -> pymupdf.mupdf.PdfObj | None:
         """The document's metadata (XMP), a stream the catalog names; None when it has none."""
         mu = pymupdf.mupdf
-        root = mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
+        root = self._root()
         stream = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_Metadata)
         return stream if mu.pdf_is_stream(stream) else None
 
@@ -1081,14 +1060,8 @@ class PdfFile:
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
-        page_obj = mu.pdf_lookup_page_obj(pdf, page)
-        resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        # An empty m_internal means the key isn't there yet, so make it.
-        if not resources.m_internal:
-            resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
-        fonts = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Font)
-        if not fonts.m_internal:
-            fonts = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_Font, 1)
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        fonts = _dictionary_under(resources, mu.PDF_ENUM_NAME_Font)
         mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
 
     def add_opacity(self, page: int, opacity: float) -> str:
@@ -1100,14 +1073,8 @@ class PdfFile:
         pdf = self._pdf()
         permille = round(opacity * _PERMILLE)
         name = f"{_OPACITY_PREFIX}{permille}"
-        page_obj = mu.pdf_lookup_page_obj(pdf, page)
-        resources = mu.pdf_dict_get_inheritable(page_obj, mu.PDF_ENUM_NAME_Resources)
-        # An empty m_internal means the key isn't there yet, so make it.
-        if not resources.m_internal:
-            resources = mu.pdf_dict_put_dict(page_obj, mu.PDF_ENUM_NAME_Resources, 1)
-        states = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_ExtGState)
-        if not states.m_internal:
-            states = mu.pdf_dict_put_dict(resources, mu.PDF_ENUM_NAME_ExtGState, 1)
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
         state = mu.pdf_new_dict(pdf, 1)
         mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, permille / _PERMILLE)
         mu.pdf_dict_puts(states, name, state)
@@ -1181,6 +1148,11 @@ class PdfFile:
     def _pdf(self) -> pymupdf.mupdf.PdfDocument:
         """The same document, as MuPDF's low-level API needs it."""
         return pymupdf.mupdf.pdf_document_from_fz_document(self.doc.this)
+
+    def _root(self) -> pymupdf.mupdf.PdfObj:
+        """The document's catalog: the dictionary that names its pages, fields and metadata."""
+        mu = pymupdf.mupdf
+        return mu.pdf_dict_get(mu.pdf_trailer(self._pdf()), mu.PDF_ENUM_NAME_Root)
 
 
 def _put_back(
@@ -1328,6 +1300,61 @@ def _each_drawing(
             seen.add(mu.pdf_to_num(drawn))
             # With none of its own, it names its user's resources, read already.
             waiting.append(([drawn], own_resources))
+
+
+def _page_resources(page: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
+    """The resources `page` draws with, its own or inherited, made empty if it has none."""
+    mu = pymupdf.mupdf
+    resources = mu.pdf_dict_get_inheritable(page, mu.PDF_ENUM_NAME_Resources)
+    # An empty m_internal means the key isn't there yet, so make it.
+    if not resources.m_internal:
+        return mu.pdf_dict_put_dict(page, mu.PDF_ENUM_NAME_Resources, 1)
+    return resources
+
+
+def _dictionary_under(
+    holder: pymupdf.mupdf.PdfObj, key: pymupdf.mupdf.PdfObj
+) -> pymupdf.mupdf.PdfObj:
+    """The dictionary `holder` keeps under the name `key`, made empty if it has none."""
+    mu = pymupdf.mupdf
+    found = mu.pdf_dict_get(holder, key)
+    # An empty m_internal means the key isn't there yet, so make it.
+    if not found.m_internal:
+        return mu.pdf_dict_put_dict(holder, key, 1)
+    return found
+
+
+def _lexer_of(written: bytes) -> tuple[pymupdf.mupdf.FzStream, pymupdf.mupdf.PdfLexbuf]:
+    """A reader over `written`, and the buffer MuPDF's lexer reads each token into."""
+    mu = pymupdf.mupdf
+    reader = mu.fz_open_buffer(mu.fz_new_buffer_from_copied_data(written))
+    # Small: the wrapper holds no more, so large overruns it; it grows for a long string.
+    return reader, mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)
+
+
+def _tokens_in(
+    reader: pymupdf.mupdf.FzStream, lexbuf: pymupdf.mupdf.PdfLexbuf
+) -> Iterator[tuple[int, int]]:
+    """Where each token `reader` reads starts, and the token, to the end.
+
+    A caller may read on, or back, before asking for the next: it starts where it's left.
+    """
+    mu = pymupdf.mupdf
+    while True:
+        start = mu.fz_tell(reader)
+        token = mu.pdf_lex(reader, lexbuf)
+        # The end of what's written.
+        if token == mu.PDF_TOK_EOF:
+            return
+        yield start, token
+
+
+def _starts_image(
+    token: int, *, drawing: bytes, start: int, reader: pymupdf.mupdf.FzStream
+) -> bool:
+    """Whether the token just read from `drawing` is BI, which starts an image written in it."""
+    is_operator = token == pymupdf.mupdf.PDF_TOK_KEYWORD
+    return is_operator and _operator_at(drawing, start, reader) == b"BI"
 
 
 def _operator_at(drawing: bytes, start: int, reader: pymupdf.mupdf.FzStream) -> bytes:
@@ -1491,10 +1518,9 @@ def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     """A PDF string holding exactly these bytes."""
     mu = pymupdf.mupdf
     # Parsed from hex: MuPDF's own maker of a string takes text, not bytes.
-    written = mu.fz_new_buffer_from_copied_data(b"<" + held.hex().encode() + b">")
-    lexbuf = mu.PdfLexbuf(mu.PDF_LEXBUF_SMALL)  # as `_markings_in` has it
+    reader, lexbuf = _lexer_of(b"<" + held.hex().encode() + b">")
     # A string belongs to no file, so it's read without one.
-    return mu.pdf_parse_stm_obj(mu.PdfDocument(), mu.fz_open_buffer(written), lexbuf)
+    return mu.pdf_parse_stm_obj(mu.PdfDocument(), reader, lexbuf)
 
 
 def _strings_anywhere_in(written: bytes) -> list[str]:
@@ -1503,7 +1529,7 @@ def _strings_anywhere_in(written: bytes) -> list[str]:
     That's at any ( or <, since a reader may read the bytes before it otherwise than MuPDF.
     """
     held = _literal_strings_in(written) + _hex_strings_in(written)
-    return [text for string in held for text in _texts_of(string)]
+    return [text for string in held for text in _texts_held_in(string)]
 
 
 def _strings_past_an_end_in(image: _InlineImage) -> list[str]:
@@ -1581,7 +1607,7 @@ def _bytes_of_hex(digits: bytes) -> bytes:
     return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
 
 
-def _texts_of(held: bytes) -> list[str]:
+def _texts_held_in(held: bytes) -> list[str]:
     """The text of a string holding `held`, plainly too, and in each encoding a mark names.
 
     A string may start at a mark inside it, so `held` is read from either byte a UTF-16
