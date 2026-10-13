@@ -24,7 +24,6 @@ from squidpdf.core import (
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.types import (
-    Analysis,
     AnalysisFacts,
     ApproximateInfo,
     FontFacts,
@@ -109,38 +108,32 @@ def _analysed(
         }
         for span in first_span_of_font.values()
     ]
-    analysis: Analysis = {
+    facts: AnalysisFacts = {
         "build": BUILD,
         "active_content_dropped": store.active_content_dropped(path),
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(path)
         ],
-        "spans": [
-            _span_info(
-                span,
-                reports[span.id],
-                room_pt=rooms[span.id],
-                form_field=span.id in form_field_span_ids,
-            )
-            for span in index
-        ],
         "fonts": fonts,
     }
-    kept = _kept_analysis(analysis)
+    spans = [
+        _span_info(
+            span,
+            reports[span.id],
+            room_pt=rooms[span.id],
+            form_field=span.id in form_field_span_ids,
+        )
+        for span in index
+    ]
+    kept = _kept_analysis(facts, spans)
     store.save_analysis(path, BUILD, kept, attached=attached.key)
     return kept
 
 
-def _kept_analysis(analysis: Analysis) -> KeptAnalysis:
+def _kept_analysis(facts: AnalysisFacts, spans: list[SpanInfo]) -> KeptAnalysis:
     """The analysis as kept and sent: its spans apart from the rest, and a digest of both."""
-    facts: AnalysisFacts = {
-        "build": analysis["build"],
-        "active_content_dropped": analysis["active_content_dropped"],
-        "pages": analysis["pages"],
-        "fonts": analysis["fonts"],
-    }
-    facts_json, spans_json = orjson.dumps(facts), orjson.dumps(analysis["spans"])
+    facts_json, spans_json = orjson.dumps(facts), orjson.dumps(spans)
     digest = xxhash.xxh3_64_hexdigest(facts_json + spans_json)
     return KeptAnalysis(facts_json, spans_json, digest)
 
