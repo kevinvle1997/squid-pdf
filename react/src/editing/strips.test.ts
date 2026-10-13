@@ -3,7 +3,7 @@ import type { Edit, Insert, SpanInfo } from "../api/types";
 import { aSpan, A4 as page } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
-import { insertRowOf, merged, regionsFor, rowOf, stalePages } from "./strips";
+import { bottomOf, insertRowOf, merged, regionsFor, rowOf, stalePages, stillShows } from "./strips";
 
 const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo =>
   aSpan({ id: `s${pageIndex}-${y0}`, page: pageIndex, bbox: { x0: 72, y0, x1: 100, y1 } });
@@ -63,5 +63,28 @@ describe("pages to redraw", () => {
     // The render of `first` never landed; now page 1 is edited too.
     const next = readingOf(replace(top), replace(other));
     expect(stalePages(next, new Map([[1, first]]))).toEqual(new Set([0, 1]));
+  });
+});
+
+describe("a strip the server drew", () => {
+  test("ends where the region it was asked for ends, though its top was rounded to a pixel row", () => {
+    const regions = [
+      { page: 0, y0: 98, y1: 114 },
+      { page: 0, y0: 298, y1: 314 },
+      { page: 1, y0: 98 },
+    ];
+    expect(bottomOf({ page: 0, y: 297.75 }, regions, page)).toBe(314);
+    expect(bottomOf({ page: 0, y: 98 }, regions, page)).toBe(114);
+    // A region with no bottom is the rest of the page.
+    expect(bottomOf({ page: 1, y: 98 }, regions, page)).toBe(page.height);
+  });
+
+  test("still shows an edit while one is in its rows; once none is, the page beneath is right as it is", () => {
+    const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
+    const strip = { y: 98, y1: 114 };
+    expect(stillShows(strip, { edits: readingOf(replace(top), replace(bottom)).pages.get(0), page })).toBe(true);
+    expect(stillShows(strip, { edits: readingOf(replace(bottom)).pages.get(0), page })).toBe(false);
+    expect(stillShows(strip, { edits: readingOf({ kind: "redact", span_id: top.id }).pages.get(0), page })).toBe(true);
+    expect(stillShows(strip, { edits: undefined, page })).toBe(false);
   });
 });

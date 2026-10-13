@@ -43,6 +43,9 @@
   .found { outline: 1px dashed Highlight; }
   .found::after { background: Highlight; }
 }
+/* A span put back, shown in the page's own pixels until the render lands: the image cropped to it. */
+.original { position: absolute; overflow: hidden; pointer-events: none; }
+.original img { position: absolute; max-width: none; height: auto; display: block; user-select: none; }
 /* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
 .anchor { position: absolute; pointer-events: none; }
 /* The page never themes: the marks and previews on it use the page's own tokens. */

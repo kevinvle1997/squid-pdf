@@ -45,6 +45,29 @@ export function regionsFor(pageIndex: number, page: PageInfo, edits: PageEdits):
   return merged(rows).map((row) => ({ page: pageIndex, ...row }));
 }
 
+/** Where a strip the server drew ends, in points: the bottom of the region asked for that it tops, the nearest. */
+export function bottomOf(image: { page: number; y: number }, regions: readonly Region[], page: PageInfo): number {
+  // The server rounds a strip out to whole pixel rows, so its top is the region's, less under a pixel.
+  const onPage = regions.filter((region) => region.page === image.page);
+  const distance = (region: Region) => Math.abs((region.y0 ?? 0) - image.y);
+  const nearest = onPage.reduce<Region | undefined>(
+    (best, region) => (best === undefined || distance(region) < distance(best) ? region : best),
+    undefined,
+  );
+  return nearest?.y1 ?? page.height;
+}
+
+/** Whether a strip still shows an edit: a span changed or redacted, or a line put in, within its rows. */
+export function stillShows(
+  strip: { y: number; y1: number },
+  { edits, page }: { edits: PageEdits | undefined; page: PageInfo },
+): boolean {
+  const within = (row: Row) => row.y0 < strip.y1 && row.y1 > strip.y;
+  const spans = edits?.spans.some(({ span }) => within(rowOf(span, page))) ?? false;
+  const inserts = edits?.inserts.some(({ edit }) => within(insertRowOf(edit, page))) ?? false;
+  return spans || inserts;
+}
+
 /** The pages whose edits now read other than the reading their strips were drawn from. */
 export function stalePages(reading: Reading, drawn: ReadonlyMap<number, Reading>): Set<number> {
   const pages = new Set([...reading.pages.keys(), ...drawn.keys()]);

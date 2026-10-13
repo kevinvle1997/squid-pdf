@@ -8,12 +8,13 @@ import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, Ski
 import { reportBug } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
-import { regionsFor, stalePages } from "./strips";
+import { bottomOf, regionsFor, stalePages } from "./strips";
 
-/** A strip of a page the server drew, ready to paint: its top in points, and its image's address. */
+/** A strip of a page the server drew, ready to paint: its top and bottom in points, and its image's address. */
 export interface Strip {
   readonly page: number;
   readonly y: number;
+  readonly y1: number;
   readonly src: string;
 }
 
@@ -181,7 +182,11 @@ export class RenderQueue {
         render(doc.id, { edits: [...reading.edits], scale, regions }, ask.signal),
       );
       const srcs = await Promise.all(reply.images.map(load));
-      const strips = reply.images.map(({ page, y }, index) => ({ page, y, src: srcs[index] ?? "" }));
+      const strips = reply.images.map(({ page, y }, index) => {
+        const info = reopener.doc.pages[page];
+        const y1 = info === undefined ? y : bottomOf({ page, y }, regions, info);
+        return { page, y, y1, src: srcs[index] ?? "" };
+      });
       if (ask.signal.aborted) return;
       this.#asking = null;
       this.#landed(reading, drawing, { landing: strips, said: reply });

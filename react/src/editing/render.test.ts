@@ -50,7 +50,8 @@ beforeEach(() => {
   });
 });
 
-const shown = (page: number) => ({ page, y: 98, src: `page ${page}` });
+// Each span's strip, as asked for: two points past its box either side.
+const shown = (page: number) => ({ page, y: 98, y1: 114, src: `page ${page}` });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 

@@ -4,7 +4,7 @@ import { pageUrl } from "../../api/client";
 import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
-import { LAZY_MARGIN, PX_PER_PT } from "../constants";
+import { LAZY_MARGIN, PX_PER_PT, STRIP_PAD_PT } from "../constants";
 import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { type Place, placesAcross } from "../find";
@@ -14,9 +14,10 @@ import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits, PageRedactions, Strip } from "../render";
 import type { Settling } from "../settle";
 import { shallowEqual } from "../store";
+import { rowOf, stillShows } from "../strips";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
-import { boxOf, points, shownSize, spanTextStyle } from "./geometry";
+import { boxOf, cropOf, points, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
@@ -119,6 +120,12 @@ export const Page = memo(function Page({ index, info }: Props) {
   const sheet = useSheet(info.height);
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans.filter((reading) => reading.replaced || reading.redacted) ?? NO_CHANGES;
+  // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
+  // undo needs no render to show it.
+  const strips = useMemo(
+    () => page.strips?.filter((strip) => stillShows(strip, { edits: page.edits, page: info })),
+    [page.strips, page.edits, info],
+  );
   const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
   const [focusedIn, setFocusedIn] = useState(false);
@@ -154,7 +161,7 @@ export const Page = memo(function Page({ index, info }: Props) {
             <Warn mark>{page.image.failed}</Warn>
           </p>
         )}
-        {page.strips?.map((strip) => (
+        {strips?.map((strip) => (
           <img
             key={strip.y}
             className={styles.strip}
@@ -165,7 +172,7 @@ export const Page = memo(function Page({ index, info }: Props) {
           />
         ))}
         <Settles page={page} info={info} />
-        <Previews page={page} info={info} />
+        <Previews page={page} info={info} strips={strips} />
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
@@ -224,21 +231,45 @@ function Settles({ page, info }: { page: PageState; info: PageInfo }) {
 }
 
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */
-function Previews({ page, info }: { page: PageState; info: PageInfo }) {
+function Previews({ page, info, strips }: { page: PageState; info: PageInfo; strips: readonly Strip[] | undefined }) {
   const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
-  return previews.map(({ span, text, redacted }) =>
+  return previews.map(({ span, text, redacted }) => {
     // A redaction leaves the page bare where its words were, as the download will.
-    redacted ? (
-      <span
-        key={span.id}
-        className={styles.preview}
-        aria-hidden="true"
-        data-preview=""
-        style={boxOf(span.bbox, info)}
-      />
-    ) : (
-      <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />
-    ),
+    if (redacted) {
+      return (
+        <span
+          key={span.id}
+          className={styles.preview}
+          aria-hidden="true"
+          data-preview=""
+          style={boxOf(span.bbox, info)}
+        />
+      );
+    }
+    // Put back: the page's own pixels are exactly right, under any strip still drawn over its row.
+    if (text === span.text) {
+      const row = rowOf(span, info);
+      const covered = strips?.some((strip) => strip.y < row.y1 && strip.y1 > row.y0) ?? false;
+      return covered ? <Original key={span.id} span={span} info={info} src={page.src} /> : null;
+    }
+    return <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />;
+  });
+}
+
+/** The original page's pixels over a span put back, where a strip of its row still shows another edit. */
+function Original({ span, info, src }: { span: SpanInfo; info: PageInfo; src: string }) {
+  // The row the server would redraw, across the span with the same reach, so the old edit's ink goes too.
+  const { y0, y1 } = rowOf(span, info);
+  const box = {
+    x0: Math.max(0, span.bbox.x0 - STRIP_PAD_PT),
+    y0,
+    x1: Math.min(info.width, span.bbox.x1 + STRIP_PAD_PT),
+    y1,
+  };
+  return (
+    <span className={styles.original} aria-hidden="true" data-original="" style={boxOf(box, info)}>
+      <img src={src} alt="" decoding="async" style={cropOf(box, info)} />
+    </span>
   );
 }
 

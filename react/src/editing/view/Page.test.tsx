@@ -443,6 +443,43 @@ describe("a page", () => {
     expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo((40 / A4.width) * 100, 3);
   });
 
+  describe("undo, before the server's render lands", () => {
+    const below = aSpan({ id: "below", text: WORDS, size: 20, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    const beside = aSpan({ id: "beside", text: WORDS, size: 20, bbox: { x0: 300, y0: 100, x1: 380, y1: 124 } });
+    const strip = (y: number) => ({ page: 0, y, image: "" });
+
+    /** Both spans changed, and the server's strips for them in. */
+    async function bothChanged(other: typeof below, images: { page: number; y: number; image: string }[]) {
+      editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [span, other], fonts: DOC.fonts }), 2);
+      vi.mocked(renderOnServer).mockResolvedValue(aReply({ images }));
+      const screen = await draw();
+      await expect.element(screen.getByRole("button", { name: WORDS }).first()).toBeInTheDocument();
+      for (const id of [span.id, other.id]) {
+        edit(editor, id, null);
+        typeInto(editor, "is here");
+        finish(editor, true);
+      }
+      await expect.poll(() => screen.container.querySelectorAll("img[data-strip]").length).toBe(images.length);
+      vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+      return screen;
+    }
+
+    test("takes off the strip of a line no other change is on: the page beneath is right as it is", async () => {
+      const screen = await bothChanged(below, [strip(98), strip(298)]);
+      undo(editor);
+      await expect.poll(() => screen.container.querySelectorAll("img[data-strip]").length).toBe(1);
+      expect(screen.container.querySelector("[data-preview]")).toBeNull();
+    });
+
+    test("puts the page's own pixels over a span put back on a line still changed, never its words in another face", async () => {
+      const screen = await bothChanged(beside, [strip(98)]);
+      undo(editor);
+      await expect.poll(() => screen.container.querySelector("[data-original]")).not.toBeNull();
+      expect(screen.container.querySelectorAll("img[data-strip]")).toHaveLength(1);
+      expect(screen.container.querySelector("[data-preview]")).toBeNull();
+    });
+  });
+
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
     // No server answers in this test, so the page's image fails as it would with one too busy.
