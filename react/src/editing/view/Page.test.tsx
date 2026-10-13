@@ -165,6 +165,42 @@ describe("a page", () => {
     expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
   });
 
+  test("the chip says the verdict on what's typed: it looks identical, or a similar font draws it, warned", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await expect.element(screen.getByText("looks identical")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+
+    const arial = aSpan({
+      ...span,
+      id: "s3",
+      text: "in arial",
+      font: "Arial",
+      fidelity: "substitute",
+      substitute: "Liberation Sans Regular",
+    });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }),
+      2,
+    );
+    screen.rerender(
+      <EditorContext.Provider value={editor}>
+        <Page index={0} info={A4} />
+      </EditorContext.Provider>,
+    );
+    const mark = screen.getByRole("button", { name: "in arial" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const similar = screen.getByText("a similar font", { exact: true });
+    await expect.element(similar).toBeVisible();
+    const warn = document.body.appendChild(document.createElement("span"));
+    warn.style.color = "var(--warn)";
+    expect(getComputedStyle(similar.element()).color).toBe(getComputedStyle(warn).color);
+    warn.remove();
+  });
+
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
     const screen = await draw();
     await editSpan(screen);
