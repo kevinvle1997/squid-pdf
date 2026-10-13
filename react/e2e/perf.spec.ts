@@ -32,6 +32,15 @@ interface Probe {
   rendered: number[]; // components each commit rendered
   latencies: number[]; // keydown to the frame after it
   longTasks: number[];
+  presses: number[]; // when each key or pointer went down
+  requests: Asked[]; // each render and export asked for
+}
+
+interface Asked {
+  kind: string; // "render" or "export"
+  start: number;
+  end: number; // 0 while it's out
+  aborted: boolean; // dropped by the app before its answer was read
 }
 
 declare global {
@@ -61,7 +70,16 @@ function instrument() {
     if (last !== null) walk(last, (fiber) => now.add(fiber));
     before = now;
   };
-  const probe: Probe = { count: false, prime, commits: 0, rendered: [], latencies: [], longTasks: [] };
+  const probe: Probe = {
+    count: false,
+    prime,
+    commits: 0,
+    rendered: [],
+    latencies: [],
+    longTasks: [],
+    presses: [],
+    requests: [],
+  };
   window.probe = probe;
   Object.assign(window, {
     __REACT_DEVTOOLS_GLOBAL_HOOK__: {
@@ -90,11 +108,31 @@ function instrument() {
   new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) probe.longTasks.push(entry.duration);
   }).observe({ type: "longtask" });
+  // Each render and export, from its request to the last byte of its answer.
+  const fetched = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const kind = (input instanceof Request ? input.url : String(input)).match(/\/(render|export)$/)?.[1];
+    if (kind === undefined) return fetched(input, init);
+    const asked: Asked = { kind, start: performance.now(), end: 0, aborted: false };
+    probe.requests.push(asked);
+    try {
+      const response = await fetched(input, init);
+      await response.clone().arrayBuffer();
+      return response;
+    } catch (error) {
+      asked.aborted = true;
+      throw error;
+    } finally {
+      asked.end = performance.now();
+    }
+  };
+  window.addEventListener("pointerdown", () => probe.presses.push(performance.now()), true);
   // To the frame after the key: after the next animation frame, once its task has run.
   window.addEventListener(
     "keydown",
     () => {
       const start = performance.now();
+      probe.presses.push(start);
       requestAnimationFrame(() => {
         const channel = new MessageChannel();
         channel.port1.onmessage = () => probe.latencies.push(performance.now() - start);
@@ -130,8 +168,65 @@ function spent(before: Awaited<ReturnType<typeof busy>>, after: Awaited<ReturnTy
 async function reset(page: Page, count: boolean) {
   await page.evaluate((counting) => {
     if (counting) window.probe.prime();
-    Object.assign(window.probe, { count: counting, commits: 0, rendered: [], latencies: [], longTasks: [] });
+    Object.assign(window.probe, {
+      count: counting,
+      commits: 0,
+      rendered: [],
+      latencies: [],
+      longTasks: [],
+      presses: [],
+      requests: [],
+    });
   }, count);
+}
+
+/** From the next press, of a pointer or a key, to `selector` matching in the page, in ms. */
+function timeTo(page: Page, selector: string) {
+  return page.evaluate(
+    (wanted) =>
+      new Promise<number>((resolve) => {
+        let start = 0;
+        const pressed = () => {
+          start = performance.now();
+          window.removeEventListener("pointerdown", pressed, true);
+          window.removeEventListener("keydown", pressed, true);
+        };
+        window.addEventListener("pointerdown", pressed, true);
+        window.addEventListener("keydown", pressed, true);
+        const watch = new MutationObserver(() => {
+          if (start === 0 || document.querySelector(wanted) === null) return;
+          watch.disconnect();
+          resolve(performance.now() - start);
+        });
+        watch.observe(document.body, { subtree: true, childList: true });
+      }),
+    selector,
+  );
+}
+
+/** Once every request asked for since the last reset is answered or dropped: how many, and when, from the last press. */
+async function answered(page: Page) {
+  await expect
+    .poll(
+      () => page.evaluate(() => window.probe.requests.length > 0 && window.probe.requests.every((r) => r.end > 0)),
+      {
+        timeout: 60_000,
+      },
+    )
+    .toBe(true);
+  return page.evaluate(() => {
+    const { requests, presses } = window.probe;
+    const kept = requests.filter((asked) => !asked.aborted);
+    const pressed = presses.at(-1) ?? 0;
+    const since = (at: number) => Math.round(at - pressed);
+    return {
+      asked: requests.length,
+      dropped: requests.length - kept.length,
+      lastPressToAskedMs: since(Math.max(...requests.map((asked) => asked.start))),
+      lastPressToAnswerMs: since(Math.max(...kept.map((asked) => asked.end))),
+      answerMs: kept.map((asked) => Math.round(asked.end - asked.start)),
+    };
+  });
 }
 
 async function openField(page: Page) {
@@ -142,8 +237,8 @@ async function openField(page: Page) {
   return field;
 }
 
-test("typing, the render settling and scrolling on a long contract", async ({ page }) => {
-  test.setTimeout(180_000);
+/** The long contract, open in the built app, and its marks at rest; then the CPU and the network slowed. */
+async function openContract(page: Page) {
   const pdf = join(mkdtempSync(join(tmpdir(), "squidpdf-perf-")), "dense.pdf");
   execFileSync("uv", ["run", "squidpdf", "fixture", pdf, "--pages", String(PAGES)], { cwd: REPO });
 
@@ -166,6 +261,12 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
     uploadThroughput: UP_MBIT * BYTES_PER_MBIT,
   });
   await cdp.send("Performance.enable");
+  return { cdp, marks };
+}
+
+test("typing, the render settling and scrolling on a long contract", async ({ page }) => {
+  test.setTimeout(180_000);
+  const { cdp, marks } = await openContract(page);
 
   // Timed with nothing else running in the page.
   let field = await openField(page);
@@ -232,4 +333,74 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   };
   console.log(`perf ${JSON.stringify(report, null, 2)}`);
   await test.info().attach("perf.json", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
+});
+
+test("change all, a burst of undos and export on a long contract", async ({ page }) => {
+  test.setTimeout(180_000);
+  await openContract(page);
+  const firstPageStrip = 'section[aria-label="Page 1"] img[data-strip]';
+
+  // A heading on every page: one render draws them all, the first page's strip with the rest.
+  await page.keyboard.press("ControlOrMeta+f");
+  await page.getByRole("textbox", { name: "Find" }).fill("Schedule");
+  await page.getByRole("textbox", { name: "Change to" }).fill("Annex");
+  const changeAll = page.getByRole("button", { name: "Change all" });
+  await expect(changeAll).toBeEnabled();
+  await reset(page, false);
+  const changedToStrip = timeTo(page, firstPageStrip);
+  await changeAll.click();
+  const allPages = { pressToFirstPageStripMs: Math.round(await changedToStrip), ...(await answered(page)) };
+  await page.getByRole("button", { name: /^Close/ }).click();
+
+  // One line changed alone, for the first page's strip when a render draws only it.
+  let field = await openField(page);
+  await field.pressSequentially(" too");
+  await reset(page, false);
+  await field.press("Enter");
+  const onePage = await answered(page);
+
+  // Four more lines, then undo one, then three in a burst, as fast as a held key.
+  const lines = page.locator('section[aria-label="Page 1"] [data-span]');
+  for (const line of [3, 5, 7, 9]) {
+    await lines.nth(line).focus();
+    await page.keyboard.press("Enter");
+    field = page.getByRole("textbox", { name: /^Change “/ });
+    await field.press("End");
+    await field.pressSequentially(" too");
+    await field.press("Enter");
+  }
+  await answered(page);
+  await reset(page, false);
+  await page.keyboard.press("ControlOrMeta+z");
+  const oneUndo = await answered(page);
+  await reset(page, false);
+  for (let press = 0; press < 3; press++) {
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.waitForTimeout(80);
+  }
+  const undoBurst = await answered(page);
+
+  // Export: the request, and the press to the download.
+  await reset(page, false);
+  const downloaded = page.waitForEvent("download");
+  const pressed = Date.now();
+  await page.getByRole("button", { name: /^Export/ }).click();
+  await downloaded;
+  const pressToDownloadMs = Date.now() - pressed;
+  const exported = await answered(page);
+
+  const report = {
+    pages: PAGES,
+    slowdown: SLOWDOWN,
+    network: { latencyMs: LATENCY_MS, downMbit: DOWN_MBIT, upMbit: UP_MBIT },
+    changeAllOnEveryPage: allPages,
+    oneLineOnOnePage: onePage,
+    oneUndo,
+    undoBurstOfThree: undoBurst,
+    export: { pressToDownloadMs, ...exported },
+  };
+  console.log(`perf ${JSON.stringify(report, null, 2)}`);
+  await test
+    .info()
+    .attach("perf-flows.json", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
 });
