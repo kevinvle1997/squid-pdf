@@ -22,7 +22,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import TextIO, get_args
@@ -97,22 +97,26 @@ def _cmd_spans(args: argparse.Namespace) -> int:
         # `--page` counts from 1, as the listing prints it.
         shown = [s for s in index if args.page is None or s.page == args.page - 1]
         for span in shown:
-            report = reports[span.id]
-            mark = _MARKS[report.state]
-            note = f" -> {report.substitute}" if report.substitute else ""
-            fragments = f" {_DIM}({len(span.fragments)} fragments){_OFF}" if span.merged else ""
-            fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
-            preview = span.text if fits else span.text[:_TEXT_PREVIEW_LEN] + "..."
-            print(
-                f"  {span.id}  p{span.page + 1}  {mark}  "
-                f"{_DIM}{span.font}{note} {span.size}pt{_OFF}{fragments}\n"
-                f"           {preview}"
-            )
-            # Its own font draws it, but not as it looks: say how.
-            if report.state == "approximate" and report.why is not None:
-                print(f"           {_DIM}{words.render(report.why)}{_OFF}")
+            print(_listing_of(span, reports[span.id]))
         _summary([reports[span.id] for span in shown])
     return 0
+
+
+def _listing_of(span: Span, report: FidelityReport) -> str:
+    """A span's lines in `spans`: its id, mark and font, its text, and how it differs."""
+    note = f" -> {report.substitute}" if report.substitute else ""
+    fragments = f" {_DIM}({len(span.fragments)} fragments){_OFF}" if span.merged else ""
+    fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
+    preview = span.text if fits else span.text[:_TEXT_PREVIEW_LEN] + "..."
+    lines = [
+        f"  {span.id}  p{span.page + 1}  {_MARKS[report.state]}  "
+        f"{_DIM}{span.font}{note} {span.size}pt{_OFF}{fragments}",
+        f"           {preview}",
+    ]
+    # Its own font draws it, but not as it looks: say how.
+    if report.state == "approximate" and report.why is not None:
+        lines.append(f"           {_DIM}{words.render(report.why)}{_OFF}")
+    return "\n".join(lines)
 
 
 def _summary(reports: list[FidelityReport]) -> None:
@@ -284,38 +288,41 @@ class _Row:
 
     path: str
     read: bool  # whether it opened and was assessed
-    rate: float | None  # its green rate; None if it has no text or wasn't read
+    reports: list[FidelityReport] = field(repr=False)  # each span's; none if it wasn't read
     note: str  # how many spans it has, or why it couldn't be read
+
+    @property
+    def rate(self) -> float | None:
+        """Its green rate; None if it has no text or wasn't read."""
+        return green_rate(self.reports)
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
     """Green rate across a corpus; exits 1 when it measured no file."""
-    rows: list[_Row] = []
-    total = exact_count = 0
-    for path in args.pdfs:
-        try:
-            with _opened(path) as engine:
-                reports = engine.assess(engine.index())
-        except Problem as exc:  # damaged or password-protected: says which
-            rows.append(_Row(path, read=False, rate=None, note=exc.detail))
-            continue
-        except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
-            rows.append(_Row(path, read=False, rate=None, note=str(exc)[:_NAME_COL_WIDTH]))
-            continue
-        exact_count += sum(1 for report in reports if report.state == "exact")
-        total += len(reports)
-        rate = green_rate(reports)
-        rows.append(_Row(path, read=True, rate=rate, note=f"{len(reports)} spans"))
-
+    rows = [_row_of(path) for path in args.pdfs]
     print()
     for row in rows:
         print(_line_of(row))
-    if total:
-        overall = exact_count / total
-        colour = _rate_colour(overall)
-        print(f"\n  {colour}{overall:.0%}{_OFF} of {total} spans keep the original font\n")
+    reports = [report for row in rows for report in row.reports]
+    overall = green_rate(reports)
     # Every file unreadable or without text: no rate, which a script must see as a failure.
-    return 0 if total else 1
+    if overall is None:
+        return 1
+    colour = _rate_colour(overall)
+    print(f"\n  {colour}{overall:.0%}{_OFF} of {len(reports)} spans keep the original font\n")
+    return 0
+
+
+def _row_of(path: str) -> _Row:
+    """One file's line in `report`: its spans assessed, or why it couldn't be read."""
+    try:
+        with _opened(path) as engine:
+            reports = engine.assess(engine.index())
+    except Problem as exc:  # damaged or password-protected: says which
+        return _Row(path, read=False, reports=[], note=exc.detail)
+    except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
+        return _Row(path, read=False, reports=[], note=str(exc)[:_NAME_COL_WIDTH])
+    return _Row(path, read=True, reports=reports, note=f"{len(reports)} spans")
 
 
 def _line_of(row: _Row) -> str:
