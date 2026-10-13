@@ -1,13 +1,14 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible, useFocusWithin } from "react-aria";
 import { pageUrl } from "../../api/client";
-import type { Copy, FontInfo, PageInfo, SpanInfo } from "../../api/types";
+import type { Copy, FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN, PX_PER_PT, STRIP_PAD_PT } from "../constants";
 import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { type Place, placesAcross } from "../find";
+import { fitOf, setAs, wayDrawn } from "../fit";
 import { imageFailed, imageLoaded, type PageImage } from "../images";
 import { lookOf } from "../marks";
 import { differing, type PageEdits, type SpanReading } from "../project";
@@ -17,7 +18,7 @@ import { shallowEqual } from "../store";
 import { rowOf, stillShows } from "../strips";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
-import { boxOf, cropOf, points, shownSize, spanTextStyle } from "./geometry";
+import { boxOf, cropOf, points, setAsStyle, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
@@ -86,6 +87,7 @@ interface PageState {
   // What every mark shows, selected once here rather than by each mark.
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly copy: Copy;
+  readonly rules: FitRules; // for the way out a preview is drawn in
 }
 
 function pageState(state: EditorState, index: number): PageState {
@@ -111,6 +113,7 @@ function pageState(state: EditorState, index: number): PageState {
       state.scrollTo !== null && state.layout.spans.get(state.scrollTo.spanId)?.page === index ? state.scrollTo : null,
     fonts: state.layout.fonts,
     copy: state.doc.copy,
+    rules: state.doc.fit,
   };
 }
 
@@ -241,7 +244,7 @@ function Settles({ page, info }: { page: PageState; info: PageInfo }) {
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */
 function Previews({ page, info, strips }: { page: PageState; info: PageInfo; strips: readonly Strip[] | undefined }) {
   const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
-  return previews.map(({ span, text, redacted }) => {
+  return previews.map(({ span, text, redacted, strategy }) => {
     // A redaction leaves the page bare where its words were, as the download will.
     if (redacted) {
       return (
@@ -260,7 +263,14 @@ function Previews({ page, info, strips }: { page: PageState; info: PageInfo; str
       const covered = strips?.some((strip) => strip.y < row.y1 && strip.y1 > row.y0) ?? false;
       return covered ? <Original key={span.id} span={span} info={info} src={page.src} /> : null;
     }
-    return <Preview key={span.id} span={span} text={text} info={info} font={page.fonts.get(span.font)} />;
+    return (
+      <Preview
+        key={span.id}
+        span={span}
+        info={info}
+        drawn={{ text, strategy, font: page.fonts.get(span.font), rules: page.rules }}
+      />
+    );
   });
 }
 
@@ -386,19 +396,18 @@ function UndoRedactionAt(props: {
   return <UndoRedaction span={span} info={info} copy={page.copy} />;
 }
 
-/** The browser's drawing of a span's text, while the server's strip under it shows other words. */
+/** The browser's drawing of a span's text, while the server's strip under it shows other words: in the way out asked for. */
 function Preview({
   span,
-  text,
   info,
-  font,
+  drawn: { text, strategy, font, rules },
 }: {
   span: SpanInfo;
-  text: string;
   info: PageInfo;
-  font: FontInfo | undefined;
+  drawn: { text: string; strategy: Strategy | undefined; font: FontInfo | undefined; rules: FitRules };
 }) {
   if (font === undefined) return null;
+  const fit = fitOf(span, { font, text, rules });
   const box = boxOf(span.bbox, info);
   // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
   const line = points(span.bbox.y1 - span.bbox.y0, info);
@@ -409,6 +418,7 @@ function Preview({
       data-preview=""
       style={{
         ...spanTextStyle(span, info, previewFaceOf(span, { font, text })),
+        ...setAsStyle(span, info, setAs(wayDrawn(strategy, fit), fit)),
         minWidth: box.width,
         lineHeight: line,
       }}

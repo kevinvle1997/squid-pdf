@@ -1,7 +1,7 @@
 // One open document: its state, and what every action works through. Each action is a
 // function of the editor in the module named for it (typing, export); this one holds the
 // state and the change every edit, undo and put-back goes through.
-import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
+import type { Document, Edit, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, refound } from "./find";
@@ -29,6 +29,7 @@ export interface Draft {
   readonly page: number;
   readonly atPt: number | null; // where in the span the press was, from its start: the word to select
   readonly text: string;
+  readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
 }
 
 /**

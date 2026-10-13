@@ -10,7 +10,7 @@ import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixt
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
-import { edit, finish, typeInto } from "../typing";
+import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
@@ -113,6 +113,65 @@ describe("a page", () => {
     const warn = document.body.appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
     expect(getComputedStyle(said.element()).color).toBe(getComputedStyle(warn).color);
+  });
+
+  test("a line a little past its room offers the ways out; one pressed is drawn in the field at once, focus staying", async () => {
+    // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
+    const letters = "abcdefghijklmnopqrst";
+    const long = aSpan({ id: "long", text: letters, bbox: { x0: 72, y0: 100, x1: 172, y1: 112 }, origin: [72, 110] });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }),
+      2,
+    );
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: letters });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox");
+    await userEvent.keyboard("{End}u");
+
+    const ways = screen.getByRole("radiogroup", { name: "How it fits" });
+    await expect.element(ways).toBeVisible();
+    await expect.element(ways.getByRole("radio", { name: "Leave it long" })).toBeChecked();
+    await expect.element(screen.getByText("5.0 pt too long")).toBeVisible();
+    const fontSize = () => parseFloat(getComputedStyle(field.element()).fontSize);
+    const asTyped = fontSize();
+
+    await ways.getByRole("radio", { name: "Make it slightly smaller" }).click();
+    await expect.element(field).toHaveFocus();
+    expect(fontSize()).toBeCloseTo((asTyped * 100) / 105, 1);
+    await expect.element(screen.getByText("5.0 pt too long")).not.toBeInTheDocument();
+
+    // The field's own keys choose too: the next is tightening the letters, at the size typed.
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(ways.getByRole("radio", { name: "Tighten the letters" })).toBeChecked();
+    expect(fontSize()).toBeCloseTo(asTyped, 1);
+    expect(getComputedStyle(field.element()).transform).not.toBe("none");
+    await expect.element(field).toHaveFocus();
+  });
+
+  test("an edit drawn smaller previews smaller, before its render lands", async () => {
+    const letters = "abcdefghijklmnopqrst";
+    const long = aSpan({ id: "long", text: letters, bbox: { x0: 72, y0: 100, x1: 172, y1: 112 }, origin: [72, 110] });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }),
+      2,
+    );
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: letters })).toBeInTheDocument();
+    edit(editor, long.id, null);
+    typeInto(editor, `${letters}u`);
+    await expect.element(screen.getByRole("textbox")).toBeInTheDocument();
+    const asTyped = parseFloat(getComputedStyle(screen.getByRole("textbox").element()).fontSize);
+    stepWayOut(editor, 1);
+    finish(editor, true);
+
+    const preview = () => document.querySelector<HTMLElement>("[data-preview]");
+    await expect.poll(() => preview()?.textContent).toBe(`${letters}u`);
+    expect(parseFloat(getComputedStyle(preview() ?? document.body).fontSize)).toBeCloseTo((asTyped * 100) / 105, 1);
   });
 
   test("a number in the chip's sentence keeps its dot tight, as running text does", async () => {

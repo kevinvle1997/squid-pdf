@@ -1,0 +1,25 @@
+.choices { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.choice {
+  position: relative;
+  font: inherit; font-size: var(--fs-sm); color: var(--ink);
+  background: none; border: 1px solid var(--ink-faint); border-radius: 1px;
+  padding: var(--s1) var(--s2); cursor: pointer; white-space: nowrap;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+/* The hit area grows past the button without moving what you see. */
+.choice::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: max(100%, var(--hit)); height: max(100%, var(--hit));
+  transform: translate(-50%, -50%);
+}
+.choice[data-hovered] { border-color: var(--ink); }
+.choice[data-selected] { background: var(--ink); border-color: var(--ink); color: var(--strip); }
+.choice[data-pressed] { transform: scale(.97); }
+.choice[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .choice { border-color: ButtonText; }
+  .choice[data-selected] { background: Highlight; border-color: Highlight; color: HighlightText; forced-color-adjust: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice[data-pressed] { transform: none; }
+}

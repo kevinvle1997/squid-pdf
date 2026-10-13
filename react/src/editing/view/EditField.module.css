@@ -5,18 +5,22 @@
   margin: 0; padding: 0; border: 0; border-radius: 0;
   background: var(--sheet);
   box-shadow: inset 0 -2px 0 var(--mark-change);
-  font-size: var(--field-size);
-  width: var(--field-width); height: var(--field-height);
+  /* A way out sets the words smaller (--field-shrink) or narrower (--field-narrow); the box it covers stays. */
+  font-size: calc(var(--field-size) * var(--field-shrink, 1));
+  width: calc(var(--field-width) / var(--field-narrow, 1)); height: var(--field-height);
+  transform: scaleX(var(--field-narrow, 1)); transform-origin: 0 0;
   line-height: 1;
   outline: none;
 }
 /* On a touch screen, set at --fs-input so iOS doesn't zoom, and scaled down to the span's size. */
 @media (pointer: coarse) {
   .input, .troubleInput {
+    --field-across: calc(var(--field-scale) * var(--field-shrink, 1) * var(--field-narrow, 1));
+    --field-down: calc(var(--field-scale) * var(--field-shrink, 1));
     font-size: var(--fs-input);
-    transform: scale(var(--field-scale)); transform-origin: 0 0;
-    width: calc(var(--field-width) / var(--field-scale));
-    height: calc(var(--field-height) / var(--field-scale));
+    transform: scale(var(--field-across), var(--field-down));
+    width: calc(var(--field-width) / var(--field-across));
+    height: calc(var(--field-height) / var(--field-down));
   }
 }
 .troubleInput { box-shadow: inset 0 -2px 0 var(--mark-warn); }
@@ -40,6 +44,16 @@
   pointer-events: auto;
 }
 .redact { pointer-events: auto; }
+/* The ways out of a long line take a row of their own, under what's wrong. */
+.ways {
+  flex: 1 0 100%;
+  display: flex; align-items: center; gap: var(--s2);
+  pointer-events: auto;
+}
+.wayKeys { font-family: var(--mono); color: var(--ink-lo); }
+@media (pointer: coarse) {
+  .wayKeys { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .chip { animation: fade var(--dur-quick) var(--ease-out); }
 }

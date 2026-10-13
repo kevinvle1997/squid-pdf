@@ -46,7 +46,7 @@ def _png(image: dict) -> bytes:
     return base64.b64decode(image["image"])
 
 
-def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
+def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mine, doc):
     span = span_starting(doc, 0, "Made")
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"] + _LONGER}
 
@@ -56,6 +56,9 @@ def test_a_replace_too_long_says_by_how_much_and_offers_the_ways_out(mine, doc):
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
     too_long = words.sentence("too_long").format(delta_pt=f"{fit['delta_pt']:.1f}")
     assert_equal(fit["message"], too_long, "the message")
+    # Taken, a way out ends the line where the original did: nothing runs long.
+    shrunk = _render(mine, doc, [{**edit, "strategy": "shrink"}], []).json()["fits"][span["id"]]
+    assert_equal((shrunk["strategy"], shrunk["message"]), ("shrink", None), "a way out taken")
 
 
 # What render says of a redaction whose words a signed file kept in every place.

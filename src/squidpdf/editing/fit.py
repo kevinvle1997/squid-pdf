@@ -83,8 +83,8 @@ class FitReport:
         # Letters nothing can draw.
         if self.left_out:
             parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))
-        # The part past its room is the part that collides.
-        if self.too_long:
+        # The part past its room collides, unless a way out ends it where the original did.
+        if self.too_long and self.strategy == "as-is":
             parts.append(
                 Message("too_long", {"delta_pt": round(self.delta_pt - self.room_pt, 2)})
             )

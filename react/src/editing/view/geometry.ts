@@ -91,6 +91,17 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
   };
 }
 
+/** Text in a span's place set at `size` and `scaleX`, shares of its own (a way out of a long line), as the page will draw it. */
+export function setAsStyle(
+  span: SpanInfo,
+  page: PageInfo,
+  { size, scaleX }: { size: number; scaleX: number },
+): CSSProperties {
+  // Narrowed from its start, as the server narrows the line.
+  const narrowed = scaleX === 1 ? {} : { transform: `scaleX(${scaleX})`, transformOrigin: "0 0" };
+  return { fontSize: points(span.size * size, page), ...narrowed };
+}
+
 // One canvas measures every field's text: it draws nothing, so it never joins the page.
 let ruler: CanvasRenderingContext2D | null | undefined;
 
