@@ -124,9 +124,7 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
     the replacement showing while it's reported gone.
     """
     page_count = engine.page_count()
-    # Overwriting a key keeps its place, so spans stay in the order first edited.
-    latest: dict[str, _EditedSpan] = {}
-    redacted: set[str] = set()
+    spans = _SpanEdits(latest={})
     inserts: list[_ListedInsert] = []
     skipped: list[Skipped] = []
     pages = _PageOps(order=list(range(page_count)), turns={})
@@ -149,31 +147,15 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
         if isinstance(edit, Insert):
             skipped.append(Skipped(position, "bad_reference", Message("no_page")))
             continue
-        # .get: the browser can send a span id this document doesn't have.
-        span = index.get(edit.span_id)
-        # A redaction of text it doesn't have: skipping it would be a leak.
-        if isinstance(edit, Redact) and span is None:
-            raise BadReference(edit.span_id)
-        # A replace of text it doesn't have.
-        if span is None:
-            skipped.append(Skipped(position, "bad_reference", Message("no_span")))
-            continue
-        # A redaction of text the document has: later edits can't bring it back.
-        if isinstance(edit, Redact):
-            redacted.add(edit.span_id)
-            latest[edit.span_id] = _EditedSpan(edit, span)
-            continue
-        # A replace of redacted text: the browser undoes a redaction by leaving it out.
-        if edit.span_id in redacted:
-            raise RedactionConflict(
-                debug=f"edit {position} replaces span {edit.span_id}, redacted before"
-            )
-        # A replace of text the document has.
-        if isinstance(edit, Replace):
-            latest[edit.span_id] = _EditedSpan(edit, span)
+        # An edit of a span: its last so far, if the document has the span.
+        if isinstance(edit, SpanEdit):
+            # .get: the browser can send a span id this document doesn't have.
+            span = index.get(edit.span_id)
+            said = spans.add(edit, span, position=position)
+            skipped += [Skipped(position, "bad_reference", why) for why in said]
             continue
         assert_never(edit)
-    span_edits = list(latest.values())
+    span_edits = list(spans.latest.values())
     rooms = engine.rooms(index, [edited_span.span for edited_span in span_edits])
     return Resolved(
         span_edits,
@@ -184,6 +166,42 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
         order=pages.order,
         turns=pages.turns,
     )
+
+
+@dataclass(slots=True)
+class _SpanEdits:
+    """The span edits read so far: each span's last, by id, in the order first edited."""
+
+    latest: dict[str, _EditedSpan]
+
+    def add(self, edit: SpanEdit, span: Span | None, *, position: int) -> list[Message]:
+        """Read one more edit of a span; returns why it's left out, if it is."""
+        # A redaction of text it doesn't have: skipping it would be a leak.
+        if isinstance(edit, Redact) and span is None:
+            raise BadReference(edit.span_id)
+        # A replace of text it doesn't have.
+        if span is None:
+            return [Message("no_span")]
+        # A redaction of text the document has: later edits can't bring it back.
+        if isinstance(edit, Redact):
+            self.latest[edit.span_id] = _EditedSpan(edit, span)
+            return []
+        # A replace of redacted text: the browser undoes a redaction by leaving it out.
+        if self._redacted(edit.span_id):
+            raise RedactionConflict(
+                debug=f"edit {position} replaces span {edit.span_id}, redacted before"
+            )
+        # A replace of text the document has. Overwriting a key keeps its first place.
+        if isinstance(edit, Replace):
+            self.latest[edit.span_id] = _EditedSpan(edit, span)
+            return []
+        assert_never(edit)
+
+    def _redacted(self, span_id: str) -> bool:
+        """Whether the span's last edit so far is a redaction: none after it can replace it."""
+        # .get: a span not edited yet.
+        last = self.latest.get(span_id)
+        return last is not None and isinstance(last.edit, Redact)
 
 
 def _names_pages(op: PageOp, page_count: int) -> bool:
