@@ -399,7 +399,11 @@ function Preview({
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{ ...spanTextStyle(span, info, previewFaceOf(span, font)), minWidth: box.width, lineHeight: line }}
+      style={{
+        ...spanTextStyle(span, info, previewFaceOf(span, { font, text })),
+        minWidth: box.width,
+        lineHeight: line,
+      }}
     >
       {text}
     </span>

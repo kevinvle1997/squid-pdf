@@ -5,6 +5,7 @@ import type { Document } from "../api/types";
 import { reportBug } from "../bugs";
 import { isGone } from "../documents/reopen";
 import { type Editor, type EditorState, layoutOf, spoken } from "./editor";
+import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
 import type { FontNotice } from "./notices";
 
@@ -28,11 +29,15 @@ export function shownName(fontName: string): string {
 export async function attachFont(editor: Editor, fontName: string, file: Blob): Promise<void> {
   if (editor.store.get().attaching !== null) return;
   editor.store.set({ attaching: fontName });
+  // Read for the preview while the server checks it, so the preview draws in it as the server takes it.
+  const preview = addOwnFace(fontName, file);
   try {
     const doc = await editor.reopener.withDocument((current) => putFont(current.id, fontName, file));
+    await preview;
     editor.attached.set(fontName, file);
     judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is in use`), focusFont: fontName });
   } catch (error) {
+    removeOwnFace(fontName);
     refused(editor, fontName, error);
   }
 }
@@ -61,6 +66,7 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
   editor.attached.delete(fontName);
   try {
     const doc = await editor.reopener.withDocument((current) => deleteFont(current.id, fontName));
+    removeOwnFace(fontName);
     judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is removed`), focusFont: fontName });
   } catch (error) {
     if (file !== undefined) editor.attached.set(fontName, file);
