@@ -7,6 +7,7 @@ import { isGone } from "../documents/reopen";
 import { type Editor, type EditorState, layoutOf, spoken } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
+import { keepWork } from "./keeping";
 import type { FontNotice } from "./notices";
 
 const SUBSET_PREFIX = /^[A-Z]{6}\+/; // a trimmed copy's name starts ABCDEF+
@@ -36,6 +37,7 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
     await preview;
     editor.attached.set(fontName, file);
     judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is in use`), focusFont: fontName });
+    void keepWork(editor);
   } catch (error) {
     removeOwnFace(fontName);
     refused(editor, fontName, error);
@@ -68,6 +70,7 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
     const doc = await editor.reopener.withDocument((current) => deleteFont(current.id, fontName));
     removeOwnFace(fontName);
     judgedAgain(editor, doc, { said: spoken(`Your copy of ${shownName(fontName)} is removed`), focusFont: fontName });
+    void keepWork(editor);
   } catch (error) {
     if (file !== undefined) editor.attached.set(fontName, file);
     refused(editor, fontName, error);

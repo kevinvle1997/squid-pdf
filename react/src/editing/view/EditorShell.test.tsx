@@ -4,10 +4,19 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
-import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere } from "../../api/client";
+import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere, upload } from "../../api/client";
 import type { Render } from "../../api/types";
+import { keepFile, keepState } from "../../documents/kept";
 import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice, COPY } from "../../fixtures";
+import { EMPTY_HISTORY, historyReducer } from "../history";
 import { EditorShell } from "./EditorShell";
+
+// What's kept in this browser is the App's to test, in the browser's real storage; here, what's asked of it.
+vi.mock(import("../../documents/kept"), async (original) => ({
+  ...(await original()),
+  keepFile: vi.fn(async () => undefined),
+  keepState: vi.fn(async () => undefined),
+}));
 
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
@@ -16,6 +25,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   pageImage: vi.fn(async () => undefined),
   putFont: vi.fn(),
   exportPdf: vi.fn(),
+  upload: vi.fn(),
 }));
 
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
@@ -290,20 +300,78 @@ describe("redaction", () => {
 });
 
 describe("leaving the page", () => {
-  test("asks first only while there are edits since the last export", async () => {
+  const leave = () => {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    return leaving.defaultPrevented;
+  };
+
+  test("asks first only while edits since the last export aren't kept in this browser yet", async () => {
     vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    let kept: () => void = () => undefined;
+    vi.mocked(keepState).mockReturnValueOnce(new Promise((resolve) => (kept = resolve)));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
-    const leave = () => {
-      const leaving = new Event("beforeunload", { cancelable: true });
-      window.dispatchEvent(leaving);
-      return leaving.defaultPrevented;
-    };
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     expect(leave()).toBe(false);
     await change(screen, "is here");
     expect(leave()).toBe(true);
+    kept();
+    await vi.waitFor(() => expect(leave()).toBe(false));
+  });
+
+  test("asks first when this browser keeps nothing, as a private window may", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(keepFile).mockRejectedValueOnce(new DOMException("refused", "InvalidStateError"));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    await change(screen, "is here");
+    await vi.waitFor(() => expect(keepFile).toHaveBeenCalled());
+    expect(leave()).toBe(true);
+  });
+
+  test("work kept here comes back with the user's copies of its fonts, given again to a server that lost it", async () => {
+    vi.mocked(renderOnServer)
+      .mockRejectedValueOnce(new ProblemError(aProblem(404, "Not found.")))
+      .mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(upload).mockResolvedValueOnce({ ...ARIAL_DOC, id: "again" });
+    vi.mocked(putFont).mockResolvedValue({ ...USERS_COPY, id: "again" });
+    const history = historyReducer(EMPTY_HISTORY, {
+      kind: "add",
+      edits: [{ kind: "replace", span_id: ARIAL_SPAN.id, text: "is here" }],
+    });
+    const fonts = [["Arial", { bytes: await FONT_FILE.arrayBuffer(), type: FONT_FILE.type }]];
+    const kept = { work: { history, fonts }, until: Date.now() + 60_000 };
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} kept={kept} />,
+    );
+
+    await expect.element(screen.getByRole("button", { name: "is here" })).toBeInTheDocument();
+    await vi.waitFor(() => expect(putFont).toHaveBeenCalledWith("again", "Arial", expect.any(Blob)));
+    const given = vi.mocked(putFont).mock.calls.at(-1)?.[2];
+    expect(await given?.text()).toBe(await FONT_FILE.text());
+    expect(given?.type).toBe(FONT_FILE.type);
+  });
+
+  test("each change is kept as it's made: the file once, then the history, until the server's hour ends", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(keepFile).mockClear();
+    vi.mocked(keepState).mockClear();
+    const file = new File(["%PDF-"], "contract.pdf");
+    const screen = await render(<EditorShell file={file} opened={DOC} onOpen={vi.fn()} />);
+    await change(screen, "is here");
+    await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(1));
+    expect(keepFile).toHaveBeenCalledWith(file);
+    const [kept] = vi.mocked(keepState).mock.calls[0] ?? [];
+    expect(kept?.until).toBe(Date.parse(DOC.expires_at));
+    expect(kept?.work).toMatchObject({ history: { done: [[{ edit: { span_id: span.id, text: "is here" } }]] } });
+
+    await screen.getByRole("button", { name: "is here" }).click();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(2));
+    expect(keepFile).toHaveBeenCalledTimes(1);
   });
 });
 

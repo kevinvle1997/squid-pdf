@@ -12,9 +12,18 @@ export interface Opened {
 /** The document, or why it didn't open, in words for the user. */
 export type Opening = { opened: Opened } | { failed: string };
 
-/** What the landing shows: waiting for a file, one on its way to the server, or why the last didn't open. */
+/** A document kept in this browser, as the landing offers it: its name, and until when it's kept. */
+export interface Offered {
+  readonly name: string;
+  readonly until: number;
+}
+
+/**
+ * What the landing shows: waiting for a file, one on its way to the server, or why the last didn't open;
+ * and while it waits, a document kept here to open again.
+ */
 export type Landing =
-  | { kind: "waiting" }
+  | { kind: "waiting"; kept?: Offered | undefined }
   | { kind: "opening"; name: string; sent: number; total: number }
   | { kind: "failed"; detail: string };
 

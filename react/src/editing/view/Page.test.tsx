@@ -14,6 +14,13 @@ import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
+// What's kept in this browser is the App's to test, in the browser's real storage.
+vi.mock(import("../../documents/kept"), async (original) => ({
+  ...(await original()),
+  keepFile: vi.fn(async () => undefined),
+  keepState: vi.fn(async () => undefined),
+}));
+
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
   render: vi.fn(),

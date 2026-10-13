@@ -23,3 +23,7 @@
 .progress { animation: after-quiet var(--dur-quick) var(--ease-out) backwards; }
 @keyframes after-quiet { from { visibility: hidden; opacity: 0; } }
 .fine { margin: 0; font-size: var(--fs-sm); color: var(--ink-lo); }
+/* A document this browser kept, offered back: under the call to act, not in its place. */
+.kept { display: flex; flex-direction: column; align-items: center; gap: var(--s3); }
+.keptSaid { margin: 0; max-width: 65ch; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
+.keptActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s3); }
