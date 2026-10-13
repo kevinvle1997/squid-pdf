@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from functools import partial
+from dataclasses import dataclass
 
 import orjson
 
@@ -16,36 +15,34 @@ from squidpdf.editing.types import FamilyInfo, FontList
 
 
 @dataclass(slots=True)
-class _FontListTasks:
-    """The font list's measuring by build, running or done: made once per server.
+class _FontListTask:
+    """The font list's measuring, running or done: made once per server.
 
-    The same for everyone under a build, and seconds of pool work. The running
+    The same for everyone under this build, and seconds of pool work. The running
     task, not its result, so a request that comes while it runs waits for that one.
     """
 
-    by_build: dict[str, asyncio.Task[bytes]] = field(default_factory=dict)
+    measuring: asyncio.Task[bytes] | None = None  # None: not started, or forgotten
 
-    def task_for(
-        self, build: str, start: Callable[[], asyncio.Task[bytes]]
-    ) -> asyncio.Task[bytes]:
-        """The measuring for `build`, started on the first ask since none was kept."""
-        if build not in self.by_build:
-            self.by_build[build] = start()
-        return self.by_build[build]
+    def task(self, start: Callable[[], asyncio.Task[bytes]]) -> asyncio.Task[bytes]:
+        """The measuring, started on the first ask since none was kept."""
+        if self.measuring is None:
+            self.measuring = start()
+        return self.measuring
 
-    def forget_if_failed(self, build: str, measuring: asyncio.Task[bytes]) -> None:
+    def forget_if_failed(self, measuring: asyncio.Task[bytes]) -> None:
         """Drop `measuring`, done, if it failed, so the next request tries again."""
         failed = measuring.cancelled() or measuring.exception() is not None
         if failed:
-            del self.by_build[build]
+            self.measuring = None
 
     def forget(self) -> None:
-        """Forget every measuring, as a fresh record."""
-        self.by_build.clear()
+        """Forget the measuring, as a fresh record."""
+        self.measuring = None
 
 
 # This server's font list, measured or being measured.
-_font_list_tasks = _FontListTasks()
+_font_list_task = _FontListTask()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -57,7 +54,7 @@ class FontListController:
     async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
         # Started on the first ask since the server started, or since the last one failed.
-        measuring = _font_list_tasks.task_for(BUILD, self._start_measuring)
+        measuring = _font_list_task.task(self._start_measuring)
         # Shielded: a browser that leaves doesn't stop the measuring others wait for.
         font_list_json = await asyncio.shield(measuring)
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
@@ -66,7 +63,7 @@ class FontListController:
     def _start_measuring(self) -> asyncio.Task[bytes]:
         """Start measuring the font list; it's dropped if it fails."""
         measuring = asyncio.create_task(self._font_list_json())
-        measuring.add_done_callback(partial(_font_list_tasks.forget_if_failed, BUILD))
+        measuring.add_done_callback(_font_list_task.forget_if_failed)
         return measuring
 
     async def _font_list_json(self) -> bytes:
