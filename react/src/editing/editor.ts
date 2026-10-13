@@ -196,7 +196,7 @@ export function change(editor: Editor, action: HistoryAction, also: Also = {}): 
   }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
   // What the last export, reopening or refused copy said is stale once the user edits again.
-  const notices = { ...state.notices, export: [], reopen: null, font: null };
+  const notices = { ...state.notices, export: [], reopen: null, font: null, drop: null };
   // The places found, found again in what the document now reads.
   const found = state.find.open ? refound(state, reading) : state.find;
   // What Change all did is said until anything else changes the history: undo would take that instead.

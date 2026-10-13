@@ -10,6 +10,7 @@ describe("the lines under the bar", () => {
       export: [plain("Downloaded contract.pdf.")],
       reopen: plain("Opened again."), // said in the bar, not under it
       font: null,
+      drop: null,
     };
     const drawn = {
       ...NOTHING_DRAWN,

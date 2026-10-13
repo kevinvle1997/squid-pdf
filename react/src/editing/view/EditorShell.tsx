@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 import type { Document } from "../../api/types";
 import { QUIET_MS } from "../../documents/constants";
 import { Button } from "../../ui/Button";
@@ -9,6 +9,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
+import { pdfDropped } from "../dropped";
 import { changedCount, closeEditor, createEditor, sayOpening, unexported, warnedCount } from "../editor";
 import { exportNow } from "../export";
 import { addFaces, facesOf } from "../faces";
@@ -37,12 +38,25 @@ function spanOn(target: EventTarget | null): string | null {
   return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;
 }
 
-/** The open document: every page, every span marked, editable in place, under the bar. */
-export function EditorShell({ file, opened }: { file: File; opened: Document }) {
+/** Whether a drag carries files, as a drop from the desktop does, not text or a link. */
+function carriesFiles(event: DragEvent): boolean {
+  return event.dataTransfer?.types.includes("Files") ?? false;
+}
+
+/**
+ * The open document: every page, every span marked, editable in place, under the bar. `onOpen`
+ * opens a PDF dropped on it, in its place.
+ */
+export function EditorShell({ file, opened, onOpen }: { file: File; opened: Document; onOpen: (file: File) => void }) {
   const [editor] = useState(() => createEditor(file, opened, SCALE));
+  const openDropped = useEffectEvent((files: readonly File[]) => {
+    const pdf = pdfDropped(editor, files);
+    if (pdf !== null) onOpen(pdf);
+  });
 
   // The one effect, for what happens outside React: the preview's faces, the live region on screen,
-  // shortcuts anywhere, the connection coming back, leaving with edits not exported, and the editor going.
+  // shortcuts anywhere, the connection coming back, a file dropped anywhere, leaving with edits not
+  // exported, and the editor going.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
     sayOpening(editor);
@@ -56,16 +70,30 @@ export function EditorShell({ file, opened }: { file: File; opened: Document }) 
       editor.queue.retry();
       retryImages(editor);
     };
+    // A file dragged anywhere drops here: the browser would open it in this tab, and the edits would go.
+    const dragging = (event: DragEvent) => {
+      if (carriesFiles(event)) event.preventDefault();
+    };
+    // The field a font goes on takes its own drop first.
+    const dropped = (event: DragEvent) => {
+      if (event.defaultPrevented || !carriesFiles(event)) return;
+      event.preventDefault();
+      openDropped([...(event.dataTransfer?.files ?? [])]);
+    };
     // The browser asks before leaving, in its own words. Until this browser keeps the edits too.
     const leaving = (event: BeforeUnloadEvent) => {
       if (unexported(editor.store.get())) event.preventDefault();
     };
     window.addEventListener("keydown", key);
     window.addEventListener("online", online);
+    window.addEventListener("dragover", dragging);
+    window.addEventListener("drop", dropped);
     window.addEventListener("beforeunload", leaving);
     return () => {
       window.removeEventListener("keydown", key);
       window.removeEventListener("online", online);
+      window.removeEventListener("dragover", dragging);
+      window.removeEventListener("drop", dropped);
       window.removeEventListener("beforeunload", leaving);
       closeEditor(editor);
     };
