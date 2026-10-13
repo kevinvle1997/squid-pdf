@@ -289,6 +289,19 @@ describe("a page", () => {
     expect(settles()).toHaveLength(0);
   });
 
+  test("a preview sets its words on the span's own line, so they don't move when the render lands", async () => {
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    const preview = () => screen.container.querySelector<HTMLElement>("[data-preview]");
+    await expect.poll(() => preview()?.textContent).toBe("is here");
+    // A line as tall as the span's box centres the words in it, as the field does.
+    const style = getComputedStyle(preview() as HTMLElement);
+    expect(parseFloat(style.lineHeight)).toBeCloseTo(parseFloat(style.height), 0);
+  });
+
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
     // No server answers in this test, so the page's image fails as it would with one too busy.

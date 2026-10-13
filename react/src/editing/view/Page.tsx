@@ -15,7 +15,7 @@ import type { Settling } from "../settle";
 import { shallowEqual } from "../store";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
-import { boxOf, shownSize, spanTextStyle } from "./geometry";
+import { boxOf, points, shownSize, spanTextStyle } from "./geometry";
 import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
@@ -335,12 +335,14 @@ function Preview({
 }) {
   if (font === undefined) return null;
   const box = boxOf(span.bbox, info);
+  // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
+  const line = points(span.bbox.y1 - span.bbox.y0, info);
   return (
     <span
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{ ...spanTextStyle(span, info, previewFaceOf(font)), minWidth: box.width, lineHeight: box.height }}
+      style={{ ...spanTextStyle(span, info, previewFaceOf(font)), minWidth: box.width, lineHeight: line }}
     >
       {text}
     </span>
