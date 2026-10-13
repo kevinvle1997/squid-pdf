@@ -11,7 +11,7 @@ engine asks both.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache, partial
 from typing import assert_never
@@ -44,6 +44,7 @@ from squidpdf.core.types import (
     Span,
     SpanIndex,
     by_page,
+    turn_added,
 )
 from squidpdf.core.writer import PageWriter, Setting
 
@@ -277,6 +278,15 @@ class Engine:
         planned = self.plans.plan_for(span, text) if plan is None else plan
         setting = Setting(span.size if size is None else size, scale_x, turn_ccw)
         return self.writer.draw(span, text, plan=planned, plans=self.plans, setting=setting)
+
+    def turn_pages(self, turns: Mapping[int, QuarterTurn]) -> None:
+        """Turn each page in `turns` that much further clockwise, on top of its own turn.
+
+        Nothing on the page moves: the turn is how a reader's viewer shows it.
+        """
+        pages = self.driver.pages()
+        for page, more in turns.items():
+            self.driver.turn_page(page, turn_added(pages[page].turn_cw, more))
 
     def keep_pages(self, pages: list[int]) -> list[Message]:
         """Keep only `pages`, in that order: page `pages[0]` becomes the first.

@@ -23,6 +23,7 @@ drawn_in_own_copy = "Edits here use the file's own copy of this font."
 # Why an edit was left out.
 no_span = "This edit points at text that isn't in this document."
 no_page = "This edit points at a page that isn't in this document."
+last_page = "A file needs at least one page, so its last page stays in."
 
 # Why a font's own copy can't be used, so a similar font stands in. One per font.
 font_not_in_file = "This font isn't stored in the file, so a similar font stands in for it."

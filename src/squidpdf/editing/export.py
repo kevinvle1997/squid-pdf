@@ -111,6 +111,8 @@ def save_edited(
     redactions = RedactionController(redacted_in(resolved))
     applied = apply_edits(engine, resolved)
     notices: list[Message] = []
+    # By their numbers in the original, so before any page is renumbered.
+    engine.turn_pages(resolved.turns)
     # Pages left out or moved: renumbered after the last draw, in the order the check reads.
     renumbered = order != list(range(resolved.page_count))
     if renumbered:

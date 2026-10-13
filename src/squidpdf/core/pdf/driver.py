@@ -287,6 +287,10 @@ class PdfDriver(Protocol):
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
         ...
 
+    def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
+        """Set the turn `page` asks for, clockwise, in place of the one it had."""
+        ...
+
     def save(self, path: str) -> None:
         """Write the document to `path`."""
         ...
