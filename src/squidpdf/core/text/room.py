@@ -76,19 +76,39 @@ def rooms_on(spans: list[Span], drawn: list[Rect], *, wanted: set[str]) -> dict[
     text = _by_height([(span.bbox, span) for span in level_spans], tall=turned)
     art = _art_near(drawn, text)
     margin = max(span.bbox.x1 for span in spans)
-    for block in _blocks_of(_lines_of(level_spans)):
-        # No span asked for in it: its edges needn't be worked out.
-        if not any(span.id in wanted for line in block for span in line.spans):
-            continue
+    # A block with no span asked for in it: its edges needn't be worked out.
+    asked = [block for block in _blocks_of(_lines_of(level_spans)) if _holds_any(block, wanted)]
+    measured = {
+        span.id: _room_of(span, edge=edge, text=text, art=art, margin=margin)
+        for span, edge in _each_span_and_edge(asked, text)
+        if span.id in wanted
+    }
+    return rooms | measured
+
+
+def _holds_any(block: list[_Line], wanted: set[str]) -> bool:
+    """Whether any span of `block` is one asked for."""
+    return any(span.id in wanted for line in block for span in line.spans)
+
+
+def _each_span_and_edge(
+    blocks: list[list[_Line]], text: _ByHeight[Span]
+) -> Iterator[tuple[Span, float]]:
+    """Each span of `blocks`, and where its line may run to with nothing after it."""
+    for block in blocks:
         for line, edge in _edges_of(block, text):
             for span in line.spans:
-                if span.id not in wanted:
-                    continue
-                # Text that follows on the line is what it'd run into; else, its block's edge.
-                text_starts = list(_text_ahead(span, text))
-                walls = [*(text_starts or [edge]), margin, *_drawn_ahead(span, art)]
-                rooms[span.id] = max(min(walls) - span.bbox.x1, 0.0)
-    return rooms
+                yield span, edge
+
+
+def _room_of(
+    span: Span, *, edge: float, text: _ByHeight[Span], art: _ByHeight[Rect], margin: float
+) -> float:
+    """How far `span` can run right before the first text, drawing or edge ahead of it."""
+    # Text that follows on the line is what it'd run into; else, its block's edge.
+    text_starts = list(_text_ahead(span, text))
+    walls = [*(text_starts or [edge]), margin, *_drawn_ahead(span, art)]
+    return max(min(walls) - span.bbox.x1, 0.0)
 
 
 def _art_near(drawn: list[Rect], text: _ByHeight[Span]) -> _ByHeight[Rect]:
