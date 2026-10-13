@@ -20,9 +20,10 @@ export const COMMANDS: readonly Command[] = [
   { keys: "mod+z", whileTyping: false, run: undo },
   { keys: "mod+shift+z", whileTyping: false, run: redo },
   { keys: "mod+y", whileTyping: false, run: redo },
-  // Redact the selection, typed in or not: a Mac's Delete is Backspace, and a full keyboard's forward Delete works too.
-  { keys: "mod+backspace", whileTyping: true, run: redact },
-  { keys: "mod+delete", whileTyping: true, run: redact },
+  // Redact the span: a Mac's Delete is Backspace, and a full keyboard's forward Delete works too. In a text
+  // field they're the field's own, deleting a word or a line, as they do everywhere else.
+  { keys: "mod+backspace", whileTyping: false, run: redact },
+  { keys: "mod+delete", whileTyping: false, run: redact },
 ];
 
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;

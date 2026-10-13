@@ -140,6 +140,18 @@ describe("redaction", () => {
     await screen.getByRole("button", { name: "Edit anyway" }).click();
     await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
   });
+
+  test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(<EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} />);
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}{End} now");
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
+    await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).not.toBeInTheDocument();
+  });
 });
 
 describe("leaving the page", () => {
