@@ -17,6 +17,10 @@
 .button[data-pressed] { transform: scale(.97); }
 .button[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
 .button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* A touch screen has no keys to hint at. */
+@media (pointer: coarse) {
+  .button kbd { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .button[data-pressed] { transform: none; }
 }

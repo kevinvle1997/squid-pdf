@@ -133,6 +133,12 @@ function Bar() {
       {reopen !== null && (
         <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
       )}
+      {changed === 0 && warned.count === 0 && (
+        <span className={styles.hint}>
+          <span className={styles.click}>Double-click text to change it</span>
+          <span className={styles.tap}>Double-tap text to change it</span>
+        </span>
+      )}
       <span className={styles.status}>
         {changed > 0 && counted(changed, { one: "change", other: "changes" })}
         {warned.count > 0 && (

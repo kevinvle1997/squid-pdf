@@ -72,8 +72,11 @@ export function FindBar() {
       <span className={styles.count}>
         {find.changed !== null ? (
           <>
-            Changed {counted(find.changed, { one: "place", other: "places" })} · <kbd>{COMMAND}Z</kbd> puts{" "}
-            {find.changed === 1 ? "it" : `all ${find.changed}`} back
+            Changed {counted(find.changed, { one: "place", other: "places" })}
+            <span className={styles.undoKey}>
+              {" "}
+              · <kbd>{COMMAND}Z</kbd> puts {find.changed === 1 ? "it" : `all ${find.changed}`} back
+            </span>
           </>
         ) : (
           searched && <Counted places={count.places} unlike={count.unlike} />

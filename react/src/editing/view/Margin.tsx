@@ -34,6 +34,8 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
       {/* A redaction takes every word out, so the note strikes them all. */}
       <span className={styles.old}>{shape === "margin" && !redacted ? changedWordsIn(span.text, now) : span.text}</span>
       {shape === "list" && <span className={styles.now}>{redacted ? "Redacted" : now}</span>}
+      {/* The list is a phone's per-change undo, with no Cmd+Z: each line says it's pressed to undo. */}
+      {shape === "list" && <span className={styles.undo}>Undo</span>}
       <i className={styles.bar} aria-hidden="true" />
     </Button>
   ));

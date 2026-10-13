@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -380,6 +380,38 @@ describe("the user's own copy of a font", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [], { pages: [0] });
     // The second file waits for the first; meanwhile neither split asks again.
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
+  });
+});
+
+describe("the bar", () => {
+  test("with nothing changed, it says how to start editing, and stops once something has", async () => {
+    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    const screen = await render(
+      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+    );
+    const hint = screen.getByText("Double-click text to change it");
+    await expect.element(hint).toBeVisible();
+    await change(screen, "is here");
+    await expect.element(hint).not.toBeInTheDocument();
+  });
+
+  test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
+      const screen = await render(
+        <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      );
+      await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
+      await expect.element(screen.getByText("Double-click text to change it")).not.toBeVisible();
+      const key = screen
+        .getByRole("button", { name: /^Export/ })
+        .element()
+        .querySelector("kbd");
+      expect(key === null ? "none" : getComputedStyle(key).display).toBe("none");
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
   });
 });
 

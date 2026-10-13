@@ -388,6 +388,17 @@ describe("a page", () => {
     expect(note.element().textContent).toBe("was");
   });
 
+  test("on a narrow screen, each change is a line under the page that says it's pressed to undo", async () => {
+    await page.viewport(400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const line = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
+    await expect.element(line).toBeVisible();
+    expect(line.element().textContent).toBe(`${WORDS}is hereUndo`);
+  });
+
   test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
     const substituted = aSpan({
       id: "s3",

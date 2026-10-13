@@ -20,8 +20,10 @@
 @keyframes penned { from { opacity: 0; transform: translateX(var(--s2)); } }
 .list { display: none; }
 .list ul { list-style: none; margin: 0; padding: 0; }
-.list .note { justify-content: flex-start; gap: var(--s2); }
-.list .old { flex: 1; }
+.list .note { justify-content: flex-start; gap: var(--s2); text-align: start; }
+.list .old { flex: 0 1 auto; }
+.undo { margin-inline-start: auto; padding-inline-start: var(--s3); color: var(--ink); font-weight: 500; }
+.note[data-hovered] .undo, .note[data-focus-visible] .undo { color: var(--change); }
 .list .bar { order: -1; }
 @media (max-width: 820px) {
   .margin { display: none; }
