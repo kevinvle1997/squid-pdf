@@ -84,6 +84,22 @@ describe("find", () => {
     expect(editor.store.get().reading.spans.get("similar")).toBeUndefined();
   });
 
+  test("what Change all did stops being said once anything else changes: undo would take that, not the places", () => {
+    typeQuery(editor, DATE);
+    typeReplacement(editor, "14 June");
+    changeAll(editor);
+    expect(editor.store.get().find.changed).toBe(2);
+    change(editor, { kind: "add", edits: [{ kind: "redact", span_id: "other" }] });
+    expect(editor.store.get().find.changed).toBeNull();
+
+    // Closed meanwhile, the bar doesn't say it again when it opens.
+    changeAll(editor);
+    closeFind(editor);
+    undo(editor);
+    openFind(editor);
+    expect(editor.store.get().find.changed).toBeNull();
+  });
+
   test("Change all needs words to change to: emptying a span is redaction's job", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
