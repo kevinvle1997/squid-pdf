@@ -1,10 +1,10 @@
-// What a span's mark shows: its fidelity before any edit (rule 1), and the server's verdict after.
-// A new kind of span (approximate, redacted) is a case here and a class in SpanMark.module.css.
+// What a span's mark shows, and what an edit in it says as typing starts: a font's warning waits for the
+// edit (`editNote`), the bar's count saying it before (Rule 1). A new kind of span is a case here and a class.
 import type { Copy, FitInfo, FontInfo, RedactionInfo, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
 import { fill } from "./words";
 
-/** What hover, focus or a tap says of a span. */
+/** What hover, focus or a tap says of a span, or an edit in it as typing starts. */
 export interface Note {
   readonly warn: boolean;
   readonly said: string; // the server's sentence
@@ -13,8 +13,6 @@ export interface Note {
 
 /** Each is a line under the span, drawn by what's true of it. */
 export interface Look {
-  readonly substituted: boolean; // a substitute draws in place of the file's own font: "a similar font"
-  readonly approximate: boolean; // the file's own font draws it, but an edit won't match: "will look different"
   readonly formField: boolean; // a form field draws it, not the page: an edit here is left out
   readonly changed: boolean; // the user changed its words
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
@@ -38,8 +36,6 @@ export function lookOf({ span, font, edited, fit, redaction, copy }: Facts): Loo
   // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
   const verdict = changed ? fit?.message : null;
   const looks = {
-    substituted: span.fidelity === "substitute",
-    approximate: span.why !== null,
     formField: span.form_field,
     changed,
     trouble: Boolean(verdict),
@@ -48,7 +44,20 @@ export function lookOf({ span, font, edited, fit, redaction, copy }: Facts): Loo
   };
   // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
   if (redacted) return { ...looks, note: redactionNote(redaction) };
-  return { ...looks, note: verdict ? { warn: true, said: verdict, why: null } : fidelityNote({ span, font, copy }) };
+  if (verdict) return { ...looks, note: { warn: true, said: verdict, why: null } };
+  // Untouched, its font's warning waits for an edit; a form field's says an edit there is left out.
+  if (!changed && !span.form_field) return { ...looks, note: null };
+  return { ...looks, note: fidelityNote({ span, font, copy }) };
+}
+
+/** What an edit in `span` warns of as typing starts: nothing when it keeps its look, or its font is quieted. */
+export function editNote(
+  span: SpanInfo,
+  { font, copy, quiet }: { font: FontInfo | undefined; copy: Copy; quiet: boolean },
+): Note | null {
+  // A form field's is a trouble of the field's own: whatever is typed, the edit is left out.
+  if (quiet || span.form_field) return null;
+  return fidelityNote({ span, font, copy });
 }
 
 /** What a redaction's render found, in the server's words: nothing to say until it's drawn, or when it all went. */
@@ -58,8 +67,14 @@ function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   return { warn: true, said: redaction.message, why: null };
 }
 
+/** The chip's short verdict on an edit here, warned: "a similar font", "will look different", or none when it matches. */
+export function verdictOf(span: SpanInfo): string | null {
+  if (span.substitute !== null) return "a similar font";
+  return span.why === null ? null : "will look different";
+}
+
 /** Why an edit here would come out unlike the text around it, in the server's words. */
-export function approximateSaid(why: NonNullable<SpanInfo["why"]>, copy: Copy): string {
+function approximateSaid(why: NonNullable<SpanInfo["why"]>, copy: Copy): string {
   return fill(copy.approximate[why.code] ?? "", why.params);
 }
 

@@ -78,6 +78,7 @@ export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly warned: ReadonlySet<string>; // the fonts an edit warns of: a similar font draws it, or it won't match
 }
 
 export interface EditorState {
@@ -98,6 +99,7 @@ export interface EditorState {
   readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
+  readonly quietFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full
   readonly images: ReadonlyMap<number, PageImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
 }
@@ -126,6 +128,7 @@ export function layoutOf(doc: Document): Layout {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts: new Map(doc.fonts.map((font) => [font.name, font])),
+    warned: new Set(doc.spans.filter((span) => span.substitute !== null || span.why !== null).map((span) => span.font)),
   };
 }
 
@@ -148,6 +151,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     exported: UNEDITED.edits,
     attaching: null,
     focusFont: null,
+    quietFonts: new Set(),
     images: new Map(),
     find: FIND_CLOSED,
   });

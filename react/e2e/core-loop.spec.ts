@@ -45,13 +45,21 @@ test("an opened PDF shows its pages, with every span marked", async ({ page }) =
   expect(await seriousProblems(page)).toEqual([]);
 });
 
-test("a span in a similar font says so before it's edited", async ({ page }) => {
+test("a span in a similar font says so as its edit starts, until its font is quieted", async ({ page }) => {
   await open(page);
-  // React Aria shows a hover note once it knows a pointer is in use: a real pointer moves
-  // across the page first, where this test's hover would jump straight onto the span.
+  // At rest it says nothing: the bar's count speaks for the whole document.
   await page.mouse.move(0, 0);
-  await page.getByRole("button", { name: "SERVICES AGREEMENT" }).hover();
-  await expect(page.getByRole("tooltip")).toContainText("Liberation Serif Bold");
+  const heading = page.getByRole("button", { name: "SERVICES AGREEMENT" });
+  await heading.hover();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await heading.focus();
+  await page.keyboard.press("Enter");
+  // On the page, beside the field: the live region says it too, for a screen reader.
+  const note = page.getByRole("region", { name: "Page 1" }).getByText(/Edits here use Liberation Serif Bold/);
+  await expect(note).toBeVisible();
+  await page.getByRole("button", { name: "Don't show again for this font" }).click();
+  await expect(note).toHaveCount(0);
+  await expect(page.getByText("a similar font", { exact: true })).toBeVisible();
 });
 
 test("an edit is drawn by the server, and undo puts the original back", async ({ page }) => {

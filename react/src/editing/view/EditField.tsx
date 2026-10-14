@@ -20,6 +20,8 @@ import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
+import { editNote, verdictOf } from "../marks";
+import { warnAtEdit } from "../quiet";
 import { redact } from "../redaction";
 import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
@@ -57,6 +59,10 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // One trouble a line: a sentence of the server's, then the fit's own.
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
   const offered = useEditorState(offersCopy);
+  // What an edit here warns of, in full, as typing starts: until the user quiets its font.
+  const quiet = useEditorState((state) => state.quietFonts.has(span.font));
+  const note = editNote(span, { font, copy, quiet });
+  const verdict = verdictOf(span);
   const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
@@ -103,7 +109,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     const at = editor.store.get().draft?.atPt;
     if (at == null) field.select();
     else field.setSelectionRange(...wordAround(start, letterAt(start, at, { glyphs, size: span.size })));
-    if (trouble !== "") say(editor, trouble);
+    const heard = [note?.said, note?.why, trouble].filter(Boolean).join(" ");
+    if (heard !== "") say(editor, heard);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -161,6 +168,18 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         />
       </TextField>
       <div className={styles.chip} style={{ ...pinnedUnder(span.bbox, info), top: points(span.bbox.y1 + 4, info) }}>
+        {note !== null && (
+          // Said as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
+          <span className={styles.note}>
+            <span className={styles.noteWords} aria-hidden="true">
+              <Warn>{note.said}</Warn>
+              {note.why !== null && <span>{note.why}</span>}
+            </span>
+            <Button preventFocusOnPress excludeFromTabOrder onPress={() => warnAtEdit(editor, span.font, false)}>
+              Don't show again for this font
+            </Button>
+          </span>
+        )}
         {trouble !== "" ? (
           <span className={styles.bad} aria-hidden="true">
             <Warn>{trouble}</Warn>
@@ -170,7 +189,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             <span>{drawnIn}</span>
             <Num>{SIZE.format(span.size * set.size)} pt</Num>
             {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
-            {span.substitute === null ? <span>looks identical</span> : <Warn>a similar font</Warn>}
+            {verdict === null ? <span>looks identical</span> : <Warn>{verdict}</Warn>}
           </span>
         )}
         {ways.length > 0 && (

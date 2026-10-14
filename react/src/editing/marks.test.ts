@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aFit, aFont, aSpan, COPY as copy } from "../fixtures";
-import { lookOf } from "./marks";
+import { editNote, lookOf, verdictOf } from "./marks";
 
 const span = aSpan({ id: "s1" });
 const changed = { span, text: "is s1", replaced: true, strategy: undefined, redacted: false };
@@ -12,11 +12,9 @@ const substitutedFont = aFont("Arial", {
 });
 const substituted = aSpan({ id: "s2", font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" });
 
-describe("what a span's mark shows", () => {
+describe("what a span's mark shows, and an edit in it as typing starts", () => {
   test("a span in its own font, unedited, has nothing to say", () => {
     expect(lookOf({ span, font: ownFont, edited: undefined, fit: undefined, redaction: undefined, copy })).toEqual({
-      substituted: false,
-      approximate: false,
       formField: false,
       changed: false,
       trouble: false,
@@ -26,7 +24,7 @@ describe("what a span's mark shows", () => {
     });
   });
 
-  test("before any edit, a similar font is said and warned, whatever its widths", () => {
+  test("untouched, a span in a similar font has no mark or note: its warning waits for an edit", () => {
     const look = lookOf({
       span: substituted,
       font: substitutedFont,
@@ -35,54 +33,50 @@ describe("what a span's mark shows", () => {
       redaction: undefined,
       copy,
     });
+    expect(look.note).toBeNull();
+  });
+
+  test("as typing starts, a similar font is said and warned, whatever its widths", () => {
     const sameWidths = { ...substituted, same_widths: true };
-    const asWide = lookOf({
-      span: sameWidths,
-      font: substitutedFont,
-      edited: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
-    expect(look.substituted).toBe(true);
-    expect(look.note).toEqual({
+    expect(editNote(substituted, { font: substitutedFont, copy, quiet: false })).toEqual({
       warn: true,
       said: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: "Not embedded.",
     });
-    expect(asWide.note).toEqual({
+    expect(editNote(sameWidths, { font: substitutedFont, copy, quiet: false })).toEqual({
       warn: true,
       said: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
       why: "Not embedded.",
     });
+    expect(verdictOf(substituted)).toBe("a similar font");
+  });
+
+  test("a font the user quieted says nothing in full as typing starts, but the chip's verdict stays", () => {
+    expect(editNote(substituted, { font: substitutedFont, copy, quiet: true })).toBeNull();
+    expect(verdictOf(substituted)).toBe("a similar font");
   });
 
   test("the span's own fidelity is what's said, not its font's first span's", () => {
     // The font's own copy draws its first span, so the font names no similar face; this span's doesn't.
-    const look = lookOf({
-      span: substituted,
-      font: aFont("Arial"),
-      edited: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
-    const exactHere = lookOf({
-      span,
-      font: substitutedFont,
-      edited: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
-    expect(look.substituted).toBe(true);
-    expect(look.note).toEqual({
+    expect(editNote(substituted, { font: aFont("Arial"), copy, quiet: false })).toEqual({
       warn: true,
       said: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: null,
     });
-    expect(exactHere.substituted).toBe(false);
-    expect(exactHere.note).toBeNull();
+    expect(editNote(span, { font: substitutedFont, copy, quiet: false })).toBeNull();
+    expect(verdictOf(span)).toBeNull();
+  });
+
+  test("once changed, a span in a similar font says so on hover, as long as the edit stands", () => {
+    const look = lookOf({
+      span: substituted,
+      font: substitutedFont,
+      edited: changed,
+      fit: undefined,
+      redaction: undefined,
+      copy,
+    });
+    expect(look.note).toMatchObject({ warn: true, why: "Not embedded." });
   });
 
   test("after an edit, the server's verdict comes first, and only while the span is still changed", () => {
@@ -114,18 +108,14 @@ describe("what a span's mark shows", () => {
     expect(look.note).toEqual({ warn: true, said: copy.form_field_not_edited, why: null });
   });
 
-  test("before any edit, text the file's own font draws but an edit won't match says why, warned", () => {
-    const why = { code: "turned_text" as const, params: {} };
-    const look = lookOf({
-      span: { ...span, fidelity: "approximate", why },
-      font: ownFont,
-      edited: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
+  test("as typing starts, text the file's own font draws but an edit won't match says why, warned", () => {
+    const turned = aSpan({ id: "s3", fidelity: "approximate", why: { code: "turned_text", params: {} } });
+    expect(editNote(turned, { font: ownFont, copy, quiet: false })).toEqual({
+      warn: true,
+      said: copy.approximate.turned_text,
+      why: null,
     });
-    expect(look.approximate).toBe(true);
-    expect(look.note).toEqual({ warn: true, said: copy.approximate.turned_text, why: null });
+    expect(verdictOf(turned)).toBe("will look different");
   });
 
   test("a redaction says nothing until it's drawn, then what the server found, warned", () => {

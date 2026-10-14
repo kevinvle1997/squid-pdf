@@ -25,7 +25,8 @@ interface Props {
 }
 
 /**
- * A span of the page's text: pressable, with its fidelity on hover, focus and a single tap.
+ * A span of the page's text: pressable, with its note on hover, focus and a single tap. A font's
+ * warning waits for an edit, in the field (`editNote`).
  * The page hands it what it shows, so a page's marks subscribe to nothing of the editor's and
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
@@ -73,8 +74,6 @@ export const SpanMark = memo(function SpanMark(props: Props) {
 
   const className = [
     styles.span,
-    look.substituted && styles.substitute,
-    look.approximate && styles.approximate,
     look.formField && styles.formField,
     look.changed && styles.changed,
     look.trouble && styles.trouble,

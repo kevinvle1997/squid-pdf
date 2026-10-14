@@ -2,13 +2,18 @@ import { useCallback } from "react";
 import { Dialog, DialogTrigger, FileTrigger, Popover } from "react-aria-components";
 import type { FontInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
+import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
 import { attachFont, detachFont, FONT_FILES, fontFocused, shownName } from "../fonts";
+import { warnAtEdit } from "../quiet";
 import { fill } from "../words";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
 
-/** The document's fonts, from the bar: what draws each, and the user's own copy of one, added or removed. */
+/**
+ * The document's fonts, from the bar: what draws each, the user's own copy of one, added or removed,
+ * and whether an edit in one warns in full: the keyboard's way to quiet it, and everyone's to bring it back.
+ */
 export function Fonts() {
   const fonts = useEditorState((state) => state.doc.fonts);
   return (
@@ -34,6 +39,8 @@ function FontRow({ font }: { font: FontInfo }) {
   const busy = useEditorState((state) => state.attaching !== null);
   const working = useEditorState((state) => state.attaching === font.name);
   const focusHere = useEditorState((state) => state.focusFont === font.name);
+  const warned = useEditorState((state) => state.layout.warned.has(font.name));
+  const warns = useEditorState((state) => !state.quietFonts.has(font.name));
   // Sent focus, the row's button takes it as it's drawn: the one pressed has just gone.
   const takeFocus = useCallback(
     (button: HTMLButtonElement | null) => {
@@ -79,6 +86,13 @@ function FontRow({ font }: { font: FontInfo }) {
             {working ? "Adding…" : "Use your copy"}
           </Button>
         </FileTrigger>
+      )}
+      {warned && (
+        <span className={styles.warns}>
+          <Checkbox isSelected={warns} onChange={(next) => warnAtEdit(editor, font.name, next)}>
+            Warn before each edit
+          </Checkbox>
+        </span>
       )}
       {refused !== null && (
         <span className={styles.refused}>

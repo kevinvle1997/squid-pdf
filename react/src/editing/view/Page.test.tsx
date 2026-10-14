@@ -596,39 +596,65 @@ describe("a page", () => {
     expect(line.element().textContent).toBe(`${WORDS}is hereUndo`);
   });
 
-  test("a span in a similar font shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
+  test("a span with a note shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
+    const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
+      2,
+    );
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(mark).toBeInTheDocument();
+    // Focus from the keyboard: a key pressed first, as Tab would be.
+    await userEvent.keyboard("{Shift}");
+    mark.element().focus();
+    const note = screen.getByText(COPY.form_field_not_edited, { exact: false });
+    await expect.element(note).toBeVisible();
+    await expect.element(mark).toHaveAccessibleDescription(COPY.form_field_not_edited);
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(note).not.toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “SSN 078”" })).toHaveFocus();
+  });
+
+  test("untouched, a span in a similar font has no line and no note; editing it warns in full until its font is quieted", async () => {
     const substituted = aSpan({
       id: "s3",
-      text: "in Arial",
+      text: "in arial",
       font: "Arial",
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
       fidelity: "substitute",
       substitute: "Liberation Sans Regular",
     });
-    const substitutedFont = aFont("Arial", {
-      substitute: "Liberation Sans Regular",
-      same_widths: false,
-      why: "Not embedded.",
-    });
+    const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular", why: "Not embedded.", glyphs });
     editor = createEditor(
       new File(["%PDF-"], "contract.pdf"),
       aDoc({ spans: [substituted], fonts: [substitutedFont] }),
       2,
     );
     const screen = await draw();
-    const mark = screen.getByRole("button", { name: "in Arial" });
+    const mark = screen.getByRole("button", { name: "in arial" });
     await expect.element(mark).toBeInTheDocument();
-    // Focus from the keyboard: a key pressed first, as Tab would be.
-    await userEvent.keyboard("{Shift}");
-    mark.element().focus();
+    expect(getComputedStyle(mark.element(), "::after").backgroundImage).toBe("none");
     const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
-    await expect.element(note).toBeVisible();
-    await expect.element(mark).toHaveAccessibleDescription(/Edits here use Liberation Sans Regular/);
-
-    await userEvent.keyboard("{Escape}");
+    await mark.hover();
+    await new Promise((resolve) => setTimeout(resolve, 50));
     await expect.element(note).not.toBeInTheDocument();
+
+    mark.element().focus();
     await userEvent.keyboard("{Enter}");
-    await expect.element(screen.getByRole("textbox", { name: "Change “in Arial”" })).toHaveFocus();
+    await expect.element(note).toBeVisible();
+    await expect.element(screen.getByText("Not embedded.")).toBeVisible();
+    await screen.getByRole("button", { name: "Don't show again for this font" }).click();
+    await expect.element(note).not.toBeInTheDocument();
+    // Quieted, the chip still gives its short verdict (Rule 1).
+    await expect.element(screen.getByText("a similar font", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “in arial”" })).toHaveFocus();
+    await expect.element(note).not.toBeInTheDocument();
   });
 
   test("text a form field draws has the dashed warning line, and its note says an edit is left out", async () => {
@@ -649,27 +675,28 @@ describe("a page", () => {
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });
 
-  test("text an edit won't match has the dashed warning line, and its note says why, warned", async () => {
+  test("text an edit won't match has no line at rest; editing it says why, warned, and the chip that it will look different", async () => {
     const turned = aSpan({
       id: "s4",
-      text: "Turned",
+      text: "turned",
       fidelity: "approximate",
       why: { code: "turned_text", params: {} },
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
     });
     editor = createEditor(
       new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [turned], fonts: [aFont("Times-Roman")] }),
+      aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }),
       2,
     );
     const screen = await draw();
-    const mark = screen.getByRole("button", { name: "Turned" });
+    const mark = screen.getByRole("button", { name: "turned" });
     await expect.element(mark).toBeInTheDocument();
-    const line = getComputedStyle(mark.element(), "::after");
-    expect(line.backgroundImage).toContain("repeating-linear-gradient");
-    await mark.hover();
+    expect(getComputedStyle(mark.element(), "::after").backgroundImage).toBe("none");
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
     const note = screen.getByText(COPY.approximate.turned_text ?? "");
     await expect.element(note).toBeVisible();
+    await expect.element(screen.getByText("will look different", { exact: true })).toBeVisible();
     const warn = document.body.appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
     expect(getComputedStyle(note.element()).color).toBe(getComputedStyle(warn).color);
@@ -677,24 +704,16 @@ describe("a page", () => {
   });
 
   test("a click shows a span's note; a click's focus alone doesn't", async () => {
-    const substituted = aSpan({
-      id: "s3",
-      text: "in Arial",
-      font: "Arial",
-      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
-      fidelity: "substitute",
-      substitute: "Liberation Sans Regular",
-    });
-    const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular" });
+    const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     editor = createEditor(
       new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [substituted], fonts: [substitutedFont] }),
+      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
       2,
     );
     const screen = await draw();
-    const mark = screen.getByRole("button", { name: "in Arial" });
+    const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
-    const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
+    const note = screen.getByText(COPY.form_field_not_edited);
     // A pointer was used last: focus that comes without a press is a click's, not the keyboard's.
     await userEvent.click(screen.getByRole("region", { name: "Page 1" }), { position: { x: 1, y: 1 } });
     mark.element().focus();

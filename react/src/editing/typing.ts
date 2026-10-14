@@ -4,7 +4,6 @@ import type { SpanInfo, Strategy } from "../api/types";
 import { change, type Draft, type Editor, type EditorState, spoken } from "./editor";
 import { fallbackFaceOf } from "./faces";
 import { type Fit, fitOf, troubleKindOf, troublesOf, wayDrawn } from "./fit";
-import { approximateSaid } from "./marks";
 import type { Reading } from "./project";
 
 /** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
@@ -78,10 +77,9 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   const fit = fitOf(span, { font, text, rules });
   const substitute = fallbackFaceOf(span, font);
   const way = wayDrawn(state.draft?.strategy, fit);
-  // Whatever is typed, an edit here won't match the text around it: said first.
-  const approximate = span.why === null ? [] : [approximateSaid(span.why, copy)];
+  // That an edit here won't match the text around it is said once, as typing starts (`editNote`), not with each letter.
   return {
-    said: [...approximate, ...troublesOf(fit, { rules, copy, substitute, way })],
+    said: troublesOf(fit, { rules, copy, substitute, way }),
     kind: `${troubleKindOf(fit, rules)} ${way}`,
     offers: fit.options.length > 1,
   };
