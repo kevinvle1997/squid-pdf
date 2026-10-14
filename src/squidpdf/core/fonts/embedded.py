@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from squidpdf.core.app.message import Message
 from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
-from squidpdf.core.types import CodedFont, FontCode, FontKind, PageFont
+from squidpdf.core.types import EM, CodedFont, FontCode, FontKind, PageFont
 
 # Bytes per code, for the font kinds we can write by code.
-_CODE_BYTES: dict[FontKind, int] = {"truetype": 1, "type0": 2}
+_CODE_BYTES: dict[FontKind, int] = {"truetype": 1, "type0": 2, "type3": 1}
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -27,7 +27,8 @@ class EmbeddedFont:
     """
 
     program: FontProgram  # the driver's open copy, to measure with
-    file: bytes = field(repr=False)  # the font file itself, to add to a page for a redraw
+    # The font file itself, to add to a page for a redraw; empty for a Type3's drawings.
+    file: bytes = field(repr=False)
     coverage: Coverage  # which letters draw a shape
     coded: CodedFont | None  # set when we write it by code, not by letter
 
@@ -85,9 +86,9 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
     counts if its letter list (ToUnicode) says which code draws each letter;
     `draw` then writes those codes.
     """
-    # Letters drawn by little drawings in the file: no font program to write new ones with.
+    # Each letter a drawing in the file: written by code, in those drawings.
     if page_font.kind == "type3":
-        raise FontUnusable(Message("font_letters_are_drawings"))
+        return _open_drawn(driver, page_font)
     # Not in the file at all: only named.
     if not page_font.is_embedded:
         raise FontUnusable(Message("font_not_in_file"))
@@ -96,6 +97,43 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
         return _open_font_file(driver, page_font, font_file)
     except DriverError as problem:  # the library can't read the font out, open it or load it
         raise FontUnusable(problem.reason) from problem
+
+
+def _open_drawn(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
+    """A Type3 font, written by code and measured by its width list: no font file to open."""
+    # Only a font the page uses itself, as for a TrueType written by code.
+    if page_font.in_form:
+        raise FontUnusable(Message("font_cant_write"))
+    coded = _read_coded_font(driver, page_font)
+    glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
+    # No file to read: its letter list says what it draws, a space only if it has one.
+    coverage = coverage_of(b"", (ord(letter) for letter in coded.letters), glyph_ids)
+    return EmbeddedFont(_DrawnLetters(coded), b"", coverage, coded)
+
+
+@dataclass(frozen=True, slots=True)
+class _DrawnLetters:
+    """A Type3 font's letters, measured by its width list, as the page places them."""
+
+    coded: CodedFont
+
+    def listed_letters(self) -> list[int]:
+        """Every letter it has a drawing for."""
+        return [ord(letter) for letter in self.coded.letters]
+
+    def advance(self, ch: str) -> float:
+        """How far `ch` moves the pen, in ems: none for a letter it has no drawing for."""
+        # .get: a space it lacks is still measured, for the page's usual gap.
+        code = self.coded.letters.get(ch)
+        return 0.0 if code is None else code.width / EM
+
+    def maps(self, ch: str) -> bool:
+        """Whether it has a drawing for `ch`."""
+        return ch in self.coded.letters
+
+    def width(self, text: str, size: float) -> float:
+        """How wide `text` is at `size` points."""
+        return sum(self.advance(ch) for ch in text) * size
 
 
 def _open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
@@ -162,7 +200,7 @@ def _bytes_per_code(font: PageFont) -> int | None:
     """How many bytes each code takes in this font, or None if we can't write it."""
     if font.kind == "type0" and font.encoding != "Identity-H":
         return None  # its codes aren't glyph numbers, so we can't work them out
-    # .get: a kind we can't write by code, as Type1 or Type3, has none.
+    # .get: a kind we can't write by code, as Type1, has none.
     return _CODE_BYTES.get(font.kind)
 
 

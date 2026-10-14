@@ -128,7 +128,7 @@ class PdfDriver(Protocol):
         ...
 
     def font_descriptor(self, xref: int) -> FontDescriptor | None:
-        """What the font's description says about how it looks; None when it has none."""
+        """What the font's description says of its look and the font it names; None if none."""
         ...
 
     def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:

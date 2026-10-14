@@ -68,8 +68,8 @@ _NOT_GOOGLES = [
     ("Arial", None, "google_not_listed"),
     ("Aclonica-Italic", None, "google_no_cut"),
     ("Assistant-Bold", None, "google_name_reserved"),
-    ("Roboto", FontDescriptor(32, 450.0, 0.0), "google_no_cut"),
-    ("Roboto", FontDescriptor(32, 0.0, 0.0), "google_no_cut"),
+    ("Roboto", FontDescriptor(32, 450.0, 0.0, None), "google_no_cut"),
+    ("Roboto", FontDescriptor(32, 0.0, 0.0, None), "google_no_cut"),
 ]
 
 

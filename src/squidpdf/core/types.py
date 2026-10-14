@@ -298,11 +298,12 @@ class LookAlike:
 
 @dataclass(frozen=True, slots=True)
 class FontDescriptor:
-    """What a font's description in the PDF says about its look, for picking a look-alike."""
+    """What a font's description in the PDF says about its look, and the font it names."""
 
     flags: int  # its /Flags bits: serif, fixed width, italic, forced bold and so on
     weight: float | None  # its /FontWeight, when it gives one: any number the file writes
     italic_angle: float  # its /ItalicAngle: how far the letters lean, 0 when upright
+    name: str | None  # its /FontName, subset prefix and all, when it gives one
 
 
 def new_text(

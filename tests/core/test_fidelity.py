@@ -23,7 +23,7 @@ from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
-from tests.core.conftest import MERGED_TEXTS, coded_under
+from tests.core.conftest import DRAWN_TEXTS, MERGED_TEXTS, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,
@@ -51,8 +51,12 @@ _ADVANCES = {"A": 500.0, "B": 550.0, " ": 250.0}
 
 def _drawn(path: str) -> list[dict]:
     """Every span of text on the saved file's first page, re-read."""
-    blocks = pymupdf.open(path)[0].get_text("rawdict")["blocks"]
-    return list(each_span(blocks))
+    return _drawn_on(pymupdf.open(path)[0])
+
+
+def _drawn_on(page: pymupdf.Page) -> list[dict]:
+    """Every span of text on `page`, re-read."""
+    return list(each_span(page.get_text("rawdict")["blocks"]))
 
 
 def _text(span: dict) -> str:
@@ -170,8 +174,10 @@ def test_a_font_mupdf_cannot_open_is_a_substitute_not_a_crash(corrupt, tmp_path)
     assert_equal(drawn["font"], saved_as("Liberation Sans Regular"), "what redrew it")
 
 
-def test_a_type3_font_is_a_substitute_in_its_own_weight_saying_why(type3, tmp_path):
-    """Its letters are drawings. Unmatched, it said "not stored" and redrew Regular."""
+def test_a_type3_font_with_no_letter_list_is_a_substitute_in_its_own_weight_saying_why(
+    type3, tmp_path
+):
+    """It has no letter list. Unmatched, it said "not stored" and redrew Regular."""
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(type3) as engine:
         span = next(iter(engine.index()))
@@ -180,7 +186,7 @@ def test_a_type3_font_is_a_substitute_in_its_own_weight_saying_why(type3, tmp_pa
         engine.draw(span, "Hi there")
         engine.save(out)
 
-    expected = ("substitute", words.sentence("font_letters_are_drawings"))
+    expected = ("substitute", words.sentence("font_no_letter_list"))
     assert_equal((report.state, _said(report)), expected, "fidelity, and why")
     assert_equal(
         report.substitute, "Liberation Sans Bold", "the face it names, Bold as described"
@@ -188,6 +194,36 @@ def test_a_type3_font_is_a_substitute_in_its_own_weight_saying_why(type3, tmp_pa
     [drawn] = _drawn(out)
     expected_drawn = ("Hi there", saved_as("Liberation Sans Bold"))
     assert_equal((_text(drawn), drawn["font"]), expected_drawn, "what redrew, and in what")
+
+
+def test_a_type3_font_is_exact_and_redraws_in_its_drawings_and_its_other_copies(
+    drawn, tmp_path
+):
+    """Its letter list says which drawing is which letter, and another copy lends what it lacks.
+
+    Y and w are only the other copy's, found by the font both descriptions name:
+    text calls each copy by its object.
+    """
+    out = str(tmp_path / "redrawn.pdf")
+    hello, yellow = DRAWN_TEXTS
+    with open_pdf(drawn) as engine:
+        span = next(span for span in engine.index() if span.text == hello)
+        _x, baseline = span.origin
+        report = next(r for r in engine.assess(engine.index()) if r.span_id == span.id)
+        missing = engine.fit.plan_for(span, yellow).missing
+        engine.remove([span], then_drawn=[LineToDraw(span, yellow)])
+        engine.draw(span, yellow)
+        engine.save(out)
+
+    assert_equal((missing, report.state), ([], "exact"), "missing, and fidelity")
+    saved = pymupdf.open(out)[0]
+    assert_equal(saved.get_text().split(), [yellow, yellow], "the lines read back")
+    assert_equal(_blank_letters(saved), [], "letters drawn with no ink")
+    kinds = [kind for _xref, _ext, kind, *_ in saved.get_fonts()]
+    assert_equal(kinds, ["Type3", "Type3"], "the saved page's fonts: the file's two copies")
+    fonts = {span["font"] for span in _drawn_on(saved)}
+    redrawn = {span["font"] for span in _drawn_on(saved) if span["origin"][1] == baseline}
+    assert_equal(redrawn, fonts, "the fonts the redraw used: both copies")
 
 
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):
