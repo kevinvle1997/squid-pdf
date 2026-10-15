@@ -619,7 +619,7 @@ describe("a page", () => {
     await expect.element(screen.getByRole("textbox", { name: "Change “SSN 078”" })).toHaveFocus();
   });
 
-  test("untouched, a span in a similar font has no line and no note; editing it warns in full until its font is quieted", async () => {
+  test("untouched, a span in a similar font has no line; editing it warns in full until its font is quieted", async () => {
     const substituted = aSpan({
       id: "s3",
       text: "in arial",
@@ -638,11 +638,8 @@ describe("a page", () => {
     const mark = screen.getByRole("button", { name: "in arial" });
     await expect.element(mark).toBeInTheDocument();
     expect(getComputedStyle(mark.element(), "::after").backgroundImage).toBe("none");
+    // That hover opens no note is `lookOf`'s to hold (marks.test.ts): an absence can't be waited for.
     const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
-    await mark.hover();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await expect.element(note).not.toBeInTheDocument();
-
     mark.element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(note).toBeVisible();
