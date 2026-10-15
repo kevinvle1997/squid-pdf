@@ -108,7 +108,7 @@ class _FontCache:
     copies_names: dict[PageFont, str] = field(default_factory=dict)
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
-    # Every letter some copy of a font draws, by its name, once a walk has opened every copy.
+    # Every letter a font's copies draw, by the name they share, once a walk opened them all.
     every_letter: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
@@ -289,7 +289,7 @@ class DocumentFonts:
         return font_copy(font, open_embedded(self.driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
-        """Every other font in the file its copies share a name with.
+        """Every other copy of the font in the file: each font that goes by its copies' name.
 
         This page's first, then the nearest page's: the order a letter is
         borrowed in. A page's fonts are read only when the walk reaches it.
