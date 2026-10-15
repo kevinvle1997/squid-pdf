@@ -76,6 +76,8 @@ class FontFacts(TypedDict):
     """
 
     name: str
+    # The name the reader knows it by: a Type3 font's copies share one, its text names none.
+    shown_name: str
     substitute: str | None  # the face we ship that draws it instead, e.g. "Carlito Bold"
     why: MessageInfo | None  # why the file's own copy can't be used
     same_widths: bool  # the substitute's letters are as wide as the original's
@@ -91,6 +93,7 @@ class FontInfo(TypedDict):
     """
 
     name: str
+    shown_name: str  # the name the reader knows it by; copies of one font share it
     substitute: str | None
     why: str | None  # why the file's own copy can't be used, in the reader's words
     why_code: str | None

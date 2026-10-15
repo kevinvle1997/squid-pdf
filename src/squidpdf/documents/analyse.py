@@ -99,6 +99,7 @@ def _analysed(
     fonts: list[FontFacts] = [
         {
             "name": span.font,
+            "shown_name": engine.shown_name(span),
             "substitute": reports[span.id].substitute,
             "why": _substitute_why(reports[span.id]),
             "same_widths": reports[span.id].same_widths,

@@ -19,7 +19,7 @@ import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
-import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
+import { attachDropped, attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
 import { quietFont } from "../quiet";
 import { redact } from "../redaction";
@@ -42,7 +42,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
-  const drawnIn = span.substitute ?? shownName(span.font);
+  const shown = useEditorState((state) => shownNameOf(state.layout, span.font));
+  const drawnIn = span.substitute ?? shown;
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
   // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
@@ -60,7 +61,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
   const offered = useEditorState(offersCopy);
   // What an edit here warns of, in full, as typing starts: until the user quiets its font.
-  const quiet = useEditorState((state) => state.quietFonts.has(span.font));
+  const quiet = useEditorState((state) => state.quietFonts.has(shown));
   const note = editNote(span, { font, copy, quiet });
   const shortWarning = shortWarningOf(span);
   const attaching = useEditorState((state) => state.attaching !== null);
@@ -175,11 +176,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
               <Warn>{note.said}</Warn>
               {note.why !== null && <span>{note.why}</span>}
             </span>
-            <Button
-              preventFocusOnPress
-              excludeFromTabOrder
-              onPress={() => quietFont(editor, span.font, { quiet: true })}
-            >
+            <Button preventFocusOnPress excludeFromTabOrder onPress={() => quietFont(editor, shown, { quiet: true })}>
               Don't show again for this font
             </Button>
           </span>

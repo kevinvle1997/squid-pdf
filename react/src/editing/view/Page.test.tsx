@@ -672,6 +672,36 @@ describe("a page", () => {
     await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
   });
 
+  test("a font quieted in one Type3 copy is quiet in its others: the chip names them as one", async () => {
+    const turned = { fidelity: "approximate", why: { code: "turned_text", params: {} } } as const;
+    const copyOf = (id: string, font: string, y0: number) =>
+      aSpan({ id, text: "in drawn", font, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 }, ...turned });
+    const fontOf = (name: string) => aFont(name, { shown_name: "Drawn-Regular", glyphs });
+    editor = createEditor(
+      new File(["%PDF-"], "contract.pdf"),
+      aDoc({
+        spans: [copyOf("s3", "Type3 (5 0 R)", 300), copyOf("s4", "Type3 (9 0 R)", 400)],
+        fonts: [fontOf("Type3 (5 0 R)"), fontOf("Type3 (9 0 R)")],
+      }),
+      2,
+    );
+    const screen = await draw();
+    const marks = screen.getByRole("button", { name: "in drawn" });
+    await expect.element(marks.nth(0)).toBeInTheDocument();
+    marks.nth(0).element().focus();
+    await userEvent.keyboard("{Enter}");
+    // The file's own font draws it, named as the reader knows it, not by its object.
+    await expect.element(screen.getByText("Drawn-Regular", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Don't show again for this font" }).click();
+    await userEvent.keyboard("{Escape}");
+
+    marks.nth(1).element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “in drawn”" })).toHaveFocus();
+    await expect.element(screen.getByText(COPY.approximate.turned_text ?? "")).not.toBeInTheDocument();
+    await expect.element(screen.getByText("will look different", { exact: true })).toBeVisible();
+  });
+
   test("text an edit won't match has no line at rest; editing it says why, warned, and the chip that it will look different", async () => {
     const turned = aSpan({
       id: "s4",

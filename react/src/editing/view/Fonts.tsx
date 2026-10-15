@@ -1,29 +1,29 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Dialog, DialogTrigger, FileTrigger, Popover } from "react-aria-components";
-import type { FontInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
-import { attachFont, detachFont, FONT_FILES, fontFocused, shownName } from "../fonts";
+import { attachFont, copiesByName, detachFont, FONT_FILES, type FontCopies, fontFocused } from "../fonts";
 import { quietFont } from "../quiet";
 import { fill } from "../words";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
 
 /**
- * The document's fonts, from the bar: what draws each, the user's own copy of one, added or removed,
- * and whether an edit in one warns in full: the keyboard's way to quiet it, and everyone's to bring it back.
+ * The document's fonts, from the bar, a row for each name, its copies together: what draws it, the
+ * user's own copy, added or removed, and whether an edit in it warns in full.
  */
 export function Fonts() {
   const fonts = useEditorState((state) => state.doc.fonts);
+  const rows = useMemo(() => copiesByName(fonts), [fonts]);
   return (
     <DialogTrigger>
       <Button>Fonts</Button>
       <Popover placement="bottom end" offset={4} className={styles.popover}>
         <Dialog aria-label="The document's fonts" className={styles.dialog}>
           <ul className={styles.list}>
-            {fonts.map((font) => (
-              <FontRow key={font.name} font={font} />
+            {rows.map((copies) => (
+              <FontRow key={copies.shownName} copies={copies} />
             ))}
           </ul>
         </Dialog>
@@ -32,15 +32,20 @@ export function Fonts() {
   );
 }
 
-function FontRow({ font }: { font: FontInfo }) {
+/** One font's row: its copies act together, since attaching and removing one reach them all. */
+function FontRow({ copies }: { copies: FontCopies }) {
+  const { shownName: name, names, said: font, attached } = copies;
   const editor = useEditor();
   const copy = useEditorState((state) => state.doc.copy);
-  const refused = useEditorState((state) => (state.notices.font?.font === font.name ? state.notices.font.text : null));
+  const refused = useEditorState((state) => {
+    const notice = state.notices.font;
+    return notice !== null && names.includes(notice.font) ? notice.text : null;
+  });
   const busy = useEditorState((state) => state.attaching !== null);
-  const working = useEditorState((state) => state.attaching === font.name);
-  const focusHere = useEditorState((state) => state.focusFont === font.name);
-  const warned = useEditorState((state) => state.layout.warnedFonts.has(font.name));
-  const warns = useEditorState((state) => !state.quietFonts.has(font.name));
+  const working = useEditorState((state) => state.attaching !== null && names.includes(state.attaching));
+  const focusHere = useEditorState((state) => state.focusFont !== null && names.includes(state.focusFont));
+  const warned = useEditorState((state) => state.layout.warnedFonts.has(name));
+  const warns = useEditorState((state) => !state.quietFonts.has(name));
   // Sent focus, the row's button takes it as it's drawn: the one pressed has just gone.
   const takeFocus = useCallback(
     (button: HTMLButtonElement | null) => {
@@ -50,12 +55,11 @@ function FontRow({ font }: { font: FontInfo }) {
     },
     [focusHere, editor],
   );
-  const name = shownName(font.name);
   return (
     <li className={styles.font}>
       <span className={styles.name}>{name}</span>
       <span className={styles.drawnBy}>
-        {font.attached ? (
+        {attached ? (
           copy.drawn_in_your_copy
         ) : font.substitute === null ? (
           copy.drawn_in_own_copy
@@ -65,7 +69,7 @@ function FontRow({ font }: { font: FontInfo }) {
           </Warn>
         )}
       </span>
-      {font.attached ? (
+      {attached ? (
         <Button
           ref={takeFocus}
           aria-label={`Remove your copy of ${name}`}
@@ -89,7 +93,7 @@ function FontRow({ font }: { font: FontInfo }) {
       )}
       {warned && (
         <span className={styles.warns}>
-          <Checkbox isSelected={warns} onChange={(warns) => quietFont(editor, font.name, { quiet: !warns })}>
+          <Checkbox isSelected={warns} onChange={(warns) => quietFont(editor, name, { quiet: !warns })}>
             Warn before each edit
           </Checkbox>
         </span>

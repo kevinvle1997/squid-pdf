@@ -380,6 +380,17 @@ class DocumentFonts:
                 yield copy
         self.cache.keep_every_letter(name, frozenset(drawn))
 
+    def shown_name(self, span: Span) -> str:
+        """The name the reader knows the span's font by, subset prefix aside.
+
+        A Type3 font's text names it by its object, so it goes by its copies' name.
+        """
+        page_font = self._page_font(span)
+        # A Type3 on the page: the name its copies share, from its description.
+        if page_font is not None and page_font.kind == "type3":
+            return self._copies_name(page_font)
+        return strip_subset(span.font)
+
     def look_alike(self, span: Span) -> LookAlike:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self._page_font(span)
