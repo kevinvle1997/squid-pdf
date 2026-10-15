@@ -381,12 +381,12 @@ def type3(tmp_path_factory) -> str:
 
 # Two Type3 copies of one font: each letter's code, the font's glyph number as Chrome
 # writes it, and the line each copy draws. Both draw e, l and o; only the second Y and w.
-_DRAWN_CODES = {"H": 1, "e": 2, "l": 3, "o": 4, "Y": 5, "w": 6}
-DRAWN_TEXTS = ("Hello", "Yellow")
+_TYPE3_CODES = {"H": 1, "e": 2, "l": 3, "o": 4, "Y": 5, "w": 6}
+TYPE3_TEXTS = ("Hello", "Yellow")
 
 
 @pytest.fixture(scope="module")
-def drawn(tmp_path_factory) -> str:
+def type3_copies(tmp_path_factory) -> str:
     """Hello, then Yellow, each line in its own Type3 copy of one font, as Chrome prints one.
 
     Each letter is the same square drawing: only whether it draws is read. Each
@@ -399,28 +399,28 @@ def drawn(tmp_path_factory) -> str:
     doc.update_object(letter, "<<>>")
     doc.update_stream(letter, b"600 0 0 0 600 700 d1 0 0 600 700 re f")
     fonts, lines = [], []
-    for number, text in enumerate(DRAWN_TEXTS):
-        codes = {_DRAWN_CODES[ch]: ch for ch in text}
+    for number, text in enumerate(TYPE3_TEXTS):
+        codes = {_TYPE3_CODES[ch]: ch for ch in text}
         fonts.append(
-            f"/F{number} {_drawn_copy(doc, codes, letter=letter, prefix='AB'[number])}"
+            f"/F{number} {_type3_copy(doc, codes, letter=letter, prefix='AB'[number])}"
         )
-        shown = "".join(f"{_DRAWN_CODES[ch]:02X}" for ch in text)
+        shown = "".join(f"{_TYPE3_CODES[ch]:02X}" for ch in text)
         lines.append(f"BT /F{number} 12 Tf 72 {700 - 50 * number} Td <{shown}> Tj ET")
     content = doc.get_new_xref()
     doc.update_object(content, "<<>>")
     doc.update_stream(content, "\n".join(lines).encode())
     doc.xref_set_key(page.xref, "Resources", f"<</Font<<{' '.join(fonts)}>>>>")
     doc.xref_set_key(page.xref, "Contents", f"{content} 0 R")
-    path = str(tmp_path_factory.mktemp("drawn") / "drawn.pdf")
+    path = str(tmp_path_factory.mktemp("type3") / "copies.pdf")
     doc.save(path)
     return path
 
 
-def _drawn_copy(
+def _type3_copy(
     doc: pymupdf.Document, codes: dict[int, str], *, letter: int, prefix: str
 ) -> str:
     """A Type3 copy drawing `codes`, each as `letter`, its description named with `prefix`."""
-    last = max(_DRAWN_CODES.values())
+    last = max(_TYPE3_CODES.values())
     widths = " ".join("600" if code in codes else "0" for code in range(1, last + 1))
     names = " ".join(f"{code}/g{code}" for code in codes)
     drawings = "".join(f"/g{code} {letter} 0 R" for code in codes)

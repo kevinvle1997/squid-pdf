@@ -23,7 +23,7 @@ from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
-from tests.core.conftest import DRAWN_TEXTS, MERGED_TEXTS, coded_under
+from tests.core.conftest import MERGED_TEXTS, TYPE3_TEXTS, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,
@@ -197,7 +197,7 @@ def test_a_type3_font_with_no_letter_list_is_a_substitute_in_its_own_weight_sayi
 
 
 def test_a_type3_font_is_exact_and_redraws_in_its_drawings_and_its_other_copies(
-    drawn, tmp_path
+    type3_copies, tmp_path
 ):
     """Its letter list says which drawing is which letter, and another copy lends what it lacks.
 
@@ -205,8 +205,8 @@ def test_a_type3_font_is_exact_and_redraws_in_its_drawings_and_its_other_copies(
     text calls each copy by its object.
     """
     out = str(tmp_path / "redrawn.pdf")
-    hello, yellow = DRAWN_TEXTS
-    with open_pdf(drawn) as engine:
+    hello, yellow = TYPE3_TEXTS
+    with open_pdf(type3_copies) as engine:
         span = next(span for span in engine.index() if span.text == hello)
         _x, baseline = span.origin
         report = next(r for r in engine.assess(engine.index()) if r.span_id == span.id)
