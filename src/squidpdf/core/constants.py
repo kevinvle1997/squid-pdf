@@ -58,7 +58,7 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 GARBAGE_COLLECT = 2
 
 # Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
-LIBRARY_VERSION = "10"
+LIBRARY_VERSION = "11"
 
 # Google's font collection (github.com/google/fonts) at this commit: the family
 # list in `fonts/google-families.json` is read from it, and every copy is fetched

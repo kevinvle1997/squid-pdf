@@ -379,6 +379,72 @@ def type3(tmp_path_factory) -> str:
     )
 
 
+# Two Type3 copies of one font: each letter's code, the font's glyph number as Chrome
+# writes it, and the line each copy draws. Both draw e, l and o; only the second Y and w.
+_TYPE3_CODES = {"H": 1, "e": 2, "l": 3, "o": 4, "Y": 5, "w": 6}
+TYPE3_TEXTS = ("Hello", "Yellow")
+
+
+@pytest.fixture(scope="module")
+def type3_copies(tmp_path_factory) -> str:
+    """Hello, then Yellow, each line in its own Type3 copy of one font, as Chrome prints one.
+
+    Each letter is the same square drawing: only whether it draws is read. Each
+    copy has only its own line's letters, by the same codes, in its letter list
+    (ToUnicode). With no /Name, only their descriptions name the font they share.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    letter = doc.get_new_xref()
+    doc.update_object(letter, "<<>>")
+    doc.update_stream(letter, b"600 0 0 0 600 700 d1 0 0 600 700 re f")
+    fonts, lines = [], []
+    for number, text in enumerate(TYPE3_TEXTS):
+        codes = {_TYPE3_CODES[ch]: ch for ch in text}
+        fonts.append(
+            f"/F{number} {_type3_copy(doc, codes, letter=letter, prefix='AB'[number])}"
+        )
+        shown = "".join(f"{_TYPE3_CODES[ch]:02X}" for ch in text)
+        lines.append(f"BT /F{number} 12 Tf 72 {700 - 50 * number} Td <{shown}> Tj ET")
+    content = doc.get_new_xref()
+    doc.update_object(content, "<<>>")
+    doc.update_stream(content, "\n".join(lines).encode())
+    doc.xref_set_key(page.xref, "Resources", f"<</Font<<{' '.join(fonts)}>>>>")
+    doc.xref_set_key(page.xref, "Contents", f"{content} 0 R")
+    path = str(tmp_path_factory.mktemp("type3") / "copies.pdf")
+    doc.save(path)
+    return path
+
+
+def _type3_copy(
+    doc: pymupdf.Document, codes: dict[int, str], *, letter: int, prefix: str
+) -> str:
+    """A Type3 copy drawing `codes`, each as `letter`, its description named with `prefix`."""
+    last = max(_TYPE3_CODES.values())
+    widths = " ".join("600" if code in codes else "0" for code in range(1, last + 1))
+    names = " ".join(f"{code}/g{code}" for code in codes)
+    drawings = "".join(f"/g{code} {letter} 0 R" for code in codes)
+    pairs = " ".join(f"<{code:02X}> <{ord(ch):04X}>" for code, ch in codes.items())
+    to_unicode = _to_unicode("<01> <FF>", f"{len(codes)} beginbfchar {pairs} endbfchar")
+    xref = {name: doc.get_new_xref() for name in ("font", "descriptor", "to_unicode")}
+    for x in xref.values():
+        doc.update_object(x, "<<>>")
+    doc.update_stream(xref["to_unicode"], to_unicode)
+    doc.update_object(
+        xref["descriptor"],
+        f"<</Type/FontDescriptor/FontName/{prefix * 3}AAA+Drawn-Regular/Flags 32"
+        "/FontBBox[0 0 600 700]/ItalicAngle 0>>",
+    )
+    doc.update_object(
+        xref["font"],
+        "<</Type/Font/Subtype/Type3/FontBBox[0 0 600 700]/FontMatrix[0.001 0 0 0.001 0 0]"
+        f"/FirstChar 1/LastChar {last}/Widths[{widths}]"
+        f"/Encoding<</Type/Encoding/Differences[{names}]>>/CharProcs<<{drawings}>>"
+        f"/ToUnicode {xref['to_unicode']} 0 R/FontDescriptor {xref['descriptor']} 0 R>>",
+    )
+    return f"{xref['font']} 0 R"
+
+
 @pytest.fixture(scope="module")
 def gapped(tmp_path_factory) -> str:
     """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.

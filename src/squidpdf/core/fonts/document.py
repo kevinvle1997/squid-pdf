@@ -95,18 +95,20 @@ class _PageFacts:
 class _FontCache:
     """What has been looked up about the document's fonts, each filled in on first use.
 
-    A copy of a font by how its page lists it (its object, its name there,
-    whether a form uses it), so pages that list it alike share one. A page's
-    own facts by page number. Every letter a font's copies draw, by its name.
+    A copy of a font, and the name its copies share, by how its page lists it
+    (its object, its name there, whether a form uses it), so pages that list it
+    alike share one. A page's facts by page number; every letter, by that name.
     """
 
     # What each page says, by page number, read when the page is first asked about.
     pages: dict[int, _PageFacts] = field(default_factory=dict)
     # Each copy of a font in the file, opened, or why it can't be used.
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
+    # The name each font's copies share, read on first use: every walk asks it of every font.
+    copies_names: dict[PageFont, str] = field(default_factory=dict)
     # Each font's look-alike, by its name and object (None: not on the page).
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
-    # Every letter some copy of a font draws, by its name, once a walk has opened every copy.
+    # Every letter a font's copies draw, by the name they share, once a walk opened them all.
     every_letter: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
@@ -116,6 +118,10 @@ class _FontCache:
     def copy(self, font: PageFont, make: Callable[[], FontCopy]) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened on first use, or why it can't be used."""
         return remembered(self.copies, font, make)
+
+    def copies_name(self, font: PageFont, make: Callable[[], str]) -> str:
+        """The name a font's copies share, read on first use."""
+        return made_once(self.copies_names, font, make)
 
     def look_alike(
         self, key: tuple[str, int | None], make: Callable[[], LookAlike]
@@ -140,6 +146,7 @@ class _FontCache:
         """
         self.pages.clear()
         self.copies.clear()
+        self.copies_names.clear()
         self.look_alikes.clear()
         self.every_letter.clear()
 
@@ -282,19 +289,35 @@ class DocumentFonts:
         return font_copy(font, open_embedded(self.driver, font))
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
-        """Every other font in the file by the same name, subset prefix aside.
+        """Every other copy of the font in the file: each font that goes by its copies' name.
 
         This page's first, then the nearest page's: the order a letter is
         borrowed in. A page's fonts are read only when the walk reaches it.
         """
-        font_name = strip_subset(own.name)
+        font_name = self._copies_name(own)
         # The own copy may be listed under another name, found by the one its text reads.
         seen = {own.xref}
         for font in self._fonts_nearest_first(page):
-            is_other_copy = font.xref not in seen and strip_subset(font.name) == font_name
+            is_other_copy = font.xref not in seen and self._copies_name(font) == font_name
             if is_other_copy:
                 seen.add(font.xref)  # one font object on several pages is one copy
                 yield font
+
+    def _copies_name(self, font: PageFont) -> str:
+        """The name every copy of the font goes by, subset prefix aside, read once."""
+        return self.cache.copies_name(font, partial(self._read_copies_name, font))
+
+    def _read_copies_name(self, font: PageFont) -> str:
+        """The name every copy of the font goes by, subset prefix aside.
+
+        A Type3 font's text names it by its object, so no two copies share that
+        name: the font its description names stands in, when it names one.
+        """
+        descriptor = self.driver.font_descriptor(font.xref) if font.kind == "type3" else None
+        # Its own name: not a Type3, or a Type3 whose description names no font.
+        if descriptor is None or descriptor.name is None:
+            return strip_subset(font.name)
+        return strip_subset(descriptor.name)
 
     def _fonts_nearest_first(self, page: int) -> Iterator[PageFont]:
         """Every page's fonts, this page's, then the nearest page's, each read when reached."""
@@ -343,7 +366,7 @@ class DocumentFonts:
         Once a walk has seen every copy, a later one stops when the pool's `letters`
         hold all theirs: a copy left could lend only a letter it has.
         """
-        name = strip_subset(own.font.name)
+        name = self._copies_name(own.font)
         every_letter = self.cache.every_letter_of(name)
         drawn = set(own.widths)
         for font in self._other_copies(page, own.font):

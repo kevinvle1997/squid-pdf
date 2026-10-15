@@ -291,9 +291,14 @@ class PdfFile:
         """
         mu = pymupdf.mupdf
         pdf = self._pdf()
+        # MuPDF hangs loading a Type3 font with no resources to look in. Its drawings
+        # aren't run here, so an empty set will do.
+        no_resources = mu.pdf_new_dict(pdf, 0)
+        resources = mu.pdf_resource_stack()
+        resources.resources = no_resources.m_internal
         try:
             font = mu.ll_pdf_load_font(
-                pdf.m_internal, None, mu.pdf_load_object(pdf, xref).m_internal
+                pdf.m_internal, resources, mu.pdf_load_object(pdf, xref).m_internal
             )
         except MUPDF_ERRORS as exc:  # MuPDF can't make sense of the font object
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
@@ -1195,9 +1200,21 @@ def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None
     return FontCode(
         value=value,
         letter=chr(codepoint),
-        glyph=GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid)),
+        glyph=_glyph_of(font, cid),
         width=mu.ll_pdf_lookup_hmtx(font, cid).w,
     )
+
+
+def _glyph_of(font: pymupdf.mupdf.pdf_font_desc, cid: int) -> GlyphId:
+    """The shape a font MuPDF has loaded draws for `cid`; 0 for none."""
+    mu = pymupdf.mupdf
+    drawings = font.font.t3procs
+    # Not a Type3 font: its glyph by the font's own map.
+    if drawings is None:
+        return GlyphId(mu.ll_pdf_font_cid_to_gid(font, cid))
+    # A Type3 font's drawing per code, a C array read in place: its glyph is its code.
+    drawn = ctypes.cast(int(drawings), ctypes.POINTER(ctypes.c_void_p))[cid]
+    return GlyphId(cid if drawn else 0)
 
 
 def _letter_of(font: pymupdf.mupdf.pdf_font_desc, code: int, cid: int) -> str | None:

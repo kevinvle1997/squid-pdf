@@ -336,10 +336,12 @@ class _MuPDFDriver:
             return None
         flags = self._number(owner, "FontDescriptor/Flags")
         angle = self._number(owner, "FontDescriptor/ItalicAngle")
+        name_type, name = self.doc.xref_get_key(owner, "FontDescriptor/FontName")
         return FontDescriptor(
             flags=0 if flags is None else int(flags),
             weight=self._number(owner, "FontDescriptor/FontWeight"),
             italic_angle=0.0 if angle is None else angle,
+            name=name.removeprefix("/") if name_type == "name" else None,
         )
 
     def _describing_font(self, xref: int) -> int | None:
