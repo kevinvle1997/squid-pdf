@@ -26,7 +26,7 @@ class EmbeddedFont:
     two would compare whole font files.
     """
 
-    program: FontProgram  # the driver's open copy, to measure with
+    program: FontProgram  # what measures it: the driver's open copy, or a Type3's width list
     # The font file itself, to add to a page for a redraw; empty for a Type3's drawings.
     file: bytes = field(repr=False)
     coverage: Coverage  # which letters draw a shape
