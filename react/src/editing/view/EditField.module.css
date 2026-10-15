@@ -38,6 +38,16 @@
 /* Each trouble a line of its own; the offer goes under them once the two don't fit side by side. */
 .bad { flex: 1 1 24ch; white-space: pre-line; max-width: 36ch; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
+/* What an edit here warns of, in full, as typing starts: a row of its own above the rest. */
+.note {
+  flex: 1 0 100%;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3);
+  pointer-events: auto;
+}
+.noteWords {
+  display: flex; flex-direction: column; gap: var(--s1);
+  max-width: 36ch; white-space: normal; line-height: 1.4;
+}
 /* The parts of the chip a pointer can press: the user's own copy of the span's font, and redacting the span. */
 .offer {
   display: flex; align-items: baseline; gap: var(--s2);

@@ -15,6 +15,7 @@ import {
 } from "./editor";
 import { exportNow, partName, splitAfter, splitPages } from "./export";
 import { plain, warn } from "./notices";
+import { quietFont } from "./quiet";
 import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
@@ -240,12 +241,21 @@ describe("an edit", () => {
     expect(warnedCount(editor.store.get())).toEqual({ count: 3, label: "will look different" });
   });
 
-  test("typing into text that won't match says why, before any trouble of its own", () => {
+  test("typing into text that won't match leaves why to the note as typing starts, not each letter's troubles", () => {
     const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
     const glyphs = Object.fromEntries([..."was turned"].map((letter) => [letter, 500]));
     editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "turned", null);
-    expect(troublesIn(editor.store.get(), "was turned").said).toEqual([COPY.approximate.turned_text]);
+    expect(troublesIn(editor.store.get(), "was turned").said).toEqual([]);
+  });
+
+  test("a font quieted warns no more as typing starts, and is said; warned again, it's back", () => {
+    quietFont(editor, "Named", { quiet: true });
+    expect(editor.store.get().quietFonts).toEqual(new Set(["Named"]));
+    expect(editor.store.get().said.text).toBe("Edits in Named won't warn again");
+    quietFont(editor, "Named", { quiet: false });
+    expect(editor.store.get().quietFonts).toEqual(new Set());
+    expect(editor.store.get().said.text).toBe("Edits in Named warn again");
   });
 });
 

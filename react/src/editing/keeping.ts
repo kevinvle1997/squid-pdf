@@ -12,10 +12,12 @@ interface KeptFont {
   readonly type: string;
 }
 
-/** What's kept of the work on a document: its history, and the user's copies of its fonts, by font. */
+/** What's kept of the work on a document: its history, the user's copies of its fonts, and the fonts quieted. */
 export interface Work {
   readonly history: History;
   readonly fonts: readonly (readonly [string, KeptFont])[];
+  // Missing from work kept before fonts could be quieted, which lives out its hour after a deploy.
+  readonly quietFonts?: readonly string[];
 }
 
 // Each font copy's bytes, read once however often the work is kept.
@@ -45,14 +47,14 @@ export function isWork(kept: unknown): kept is Work {
 
 /** Keep the work as it is now, the file too the first time: once written, leaving loses none of it. */
 export async function keepWork(editor: Editor): Promise<void> {
-  const { history, doc } = editor.store.get();
+  const { history, doc, quietFonts } = editor.store.get();
   const { keeping } = editor;
   const firstTime = !keeping.file;
   keeping.file = true;
   try {
     if (firstTime) await keepFile(editor.file);
     const fonts = await keptFonts(editor.attached);
-    await keepState({ doc, work: { history, fonts }, until: keeping.until });
+    await keepState({ doc, work: { history, fonts, quietFonts: [...quietFonts] }, until: keeping.until });
     keeping.history = history;
   } catch {
     // The browser keeps nothing (a private window, or no room): leaving asks first instead.
@@ -75,7 +77,11 @@ export function atRisk(editor: Editor): boolean {
 /** A new editor takes up work kept here before, before it's drawn: kept already, file and all. */
 export function takeUp(editor: Editor, { work, until }: { work: Work; until: number }): void {
   const { doc } = editor.store.get();
-  editor.store.set({ history: work.history, reading: project(doc.spans, entriesOf(work.history), UNEDITED) });
+  editor.store.set({
+    history: work.history,
+    reading: project(doc.spans, entriesOf(work.history), UNEDITED),
+    quietFonts: new Set(work.quietFonts),
+  });
   for (const [fontName, { bytes, type }] of work.fonts) editor.attached.set(fontName, new Blob([bytes], { type }));
   Object.assign(editor.keeping, { file: true, history: work.history, until });
 }
