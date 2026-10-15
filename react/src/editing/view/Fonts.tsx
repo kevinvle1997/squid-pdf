@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
 import { attachFont, detachFont, FONT_FILES, fontFocused, shownName } from "../fonts";
-import { warnAtEdit } from "../quiet";
+import { quietFont } from "../quiet";
 import { fill } from "../words";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
@@ -39,7 +39,7 @@ function FontRow({ font }: { font: FontInfo }) {
   const busy = useEditorState((state) => state.attaching !== null);
   const working = useEditorState((state) => state.attaching === font.name);
   const focusHere = useEditorState((state) => state.focusFont === font.name);
-  const warned = useEditorState((state) => state.layout.warned.has(font.name));
+  const warned = useEditorState((state) => state.layout.warnedFonts.has(font.name));
   const warns = useEditorState((state) => !state.quietFonts.has(font.name));
   // Sent focus, the row's button takes it as it's drawn: the one pressed has just gone.
   const takeFocus = useCallback(
@@ -89,7 +89,7 @@ function FontRow({ font }: { font: FontInfo }) {
       )}
       {warned && (
         <span className={styles.warns}>
-          <Checkbox isSelected={warns} onChange={(next) => warnAtEdit(editor, font.name, next)}>
+          <Checkbox isSelected={warns} onChange={(warns) => quietFont(editor, font.name, { quiet: !warns })}>
             Warn before each edit
           </Checkbox>
         </span>

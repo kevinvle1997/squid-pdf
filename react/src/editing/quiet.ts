@@ -4,15 +4,15 @@ import { type Editor, spoken } from "./editor";
 import { shownName } from "./fonts";
 import { keepWork } from "./keeping";
 
-/** Whether an edit in `fontName` shows its warning in full as typing starts: false quiets it, true brings it back. */
-export function warnAtEdit(editor: Editor, fontName: string, warns: boolean): void {
-  const quiet = new Set(editor.store.get().quietFonts);
-  if (warns) quiet.delete(fontName);
-  else quiet.add(fontName);
+/** Quiet `fontName`'s warning as an edit starts, or bring it back: `quiet` says which. */
+export function quietFont(editor: Editor, fontName: string, { quiet }: { quiet: boolean }): void {
+  const quietFonts = new Set(editor.store.get().quietFonts);
+  if (quiet) quietFonts.add(fontName);
+  else quietFonts.delete(fontName);
   const name = shownName(fontName);
   editor.store.set({
-    quietFonts: quiet,
-    said: spoken(warns ? `Edits in ${name} warn again` : `Edits in ${name} won't warn again`),
+    quietFonts,
+    said: spoken(quiet ? `Edits in ${name} won't warn again` : `Edits in ${name} warn again`),
   });
   // Kept only once the work is: an edit keeps it along with everything else.
   if (editor.keeping.file) void keepWork(editor);

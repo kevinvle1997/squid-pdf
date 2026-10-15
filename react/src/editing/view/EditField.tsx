@@ -21,7 +21,7 @@ import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
 import { editNote, verdictOf } from "../marks";
-import { warnAtEdit } from "../quiet";
+import { quietFont } from "../quiet";
 import { redact } from "../redaction";
 import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
@@ -175,7 +175,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
               <Warn>{note.said}</Warn>
               {note.why !== null && <span>{note.why}</span>}
             </span>
-            <Button preventFocusOnPress excludeFromTabOrder onPress={() => warnAtEdit(editor, span.font, false)}>
+            <Button
+              preventFocusOnPress
+              excludeFromTabOrder
+              onPress={() => quietFont(editor, span.font, { quiet: true })}
+            >
               Don't show again for this font
             </Button>
           </span>

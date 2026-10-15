@@ -15,7 +15,7 @@ import {
 } from "./editor";
 import { exportNow, partName, splitAfter, splitPages } from "./export";
 import { plain, warn } from "./notices";
-import { warnAtEdit } from "./quiet";
+import { quietFont } from "./quiet";
 import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
@@ -250,10 +250,10 @@ describe("an edit", () => {
   });
 
   test("a font quieted warns no more as typing starts, and is said; warned again, it's back", () => {
-    warnAtEdit(editor, "Named", false);
+    quietFont(editor, "Named", { quiet: true });
     expect(editor.store.get().quietFonts).toEqual(new Set(["Named"]));
     expect(editor.store.get().said.text).toBe("Edits in Named won't warn again");
-    warnAtEdit(editor, "Named", true);
+    quietFont(editor, "Named", { quiet: false });
     expect(editor.store.get().quietFonts).toEqual(new Set());
     expect(editor.store.get().said.text).toBe("Edits in Named warn again");
   });

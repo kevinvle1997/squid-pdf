@@ -78,7 +78,7 @@ export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: ReadonlyMap<string, FontInfo>;
-  readonly warned: ReadonlySet<string>; // the fonts an edit warns of: a similar font draws it, or it won't match
+  readonly warnedFonts: ReadonlySet<string>; // the fonts an edit warns of: a similar font draws it, or it won't match
 }
 
 export interface EditorState {
@@ -128,7 +128,9 @@ export function layoutOf(doc: Document): Layout {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts: new Map(doc.fonts.map((font) => [font.name, font])),
-    warned: new Set(doc.spans.filter((span) => span.substitute !== null || span.why !== null).map((span) => span.font)),
+    warnedFonts: new Set(
+      doc.spans.filter((span) => span.substitute !== null || span.why !== null).map((span) => span.font),
+    ),
   };
 }
 

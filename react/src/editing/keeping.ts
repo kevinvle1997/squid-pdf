@@ -17,7 +17,7 @@ export interface Work {
   readonly history: History;
   readonly fonts: readonly (readonly [string, KeptFont])[];
   // Missing from work kept before fonts could be quieted, which lives out its hour after a deploy.
-  readonly quiet?: readonly string[];
+  readonly quietFonts?: readonly string[];
 }
 
 // Each font copy's bytes, read once however often the work is kept.
@@ -54,7 +54,7 @@ export async function keepWork(editor: Editor): Promise<void> {
   try {
     if (firstTime) await keepFile(editor.file);
     const fonts = await keptFonts(editor.attached);
-    await keepState({ doc, work: { history, fonts, quiet: [...quietFonts] }, until: keeping.until });
+    await keepState({ doc, work: { history, fonts, quietFonts: [...quietFonts] }, until: keeping.until });
     keeping.history = history;
   } catch {
     // The browser keeps nothing (a private window, or no room): leaving asks first instead.
@@ -80,7 +80,7 @@ export function takeUp(editor: Editor, { work, until }: { work: Work; until: num
   editor.store.set({
     history: work.history,
     reading: project(doc.spans, entriesOf(work.history), UNEDITED),
-    quietFonts: new Set(work.quiet),
+    quietFonts: new Set(work.quietFonts),
   });
   for (const [fontName, { bytes, type }] of work.fonts) editor.attached.set(fontName, new Blob([bytes], { type }));
   Object.assign(editor.keeping, { file: true, history: work.history, until });
