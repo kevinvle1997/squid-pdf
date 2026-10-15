@@ -12,8 +12,19 @@ inputs:
 runs:
   using: composite
   steps:
+    # The Dockerfile's uv, so CI runs the one the images do. Without a version, setup-uv
+    # takes the newest that pyproject's `required-version` allows.
+    - id: uv
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        version=$(sed -n 's|^COPY --from=ghcr.io/astral-sh/uv:\([0-9.]*\) .*|\1|p' Dockerfile)
+        [[ -n $version ]] || { echo "no uv version in the Dockerfile's COPY --from line"; exit 1; }
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
     - uses: astral-sh/setup-uv@v7
       with:
+        version: ${{ steps.uv.outputs.version }}
         enable-cache: true
         cache-dependency-glob: uv.lock
 

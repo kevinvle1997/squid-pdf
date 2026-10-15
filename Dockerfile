@@ -3,7 +3,8 @@
 # and tests/ too, so `squidpdf` and its tests run the same way on any machine:
 #   docker build --target test -t squidpdf-test . && docker run --rm squidpdf-test
 FROM python:3.14-slim-bookworm AS base
-# Pinned so "the same environment as CI" doesn't drift between builds.
+# Pinned so "the same environment as CI" doesn't drift between builds. CI reads its uv
+# from this line (.github/actions/uv).
 COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
 
 # Uploaded PDFs are hostile input, so nothing here runs as root. /data holds the
