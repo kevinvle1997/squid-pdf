@@ -160,11 +160,17 @@ jobs:
         shell: bash
         run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
-      # The cap compose.yaml gives the proxy (it says why) is on the running container.
-      - name: The proxy's CPU cap
+      # The caps compose.yaml gives (it says why) are on the running containers.
+      - name: The containers' caps
         run: |
           cap=$(docker inspect "$(docker compose ps -q proxy)" --format '{{.HostConfig.NanoCpus}}')
           (( cap > 0 )) || { echo "the proxy runs with no CPU cap"; exit 1; }
+          pids=$(docker inspect "$(docker compose ps -q app)" --format '{{.HostConfig.PidsLimit}}')
+          [[ $pids =~ ^[1-9][0-9]*$ ]] || { echo "the app runs with no cap on its processes"; exit 1; }
+          for service in app proxy; do
+            driver=$(docker inspect "$(docker compose ps -q "$service")" --format '{{.HostConfig.LogConfig.Type}}')
+            [[ $driver == local ]] || { echo "the $service's log goes to $driver, not the rotating local driver"; exit 1; }
+          done
 
       # Two IPv6 clients in different /64s, given to the runner, count apart through the
       # published port: one uses up its minute's uploads, and the other is still let in.

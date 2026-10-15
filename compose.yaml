@@ -5,11 +5,20 @@
 # published port hands every IPv6 client on from one address, and they share one count.
 name: squidpdf
 
+# Each service's log rotates: Docker's default keeps it forever, and the app writes a line a
+# request, so it would grow until the free-space floor (`MIN_FREE_BYTES`) turns uploads away.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: 20m
+    max-file: "5"
+
 services:
   app:
     build: .
     image: squidpdf
     restart: unless-stopped
+    logging: *logging
     # Reaps the pool's exited helper processes and passes stop signals on.
     init: true
     environment:
@@ -24,6 +33,9 @@ services:
     # It needs no privilege: it runs as its own user, on a port above 1024.
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    # Far above the app's own threads and workers, far below a parser bug that forks without
+    # end: that stops here, not at the host's limit, where Caddy and sshd couldn't fork either.
+    pids_limit: 1024
     # Only /data and /tmp are written; /tmp holds an export a worker, so it's sized by cores.
     read_only: true
     tmpfs:
@@ -36,6 +48,7 @@ services:
       dockerfile: react/Dockerfile
     image: squidpdf-proxy
     restart: unless-stopped
+    logging: *logging
     depends_on:
       app:
         condition: service_healthy
