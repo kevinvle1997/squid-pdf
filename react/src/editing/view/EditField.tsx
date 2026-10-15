@@ -20,7 +20,7 @@ import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownName } from "../fonts";
-import { editNote, verdictOf } from "../marks";
+import { editNote, shortWarningOf } from "../marks";
 import { quietFont } from "../quiet";
 import { redact } from "../redaction";
 import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
@@ -62,7 +62,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // What an edit here warns of, in full, as typing starts: until the user quiets its font.
   const quiet = useEditorState((state) => state.quietFonts.has(span.font));
   const note = editNote(span, { font, copy, quiet });
-  const verdict = verdictOf(span);
+  const shortWarning = shortWarningOf(span);
   const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
@@ -193,7 +193,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             <span>{drawnIn}</span>
             <Num>{SIZE.format(span.size * set.size)} pt</Num>
             {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
-            {verdict === null ? <span>looks identical</span> : <Warn>{verdict}</Warn>}
+            {shortWarning === null ? <span>looks identical</span> : <Warn>{shortWarning}</Warn>}
           </span>
         )}
         {ways.length > 0 && (

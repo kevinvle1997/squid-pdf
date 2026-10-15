@@ -649,7 +649,7 @@ describe("a page", () => {
     await expect.element(screen.getByText("Not embedded.")).toBeVisible();
     await screen.getByRole("button", { name: "Don't show again for this font" }).click();
     await expect.element(note).not.toBeInTheDocument();
-    // Quieted, the chip still gives its short verdict (Rule 1).
+    // Quieted, the chip still gives its short warning (Rule 1).
     await expect.element(screen.getByText("a similar font", { exact: true })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await userEvent.keyboard("{Enter}");

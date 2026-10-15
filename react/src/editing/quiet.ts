@@ -1,4 +1,4 @@
-// The fonts whose warning an edit no longer shows in full, only the chip's short verdict (Rule 1). Kept
+// The fonts whose warning an edit no longer shows in full, only the chip's short warning (Rule 1). Kept
 // with the document's work, by font name, since the warning is about this file's copy of the font.
 import { type Editor, spoken } from "./editor";
 import { shownName } from "./fonts";

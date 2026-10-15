@@ -67,8 +67,8 @@ function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   return { warn: true, said: redaction.message, why: null };
 }
 
-/** The chip's short verdict on an edit here, warned: "a similar font", "will look different", or none when it matches. */
-export function verdictOf(span: SpanInfo): string | null {
+/** The chip's short warning on an edit here: "a similar font", "will look different", or none when it matches. */
+export function shortWarningOf(span: SpanInfo): string | null {
   if (span.substitute !== null) return "a similar font";
   return span.why === null ? null : "will look different";
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aFit, aFont, aSpan, COPY as copy } from "../fixtures";
-import { editNote, lookOf, verdictOf } from "./marks";
+import { editNote, lookOf, shortWarningOf } from "./marks";
 
 const span = aSpan({ id: "s1" });
 const changed = { span, text: "is s1", replaced: true, strategy: undefined, redacted: false };
@@ -48,12 +48,12 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
       said: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
       why: "Not embedded.",
     });
-    expect(verdictOf(substituted)).toBe("a similar font");
+    expect(shortWarningOf(substituted)).toBe("a similar font");
   });
 
-  test("a font the user quieted says nothing in full as typing starts, but the chip's verdict stays", () => {
+  test("a font the user quieted says nothing in full as typing starts, but the chip's short warning stays", () => {
     expect(editNote(substituted, { font: substitutedFont, copy, quiet: true })).toBeNull();
-    expect(verdictOf(substituted)).toBe("a similar font");
+    expect(shortWarningOf(substituted)).toBe("a similar font");
   });
 
   test("the span's own fidelity is what's said, not its font's first span's", () => {
@@ -64,7 +64,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
       why: null,
     });
     expect(editNote(span, { font: substitutedFont, copy, quiet: false })).toBeNull();
-    expect(verdictOf(span)).toBeNull();
+    expect(shortWarningOf(span)).toBeNull();
   });
 
   test("once changed, a span in a similar font says so on hover, as long as the edit stands", () => {
@@ -115,7 +115,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
       said: copy.approximate.turned_text,
       why: null,
     });
-    expect(verdictOf(turned)).toBe("will look different");
+    expect(shortWarningOf(turned)).toBe("will look different");
   });
 
   test("a redaction says nothing until it's drawn, then what the server found, warned", () => {
