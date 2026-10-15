@@ -89,6 +89,7 @@ def _font_info(font: FontFacts, said_in: str) -> FontInfo:
     why = None if font["why"] is None else Message.from_info(font["why"])
     return {
         "name": font["name"],
+        "shown_name": font["shown_name"],
         "substitute": font["substitute"],
         "why": None if why is None else words.render(why, said_in),
         "why_code": None if why is None else why.key,

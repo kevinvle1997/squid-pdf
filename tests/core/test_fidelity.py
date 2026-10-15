@@ -22,8 +22,15 @@ from squidpdf.core import (
 from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
-from tests.conftest import REFERENCED_PAGE, drawn_with, each_span, named_only, saved_as
-from tests.core.conftest import MERGED_TEXTS, TYPE3_TEXTS, coded_under
+from tests.conftest import (
+    REFERENCED_PAGE,
+    TYPE3_TEXTS,
+    drawn_with,
+    each_span,
+    named_only,
+    saved_as,
+)
+from tests.core.conftest import MERGED_TEXTS, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,

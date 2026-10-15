@@ -407,6 +407,8 @@ export interface components {
         FontInfo: {
             /** Name */
             name: string;
+            /** Shown Name */
+            shown_name: string;
             /** Substitute */
             substitute: string | null;
             /** Why */

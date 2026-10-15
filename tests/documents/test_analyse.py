@@ -20,7 +20,7 @@ from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
-from tests.conftest import POPPINS, drawn_with, name_two_byte_font
+from tests.conftest import POPPINS, drawn_with, name_two_byte_font, type3_copies_at
 from tests.helpers import assert_at_most, assert_equal
 
 # Three of Google's families, each its own file there; Montserrat's is variable, so it'd be cut.
@@ -170,6 +170,19 @@ def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usab
     assert_equal(judged, ("approximate", {"code": "spaced_text", "params": {}}), "the span")
     [font] = orjson.loads(kept.facts)["fonts"]
     assert_equal((font["substitute"], font["why"]), (None, None), "its font: nothing stands in")
+
+
+def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
+    """Text names each Type3 copy by its object; their descriptions name the font they share."""
+    _, folder = store.create("owner")
+    type3_copies_at(str(folder / store.ORIGINAL))
+
+    kept = analyse.analyse_upload(str(folder), MAX_PAGES)
+
+    fonts = orjson.loads(kept.facts)["fonts"]
+    named = [(font["name"].startswith("Type3 ("), font["shown_name"]) for font in fonts]
+    expected = [(True, "Drawn-Regular"), (True, "Drawn-Regular")]
+    assert_equal(named, expected, "each copy: named by its object, shown by its font")
 
 
 def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(

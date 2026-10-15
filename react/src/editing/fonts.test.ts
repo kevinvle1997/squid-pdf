@@ -3,7 +3,7 @@ import { deleteFont, ProblemError, putFont, render, upload } from "../api/client
 import type { Document, Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
-import { attachDropped, attachFont, detachFont, offersCopy, shownName } from "./fonts";
+import { attachDropped, attachFont, copiesByName, detachFont, offersCopy } from "./fonts";
 import { noticeLines } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
@@ -222,7 +222,37 @@ describe("the offer of the user's copy while typing", () => {
   });
 });
 
-test("a font is shown by its name, without a trimmed copy's prefix", () => {
-  expect(shownName("ABCDEF+Poppins-Regular")).toBe("Poppins-Regular");
-  expect(shownName("Arial")).toBe("Arial");
+describe("copies of one font, shown under one name", () => {
+  // Two Type3 copies of one font, each named by its object, as the server shows them: one similar font between them.
+  const COPIES = [
+    aFont("Type3 (5 0 R)", { shown_name: "Drawn-Regular" }),
+    aFont("Arial"),
+    aFont("Type3 (9 0 R)", { shown_name: "Drawn-Regular", substitute: "Liberation Sans Regular" }),
+  ];
+
+  test("share one row of the Fonts list, which says a similar font if any copy has one", () => {
+    expect(copiesByName(COPIES).map(({ shownName, names, said }) => [shownName, names, said.name])).toEqual([
+      ["Drawn-Regular", ["Type3 (5 0 R)", "Type3 (9 0 R)"], "Type3 (9 0 R)"],
+      ["Arial", ["Arial"], "Arial"],
+    ]);
+  });
+
+  test("take the user's copy together, each put in in turn, and give it up together", async () => {
+    const doc = aDoc({ spans: DOC.spans, fonts: COPIES });
+    editor = createEditor(new File(["%PDF-"], "letter.pdf"), doc, 2);
+    vi.mocked(putFont).mockResolvedValue(doc);
+    vi.mocked(deleteFont).mockResolvedValue(doc);
+
+    await attachFont(editor, "Type3 (5 0 R)", FONT_FILE);
+    const put = vi.mocked(putFont).mock.calls.map(([, fontName]) => fontName);
+    const kept = [...editor.attached.keys()];
+    await detachFont(editor, "Type3 (9 0 R)");
+    const deleted = vi.mocked(deleteFont).mock.calls.map(([, fontName]) => fontName);
+
+    expect(put).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
+    expect(kept).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
+    expect(deleted).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
+    expect(editor.attached.size).toBe(0);
+    expect(editor.store.get().said.text).toBe("Your copy of Drawn-Regular is removed");
+  });
 });

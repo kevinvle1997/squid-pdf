@@ -72,6 +72,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
 export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
   return {
     name,
+    shown_name: name.replace(/^[A-Z]{6}\+/, ""), // as the server shows it: a trimmed copy's prefix aside
     substitute: null,
     why: null,
     why_code: null,
