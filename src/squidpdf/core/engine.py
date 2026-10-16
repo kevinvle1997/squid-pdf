@@ -87,7 +87,11 @@ class Engine:
         Call it on the pristine file: an edited file's spans get other ids.
         """
         page_count = self.driver.page_count()
-        return build_index(self.driver.text_lines(page) for page in range(page_count))
+        lines_by_page = [self.driver.text_lines(page) for page in range(page_count)]
+        # A usual gap is read from the same text: kept, so no page's is read twice.
+        for page, lines in enumerate(lines_by_page):
+            self.fonts.keep_text_lines(page, lines)
+        return build_index(lines_by_page)
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
