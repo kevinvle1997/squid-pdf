@@ -160,8 +160,13 @@ def _mupdf_font(font_file: bytes) -> _MuPDFFont:
     return _MuPDFFont(font, cache(font.glyph_advance))
 
 
+def open_face(font_file: bytes) -> FontProgram:
+    """A face we ship, opened from its file anew: kept by nobody once its reader is done."""
+    return _mupdf_font(font_file)
+
+
 @cache
-def open_face(face: Face) -> FontProgram:
+def _kept_face(face: Face) -> FontProgram:
     """A face we ship, opened once per process: it measures what `add_font` draws."""
     return _mupdf_font(face_bytes(face))
 
@@ -433,7 +438,7 @@ class _MuPDFDriver:
 
     def face_font(self, face: Face) -> FontProgram:
         """A face we ship, opened to measure with: it measures what `add_font` draws."""
-        return open_face(face)
+        return _kept_face(face)
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
         """Add a font to the page under the resource name `resource`, or one like it if taken.

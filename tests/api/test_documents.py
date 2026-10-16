@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, Engine, face_widths, words
+from squidpdf.core import BUILD, Engine, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
@@ -76,7 +76,7 @@ def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mi
     assert_equal(drawn_in, [(None, False), ("Liberation Serif Regular", True)], "each span's")
 
 
-def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):
+def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine, doc):
     response = mine.get("/api/fonts", params={"build": BUILD})
     assert_equal(response.headers["cache-control"], FONT_LIST_CACHE, "font list caching")
     listed = response.json()
@@ -86,10 +86,11 @@ def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine):
     assert_equal(families["Caveat"]["category"], "handwriting", "Caveat's kind")
     faces = {face["name"]: face for family in families.values() for face in family["faces"]}
     assert_equal(set(faces), set(FACES), "every face an insert can ask for")
-    # The widths the server measures with, so a preview matches the draw.
-    carlito_bold = faces["Carlito Bold"]
-    assert_equal(carlito_bold["style"], "bold", "its style")
-    assert_equal(carlito_bold["glyphs"], face_widths(FACES["Carlito Bold"]), "its widths")
+    assert_equal(faces["Carlito Bold"]["style"], "bold", "Carlito Bold's style")
+    # The widths a span drawn in the face gets, so a preview matches the draw.
+    named = next(font for font in doc["fonts"] if font["substitute"] is not None)
+    drawn_in = faces[named["look_alike"]]
+    assert_equal(drawn_in["glyphs"], named["glyphs"], "the widths of a face a span is drawn in")
 
     # An old build still gets it, but not to keep.
     old = mine.get("/api/fonts", params={"build": "an-older-build"})

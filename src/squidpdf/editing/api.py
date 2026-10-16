@@ -1,8 +1,8 @@
 """Render, export and the font list, over HTTP.
 
-Routes are HTTP only: read the request, call the action's controller, send
-what it hands back. Imports `documents.api` for `load`, the one allowed
-direction; documents never imports editing.
+Routes are HTTP only: read the request, call the action's controller, send what it hands
+back. Also `measure_font_list_ahead`, which the app's start calls. Imports `documents.api`
+for `load`, the one allowed direction; documents never imports editing.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from squidpdf.api.routing import (
     listed_header,
     response_of,
 )
+from squidpdf.core import Workers
 from squidpdf.documents import api as documents
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.edits import Edit
@@ -49,6 +50,14 @@ class ExportBody(BaseModel):
 
     edits: list[_AnyEdit]
     pages: list[int] | None = None
+
+
+def measure_font_list_ahead(workers: Workers) -> None:
+    """Start measuring the font list as the app starts, so the first browser needn't wait.
+
+    With the app's workers, as the route's own: the job is everyone's, in no address's turn.
+    """
+    FontListController(workers).measure_ahead()
 
 
 @fonts_router.get("", response_model=FontList)

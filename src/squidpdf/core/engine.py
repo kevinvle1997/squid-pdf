@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cache, partial
+from functools import partial
 from typing import assert_never
 
 from squidpdf.core.app.errors import ErrorController
@@ -21,11 +21,12 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.fit import LineFit
 from squidpdf.core.fonts.attached import AttachedFonts
+from squidpdf.core.fonts.catalog import face_bytes_anew
+from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
-from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import PdfDriver
 
 # The one import that names the driver: another PDF library is swapped in here.
@@ -369,13 +370,14 @@ def result_of[T](task: Callable[[], T]) -> T:
     return CORE_ERRORS.result_of(task)
 
 
-@cache
 def face_widths(face: Face) -> dict[str, float]:
     """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
 
     For the font list, where no document is open: the same widths a span in the face gets.
+    Read anew, not kept: the list reads every face, which would then stay in its worker.
     """
-    return letter_widths(open_face(face), face_letters(face))
+    font_file = face_bytes_anew(face)
+    return letter_widths(open_face(font_file), coverage_of(font_file).previewed_letters())
 
 
 def _field_draws(field: FormField, span: Span) -> bool:

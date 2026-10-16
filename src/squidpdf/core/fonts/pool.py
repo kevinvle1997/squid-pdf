@@ -17,7 +17,6 @@ from typing import Protocol
 
 from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
-    GLYPH_LIST_RANGES,
     KEYBOARD_RANGES,
     LENT_COPIES_KEPT,
     SAME_FONT_SHARED,
@@ -290,9 +289,8 @@ def _previewed_widths(embedded: EmbeddedFont) -> dict[str, float]:
 
     Only previewed letters are checked for a shape: a large font holds far more outlines.
     """
-    coverage = coverage_of(embedded.file)
-    previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
-    return {ch: embedded.program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
+    previewed = coverage_of(embedded.file).previewed_letters()
+    return {ch: embedded.program.advance(ch) * EM for ch in previewed}
 
 
 def why_unlike_listed(copy: FontCopy, listed: Mapping[str, float] | None) -> Message | None:

@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 
-from squidpdf.core.constants import GLYPH_LIST_RANGES
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.look_alike import broadest
@@ -38,13 +37,7 @@ def face_letters(face: Face) -> tuple[str, ...]:
     The letters the browser previews new text with, so the list is kept short;
     letters past those ranges still draw, and the server's fit says so.
     """
-    coverage = face_coverage(face)
-    return tuple(
-        chr(codepoint)
-        for block in GLYPH_LIST_RANGES
-        for codepoint in block
-        if coverage.covers(chr(codepoint))
-    )
+    return face_coverage(face).previewed_letters()
 
 
 def substitute_for(look_alike: Face, text: str) -> Substitute:

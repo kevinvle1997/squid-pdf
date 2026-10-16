@@ -40,7 +40,7 @@ _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Workers and the expiry sweeper start with the app and stop with it."""
+    """Workers, the expiry sweeper and the font list's measuring start and stop with the app."""
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = start_pool()
     # What each address has going, kept per app, so each app (a test's too) counts its own.
@@ -48,6 +48,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.upload_turns = Turns()
     app.state.job_turns = Turns()
     sweeper = asyncio.create_task(documents.sweep_forever())
+    # Started now, not waited for: the first browser after a deploy finds it measured.
+    editing.measure_font_list_ahead(app.state.pool)
     try:
         yield
     finally:
