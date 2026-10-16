@@ -1,10 +1,8 @@
 """The only file that uses MuPDF's low-level API.
 
-Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
-they stay in `core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. The
-hard-to-read calls live here, and their results come back as named
-dataclasses. This file only reports what the PDF says; the engine decides
-what to do with it.
+Everyday PyMuPDF calls (get_text, get_pixmap, save) are easy to read, so they stay in
+`core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. Results come back as named
+dataclasses, reporting only what the PDF says: the engine decides what to do.
 """
 
 from __future__ import annotations
@@ -27,11 +25,14 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import IMAGE_SOONER_BY
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
-from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
+from squidpdf.core.types import SOLID, CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
 _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
+# PyMuPDF's name for a graphics state: strokes at 99 hundredths (solid), fills at {:02d}.
+_FILL_OPACITY_NAME = "fitzca99{:02d}"
+_PERCENT = 100  # a fill opacity is named to a hundredth, 0 to 99
 
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 # A number, or a bracket, in a two-byte font's width list (`/W`).
@@ -1109,6 +1110,26 @@ class PdfFile:
         states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
         state = mu.pdf_new_dict(pdf, 1)
         mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, permille / _PERMILLE)
+        mu.pdf_dict_puts(states, name, state)
+        return name
+
+    def add_opacity_as_pymupdf(self, page: int, opacity: float) -> str:
+        """The page's name for a graphics state filling at `opacity`, as `insert_text` adds it.
+
+        Named as PyMuPDF names it, for `opacity` to a hundredth, and stroking solid. One the
+        page already has under that name is used as it is, so the bytes are PyMuPDF's.
+        """
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        name = _FILL_OPACITY_NAME.format(min(round(opacity * _PERCENT), _PERCENT - 1))
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
+        # Already there: an empty m_internal means it isn't.
+        if mu.pdf_dict_gets(states, name).m_internal:
+            return name
+        state = mu.pdf_new_dict(pdf, 2)
+        mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_CA, SOLID)
+        mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, opacity)
         mu.pdf_dict_puts(states, name, state)
         return name
 
