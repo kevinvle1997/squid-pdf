@@ -41,6 +41,22 @@ def _link(doc: pymupdf.Document, action: str) -> int:
     return _new_object(doc, f"<</Type/Annot/Subtype/Link/Rect {_LINK_BOX}/A {action}>>")
 
 
+def _written_over(doc: pymupdf.Document, sources: dict[int, str]) -> bytes:
+    """`doc`'s bytes, then each of `sources` written over its object, as is, in an update.
+
+    By hand: saved through a library, every name would be written plainly.
+    """
+    pdf = doc.tobytes()
+    listed_at = pdf.rsplit(b"startxref", 1)[1].split()[0].decode()  # its own list of objects
+    update, rows = "", ""
+    for number, source in sources.items():
+        rows += f"{number} 1\n{len(pdf) + len(update):010d} 00000 n \n"
+        update += f"{number} 0 obj\n{source}\nendobj\n"
+    trailer = f"<</Size {doc.xref_length()}/Root {doc.pdf_catalog()} 0 R/Prev {listed_at}>>"
+    listed = f"xref\n{rows}trailer\n{trailer}\nstartxref\n{len(pdf) + len(update)}\n%%EOF\n"
+    return pdf + (update + listed).encode()
+
+
 def _one_page() -> pymupdf.Document:
     """A page with a line of text on it: the upload needs something to edit."""
     doc = pymupdf.open()
@@ -67,11 +83,12 @@ def active() -> bytes:
     catalog = doc.pdf_catalog()
     doc.xref_set_key(catalog, "OpenAction", f"{script} 0 R")
     doc.xref_set_key(catalog, "Names", names)
-    doc.xref_set_key(catalog, "AcroForm", "<</Fields[]/XFA(<script>app.alert(2)</script>)>>")
+    field = _new_object(doc, "<<>>")  # written over below, by hand
+    form = f"<</Fields[{field} 0 R]/XFA(<script>app.alert(2)</script>)>>"
+    doc.xref_set_key(catalog, "AcroForm", form)
     doc.xref_set_key(catalog, "AF", "[<</Type/Filespec/F(//server/share/notes.txt)>>]")
     on_3d = _new_stream(doc, "<</Type/3D/Subtype/U3D>>", b"")
     doc.xref_set_key(on_3d, "OnInstantiate", f"{_new_stream(doc, '<<>>', b'app.alert(3)')} 0 R")
-    doc.xref_set_key(page.xref, "AA", f"<</O {script} 0 R>>")
     annotations = [
         _link(doc, "<</S/Launch/F(calc.exe)>>"),
         _link(doc, "<</S/GoToR/F(other.pdf)/D[0/Fit]>>"),
@@ -93,7 +110,16 @@ def active() -> bytes:
     )
     resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])  # its own object
     doc.xref_set_key(resources, "XObject", f"<</Far {remote} 0 R>>")
-    return doc.tobytes()
+    page_source = doc.xref_object(page.xref, compressed=True).removesuffix(">>")
+    widget = f"<</Type/Annot/Subtype/Widget/Rect {_LINK_BOX}/A#41<</K {script} 0 R>>>>"
+    # The page's script, and a field's deep in a list, named escaped (#41 is A).
+    return _written_over(
+        doc,
+        {
+            page.xref: f"{page_source}/A#41<</O {script} 0 R>>>>",
+            field: f"<</FT/Tx/T(total)/Kids[{widget}]>>",
+        },
+    )
 
 
 @pytest.fixture
@@ -134,6 +160,8 @@ def test_an_upload_keeps_nothing_that_acts_on_its_own_or_reaches_out_and_says_so
     left = _ACTIVE_MARKS.findall(_everything_in(exported))
     assert_equal(left, [], "what's left that acts on its own or reaches out")
     saved = pymupdf.open(stream=exported)
+    page_script = saved.xref_get_key(saved[0].xref, "AA")
+    assert_equal(page_script, ("null", "null"), "the page's script, its name escaped")
     assert_equal(saved.embfile_count(), 0, "files attached")
     links = saved[0].get_links()
     assert_in(_WEB_LINK, [link.get("uri") for link in links], "the web link kept")

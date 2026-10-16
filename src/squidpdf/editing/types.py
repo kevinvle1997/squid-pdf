@@ -114,13 +114,12 @@ class Rendered:
 
 @dataclass(frozen=True, slots=True)
 class Exported:
-    """What export made: the file, the edits it left out, and what else saving did.
+    """What export came out with besides the file: the edits it left out and the file's notices.
 
     `skipped_edits` are places in the browser's edit list. `file_notices` are
     about the whole file, so they name no span.
     """
 
-    pdf: bytes = field(repr=False)  # the whole file
     skipped_edits: list[int]
     file_notices: list[Message]
 

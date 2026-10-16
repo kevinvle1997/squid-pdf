@@ -102,6 +102,7 @@ class LogEvent(Enum):
     POOL_NEVER_ANSWERED = _EventFacts("pool_never_answered", SKIPPED, WARN)
     POOL_BROKE = _EventFacts("pool_broke", FAILED, WARN)
     SWEEP_FAILED = _EventFacts("sweep_failed", FAILED, ERROR)
+    FONT_LIST_FAILED = _EventFacts("font_list_failed", FAILED, ERROR)
     GOOGLE_CACHE_MISSED = _EventFacts("google_cache_missed", SKIPPED, INFO)
     GOOGLE_FETCH_LATE = _EventFacts("google_fetch_late", SKIPPED, WARN)
     GOOGLE_FETCH_FAILED = _EventFacts("google_fetch_failed", FAILED, WARN)

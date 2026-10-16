@@ -33,10 +33,9 @@ from squidpdf.core.constants import (
     FETCH_TIMEOUT_S,
     GOOGLE_FONTS_COMMIT,
 )
-from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, recalled
 from squidpdf.core.fonts.names import WEIGHTS, bare_name, strip_subset, style_of, weight_of
-from squidpdf.core.fonts.pool import FontCopy, Lent, previewed_widths
+from squidpdf.core.fonts.pool import FontCopy, Lent, lent_widths
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import FontDescriptor, PageFont
 
@@ -48,8 +47,6 @@ _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
 _EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network is down
-# How many of Google's copies a process keeps the letters of: each is a few tens of KB.
-_GOOGLE_COPIES_KEPT = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,36 +135,6 @@ class _RetryRecord:
 _retry_record = _RetryRecord()
 
 
-@dataclass(slots=True)
-class _KeptWidths:
-    """Each Google copy's letters and widths, by a digest of the file, oldest first.
-
-    Finding which letters draw is slow, so a process keeps them.
-    It keeps only the latest _GOOGLE_COPIES_KEPT, so a long-lived worker stays small.
-    """
-
-    by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
-
-    def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
-        """The widths of the copy `digest` names, measured on first use."""
-        # Kept already: this process has measured these bytes.
-        if digest in self.by_digest:
-            return self.by_digest[digest]
-        # Full: forget the one kept longest.
-        if len(self.by_digest) >= _GOOGLE_COPIES_KEPT:
-            del self.by_digest[next(iter(self.by_digest))]
-        widths = self.by_digest[digest] = make()
-        return widths
-
-    def forget(self) -> None:
-        """Forget every copy's widths, as a fresh record."""
-        self.by_digest.clear()
-
-
-# This process's widths of Google's copies.
-_kept_widths = _KeptWidths()
-
-
 @dataclass(frozen=True, slots=True, eq=False)
 class GoogleFontController:
     """Google's copy of a document's fonts: matched, fetched, opened and measured, once each."""
@@ -188,7 +155,7 @@ class GoogleFontController:
         # Fetched and opened once: not fetched, or not readable, is said the same each time.
         embedded = recalled(self.fonts, file.source, partial(self._open, file))
         lent = Lent(file.source, strip_subset(own.font.name))
-        return FontCopy(own.font, embedded, _google_widths(embedded), lent)
+        return FontCopy(own.font, embedded, lent_widths(embedded), lent)
 
     def _file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
@@ -204,16 +171,7 @@ class GoogleFontController:
             program = self.driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it, though git vouched for it
             raise FontUnusable(Message("google_unreadable")) from problem
-        return EmbeddedFont(program, font_file, coverage_of(font_file), None)
-
-
-def _google_widths(embedded: EmbeddedFont) -> dict[str, float]:
-    """Each letter Google's copy draws that the browser can preview, and its width per 1000 em.
-
-    Kept by a digest of the bytes, not the name: a test can hand in another font under it.
-    """
-    digest = hashlib.sha256(embedded.file).digest()
-    return _kept_widths.widths(digest, partial(previewed_widths, embedded))
+        return EmbeddedFont(program, font_file, None)
 
 
 @cache

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cache, partial
+from functools import partial
 from typing import assert_never
 
 from squidpdf.core.app.errors import ErrorController
@@ -21,11 +21,12 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
 from squidpdf.core.fit import LineFit
 from squidpdf.core.fonts.attached import AttachedFonts
+from squidpdf.core.fonts.catalog import face_bytes_anew
+from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
-from squidpdf.core.fonts.substitute import face_letters
 from squidpdf.core.pdf.driver import PdfDriver
 
 # The one import that names the driver: another PDF library is swapped in here.
@@ -86,7 +87,11 @@ class Engine:
         Call it on the pristine file: an edited file's spans get other ids.
         """
         page_count = self.driver.page_count()
-        return build_index(self.driver.text_lines(page) for page in range(page_count))
+        lines_by_page = [self.driver.text_lines(page) for page in range(page_count)]
+        # A usual gap is read from the same text: kept, so no page's is read twice.
+        for page, lines in enumerate(lines_by_page):
+            self.fonts.keep_text_lines(page, lines)
+        return build_index(lines_by_page)
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -286,6 +291,9 @@ class Engine:
 
         Nothing on the page moves: the turn is how a reader's viewer shows it.
         """
+        # No page turned, as in most exports: no page need be read for its own turn.
+        if not turns:
+            return
         pages = self.driver.pages()
         for page, more in turns.items():
             self.driver.turn_page(page, turn_added(pages[page].turn_cw, more))
@@ -366,13 +374,14 @@ def result_of[T](task: Callable[[], T]) -> T:
     return CORE_ERRORS.result_of(task)
 
 
-@cache
 def face_widths(face: Face) -> dict[str, float]:
     """Each letter a face we ship draws, within GLYPH_LIST_RANGES, to its width per 1000 em.
 
     For the font list, where no document is open: the same widths a span in the face gets.
+    Read anew, not kept: the list reads every face, which would then stay in its worker.
     """
-    return letter_widths(open_face(face), face_letters(face))
+    font_file = face_bytes_anew(face)
+    return letter_widths(open_face(font_file), coverage_of(font_file).previewed_letters())
 
 
 def _field_draws(field: FormField, span: Span) -> bool:

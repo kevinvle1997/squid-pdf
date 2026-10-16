@@ -11,10 +11,8 @@ from __future__ import annotations
 import threading
 
 from squidpdf.core.fonts.document import _FontCache  # noqa: PLC2701 (a holder's forget test needs a fresh one)
-from squidpdf.core.fonts.google import (
-    _KeptWidths,  # noqa: PLC2701 (a holder's forget test needs a fresh one)
-    _RetryRecord,  # noqa: PLC2701 (a holder's forget test needs a fresh one)
-)
+from squidpdf.core.fonts.google import _RetryRecord  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.core.writer import _PageNames  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_every_field_filled
@@ -61,7 +59,7 @@ def test_a_retry_record_that_forgets_equals_a_fresh_one():
 
 
 def test_kept_widths_that_forget_equal_fresh_ones():
-    """A worker's widths of Google's copies: forgotten, each is measured again."""
+    """A worker's widths of copies from outside the file: forgotten, each is measured again."""
     kept = _KeptWidths()
     kept.widths(b"a digest", lambda: {"A": 600.0})
     assert_every_field_filled(kept, _KeptWidths(), "the widths once one copy is measured")

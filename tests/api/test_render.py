@@ -33,6 +33,7 @@ _WIDEST_PT = 14_400  # the longest side a PDF's page can have
 _SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
 _STACKED = 4  # copies of the long contract's page, stacked on one tall page
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
+_RED = (0.8, 0.1, 0.1)
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
@@ -44,6 +45,18 @@ def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
 def _png(image: dict) -> bytes:
     """One of render's images, decoded."""
     return base64.b64decode(image["image"])
+
+
+def _pixels(png: bytes) -> bytes:
+    """An image's pixels in red, green and blue, however it was written: grey is one channel."""
+    return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(png)).samples
+
+
+def _in_color(pdf: bytes) -> bytes:
+    """`pdf` with a red bar on page 0, across the strip drawn below: neither is grey."""
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    doc[0].draw_rect(pymupdf.Rect(72, 60, 300, 160), color=_RED, fill=_RED)
+    return doc.tobytes()
 
 
 def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mine, doc):
@@ -100,8 +113,14 @@ def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():
         assert_in(f"place_{place}", words.CATALOGS[words.ENGLISH], "the places named")
 
 
-def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
-    """Else a strip laid over the page image would show a seam."""
+@pytest.mark.parametrize("gray", [True, False], ids=["a gray page", "a color page"])
+def test_rows_with_no_edits_are_the_page_image_exactly(mine, pdf_bytes, gray):
+    """Else a strip laid over the page image would show a seam.
+
+    Each is the pixels MuPDF draws, though a page of grey is written in one channel.
+    """
+    pdf = pdf_bytes if gray else _in_color(pdf_bytes)
+    doc = upload(mine, pdf).json()
     delivery = span_starting(doc, 1, "Delivery")
     edit = {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
@@ -113,12 +132,21 @@ def test_rows_with_no_edits_are_the_page_image_exactly(mine, doc):
     params = {"scale": _SCALE, "build": doc["build"]}
     page_png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
     assert_equal(_png(whole_page), page_png, "the whole page, against the page image")
-    page, rows = pymupdf.Pixmap(page_png), pymupdf.Pixmap(_png(strip_image))
-    # The page image's pixel rows under the strip; stride is the bytes in one row.
+    matrix = pymupdf.Matrix(_SCALE, _SCALE)
+    drawn = pymupdf.open(stream=pdf, filetype="pdf")[0].get_pixmap(matrix=matrix, alpha=False)
+    assert_true(_pixels(page_png) == drawn.samples, "the page image is the page drawn")
+    # A case tests its path only if its page takes it: gray in one channel, color in three.
+    taken = "gray" if pymupdf.Pixmap(page_png).n == 1 else "color"
+    assert_equal(taken, "gray" if gray else "color", "the path the fixture's page image took")
+    strip_png = _png(strip_image)
+    rows = pymupdf.Pixmap(strip_png)
+    # The page's pixel rows under the strip; stride is the bytes in one row.
     top = round(strip_image["y"] * _SCALE)
-    expected = page.samples[top * page.stride : (top + rows.height) * page.stride]
-    assert_equal(rows.width, page.width, "strip width")
-    assert_true(rows.samples == expected, f"the strip at y={strip_image['y']} matches its rows")
+    expected = drawn.samples[top * drawn.stride : (top + rows.height) * drawn.stride]
+    assert_equal(rows.width, drawn.width, "strip width")
+    assert_true(
+        _pixels(strip_png) == expected, f"the strip at y={strip_image['y']} matches its rows"
+    )
 
 
 @pytest.mark.parametrize(

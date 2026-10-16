@@ -11,10 +11,9 @@ from functools import partial
 from typing import Protocol
 
 from squidpdf.core.app.message import Message
-from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable, recalled
 from squidpdf.core.fonts.names import strip_subset
-from squidpdf.core.fonts.pool import FontCopy, Lent, previewed_widths, why_unlike_listed
+from squidpdf.core.fonts.pool import FontCopy, Lent, lent_widths, why_unlike_listed
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.types import PageFont
 
@@ -72,7 +71,7 @@ class AttachedFonts:
         """The copy attached for `name`, standing for `font`. Raises FontUnusable if no font."""
         embedded = recalled(self.opened, name, partial(self._open, name))
         lent = Lent(_SOURCE.format(name=name), name)
-        return FontCopy(font, embedded, previewed_widths(embedded), lent)
+        return FontCopy(font, embedded, lent_widths(embedded), lent)
 
     def _open(self, name: str) -> EmbeddedFont:
         """The file attached for `name`, opened. Raises FontUnusable when it isn't a font."""
@@ -84,4 +83,4 @@ class AttachedFonts:
             program = self.driver.open_font(font_file)
         except DriverError as problem:  # the library can't read it as a font
             raise FontUnusable(Message("attached_unreadable")) from problem
-        return EmbeddedFont(program, font_file, coverage_of(font_file), None)
+        return EmbeddedFont(program, font_file, None)

@@ -156,11 +156,12 @@ class _NotSaved(Exception):
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Opened:
-    """A PDF open in the engine, its spans, and the one a command was given."""
+    """A PDF open in the engine, its spans, the one a command was given, and its room."""
 
     engine: Engine
     index: SpanIndex
     span: Span
+    rooms: dict[str, float]  # the span's room, by its id, as the app works it out
 
 
 @contextmanager
@@ -174,13 +175,7 @@ def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
         span = index.get(span_id)
         if span is None:
             raise _UnknownSpan(span_id)
-        yield _Opened(engine, index, span)
-
-
-def _room_of(opened: _Opened) -> float:
-    """The room the span has on its line, as the app works it out."""
-    span = opened.span
-    return opened.engine.rooms(opened.index, [span])[span.id]
+        yield _Opened(engine, index, span, rooms=engine.rooms(index, [span]))
 
 
 @contextmanager
@@ -213,7 +208,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
-        fit = replace_fit(opened.engine, span, args.text, room_pt=_room_of(opened)).report
+        fit = replace_fit(opened.engine, span, args.text, room_pt=opened.rooms[span.id]).report
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {_DIM}{span.font} {span.size}pt{_OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
@@ -244,7 +239,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             opened.engine,
             span,
             replace.text,
-            room_pt=_room_of(opened),
+            room_pt=opened.rooms[span.id],
             strategy=replace.strategy,
         ).report
         # A way out that was offered makes a long line fit; missing letters still don't.
@@ -257,7 +252,9 @@ def _cmd_edit(args: argparse.Namespace) -> int:
 
         # The same save a download gets.
         with _saved_apart(args.out) as to:
-            saved = save_edited(opened.engine, opened.index, edits=[replace], to=to)
+            saved = save_edited(
+                opened.engine, opened.index, rooms=opened.rooms, edits=[replace], to=to
+            )
     print(f"\n  {span.text!r} -> {args.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
@@ -272,7 +269,13 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         # The same save and check a download gets.
         try:
             with _saved_apart(args.out) as to:
-                saved = save_edited(opened.engine, opened.index, edits=[Redact(span.id)], to=to)
+                saved = save_edited(
+                    opened.engine,
+                    opened.index,
+                    rooms=opened.rooms,
+                    edits=[Redact(span.id)],
+                    to=to,
+                )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")

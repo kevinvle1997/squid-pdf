@@ -57,6 +57,11 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 3 also merges copies, which takes time in the square of the pages.
 GARBAGE_COLLECT = 2
 
+# How hard a page image is compressed: zlib's level, 1 quickest to 9 smallest.
+# Grey pages, most of them text, at 3: a little larger than at 6, in far less time.
+PNG_GRAY_LEVEL = 3
+PNG_COLOR_LEVEL = 6  # zlib's default, as MuPDF writes them: lower made some photos larger
+
 # Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
 LIBRARY_VERSION = "11"
 
@@ -71,6 +76,9 @@ FETCH_TIMEOUT_S = 5.0
 FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
+# How many copies from outside the file (the user's, Google's) a worker keeps the letters
+# of: each is a few tens of KB, so all of them stay near a megabyte.
+LENT_COPIES_KEPT = 32
 
 # The numbers an analysis is worked out by: it's kept under them, so add any new one here.
 ANALYSIS_TUNING = {

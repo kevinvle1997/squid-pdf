@@ -1,10 +1,8 @@
 """The only file that uses MuPDF's low-level API.
 
-Everyday PyMuPDF calls (insert_text, get_pixmap, save) are easy to read, so
-they stay in `core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. The
-hard-to-read calls live here, and their results come back as named
-dataclasses. This file only reports what the PDF says; the engine decides
-what to do with it.
+Everyday PyMuPDF calls (get_text, get_pixmap, save) are easy to read, so they stay in
+`core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. Results come back as named
+dataclasses, reporting only what the PDF says: the engine decides what to do.
 """
 
 from __future__ import annotations
@@ -27,11 +25,14 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import IMAGE_SOONER_BY
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
-from squidpdf.core.types import CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
+from squidpdf.core.types import SOLID, CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
 _OPACITY_PREFIX = "SquidOpacity"  # our graphics states' names, e.g. SquidOpacity600 for 0.6
 _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye sees
+# PyMuPDF's name for a graphics state: strokes at 99 hundredths (solid), fills at {:02d}.
+_FILL_OPACITY_NAME = "fitzca99{:02d}"
+_PERCENT = 100  # a fill opacity is named to a hundredth, 0 to 99
 
 _PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 # A number, or a bracket, in a two-byte font's width list (`/W`).
@@ -173,6 +174,15 @@ _HARMLESS_ACTIONS = ("GoTo", "Named")  # a move within the file
 _WEB_SCHEMES = ("http:", "https:", "mailto:")  # a link to the web, which the reader follows
 # A stream's bytes, or a drawing, kept in another file, and how they'd be read.
 _OUTSIDE_STREAM_KEYS = ("F", "FFilter", "FDecodeParms", "Ref")
+# What ends a name as MuPDF prints one: a delimiter, a space, or the end.
+_NAME_END = r"(?=[\x00\t\n\x0c\r ()<>\[\]{}/%]|\Z)"
+# Where a printed object names a key `_dropped_from` may delete from any dictionary; a string
+# holding the name matches too, which costs only a walk.
+_ACTIVE_NAMED = re.compile(rf"/(?:{'|'.join(_DROPPED_KEYS + _ACTION_KEYS)}){_NAME_END}")
+# The same, or a key only a stream's own dictionary loses.
+_ACTIVE_NAMED_IN_STREAM = re.compile(
+    rf"/(?:{'|'.join(_DROPPED_KEYS + _ACTION_KEYS + _OUTSIDE_STREAM_KEYS)}){_NAME_END}"
+)
 # How a hidden copy goes back into the file once rewritten (`_rewrite_entry`).
 type _Writing = Literal["text", "required_text", "whole", "field_value", "options", "drawing"]
 # The copies a form field shows on the page: once one changes, the field is drawn again.
@@ -520,6 +530,9 @@ class PdfFile:
 
         As with a key written twice: MuPDF keeps the last, another reader the other.
         """
+        # No string written in it, as in most (`<</MCID 0>>`): none to lose.
+        if not _may_hold_a_string(written):
+            return False
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
     def _strings_written_in(self, drawing: bytes, resources: pymupdf.mupdf.PdfObj) -> list[str]:
@@ -562,14 +575,19 @@ class PdfFile:
         if b"<<" not in drawing:
             return
         reader, lexbuf = _lexer_of(drawing)
+        # With no BI anywhere, as in most, no operator need be read to find an image.
+        may_hold_image = b"BI" in drawing
         for start, token in _tokens_in(reader, lexbuf):
             # A dictionary: read to where it ends.
             if token == mu.PDF_TOK_OPEN_DICT:
                 dictionary = self._dictionary_in(reader, lexbuf)
                 yield start, mu.fz_tell(reader), dictionary
                 continue
+            starts_image = may_hold_image and _starts_image(
+                token, drawing=drawing, start=start, reader=reader
+            )
             # Not an image written into the drawing.
-            if not _starts_image(token, drawing=drawing, start=start, reader=reader):
+            if not starts_image:
                 continue
             image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
             # An image MuPDF can read: its bytes aren't drawing to it, so it reads on past them.
@@ -710,13 +728,32 @@ class PdfFile:
         pdf = self._pdf()
         dropped = False
         for number in range(1, mu.pdf_xref_len(pdf)):
+            is_stream = mu.pdf_obj_num_is_stream(pdf, number)
+            named = _ACTIVE_NAMED_IN_STREAM if is_stream else _ACTIVE_NAMED
+            # Naming no key it could delete, as most objects: nothing to walk.
+            if not self._may_name(number, named):
+                continue
             held = mu.pdf_resolve_indirect(mu.pdf_new_indirect(pdf, number, 0))
             # A stream's own dictionary may say its bytes are in another file.
-            outside = _OUTSIDE_STREAM_KEYS if mu.pdf_obj_num_is_stream(pdf, number) else ()
+            outside = _OUTSIDE_STREAM_KEYS if is_stream else ()
             dropped |= _dropped_from(held, outside)
             for inner in _inner_dictionaries(held):
                 dropped |= _dropped_from(inner, ())
         return dropped
+
+    def _may_name(self, number: int, named: re.Pattern[str]) -> bool:
+        """Whether object `number`, printed whole, holds a name `named` finds.
+
+        Whole: PyMuPDF cuts the text at a NUL, and MuPDF prints none: a name decoded, an odd
+        byte as #xx (`/J#61vaScript` as `/JavaScript`), a string escaped or in hex. A string's
+        backslash escape may read as a letter: a match too many, never one missed.
+        """
+        # MuPDF raises on an object it can't print: it's walked, so a failure lets nothing by.
+        try:
+            printed = self.doc.xref_object(number, compressed=True)
+        except MUPDF_ERRORS:
+            return True
+        return named.search(printed) is not None
 
     def _signed_fields(self, root: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
         """Each signed form field: one whose value, a signature, is a dictionary."""
@@ -1073,6 +1110,26 @@ class PdfFile:
         states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
         state = mu.pdf_new_dict(pdf, 1)
         mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, permille / _PERMILLE)
+        mu.pdf_dict_puts(states, name, state)
+        return name
+
+    def add_opacity_as_pymupdf(self, page: int, opacity: float) -> str:
+        """The page's name for a graphics state filling at `opacity`, as `insert_text` adds it.
+
+        Named as PyMuPDF names it, for `opacity` to a hundredth, and stroking solid. One the
+        page already has under that name is used as it is, so the bytes are PyMuPDF's.
+        """
+        mu = pymupdf.mupdf
+        pdf = self._pdf()
+        name = _FILL_OPACITY_NAME.format(min(round(opacity * _PERCENT), _PERCENT - 1))
+        resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
+        states = _dictionary_under(resources, mu.PDF_ENUM_NAME_ExtGState)
+        # Already there: an empty m_internal means it isn't.
+        if mu.pdf_dict_gets(states, name).m_internal:
+            return name
+        state = mu.pdf_new_dict(pdf, 2)
+        mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_CA, SOLID)
+        mu.pdf_dict_put_real(state, mu.PDF_ENUM_NAME_ca, opacity)
         mu.pdf_dict_puts(states, name, state)
         return name
 
@@ -1529,6 +1586,11 @@ def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     reader, lexbuf = _lexer_of(b"<" + held.hex().encode() + b">")
     # A string belongs to no file, so it's read without one.
     return mu.pdf_parse_stm_obj(mu.PdfDocument(), reader, lexbuf)
+
+
+def _may_hold_a_string(written: bytes) -> bool:
+    """Whether `written` may hold a string: one starts at ( or at a < that isn't half of <<."""
+    return b"(" in written or b"<" in written.replace(b"<<", b"")
 
 
 def _strings_anywhere_in(written: bytes) -> list[str]:

@@ -20,6 +20,10 @@ MAX_FONTS = 20  # the user's own copies kept per document
 ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or again after a deploy
 PAGE_IMAGE_TIMEOUT_S = 10
 
+# The indexes a worker keeps read, by their files' bytes: a few long documents', a small share
+# of WORKER_MEMORY_BYTES once parsed, so the rest is left for a PDF's own work.
+KEPT_INDEX_BYTES = 32 * _MB
+
 IDLE_S = 3600  # a document untouched this long is deleted
 SWEEP_EVERY_S = 60
 

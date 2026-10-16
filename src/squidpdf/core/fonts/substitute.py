@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 
-from squidpdf.core.constants import GLYPH_LIST_RANGES
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.look_alike import broadest
@@ -38,13 +37,7 @@ def face_letters(face: Face) -> tuple[str, ...]:
     The letters the browser previews new text with, so the list is kept short;
     letters past those ranges still draw, and the server's fit says so.
     """
-    coverage = face_coverage(face)
-    return tuple(
-        chr(codepoint)
-        for block in GLYPH_LIST_RANGES
-        for codepoint in block
-        if coverage.covers(chr(codepoint))
-    )
+    return face_coverage(face).previewed_letters()
 
 
 def substitute_for(look_alike: Face, text: str) -> Substitute:
@@ -54,7 +47,11 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    candidates = [_try_face(face, text) for face in (look_alike, broadest(look_alike))]
+    in_look_alike = _try_face(look_alike, text)
+    # The look-alike draws every letter: no face could leave out fewer.
+    if not in_look_alike.left_out:
+        return in_look_alike
+    candidates = [in_look_alike, _try_face(broadest(look_alike), text)]
     # min keeps the first of a tie
     return min(candidates, key=lambda candidate: len(candidate.left_out))
 
@@ -62,5 +59,8 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
 def _try_face(face: Face, text: str) -> Substitute:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
+    # Every letter draws: the line as typed.
+    if not left_out:
+        return Substitute(face, text, left_out)
     kept = "".join(ch for ch in text if ch not in left_out)
     return Substitute(face, kept, left_out)

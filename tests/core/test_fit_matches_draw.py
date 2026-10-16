@@ -94,12 +94,14 @@ def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:
         ("own", "Qcafé", False, _CARLITO),
         ("named", "Café", False, _CARLITO),
         ("named", "Café", True, _CARLITO),
+        ("named", "Café\u2019s \u201cmenu\u201d \u2013 €5", False, _CARLITO),
     ],
     ids=[
         "its own font draws it",
         "its own font lacks a letter",
         "its font is only named",
         "an insert in a font the page can't lend",
+        "letters past Latin-1, as macOS types them",
     ],
 )
 def test_the_face_the_fit_names_is_the_one_the_saved_file_draws(

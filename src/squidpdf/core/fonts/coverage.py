@@ -20,6 +20,7 @@ from fontTools.pens.basePen import DecomposingPen
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import Glyph, table__g_l_y_f
 
+from squidpdf.core.constants import GLYPH_LIST_RANGES
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
 # Counted as drawable whether the font maps it or not: the plain space is one text
@@ -104,6 +105,11 @@ class Coverage:
         codes = self.glyph_names if self.usable else self.listed_letters
         chars = (chr(codepoint) for codepoint in codes)
         return sorted(self.always_drawable.union(ch for ch in chars if self.covers(ch)))
+
+    def previewed_letters(self) -> tuple[str, ...]:
+        """Each letter it draws that the browser previews, in code point order."""
+        previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
+        return tuple(ch for ch in previewed if self.covers(ch))
 
     def missing(self, text: str) -> list[str]:
         """Characters `text` needs that this font cannot draw, in order, deduped."""

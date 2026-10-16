@@ -112,7 +112,9 @@ def is_page(page: int, page_count: int) -> bool:
     return 0 <= page < page_count
 
 
-def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved:
+def resolve(
+    engine: Engine, index: SpanIndex, *, rooms: Mapping[str, float], edits: Sequence[Edit]
+) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
     A redaction that points at nothing raises BadReference instead of being
@@ -156,12 +158,12 @@ def resolve(engine: Engine, edits: Sequence[Edit], index: SpanIndex) -> Resolved
             continue
         assert_never(edit)
     span_edits = list(spans.latest.values())
-    rooms = engine.rooms(index, [edited_span.span for edited_span in span_edits])
     return Resolved(
         span_edits,
         inserts=inserts,
         skipped=skipped,
-        rooms=rooms,
+        # Of the rooms the caller read from the original, only the edited spans'.
+        rooms={edited_span.span.id: rooms[edited_span.span.id] for edited_span in span_edits},
         page_count=page_count,
         order=pages.order,
         turns=pages.turns,

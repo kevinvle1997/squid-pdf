@@ -8,13 +8,16 @@ from collections.abc import Callable, Iterator
 import httpx
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from squidpdf.api import app as api_app
 from squidpdf.api.errors import TooSlow
 from squidpdf.core import BUILD
 from squidpdf.editing import font_list
 from squidpdf.editing.font_list import _FontListTask  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.types import FontList
 from tests.api.conftest import BASE_URL
+from tests.conftest import log_lines
 from tests.helpers import assert_equal, assert_every_field_filled, assert_problem
 
 _BROWSERS = 2  # two first visits, at the same moment
@@ -41,6 +44,9 @@ class _StandInWorkers:
             raise TooSlow()
         await asyncio.sleep(_MEASURING_S)
         return {"build": BUILD, "families": []}
+
+    async def close(self) -> None:
+        """Nothing to stop: no worker ever started."""
 
 
 @pytest.fixture
@@ -87,6 +93,39 @@ def test_a_font_list_that_ran_out_of_time_is_measured_again(
     again = browser().get("/api/fonts", params={"build": BUILD})
     assert_equal(again.status_code, 200, "status the second time")
     assert_equal(workers.runs, 2, "measurements")
+
+
+@pytest.mark.parametrize(
+    ("too_slow", "logged", "measurements"), [(0, False, 1), (1, True, 2)], ids=["ran", "failed"]
+)
+def test_a_server_measures_its_font_list_as_it_starts(
+    tmp_path, monkeypatch, unlisted, capsys, too_slow, logged, measurements
+):
+    """So the first browser after a deploy finds it measured, or under way, and starts none.
+
+    One that fails is logged, since no request waits for it, and the first ask measures again.
+    """
+    workers = _StandInWorkers(too_slow=too_slow)
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
+    # Its own app, so its start runs here, with workers that count each measurement.
+    monkeypatch.setattr(api_app, "start_pool", lambda: workers)
+    with TestClient(api_app.create_app(), base_url=BASE_URL) as server:
+        if server.portal is None:
+            pytest.fail("the client hasn't started the app")
+        # A turn of the app's loop: whatever its start began has begun by then.
+        server.portal.call(asyncio.sleep, 0)
+        measured_before_any_ask = workers.runs
+        reply = server.get("/api/fonts", params={"build": BUILD})
+
+    said = [" ".join(line.split()[1:5]) for line in log_lines(capsys.readouterr().out)]
+    assert_equal(measured_before_any_ask, 1, "measurements before anyone asked")
+    failure_logged = "ERROR failed editing.font_list font_list_failed" in said
+    assert_equal(failure_logged, logged, "the failure, logged")
+    assert_equal(
+        (reply.status_code, workers.runs),
+        (200, measurements),
+        "status, and measurements by then",
+    )
 
 
 async def _measured() -> bytes:

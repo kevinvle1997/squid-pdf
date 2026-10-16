@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import partial
 
 import pymupdf
 import pytest
@@ -11,12 +12,14 @@ from squidpdf.core import FontSources, Message, open_pdf
 from squidpdf.core.fonts import pool
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
+from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
 from squidpdf.core.types import PageFont
 from tests.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in
 
 _SIZE = 14.0
+_COPIES = 100  # copies from outside measured in one worker: far past how many it keeps
 
 # One trimmed copy of Times per page. Page 0's lacks Y, a and y; page 1's has all
 # three; page 2's alone has J. Each shares enough letters with page 0's to be vouched for.
@@ -170,3 +173,23 @@ def test_the_users_copy_lends_before_googles_so_google_is_never_asked(poppins_su
 
     assert_equal(missing, [], "letters no copy draws")
     assert_equal(asked, [], "files asked of Google")
+
+
+def test_a_worker_keeps_the_widths_of_only_its_latest_copies_from_outside():
+    """A long-lived worker stays small: past its bound, the copy measured longest ago goes."""
+    kept = _KeptWidths()
+    measured: list[bytes] = []
+
+    def measure(digest: bytes) -> dict[str, float]:
+        measured.append(digest)
+        return {"A": 600.0}
+
+    digests = [n.to_bytes(2) for n in range(_COPIES)]
+    for digest in digests:
+        kept.widths(digest, partial(measure, digest))
+    measured.clear()
+    newest, oldest = digests[-1], digests[0]
+    for digest in (newest, oldest):
+        kept.widths(digest, partial(measure, digest))
+
+    assert_equal(measured, [oldest], "copies measured again: the oldest, not the newest")

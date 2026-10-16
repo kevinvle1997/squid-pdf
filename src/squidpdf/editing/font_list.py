@@ -9,9 +9,11 @@ from dataclasses import dataclass
 import orjson
 
 # Not through `Engine`: these are our own files, with no document to open.
-from squidpdf.core import BUILD, CATALOG, Reply, Workers, face_widths
+from squidpdf.core import BUILD, CATALOG, LogController, LogEvent, Reply, Workers, face_widths
 from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
 from squidpdf.editing.types import FamilyInfo, FontList
+
+_log = LogController.for_module(__name__)
 
 
 @dataclass(slots=True)
@@ -53,17 +55,31 @@ class FontListController:
 
     async def font_list(self, build: str) -> Reply[bytes]:
         """Every face we ship as JSON, kept by the browser only when `build` is this one."""
-        # Started on the first ask since the server started, or since the last one failed.
+        # Started as the server started, or on the first ask since the last one failed.
         measuring = _font_list_task.task(self._start_measuring)
         # Shielded: a browser that leaves doesn't stop the measuring others wait for.
         font_list_json = await asyncio.shield(measuring)
         cache = FONT_LIST_CACHE if build == BUILD else "no-store"
         return Reply(font_list_json, {"Cache-Control": cache})
 
+    def measure_ahead(self) -> None:
+        """Start measuring the font list unless it's measured or under way, waiting for nothing.
+
+        One that fails is logged, as no request may be waiting to say so, and dropped, as one
+        a request started is: the next ask measures again.
+        """
+        _font_list_task.task(self._start_measuring_ahead)
+
     def _start_measuring(self) -> asyncio.Task[bytes]:
         """Start measuring the font list; it's dropped if it fails."""
         measuring = asyncio.create_task(self._font_list_json())
         measuring.add_done_callback(_font_list_task.forget_if_failed)
+        return measuring
+
+    def _start_measuring_ahead(self) -> asyncio.Task[bytes]:
+        """Start measuring the font list before anyone asks; it's logged if it fails."""
+        measuring = self._start_measuring()
+        measuring.add_done_callback(_log_if_failed)
         return measuring
 
     async def _font_list_json(self) -> bytes:
@@ -73,6 +89,18 @@ class FontListController:
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
         return await self.workers.run(FONT_LIST_TIMEOUT_S, _measure_faces)
+
+
+def _log_if_failed(measuring: asyncio.Task[bytes]) -> None:
+    """Log the failure of a measuring started before anyone asked."""
+    # Cancelled: the server is stopping.
+    if measuring.cancelled():
+        return
+    failure = measuring.exception()
+    # Measured.
+    if failure is None:
+        return
+    _log.write(LogEvent.FONT_LIST_FAILED, failure)
 
 
 def _measure_faces() -> FontList:

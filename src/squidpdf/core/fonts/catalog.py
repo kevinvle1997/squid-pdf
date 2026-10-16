@@ -283,5 +283,10 @@ FACES: dict[str, Face] = {face.name: face for face in CATALOG}
 
 @cache
 def face_bytes(face: Face) -> bytes:
-    """The face's font file, as shipped in the package."""
+    """The face's font file, as shipped in the package, read once per process."""
+    return face_bytes_anew(face)
+
+
+def face_bytes_anew(face: Face) -> bytes:
+    """The face's font file, read from the package anew, for a reader that keeps nothing."""
     return resources.files("squidpdf").joinpath("fonts", face.file).read_bytes()

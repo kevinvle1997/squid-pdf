@@ -20,16 +20,15 @@ _CODE_BYTES: dict[FontKind, int] = {"truetype": 1, "type0": 2, "type3": 1}
 
 @dataclass(frozen=True, slots=True, eq=False)
 class EmbeddedFont:
-    """A font stored in the file, and what it really draws.
+    """A font stored in the file, or lent from outside it, opened to measure and write with.
 
-    Made of parts, a font program and its coverage, so `eq=False`: comparing
+    Made of parts, a font program and its file, so `eq=False`: comparing
     two would compare whole font files.
     """
 
     program: FontProgram  # what measures it: the driver's open copy, or a Type3's width list
     # The font file itself, to add to a page for a redraw; empty for a Type3's drawings.
     file: bytes = field(repr=False)
-    coverage: Coverage  # which letters draw a shape
     coded: CodedFont | None  # set when we write it by code, not by letter
 
 
@@ -79,8 +78,8 @@ def made_once[K, V](memo: dict[K, V], key: K, make: Callable[[], V]) -> V:
     return memo[key]
 
 
-def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
-    """Open the file's copy of a font. Raises FontUnusable, saying why, if we can't use it.
+def open_embedded(driver: PdfDriver, page_font: PageFont) -> tuple[EmbeddedFont, Coverage]:
+    """The file's copy of a font, opened, and what it draws. Raises FontUnusable, saying why.
 
     A font with no letter lookup of its own (only a symbol table, say) still
     counts if its letter list (ToUnicode) says which code draws each letter;
@@ -99,7 +98,7 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
         raise FontUnusable(problem.reason) from problem
 
 
-def _open_drawn(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
+def _open_drawn(driver: PdfDriver, page_font: PageFont) -> tuple[EmbeddedFont, Coverage]:
     """A Type3 font, written by code and measured by its width list: no font file to open."""
     # Only a font the page uses itself, as for a TrueType written by code.
     if page_font.in_form:
@@ -108,7 +107,7 @@ def _open_drawn(driver: PdfDriver, page_font: PageFont) -> EmbeddedFont:
     glyph_ids = {letter: code.glyph for letter, code in coded.letters.items()}
     # No file to read: its letter list says what it draws, a space only if it has one.
     coverage = coverage_of(b"", (ord(letter) for letter in coded.letters), glyph_ids)
-    return EmbeddedFont(_DrawnLetters(coded), b"", coverage, coded)
+    return EmbeddedFont(_DrawnLetters(coded), b"", coded), coverage
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,7 +135,9 @@ class _DrawnLetters:
         return sum(self.advance(ch) for ch in text) * size
 
 
-def _open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) -> EmbeddedFont:
+def _open_font_file(
+    driver: PdfDriver, page_font: PageFont, font_file: bytes
+) -> tuple[EmbeddedFont, Coverage]:
     """The font opened, by letter when it looks letters up itself, else by code."""
     program = driver.open_font(font_file)
     listed_letters = program.listed_letters()
@@ -144,7 +145,7 @@ def _open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) ->
 
     # Looks letters up itself: the usual case.
     if coverage.usable:
-        return EmbeddedFont(program, font_file, coverage, None)
+        return EmbeddedFont(program, font_file, None), coverage
 
     # Written by code, as its letter list says.
     try:
@@ -152,9 +153,9 @@ def _open_font_file(driver: PdfDriver, page_font: PageFont, font_file: bytes) ->
     except FontUnusable:
         # Unreadable either way: keep it only if the library says it has letters.
         if listed_letters:
-            return EmbeddedFont(program, font_file, coverage, None)
+            return EmbeddedFont(program, font_file, None), coverage
         raise
-    return EmbeddedFont(program, font_file, coded_coverage, coded)
+    return EmbeddedFont(program, font_file, coded), coded_coverage
 
 
 def _read_by_code(

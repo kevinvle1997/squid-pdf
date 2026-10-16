@@ -9,6 +9,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -16,6 +17,7 @@ from pathlib import Path
 from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
+from squidpdf.documents.rooms import kept_rooms
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
@@ -25,7 +27,7 @@ from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Saved
 
-_EXPORTED = "export.pdf"  # the file saved, then checked, before its bytes go back
+_EXPORTED = "export.pdf"  # the file saved and checked by the worker, then read by the server
 
 # The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
 SKIPPED_HEADER = "Squid-Skipped-Edits"
@@ -60,11 +62,14 @@ class ExportController:
             exported = await self._enqueue_make_pdf(
                 doc.folder, scratch, edits=edits, pages=pages
             )
+            # Read here, not sent back: a large file in pebble's one result pipe would hold
+            # up every other worker's answer while it crossed.
+            pdf = await asyncio.to_thread((scratch / _EXPORTED).read_bytes)
         finally:
             # In a thread: it may hold the whole file. The thread finishes even if the
             # request is cancelled again. Nothing to keep, so a failure is ignored.
             await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
-        return Reply(exported.pdf, _reply_headers(exported, said_in))
+        return Reply(pdf, _reply_headers(exported, said_in))
 
     async def _enqueue_make_pdf(
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
@@ -77,26 +82,28 @@ class ExportController:
 def _make_pdf(
     folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
 ) -> Exported:
-    """The document in `folder` with the edits applied and checked, as PDF bytes.
+    """Save the document in `folder`, the edits applied and checked, into `scratch`.
 
-    Saves into `scratch`, which the server makes and removes. Runs in a worker.
+    The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
     """
     path = Path(folder)
     index = store.require_index(path)
+    rooms = kept_rooms(path, index)
 
     with store.open_original(path) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.
         out = Path(scratch) / _EXPORTED
-        saved = save_edited(engine, index, edits=edits, pages=pages, to=str(out))
+        saved = save_edited(engine, index, rooms=rooms, edits=edits, pages=pages, to=str(out))
         skipped = [skip.edit for skip in saved.applied.skipped]
         # Only the file's own notices: render already said apply's.
-        return Exported(out.read_bytes(), skipped_edits=skipped, file_notices=saved.notices)
+        return Exported(skipped_edits=skipped, file_notices=saved.notices)
 
 
 def save_edited(
     engine: Engine,
     index: SpanIndex,
     *,
+    rooms: Mapping[str, float],
     edits: list[Edit],
     pages: list[int] | None = None,
     to: str,
@@ -105,8 +112,9 @@ def save_edited(
 
     Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
     The same save and check whether a browser downloads the file or the CLI writes it.
+    `rooms` holds at least each edited span's room, by id, from the original (`Engine.rooms`).
     """
-    resolved = resolve(engine, edits, index)
+    resolved = resolve(engine, index, rooms=rooms, edits=edits)
     order = page_order(resolved, pages)
     redactions = RedactionController(redacted_in(resolved))
     applied = apply_edits(engine, resolved)

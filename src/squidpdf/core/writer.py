@@ -36,6 +36,9 @@ from squidpdf.core.types import (
 )
 
 _NAME_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
+# Substitution, positioning and their glyph classes: how a shaper sets text, which a PDF
+# never asks, since it places each letter itself.
+_LAYOUT_TABLES = ("GSUB", "GPOS", "GDEF")
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,8 +352,9 @@ def _trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
         hinting=True,  # keeps small text crisp on screen, for a few KB
         layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
         retain_gids=True,  # text already on the page points at its glyphs by number
-        # FontForge's timestamps: nothing draws with them, and fontTools can't cut them.
-        drop_tables=[*Options().drop_tables, "FFTM"],
+        # FontForge's timestamps, which fontTools can't cut, and the layout tables, empty with
+        # no features kept: nothing draws with either.
+        drop_tables=[*Options().drop_tables, "FFTM", *_LAYOUT_TABLES],
     )
     subsetter = Subsetter(options)
     subsetter.populate(unicodes=[ord(ch) for ch in letters])

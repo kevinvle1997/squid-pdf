@@ -52,7 +52,7 @@ NO_SOURCES = FontSources()
 
 @dataclass(slots=True)
 class _PageFacts:
-    """What one page says about its fonts and text, and what's worked out from them.
+    """What one page says about its fonts, and what's worked out from them and its text.
 
     Each read or worked out when the page is first asked for it.
     """
@@ -63,8 +63,6 @@ class _PageFacts:
     listed: dict[str, PageFont]
     # Its stored fonts by the name their text reads, where that's another: None until needed.
     read_as: dict[str, PageFont] | None = None
-    # The page's text as it was: None until needed.
-    lines: list[list[TextPiece]] | None = field(default=None, repr=False)
     # The page's usual gap for a space, by the font's name and the font it's measured in.
     usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
@@ -75,12 +73,6 @@ class _PageFacts:
         if self.read_as is None:
             self.read_as = make()
         return self.read_as
-
-    def text_lines(self, make: Callable[[], list[list[TextPiece]]]) -> list[list[TextPiece]]:
-        """The page's text as it was, read on first use."""
-        if self.lines is None:
-            self.lines = make()
-        return self.lines
 
     def usual_gap(self, key: tuple[str, FontProgram], make: Callable[[], float]) -> float:
         """The usual gap for a space, by font name and the font measured in, on first use."""
@@ -97,11 +89,14 @@ class _FontCache:
 
     A copy of a font, and the name its copies share, by how its page lists it
     (its object, its name there, whether a form uses it), so pages that list it
-    alike share one. A page's facts by page number; every letter, by that name.
+    alike share one. A page's facts and text by page number; every letter, by that name.
     """
 
     # What each page says, by page number, read when the page is first asked about.
     pages: dict[int, _PageFacts] = field(default_factory=dict)
+    # Each page's text as it was, by page number: kept from the index, else read when needed.
+    # Apart from `pages`, so the index keeps a page's text without reading its fonts.
+    lines: dict[int, list[list[TextPiece]]] = field(default_factory=dict, repr=False)
     # Each copy of a font in the file, opened, or why it can't be used.
     copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
     # The name each font's copies share, read on first use: every walk asks it of every font.
@@ -114,6 +109,16 @@ class _FontCache:
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
         """What page `number` says, read on first use."""
         return made_once(self.pages, number, make)
+
+    def text_lines(
+        self, page: int, make: Callable[[], list[list[TextPiece]]]
+    ) -> list[list[TextPiece]]:
+        """Page `page`'s text as it was, read on first use unless it was kept."""
+        return made_once(self.lines, page, make)
+
+    def keep_text_lines(self, page: int, lines: list[list[TextPiece]]) -> None:
+        """Keep page `page`'s text as it was, read by someone else first."""
+        self.lines[page] = lines
 
     def copy(self, font: PageFont, make: Callable[[], FontCopy]) -> FontCopy | FontUnusable:
         """One copy of a font in the file, opened on first use, or why it can't be used."""
@@ -145,6 +150,7 @@ class _FontCache:
         their letters and look-alikes found through them, are read again from the pages.
         """
         self.pages.clear()
+        self.lines.clear()
         self.copies.clear()
         self.copies_names.clear()
         self.look_alikes.clear()
@@ -183,6 +189,10 @@ class DocumentFonts:
         """
         found = self.lookup(span)
         return found if isinstance(found, PooledFont) else None
+
+    def keep_text_lines(self, page: int, lines: list[list[TextPiece]]) -> None:
+        """Keep the page's text as the index read it."""
+        self.cache.keep_text_lines(page, lines)
 
     def read_before_erasing(self, span: Span) -> None:
         """Read what a draw over `span` asks of its font, while its page still has the font."""
@@ -286,7 +296,8 @@ class DocumentFonts:
 
     def _open_copy(self, font: PageFont) -> FontCopy:
         """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't."""
-        return font_copy(font, open_embedded(self.driver, font))
+        embedded, coverage = open_embedded(self.driver, font)
+        return font_copy(font, embedded, coverage)
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other copy of the font in the file: each font that goes by its copies' name.
@@ -427,8 +438,8 @@ class DocumentFonts:
         return usual_gap(in_font, font=font)
 
     def _page_lines(self, page: int) -> list[list[TextPiece]]:
-        """The page's text as it was when first asked for, line by line."""
-        return self._facts(page).text_lines(partial(self.driver.text_lines, page))
+        """The page's text as the index read it, else when first asked for, line by line."""
+        return self.cache.text_lines(page, partial(self.driver.text_lines, page))
 
 
 def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:

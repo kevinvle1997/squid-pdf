@@ -33,7 +33,7 @@ from squidpdf.core import (
     start_request,
     tally_fields,
 )
-from squidpdf.editing.constants import EXPORT_TIMEOUT_S, RENDER_TIMEOUT_S
+from squidpdf.editing.constants import EXPORT_TIMEOUT_S, FONT_LIST_TIMEOUT_S, RENDER_TIMEOUT_S
 from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
 from tests.conftest import LOG_LINE, log_lines
 from tests.helpers import (
@@ -171,6 +171,9 @@ def _kill_idle_worker(client: TestClient, pool: WorkerPool) -> None:
     """
     if client.portal is None:
         pytest.fail("the client hasn't started the app")
+    # The app measures its font list as it starts: once that's done, no task is under way.
+    measured = _wait_until(lambda: not pool.jobs, FONT_LIST_TIMEOUT_S)
+    assert_true(measured, f"the font list was measured within {FONT_LIST_TIMEOUT_S} s")
     idle_pid = client.portal.call(pool.run, _ENOUGH_S, os.getpid)
     os.kill(idle_pid, signal.SIGKILL)
     gone = _wait_until(lambda: _is_gone(idle_pid), _ENOUGH_S)

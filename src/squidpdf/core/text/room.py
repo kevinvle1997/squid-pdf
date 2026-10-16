@@ -6,9 +6,11 @@ from the original page, so every edit of a span has the same.
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_left, bisect_right
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from itertools import accumulate
 
 from squidpdf.core.constants import (
     ROOM_BLOCK_STEP_LINES,
@@ -19,6 +21,9 @@ from squidpdf.core.constants import (
     ROOM_TOUCH_PT,
 )
 from squidpdf.core.types import Rect, Span
+
+# Left edges within ROOM_EDGE_PT fall at most a slot apart; float rounding may add one.
+_NEAR_SLOTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,16 +233,92 @@ def _line_of(spans: list[Span]) -> _Line:
     return _Line(spans, Rect(left, top, right, bottom))
 
 
+@dataclass(frozen=True, slots=True)
+class _OpenBlock:
+    """A block a line may still continue."""
+
+    made: int  # its place in the order blocks were made
+    lines: list[_Line]
+
+
 def _blocks_of(lines: list[_Line]) -> list[list[_Line]]:
-    """Runs of lines, top first, that share a left edge and step down at one leading."""
+    """Runs of lines, top first, that share a left edge and step down at one leading.
+
+    A line joins the first block made that it continues. Only the open blocks near its
+    left edge are asked: on a dense page, nearly every line starts a block of its own.
+    """
     blocks: list[list[_Line]] = []
-    for line in lines:
-        block = next((block for block in blocks if _continues(block, line)), None)
-        if block is None:
+    # The blocks a line may still continue, by their left edge's slot, in the order made.
+    open_by_slot: dict[int, list[_OpenBlock]] = {}
+    for line, top_to_come in zip(lines, _highest_tops(lines), strict=True):
+        # A left edge that isn't a number is near none: `_continues` would find no block.
+        if not math.isfinite(line.box.x0):
             blocks.append([line])
-        else:
-            block.append(line)
+            continue
+        slot = _edge_slot_of(line)
+        nearby = range(slot - _NEAR_SLOTS, slot + _NEAR_SLOTS + 1)
+        open_near = _still_open(open_by_slot, slots=nearby, top_to_come=top_to_come)
+        # Those near it that no line from here down can reach are closed for good.
+        open_by_slot |= open_near
+        block = _first_continued(open_near, line)
+        if block is None:
+            block = []
+            open_by_slot.setdefault(slot, []).append(_OpenBlock(len(blocks), block))
+            blocks.append(block)
+        block.append(line)
     return blocks
+
+
+def _edge_slot_of(line: _Line) -> int:
+    """`line`'s slot: its left edge in whole ROOM_EDGE_PT, rounded down."""
+    return math.floor(line.box.x0 / ROOM_EDGE_PT)
+
+
+def _highest_tops(lines: list[_Line]) -> list[float]:
+    """For each line, the highest top of it and the lines after it."""
+    return list(accumulate(reversed([line.box.y0 for line in lines]), min))[::-1]
+
+
+def _still_open(
+    open_by_slot: dict[int, list[_OpenBlock]], *, slots: range, top_to_come: float
+) -> dict[int, list[_OpenBlock]]:
+    """The blocks open in `slots`, by slot, that a line from `top_to_come` down can reach."""
+    return {
+        slot: [
+            open_block
+            for open_block in open_by_slot[slot]
+            if not _out_of_reach(open_block.lines, top_to_come)
+        ]
+        for slot in slots
+        if slot in open_by_slot
+    }
+
+
+def _first_continued(open_near: dict[int, list[_OpenBlock]], line: _Line) -> list[_Line] | None:
+    """The first block made that `line` continues, of those open near it, by slot."""
+    earliest: list[_OpenBlock] = []  # each slot's first that `line` continues
+    for in_slot in open_near.values():
+        # A slot's blocks are in the order made, so the first found is its earliest.
+        found = next(
+            (open_block for open_block in in_slot if _continues(open_block.lines, line)), None
+        )
+        if found is not None:
+            earliest.append(found)
+    # None near that it continues: it starts a block.
+    if not earliest:
+        return None
+    return min(earliest, key=lambda open_block: open_block.made).lines
+
+
+def _out_of_reach(block: list[_Line], top_to_come: float) -> bool:
+    """Whether a line starting at `top_to_come` or below is too far down to continue `block`."""
+    # The step `_continues` measures, to the same reach: it closes only what that turns down.
+    return top_to_come - block[-1].box.y0 > _reach_of(block)
+
+
+def _reach_of(block: list[_Line]) -> float:
+    """How far below its last line's top the next line of `block` may start."""
+    return ROOM_BLOCK_STEP_LINES * block[-1].box.height
 
 
 def _continues(block: list[_Line], line: _Line) -> bool:
@@ -245,7 +326,7 @@ def _continues(block: list[_Line], line: _Line) -> bool:
     last = block[-1].box
     step = line.box.y0 - last.y0
     same_edge = abs(line.box.x0 - block[0].box.x0) <= ROOM_EDGE_PT
-    near = 0 < step <= ROOM_BLOCK_STEP_LINES * last.height
+    near = 0 < step <= _reach_of(block)
     if not (same_edge and near):
         return False
     # A second line sets the leading; a third must keep it.

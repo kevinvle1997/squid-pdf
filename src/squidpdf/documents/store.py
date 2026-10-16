@@ -1,8 +1,8 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, its owner's hash, index, page list, the user's copies of its
-fonts, and the analysis per `build`, tuning and set of copies. Each file worked out from the
-original is named for its format. Its mtime, touched each visit, is the idle clock.
+A folder holds the original, its owner's hash, index, page list, the user's copies of its fonts,
+and per `build` and tuning, each span's room and an analysis per set of copies. Files worked out
+are named for their format. The folder's mtime, touched each visit, is the idle clock.
 """
 
 from __future__ import annotations
@@ -16,12 +16,14 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import BinaryIO
+
+import orjson
 
 from squidpdf.core import (
     ANALYSIS_TUNING,
@@ -341,41 +343,89 @@ def _replace_whole(path: Path, write: Callable[[Path], object]) -> None:
 
 
 def save_index(folder: Path, index: SpanIndex) -> None:
-    """Keep the index, built once from the original, so ids never change."""
-    _write_whole(folder / _index_file(), index_as_json(index))
+    """Keep the index, built once from the original, so ids never change.
+
+    This worker keeps it read as well, so its next render needn't read it back.
+    """
+    index_path = folder / _index_file()
+    _write_whole(index_path, index_as_json(index))
+    try:
+        index_stat = index_path.stat()
+    except FileNotFoundError as exc:  # deleted since it was written: by its owner or the sweep
+        raise Gone from exc
+    _kept_indexes.keep(_IndexFile.from_stat(folder, index_stat), index)
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexFile:
+    """A document's index file, as found on disk: which file it is, and its size."""
+
+    folder: Path  # the document's
+    # Mtime and inode: each save is a new file, but the clock may not have moved.
+    mtime_ns: int
+    inode: int
+    size: int  # in bytes
+
+    @classmethod
+    def from_stat(cls, folder: Path, index_stat: os.stat_result) -> _IndexFile:
+        """The index file in `folder`, as `index_stat` finds it."""
+        return cls(folder, index_stat.st_mtime_ns, index_stat.st_ino, index_stat.st_size)
+
+
+@dataclass(frozen=True, slots=True)
+class _KeptIndex:
+    """An index this worker read, and the file it read it from."""
+
+    index_file: _IndexFile
+    index: SpanIndex = field(repr=False)  # every span in the document
 
 
 @dataclass(slots=True)
-class _KeptIndex:
-    """The last index this worker read, and which file it read it from."""
+class _KeptIndexes:
+    """The indexes this worker read latest, while their files fit in `KEPT_INDEX_BYTES`.
 
-    file_identity: tuple[Path, int, int] | None = None  # folder, mtime and inode
-    index: SpanIndex | None = field(default=None, repr=False)  # every span in the document
+    The pool hands a user's renders to each worker in turn, so a worker keeps the
+    documents in use.
+    """
 
-    def index_for(
-        self, file_identity: tuple[Path, int, int], read: Callable[[], SpanIndex]
-    ) -> SpanIndex:
-        """The index in the file `file_identity` names: the one kept, else read and kept."""
-        kept = self.index if file_identity == self.file_identity else None
-        # The same file as last time: it isn't read again.
-        if kept is not None:
-            return kept
-        # Dropped before the next is read, so two never share the worker's memory cap.
-        self.forget()
+    # Each by its document's folder, the least recently used first.
+    by_folder: dict[Path, _KeptIndex] = field(default_factory=dict, repr=False)
+
+    def index_for(self, index_file: _IndexFile, *, read: Callable[[], SpanIndex]) -> SpanIndex:
+        """The index in `index_file`: the one kept, else read and kept."""
+        # .pop with a default: a document this worker hasn't read; put back when it's the same.
+        kept = self.by_folder.pop(index_file.folder, None)
+        # The same file as read before: it isn't read again, and it's now the latest used.
+        if kept is not None and kept.index_file == index_file:
+            self.by_folder[index_file.folder] = kept
+            return kept.index
+        # Space made before it's read, so what's kept and it never pass the bound together.
+        self._make_space_for(index_file.size)
         index = read()
-        self.keep(file_identity, index)
+        self.keep(index_file, index)
         return index
 
-    def keep(self, file_identity: tuple[Path, int, int], index: SpanIndex) -> None:
-        """Keep `index`, read from the file `file_identity` names."""
-        self.file_identity, self.index = file_identity, index
+    def keep(self, index_file: _IndexFile, index: SpanIndex) -> None:
+        """Keep `index`, read from `index_file`, as the latest used."""
+        self._make_space_for(index_file.size)
+        self.by_folder[index_file.folder] = _KeptIndex(index_file, index)
+
+    def _make_space_for(self, file_bytes: int) -> None:
+        """Drop the least recently used until a file of `file_bytes` fits within the bound.
+
+        A file past the bound by itself empties the rest, and is kept alone.
+        """
+        kept_bytes = sum(kept.index_file.size for kept in self.by_folder.values())
+        while self.by_folder and kept_bytes + file_bytes > constants.KEPT_INDEX_BYTES:
+            least_used = self.by_folder.pop(next(iter(self.by_folder)))
+            kept_bytes -= least_used.index_file.size
 
     def forget(self) -> None:
-        """Drop the index kept, as a fresh record: the next one is read from its file."""
-        self.file_identity, self.index = None, None
+        """Drop every index kept, as a fresh record: the next of each is read from its file."""
+        self.by_folder.clear()
 
 
-_kept_index = _KeptIndex()  # per worker process: each has its own
+_kept_indexes = _KeptIndexes()  # per worker process: each has its own
 
 
 def require_index(folder: Path) -> SpanIndex:
@@ -385,19 +435,17 @@ def require_index(folder: Path) -> SpanIndex:
     its file is the same file, so an index saved again or deleted is never served.
     """
     try:
-        index_file = (folder / _index_file()).open("rb")
+        opened = (folder / _index_file()).open("rb")
     except FileNotFoundError as exc:  # saved at upload: a delete, a sweep or a deploy took it
         raise Gone from exc
-    with index_file:
-        # Mtime and inode: each save is a new file, but the clock may not have moved.
-        index_stat = os.fstat(index_file.fileno())
-        file_identity = (folder, index_stat.st_mtime_ns, index_stat.st_ino)
-        return _kept_index.index_for(file_identity, partial(_read_index, index_file))
+    with opened:
+        index_file = _IndexFile.from_stat(folder, os.fstat(opened.fileno()))
+        return _kept_indexes.index_for(index_file, read=partial(_read_index, opened))
 
 
-def _read_index(index_file: BinaryIO) -> SpanIndex:
-    """The index saved in `index_file`, already open, each span rebuilt."""
-    return index_from_json(index_file.read())
+def _read_index(opened: BinaryIO) -> SpanIndex:
+    """The index saved in `opened`, a file already open, each span rebuilt."""
+    return index_from_json(opened.read())
 
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
@@ -412,6 +460,20 @@ def load_pages(folder: Path) -> list[Page]:
     except FileNotFoundError as exc:  # a delete, a sweep or a deploy took it
         raise Gone from exc
     return pages_from_json(saved)
+
+
+def save_rooms(folder: Path, build: str, rooms: Mapping[str, float]) -> None:
+    """Keep every span's room, by id, worked out under this build: no font moves one."""
+    _write_whole(folder / _rooms_file(build), orjson.dumps(rooms))
+
+
+def load_rooms(folder: Path, build: str) -> dict[str, float] | None:
+    """Every span's room, by id, as kept under this build, format and tuning, or None."""
+    try:
+        saved = (folder / _rooms_file(build)).read_bytes()
+    except FileNotFoundError:  # a new build, format or tuning, or not worked out yet
+        return None
+    return orjson.loads(saved)
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
@@ -455,6 +517,11 @@ def _index_file() -> str:
 def _pages_file() -> str:
     """The file the page list is kept in, beside `_index_file`."""
     return _kept_as("pages.json")
+
+
+def _rooms_file(build: str) -> str:
+    """The file every span's room under `build` is kept in, beside `_analysis_file`."""
+    return _analysis_kept_as(f"rooms-{build}.json")
 
 
 def _analysis_file(build: str) -> str:
