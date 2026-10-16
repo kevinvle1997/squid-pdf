@@ -112,8 +112,8 @@ def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
     assert_not_in("Traceback", said.err, "what it says")
 
 
-@pytest.mark.parametrize(("terminal", "coloured"), [("stdout", False), ("stderr", True)])
-def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal, coloured):
+@pytest.mark.parametrize(("terminal", "colored"), [("stdout", False), ("stderr", True)])
+def test_an_error_is_colored_only_when_stderr_is_a_terminal(tmp_path, terminal, colored):
     """`2> errors.log` keeps no colour codes, even when stdout is a terminal."""
     broken = tmp_path / "broken.pdf"
     broken.write_text("not a pdf")
@@ -121,9 +121,7 @@ def test_an_error_is_coloured_only_when_stderr_is_a_terminal(tmp_path, terminal,
     said = _run_in_a_terminal(["spans", str(broken)], terminal=terminal)
 
     assert_in(words.sentence("damaged"), said["stderr"], "what it says on stderr")
-    assert_equal(
-        "\033[" in said["stderr"], coloured, f"colour on stderr, {terminal} a terminal"
-    )
+    assert_equal("\033[" in said["stderr"], colored, f"colour on stderr, {terminal} a terminal")
 
 
 @pytest.mark.parametrize("command", ["spans", "report"])
