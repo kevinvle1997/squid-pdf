@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import itertools
 import json
+import random
 
 import pymupdf
 import pytest
@@ -34,11 +35,27 @@ _SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a
 _STACKED = 4  # copies of the long contract's page, stacked on one tall page
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
 _RED = (0.8, 0.1, 0.1)
+# An axial shading, red to blue, from corner to corner of the box it fills below.
+_SHADING = (
+    "<</ShadingType 2/ColorSpace/DeviceRGB/Coords[250 40 340 180]"
+    "/Function<</FunctionType 2/Domain[0 1]/C0[0.8 0.1 0.1]/C1[0.1 0.1 0.8]/N 1>>>>"
+)
+# Flipped to top-down points on a page 842 high, as the strip is asked for: a box the
+# shading fills; a triangle, whose slanted sides the strip cuts; and a box clipped by a
+# peaked path, whose straight sides, off the pixel grid, the strip cuts to a rectangle.
+_ACROSS_THE_STRIP = (
+    "q 1 0 0 -1 0 842 cm "
+    "q 250.3 40.7 90 140 re W n /Sh sh Q "
+    "0.1 0.6 0.2 rg 360.3 40.7 m 440.9 110.2 l 370.6 180.4 l h f "
+    "q 460.37 60 m 505 40 l 549.61 60 l 549.61 180 l 460.37 180 l h W n "
+    "0.2 0.2 0.8 rg 450 30 110 160 re f Q "
+    "Q"
+)
 
 
-def _render(client, doc: dict, edits: list[dict], regions: list[dict]):
+def _render(client, doc: dict, edits: list[dict], regions: list[dict], *, scale: int = _SCALE):
     """Ask for `regions` drawn with `edits`, as the browser does."""
-    body = {"edits": edits, "scale": _SCALE, "regions": regions}
+    body = {"edits": edits, "scale": scale, "regions": regions}
     return client.post(f"/api/documents/{doc['id']}/render", json=body)
 
 
@@ -57,6 +74,31 @@ def _in_color(pdf: bytes) -> bytes:
     doc = pymupdf.open(stream=pdf, filetype="pdf")
     doc[0].draw_rect(pymupdf.Rect(72, 60, 300, 160), color=_RED, fill=_RED)
     return doc.tobytes()
+
+
+def _drawn_across(pdf: bytes) -> bytes:
+    """`pdf` with page 0 drawn across the strip below, in each way a clip changes the pixels."""
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    page = doc[0]
+    # A picture drawn from more pixels than it covers and one from fewer: two ways to resample.
+    page.insert_image(pymupdf.Rect(20.3, 40.7, 120.1, 180.9), pixmap=_noise(300, 400))
+    page.insert_image(pymupdf.Rect(130.3, 40.7, 230.1, 180.9), pixmap=_noise(17, 23))
+    shading = doc.get_new_xref()
+    doc.update_object(shading, _SHADING)
+    resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])  # its own object
+    doc.xref_set_key(resources, "Shading", f"<</Sh {shading} 0 R>>")
+    drawing = doc.get_new_xref()
+    doc.update_object(drawing, "<<>>")
+    doc.update_stream(drawing, _ACROSS_THE_STRIP.encode())
+    contents = " ".join(f"{xref} 0 R" for xref in [*page.get_contents(), drawing])
+    doc.xref_set_key(page.xref, "Contents", f"[{contents}]")
+    return doc.tobytes()
+
+
+def _noise(width: int, height: int) -> pymupdf.Pixmap:
+    """A picture of noise, from a fixed seed: any change in how it's resampled shows."""
+    samples = random.Random(0).randbytes(width * height * 3)  # red, green and blue
+    return pymupdf.Pixmap(pymupdf.csRGB, width, height, samples, False)
 
 
 def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mine, doc):
@@ -113,35 +155,43 @@ def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():
         assert_in(f"place_{place}", words.CATALOGS[words.ENGLISH], "the places named")
 
 
-@pytest.mark.parametrize("gray", [True, False], ids=["a gray page", "a color page"])
-def test_rows_with_no_edits_are_the_page_image_exactly(mine, pdf_bytes, gray):
+@pytest.mark.parametrize("scale", api_constants.PAGE_SCALES)
+@pytest.mark.parametrize(
+    ("made", "written_in"),
+    [(lambda pdf: pdf, "gray"), (_in_color, "color"), (_drawn_across, "color")],
+    ids=["a gray page", "a color page", "pictures, a shading and paths the strip cuts"],
+)
+def test_rows_with_no_edits_are_the_page_image_exactly(
+    mine, pdf_bytes, made, written_in, scale
+):
     """Else a strip laid over the page image would show a seam.
 
-    Each is the pixels MuPDF draws, though a page of grey is written in one channel.
+    Each is the pixels MuPDF draws, though a page of grey is written in one channel. A clip
+    changes how MuPDF draws pictures, shadings and the paths it cuts: a strip isn't drawn alone.
     """
-    pdf = pdf_bytes if gray else _in_color(pdf_bytes)
+    pdf = made(pdf_bytes)
     doc = upload(mine, pdf).json()
     delivery = span_starting(doc, 1, "Delivery")
     edit = {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
     # Asked apart: one request never asks for the same rows twice.
-    strip_image = _render(mine, doc, [edit], [strip]).json()["images"][0]
-    whole_page = _render(mine, doc, [edit], [{"page": 0}]).json()["images"][0]
+    strip_image = _render(mine, doc, [edit], [strip], scale=scale).json()["images"][0]
+    whole_page = _render(mine, doc, [edit], [{"page": 0}], scale=scale).json()["images"][0]
 
-    params = {"scale": _SCALE, "build": doc["build"]}
+    params = {"scale": scale, "build": doc["build"]}
     page_png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
     assert_equal(_png(whole_page), page_png, "the whole page, against the page image")
-    matrix = pymupdf.Matrix(_SCALE, _SCALE)
+    matrix = pymupdf.Matrix(scale, scale)
     drawn = pymupdf.open(stream=pdf, filetype="pdf")[0].get_pixmap(matrix=matrix, alpha=False)
     assert_true(_pixels(page_png) == drawn.samples, "the page image is the page drawn")
     # A case tests its path only if its page takes it: gray in one channel, color in three.
     taken = "gray" if pymupdf.Pixmap(page_png).n == 1 else "color"
-    assert_equal(taken, "gray" if gray else "color", "the path the fixture's page image took")
+    assert_equal(taken, written_in, "the path the fixture's page image took")
     strip_png = _png(strip_image)
     rows = pymupdf.Pixmap(strip_png)
     # The page's pixel rows under the strip; stride is the bytes in one row.
-    top = round(strip_image["y"] * _SCALE)
+    top = round(strip_image["y"] * scale)
     expected = drawn.samples[top * drawn.stride : (top + rows.height) * drawn.stride]
     assert_equal(rows.width, drawn.width, "strip width")
     assert_true(

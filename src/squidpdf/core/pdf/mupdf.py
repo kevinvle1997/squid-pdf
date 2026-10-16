@@ -12,9 +12,8 @@ import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from functools import cache, reduce
+from functools import cache
 from itertools import chain, count
-from operator import or_
 from typing import Any
 
 import pymupdf
@@ -227,26 +226,20 @@ class _MuPDFDriver:
 
     def page_image(self, page: int, scale: float) -> bytes:
         """The page unrotated as a PNG, `scale` pixels per point."""
-        pdf_page = self.doc[page]
-        pix = pdf_page.get_pixmap(
-            matrix=pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale), alpha=False
-        )
-        return png_of(pix)
+        return png_of(_drawn(self.doc[page], scale))
 
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
         """Each box of the page unrotated as a PNG, `scale` pixels per point.
 
-        Draws the area around them all once and cuts each box out, since any
-        drawing runs the whole page. The clip is in the rotated page, so each box is turned.
+        Cut from the whole page, drawn as `page_image` draws it: a clip changes how MuPDF
+        draws pictures, shadings and the paths it cuts, which would show a seam.
         """
-        pdf_page = self.doc[page]
-        matrix = pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale)
-        turned = [
-            pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) * pdf_page.rotation_matrix
+        drawn = _drawn(self.doc[page], scale)
+        to_pixels = pymupdf.Matrix(scale, scale)
+        return [
+            _cut(drawn, (pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) * to_pixels).irect)
             for box in boxes
         ]
-        drawn = pdf_page.get_pixmap(matrix=matrix, clip=reduce(or_, turned), alpha=False)
-        return [_cut(drawn, (box * matrix).irect) for box in turned]
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in."""
@@ -964,6 +957,12 @@ def _turned_back(point: tuple[float, float], turn_ccw: QuarterTurn) -> tuple[flo
     x, y = point
     cos, sin = QUARTER_TURNS[turn_ccw]
     return cos * x + sin * y, cos * y - sin * x
+
+
+def _drawn(pdf_page: pymupdf.Page, scale: float) -> pymupdf.Pixmap:
+    """The whole page unrotated, `scale` pixels per point, drawn with no clip."""
+    matrix = pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale)
+    return pdf_page.get_pixmap(matrix=matrix, alpha=False)
 
 
 def _cut(drawn: pymupdf.Pixmap, box: pymupdf.IRect) -> bytes:
