@@ -173,6 +173,15 @@ _HARMLESS_ACTIONS = ("GoTo", "Named")  # a move within the file
 _WEB_SCHEMES = ("http:", "https:", "mailto:")  # a link to the web, which the reader follows
 # A stream's bytes, or a drawing, kept in another file, and how they'd be read.
 _OUTSIDE_STREAM_KEYS = ("F", "FFilter", "FDecodeParms", "Ref")
+# What ends a name as MuPDF prints one: a delimiter, a space, or the end.
+_NAME_END = r"(?=[\x00\t\n\x0c\r ()<>\[\]{}/%]|\Z)"
+# Where a printed object names a key `_dropped_from` may delete from any dictionary; a string
+# holding the name matches too, which costs only a walk.
+_ACTIVE_NAMED = re.compile(rf"/(?:{'|'.join(_DROPPED_KEYS + _ACTION_KEYS)}){_NAME_END}")
+# The same, or a key only a stream's own dictionary loses.
+_ACTIVE_NAMED_IN_STREAM = re.compile(
+    rf"/(?:{'|'.join(_DROPPED_KEYS + _ACTION_KEYS + _OUTSIDE_STREAM_KEYS)}){_NAME_END}"
+)
 # How a hidden copy goes back into the file once rewritten (`_rewrite_entry`).
 type _Writing = Literal["text", "required_text", "whole", "field_value", "options", "drawing"]
 # The copies a form field shows on the page: once one changes, the field is drawn again.
@@ -710,13 +719,32 @@ class PdfFile:
         pdf = self._pdf()
         dropped = False
         for number in range(1, mu.pdf_xref_len(pdf)):
+            is_stream = mu.pdf_obj_num_is_stream(pdf, number)
+            named = _ACTIVE_NAMED_IN_STREAM if is_stream else _ACTIVE_NAMED
+            # Naming no key it could delete, as most objects: nothing to walk.
+            if not self._may_name(number, named):
+                continue
             held = mu.pdf_resolve_indirect(mu.pdf_new_indirect(pdf, number, 0))
             # A stream's own dictionary may say its bytes are in another file.
-            outside = _OUTSIDE_STREAM_KEYS if mu.pdf_obj_num_is_stream(pdf, number) else ()
+            outside = _OUTSIDE_STREAM_KEYS if is_stream else ()
             dropped |= _dropped_from(held, outside)
             for inner in _inner_dictionaries(held):
                 dropped |= _dropped_from(inner, ())
         return dropped
+
+    def _may_name(self, number: int, named: re.Pattern[str]) -> bool:
+        """Whether object `number`, printed whole, holds a name `named` finds.
+
+        Whole: PyMuPDF cuts the text at a NUL, and MuPDF prints none: a name decoded, an odd
+        byte as #xx (`/J#61vaScript` as `/JavaScript`), a string escaped or in hex. A string's
+        backslash escape may read as a letter: a match too many, never one missed.
+        """
+        # MuPDF raises on an object it can't print: it's walked, so a failure lets nothing by.
+        try:
+            printed = self.doc.xref_object(number, compressed=True)
+        except MUPDF_ERRORS:
+            return True
+        return named.search(printed) is not None
 
     def _signed_fields(self, root: pymupdf.mupdf.PdfObj) -> list[pymupdf.mupdf.PdfObj]:
         """Each signed form field: one whose value, a signature, is a dictionary."""
