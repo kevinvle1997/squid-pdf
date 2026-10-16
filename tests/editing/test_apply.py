@@ -34,7 +34,7 @@ from squidpdf.editing import (
     resolve,
     save_edited,
 )
-from squidpdf.editing.apply import page_order, redacted_in
+from squidpdf.editing.apply import Resolved, page_order, redacted_in
 from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
 from tests.conftest import (
     EMBEDDED_PAGE,
@@ -66,9 +66,14 @@ _ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to 
 _HINTING = ("fpgm", "prep", "cvt ")
 
 
+def _resolved(engine, index: SpanIndex, edits: Sequence[Edit]) -> Resolved:
+    """`edits` checked against the document, with every span's room read from its page."""
+    return resolve(engine, index, rooms=engine.rooms(index, index), edits=edits)
+
+
 def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
     """Apply `edits` on every page in memory, as export does before it saves."""
-    return apply_edits(engine, resolve(engine, edits, index))
+    return apply_edits(engine, _resolved(engine, index, edits))
 
 
 def _drawn(path, page: int, needle: str) -> dict:
@@ -140,7 +145,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     _apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    redacted = redacted_in(resolve(engine, edits, index))
+    redacted = redacted_in(_resolved(engine, index, edits))
     verified = RedactionController(redacted).verdicts(engine)
     assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
@@ -740,7 +745,9 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, 
     with open_pdf(path) as engine:
         signed = Insert(0, (200, 400), "Signed", size=12, font="Liberation Sans Regular")
         turns = [] if edit_turn is None else [RotatePage(0, edit_turn)]
-        save_edited(engine, engine.index(), edits=[signed, *turns], to=out)
+        index = engine.index()
+        rooms = engine.rooms(index, index)
+        save_edited(engine, index, rooms=rooms, edits=[signed, *turns], to=out)
 
     page = pymupdf.open(out)[0]
     [line] = [line for block in page.get_text("dict")["blocks"] for line in block["lines"]]
@@ -792,7 +799,7 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
     with open_pdf(path) as engine:
         index = engine.index()
         [secret] = [span for span in index if span.text.startswith("SECRET")]
-        resolved = resolve(engine, [Redact(secret.id)], index)
+        resolved = _resolved(engine, index, [Redact(secret.id)])
         order = page_order(resolved, [1, 2])  # the cover page left out
         apply_edits(engine, resolved)
         engine.keep_pages(order)

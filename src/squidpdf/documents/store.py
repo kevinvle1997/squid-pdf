@@ -1,8 +1,8 @@
 """Where documents live: one folder each, deleted whole.
 
-A folder holds the original, its owner's hash, index, page list, the user's copies of its
-fonts, and the analysis per `build`, tuning and set of copies. Each file worked out from the
-original is named for its format. Its mtime, touched each visit, is the idle clock.
+A folder holds the original, its owner's hash, index, page list, the user's copies of its fonts,
+and per `build` and tuning, each span's room and an analysis per set of copies. Files worked out
+are named for their format. The folder's mtime, touched each visit, is the idle clock.
 """
 
 from __future__ import annotations
@@ -16,12 +16,14 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import BinaryIO
+
+import orjson
 
 from squidpdf.core import (
     ANALYSIS_TUNING,
@@ -460,6 +462,20 @@ def load_pages(folder: Path) -> list[Page]:
     return pages_from_json(saved)
 
 
+def save_rooms(folder: Path, build: str, rooms: Mapping[str, float]) -> None:
+    """Keep every span's room, by id, worked out under this build: no font moves one."""
+    _write_whole(folder / _rooms_file(build), orjson.dumps(rooms))
+
+
+def load_rooms(folder: Path, build: str) -> dict[str, float] | None:
+    """Every span's room, by id, as kept under this build, format and tuning, or None."""
+    try:
+        saved = (folder / _rooms_file(build)).read_bytes()
+    except FileNotFoundError:  # a new build, format or tuning, or not worked out yet
+        return None
+    return orjson.loads(saved)
+
+
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
     """Keep what was worked out under this build and set of copies (`AttachedFiles.key`).
 
@@ -501,6 +517,11 @@ def _index_file() -> str:
 def _pages_file() -> str:
     """The file the page list is kept in, beside `_index_file`."""
     return _kept_as("pages.json")
+
+
+def _rooms_file(build: str) -> str:
+    """The file every span's room under `build` is kept in, beside `_analysis_file`."""
+    return _analysis_kept_as(f"rooms-{build}.json")
 
 
 def _analysis_file(build: str) -> str:

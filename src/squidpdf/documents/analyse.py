@@ -6,6 +6,7 @@ a test can call it directly.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import orjson
@@ -23,6 +24,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import TooManyPages
+from squidpdf.documents.rooms import kept_rooms
 from squidpdf.documents.types import (
     AnalysisFacts,
     ApproximateInfo,
@@ -45,7 +47,10 @@ def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
         index = engine.index()
         store.save_index(path, index)
         store.save_pages(path, engine.pages())
-        return _analysed(engine, path, index, attached=attached)
+        # How far each line can run before it's too long: kept, so nothing works it out again.
+        rooms = engine.rooms(index, index)
+        store.save_rooms(path, BUILD, rooms)
+        return _analysed(engine, path, index, rooms=rooms, attached=attached)
 
 
 def _take_in(path: Path, max_pages: int) -> None:
@@ -72,13 +77,19 @@ def analyse(folder: str) -> KeptAnalysis:
     """
     path = Path(folder)
     index = store.require_index(path)
+    rooms = kept_rooms(path, index)
     attached = store.attached_files(path)
     with store.open_to_analyse(path, attached) as engine:
-        return _analysed(engine, path, index, attached=attached)
+        return _analysed(engine, path, index, rooms=rooms, attached=attached)
 
 
 def _analysed(
-    engine: Engine, path: Path, index: SpanIndex, *, attached: store.AttachedFiles
+    engine: Engine,
+    path: Path,
+    index: SpanIndex,
+    *,
+    rooms: Mapping[str, float],
+    attached: store.AttachedFiles,
 ) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
 
@@ -90,8 +101,6 @@ def _analysed(
     reports = {report.span_id: report for report in engine.assess(index)}
     # Text a form field draws: said before any edit, since an edit to it is left out.
     form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
-    # How far each line can run before it's too long: the browser's fit check needs it.
-    rooms = engine.rooms(index, index)
     # Index order: the first span in each font speaks for it.
     first_span_of_font: dict[str, Span] = {}
     for span in index:

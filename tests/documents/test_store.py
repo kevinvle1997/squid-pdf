@@ -273,6 +273,16 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
     assert_equal(store.load_pages(folder), [page], "the pages read back")
 
 
+def test_every_room_kept_reads_back_to_the_last_bit():
+    """A render fits an edit in the room upload worked out, so it must read back exactly."""
+    _, folder = store.create("owner")
+    rooms = {"a1b2c3d4e5f6": 1 / 3, "b2c3d4e5f6a1": 0.1 + 0.2, "c3d4e5f6a1b2": 0.0}
+
+    store.save_rooms(folder, "a-build", rooms)
+
+    assert_equal(store.load_rooms(folder, "a-build"), rooms, "the rooms read back")
+
+
 def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path):
     """What a worker keeps between requests: forgotten, nothing of any index stays."""
     store.save_index(tmp_path, engine.index())  # kept by the worker that saved it
