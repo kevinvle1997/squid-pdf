@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from squidpdf.core import Fragment, Page, Rect, Span, index_of, new_text
-from squidpdf.documents import api as documents, store
+from squidpdf.core import Fragment, Page, Rect, Span, index_as_json, index_of, new_text
+from squidpdf.documents import api as documents, constants, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
-from squidpdf.documents.store import _KeptIndex  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+from squidpdf.documents.store import _KeptIndexes  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.documents.types import KeptAnalysis
 from tests.helpers import (
     assert_at_least,
@@ -191,8 +191,33 @@ def test_a_worker_reads_an_index_once(engine):
     """Every render and export needs it, and parsing it was most of a render's time."""
     _, folder = store.create("owner")
     store.save_index(folder, engine.index())
+    store._kept_indexes.forget()  # as a worker that didn't save it: from its file
     first = store.require_index(folder)
     assert_true(store.require_index(folder) is first, "the index was read from disk again")
+
+
+def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
+    engine, monkeypatch
+):
+    """Renders of several documents take turns on each worker; past the bound, memory wins.
+
+    The bound fits two files: a third drops the one used longest ago, and no more.
+    """
+    index = engine.index()
+    _, first = store.create("owner")
+    _, second = store.create("owner")
+    _, third = store.create("owner")
+    for folder in (first, second, third):
+        store.save_index(folder, index)  # the same index, so each file is the same size
+    store._kept_indexes.forget()  # as a worker that saved none of them: each from its file
+    monkeypatch.setattr(constants, "KEPT_INDEX_BYTES", 2 * len(index_as_json(index)))
+
+    first_read = store.require_index(first)
+    second_read = store.require_index(second)
+    assert_true(store.require_index(first) is first_read, "the first was read again")
+    store.require_index(third)
+    assert_true(store.require_index(first) is first_read, "the first went, not the second")
+    assert_false(store.require_index(second) is second_read, "the second stayed for the third")
 
 
 def test_a_kept_index_never_outlives_its_file(engine):
@@ -241,21 +266,22 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
     _, folder = store.create("owner")
 
     store.save_index(folder, index_of([span]))
+    store._kept_indexes.forget()  # as a worker that didn't save it: from its file
     store.save_pages(folder, [page])
 
     assert_equal(list(store.require_index(folder)), [span], "the spans read back")
     assert_equal(store.load_pages(folder), [page], "the pages read back")
 
 
-def test_a_kept_index_that_forgets_equals_a_fresh_one(engine, tmp_path):
-    """What a worker keeps between requests: forgotten, nothing of the last index stays."""
-    kept = _KeptIndex()
-    kept.index_for((tmp_path, 1, 2), engine.index)
-    assert_every_field_filled(kept, _KeptIndex(), "the record once it keeps an index")
+def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path):
+    """What a worker keeps between requests: forgotten, nothing of any index stays."""
+    store.save_index(tmp_path, engine.index())  # kept by the worker that saved it
+    kept = store._kept_indexes
+    assert_every_field_filled(kept, _KeptIndexes(), "the record once it keeps an index")
 
     kept.forget()
 
-    assert_equal(kept, _KeptIndex(), "the record once it forgot")
+    assert_equal(kept, _KeptIndexes(), "the record once it forgot")
 
 
 def test_a_copy_of_a_font_removed_after_it_was_listed_reads_as_no_copy_not_no_document():
