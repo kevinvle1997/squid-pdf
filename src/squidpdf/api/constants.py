@@ -35,7 +35,9 @@ JOBS_WAITING = 30  # per IP, beyond those at work; past both, refused
 # Workers. Each feature's timeouts are in its own constants.py.
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
-TASKS_PER_WORKER = 100  # then replaced, so leaked memory can't pile up; a guess
+# Then replaced, so the memory a worker creeps up over mixed tasks never nears the cap;
+# rarely, since each new worker imports everything and fills its caches again.
+TASKS_PER_WORKER = 500
 # A task allowed this long (an export, an analysis) is stopped when its caller leaves.
 # A shorter one (a render, a page image) finishes: stopping it kills its worker.
 STOP_WHEN_LEFT_S = 30
