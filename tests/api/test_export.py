@@ -104,6 +104,7 @@ _PLACES = (
     "nul_reference",
     "dictionary_first",
     "twice",
+    "twice_hex",
 )
 # A hidden copy as a file writes it: the key, then the text in brackets.
 _HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
@@ -326,6 +327,13 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tile = _new_stream(doc, twice, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
+    # The same, each written in hex, so no ( says a string is there.
+    if "twice_hex" in places:
+        line, logo = (f"<{text.encode().hex()}>" for text in (_CARD, "Logo"))
+        twice = f"/Span <</ActualText {line} /ActualText {logo}>> BDC {_SQUARE} EMC"
+        tile = _new_stream(doc, twice, **_TILING)
+        doc.xref_set_key(resources_xref, "Pattern/P22", f"{tile} 0 R")
+        drawing.append(f"/Pattern cs /P22 scn {_SQUARE}")
     # Alone: a dictionary MuPDF can't read, the line in UTF-16 hex: a check must read its text.
     if "unreadable" in places:
         line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # UTF-16, as hex

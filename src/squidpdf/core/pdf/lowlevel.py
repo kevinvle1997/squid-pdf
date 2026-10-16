@@ -529,6 +529,9 @@ class PdfFile:
 
         As with a key written twice: MuPDF keeps the last, another reader the other.
         """
+        # No string written in it, as in most (`<</MCID 0>>`): none to lose.
+        if not _may_hold_a_string(written):
+            return False
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
     def _strings_written_in(self, drawing: bytes, resources: pymupdf.mupdf.PdfObj) -> list[str]:
@@ -571,14 +574,19 @@ class PdfFile:
         if b"<<" not in drawing:
             return
         reader, lexbuf = _lexer_of(drawing)
+        # With no BI anywhere, as in most, no operator need be read to find an image.
+        may_hold_image = b"BI" in drawing
         for start, token in _tokens_in(reader, lexbuf):
             # A dictionary: read to where it ends.
             if token == mu.PDF_TOK_OPEN_DICT:
                 dictionary = self._dictionary_in(reader, lexbuf)
                 yield start, mu.fz_tell(reader), dictionary
                 continue
+            starts_image = may_hold_image and _starts_image(
+                token, drawing=drawing, start=start, reader=reader
+            )
             # Not an image written into the drawing.
-            if not _starts_image(token, drawing=drawing, start=start, reader=reader):
+            if not starts_image:
                 continue
             image = self._read_past_image(reader, lexbuf, drawing=drawing, resources=resources)
             # An image MuPDF can read: its bytes aren't drawing to it, so it reads on past them.
@@ -1557,6 +1565,11 @@ def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     reader, lexbuf = _lexer_of(b"<" + held.hex().encode() + b">")
     # A string belongs to no file, so it's read without one.
     return mu.pdf_parse_stm_obj(mu.PdfDocument(), reader, lexbuf)
+
+
+def _may_hold_a_string(written: bytes) -> bool:
+    """Whether `written` may hold a string: one starts at ( or at a < that isn't half of <<."""
+    return b"(" in written or b"<" in written.replace(b"<<", b"")
 
 
 def _strings_anywhere_in(written: bytes) -> list[str]:
