@@ -66,11 +66,7 @@ class DrawPlanner:
         own = self.fonts.own(span)
         # Not in the file, or unusable: a face we ship draws it, less what even it lacks.
         if own is None:
-            composed = unicodedata.normalize("NFC", text)
-            look_alike = self.fonts.look_alike(span).face
-            missing = face_coverage(look_alike).missing(composed)
-            substitute = self.substitute_for(span, composed)
-            return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
+            return self._plan_in_a_face(span, unicodedata.normalize("NFC", text))
         text = _spelled(own, text)
         missing = own.missing(text)
         # The own font draws every letter.
@@ -82,6 +78,16 @@ class DrawPlanner:
         if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
             return DrawPlan(own, kept, missing, missing)
+        return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
+
+    def _plan_in_a_face(self, span: Span, composed: str) -> DrawPlan:
+        """How `composed` is drawn in a face we ship, at a span whose own font we can't use."""
+        look_alike = self.fonts.look_alike(span).face
+        missing = face_coverage(look_alike).missing(composed)
+        # The look-alike draws every letter: it's the substitute, and draws the line as typed.
+        if not missing:
+            return DrawPlan(look_alike, composed, [], [])
+        substitute = self.fonts.substitute(span, composed)
         return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
 
     def substitute_for(self, span: Span, text: str) -> Substitute:
