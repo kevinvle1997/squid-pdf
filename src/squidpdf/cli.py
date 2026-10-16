@@ -57,17 +57,17 @@ from squidpdf.editing import (
 )
 
 # A terminal's colours: dim, red, green, yellow, and back to plain.
-_COLOURS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
+_COLORS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
 
 
-def _colours_of(stream: TextIO) -> tuple[str, ...]:
-    """`_COLOURS` when `stream` is a terminal and NO_COLOR isn't set; blanks otherwise."""
-    coloured = stream.isatty() and "NO_COLOR" not in os.environ
-    return _COLOURS if coloured else ("",) * len(_COLOURS)
+def _colors_of(stream: TextIO) -> tuple[str, ...]:
+    """`_COLORS` when `stream` is a terminal and NO_COLOR isn't set; blanks otherwise."""
+    colored = stream.isatty() and "NO_COLOR" not in os.environ
+    return _COLORS if colored else ("",) * len(_COLORS)
 
 
 # Colours for stdout; a failure, on stderr, gets its own in `_fail`.
-_DIM, _RED, _GREEN, _YELLOW, _OFF = _colours_of(sys.stdout)
+_DIM, _RED, _GREEN, _YELLOW, _OFF = _colors_of(sys.stdout)
 
 # How each judgement is marked in `spans`, padded to one width.
 _MARKS: dict[Fidelity, str] = {
@@ -132,7 +132,7 @@ def _summary(reports: list[FidelityReport]) -> None:
     if rate is None:
         print(f"{tally} · no text")
         return
-    print(f"{tally} · {_rate_colour(rate)}{rate:.0%} keep the original font{_OFF}")
+    print(f"{tally} · {_rate_color(rate)}{rate:.0%} keep the original font{_OFF}")
 
 
 class _UnknownSpan(Exception):
@@ -311,8 +311,8 @@ def _cmd_report(args: argparse.Namespace) -> int:
     # Every file unreadable or without text: no rate, which a script must see as a failure.
     if overall is None:
         return 1
-    colour = _rate_colour(overall)
-    print(f"\n  {colour}{overall:.0%}{_OFF} of {len(reports)} spans keep the original font\n")
+    color = _rate_color(overall)
+    print(f"\n  {color}{overall:.0%}{_OFF} of {len(reports)} spans keep the original font\n")
     return 0
 
 
@@ -338,10 +338,10 @@ def _line_of(row: _Row) -> str:
     # No text, so no green rate.
     if row.rate is None:
         return f"  no text  {name_and_note}"
-    return f"  {_rate_colour(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
+    return f"  {_rate_color(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
 
 
-def _rate_colour(rate: float) -> str:
+def _rate_color(rate: float) -> str:
     """Green at the target, yellow down to the warning line, red below it."""
     if rate >= GREEN_RATE_TARGET:
         return _GREEN
@@ -366,7 +366,7 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
 
 def _fail(said: str, *, hint: str = "") -> int:
     """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
-    dim, red, _green, _yellow, off = _colours_of(sys.stderr)
+    dim, red, _green, _yellow, off = _colors_of(sys.stderr)
     shown_hint = f" {dim}{hint}{off}" if hint else ""
     print(f"  {red}{said}{off}{shown_hint}", file=sys.stderr)
     return 1
