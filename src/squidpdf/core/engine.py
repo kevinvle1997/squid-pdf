@@ -286,6 +286,9 @@ class Engine:
 
         Nothing on the page moves: the turn is how a reader's viewer shows it.
         """
+        # No page turned, as in most exports: no page need be read for its own turn.
+        if not turns:
+            return
         pages = self.driver.pages()
         for page, more in turns.items():
             self.driver.turn_page(page, turn_added(pages[page].turn_cw, more))
