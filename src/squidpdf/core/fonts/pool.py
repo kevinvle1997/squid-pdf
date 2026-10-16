@@ -8,8 +8,10 @@ copies; the pool takes each in only when a letter needs it.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from itertools import chain, groupby
 from typing import Protocol
 
@@ -17,9 +19,11 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import (
     GLYPH_LIST_RANGES,
     KEYBOARD_RANGES,
+    LENT_COPIES_KEPT,
     SAME_FONT_SHARED,
     SAME_WIDTH,
 )
+from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.types import EM, CodedFont, PageFont
 
@@ -218,9 +222,9 @@ def pooled_font(own: FontCopy, lenders: _Lenders) -> PooledFont:
     return PooledFont(own, taken_in, iter(lenders(taken_in)))
 
 
-def font_copy(font: PageFont, embedded: EmbeddedFont) -> FontCopy:
-    """A copy, with the width of each letter it really draws, as the page places it."""
-    letters = embedded.coverage.drawable()
+def font_copy(font: PageFont, embedded: EmbeddedFont, coverage: Coverage) -> FontCopy:
+    """A copy, with the width of each letter `coverage` says it draws, as the page places it."""
+    letters = coverage.drawable()
     coded = embedded.coded
     # Written by code: the page places each letter by the font's width list.
     if coded is not None:
@@ -242,14 +246,53 @@ def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:
     return any(ch not in letters for ch in keyboard)
 
 
-def previewed_widths(embedded: EmbeddedFont) -> dict[str, float]:
+@dataclass(slots=True)
+class _KeptWidths:
+    """The letters and widths of each copy from outside the file, by its digest, oldest first.
+
+    Finding which letters draw is slow, so a process keeps them.
+    It keeps only the latest LENT_COPIES_KEPT, so a long-lived worker stays small.
+    """
+
+    by_digest: dict[bytes, dict[str, float]] = field(default_factory=dict, repr=False)
+
+    def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
+        """The widths of the copy `digest` names, measured on first use."""
+        # Kept already: this process has measured these bytes.
+        if digest in self.by_digest:
+            return self.by_digest[digest]
+        # Full: forget the one kept longest.
+        if len(self.by_digest) >= LENT_COPIES_KEPT:
+            del self.by_digest[next(iter(self.by_digest))]
+        widths = self.by_digest[digest] = make()
+        return widths
+
+    def forget(self) -> None:
+        """Forget every copy's widths, as a fresh record."""
+        self.by_digest.clear()
+
+
+# This process's widths of the copies from outside the file: the user's and Google's.
+_kept_widths = _KeptWidths()
+
+
+def lent_widths(embedded: EmbeddedFont) -> dict[str, float]:
     """Each letter a copy from outside draws that the browser can preview, per 1000 em.
+
+    Kept by a digest of the bytes, not the name: another file can come under the same name.
+    """
+    digest = hashlib.sha256(embedded.file).digest()
+    return _kept_widths.widths(digest, partial(_previewed_widths, embedded))
+
+
+def _previewed_widths(embedded: EmbeddedFont) -> dict[str, float]:
+    """Each letter the copy draws that the browser can preview, per 1000 em, read from its file.
 
     Only previewed letters are checked for a shape: a large font holds far more outlines.
     """
-    program, coverage = embedded.program, embedded.coverage
+    coverage = coverage_of(embedded.file)
     previewed = (chr(codepoint) for block in GLYPH_LIST_RANGES for codepoint in block)
-    return {ch: program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
+    return {ch: embedded.program.advance(ch) * EM for ch in previewed if coverage.covers(ch)}
 
 
 def why_unlike_listed(copy: FontCopy, listed: Mapping[str, float] | None) -> Message | None:

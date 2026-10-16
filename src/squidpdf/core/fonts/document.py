@@ -286,7 +286,8 @@ class DocumentFonts:
 
     def _open_copy(self, font: PageFont) -> FontCopy:
         """Open one copy of a font in the file. Raises FontUnusable, saying why, if we can't."""
-        return font_copy(font, open_embedded(self.driver, font))
+        embedded, coverage = open_embedded(self.driver, font)
+        return font_copy(font, embedded, coverage)
 
     def _other_copies(self, page: int, own: PageFont) -> Iterator[PageFont]:
         """Every other copy of the font in the file: each font that goes by its copies' name.

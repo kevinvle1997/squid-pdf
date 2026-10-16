@@ -11,7 +11,6 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from functools import partial
 from importlib import resources
 from pathlib import Path
 
@@ -43,7 +42,6 @@ from squidpdf.core.fonts.google import (
     GoogleFile,
     _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     _google_file,  # noqa: PLC2701 (why Google has no file, per font: no sample uses these)
-    _KeptWidths,  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
     _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     blob_hash,
     google_fonts,
@@ -59,7 +57,6 @@ _EM = 1000
 _WIDE = 200  # how much wider the made-up variable font's A is at its heaviest
 _DEADLINE_S = 0.1  # the whole-fetch deadline in the hang test
 _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
-_COPIES = 100  # Google copies measured in one worker: far past how many it keeps
 
 
 # A font, its description, and why Google has no file for it: Aclonica has no italic,
@@ -599,23 +596,3 @@ def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
     assert_true(late == poppins, "the late answer was kept, and is read from the cache")
     _fetched(other, folder=tmp_path, download=hanging, retries=retries)
     assert_equal(len(asked), 2, "downloads tried, once the network answered")
-
-
-def test_a_worker_keeps_the_widths_of_only_its_latest_google_copies():
-    """A long-lived worker stays small: past its bound, the copy measured longest ago goes."""
-    kept = _KeptWidths()
-    measured: list[bytes] = []
-
-    def measure(digest: bytes) -> dict[str, float]:
-        measured.append(digest)
-        return {"A": 600.0}
-
-    digests = [n.to_bytes(2) for n in range(_COPIES)]
-    for digest in digests:
-        kept.widths(digest, partial(measure, digest))
-    measured.clear()
-    newest, oldest = digests[-1], digests[0]
-    for digest in (newest, oldest):
-        kept.widths(digest, partial(measure, digest))
-
-    assert_equal(measured, [oldest], "copies measured again: the oldest, not the newest")

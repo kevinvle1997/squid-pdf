@@ -76,6 +76,9 @@ FETCH_TIMEOUT_S = 5.0
 FETCH_RETRY_S = 600.0
 # The letters a Western keyboard types: a pool missing one looks to Google's copy.
 KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
+# How many copies from outside the file (the user's, Google's) a worker keeps the letters
+# of: each is a few tens of KB, so all of them stay near a megabyte.
+LENT_COPIES_KEPT = 32
 
 # The numbers an analysis is worked out by: it's kept under them, so add any new one here.
 ANALYSIS_TUNING = {
