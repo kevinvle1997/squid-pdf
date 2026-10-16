@@ -31,6 +31,7 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_TOO_HEAVY,
     PdfFile,
 )
+from squidpdf.core.pdf.png import png_of
 from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
@@ -212,7 +213,7 @@ class _MuPDFDriver:
         pix = pdf_page.get_pixmap(
             matrix=pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale), alpha=False
         )
-        return pix.tobytes("png")
+        return png_of(pix)
 
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
         """Each box of the page unrotated as a PNG, `scale` pixels per point.
@@ -866,7 +867,7 @@ def _cut(drawn: pymupdf.Pixmap, box: pymupdf.IRect) -> bytes:
     """The pixels of `drawn` inside `box`, as a PNG; `box` is in `drawn`'s device pixels."""
     part = pymupdf.Pixmap(drawn.colorspace, box & drawn.irect, drawn.alpha)
     part.copy(drawn, part.irect)
-    return part.tobytes("png")
+    return png_of(part)
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:

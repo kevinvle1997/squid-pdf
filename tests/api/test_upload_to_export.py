@@ -26,8 +26,8 @@ def _rect(box: dict) -> pymupdf.Rect:
 
 
 def _pixels(png: bytes) -> bytes:
-    """An image's pixels, however it was compressed."""
-    return pymupdf.Pixmap(png).samples
+    """An image's pixels in red, green and blue, however it was written: grey is one channel."""
+    return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(png)).samples
 
 
 def _drawn_rows(page: pymupdf.Page, region: dict) -> bytes:

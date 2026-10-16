@@ -57,6 +57,11 @@ SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another
 # 3 also merges copies, which takes time in the square of the pages.
 GARBAGE_COLLECT = 2
 
+# How hard a page image is compressed: zlib's level, 1 quickest to 9 smallest.
+# Grey pages, most of them text, at 3: a little larger than at 6, in far less time.
+PNG_GRAY_LEVEL = 3
+PNG_COLOR_LEVEL = 6  # zlib's default, as MuPDF writes them: lower made some photos larger
+
 # Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
 LIBRARY_VERSION = "11"
 
