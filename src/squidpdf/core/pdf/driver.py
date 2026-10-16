@@ -85,6 +85,7 @@ class PdfDriver(Protocol):
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
         """Each box of the page unrotated as a PNG, `scale` pixels per point.
 
+        Each is the page image's own pixels in that box, so a strip over it shows no seam.
         The page is drawn once for them all.
         """
         ...
