@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from functools import cache, reduce
 from itertools import chain, count
@@ -247,7 +247,7 @@ class _MuPDFDriver:
 
         A letter counts when its middle is inside, so one that grazes the edge doesn't.
         """
-        letters = self._letters(page)
+        letters = self._letters(page, near=boxes)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
     def drawn_boxes(self, page: int) -> list[Rect]:
@@ -281,10 +281,14 @@ class _MuPDFDriver:
             if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int) -> _PageLetters:
-        """Every letter on the page, to find by where it sits."""
+    def _letters(self, page: int, *, near: list[Rect]) -> _PageLetters:
+        """The letters of each line on the page whose box meets one of `near`, to find by place.
+
+        A line's box holds each of its letters' boxes, so a line left out has none inside them.
+        """
         blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
-        return _page_letters(list(_each_letter(blocks)))
+        lines = (line for line in _each_line(blocks) if _meets_any(line["bbox"], near))
+        return _page_letters(list(_each_letter(lines)))
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, forms included; a Type3 by the name its text reads."""
@@ -445,7 +449,7 @@ class _MuPDFDriver:
         takes every letter its box touches, and a letter's box can reach the lines around it.
         A box with letters left is then erased whole, so old text is never left under new.
         """
-        letters = self._letters(page)
+        letters = self._letters(page, near=boxes)
         with self.file.links_kept(page):
             # No letter's middle inside: erase the whole box, as nothing else would.
             self.file.redact(page, [_strip_along(letters.inside(box)) or box for box in boxes])
@@ -689,7 +693,7 @@ type _Middle = tuple[float, float, int]
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _PageLetters:
-    """A page's letters, found by where their middle is. Made by `_page_letters`."""
+    """Letters on a page, found by where their middle is. Made by `_page_letters`."""
 
     in_order: list[_Letter] = field(repr=False)  # in reading order
     # Each letter's middle, top first: those level with a box are one slice, found by halving.
@@ -723,9 +727,9 @@ def _each_line(blocks: list[dict]) -> Iterator[dict]:
         yield from block["lines"]
 
 
-def _each_letter(blocks: list[dict]) -> Iterator[_Letter]:
-    """Every letter get_text("rawdict") read, in reading order."""
-    for line in _each_line(blocks):
+def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
+    """Every letter of `lines`, as get_text("rawdict") read them, in reading order."""
+    for line in lines:
         direction = (line["dir"][0], line["dir"][1])
         for piece in line["spans"]:
             for char in piece["chars"]:
@@ -811,6 +815,22 @@ def _outline_of(piece: tuple[Any, ...]) -> tuple[float, float, float, float]:
     # A line or a curve: the box around its points.
     xs, ys = [point.x for point in shape], [point.y for point in shape]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _meets_any(line_box: tuple[float, float, float, float], boxes: list[Rect]) -> bool:
+    """Whether a line's box meets one of `boxes`, edges touching; always, if it's no box."""
+    x0, y0, x1, y1 = line_box
+    is_box = x0 <= x1 and y0 <= y1
+    # Inside out, or not a number: it bounds nothing, so it's read.
+    if not is_box:
+        return True
+    return any(_meets(line_box, box) for box in boxes)
+
+
+def _meets(line_box: tuple[float, float, float, float], box: Rect) -> bool:
+    """Whether a line's box meets `box`, edges touching."""
+    x0, y0, x1, y1 = line_box
+    return box.x0 <= x1 and x0 <= box.x1 and box.y0 <= y1 and y0 <= box.y1
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
