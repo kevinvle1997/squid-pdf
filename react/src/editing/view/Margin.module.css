@@ -4,27 +4,38 @@
 .note {
   display: flex; align-items: center; justify-content: flex-end; gap: var(--s1);
   width: 100%; min-height: var(--hit);
-  padding: 0; border: 0; background: none;
+  padding: 0; border: 0; border-radius: var(--r-1); background: none;
   font: inherit; font-size: var(--fs-sm); line-height: 1.3;
   color: var(--change); cursor: pointer;
   animation: penned var(--dur-move) var(--ease-out);
 }
 .note[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* The words the change took out, struck through in blue pencil, as an editor strikes them on a proof. */
 .old {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  text-decoration: line-through; color: var(--ink-lo);
+  color: var(--ink-lo);
+  text-decoration-line: line-through; text-decoration-color: var(--change); text-decoration-thickness: 1.5px;
 }
 .note[data-hovered] .old, .note[data-focus-visible] .old { color: var(--change); }
-.now { color: var(--ink); white-space: nowrap; }
+.now { color: var(--ink); }
 .bar { flex: none; width: var(--s3); border-top: 2px solid currentColor; }
 @keyframes penned { from { opacity: 0; transform: translateX(var(--s2)); } }
 .list { display: none; }
 .list ul { list-style: none; margin: 0; padding: 0; }
-.list .note { justify-content: flex-start; gap: var(--s2); text-align: start; }
-.list .old { flex: 0 1 auto; }
-.undo { margin-inline-start: auto; padding-inline-start: var(--s3); color: var(--ink); font-weight: 500; }
+/* A row per change: the words it took out over the words it put in, each whole, and Undo beside them. */
+.list .note {
+  display: grid; grid-template-columns: var(--s3) minmax(0, 1fr) auto;
+  align-items: baseline; align-content: center; gap: var(--s1) var(--s2);
+  padding-block: var(--s1);
+  text-align: start;
+}
+.list .bar { grid-row: 1; grid-column: 1; align-self: center; }
+.list .old, .now { grid-column: 2; white-space: normal; }
+.undo {
+  grid-row: 1 / span 2; grid-column: 3; align-self: center;
+  padding-inline-start: var(--s3); color: var(--ink); font-weight: 500;
+}
 .note[data-hovered] .undo, .note[data-focus-visible] .undo { color: var(--change); }
-.list .bar { order: -1; }
 @media (max-width: 820px) {
   .margin { display: none; }
   .list { display: block; }

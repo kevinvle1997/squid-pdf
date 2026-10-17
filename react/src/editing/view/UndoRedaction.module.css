@@ -1,15 +1,20 @@
-/* Beside the span, as the edit field's chip is, and pressable: the same surface for the same place. */
+/* Beside the span, as the edit field's chip is, and pressable: the same slip for the same place. */
 .prompt {
   position: absolute; z-index: var(--z-chip);
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
   max-width: 44ch;
-  padding: var(--s2) var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-3);
   background: var(--strip); box-shadow: var(--lift-1);
   font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
   animation: arrive var(--dur-move) var(--ease-out);
 }
-.asked { flex: 1 1 24ch; }
+.asked { flex: 1 1 24ch; line-height: 1.4; }
 .choices { display: flex; gap: var(--s2); }
+/* The shadow goes in high contrast: an outline keeps the slip apart from the page under it. */
+@media (forced-colors: active) {
+  .prompt { outline: 1px solid CanvasText; }
+}
 @media (prefers-reduced-motion: reduce) {
   .prompt { animation: fade var(--dur-quick) var(--ease-out); }
 }

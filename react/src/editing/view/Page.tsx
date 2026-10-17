@@ -3,6 +3,7 @@ import { useFocusVisible, useFocusWithin } from "react-aria";
 import { pageUrl } from "../../api/client";
 import type { Copy, FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
+import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN, PX_PER_PT, STRIP_PAD_PT } from "../constants";
 import type { EditorState, FocusTo, ScrollTo } from "../editor";
@@ -196,18 +197,22 @@ export const Page = memo(function Page({ index, info }: Props) {
 function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTMLDivElement>; children: ReactNode }) {
   const [wide, tall] = shownSize(info);
   return (
-    <div ref={sheetRef} className={styles.sheet} style={{ aspectRatio: `${wide} / ${tall}` }}>
-      <div
-        className={styles.layer}
-        style={{
-          width: `${(info.width / wide) * 100}%`,
-          height: `${(info.height / tall) * 100}%`,
-          transform: `translate(-50%, -50%) rotate(${info.turn_cw}deg)`,
-        }}
-      >
-        {children}
+    <>
+      <div ref={sheetRef} className={styles.sheet} style={{ aspectRatio: `${wide} / ${tall}` }}>
+        <div
+          className={styles.layer}
+          style={{
+            width: `${(info.width / wide) * 100}%`,
+            height: `${(info.height / tall) * 100}%`,
+            transform: `translate(-50%, -50%) rotate(${info.turn_cw}deg)`,
+          }}
+        >
+          {children}
+        </div>
       </div>
-    </div>
+      {/* Its crop marks, in its cell: the sheet clips everything inside it, so they hang off a box of their own. */}
+      <Trim className={styles.trim} />
+    </>
   );
 }
 
