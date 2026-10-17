@@ -1,0 +1,18 @@
+/* Square and white in both themes, as paper is. */
+.sheet {
+  background: var(--sheet);
+  box-shadow: var(--sheet-shadow);
+  color: var(--sheet-ink);
+}
+/* What's on the sheet reads as on white, so the theme's tokens are bound to the page's for it. The
+   sheet itself keeps the theme's, for what it draws on the ground outside its edge: marks, a focus ring. */
+.sheet > * {
+  --ink: var(--sheet-ink); --ink-lo: var(--sheet-ink-lo);
+  --rule: var(--sheet-rule); --rule-soft: var(--sheet-rule-soft);
+  --strip: var(--sheet); --field: var(--sheet);
+  --change: var(--mark-change); --warn: var(--mark-warn);
+}
+/* The shadow is dropped here, so an outline keeps the sheet's edge. */
+@media (forced-colors: active) {
+  .sheet { outline: 1px solid CanvasText; }
+}

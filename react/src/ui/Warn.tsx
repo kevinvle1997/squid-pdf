@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import styles from "./Warn.module.css";
 
-/** Words that say it won't match: --warn and bold, never plum, the one place that decides it. */
+/** Words that say it won't match: --warn and bold, never blue, the one place that decides it. */
 export function Warn({ children, mark = false }: { children: ReactNode; mark?: boolean }) {
   return (
     <span className={styles.warn}>

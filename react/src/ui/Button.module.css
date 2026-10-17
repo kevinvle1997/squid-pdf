@@ -1,9 +1,14 @@
+/* One shape for every button: a variant changes its weight, never its size. */
 .button {
   position: relative;
-  font: inherit; font-size: var(--fs-sm); color: var(--ink);
-  background: none; border: 1px solid var(--ink); border-radius: 1px;
-  padding: var(--s1) var(--s3); cursor: pointer;
-  transition: transform var(--dur-press) var(--ease-out);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.5;
+  padding: var(--s1) var(--s3); border: 1px solid; border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
 }
 /* The hit area grows past the button without moving what you see. */
 .button::before {
@@ -11,15 +16,40 @@
   width: max(100%, var(--hit)); height: max(100%, var(--hit));
   transform: translate(-50%, -50%);
 }
-.button kbd { color: var(--ink-lo); margin-left: var(--s1); }
-.button[data-hovered] { background: var(--ink); color: var(--strip); }
-.button[data-hovered] kbd { color: var(--strip); }
 .button[data-pressed] { transform: scale(.97); }
-.button[data-disabled] { border-color: var(--ink-faint); color: var(--ink-lo); background: none; cursor: default; }
+.button[data-disabled] { cursor: default; }
 .button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+
+.secondary { background: transparent; border-color: var(--rule); color: var(--ink); }
+.secondary[data-hovered] { background: var(--rule-soft); }
+.secondary[data-disabled] { border-color: var(--rule-soft); color: var(--ink-lo); }
+
+/* Solid ink, so the one action a screen asks for is the first thing found on it. Its border is
+   see-through, so the fill reaches the edge in every state, with no rim when it lightens. */
+.primary { background: var(--ink); border-color: transparent; color: var(--strip); }
+.primary[data-hovered] { background: color-mix(in srgb, var(--ink) 88%, var(--strip)); }
+.primary[data-disabled] { background: var(--rule-soft); color: var(--ink-lo); }
+.primary kbd { background: color-mix(in srgb, var(--strip) 16%, var(--ink)); color: var(--strip); }
+/* The hover lightens the fill, so the keycap lightens as far again to stay apart from it. */
+.primary[data-hovered] kbd { background: color-mix(in srgb, var(--strip) 28%, var(--ink)); }
+
+/* A tool in the bar: no box until it's pointed at, so the bar reads as words, not a row of boxes. */
+.quiet { background: transparent; border-color: transparent; color: var(--ink); }
+.quiet[data-hovered] { background: var(--rule-soft); }
+.quiet[data-disabled] { color: var(--ink-lo); }
+
+/* A keycap is --rule-soft too, so on that fill it would vanish: it takes the surface's tint instead. */
+.secondary[data-hovered] kbd, .quiet[data-hovered] kbd, .primary[data-disabled] kbd {
+  background: var(--strip); color: var(--ink-lo);
+}
 /* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .button kbd { display: none; }
+}
+/* Fills are dropped here, so every button keeps a border and a quiet one still reads as a button. */
+@media (forced-colors: active) {
+  .button { border-color: ButtonText; }
+  .button[data-disabled] { border-color: GrayText; color: GrayText; }
 }
 @media (prefers-reduced-motion: reduce) {
   .button[data-pressed] { transform: none; }

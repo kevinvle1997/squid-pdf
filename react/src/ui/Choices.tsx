@@ -9,7 +9,7 @@ interface Props<T extends string> {
   keepFocus?: boolean; // a press leaves focus where it is, so a field being typed in keeps it
 }
 
-/** One of a few choices, side by side, the one chosen in ink: never indigo, which is for what changed. */
+/** One of a few choices, side by side, the one chosen in ink: never blue, which is for what changed. */
 export function Choices<T extends string>({ label, options, chosen, onChoose, keepFocus = false }: Props<T>) {
   return (
     <ToggleButtonGroup

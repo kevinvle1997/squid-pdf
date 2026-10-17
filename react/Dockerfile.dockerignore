@@ -3,6 +3,7 @@
 !react/package.json
 !react/package-lock.json
 !react/index.html
+!react/public/
 !react/tsconfig.json
 !react/vite.config.ts
 !react/src/
