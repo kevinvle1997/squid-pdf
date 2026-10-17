@@ -235,7 +235,7 @@ test("find counts a date on both pages, Change all changes both, and one undo pu
   await page.keyboard.press("Control+f");
   await page.getByRole("textbox", { name: "Find" }).fill("14 March 2026");
   const bar = page.getByRole("search", { name: "Find and replace" });
-  await expect(bar.getByText(/^2 places · /)).toBeVisible();
+  await expect(bar.getByText(/^2 places\b/)).toBeVisible();
   await page.getByRole("textbox", { name: "Change to" }).fill("15 March 2026");
   await bar.getByRole("button", { name: "Change all" }).click();
   await expect(page.locator("img[data-strip]")).toHaveCount(2);

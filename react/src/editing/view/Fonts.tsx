@@ -9,6 +9,9 @@ import { fill } from "../words";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
 
+// --s3 past the trigger: more than a button centred in the bar has below it, so the list opens under the bar.
+const BELOW_BAR = 12;
+
 /**
  * The document's fonts, from the bar, a row for each name, its copies together: what draws it, the
  * user's own copy, added or removed, and whether an edit in it warns in full.
@@ -19,7 +22,7 @@ export function Fonts() {
   return (
     <DialogTrigger>
       <Button variant="quiet">Fonts</Button>
-      <Popover placement="bottom end" offset={4} className={styles.popover}>
+      <Popover placement="bottom end" offset={BELOW_BAR} className={styles.popover}>
         <Dialog aria-label="The document's fonts" className={styles.dialog}>
           <ul className={styles.list}>
             {rows.map((copies) => (
@@ -64,7 +67,7 @@ function FontRow({ copies }: { copies: FontCopies }) {
         ) : font.substitute === null ? (
           copy.drawn_in_own_copy
         ) : (
-          <Warn>
+          <Warn mark>
             {fill(font.same_widths ? copy.substitute_same_widths : copy.substitute, { font: font.substitute })}
           </Warn>
         )}

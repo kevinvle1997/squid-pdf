@@ -3,4 +3,5 @@
   font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.015em;
   white-space: nowrap;
 }
-.wordmark svg { display: block; flex: none; }
+/* In em, so it grows with the name at a larger text size: 18px at the default, the size its strokes are drawn for. */
+.wordmark svg { display: block; flex: none; width: 1.2em; height: 1.2em; }

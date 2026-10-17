@@ -218,11 +218,26 @@ export function findCount(state: EditorState): { places: number; unlike: number 
   return { places: found.length, unlike };
 }
 
-/** The count as the bar says it, before a change: "14 places · 3 will look different". */
-export function countSaid({ places, unlike }: { places: number; unlike: number }): string {
-  if (places === 0) return "Nothing matches";
+/** The count before a change, as the find bar shows it: one phrase, the part that warns kept apart for --warn. */
+export function countShown({ places, unlike }: { places: number; unlike: number }): { plain: string; warned: string } {
+  if (places === 0) return { plain: "Nothing matches", warned: "" };
   const where = counted(places, { one: "place", other: "places" });
-  return unlike === 0 ? `${where} · all look identical` : `${where} · ${unlike} will look different`;
+  // Every place will look like the text around it.
+  if (unlike === 0) return { plain: `${where} will look identical`, warned: "" };
+  // Not one will.
+  if (unlike === places) return { plain: "", warned: `${where} will look different` };
+  return { plain: `${where}, `, warned: `${unlike} of them will look different` };
+}
+
+/** The count as said, in the words shown: "14 places, 3 of them will look different". */
+export function countSaid(count: { places: number; unlike: number }): string {
+  const { plain, warned } = countShown(count);
+  return `${plain}${warned}`;
+}
+
+/** What Change all did, as shown and as said: "Changed 3 places." */
+export function changedSaid(changed: number): string {
+  return `Changed ${counted(changed, { one: "place", other: "places" })}.`;
 }
 
 /** Open the bar, or put focus back in "Find" if it's open. Words being typed on the page are kept first. */
@@ -292,9 +307,8 @@ export function changeAll(editor: Editor): void {
     span_id: span.id,
     text: replacedIn(text, places, find.replacement),
   }));
-  const where = counted(found.length, { one: "place", other: "places" });
   change(editor, { kind: "add", edits }, (reading) => ({
-    said: spoken(`Changed ${where}.`),
+    said: spoken(changedSaid(found.length)),
     find: { ...refound({ ...state, find: { ...find, searched } }, reading), changed: found.length },
   }));
 }

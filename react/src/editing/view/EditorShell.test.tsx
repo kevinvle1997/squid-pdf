@@ -645,7 +645,7 @@ describe("find and replace", () => {
     await expect.element(find).toHaveFocus();
 
     await userEvent.keyboard("here");
-    await expect.element(screen.getByRole("search").getByText("1 place · all look identical")).toBeVisible();
+    await expect.element(screen.getByRole("search").getByText("1 place will look identical")).toBeVisible();
     await screen.getByRole("textbox", { name: "Change to" }).fill("there");
     await screen.getByRole("button", { name: "Change all" }).click();
     await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
@@ -666,7 +666,7 @@ describe("find and replace", () => {
     await userEvent.keyboard("{Control>}f{/Control}");
     await userEvent.keyboard("HER");
     const bar = screen.getByRole("search");
-    await expect.element(bar.getByText("1 place · all look identical")).toBeVisible();
+    await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
     // A label, as a pointer presses it: the box itself is hidden from the pointer, never from a screen reader.
     await bar.getByText("Match case").click();
     await expect.element(bar.getByRole("checkbox", { name: "Match case" })).toBeChecked();

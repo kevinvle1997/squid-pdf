@@ -1,6 +1,8 @@
 /* Under the bar, held at the top with it: the find is about the whole document. */
 .bar {
-  display: flex; align-items: center; gap: var(--s3);
+  /* A size container, as the bar is: the count takes a row of its own before it's squeezed. */
+  container-type: inline-size;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
   /* Its end is the bar's, so Close lines up under Export. */
   padding-block: var(--s2); padding-inline: var(--s4) var(--s3);
   background: var(--strip);
@@ -25,11 +27,15 @@
   .input { min-height: var(--hit); }
   .undoKey { display: none; }
 }
-/* The fields share the width, a row each on a phone, with the choices and buttons under them. */
-@media (max-width: 820px) {
-  .bar { flex-wrap: wrap; gap: var(--s2) var(--s3); }
-  .field { flex: 1 1 14rem; }
+/* Too narrow for the count beside the rest: the fields share the width, and the count goes under them. */
+@container (max-width: 1080px) {
+  /* No floor from the input's own width, which would push Close onto a row alone. */
+  .field { flex: 1 1 10rem; min-width: 0; }
   .input { flex: 1; width: auto; min-width: 0; }
-  .options { flex: 1 1 auto; }
   .count { flex-basis: 100%; order: 1; }
+}
+/* On a phone, a row for each field, with the choices and buttons under them. */
+@media (max-width: 820px) {
+  .field { flex: 1 1 14rem; }
+  .options { flex: 1 1 auto; }
 }
