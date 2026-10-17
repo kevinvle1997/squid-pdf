@@ -13,13 +13,13 @@
   padding: var(--s6) var(--s4) var(--s4);
   text-align: center;
 }
-/* While a file hovers anywhere, the sheet takes it: the pencil's wash, a dashed line inside its edge. */
+/* While a file hovers anywhere, the sheet takes it: the pencil's wash, its line solid, as a dash is a warning's. */
 .zone[data-drop-target] .sheet {
   background: var(--mark-change-soft);
-  outline: 2px dashed var(--mark-change); outline-offset: calc(-1 * var(--s3));
+  outline: 2px solid var(--mark-change); outline-offset: calc(-1 * var(--s3));
 }
-/* The zone's focus is a hidden button's: the sheet shows it, on the ground around its edge. */
-.zone[data-focus-visible] .sheet { outline: 2px solid var(--change); outline-offset: var(--s1); }
+/* The zone's focus is a hidden button's: the sheet shows it inside its edge, clear of the crop marks. */
+.zone[data-focus-visible] .sheet { outline: 2px solid var(--mark-change); outline-offset: calc(-1 * var(--s2)); }
 .title {
   margin: 0;
   font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;

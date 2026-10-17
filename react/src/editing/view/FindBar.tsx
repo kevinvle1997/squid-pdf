@@ -5,8 +5,9 @@ import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
 import {
   changeAll,
+  changedSaid,
   closeFind,
-  countSaid,
+  countShown,
   findCount,
   setMatchCase,
   setWholeWords,
@@ -14,7 +15,7 @@ import {
   typeReplacement,
 } from "../find";
 import { shallowEqual } from "../store";
-import { counted } from "../words";
+import { formOf } from "../words";
 import { useEditor, useEditorState } from "./context";
 import styles from "./FindBar.module.css";
 import { COMMAND } from "./keys";
@@ -72,10 +73,10 @@ export function FindBar() {
       <span className={styles.count}>
         {find.changed !== null ? (
           <>
-            Changed {counted(find.changed, { one: "place", other: "places" })}
+            {changedSaid(find.changed)}
             <span className={styles.undoKey}>
               {" "}
-              · <kbd>{COMMAND}Z</kbd> puts {find.changed === 1 ? "it" : `all ${find.changed}`} back
+              <kbd>{COMMAND}Z</kbd> puts {formOf(find.changed, { one: "it", other: "them all" })} back.
             </span>
           </>
         ) : (
@@ -97,12 +98,12 @@ export function FindBar() {
 }
 
 /** The count, its warning in --warn: what will look different is a warning, never a change. */
-function Counted({ places, unlike }: { places: number; unlike: number }) {
-  if (unlike === 0) return countSaid({ places, unlike });
-  const [where, rest] = countSaid({ places, unlike }).split(" · ");
+function Counted(count: { places: number; unlike: number }) {
+  const { plain, warned } = countShown(count);
   return (
     <>
-      {where} · <Warn>{rest}</Warn>
+      {plain}
+      {warned !== "" && <Warn>{warned}</Warn>}
     </>
   );
 }

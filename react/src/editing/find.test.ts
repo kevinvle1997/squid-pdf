@@ -8,6 +8,7 @@ import {
   changeAll,
   closeFind,
   countSaid,
+  countShown,
   type FindOptions,
   findCount,
   openFind,
@@ -58,7 +59,7 @@ describe("find", () => {
 
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(found()).toEqual([[0, ["first", "similar"]]]);
-    expect(editor.store.get().said.text).toBe("2 places · 1 will look different");
+    expect(editor.store.get().said.text).toBe("2 places, 1 of them will look different");
   });
 
   test("counts a place as looking different for its font, and for the words it would read", () => {
@@ -77,8 +78,18 @@ describe("find", () => {
 
   test("says the count in whole words", () => {
     expect(countSaid({ places: 0, unlike: 0 })).toBe("Nothing matches");
-    expect(countSaid({ places: 1, unlike: 0 })).toBe("1 place · all look identical");
-    expect(countSaid({ places: 14, unlike: 3 })).toBe("14 places · 3 will look different");
+    expect(countSaid({ places: 1, unlike: 0 })).toBe("1 place will look identical");
+    expect(countSaid({ places: 14, unlike: 3 })).toBe("14 places, 3 of them will look different");
+    expect(countSaid({ places: 2, unlike: 2 })).toBe("2 places will look different");
+  });
+
+  test("keeps apart the part of the count that warns, for --warn, and nothing else", () => {
+    expect(countShown({ places: 14, unlike: 3 })).toEqual({
+      plain: "14 places, ",
+      warned: "3 of them will look different",
+    });
+    expect(countShown({ places: 2, unlike: 2 })).toEqual({ plain: "", warned: "2 places will look different" });
+    expect(countShown({ places: 1, unlike: 0 })).toEqual({ plain: "1 place will look identical", warned: "" });
   });
 
   test("Change all is one step: every place changes together, and one undo puts them all back", () => {

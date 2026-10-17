@@ -144,56 +144,66 @@ function Bar() {
         <span className={styles.name}>{editor.file.name}</span>
         <span className={styles.meta}>{counted(pages, { one: "page", other: "pages" })}</span>
       </span>
-      <span className={styles.grow} />
-      {reopen !== null && (
-        <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
-      )}
-      {changed === 0 && (
-        // Beside the count before any change, it gives way to it on a narrow screen.
-        <span className={atRest.count > 0 ? `${styles.hint} ${styles.besideCount}` : styles.hint}>
-          <span className={styles.click}>Double-click text to change it</span>
-          <span className={styles.tap}>Double-tap text to change it</span>
-        </span>
-      )}
-      <span className={styles.status}>
-        {changed === 0 ? (
-          <AtRest {...atRest} />
-        ) : (
-          <>
-            {counted(changed, { one: "change", other: "changes" })}
-            {warned.count > 0 && (
-              <>
-                {" · "}
-                <Warn>{warned.count}</Warn> {warned.label}
-              </>
-            )}
-          </>
+      {/* What's changed and the buttons, together: beside the file while they fit, under it when they don't. */}
+      <span className={styles.end}>
+        {reopen !== null && (
+          <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
         )}
-      </span>
-      {exporting && (
-        // Hidden for the quiet spell by CSS, as opening a file is, so a quick export shows nothing.
-        <span className={styles.exporting} style={{ animationDelay: `${QUIET_MS}ms` }}>
-          Exporting
+        {changed === 0 && (
+          // Beside the count before any change, it gives way to it where the bar is narrow.
+          <span className={atRest.count > 0 ? `${styles.hint} ${styles.besideCount}` : styles.hint}>
+            <span className={styles.click}>Double-click text to change it</span>
+            <span className={styles.tap}>Double-tap text to change it</span>
+          </span>
+        )}
+        <span className={styles.status}>
+          {changed === 0 ? <AtRest {...atRest} /> : <Changed changed={changed} {...warned} />}
         </span>
-      )}
-      <span className={styles.actions}>
-        <FindButton />
-        <Fonts />
-        <Button
-          variant="primary"
-          onPress={() => void exportNow(editor)}
-          // On the way to pressing it, the export starts, for the press to take.
-          onHoverStart={() => exportIntended(editor)}
-          onHoverEnd={() => exportUnintended(editor)}
-          onFocus={() => exportIntended(editor)}
-          onBlur={() => exportUnintended(editor)}
-          onPressStart={() => exportAhead(editor)}
-          isDisabled={exporting}
-        >
-          Export <kbd>{COMMAND}S</kbd>
-        </Button>
+        {exporting && (
+          // Hidden for the quiet spell by CSS, as opening a file is, so a quick export shows nothing.
+          <span className={styles.exporting} style={{ animationDelay: `${QUIET_MS}ms` }}>
+            Exporting
+          </span>
+        )}
+        <span className={styles.actions}>
+          <FindButton />
+          <Fonts />
+          <Button
+            variant="primary"
+            onPress={() => void exportNow(editor)}
+            // On the way to pressing it, the export starts, for the press to take.
+            onHoverStart={() => exportIntended(editor)}
+            onHoverEnd={() => exportUnintended(editor)}
+            onFocus={() => exportIntended(editor)}
+            onBlur={() => exportUnintended(editor)}
+            onPressStart={() => exportAhead(editor)}
+            isDisabled={exporting}
+          >
+            Export <kbd>{COMMAND}S</kbd>
+          </Button>
+        </span>
       </span>
     </header>
+  );
+}
+
+/** The changes, and how many of them won't match, the count warned: every one of them, or so many of them. */
+function Changed({ changed, count, label }: { changed: number; count: number; label: string }) {
+  const changes = formOf(changed, { one: "change", other: "changes" });
+  // Each matches the text around it.
+  if (count === 0) return `${changed} ${changes}`;
+  // None does: the changes' own count is the warning.
+  if (count === changed) {
+    return (
+      <>
+        <Warn>{changed}</Warn> {changes} {label}
+      </>
+    );
+  }
+  return (
+    <>
+      {changed} {changes}, <Warn>{count}</Warn> of them {label}
+    </>
   );
 }
 
