@@ -8,9 +8,13 @@
   content: ""; position: absolute; inset-inline: 0; top: 50%;
   height: max(100%, var(--hit)); transform: translateY(-50%);
 }
-.box { flex: none; width: var(--s3); height: var(--s3); transition: transform var(--dur-press) var(--ease-out); }
-.box rect { fill: var(--ground); stroke: var(--ink-lo); }
-.box path { fill: none; stroke: var(--strip); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+/* Rounded as its rect is, so the focus ring follows the box. */
+.box {
+  flex: none; width: var(--s3); height: var(--s3); border-radius: var(--r-1);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.box rect { fill: var(--field); stroke: var(--ink-lo); }
+.box path { fill: none; stroke: var(--strip); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
 .checkbox[data-hovered] .box rect { stroke: var(--ink); }
 .checkbox[data-selected] { color: var(--ink); }
 .checkbox[data-selected] .box rect { fill: var(--ink); stroke: var(--ink); }

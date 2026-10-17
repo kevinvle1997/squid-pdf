@@ -1,2 +1,2 @@
 .warn { color: var(--warn); font-weight: 600; }
-.mark { width: 1em; height: 1em; margin-right: var(--s1); vertical-align: -0.125em; }
+.mark { width: 1em; height: 1em; margin-inline-end: var(--s1); vertical-align: -0.125em; }

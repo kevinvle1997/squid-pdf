@@ -1,39 +1,53 @@
 /* The contract is .workspace/mockups/tokens.html: change a value there first, then here.
    Tokens are roles, never colours. Nothing else in the app defines a colour. */
 :root {
-  --ground: #E8E8E8;
-  --ground-lit: radial-gradient(130% 92% at 50% 10%, #F9F9F9 0%, #F0F0F0 44%, #E8E8E8 100%);
-  --strip: #F9F9F9;
-  --rule: #CECECE;
-  --rule-soft: #E0E0E0;
-  --ink: #202020;
-  --ink-lo: #646464;     /* the faintest text allowed */
-  --ink-faint: #8D8D8D;  /* lines and disabled marks, never text */
-  --change: #3A5BC7;     /* you did something, and the focus ring */
-  --warn: #B03A2E;       /* this will not match; never indigo */
-  --lift-1: 0 4px 16px rgba(32, 32, 32, .16);
-  --lift-2: 0 12px 32px rgba(32, 32, 32, .18);
-  --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .14), 0 12px 30px rgba(32, 32, 32, .18);
+  color-scheme: light; /* the browser's own scrollbars and controls follow the theme */
+  /* The booth: flat neutral grey, as a print viewing booth's surround is, so it doesn't tint the page. */
+  --ground: #D9D9D9;
+  --strip: #F9F9F9;      /* a surface: the bar, notices, slips, popovers, tooltips */
+  --field: #FFFFFF;      /* inside a text input in the chrome */
+  --rule: #CECECE;       /* dividers, and the borders of buttons and inputs */
+  --rule-soft: #E8E8E8;  /* hover fills, keycaps, dividers inside a slip */
+  --ink: #202020;        /* text, and the one filled button */
+  --ink-lo: #5A5A5A;     /* the faintest text allowed, on the ground too */
+  --ink-faint: #8D8D8D;  /* lines and disabled marks, never text: crop marks, cut lines */
+  --change: #0F5CB0;     /* blue pencil, as an editor marks a proof: you did something, and the focus ring */
+  --warn: #B5361F;       /* proofreader's red, far from the blue in every kind of colour vision; never blue */
+  --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
+  --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
+  --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
 
-  /* The page never themes, so neither do the marks drawn on it. */
+  /* The page never themes, so neither do the marks drawn on it, nor what's set on a white sheet. */
   --sheet: #FFFFFF;
-  --mark-change: #3A5BC7;
-  --mark-change-soft: #EBEFF9;
-  --mark-warn: #B03A2E;
-  --mark-warn-soft: #F7EBEA;
+  --mark-change: #0F5CB0;
+  --mark-change-soft: #DCEEF9; /* non-repro blue: the pencil's wash, which never prints */
+  --mark-warn: #B5361F;
+  --mark-warn-soft: #F8E6E1;
+  --sheet-ink: #202020;
+  --sheet-ink-lo: #5A5A5A;
+  --sheet-rule: #CECECE;
+  --sheet-rule-soft: #E8E8E8;
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  /* rem, so the reader's own text-size setting works */
-  --fs-micro: .6875rem; /* measurements and keys */
-  --fs-sm: .75rem;      /* labels, notes, status */
-  --fs-base: .8125rem;  /* body */
-  --fs-lg: .9375rem;    /* titles */
-  --fs-input: .8125rem; /* a field typed into: the body's, but 16 px on a touch screen, below */
+  /* Small to large, so a parent never shares the radius of a child it holds tight. The sheet
+     and the bars are square: paper is, and a bar runs edge to edge. */
+  --r-1: 3px; /* keycaps, the checkbox's box */
+  --r-2: 5px; /* buttons, inputs, choices */
+  --r-3: 8px; /* slips and popovers: the chip, the redaction prompt, tooltips, the fonts list */
 
-  --ui: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* rem, so the reader's own text-size setting works */
+  --fs-micro: .6875rem;  /* measurements and keys */
+  --fs-sm: .75rem;       /* labels, notes, status */
+  --fs-base: .8125rem;   /* body */
+  --fs-lg: .9375rem;     /* the wordmark, titles */
+  --fs-input: .8125rem;  /* a field typed into: the body's, but 16 px on a touch screen, below */
+  --fs-display: 1.75rem; /* the one heading on the landing and the crash screen */
+
+  /* Hyperlegible, as a tool for fixing one wrong character must be: I, l and 1 never look alike.
+     The system faces after it draw what it lacks, ⌘ and the arrows. */
+  --ui: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;
@@ -42,7 +56,7 @@
   --dur-settle: 400ms; /* the render replacing the preview: the one authored moment */
 
   --hit: 24px; /* the smallest target */
-  --bar-height: 44px;
+  --bar-height: 48px;
   --margin-width: 104px; /* beside a page, where its changes are noted */
 
   /* What sits over what, by role: the field and its chip over the page, the bar over both,
@@ -61,33 +75,35 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #191919;
-    --ground-lit: radial-gradient(130% 92% at 50% 10%, #2A2A2A 0%, #191919 46%, #111111 100%);
-    --strip: #222222;
-    --rule: #3A3A3A;
-    --rule-soft: #2A2A2A;
+    color-scheme: dark;
+    --ground: #262626;
+    --strip: #303030;
+    --field: #1F1F1F;
+    --rule: #474747;
+    --rule-soft: #3B3B3B;
     --ink: #EEEEEE;
     --ink-lo: #B4B4B4;
     --ink-faint: #7B7B7B;
-    --change: #9EB1FF;
-    --warn: #E0824A;
-    --lift-1: 0 4px 16px rgba(0, 0, 0, .44);
-    --lift-2: 0 12px 32px rgba(0, 0, 0, .5);
-    --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 16px 44px rgba(0, 0, 0, .5);
+    --change: #8FAEFF;
+    --warn: #F0904F;
+    --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
+    --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
+    --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
   }
 }
 :root[data-theme="dark"] {
-  --ground: #191919;
-  --ground-lit: radial-gradient(130% 92% at 50% 10%, #2A2A2A 0%, #191919 46%, #111111 100%);
-  --strip: #222222;
-  --rule: #3A3A3A;
-  --rule-soft: #2A2A2A;
+  color-scheme: dark;
+  --ground: #262626;
+  --strip: #303030;
+  --field: #1F1F1F;
+  --rule: #474747;
+  --rule-soft: #3B3B3B;
   --ink: #EEEEEE;
   --ink-lo: #B4B4B4;
   --ink-faint: #7B7B7B;
-  --change: #9EB1FF;
-  --warn: #E0824A;
-  --lift-1: 0 4px 16px rgba(0, 0, 0, .44);
-  --lift-2: 0 12px 32px rgba(0, 0, 0, .5);
-  --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 16px 44px rgba(0, 0, 0, .5);
+  --change: #8FAEFF;
+  --warn: #F0904F;
+  --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
+  --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
+  --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
 }

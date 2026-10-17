@@ -1,6 +1,6 @@
 .wordmark {
   display: inline-flex; align-items: center; gap: var(--s2);
-  font-weight: 600; letter-spacing: -0.02em; font-size: var(--fs-lg);
+  font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.015em;
   white-space: nowrap;
 }
 .wordmark svg { display: block; flex: none; }

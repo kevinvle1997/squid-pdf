@@ -1,19 +1,24 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
+/* Flat: a booth is lit evenly, so the white page is the brightest thing on screen. */
 body {
   margin: 0;
   background: var(--ground);
-  background-image: var(--ground-lit);
-  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--ui);
   font-size: var(--fs-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+/* A selection isn't a change, so it isn't blue. */
 ::selection { background: var(--rule); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--change); outline-offset: 2px; }
-kbd { font-family: var(--mono); font-size: var(--fs-micro); }
+/* A keycap: a solid tint, no border or shadow, so a hint never outweighs the label beside it. */
+kbd {
+  font: inherit; font-size: var(--fs-micro); font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.4;
+  padding: 0 var(--s1); border-radius: var(--r-1);
+  background: var(--rule-soft); color: var(--ink-lo);
+}
 /* available to assistive tech, not to the eye */
 .vh {
   position: absolute; width: 1px; height: 1px;
