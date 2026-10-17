@@ -12,7 +12,10 @@
   transform: scaleX(var(--field-narrow, 1)); transform-origin: 0 0;
   line-height: 1;
   outline: none;
+  caret-color: var(--sheet-ink);
 }
+/* The page never themes, so neither do the caret and the selection on it, in either theme. */
+.input::selection, .troubleInput::selection { background: var(--sheet-rule); color: var(--sheet-ink); }
 /* On a touch screen, set at --fs-input so iOS doesn't zoom, and scaled down to the span's size. */
 @media (pointer: coarse) {
   .input, .troubleInput {
@@ -30,8 +33,8 @@
   .input { outline: 2px solid Highlight; }
   .troubleInput { outline: 2px dashed CanvasText; }
 }
-/* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack,
-   so it's as wide as the widest, not as all of them end to end. */
+/* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack in
+   one order, whatever it says, so each part is where it was the last time; it's as wide as its widest row. */
 .chip {
   position: absolute; z-index: var(--z-chip);
   display: flex; flex-direction: column; gap: var(--s2);
@@ -43,15 +46,9 @@
   pointer-events: none;
   animation: arrive var(--dur-move) var(--ease-out);
 }
-.row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
-/* Each trouble a line of its own; the offer goes under them once the two don't fit side by side. */
-.bad { flex: 1 1 24ch; white-space: pre-line; max-width: 36ch; line-height: 1.4; }
-.facts { display: flex; align-items: baseline; gap: var(--s3); }
-/* It will match: said in ink, as plainly as a warning is said in red. */
-.identical { color: var(--ink); }
-/* What an edit here warns of, in full, as typing starts: a row of its own above the edit's own facts. */
+/* What an edit here warns of, in full, as typing starts, and quieting it under that: above the edit's own facts. */
 .note {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
   pointer-events: auto;
 }
@@ -59,17 +56,24 @@
   display: flex; flex-direction: column; gap: var(--s1);
   max-width: 36ch; white-space: normal; line-height: 1.4;
 }
-/* The parts of the chip a pointer can press: the user's own copy of the span's font, and redacting the span. */
-.offer {
-  display: flex; align-items: baseline; gap: var(--s2);
-  pointer-events: auto;
-}
-.redact { pointer-events: auto; }
+/* Each trouble a line of its own, at a prose measure: about 70 letters of this face. */
+.bad { white-space: pre-line; max-width: 50ch; line-height: 1.4; }
+.facts { display: flex; align-items: baseline; gap: var(--s3); }
+/* It will match: said in ink, as plainly as a warning is said in red. */
+.identical { color: var(--ink); }
 /* The ways out of a long line take a row of their own, under what's wrong. */
 .ways {
   display: flex; align-items: center; gap: var(--s2);
   pointer-events: auto;
 }
+/* What a pointer can press, always last and in one row: the user's own copy of the span's font, and
+   redacting the span, at the row's end. */
+.actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
+.offer {
+  display: flex; align-items: baseline; gap: var(--s2);
+  pointer-events: auto;
+}
+.redact { margin-inline-start: auto; pointer-events: auto; }
 /* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }

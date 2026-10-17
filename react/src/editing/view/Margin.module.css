@@ -10,6 +10,14 @@
   animation: penned var(--dur-move) var(--ease-out);
 }
 .note[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* The undo arrow hangs in the empty space before the struck words, off a point of no width, so
+   showing it moves nothing. It comes on hover and keyboard focus, and goes faster than it came. */
+.undoMark { flex: none; position: relative; width: 0; height: 0; }
+.undoMark svg {
+  position: absolute; inset-inline-end: 0; top: 0; transform: translateY(-50%);
+  opacity: 0; transition: opacity var(--dur-press) var(--ease-out);
+}
+.note[data-hovered] .undoMark svg, .note[data-focus-visible] .undoMark svg { opacity: 1; transition-duration: var(--dur-quick); }
 /* The words the change took out, struck through in blue pencil, as an editor strikes them on a proof. */
 .old {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

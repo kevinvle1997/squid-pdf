@@ -31,9 +31,9 @@
 /* You changed this. */
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* It went in, but not quite as typed: the server said why. The change keeps its solid line, and the
-   warning's dashed one runs under it, so each state shows by its shape, never by colour alone. */
+   warning's dashed one runs under it, clear of the focus ring, so each shows by its shape, never by colour alone. */
 .trouble::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -5px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: -6px;
   height: 2px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
 }

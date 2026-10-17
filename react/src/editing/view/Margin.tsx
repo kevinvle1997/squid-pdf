@@ -31,6 +31,8 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
       }
       onPress={() => putBack(editor, span.id)}
     >
+      {/* Beside the page a note is only struck words: pointed at or focused, it shows it undoes. */}
+      {shape === "margin" && <UndoMark />}
       {/* A redaction takes every word out, so the note strikes them all. */}
       <span className={styles.old}>{shape === "margin" && !redacted ? changedWordsIn(span.text, now) : span.text}</span>
       {shape === "list" && <span className={styles.now}>{redacted ? "Redacted" : now}</span>}
@@ -62,5 +64,26 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
         </div>
       ))}
     </div>
+  );
+}
+
+/** Undo, drawn: an arrow curling back, at its own size so the stroke stays 1.5px. The note's name says it. */
+function UndoMark() {
+  return (
+    <span className={styles.undoMark}>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 2 2.5 4.5 5 7M2.5 4.5h4.75a2.75 2.75 0 0 1 0 5.5H5" />
+      </svg>
+    </span>
   );
 }

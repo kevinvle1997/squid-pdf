@@ -226,7 +226,7 @@ describe("a page", () => {
     const chip = redact.element().closest("div")?.getBoundingClientRect();
     const field = screen.getByRole("textbox").element().getBoundingClientRect();
     if (chip === undefined) throw new Error("no chip");
-    // Its sentence, its offer and Redact on one line, not wrapped into a column at the page's edge.
+    // Its sentence on one line and its offer and Redact on the next, not wrapped into a column at the page's edge.
     expect(chip.height).toBeLessThan(button.height * 3);
     // Ending where the span does: its box starts where the field does, and the page shows at its printed size.
     expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
