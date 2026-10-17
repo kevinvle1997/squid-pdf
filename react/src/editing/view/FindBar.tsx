@@ -89,7 +89,7 @@ export function FindBar() {
       >
         Change all
       </Button>
-      <Button onPress={() => closeFind(editor, { fromInside: true })} onKeyDown={closeOnEscape}>
+      <Button variant="quiet" onPress={() => closeFind(editor, { fromInside: true })} onKeyDown={closeOnEscape}>
         Close <kbd>Esc</kbd>
       </Button>
     </div>
