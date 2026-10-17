@@ -19,8 +19,29 @@ export function SplitHere({ after, info }: { after: number; info: PageInfo }) {
         isDisabled={exporting}
         onPress={() => void splitAfter(editor, after)}
       >
+        <Scissors />
         Split here
       </Button>
     </div>
+  );
+}
+
+/** A pair of scissors, its blades open along the cut: drawn at its own size, so the stroke stays 1.5px. */
+function Scissors() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <circle cx="3.25" cy="3.5" r="2.25" />
+      <circle cx="3.25" cy="10.5" r="2.25" />
+      <path d="M5 9.07 13 2.5M5 4.93 13 11.5" />
+    </svg>
   );
 }

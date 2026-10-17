@@ -1,10 +1,11 @@
 .field { display: contents; }
-/* The field covers the span's own pixels with the page, and types in the face that will draw it. */
+/* The field covers the span's own pixels with the page, and types in the face that will draw it. A
+   hairline of the pencil's wash shows the box it covers, past the span when the words run longer. */
 .input, .troubleInput {
   position: absolute; z-index: var(--z-field);
   margin: 0; padding: 0; border: 0; border-radius: 0;
   background: var(--sheet);
-  box-shadow: inset 0 -2px 0 var(--mark-change);
+  box-shadow: inset 0 -2px 0 var(--mark-change), 0 0 0 1px var(--mark-change-soft);
   /* A way out sets the words smaller (--field-shrink) or narrower (--field-narrow); the box it covers stays. */
   font-size: calc(var(--field-size) * var(--field-shrink, 1));
   width: calc(var(--field-width) / var(--field-narrow, 1)); height: var(--field-height);
@@ -23,25 +24,35 @@
     height: calc(var(--field-height) / var(--field-down));
   }
 }
-.troubleInput { box-shadow: inset 0 -2px 0 var(--mark-warn); }
-/* Floats beside the words, outside them, so it never becomes part of the edit. */
+.troubleInput { box-shadow: inset 0 -2px 0 var(--mark-warn), 0 0 0 1px var(--mark-warn-soft); }
+/* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
+@media (forced-colors: active) {
+  .input { outline: 2px solid Highlight; }
+  .troubleInput { outline: 2px dashed CanvasText; }
+}
+/* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack,
+   so it's as wide as the widest, not as all of them end to end. */
 .chip {
   position: absolute; z-index: var(--z-chip);
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3);
-  padding: var(--s2) var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding: var(--s3);
+  border-radius: var(--r-3);
   background: var(--strip); box-shadow: var(--lift-1);
   font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
   white-space: nowrap; line-height: 1;
   pointer-events: none;
   animation: arrive var(--dur-move) var(--ease-out);
 }
+.row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
 /* Each trouble a line of its own; the offer goes under them once the two don't fit side by side. */
 .bad { flex: 1 1 24ch; white-space: pre-line; max-width: 36ch; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
-/* What an edit here warns of, in full, as typing starts: a row of its own above the rest. */
+/* It will match: said in ink, as plainly as a warning is said in red. */
+.identical { color: var(--ink); }
+/* What an edit here warns of, in full, as typing starts: a row of its own above the edit's own facts. */
 .note {
-  flex: 1 0 100%;
   display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3);
+  padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
   pointer-events: auto;
 }
 .noteWords {
@@ -56,13 +67,16 @@
 .redact { pointer-events: auto; }
 /* The ways out of a long line take a row of their own, under what's wrong. */
 .ways {
-  flex: 1 0 100%;
   display: flex; align-items: center; gap: var(--s2);
   pointer-events: auto;
 }
-.wayKeys { font-family: var(--mono); color: var(--ink-lo); }
+/* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }
+}
+/* The shadow goes in high contrast: an outline keeps the slip apart from the page under it. */
+@media (forced-colors: active) {
+  .chip { outline: 1px solid CanvasText; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chip { animation: fade var(--dur-quick) var(--ease-out); }

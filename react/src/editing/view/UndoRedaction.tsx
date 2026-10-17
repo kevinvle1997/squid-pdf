@@ -32,7 +32,7 @@ export function UndoRedaction({ span, info, copy }: { span: SpanInfo; info: Page
         <Button onPress={() => editAnyway(editor)} onKeyDown={keepOnEscape}>
           Edit anyway
         </Button>
-        <Button autoFocus onPress={() => keepRedaction(editor)} onKeyDown={keepOnEscape}>
+        <Button variant="primary" autoFocus onPress={() => keepRedaction(editor)} onKeyDown={keepOnEscape}>
           Keep redaction
         </Button>
       </span>

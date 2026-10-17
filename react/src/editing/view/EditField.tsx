@@ -132,6 +132,34 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback; half an em spare.
   const typedWidth = Math.max(widthPt(text, glyphs, span.size), shownWidthPt(text, face, span.size));
   const wide = Math.max(span.bbox.x1 - span.bbox.x0, typedWidth + span.size / 2);
+  // The parts of the chip a pointer presses: beside the verdict, or under the ways out when there are some.
+  const actions = (
+    <>
+      {offered && (
+        // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
+        <span className={styles.offer}>
+          Have this font?
+          <FileTrigger
+            acceptedFileTypes={FONT_FILES}
+            onSelect={(files) => {
+              const file = files?.[0];
+              if (file !== undefined) void attachFont(editor, span.font, file);
+            }}
+          >
+            <Button preventFocusOnPress excludeFromTabOrder isDisabled={attaching}>
+              Use your copy
+            </Button>
+          </FileTrigger>
+        </span>
+      )}
+      {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
+      <span className={styles.redact}>
+        <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
+          Redact
+        </Button>
+      </span>
+    </>
+  );
   return (
     <>
       <TextField
@@ -181,56 +209,43 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             </Button>
           </span>
         )}
-        {trouble !== "" ? (
-          <span className={styles.bad} aria-hidden="true">
-            <Warn>{trouble}</Warn>
-          </span>
-        ) : (
-          <span className={styles.facts} aria-hidden="true">
-            <span>{drawnIn}</span>
-            <Num>{SIZE.format(span.size * set.size)} pt</Num>
-            {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
-            {shortWarning === null ? <span>looks identical</span> : <Warn>{shortWarning}</Warn>}
-          </span>
-        )}
-        {ways.length > 0 && (
-          // A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus.
-          <span className={styles.ways}>
-            <Choices
-              label="How it fits"
-              options={ways}
-              chosen={way}
-              onChoose={(next) => chooseWayOut(editor, next)}
-              keepFocus
-            />
-            <span className={styles.wayKeys} aria-hidden="true">
-              <kbd>↑↓</kbd>
+        <span className={styles.row}>
+          {trouble !== "" ? (
+            <span className={styles.bad} aria-hidden="true">
+              <Warn>{trouble}</Warn>
             </span>
-          </span>
-        )}
-        {offered && (
-          // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
-          <span className={styles.offer}>
-            Have this font?
-            <FileTrigger
-              acceptedFileTypes={FONT_FILES}
-              onSelect={(files) => {
-                const file = files?.[0];
-                if (file !== undefined) void attachFont(editor, span.font, file);
-              }}
-            >
-              <Button preventFocusOnPress excludeFromTabOrder isDisabled={attaching}>
-                Use your copy
-              </Button>
-            </FileTrigger>
-          </span>
-        )}
-        {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
-        <span className={styles.redact}>
-          <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
-            Redact
-          </Button>
+          ) : (
+            <span className={styles.facts} aria-hidden="true">
+              <span>{drawnIn}</span>
+              <Num>{SIZE.format(span.size * set.size)} pt</Num>
+              {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
+              {shortWarning === null ? (
+                <span className={styles.identical}>looks identical</span>
+              ) : (
+                <Warn>{shortWarning}</Warn>
+              )}
+            </span>
+          )}
+          {ways.length === 0 && actions}
         </span>
+        {ways.length > 0 && (
+          <>
+            {/* A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus. */}
+            <span className={styles.ways}>
+              <Choices
+                label="How it fits"
+                options={ways}
+                chosen={way}
+                onChoose={(next) => chooseWayOut(editor, next)}
+                keepFocus
+              />
+              <span className={styles.wayKeys} aria-hidden="true">
+                <kbd>↑↓</kbd>
+              </span>
+            </span>
+            <span className={styles.row}>{actions}</span>
+          </>
+        )}
       </div>
     </>
   );

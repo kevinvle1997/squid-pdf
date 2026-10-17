@@ -6,17 +6,25 @@
   gap: var(--s4);
   width: 100%;
   max-width: calc(var(--margin-width) + var(--s4) + var(--sheet-width));
-  margin: 0 auto var(--s7);
+  /* The crop marks reach --s4 out from each page, so two pages' never meet. */
+  margin: 0 auto var(--s8);
 }
+/* The sheet and its crop marks share one cell, so the marks' box is the sheet's. */
+.sheet, .trim { grid-row: 1; grid-column: 2; max-width: var(--sheet-width); }
 .sheet {
   position: relative;
   width: 100%;
-  max-width: var(--sheet-width);
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
   /* Clipped, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret
      typed past the page's edge in view, sliding the page out from under the field. */
   overflow: clip;
+}
+/* Drawn over the sheet, so a press goes through it to the page. */
+.trim { pointer-events: none; }
+/* The shadow and the crop marks go in high contrast: an outline keeps the sheet's edge. */
+@media (forced-colors: active) {
+  .sheet { outline: 1px solid CanvasText; }
 }
 /* The page in its own points: a size container, so a length in points is a cqw. */
 .layer {
@@ -65,6 +73,8 @@
   animation: settle var(--dur-settle) var(--ease-out);
 }
 @keyframes settle { from { opacity: .65; } }
+/* The list goes under the sheet, past the --s4 its crop marks reach. */
 @media (max-width: 820px) {
-  .page { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+  .page { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+  .sheet, .trim { grid-column: 1; }
 }

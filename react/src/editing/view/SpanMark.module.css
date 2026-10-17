@@ -1,22 +1,23 @@
-/* A transparent button over the span's own pixels: the page image shows the text. */
+/* A transparent button over the span's own pixels: the page image shows the text. Its corners are
+   2px, so its focus ring, 1px out, curves at --r-1: corners nest. */
 .span {
   position: absolute;
-  padding: 0; margin: 0; border: 0;
+  padding: 0; margin: 0; border: 0; border-radius: 2px;
   background: transparent;
   cursor: text;
   touch-action: manipulation;
   outline: none;
 }
-/* The hint is the page's own grey: it says "text", not "change". */
+/* The hint is the page's own grey, in both themes: it says "text", not "change". */
 .span::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
-  height: 1px; background: var(--ink-lo); opacity: 0;
+  height: 1px; background: var(--sheet-ink-lo); opacity: 0;
   transition: opacity var(--dur-press) var(--ease-out);
 }
 .span[data-hovered]::after, .span[data-focus-visible]::after { opacity: .6; transition-duration: var(--dur-quick); }
-/* The tint is solid; multiplied over the page image, the text beneath still shows. */
+/* The pencil's non-repro wash, solid; multiplied over the page image, the text beneath still shows. */
 .span[data-hovered] { background: var(--mark-change-soft); mix-blend-mode: multiply; }
-/* On the page the ring is the page's own indigo: the dark theme's would wash out on white. */
+/* On the page the ring is the page's own blue pencil: the dark theme's would wash out on white. */
 .span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
 /* A form field draws it, and an edit is left out: a dashed warning line, always. Quiet at rest, but
    no fainter than a mark's 3:1 on the page. A font's warning has no line: it waits for an edit, in the
@@ -45,9 +46,10 @@
 .unredacted::after, .unredacted[data-hovered]::after { background: var(--mark-warn); }
 @media (forced-colors: active) {
   .span::after { background: CanvasText; }
-  .changed::after, .redacted::after { background: Highlight; }
   /* A gradient is dropped in this mode: a dashed border keeps the warning's shape. */
-  .trouble::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
+  .formField::after, .trouble::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
+  /* A change's line is solid, over a form field's too, as on the page. */
+  .changed::after, .redacted::after { height: 2px; border-top: 0; background: Highlight; }
   /* The tint goes in this mode: a redacted span keeps a box, so it still reads as more than a change. */
   .redacted { outline: 1px solid Highlight; }
 }
