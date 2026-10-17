@@ -18,7 +18,7 @@ export function Fonts() {
   const rows = useMemo(() => copiesByName(fonts), [fonts]);
   return (
     <DialogTrigger>
-      <Button>Fonts</Button>
+      <Button variant="quiet">Fonts</Button>
       <Popover placement="bottom end" offset={4} className={styles.popover}>
         <Dialog aria-label="The document's fonts" className={styles.dialog}>
           <ul className={styles.list}>

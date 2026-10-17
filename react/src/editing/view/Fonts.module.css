@@ -1,10 +1,11 @@
-/* Floats from the bar: a shadow, no hairline, as a note does (design.md, Surfaces). */
+/* Floats from the bar: a slip with a shadow, no hairline, as a note is (design.md, Surfaces). */
 .popover {
   z-index: var(--z-float);
   /* Wide enough that a row's button changing its words doesn't resize it under the pointer. */
   min-width: min(320px, calc(100vw - 2 * var(--s4)));
   max-width: min(420px, calc(100vw - 2 * var(--s4)));
   background: var(--strip);
+  border-radius: var(--r-3);
   box-shadow: var(--lift-2);
 }
 .popover[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
@@ -15,11 +16,17 @@
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: var(--s1) var(--s3);
 }
+/* A line between fonts, as inside any slip, with a step of space on either side of it. */
+.font + .font { padding-block-start: var(--s3); border-block-start: 1px solid var(--rule-soft); }
 .name { font-weight: 600; overflow-wrap: anywhere; }
 .drawnBy { grid-column: 1; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.5; }
 .font > :global(button) { grid-column: 2; grid-row: 1 / span 2; }
 .warns { grid-column: 1 / -1; font-size: var(--fs-sm); }
 .refused { grid-column: 1 / -1; font-size: var(--fs-sm); line-height: 1.5; }
+/* The shadow is dropped here, so an outline keeps the list apart from the page under it. */
+@media (forced-colors: active) {
+  .popover { outline: 1px solid CanvasText; }
+}
 @media (prefers-reduced-motion: reduce) {
   .popover[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
 }

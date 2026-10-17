@@ -1,12 +1,17 @@
-/* The landing's layout, for the one screen that replaces the app when it fails. */
+/* The landing's composition, for the one screen that replaces the app when it fails. */
 .crashed { min-height: 100dvh; display: flex; flex-direction: column; }
 .top { padding: var(--s4); }
 .middle {
   flex: 1;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: var(--s4);
-  padding: var(--s8) var(--s4);
+  display: grid; place-items: center;
+  padding: var(--s6) var(--s4);
   text-align: center;
 }
-.title { margin: 0; font-size: var(--fs-lg); font-weight: 600; text-wrap: balance; }
-.fine { margin: 0; font-size: var(--fs-sm); color: var(--ink-lo); }
+.title {
+  margin: 0;
+  font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
+  text-wrap: balance;
+}
+.fine { margin: var(--s3) 0 0; font-size: var(--fs-sm); color: var(--ink-lo); text-wrap: balance; }
+/* A step larger, as Choose a PDF is; two classes, as this stylesheet loads before the button's. */
+.sheet .reload { margin-block-start: var(--s5); padding: var(--s2) var(--s4); font-size: var(--fs-base); min-height: var(--hit); }

@@ -1,21 +1,25 @@
 /* Under the bar, held at the top with it: the find is about the whole document. */
 .bar {
   display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s2) var(--s4);
+  /* Its end is the bar's, so Close lines up under Export. */
+  padding-block: var(--s2); padding-inline: var(--s4) var(--s3);
   background: var(--strip);
-  border-bottom: 1px solid var(--rule);
+  border-block-end: 1px solid var(--rule);
 }
 .bar button { flex-shrink: 0; white-space: nowrap; }
 .field { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; }
 .input {
   font: inherit; font-size: var(--fs-input); color: var(--ink);
   width: 16ch; padding: var(--s1) var(--s2);
-  background: var(--ground); border: 1px solid var(--rule); border-radius: 0;
+  background: var(--field); border: 1px solid var(--rule); border-radius: var(--r-2);
 }
 .input[data-focused] { outline: none; border-color: var(--change); box-shadow: inset 0 0 0 1px var(--change); }
 .options { display: flex; align-items: center; gap: var(--s3); }
 .count { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
-.count kbd { font-family: var(--mono); font-size: var(--fs-micro); }
+/* The focus's border colour and shadow are both dropped here, so an outline shows it instead. */
+@media (forced-colors: active) {
+  .input[data-focused] { outline: 2px solid Highlight; outline-offset: -2px; }
+}
 /* A touch screen has no keys: each place's margin note puts it back. */
 @media (pointer: coarse) {
   .input { min-height: var(--hit); }

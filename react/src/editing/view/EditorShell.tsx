@@ -176,20 +176,23 @@ function Bar() {
           Exporting
         </span>
       )}
-      <FindButton />
-      <Fonts />
-      <Button
-        onPress={() => void exportNow(editor)}
-        // On the way to pressing it, the export starts, for the press to take.
-        onHoverStart={() => exportIntended(editor)}
-        onHoverEnd={() => exportUnintended(editor)}
-        onFocus={() => exportIntended(editor)}
-        onBlur={() => exportUnintended(editor)}
-        onPressStart={() => exportAhead(editor)}
-        isDisabled={exporting}
-      >
-        Export <kbd>{COMMAND}S</kbd>
-      </Button>
+      <span className={styles.actions}>
+        <FindButton />
+        <Fonts />
+        <Button
+          variant="primary"
+          onPress={() => void exportNow(editor)}
+          // On the way to pressing it, the export starts, for the press to take.
+          onHoverStart={() => exportIntended(editor)}
+          onHoverEnd={() => exportUnintended(editor)}
+          onFocus={() => exportIntended(editor)}
+          onBlur={() => exportUnintended(editor)}
+          onPressStart={() => exportAhead(editor)}
+          isDisabled={exporting}
+        >
+          Export <kbd>{COMMAND}S</kbd>
+        </Button>
+      </span>
     </header>
   );
 }
@@ -216,7 +219,7 @@ function FindButton() {
     [closed],
   );
   return (
-    <Button ref={takeFocus} onPress={() => openFind(editor)}>
+    <Button ref={takeFocus} variant="quiet" onPress={() => openFind(editor)}>
       Find <kbd>{COMMAND}F</kbd>
     </Button>
   );
