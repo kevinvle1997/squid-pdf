@@ -233,7 +233,7 @@ describe("copies of one font, shown under one name", () => {
   ];
 
   test("share one row of the Fonts list, which says a similar font if any copy has one", () => {
-    expect(copiesByName(COPIES).map(({ shownName, names, said }) => [shownName, names, said.name])).toEqual([
+    expect(copiesByName(COPIES).map(({ shownName, names, font }) => [shownName, names, font.name])).toEqual([
       ["Drawn-Regular", ["Type3 (5 0 R)", "Type3 (9 0 R)"], "Type3 (9 0 R)"],
       ["Arial", ["Arial"], "Arial"],
     ]);

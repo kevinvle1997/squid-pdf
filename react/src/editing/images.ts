@@ -8,7 +8,7 @@ import { type Editor, spoken } from "./editor";
 import { warn } from "./notices";
 
 /** A page whose image failed, until it loads. */
-export interface PageImage {
+export interface FailedImage {
   readonly tries: number; // how often it's been asked for again: the image is drawn anew for each
   readonly failed: string | null; // why, in the server's words; null when it answered after all
 }

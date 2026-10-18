@@ -30,7 +30,7 @@ export function shownNameOf(layout: Pick<Layout, "fonts">, fontName: string): st
 export interface FontCopies {
   readonly shownName: string;
   readonly names: readonly string[]; // each copy's own name, as the server lists it
-  readonly said: FontInfo; // the copy whose facts the row says: one a similar font draws, if any
+  readonly font: FontInfo; // the copy the row speaks for: one a similar font draws, if any
   readonly attached: boolean; // the user's copy is in for every one of them
 }
 
@@ -45,7 +45,7 @@ export function copiesByName(fonts: readonly FontInfo[]): FontCopies[] {
   return [...byName].map(([shownName, copies]) => ({
     shownName,
     names: copies.map((font) => font.name),
-    said: copies.find((font) => font.substitute !== null) ?? copies[0],
+    font: copies.find((font) => font.substitute !== null) ?? copies[0],
     attached: copies.every((font) => font.attached),
   }));
 }

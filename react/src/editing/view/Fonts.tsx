@@ -37,7 +37,7 @@ export function Fonts() {
 
 /** One font's row: its copies act together, since attaching and removing one reach them all. */
 function FontRow({ copies }: { copies: FontCopies }) {
-  const { shownName: name, names, said: font, attached } = copies;
+  const { shownName: name, names, font, attached } = copies;
   const editor = useEditor();
   const copy = useEditorState((state) => state.doc.copy);
   const refused = useEditorState((state) => {

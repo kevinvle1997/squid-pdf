@@ -13,8 +13,8 @@ export function fileOf(face: string): string {
   return `${family.replaceAll(" ", "")}-${style.replaceAll(" ", "")}.ttf`;
 }
 
-/** The face a letter no copy of the span's font has is drawn in: the span's similar font, else its font's look-alike. */
-export function fallbackFaceOf(span: SpanInfo, font: FontInfo): string {
+/** The substitute a letter no copy of the span's font has is drawn in: the span's own, else its font's look-alike. */
+export function substituteOf(span: SpanInfo, font: FontInfo): string {
   return span.substitute ?? font.look_alike;
 }
 
@@ -25,8 +25,8 @@ export function fallbackFaceOf(span: SpanInfo, font: FontInfo): string {
  */
 export function previewFaceOf(span: SpanInfo, { font, text }: { font: FontInfo; text: string }): string {
   const own = font.attached && ownFaces.has(font.name) && span.substitute === null;
-  if (own && missingIn(text, font.glyphs).length === 0) return `${OWN}${font.name}`;
-  return fallbackFaceOf(span, font);
+  if (own && missingIn(text, font.glyphs).length === 0) return `${OWN_COPY_PREFIX}${font.name}`;
+  return substituteOf(span, font);
 }
 
 const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
@@ -45,7 +45,7 @@ const added = new Set<string>();
 // The user's own copies of the document's fonts, on the document to preview in, by font name. A face
 // for one is named apart from ours, whose names are the catalog's.
 const ownFaces = new Map<string, FontFace>();
-const OWN = "your copy of ";
+const OWN_COPY_PREFIX = "your copy of "; // never shown: a face's name, apart from the catalog's
 const ownFamily = (fontName: string) => `preview own ${fontName}`;
 
 /** Put the user's copy of `fontName` on the page to preview in, read now so it's ready when the server takes it. */
@@ -93,7 +93,7 @@ export function addFaces(faces: Iterable<string>): void {
 
 /** The CSS font-family that draws `face` in the preview, once `addFaces` or `addOwnFace` has put it on the document. */
 export function familyOf(face: string): string {
-  const own = face.startsWith(OWN) ? face.slice(OWN.length) : null;
+  const own = face.startsWith(OWN_COPY_PREFIX) ? face.slice(OWN_COPY_PREFIX.length) : null;
   if (own !== null && ownFaces.has(own)) return `"${ownFamily(own)}", serif`;
   return urlOf(face) === undefined ? "serif" : `"${familyName(face)}", serif`;
 }

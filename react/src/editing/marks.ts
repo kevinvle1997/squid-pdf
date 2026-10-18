@@ -18,21 +18,23 @@ export interface Look {
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
   readonly redacted: boolean; // its words are to be taken out of the file
   readonly unredacted: boolean; // redacted, but the server found its words still there: the download is refused
-  readonly note: Note | null; // nothing for a span that keeps its font and went in as typed
+  readonly note: Note | null; // nothing at rest, nor for an edit that keeps its font and went in as typed
 }
 
-interface Facts {
-  span: SpanInfo; // its fidelity and the face an edit here is drawn in, as the server judged it
-  font: FontInfo | undefined; // for why its own copy can't be used, which the server says per font
-  edited: SpanReading | undefined; // what it reads now, if an edit changed it
-  fit: FitInfo | undefined; // the server's verdict on its last drawn edit
-  redaction: RedactionInfo | undefined; // the server's verdict on its redaction, once drawn
-  copy: Copy;
+/** A span to mark, and everything its mark is drawn from. */
+interface MarkedSpan {
+  readonly span: SpanInfo; // its fidelity and the face an edit here is drawn in, as the server judged it
+  readonly font: FontInfo | undefined; // for why its own copy can't be used, which the server says per font
+  readonly reading: SpanReading | undefined; // what it reads now, if an edit changed it
+  readonly fit: FitInfo | undefined; // the server's verdict on its last drawn edit
+  readonly redaction: RedactionInfo | undefined; // the server's verdict on its redaction, once drawn
+  readonly copy: Copy;
 }
 
-export function lookOf({ span, font, edited, fit, redaction, copy }: Facts): Look {
-  const redacted = edited?.redacted ?? false;
-  const changed = edited?.replaced ?? false;
+/** What a span's mark shows, and the note it gives on hover, focus or a tap. */
+export function lookOf({ span, font, reading, fit, redaction, copy }: MarkedSpan): Look {
+  const redacted = reading?.redacted ?? false;
+  const changed = reading?.replaced ?? false;
   // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
   const verdict = changed ? fit?.message : null;
   const looks = {
@@ -84,7 +86,7 @@ function approximateSaid(why: NonNullable<SpanInfo["why"]>, copy: Copy): string 
 }
 
 /** What an edit here will come to, before one is made: kept as it was, or drawn in what font. */
-function fidelityNote({ span, font, copy }: Omit<Facts, "edited" | "fit" | "redaction">): Note | null {
+function fidelityNote({ span, font, copy }: Pick<MarkedSpan, "span" | "font" | "copy">): Note | null {
   // A form field draws it: no edit changes it yet, whatever its font.
   if (span.form_field) return { warn: true, said: copy.form_field_not_edited, why: null };
   // Its own font draws it, but an edit won't match the text around it.

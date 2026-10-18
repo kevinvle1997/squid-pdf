@@ -14,7 +14,7 @@ import styles from "./SpanMark.module.css";
 interface Props {
   span: SpanInfo;
   info: PageInfo;
-  edited: SpanReading | undefined; // what it reads now, if an edit changed it
+  reading: SpanReading | undefined; // what it reads now, if an edit changed it
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
   redaction: RedactionInfo | undefined; // the server's verdict on its redaction
@@ -31,9 +31,9 @@ interface Props {
  * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
  */
 export const SpanMark = memo(function SpanMark(props: Props) {
-  const { span, info, edited, font, fit, redaction, copy, focusTo, notes, noteId } = props;
+  const { span, info, reading, font, fit, redaction, copy, focusTo, notes, noteId } = props;
   const editor = useEditor();
-  const look = lookOf({ span, font, edited, fit, redaction, copy });
+  const look = lookOf({ span, font, reading, fit, redaction, copy });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
   const lastPress = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
@@ -107,7 +107,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
         else event.continuePropagation();
       }}
     >
-      <span className="vh">{edited?.text ?? span.text}</span>
+      <span className="vh">{reading?.text ?? span.text}</span>
       {look.redacted && <span className="vh"> (redacted)</span>}
     </Button>
   );
