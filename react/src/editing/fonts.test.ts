@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { deleteFont, ProblemError, putFont, render, upload } from "../api/client";
+import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/client";
 import type { Document, Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
@@ -9,7 +9,7 @@ import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
-  render: vi.fn(),
+  renderStrips: vi.fn(),
   upload: vi.fn(),
   putFont: vi.fn(),
   deleteFont: vi.fn(),
@@ -27,7 +27,7 @@ const MISMATCH = "This isn't the font the document uses. Its letters are a diffe
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(render)
+  vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(putFont).mockReset();
@@ -54,11 +54,11 @@ describe("the user's own copy of a font", () => {
     edit(editor, "s1", null);
     typeInto(editor, "Hi Y");
     finish(editor, true);
-    const asked = vi.mocked(render).mock.calls.length;
+    const asked = vi.mocked(renderStrips).mock.calls.length;
 
     await attachFont(editor, "Arial", FONT_FILE);
 
-    expect(vi.mocked(render).mock.calls.length).toBe(asked + 1);
+    expect(vi.mocked(renderStrips).mock.calls.length).toBe(asked + 1);
   });
 
   test("a copy refused says the server's sentence, warned, until the next change", async () => {
@@ -113,7 +113,7 @@ describe("the user's own copy of a font", () => {
       if (fontName === "Times") throw new ProblemError(aProblem(422, MISMATCH));
       return { ...JUDGED_AGAIN, id: docId };
     });
-    vi.mocked(render).mockImplementation(async (docId: string) => {
+    vi.mocked(renderStrips).mockImplementation(async (docId: string) => {
       if (docId === DOC.id) throw new ProblemError(aProblem(404));
       return new Promise<Render>(() => undefined);
     });
@@ -128,7 +128,9 @@ describe("the user's own copy of a font", () => {
     expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
     expect(editor.store.get().said.text).toBe(`${COPY.reopened} ${MISMATCH}`);
     // The edited page is drawn again without the refused copy, on the document opened again.
-    await vi.waitFor(() => expect(vi.mocked(render).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2));
+    await vi.waitFor(() =>
+      expect(vi.mocked(renderStrips).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2),
+    );
   });
 
   test("a document opened again gets every copy back, as it does the edits", async () => {

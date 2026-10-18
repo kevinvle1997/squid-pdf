@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { exportPdf, ProblemError, render } from "../api/client";
+import { exportPdf, ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
@@ -10,7 +10,7 @@ import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing"
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
-  render: vi.fn(),
+  renderStrips: vi.fn(),
   exportPdf: vi.fn(),
   upload: vi.fn(),
   stillThere: vi.fn(),
@@ -28,7 +28,7 @@ const FILE = new File(["%PDF-"], "contract.pdf");
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(render)
+  vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(exportPdf).mockReset();
@@ -155,12 +155,12 @@ describe("an edit", () => {
       font: null,
       drop: null,
     });
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(renderStrips).toHaveBeenCalledTimes(1);
   });
 
   test("a render that fails is heard as well as shown, and the same failure again isn't said twice", async () => {
     const down = "We can't work on files right now. Try again in a few minutes.";
-    vi.mocked(render).mockRejectedValue(new ProblemError(aProblem(503, down)));
+    vi.mocked(renderStrips).mockRejectedValue(new ProblemError(aProblem(503, down)));
     typed("own", "now");
     await vi.waitFor(() => expect(editor.store.get().said.text).toBe(down));
 

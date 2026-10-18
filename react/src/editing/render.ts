@@ -4,7 +4,7 @@
 // so the swap never flickers. The pages near the screen are asked for first, on their own,
 // then the rest. A page whose render failed stays stale: the next change asks for it again,
 // and so does `retry`, when the connection comes back.
-import { render as renderOnServer } from "../api/client";
+import { renderStrips } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
@@ -98,7 +98,7 @@ interface Options {
   reopener: Pick<Reopener, "doc" | "withDocument">;
   scale: number; // pixels per point, as the page images are drawn
   drawn: (drawn: Drawn) => void; // strips went in or came out, or a render failed
-  render?: typeof renderOnServer;
+  render?: typeof renderStrips;
   load?: (image: ImageInfo) => Promise<string>; // its address, once it can paint
   near?: ReadonlySet<number>; // the pages near the screen, as they come and go: asked for first
   extended?: (expiresAt: string) => void; // a reply came, and with it when the server's hour now ends
@@ -124,7 +124,7 @@ export class RenderQueue {
   readonly #options: Required<Options>;
 
   constructor(options: Options) {
-    this.#options = { render: renderOnServer, load: loaded, near: new Set(), extended: () => undefined, ...options };
+    this.#options = { render: renderStrips, load: loaded, near: new Set(), extended: () => undefined, ...options };
   }
 
   get drawn(): Drawn {

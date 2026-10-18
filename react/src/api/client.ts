@@ -106,7 +106,7 @@ export async function pageImage(doc: Document, page: number, scale: number): Pro
 }
 
 /** The edits drawn on these strips of their pages, and what the server makes of each. */
-export async function render(docId: string, body: RenderBody, signal: AbortSignal): Promise<Render> {
+export async function renderStrips(docId: string, body: RenderBody, signal: AbortSignal): Promise<Render> {
   const response = await send(`/api/documents/${docId}/render`, {
     method: "POST",
     headers: { "content-type": "application/json" },
