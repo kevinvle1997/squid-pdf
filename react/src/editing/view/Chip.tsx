@@ -47,7 +47,7 @@ export function Chip({ span, info, trouble, setting }: Props) {
             <Warn mark>{note.said}</Warn>
             {note.why !== null && <span>{note.why}</span>}
           </span>
-          <Button preventFocusOnPress excludeFromTabOrder onPress={() => quietFont(editor, shown, { quiet: true })}>
+          <Button keepFocus onPress={() => quietFont(editor, shown, { quiet: true })}>
             Don't show again for this font
           </Button>
         </span>
@@ -80,7 +80,7 @@ export function Chip({ span, info, trouble, setting }: Props) {
                 if (file !== undefined) void attachFont(editor, span.font, file);
               }}
             >
-              <Button preventFocusOnPress excludeFromTabOrder isDisabled={attaching}>
+              <Button keepFocus isDisabled={attaching}>
                 Use your copy
               </Button>
             </FileTrigger>
@@ -88,7 +88,7 @@ export function Chip({ span, info, trouble, setting }: Props) {
         )}
         {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
         <span className={styles.redact}>
-          <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
+          <Button keepFocus onPress={() => redact(editor, span.id)}>
             Redact
           </Button>
         </span>

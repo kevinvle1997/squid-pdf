@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { QUIET_MS } from "../../documents/constants";
 import { Button } from "../../ui/Button";
+import { classes } from "../../ui/classes";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { changedCount, type UnlikeAtRest, warnedCount } from "../editor";
@@ -39,7 +40,7 @@ export function Bar() {
         )}
         {changed === 0 && (
           // Beside the count before any change, it gives way to it where the bar is narrow.
-          <span className={atRest.count > 0 ? `${styles.hint} ${styles.besideCount}` : styles.hint}>
+          <span className={classes(styles.hint, atRest.count > 0 && styles.besideCount)}>
             <span className={styles.click}>Double-click text to change it</span>
             <span className={styles.tap}>Double-tap text to change it</span>
           </span>
