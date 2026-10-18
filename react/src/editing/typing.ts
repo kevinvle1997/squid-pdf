@@ -3,7 +3,7 @@
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { change, type Editor, type EditorState, say, spoken } from "./editor";
 import { substituteOf } from "./faces";
-import { type Fit, fitOf, runsPast, troublesOf, wayDrawn } from "./fit";
+import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import type { Reading } from "./project";
 
 /** The text being typed into a span, not yet in the history. */
@@ -68,9 +68,10 @@ export function chooseWayOut(editor: Editor, way: Strategy): void {
 export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   const state = editor.store.get();
   const fit = draftFitOf(state);
-  if (fit === undefined || fit.options.length < 2) return false;
-  const at = fit.options.indexOf(wayDrawn(state.draft?.strategy, fit));
-  const next = fit.options[(at + by + fit.options.length) % fit.options.length];
+  const offered = fit === undefined ? [] : waysOffered(fit);
+  if (fit === undefined || offered.length === 0) return false;
+  const at = offered.indexOf(wayDrawn(state.draft?.strategy, fit));
+  const next = offered[(at + by + offered.length) % offered.length];
   if (next !== undefined) chooseWayOut(editor, next);
   return true;
 }
@@ -103,7 +104,7 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   return {
     said: troublesOf(fit, { rules, copy, substitute, way }),
     kind: `${troubleKindOf(fit, rules)} ${way}`,
-    offers: fit.options.length > 1,
+    offers: waysOffered(fit).length > 0,
   };
 }
 

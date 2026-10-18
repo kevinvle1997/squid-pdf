@@ -2,8 +2,9 @@
 // is in the page's own points, turned into shares of its size, so it scales with the page however wide it's shown.
 import type { CSSProperties } from "react";
 import type { PageInfo, SpanInfo } from "../../api/types";
+import { FIELD_SPARE_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
 import { familyOf } from "../faces";
-import type { LineScale } from "../fit";
+import { type LineScale, widthPt } from "../fit";
 
 /** A box on the page as percentages of it, so it scales with the page. */
 export function boxOf(
@@ -20,16 +21,22 @@ export function boxOf(
   };
 }
 
+/** How far down the page `yPt` is, as a share of its height. */
+export function topOf(yPt: number, page: { height: number }): { top: string } {
+  return { top: `${(yPt / page.height) * 100}%` };
+}
+
 /**
- * Where something set under a box is pinned across the page: at the box's left edge, or, for a box in
+ * Where something set under a box sits: just below it, pinned at the box's left edge, or, for a box in
  * the page's right half, at its right edge, so what's set there stays on the page however wide it is.
  */
 export function pinnedUnder(
-  bbox: { x0: number; x1: number },
+  bbox: { x0: number; x1: number; y1: number },
   page: { width: number },
-): { left: string; right?: undefined } | { right: string; left?: undefined } {
-  if (bbox.x0 > page.width / 2) return { right: `${((page.width - bbox.x1) / page.width) * 100}%` };
-  return { left: `${(bbox.x0 / page.width) * 100}%` };
+): { top: string } & ({ left: string; right?: undefined } | { right: string; left?: undefined }) {
+  const top = points(bbox.y1 + SLIP_GAP_PT, page);
+  if (bbox.x0 > page.width / 2) return { top, right: `${((page.width - bbox.x1) / page.width) * 100}%` };
+  return { top, left: `${(bbox.x0 / page.width) * 100}%` };
 }
 
 /**
@@ -55,9 +62,31 @@ export function points(value: number, page: { width: number }): string {
 }
 
 /** The page's width and height as shown, in points: the file's /Rotate turns a page on its side. */
-export function shownSize(page: PageInfo): [wide: number, tall: number] {
+function shownSize(page: PageInfo): [wide: number, tall: number] {
   const turned = page.turn_cw % 180 !== 0;
   return turned ? [page.height, page.width] : [page.width, page.height];
+}
+
+/** The page's printed width, which its column and its most width are built from. */
+export function sheetWidthOf(page: PageInfo): { "--sheet-width": string } {
+  const [wide] = shownSize(page);
+  return { "--sheet-width": `${wide * PX_PER_PT}px` };
+}
+
+/** The sheet's shape as the page is shown, so its box is held before the image comes. */
+export function sheetShapeOf(page: PageInfo): CSSProperties {
+  const [wide, tall] = shownSize(page);
+  return { aspectRatio: `${wide} / ${tall}` };
+}
+
+/** The page's own layer in its sheet: the page's size in unrotated points, turned as the file says. */
+export function layerOf(page: PageInfo): CSSProperties {
+  const [wide, tall] = shownSize(page);
+  return {
+    width: `${(page.width / wide) * 100}%`,
+    height: `${(page.height / tall) * 100}%`,
+    transform: `translate(-50%, -50%) rotate(${page.turn_cw}deg)`,
+  };
 }
 
 /**
@@ -93,20 +122,45 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
 }
 
 /** Text in a span's place set at `size` and `scaleX`, shares of its own (a way out of a long line), as the page will draw it. */
-export function setAsStyle(span: SpanInfo, page: PageInfo, { size, scaleX }: LineScale): CSSProperties {
+function setAsStyle(span: SpanInfo, page: PageInfo, { size, scaleX }: LineScale): CSSProperties {
   // Narrowed from its start, as the server narrows the line.
   const narrowed = scaleX === 1 ? {} : { transform: `scaleX(${scaleX})`, transformOrigin: "0 0" };
   return { fontSize: points(span.size * size, page), ...narrowed };
+}
+
+/** The browser's drawing of a span's words, in its place as the page will draw them: in `face`, set at `scale`. */
+export function previewStyleOf(
+  span: SpanInfo,
+  page: PageInfo,
+  { face, scale }: { face: string; scale: LineScale },
+): CSSProperties {
+  return {
+    ...spanTextStyle(span, page, face),
+    ...setAsStyle(span, page, scale),
+    minWidth: boxOf(span.bbox, page).width,
+    // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
+    lineHeight: points(span.bbox.y1 - span.bbox.y0, page),
+  };
 }
 
 // One canvas measures every field's text: it draws nothing, so it never joins the page.
 let ruler: CanvasRenderingContext2D | null | undefined;
 
 /** How wide `text` draws in `face` at `sizePt`, in points, as the browser sets it: a letter `face` lacks in its fallback. */
-export function shownWidthPt(text: string, face: string, sizePt: number): number {
+function shownWidthPt(text: string, face: string, sizePt: number): number {
   if (ruler === undefined) ruler = document.createElement("canvas").getContext("2d");
   if (ruler == null) return 0;
   // Width grows with size, so text set at `sizePt` px measures in points.
   ruler.font = `${sizePt}px ${familyOf(face)}`;
   return ruler.measureText(text).width;
+}
+
+/** How wide the field typing `text` over a span is, in points: never narrower than the span, with room past what's typed. */
+export function fieldWidthPt(
+  span: SpanInfo,
+  { text, face, glyphs }: { text: string; face: string; glyphs: Record<string, number> },
+): number {
+  // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback.
+  const typedPt = Math.max(widthPt(text, glyphs, span.size), shownWidthPt(text, face, span.size));
+  return Math.max(span.bbox.x1 - span.bbox.x0, typedPt + span.size * FIELD_SPARE_EM);
 }

@@ -4,10 +4,10 @@ import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api
 import { Tooltip } from "../../ui/Tooltip";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
-import { LAZY_MARGIN, PX_PER_PT } from "../constants";
+import { LAZY_MARGIN } from "../constants";
 import { previewFaceOf } from "../faces";
 import { matchesAcross } from "../find";
-import { fitOf, setAs, wayDrawn } from "../fit";
+import { settingOf } from "../fit";
 import { imageFailed, imageLoaded } from "../images";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
@@ -18,7 +18,7 @@ import { shallowEqual } from "../store";
 import { isUnderStrip, stillShows, stripBoxOf } from "../strips";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
-import { boxOf, cropOf, points, setAsStyle, shownSize, spanTextStyle } from "./geometry";
+import { boxOf, cropOf, layerOf, previewStyleOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
 import { Margin } from "./Margin";
 import { createNotes, type Notes } from "./notes";
 import styles from "./Page.module.css";
@@ -85,7 +85,6 @@ export const Page = memo(function Page({ index, info }: Props) {
     () => page.strips?.filter((strip) => stillShows(strip, { edits: page.edits, info })),
     [page.strips, page.edits, info],
   );
-  const [wide] = shownSize(info);
   const label = `Page ${index + 1}`;
   const [focusedIn, setFocusedIn] = useState(false);
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
@@ -95,12 +94,7 @@ export const Page = memo(function Page({ index, info }: Props) {
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
-    <section
-      {...focusWithinProps}
-      className={styles.page}
-      aria-label={label}
-      style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}
-    >
+    <section {...focusWithinProps} className={styles.page} aria-label={label} style={sheetWidthOf(info)}>
       <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
@@ -127,7 +121,7 @@ export const Page = memo(function Page({ index, info }: Props) {
             src={strip.src}
             alt=""
             data-strip=""
-            style={{ top: `${(strip.y / info.height) * 100}%` }}
+            style={topOf(strip.y, info)}
           />
         ))}
         <Settles page={page} info={info} />
@@ -142,18 +136,10 @@ export const Page = memo(function Page({ index, info }: Props) {
 
 /** The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated points. */
 function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTMLDivElement>; children: ReactNode }) {
-  const [wide, tall] = shownSize(info);
   return (
     <>
-      <div ref={sheetRef} className={styles.sheet} style={{ aspectRatio: `${wide} / ${tall}` }}>
-        <div
-          className={styles.layer}
-          style={{
-            width: `${(info.width / wide) * 100}%`,
-            height: `${(info.height / tall) * 100}%`,
-            transform: `translate(-50%, -50%) rotate(${info.turn_cw}deg)`,
-          }}
-        >
+      <div ref={sheetRef} className={styles.sheet} style={sheetShapeOf(info)}>
+        <div className={styles.layer} style={layerOf(info)}>
           {children}
         </div>
       </div>
@@ -353,21 +339,14 @@ function Preview({
   drawn: { text: string; strategy: Strategy | undefined; font: FontInfo | undefined; rules: FitRules };
 }) {
   if (font === undefined) return null;
-  const fit = fitOf(span, { font, text, rules });
-  const box = boxOf(span.bbox, info);
-  // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
-  const line = points(span.bbox.y1 - span.bbox.y0, info);
+  const face = previewFaceOf(span, { font, text });
+  const scale = settingOf(span, { font, text, asked: strategy, rules });
   return (
     <span
       className={styles.preview}
       aria-hidden="true"
       data-preview=""
-      style={{
-        ...spanTextStyle(span, info, previewFaceOf(span, { font, text })),
-        ...setAsStyle(span, info, setAs(wayDrawn(strategy, fit), fit)),
-        minWidth: box.width,
-        lineHeight: line,
-      }}
+      style={previewStyleOf(span, info, { face, scale })}
     >
       {text}
     </span>

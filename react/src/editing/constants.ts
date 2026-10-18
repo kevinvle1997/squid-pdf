@@ -10,6 +10,12 @@ export const MAX_SCALE = 4;
 /** A strip reaches this far past a span's box, so accents and underlines come with it. */
 export const STRIP_PAD_PT = 2;
 
+/** A slip under a span, the field's chip or the redaction prompt, starts this far below it: clear of the mark under it. */
+export const SLIP_GAP_PT = 4;
+
+/** The edit field reaches this far past what's typed, a share of the size, so the caret has room after the last letter. */
+export const FIELD_SPARE_EM = 0.5;
+
 /** A new line has no box until it's drawn: an em above its baseline and this far below covers any face we ship. */
 export const INSERT_ASCENT_EM = 1;
 export const INSERT_DESCENT_EM = 0.3;

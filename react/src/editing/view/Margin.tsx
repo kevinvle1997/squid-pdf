@@ -4,6 +4,7 @@ import { putBack } from "../editor";
 import { changedWordsIn, notePlaces } from "../margin";
 import type { SpanReading } from "../project";
 import { useEditor } from "./context";
+import { topOf } from "./geometry";
 import styles from "./Margin.module.css";
 
 interface Props {
@@ -59,7 +60,7 @@ export function Margin({ info, changes, noteHeightPt, shape, label }: Props) {
     // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
     <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">
       {notes.map((note, index) => (
-        <div key={note.key} className={styles.place} style={{ top: `${((places[index] ?? 0) / info.height) * 100}%` }}>
+        <div key={note.key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
           {note}
         </div>
       ))}

@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { Warn } from "../../ui/Warn";
 import { editAnyway, keepRedaction } from "../redaction";
 import { useEditor } from "./context";
-import { pinnedUnder, points } from "./geometry";
+import { pinnedUnder } from "./geometry";
 import styles from "./UndoRedaction.module.css";
 
 /**
@@ -20,11 +20,7 @@ export function UndoRedaction({ span, info, copy }: { span: SpanInfo; info: Page
     else event.continuePropagation();
   };
   return (
-    <Group
-      className={styles.prompt}
-      aria-labelledby={asked}
-      style={{ ...pinnedUnder(span.bbox, info), top: points(span.bbox.y1 + 4, info) }}
-    >
+    <Group className={styles.prompt} aria-labelledby={asked} style={pinnedUnder(span.bbox, info)}>
       <span id={asked} className={styles.asked}>
         <Warn mark>{copy.undo_redaction}</Warn>
       </span>
