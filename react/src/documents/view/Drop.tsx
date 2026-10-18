@@ -2,9 +2,8 @@ import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
-import { Sheet } from "../../ui/Sheet";
+import { SheetScreen } from "../../ui/SheetScreen";
 import { Warn } from "../../ui/Warn";
-import { Wordmark } from "../../ui/Wordmark";
 import type { Kept } from "../kept";
 import { type Landing, shareSent } from "../open";
 import styles from "./Drop.module.css";
@@ -32,37 +31,36 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
         if (item !== undefined) onChoose(await item.getFile());
       }}
     >
-      <header className={styles.top}>
-        <Wordmark />
-      </header>
-      <main className={styles.middle}>
-        <Sheet className={styles.sheet}>
-          <h1 className={styles.title}>Drop a PDF anywhere to fix its words</h1>
-          <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
-            <Button variant="primary" className={styles.choose} isDisabled={landing.kind === "opening"}>
-              Choose a PDF
-            </Button>
-          </FileTrigger>
-          <p className={styles.status} role="status">
-            {landing.kind === "opening" && <Progress {...landing} />}
-            {landing.kind === "failed" && <Warn mark>{landing.detail}</Warn>}
+      <SheetScreen
+        title="Drop a PDF anywhere to fix its words"
+        sheetClassName={styles.sheet}
+        foot={
+          <p className={styles.fine}>
+            Your file is deleted an hour after you last touch it, from our server and this browser.
           </p>
-          {offered !== null && (
-            <div className={styles.kept}>
-              <p className={styles.keptSaid}>
-                Your changes to {offered.file.name} are kept in this browser until {TIME.format(offered.until)}.
-              </p>
-              <div className={styles.keptActions}>
-                <Button onPress={onReopen}>Open it again</Button>
-                <Button onPress={onForget}>Delete it now</Button>
-              </div>
-            </div>
-          )}
-        </Sheet>
-        <p className={styles.fine}>
-          Your file is deleted an hour after you last touch it, from our server and this browser.
+        }
+      >
+        <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
+          <Button variant="primary" className={styles.choose} isDisabled={landing.kind === "opening"}>
+            Choose a PDF
+          </Button>
+        </FileTrigger>
+        <p className={styles.status} role="status">
+          {landing.kind === "opening" && <Progress {...landing} />}
+          {landing.kind === "failed" && <Warn mark>{landing.detail}</Warn>}
         </p>
-      </main>
+        {offered !== null && (
+          <div className={styles.kept}>
+            <p className={styles.keptSaid}>
+              Your changes to {offered.file.name} are kept in this browser until {TIME.format(offered.until)}.
+            </p>
+            <div className={styles.keptActions}>
+              <Button onPress={onReopen}>Open it again</Button>
+              <Button onPress={onForget}>Delete it now</Button>
+            </div>
+          </div>
+        )}
+      </SheetScreen>
     </DropZone>
   );
 }

@@ -5,8 +5,7 @@ import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
 import { Button } from "./ui/Button";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
-import { Sheet } from "./ui/Sheet";
-import { Wordmark } from "./ui/Wordmark";
+import { SheetScreen } from "./ui/SheetScreen";
 
 // The editor's code comes in while the file uploads, so the landing loads only what it shows.
 const loadEditor = () => import("./editing/view/EditorShell");
@@ -80,21 +79,13 @@ function Screens() {
 /** Drawing failed: say so, and the way back, on the landing's sheet rather than a blank page. */
 function Crashed() {
   return (
-    <div className={styles.crashed}>
-      <header className={styles.top}>
-        <Wordmark />
-      </header>
-      <main className={styles.middle}>
-        <Sheet className={styles.sheet}>
-          <h1 className={styles.title}>Something went wrong, and this page stopped</h1>
-          <p className={styles.fine}>
-            Reload to start again. Changes kept in this browser are offered there to open again.
-          </p>
-          <Button variant="primary" className={styles.reload} onPress={() => window.location.reload()}>
-            Reload
-          </Button>
-        </Sheet>
-      </main>
-    </div>
+    <SheetScreen title="Something went wrong, and this page stopped" sheetClassName={styles.sheet}>
+      <p className={styles.fine}>
+        Reload to start again. Changes kept in this browser are offered there to open again.
+      </p>
+      <Button variant="primary" className={styles.reload} onPress={() => window.location.reload()}>
+        Reload
+      </Button>
+    </SheetScreen>
   );
 }
