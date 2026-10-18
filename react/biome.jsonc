@@ -23,11 +23,39 @@
       },
       "style": {
         // A module's own states come after its base rule, whatever their specificity: order is the reading order.
-        "noDescendingSpecificity": "off"
+        "noDescendingSpecificity": "off",
+        // Flat, not nested (rules/readable.md, Branches).
+        "noNestedTernary": "error",
+        // React Aria's own tooltip throws without a trigger's context, which ui/Tooltip gives it.
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "react-aria-components": {
+                "importNames": ["Tooltip", "TooltipTrigger"],
+                "message": "A tooltip is ui/Tooltip (rules/frontend/react.md, Where code goes)."
+              }
+            }
+          }
+        }
+      },
+      "suspicious": {
+        // A failure goes through sentenceOf, which logs a bug once and says it (rules/frontend/react.md, Errors).
+        "noConsole": "error"
       }
     }
   },
   "overrides": [
+    {
+      // The one home of a tooltip.
+      "includes": ["src/ui/Tooltip.tsx"],
+      "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
+    },
+    {
+      // A bug's one log line, and the probe's report of what it measured.
+      "includes": ["src/bugs.ts", "e2e/perf.spec.ts"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
     {
       // Every end to end test fails on what the Caddyfile's policy refuses, so each takes its `test` from there.
       "includes": ["e2e/**", "!e2e/policy.ts"],
