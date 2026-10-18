@@ -9,7 +9,7 @@ import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
-import { pdfDropped } from "../dropped";
+import { carriesFiles, pdfDropped } from "../dropped";
 import { changedCount, closeEditor, createEditor, sayOpening, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { addFaces, facesOf } from "../faces";
@@ -37,11 +37,6 @@ function isTyping(target: EventTarget | null): boolean {
 /** The span a key was pressed on: its mark says which, as `data-span`. */
 function spanOn(target: EventTarget | null): string | null {
   return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;
-}
-
-/** Whether a drag carries files, as a drop from the desktop does, not text or a link. */
-function carriesFiles(event: DragEvent): boolean {
-  return event.dataTransfer?.types.includes("Files") ?? false;
 }
 
 /** The props of the editor: the document opened, what opens a PDF dropped on it, and work kept here to take up. */
@@ -86,11 +81,11 @@ export function EditorShell({ file, opened, onOpen, kept }: Props) {
     };
     // A file dragged anywhere drops here: the browser would open it in this tab, and the edits would go.
     const dragging = (event: DragEvent) => {
-      if (carriesFiles(event)) event.preventDefault();
+      if (carriesFiles(event.dataTransfer)) event.preventDefault();
     };
     // The field a font goes on takes its own drop first.
     const dropped = (event: DragEvent) => {
-      if (event.defaultPrevented || !carriesFiles(event)) return;
+      if (event.defaultPrevented || !carriesFiles(event.dataTransfer)) return;
       event.preventDefault();
       openDropped([...(event.dataTransfer?.files ?? [])]);
     };

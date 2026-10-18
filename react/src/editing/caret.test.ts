@@ -1,10 +1,18 @@
 import { describe, expect, test } from "vitest";
-import { letterAt, wordAround } from "./caret";
+import { aSpan } from "../fixtures";
+import { atPtOf, letterAt, wordAround } from "./caret";
 
 // Every letter half the size wide: 5 pt each at 10 pt.
 const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
 
 describe("the caret a double press puts down", () => {
+  test("a press lands as far into the span, in points, as it is into its mark", () => {
+    const span = aSpan({ id: "s", bbox: { x0: 100, y0: 0, x1: 200, y1: 12 } });
+    expect(atPtOf(span, { pressX: 50, shownPx: 200 })).toBe(25);
+    // Not laid out yet: nothing to say where it landed, so the whole span is selected.
+    expect(atPtOf(span, { pressX: 50, shownPx: 0 })).toBeNull();
+  });
+
   test("the letter under the press, counted from the span's start", () => {
     expect(letterAt("was here", 2, { glyphs, size: 10 })).toBe(0);
     expect(letterAt("was here", 22, { glyphs, size: 10 })).toBe(4);

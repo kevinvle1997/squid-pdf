@@ -3,6 +3,7 @@ import { Group } from "react-aria-components";
 import type { Copy, PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Warn } from "../../ui/Warn";
+import { onEscape } from "../commands";
 import { editAnyway, keepRedaction } from "../redaction";
 import { useEditor } from "./context";
 import { pinnedUnder } from "./geometry";
@@ -15,10 +16,7 @@ import styles from "./UndoRedaction.module.css";
 export function UndoRedaction({ span, info, copy }: { span: SpanInfo; info: PageInfo; copy: Copy }) {
   const editor = useEditor();
   const asked = useId();
-  const keepOnEscape = (event: { key: string; continuePropagation: () => void }) => {
-    if (event.key === "Escape") keepRedaction(editor);
-    else event.continuePropagation();
-  };
+  const keepOnEscape = onEscape(() => keepRedaction(editor));
   return (
     <Group className={styles.prompt} aria-labelledby={asked} style={pinnedUnder(span.bbox, info)}>
       <span id={asked} className={styles.asked}>

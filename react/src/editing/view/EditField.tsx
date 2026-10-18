@@ -16,6 +16,7 @@ import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
+import { carriesFiles } from "../dropped";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
@@ -95,7 +96,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   });
   // Text dragged here is the field's own to take, as typing is: useDrop would swallow it.
   const filesOnly = (handler?: DragEventHandler<HTMLInputElement>) => (event: DragEvent<HTMLInputElement>) => {
-    if (event.dataTransfer.types.includes("Files")) handler?.(event);
+    if (carriesFiles(event.dataTransfer)) handler?.(event);
   };
 
   // Once, as the field takes focus: the caret goes where the press was, the word under it,

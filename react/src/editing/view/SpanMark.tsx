@@ -1,6 +1,8 @@
 import { memo, useCallback, useRef, useSyncExternalStore } from "react";
 import { Button, type PressEvent } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, RedactionInfo, SpanInfo } from "../../api/types";
+import { atPtOf } from "../caret";
+import { onEscape } from "../commands";
 import { DOUBLE_PRESS_MS } from "../constants";
 import { type FocusTo, focusMoved } from "../editor";
 import { lookOf } from "../marks";
@@ -59,9 +61,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
     const at = performance.now();
     if (at - lastPress.current < DOUBLE_PRESS_MS) {
       lastPress.current = 0;
-      // Where the press landed, in points from the span's start: the word to select.
-      const width = (event.target as HTMLElement).getBoundingClientRect().width;
-      const atPt = width > 0 ? (event.x / width) * (span.bbox.x1 - span.bbox.x0) : null;
+      const atPt = atPtOf(span, { pressX: event.x, shownPx: event.target.getBoundingClientRect().width });
       notes.hide(span.id);
       edit(editor, span.id, atPt);
       return;
@@ -102,10 +102,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
         notes.hide(span.id);
         if (focusTo !== null) focusMoved(editor);
       }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") notes.hide(span.id);
-        else event.continuePropagation();
-      }}
+      onKeyDown={onEscape(() => notes.hide(span.id))}
     >
       <span className="vh">{reading?.text ?? span.text}</span>
       {look.redacted && <span className="vh"> (redacted)</span>}
