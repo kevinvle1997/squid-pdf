@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
-import type { Edit, ImageInfo, Render, RenderBody, SpanInfo } from "../api/types";
-import { aDoc, aFit, aProblem, aReply, aSkipped, aSpan, aSpanNotice } from "../fixtures";
+import type { Edit, ImageInfo, Render, RenderBody } from "../api/types";
+import { aDoc, aFit, aProblem, aRedact, aRedaction, aReplace, aReply, aSkipped, aSpan, aSpanNotice } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import { type Drawn, RenderQueue } from "./render";
@@ -11,7 +11,6 @@ const TWO = aSpan({ id: "two", page: 1 });
 const DOC = aDoc({ spans: [ONE, TWO] });
 const readingOf = (...edits: Edit[]) =>
   project(DOC.spans, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
-const replace = (span: SpanInfo, text = "now"): Edit => ({ kind: "replace", span_id: span.id, text });
 const stripFor = (page: number): ImageInfo => ({ page, y: 98, image: `page ${page}` });
 
 /** The server, answering only when a test says so. */
@@ -63,11 +62,15 @@ const settle = () => new Promise((resolve) => setTimeout(resolve));
 
 describe("the render queue", () => {
   test("it asks for a strip around each edited row, sending the edits as they read; fits land with their page", async () => {
-    const reading = readingOf(replace(ONE));
+    const reading = readingOf(aReplace(ONE.id));
     queue.draw(reading);
     await settle();
     expect(fake.asked).toHaveLength(1);
-    expect(fake.asked[0]?.body).toEqual({ edits: [replace(ONE)], scale: 2, regions: [{ page: 0, y0: 98, y1: 114 }] });
+    expect(fake.asked[0]?.body).toEqual({
+      edits: [aReplace(ONE.id)],
+      scale: 2,
+      regions: [{ page: 0, y0: 98, y1: 114 }],
+    });
 
     fake.asked[0]?.answer(aReply({ images: [stripFor(0)], fits: { [ONE.id]: aFit() } }));
     await settle();
@@ -77,10 +80,10 @@ describe("the render queue", () => {
   });
 
   test("a redaction's verdict lands with its page, and goes with it", async () => {
-    const redaction = { kind: "redact" as const, span_id: TWO.id };
+    const redaction = aRedact(TWO.id);
     queue.draw(readingOf(redaction));
     await settle();
-    const verdict = { verified: false, hidden_copies: [], message: "This text couldn't be removed." };
+    const verdict = aRedaction({ verified: false, message: "This text couldn't be removed." });
     fake.asked[0]?.answer(aReply({ images: [stripFor(1)], redactions: { [TWO.id]: verdict } }));
     await settle();
     expect(queue.drawn.redactions.get(1)).toEqual({ [TWO.id]: verdict });
@@ -91,9 +94,9 @@ describe("the render queue", () => {
   });
 
   test("a newer change takes over the pages an older request was still drawing", async () => {
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
-    const newer = readingOf(replace(ONE), replace(TWO));
+    const newer = readingOf(aReplace(ONE.id), aReplace(TWO.id));
     queue.draw(newer);
     await settle();
     expect(fake.asked[0]?.signal.aborted).toBe(true);
@@ -109,7 +112,7 @@ describe("the render queue", () => {
     const near = new Set([1]);
     queue = aQueue(near);
     const askedFor = () => fake.asked.map(({ body }) => body.regions.map((region) => region.page));
-    queue.draw(readingOf(replace(ONE), replace(TWO)));
+    queue.draw(readingOf(aReplace(ONE.id), aReplace(TWO.id)));
     await settle();
     expect(askedFor()).toEqual([[1]]);
 
@@ -124,7 +127,7 @@ describe("the render queue", () => {
   });
 
   test("a page with nothing left on it goes back to its image at once, without asking", async () => {
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.answer(fake.reply([0]));
     await settle();
@@ -150,7 +153,7 @@ describe("the render queue", () => {
         return image.image;
       },
     });
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.answer(fake.reply([0]));
     await settle();
@@ -161,14 +164,14 @@ describe("the render queue", () => {
   });
 
   test("a failed render says why until one lands, and its page is asked for again with the next change", async () => {
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.fail(new ProblemError(aProblem(0, "Couldn't reach the server.")));
     await settle();
     expect(queue.drawn.failed).toBe("Couldn't reach the server.");
     expect(queue.drawn.from.has(0)).toBe(false);
 
-    queue.draw(readingOf(replace(ONE), replace(TWO)));
+    queue.draw(readingOf(aReplace(ONE.id), aReplace(TWO.id)));
     await settle();
     expect(fake.asked[1]?.body.regions.map((region) => region.page)).toEqual([0, 1]);
     fake.asked[1]?.answer(fake.reply([0, 1]));
@@ -178,7 +181,7 @@ describe("the render queue", () => {
 
   test("a bug while rendering is said and logged, not thrown, and its page stays stale", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.fail(new TypeError("reply.images is undefined"));
     await settle();
@@ -190,7 +193,7 @@ describe("the render queue", () => {
   test("what a reply says of a page goes with its strips; what it left out is of the whole list", async () => {
     const drewOtherwise = aSpanNotice("Drawn in Liberation Serif.", ONE.id);
     const leftOut = aSkipped(0, "An edit points at nothing.");
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.answer(aReply({ images: [stripFor(0)], notices: [drewOtherwise], skipped: [leftOut] }));
     await settle();
@@ -198,7 +201,7 @@ describe("the render queue", () => {
     expect(queue.drawn.skipped).toEqual([leftOut]);
 
     // Only page 2 is drawn again: page 1 keeps what was said of it.
-    queue.draw(readingOf(replace(ONE), replace(TWO)));
+    queue.draw(readingOf(aReplace(ONE.id), aReplace(TWO.id)));
     await settle();
     fake.asked[1]?.answer(fake.reply([1]));
     await settle();
@@ -211,7 +214,7 @@ describe("the render queue", () => {
   });
 
   test("stopped, what's in flight is dropped, and nothing is asked for again", async () => {
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     queue.stop();
     expect(fake.asked[0]?.signal.aborted).toBe(true);
@@ -222,7 +225,7 @@ describe("the render queue", () => {
   });
 
   test("retry asks again for what's still stale, and nothing once it's all drawn", async () => {
-    queue.draw(readingOf(replace(ONE)));
+    queue.draw(readingOf(aReplace(ONE.id)));
     await settle();
     fake.asked[0]?.fail(new ProblemError(aProblem(0, "offline")));
     await settle();

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { A4, aDoc, aDocumentNotice, aFileNotice, aFont, aProblem, aSpan, COPY, halfWideGlyphs } from "../fixtures";
 import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
 import { exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
@@ -45,7 +45,7 @@ const typed = (spanId: string, text: string) => {
 describe("an edit", () => {
   test("as its field takes focus, what an edit there warns of is heard, until its font is quieted", () => {
     // Its font has every letter it reads, so the warning is all there is to hear.
-    const glyphs = Object.fromEntries([..."was similar"].map((letter) => [letter, 500]));
+    const glyphs = halfWideGlyphs("was similar");
     const similar = aSpan({
       id: "similar",
       font: "Named",
@@ -91,7 +91,7 @@ describe("an edit", () => {
 
   test("Up or Down chooses how a long line fits, and the edit takes it while it's offered", () => {
     // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
-    const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz"].map((letter) => [letter, 500]));
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz");
     const long = aSpan({ id: "long", text: "abcdefghijklmnopqrst" });
     editor = createEditor(FILE, aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "long", null);
@@ -163,7 +163,7 @@ describe("an edit", () => {
   });
 
   test("a change goes to the server to draw; what export, reopening and a drop said goes, the document's stays", () => {
-    const found = { code: "signed", params: {}, type: "t", detail: "This file is signed." };
+    const found = aDocumentNotice("This file is signed.", "signed");
     editor = createEditor(FILE, { ...DOC, notices: [found] }, 2);
     const { notices } = editor.store.get();
     const drop = warn("Only a PDF can be dropped here.");
@@ -256,7 +256,7 @@ describe("an edit", () => {
 
   test("typing into text that won't match leaves why to the note as typing starts, not each letter's troubles", () => {
     const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
-    const glyphs = Object.fromEntries([..."was turned"].map((letter) => [letter, 500]));
+    const glyphs = halfWideGlyphs("was turned");
     editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "turned", null);
     expect(troublesIn(editor.store.get(), "was turned").said).toEqual([]);

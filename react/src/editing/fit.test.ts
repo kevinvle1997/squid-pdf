@@ -1,16 +1,18 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
-import { aFont, aSpan, COPY as copy, RULES } from "../fixtures";
+import { aFont, aSpan, COPY as copy, halfWideGlyphs, RULES } from "../fixtures";
 import { fitOf, missingIn, optionsFor, setAs, settingOf, troublesOf, wayDrawn, waysOffered, widthPt } from "./fit";
 import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
 const HALF = 500;
 const glyphs = {
-  ...Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz0123456789 "].map((l) => [l, HALF])),
+  ...halfWideGlyphs("abcdefghijklmnopqrstuvwxyz0123456789 "),
   ".": 300, // 3 pt at 10 pt: less than the tolerance
 };
 const font = aFont("Times-Roman", { glyphs });
+// What a trouble is said with: the rules, the server's sentences, and the face a missing letter is drawn in.
+const SAID = { rules: RULES, copy, substitute: "Liberation Serif Regular" };
 const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50, y1: 12 } });
 
 describe("a missing letter", () => {
@@ -37,14 +39,12 @@ describe("the fit check", () => {
     const fit = fitOf(span, { font, text: "abcdefghij.", rules: RULES });
     expect(fit.deltaPt).toBe(3);
     expect(fit.options).toEqual([]);
-    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([]);
+    expect(troublesOf(fit, SAID)).toEqual([]);
   });
 
   test("too long names how much, in the server's sentence", () => {
     const fit = fitOf(span, { font, text: "abcdefghijk", rules: RULES });
-    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
-      "5.0 pt too long",
-    ]);
+    expect(troublesOf(fit, SAID)).toEqual(["5.0 pt too long"]);
   });
 
   test("a letter the font lacks is named once", () => {
@@ -53,7 +53,7 @@ describe("the fit check", () => {
 
   test("a missing letter that draws nothing alone is named in the chip, as the server names it", () => {
     const fit = { originalPt: 50, deltaPt: 0, roomPt: 0, missing: ["\u00ad", "é"], options: [] };
-    expect(troublesOf(fit, { rules: RULES, copy, substitute: "Liberation Serif Regular" })).toEqual([
+    expect(troublesOf(fit, SAID)).toEqual([
       "no optional hyphen or é in this font, so the line is drawn in our Liberation Serif Regular",
     ]);
   });
@@ -127,9 +127,8 @@ describe("a way out", () => {
   });
 
   test("taken, the line isn't too long any more; a missing letter still is said", () => {
-    const said = { rules: RULES, copy, substitute: "Liberation Serif Regular" };
-    expect(troublesOf(fit, { ...said, way: "shrink" })).toEqual([]);
-    expect(troublesOf({ ...fit, missing: ["é"] }, { ...said, way: "condense" })).toEqual([
+    expect(troublesOf(fit, { ...SAID, way: "shrink" })).toEqual([]);
+    expect(troublesOf({ ...fit, missing: ["é"] }, { ...SAID, way: "condense" })).toEqual([
       "no é in this font, so the line is drawn in our Liberation Serif Regular",
     ]);
   });
@@ -140,7 +139,7 @@ describe("a line is too long only past its room, as the server says", () => {
   test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_by, options }) => {
     const fit = { originalPt: original_pt, deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
     const said = too_long_by === null ? [] : [fill(copy.too_long, { delta_pt: too_long_by })];
-    expect(troublesOf(fit, { rules: shared.rules, copy, substitute: "Liberation Serif Regular" })).toEqual(said);
+    expect(troublesOf(fit, { ...SAID, rules: shared.rules })).toEqual(said);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
   });
 });

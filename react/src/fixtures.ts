@@ -3,13 +3,18 @@
 import type {
   Copy,
   Document,
+  DocumentNoticeInfo,
   FileNoticeInfo,
   FitInfo,
   FitRules,
   FontInfo,
+  Insert,
   PageInfo,
   ProblemInfo,
+  Redact,
+  RedactionInfo,
   Render,
+  Replace,
   SkippedInfo,
   SpanInfo,
   SpanNoticeInfo,
@@ -150,4 +155,34 @@ export function aSkipped(edit: number, detail: string): SkippedInfo {
 /** A Problem the server answered with. */
 export function aProblem(status: number, detail = "said"): ProblemInfo {
   return { type: "server_error", status, detail, code: "server_error", params: {} };
+}
+
+/** Widths for `letters`, each half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt. */
+export function halfWideGlyphs(letters: string): Record<string, number> {
+  return Object.fromEntries([...letters].map((letter) => [letter, 500]));
+}
+
+/** An edit that replaces a span's words. */
+export function aReplace(spanId: string, text = "now", fields: Partial<Replace> = {}): Replace {
+  return { kind: "replace", span_id: spanId, text, ...fields };
+}
+
+/** An edit that takes a span's words out of the file. */
+export function aRedact(spanId: string): Redact {
+  return { kind: "redact", span_id: spanId };
+}
+
+/** An edit that puts a new line on a page, set at its baseline. */
+export function anInsert(fields: Partial<Insert> = {}): Insert {
+  return { kind: "insert", page: 0, origin: [72, 400], text: "Signed", size: 10, ...fields };
+}
+
+/** The server's verdict on a redaction: its words gone, and nothing else to say. */
+export function aRedaction(fields: Partial<RedactionInfo> = {}): RedactionInfo {
+  return { verified: true, hidden_copies: [], message: null, ...fields };
+}
+
+/** What opening the file found, in the server's words. */
+export function aDocumentNotice(detail: string, code = "notice"): DocumentNoticeInfo {
+  return { code, params: {}, type: "t", detail };
 }
