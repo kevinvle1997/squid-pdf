@@ -12,6 +12,11 @@ export class ProblemError extends Error {
   }
 }
 
+/** Whether the server answered that it no longer has the document: a 404. */
+export function isGone(error: unknown): boolean {
+  return error instanceof ProblemError && error.problem.status === 404;
+}
+
 // When nothing answers (no network, or the proxy failed), there's no Problem, so the browser says it.
 const UNREACHABLE: Problem = {
   type: "unreachable",
@@ -72,8 +77,7 @@ export async function stillThere(docId: string): Promise<boolean> {
     return true;
   } catch (error) {
     // Only a 404 says it's gone; any other failure says nothing either way.
-    if (error instanceof ProblemError && error.problem.status === 404) return false;
-    return true;
+    return !isGone(error);
   }
 }
 
@@ -131,8 +135,8 @@ export async function exportPdf(
   const response = await send(`/api/documents/${docId}/export`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(pages === undefined ? { edits } : { edits, pages }),
-    ...(signal !== undefined && { signal }),
+    body: JSON.stringify({ edits, pages }),
+    signal,
   });
   const skipped = (response.headers.get("squid-skipped-edits") ?? "")
     .split(",")

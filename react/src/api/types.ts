@@ -1,6 +1,5 @@
-// The shapes the API sends and takes, named. All of them come from schema.d.ts,
-// which `npm run types` writes from the server's OpenAPI. A field the browser doesn't read
-// says why beside its shape's name.
+// The shapes the API sends and takes, named, from schema.d.ts, which `npm run types` writes from the
+// server's OpenAPI. A field the browser doesn't read says why beside its shape's name.
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -33,6 +32,7 @@ export type SpanNoticeInfo = Schemas["SpanNoticeInfo"];
 export type FileNoticeInfo = Schemas["FileNoticeInfo"];
 export type NoticeInfo = Render["notices"][number];
 export type SkippedInfo = Schemas["SkippedInfo"];
+// Not read: `type`, `code`, `params` and `debug`. A Problem is shown as its `detail`; `status` says one is gone.
 export type ProblemInfo = Schemas["ProblemInfo"];
 /** What went wrong: a Problem the server sent, or the browser's own when nothing answered. */
 export type Problem = Omit<ProblemInfo, "type"> & { type: ProblemInfo["type"] | "unreachable" };
