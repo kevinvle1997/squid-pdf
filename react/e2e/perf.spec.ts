@@ -1,8 +1,5 @@
-// The performance probe: typing, the render settling and scrolling, on a long contract in
-// the built app, with the CPU slowed to a mid-range laptop's and, once the file is open, the
-// network to a desk's. It logs what it measures and asserts nothing: numbers are compared by
-// hand, before and after a change, and kept out of this repository (CLAUDE.md: measure before
-// optimising). Run it with `npm run perf`.
+// The performance probe, `npm run perf`: typing, the render settling and scrolling on a long contract, the CPU
+// slowed and the network a desk's. It logs and asserts nothing: numbers are compared by hand, kept out of here.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

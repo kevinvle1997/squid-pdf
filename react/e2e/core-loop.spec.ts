@@ -3,7 +3,9 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { type Download, expect, type Page } from "@playwright/test";
+import { type Download, expect, type Locator, type Page } from "@playwright/test";
+import type { Document } from "../src/api/types";
+import { aProblem } from "../src/fixtures";
 import { test } from "./policy";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
@@ -22,10 +24,15 @@ async function seriousProblems(page: Page) {
   return violations.filter((found) => found.impact === "serious" || found.impact === "critical");
 }
 
-async function edit(page: Page, text: string) {
-  await page.getByRole("button", { name: LINE }).focus();
+/** Open the field on a span from the keyboard, as Enter does; `exact` once a margin note names its words too. */
+async function startEdit(page: Page, { line = LINE, exact = false } = {}): Promise<Locator> {
+  await page.getByRole("button", { name: line, exact }).focus();
   await page.keyboard.press("Enter");
-  const field = page.getByRole("textbox", { name: `Change “${LINE}”` });
+  return page.getByRole("textbox", { name: `Change “${line}”` });
+}
+
+async function edit(page: Page, text: string) {
+  const field = await startEdit(page);
   await field.fill(text);
   await field.press("Enter");
 }
@@ -101,9 +108,7 @@ test("a span edited back to its own words is untouched: nothing is drawn over it
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
-  await page.getByRole("button", { name: "This agreement is made on 2 April 2026 between", exact: true }).focus();
-  await page.keyboard.press("Enter");
-  const field = page.getByRole("textbox", { name: "Change “This agreement is made on 2 April 2026 between”" });
+  const field = await startEdit(page, { line: "This agreement is made on 2 April 2026 between", exact: true });
   await field.fill(LINE);
   await field.press("Enter");
   // Drawn again, the line would come back in the substitute while the page says nothing changed.
@@ -133,9 +138,8 @@ test("a page image the server refuses says why on the page, and comes back with 
   context,
 }) => {
   const busy = "We can't work on files right now. Try again in a few minutes.";
-  const problem = { type: "no_workers", status: 503, detail: busy, code: "no_workers", params: {} };
   await page.route("**/pages/**", (route) =>
-    route.fulfill({ status: 503, contentType: "application/problem+json", body: JSON.stringify(problem) }),
+    route.fulfill({ status: 503, contentType: "application/problem+json", body: JSON.stringify(aProblem(503, busy)) }),
   );
   await open(page);
   const first = page.getByRole("region", { name: "Page 1" });
@@ -190,7 +194,7 @@ test("Cmd+Delete redacts a line, and the file downloaded no longer has its words
         headers: { "content-type": "application/pdf" },
         body,
       });
-      const doc = (await response.json()) as { spans: { text: string }[] };
+      const doc = (await response.json()) as Document;
       return doc.spans.map((span) => span.text);
     },
     [...bytes],
@@ -218,7 +222,7 @@ test("Split here downloads two files, each with only its pages, and the edit in 
           headers: { "content-type": "application/pdf" },
           body: new Uint8Array(pdf),
         });
-        const doc = (await response.json()) as { pages: unknown[]; spans: { text: string }[] };
+        const doc = (await response.json()) as Document;
         return { pages: doc.pages.length, text: doc.spans.map((span) => span.text).join(" ") };
       },
       [...bytes],
@@ -251,9 +255,7 @@ test("find counts a date on both pages, Change all changes both, and one undo pu
 
 test("Cmd+S while still typing exports the edit being typed", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: LINE }).focus();
-  await page.keyboard.press("Enter");
-  await page.getByRole("textbox", { name: `Change “${LINE}”` }).fill("This agreement is made on 3 May 2026 between");
+  await (await startEdit(page)).fill("This agreement is made on 3 May 2026 between");
   const sent = page.waitForRequest((request) => request.url().endsWith("/export"));
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("Control+s");
@@ -270,9 +272,7 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
     await held;
     await route.continue();
   });
-  await page.getByRole("button", { name: LINE }).focus();
-  await page.keyboard.press("Enter");
-  const field = page.getByRole("textbox", { name: `Change “${LINE}”` });
+  const field = await startEdit(page);
   await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
   // Each letter makes it longer; the number on screen ticks, what's said doesn't.
   await field.pressSequentially("xxx");

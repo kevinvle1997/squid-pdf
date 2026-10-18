@@ -6,6 +6,7 @@ import { userEvent } from "vitest/browser";
 import { App } from "./App";
 import { upload } from "./api/client";
 import type { Render } from "./api/types";
+import { SOMETHING_WENT_WRONG } from "./bugs";
 import { forgetKept, keepFile, keepState, keptDocument } from "./documents/kept";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
 import { aDoc, aFont, aSpan } from "./fixtures";
@@ -56,7 +57,8 @@ test("a bug while opening is said, and another file can be chosen", async () => 
   vi.mocked(upload).mockRejectedValue(new TypeError("request.response is null"));
   const screen = await render(<App />);
   choose(screen.container, "contract.pdf");
-  await expect.element(screen.getByText("Something went wrong", { exact: false })).toBeVisible();
+  // The landing's words for a bug, not the crash screen's, which would also start "Something went wrong".
+  await expect.element(screen.getByText(SOMETHING_WENT_WRONG)).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeEnabled();
 });
 
