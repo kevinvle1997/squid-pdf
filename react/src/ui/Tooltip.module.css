@@ -8,13 +8,13 @@
   font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-lo);
 }
 .words { display: flex; flex-direction: column; gap: var(--s1); }
-.note[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
-.note[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
+.note[data-entering] { animation: global(arrive) var(--dur-move) var(--ease-out); }
+.note[data-exiting] { animation: global(fade) var(--dur-quick) var(--ease-out) reverse; }
 .heading { font-weight: 600; color: var(--ink); }
 /* The shadow is dropped here, so an outline keeps the note apart from the page under it. */
 @media (forced-colors: active) {
   .note { outline: 1px solid CanvasText; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .note[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
+  .note[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }
 }

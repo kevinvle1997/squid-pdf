@@ -94,6 +94,21 @@ describe("the stylesheets", () => {
     expect(stray.map(({ where }) => where)).toEqual(["styles/base.css: margin: -1px"]);
   });
 
+  test("every animation a module names has its keyframes: its own, or base.css's, named as global", () => {
+    const keyframesIn = (css: string) => new Set([...css.matchAll(/@keyframes ([\w-]+)/g)].map(([, name]) => name));
+    const shared = keyframesIn(readFileSync(join(SRC, "styles/base.css"), "utf8"));
+    const unmatched = ALL.filter(({ path }) => path.endsWith(".module.css")).flatMap(({ path, css }) => {
+      const own = keyframesIn(css);
+      // A module scopes the name an animation asks for unless it's written global(...), as base.css's are.
+      return declared(path, css, /^animation(-name)?$/).filter(({ value }) => {
+        const [name = ""] = partsOf(value);
+        const global = /^global\(([\w-]+)\)$/.exec(name)?.[1];
+        return global === undefined ? !own.has(name) : !shared.has(global);
+      });
+    });
+    expect(unmatched.map(({ where }) => where)).toEqual([]);
+  });
+
   test("what sits over what is a role in tokens.css, never a number", () => {
     const numbered = ALL.flatMap(({ path, css }) =>
       [...css.matchAll(/z-index:\s*([^;]+);/g)]

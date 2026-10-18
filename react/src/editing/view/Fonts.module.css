@@ -8,8 +8,8 @@
   border-radius: var(--r-3);
   box-shadow: var(--lift-2);
 }
-.popover[data-entering] { animation: arrive var(--dur-move) var(--ease-out); }
-.popover[data-exiting] { animation: fade var(--dur-quick) var(--ease-out) reverse; }
+.popover[data-entering] { animation: global(arrive) var(--dur-move) var(--ease-out); }
+.popover[data-exiting] { animation: global(fade) var(--dur-quick) var(--ease-out) reverse; }
 .dialog { padding: var(--s3); outline: none; }
 .list { display: flex; flex-direction: column; gap: var(--s3); margin: 0; padding: 0; list-style: none; }
 .font {
@@ -28,5 +28,5 @@
   .popover { outline: 1px solid CanvasText; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .popover[data-entering] { animation: fade var(--dur-quick) var(--ease-out); }
+  .popover[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }
 }

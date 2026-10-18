@@ -18,6 +18,8 @@
         "useMaxParams": { "level": "error", "options": { "max": 3 } }
       },
       "correctness": {
+        // CSS Modules' global(), which names one of base.css's keyframes from inside a module.
+        "noUnknownFunction": { "level": "error", "options": { "ignore": ["global"] } },
         "useExhaustiveDependencies": "error",
         "useHookAtTopLevel": "error"
       },

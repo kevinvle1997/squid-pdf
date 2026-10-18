@@ -49,5 +49,5 @@
   .list { display: block; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .note { animation: fade var(--dur-quick) var(--ease-out); }
+  .note { animation: global(fade) var(--dur-quick) var(--ease-out); }
 }
