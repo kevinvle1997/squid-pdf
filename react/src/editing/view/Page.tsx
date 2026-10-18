@@ -1,21 +1,19 @@
 import { memo, type ReactNode, type Ref, useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible, useFocusWithin } from "react-aria";
-import { pageUrl } from "../../api/client";
-import type { Copy, FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
+import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
 import { Tooltip } from "../../ui/Tooltip";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN, PX_PER_PT } from "../constants";
-import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { matchesAcross } from "../find";
 import { fitOf, setAs, wayDrawn } from "../fit";
-import { type FailedImage, imageFailed, imageLoaded } from "../images";
+import { imageFailed, imageLoaded } from "../images";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
-import { differing, type PageEdits, type SpanReading } from "../project";
-import type { PageFits, PageRedactions, Strip } from "../render";
-import type { Settling } from "../settle";
+import { type PageState, pageState, spanIn } from "../page";
+import { differing, type SpanReading } from "../project";
+import type { Strip } from "../render";
 import { shallowEqual } from "../store";
 import { isUnderStrip, stillShows, stripBoxOf } from "../strips";
 import { useEditor, useEditorState } from "./context";
@@ -27,9 +25,6 @@ import styles from "./Page.module.css";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
 
-const NO_SPANS: readonly SpanInfo[] = [];
-const NO_FITS: PageFits = {};
-const NO_REDACTIONS: PageRedactions = {};
 const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
@@ -70,55 +65,6 @@ function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; ne
   return { ref, near, noteHeightPt };
 }
 
-/** Everything a page draws from the editor's state: it redraws when one of these changes. */
-interface PageState {
-  readonly spans: readonly SpanInfo[]; // its text, in the document's order
-  readonly edits: PageEdits | undefined; // what the history reads as, here
-  readonly drawnFrom: PageEdits | undefined; // what its strips were drawn from
-  readonly strips: readonly Strip[] | undefined;
-  readonly fits: PageFits;
-  readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
-  readonly matches: ReadonlyMap<string, readonly Match[]> | undefined; // what find found here, by span, while it's open
-  readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
-  readonly src: string; // the page image
-  readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
-  readonly typingIn: string | null; // the span being typed into, when it's here
-  readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
-  readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
-  readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
-  // What every mark shows, selected once here rather than by each mark.
-  readonly fonts: ReadonlyMap<string, FontInfo>;
-  readonly copy: Copy;
-  readonly rules: FitRules; // for the way out a preview is drawn in
-}
-
-function pageState(state: EditorState, index: number): PageState {
-  return {
-    spans: state.layout.pages.get(index) ?? NO_SPANS,
-    edits: state.reading.pages.get(index),
-    drawnFrom: state.drawn.from.get(index)?.pages.get(index),
-    strips: state.drawn.strips.get(index),
-    fits: state.drawn.fits.get(index) ?? NO_FITS,
-    redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
-    matches: state.find.matches.get(index),
-    settling: state.settling.get(index),
-    src: pageUrl(state.doc, index, state.scale),
-    image: state.images.get(index),
-    typingIn: state.draft?.page === index ? state.draft.spanId : null,
-    unredacting:
-      state.unredacting !== null && state.layout.spans.get(state.unredacting.spanId)?.page === index
-        ? state.unredacting.spanId
-        : null,
-    focusTo:
-      state.focusTo !== null && state.layout.spans.get(state.focusTo.spanId)?.page === index ? state.focusTo : null,
-    scrollTo:
-      state.scrollTo !== null && state.layout.spans.get(state.scrollTo.spanId)?.page === index ? state.scrollTo : null,
-    fonts: state.layout.fonts,
-    copy: state.doc.copy,
-    rules: state.doc.fit,
-  };
-}
-
 interface Props {
   index: number;
   info: PageInfo;
@@ -132,7 +78,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
   const sheet = useSheet(index, { heightPt: info.height, nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
-  const changes = page.edits?.spans.filter((reading) => reading.replaced || reading.redacted) ?? NO_CHANGES;
+  const changes = page.edits?.spans ?? NO_CHANGES;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
   // undo needs no render to show it.
   const strips = useMemo(
@@ -225,7 +171,7 @@ function ScrollAnchor({ page, info }: { page: PageState; info: PageInfo }) {
   const bringIntoView = useCallback((anchor: HTMLSpanElement | null) => {
     anchor?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, []);
-  const span = page.spans.find((each) => each.id === page.scrollTo?.spanId);
+  const span = page.scrollTo === null ? undefined : spanIn(page, page.scrollTo.spanId);
   if (span === undefined) return null;
   return <span className={styles.anchor} aria-hidden="true" style={boxOf(span.bbox, info)} ref={bringIntoView} />;
 }
@@ -357,7 +303,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
   // Focus shows the note only when it's the keyboard's: a click's focus leaves it to the click.
   const { isFocusVisible } = useFocusVisible();
-  const span = last === null ? undefined : page.spans.find((each) => each.id === last.spanId);
+  const span = last === null ? undefined : spanIn(page, last.spanId);
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
     span,
@@ -391,7 +337,7 @@ function UndoRedactionAt(props: {
   readings: ReadonlyMap<string, SpanReading>;
 }) {
   const { spanId, page, info, readings } = props;
-  const span = page.spans.find((each) => each.id === spanId);
+  const span = spanIn(page, spanId);
   if (span === undefined || !readings.get(spanId)?.redacted) return null;
   return <UndoRedaction span={span} info={info} copy={page.copy} />;
 }
