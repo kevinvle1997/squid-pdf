@@ -16,20 +16,12 @@ import { Bar } from "./Bar";
 import { EditorContext, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
+import { isTyping, spanOn } from "./keys";
 import { Page } from "./Page";
 import { SplitHere } from "./SplitHere";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
-
-function isTyping(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
-}
-
-/** The span a key was pressed on: its mark says which, as `data-span`. */
-function spanOn(target: EventTarget | null): string | null {
-  return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;
-}
 
 /** The props of the editor: the document opened, what opens a PDF dropped on it, and work kept here to take up. */
 interface Props {
