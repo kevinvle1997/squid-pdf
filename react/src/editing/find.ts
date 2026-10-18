@@ -2,12 +2,12 @@
 // looking like the text around them (Rule 1), and Change all, one step in the history.
 import type { FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { change, type Editor, type EditorState, spoken } from "./editor";
+import { change, changed, type Editor, type EditorState, spoken } from "./editor";
 import { fitOf, runsPast, widthPt } from "./fit";
 import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import { type Reading, textIn } from "./project";
-import { finish } from "./typing";
+import { finish, typingEnd } from "./typing";
 import { counted } from "./words";
 
 /** The find bar: what's typed in it, and what it found. */
@@ -175,10 +175,12 @@ export function changedSaid(changed: number): string {
 
 /** Open the bar, or put focus back in "Find" if it's open. Words being typed on the page are kept first. */
 export function openFind(editor: Editor): void {
-  finish(editor, true);
-  const state = editor.store.get();
-  const find = refound(state, state.reading);
-  editor.store.set({ find: { ...find, open: true, opened: find.opened + 1 } });
+  finish(editor, true, {
+    also: (next) => {
+      const find = refound(next, next.reading);
+      return { find: { ...find, open: true, opened: find.opened + 1 } };
+    },
+  });
 }
 
 /** Close the bar and clear its marks; `fromInside` puts focus back on the bar's "Find". */
@@ -221,24 +223,30 @@ function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   editor.store.set({ find, ...heard });
 }
 
-/** Change every place found, as one step in the history. */
+/** Change every place found, as one step in the history. Words being typed on the page are kept first, as their own. */
 export function changeAll(editor: Editor): void {
-  finish(editor, true);
   const state = editor.store.get();
-  // Nothing to change to: emptying a span is redaction's job.
-  if (state.find.replacement === "") return;
+  const { typed, ended } = typingEnd(state, true);
+  // Found in the words as typed: their step comes first.
+  const typing = changed(state, [typed]);
   // What's typed but not yet found is what the user sees in "Find": find it first.
-  const find = searchingQuery(state.find);
-  const found = foundIn(state.doc.spans, { reading: state.reading, find });
-  if (found.length === 0) return;
+  const find = searchingQuery(typing.find);
+  // Nothing to change to, since emptying a span is redaction's job.
+  const found = find.replacement === "" ? [] : foundIn(state.doc.spans, { reading: typing.reading, find });
+  // Nothing to change: only the typing ends.
+  if (found.length === 0) {
+    change(editor, typed, ended);
+    return;
+  }
   clearTimeout(editor.finding.timer);
   const edits = found.map(({ span, text, matches }) => ({
     kind: "replace" as const,
     span_id: span.id,
     text: replacedIn(text, matches, find.replacement),
   }));
-  change(editor, { kind: "add", edits }, (reading) => ({
+  change(editor, [typed, { kind: "add", edits }], (next) => ({
+    ...ended,
     said: spoken(changedSaid(found.length)),
-    find: { ...refound({ ...state, find }, reading), changed: found.length },
+    find: { ...refound({ ...next, find }, next.reading), changed: found.length },
   }));
 }
