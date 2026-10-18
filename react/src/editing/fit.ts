@@ -22,7 +22,13 @@ export interface LineScale {
 }
 
 /** A line set as the span is: what's drawn when no way out is taken. */
-export const AS_SET: LineScale = { size: 1, scaleX: 1 };
+const AS_SET: LineScale = { size: 1, scaleX: 1 };
+
+/** How a span reading other words is drawn: the way out, the scale it sets the line at, and the ways to choose from. */
+export interface Setting extends LineScale {
+  readonly way: Strategy;
+  readonly offered: readonly Strategy[];
+}
 
 const WHITESPACE = /\s/;
 
@@ -118,6 +124,27 @@ export function setAs(way: Strategy, { originalPt, deltaPt }: Pick<Fit, "origina
     default:
       return way satisfies never;
   }
+}
+
+/** The ways out to choose from: none when leaving the line long is the only one. */
+export function waysOffered({ options }: Pick<Fit, "options">): readonly Strategy[] {
+  return options.length > 1 ? options : [];
+}
+
+/** How `span` reading `text` is drawn, the way out `asked` while it's offered; as typed if its font can't be measured. */
+export function settingOf(
+  span: SpanInfo,
+  {
+    font,
+    text,
+    asked,
+    rules,
+  }: { font: FontInfo | undefined; text: string; asked: Strategy | undefined; rules: FitRules },
+): Setting {
+  if (font === undefined) return { way: "as-is", ...AS_SET, offered: [] };
+  const fit = fitOf(span, { font, text, rules });
+  const way = wayDrawn(asked, fit);
+  return { way, ...setAs(way, fit), offered: waysOffered(fit) };
 }
 
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */

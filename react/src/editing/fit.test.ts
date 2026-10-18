@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
 import { aFont, aSpan, COPY as copy, RULES } from "../fixtures";
-import { fitOf, missingIn, optionsFor, setAs, troublesOf, wayDrawn, widthPt } from "./fit";
+import { fitOf, missingIn, optionsFor, setAs, settingOf, troublesOf, wayDrawn, waysOffered, widthPt } from "./fit";
 import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
@@ -102,6 +102,28 @@ describe("a way out", () => {
     expect(setAs("shrink", fit)).toEqual({ size: 100 / 105, scaleX: 1 });
     expect(setAs("condense", fit)).toEqual({ size: 1, scaleX: 100 / 105 });
     expect(setAs("as-is", fit)).toEqual({ size: 1, scaleX: 1 });
+  });
+
+  test("is offered only where there's one to choose: leaving the line long alone is no choice", () => {
+    expect(waysOffered(fit)).toEqual(["shrink", "condense", "as-is"]);
+    expect(waysOffered({ options: ["as-is"] })).toEqual([]);
+    expect(waysOffered({ options: [] })).toEqual([]);
+  });
+
+  test("sets the line as drawn: the way asked while it's offered, as typed if the font can't be measured", () => {
+    const text = "abcdefghijklmnopqrstu";
+    expect(settingOf(long, { font, text, asked: "shrink", rules: RULES })).toEqual({
+      way: "shrink",
+      size: 100 / 105,
+      scaleX: 1,
+      offered: ["shrink", "condense", "as-is"],
+    });
+    expect(settingOf(long, { font: undefined, text, asked: "shrink", rules: RULES })).toEqual({
+      way: "as-is",
+      size: 1,
+      scaleX: 1,
+      offered: [],
+    });
   });
 
   test("taken, the line isn't too long any more; a missing letter still is said", () => {

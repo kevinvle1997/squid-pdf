@@ -18,7 +18,7 @@ import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
-import { AS_SET, fitOf, setAs, wayDrawn, widthPt } from "../fit";
+import { settingOf } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
 import { textIn } from "../project";
@@ -27,7 +27,7 @@ import { redact } from "../redaction";
 import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { fieldScaleOf, pinnedUnder, points, shownWidthPt, spanTextStyle } from "./geometry";
+import { fieldScaleOf, fieldWidthPt, pinnedUnder, points, spanTextStyle } from "./geometry";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -51,12 +51,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const rules = useEditorState((state) => state.doc.fit);
   const copy = useEditorState((state) => state.doc.copy);
   const asked = useEditorState((state) => state.draft?.strategy);
-  const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
-  const way = fit === undefined ? "as-is" : wayDrawn(asked, fit);
-  const set = fit === undefined ? AS_SET : setAs(way, fit);
-  // Leave it long alone is no choice: nothing to offer.
-  const choosable = fit !== undefined && fit.options.length > 1 ? fit.options : [];
-  const ways = choosable.map((id) => ({ id, label: copy.options[id]?.label ?? id }));
+  const setting = settingOf(span, { font, text, asked, rules });
+  const ways = setting.offered.map((id) => ({ id, label: copy.options[id]?.label ?? id }));
 
   // One trouble a line: a sentence of the server's, then the fit's own.
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
@@ -130,9 +126,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
 
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
-  // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback; half an em spare.
-  const typedWidth = Math.max(widthPt(text, glyphs, span.size), shownWidthPt(text, face, span.size));
-  const wide = Math.max(span.bbox.x1 - span.bbox.x0, typedWidth + span.size / 2);
   return (
     <>
       <TextField
@@ -161,15 +154,15 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           style={{
             ...where,
             "--field-size": fontSize,
-            "--field-width": points(wide, info),
+            "--field-width": points(fieldWidthPt(span, { text, face, glyphs }), info),
             "--field-height": height,
             "--field-scale": scale,
-            "--field-shrink": set.size,
-            "--field-narrow": set.scaleX,
+            "--field-shrink": setting.size,
+            "--field-narrow": setting.scaleX,
           }}
         />
       </TextField>
-      <div className={styles.chip} style={{ ...pinnedUnder(span.bbox, info), top: points(span.bbox.y1 + 4, info) }}>
+      <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
         {note !== null && (
           // Said as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
           <span className={styles.note}>
@@ -189,7 +182,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         ) : (
           <span className={styles.facts} aria-hidden="true">
             <span>{drawnIn}</span>
-            <Num>{SIZE.format(span.size * set.size)} pt</Num>
+            <Num>{SIZE.format(span.size * setting.size)} pt</Num>
             {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
             {shortWarning === null ? (
               <span className={styles.identical}>looks identical</span>
@@ -204,7 +197,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             <Choices
               label="How it fits"
               options={ways}
-              chosen={way}
+              chosen={setting.way}
               onChoose={(next) => chooseWayOut(editor, next)}
               keepFocus
             />
