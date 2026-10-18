@@ -3,9 +3,10 @@ import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/
 import type { Document, Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
-import { attachDropped, attachFont, copiesByName, detachFont, offersCopy } from "./fonts";
+import { attachDropped, attachFont, copiesByName, detachFont, drawnByOf, type FontCopies, offersCopy } from "./fonts";
 import { noticeLines } from "./notices";
 import { edit, finish, typeInto } from "./typing";
+import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -221,6 +222,20 @@ describe("the offer of the user's copy while typing", () => {
 
     expect(fits).toBe(false);
     expect(lacksY).toBe(true);
+  });
+});
+
+describe("what draws a row of the Fonts list", () => {
+  const font = aFont("Arial", { substitute: "Liberation Sans Regular", same_widths: true });
+  const row: FontCopies = { shownName: "Arial", names: ["Arial"], font, attached: false };
+
+  test("is said in the server's words, a similar font warned", () => {
+    expect(drawnByOf(row, COPY)).toEqual({
+      said: fill(COPY.substitute_same_widths, { font: "Liberation Sans Regular" }),
+      warn: true,
+    });
+    expect(drawnByOf({ ...row, attached: true }, COPY)).toEqual({ said: COPY.drawn_in_your_copy, warn: false });
+    expect(drawnByOf({ ...row, font: aFont("Arial") }, COPY)).toEqual({ said: COPY.drawn_in_own_copy, warn: false });
   });
 });
 
