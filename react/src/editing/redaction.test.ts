@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { render } from "../api/client";
+import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aSpan, COPY } from "../fixtures";
 import { commandFor } from "./commands";
@@ -7,14 +7,14 @@ import { createEditor, type Editor, undo } from "./editor";
 import { editAnyway, keepRedaction, redact } from "./redaction";
 import { edit, finish, typeInto } from "./typing";
 
-vi.mock(import("../api/client"), async (original) => ({ ...(await original()), render: vi.fn() }));
+vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
 const DOC = aDoc({ spans: [aSpan({ id: "name", text: "John Smith" }), aSpan({ id: "other", text: "Acme" })] });
 
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(render)
+  vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
@@ -31,7 +31,7 @@ describe("redacting", () => {
     expect(state.reading.spans.get("name")?.redacted).toBe(true);
     expect(state.said.text).toBe("Redacted John Smith");
     expect(state.focusTo).toEqual({ spanId: "name" });
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(renderStrips).toHaveBeenCalledTimes(1);
   });
 
   test("while typing, Cmd or Ctrl with Backspace or Delete is the field's own, deleting a word or a line", () => {

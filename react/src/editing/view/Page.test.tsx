@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import "@fontsource/atkinson-hyperlegible-next/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { ProblemError, pageImage, render as renderOnServer } from "../../api/client";
+import { ProblemError, pageImage, renderStrips } from "../../api/client";
 import type { PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
@@ -23,7 +23,7 @@ vi.mock(import("../../documents/kept"), async (original) => ({
 
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
-  render: vi.fn(),
+  renderStrips: vi.fn(),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
 }));
@@ -51,7 +51,7 @@ const DOC = aDoc({ spans: [span, elsewhere], fonts: [aFont("Times-Roman", { glyp
 let editor: Editor;
 
 beforeEach(() => {
-  vi.mocked(renderOnServer)
+  vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
@@ -315,7 +315,7 @@ describe("a page", () => {
     await editSpan(screen);
     await screen.getByRole("textbox").fill("is here");
     await userEvent.keyboard("{Enter}");
-    expect(vi.mocked(renderOnServer)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(renderStrips)).toHaveBeenCalledTimes(1);
     await expect.element(screen.getByRole("button", { name: "is here" })).toHaveFocus();
 
     const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
@@ -442,7 +442,7 @@ describe("a page", () => {
 
   test("the server's render of one page doesn't draw another again", async () => {
     let land: (reply: Render) => void = () => undefined;
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>((resolve) => (land = resolve)));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>((resolve) => (land = resolve)));
     const screen = await draw(1);
     await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
     edit(editor, span.id, null);
@@ -457,7 +457,7 @@ describe("a page", () => {
 
   test("a render that says other than its preview settles over its span; one that agrees swaps in silently", async () => {
     let land: (reply: Render) => void = () => undefined;
-    vi.mocked(renderOnServer).mockImplementation(() => new Promise<Render>((resolve) => (land = resolve)));
+    vi.mocked(renderStrips).mockImplementation(() => new Promise<Render>((resolve) => (land = resolve)));
     const screen = await draw();
     await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
     const settles = () => screen.container.querySelectorAll<HTMLElement>("[data-settle]");
@@ -492,7 +492,7 @@ describe("a page", () => {
 
   test("an edit the server drew other than typed keeps the change's solid line, with a warning's dashed one under it", async () => {
     const message = "no h in this font, so the line is drawn in Liberation Serif Regular";
-    vi.mocked(renderOnServer).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ missing: ["h"], message }) } }));
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ missing: ["h"], message }) } }));
     const screen = await draw();
     await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
     edit(editor, span.id, null);
@@ -528,7 +528,7 @@ describe("a page", () => {
     /** Both spans changed, and the server's strips for them in. */
     async function bothChanged(other: typeof below, images: { page: number; y: number; image: string }[]) {
       editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [span, other], fonts: DOC.fonts }), 2);
-      vi.mocked(renderOnServer).mockResolvedValue(aReply({ images }));
+      vi.mocked(renderStrips).mockResolvedValue(aReply({ images }));
       const screen = await draw();
       await expect.element(screen.getByRole("button", { name: WORDS }).first()).toBeInTheDocument();
       for (const id of [span.id, other.id]) {
@@ -537,7 +537,7 @@ describe("a page", () => {
         finish(editor, true);
       }
       await expect.poll(() => screen.container.querySelectorAll("img[data-strip]").length).toBe(images.length);
-      vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+      vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
       return screen;
     }
 

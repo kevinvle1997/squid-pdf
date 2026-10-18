@@ -13,7 +13,7 @@ import { aDoc, aFont, aSpan } from "./fixtures";
 vi.mock(import("./api/client"), async (original) => ({
   ...(await original()),
   upload: vi.fn(),
-  render: vi.fn(() => new Promise<Render>(() => undefined)),
+  renderStrips: vi.fn(() => new Promise<Render>(() => undefined)),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
 }));

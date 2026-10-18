@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ProblemError, pageImage, render, stillThere } from "../api/client";
+import { ProblemError, pageImage, renderStrips, stillThere } from "../api/client";
 import type { Render } from "../api/types";
 import { A4, aDoc, aProblem } from "../fixtures";
 import { IMAGE_RETRY_FIRST_MS } from "./constants";
@@ -8,7 +8,7 @@ import { imageFailed, imageLoaded, retryImages } from "./images";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
-  render: vi.fn(),
+  renderStrips: vi.fn(),
   stillThere: vi.fn(),
   pageImage: vi.fn(),
 }));
@@ -19,7 +19,7 @@ let editor: Editor;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.mocked(render).mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(stillThere).mockReset().mockResolvedValue(true);
   vi.mocked(pageImage)
     .mockReset()

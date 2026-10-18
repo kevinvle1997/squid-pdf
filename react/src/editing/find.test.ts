@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render } from "../api/client";
+import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
@@ -21,7 +21,7 @@ import {
   typeReplacement,
 } from "./find";
 
-vi.mock(import("../api/client"), async (original) => ({ ...(await original()), render: vi.fn() }));
+vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
 // Every letter these tests type, as wide as each other, so "14 June" fits where "14 March" was.
 const glyphs = Object.fromEntries([..." 0123456789MarchJunewsoifdtly"].map((letter) => [letter, 500]));
@@ -39,7 +39,7 @@ let editor: Editor;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.mocked(render).mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
   change(editor, { kind: "add", edits: [{ kind: "redact", span_id: "redacted" }] });
   openFind(editor);

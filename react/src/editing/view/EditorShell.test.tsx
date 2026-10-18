@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
-import { exportPdf, ProblemError, putFont, render as renderOnServer, stillThere, upload } from "../../api/client";
+import { exportPdf, ProblemError, putFont, renderStrips, stillThere, upload } from "../../api/client";
 import type { Render } from "../../api/types";
 import { keepFile, keepState } from "../../documents/kept";
 import { A4, aDoc, aFont, aProblem, aReply, aSkipped, aSpan, aSpanNotice, COPY } from "../../fixtures";
@@ -20,7 +20,7 @@ vi.mock(import("../../documents/kept"), async (original) => ({
 
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
-  render: vi.fn(),
+  renderStrips: vi.fn(),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
   putFont: vi.fn(),
@@ -32,7 +32,7 @@ const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 1
 const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman")] });
 
 beforeEach(() => {
-  vi.mocked(renderOnServer).mockReset();
+  vi.mocked(renderStrips).mockReset();
   vi.mocked(putFont).mockReset();
 });
 
@@ -49,7 +49,7 @@ describe("the editor", () => {
   test("what the server's render says it did other than asked is shown under the bar, and heard", async () => {
     const drewOtherwise = "This page wouldn't take Times, so the line is drawn in Liberation Serif.";
     const leftOut = "An edit points at text that isn't in this document, so it was left out.";
-    vi.mocked(renderOnServer).mockResolvedValue(
+    vi.mocked(renderStrips).mockResolvedValue(
       aReply({ notices: [aSpanNotice(drewOtherwise, span.id)], skipped: [aSkipped(0, leftOut)] }),
     );
     const screen = await render(
@@ -62,7 +62,7 @@ describe("the editor", () => {
   });
 
   test("every notice the document opened with is shown, not only the first, and heard", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const notices = [
       { code: "a", params: {}, type: "t", detail: "Some text is in a font we can't use." },
       { code: "b", params: {}, type: "t", detail: "This file is signed; editing breaks the signature." },
@@ -79,7 +79,7 @@ describe("the editor", () => {
 
 describe("the bar", () => {
   test("says when the document couldn't be opened again, where the document's name is", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const unreachable = "We can't work on files right now. Try again in a few minutes.";
     vi.mocked(stillThere).mockRejectedValueOnce(new ProblemError(aProblem(503, unreachable)));
     const screen = await render(
@@ -103,7 +103,7 @@ describe("the bar", () => {
   });
 
   test("with nothing changed, it says how to start editing, and stops once something has", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
@@ -114,7 +114,7 @@ describe("the bar", () => {
   });
 
   test("before any change, it counts the places an edit will use a similar font, warned; then the changes", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
     );
@@ -154,7 +154,7 @@ describe("the bar", () => {
 
 describe("export", () => {
   test("says it's under way only past the quiet spell, so a quick one shows nothing", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(exportPdf).mockReturnValue(new Promise(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
@@ -171,7 +171,7 @@ describe("export, started on the way to pressing it", () => {
   const PDF = { pdf: new Blob(["%PDF-"], { type: "application/pdf" }), skipped: [], notices: [] };
 
   beforeEach(() => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(exportPdf).mockReset().mockResolvedValue(PDF);
   });
 
@@ -246,7 +246,7 @@ describe("export, started on the way to pressing it", () => {
 
 describe("an emptied span", () => {
   test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
@@ -263,7 +263,7 @@ describe("an emptied span", () => {
 
 describe("redaction", () => {
   test("Cmd+Delete redacts the span, and editing it asks first, beside it: Escape keeps it, Edit anyway opens it", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
@@ -289,7 +289,7 @@ describe("redaction", () => {
   });
 
   test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
@@ -311,7 +311,7 @@ describe("leaving the page", () => {
   };
 
   test("asks first only while edits since the last export aren't kept in this browser yet", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     let kept: () => void = () => undefined;
     vi.mocked(keepState).mockReturnValueOnce(new Promise((resolve) => (kept = resolve)));
     const screen = await render(
@@ -326,7 +326,7 @@ describe("leaving the page", () => {
   });
 
   test("asks first when this browser keeps nothing, as a private window may", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(keepFile).mockRejectedValueOnce(new DOMException("refused", "InvalidStateError"));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
@@ -337,7 +337,7 @@ describe("leaving the page", () => {
   });
 
   test("work kept here comes back with the user's copies of its fonts, given again to a server that lost it", async () => {
-    vi.mocked(renderOnServer)
+    vi.mocked(renderStrips)
       .mockRejectedValueOnce(new ProblemError(aProblem(404, "Not found.")))
       .mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(upload).mockResolvedValueOnce({ ...ARIAL_DOC, id: "again" });
@@ -360,7 +360,7 @@ describe("leaving the page", () => {
   });
 
   test("each change is kept as it's made: the file once, then the history, until the server's hour ends", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(keepFile).mockClear();
     vi.mocked(keepState).mockClear();
     const file = new File(["%PDF-"], "contract.pdf");
@@ -381,7 +381,7 @@ describe("leaving the page", () => {
 
 describe("undo and redo", () => {
   test("are heard, the same words again too, and bring their span into view while focus stays", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     // The span is on the third page, well below the first screen.
     const far = aSpan({ ...span, page: 2 });
     const doc = aDoc({ spans: [far], fonts: [aFont("Times-Roman")], pages: [A4, A4, A4] });
@@ -439,7 +439,7 @@ async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>, fi
 
 describe("the user's own copy of a font", () => {
   test("is offered while typing only once a letter typed is one the font can't draw", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
     );
@@ -451,7 +451,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("shares the chip with why an edit won't match, side by side, neither over the other", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     // The file's own Times draws it, turned on the page, and has no Y.
     const turned = aSpan({ ...span, fidelity: "approximate", why: { code: "turned_text", params: {} } });
     const own = aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
@@ -472,7 +472,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("a font file dropped on the field is the user's copy of the span's font", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
@@ -495,7 +495,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("text dragged onto the field is the field's to take, not a font", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
     );
@@ -515,7 +515,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("a file picker taking the window's focus leaves the typing as it was", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
     );
@@ -532,7 +532,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("attached, its font draws the span and nothing pops up to say so", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
@@ -548,7 +548,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("attached, the field draws in it at once, until a letter it lacks is typed", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
     // A real font file, so the browser can read it: one of ours, standing in for the user's Arial.
     const bytes = await (await fetch(SOME_FONT)).arrayBuffer();
@@ -568,7 +568,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("refused, the server's sentence shows beside the font, warned", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockRejectedValue(new ProblemError(aProblem(422, MISMATCH)));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
@@ -581,7 +581,7 @@ describe("the user's own copy of a font", () => {
   });
 
   test("Split here sits between pages only, and splits the document after the page above it", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(exportPdf)
       .mockReset()
       .mockReturnValue(new Promise(() => undefined));
@@ -610,7 +610,7 @@ describe("a file dropped on the editor", () => {
   const PDF = new File(["%PDF-"], "invoice.pdf", { type: "application/pdf" });
 
   test("never reaches the browser; a PDF opens, but not over changes no export has taken, and a font says where it goes", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const onOpen = vi.fn();
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={onOpen} />,
@@ -635,7 +635,7 @@ describe("a file dropped on the editor", () => {
 
 describe("find and replace", () => {
   test("Cmd+F opens find with focus in it; it counts, changes all, and Escape gives focus back to Find", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
@@ -658,7 +658,7 @@ describe("find and replace", () => {
   });
 
   test("Match case and Whole words are checkboxes beside the fields, and find again as they're ticked", async () => {
-    vi.mocked(renderOnServer).mockReturnValue(new Promise<Render>(() => undefined));
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
       <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
     );
