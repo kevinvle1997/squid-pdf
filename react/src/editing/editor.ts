@@ -20,7 +20,7 @@ import type { PageImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
 import { wontMatch } from "./marks";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
-import { project, type Reading, UNEDITED } from "./project";
+import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
@@ -276,9 +276,9 @@ function stepped(editor: Editor, action: HistoryAction, { step, words }: { step:
     change(editor, action);
     return;
   }
-  const original = editor.store.get().layout.spans.get(spanId)?.text ?? "";
+  const span = editor.store.get().layout.spans.get(spanId);
   change(editor, action, (reading) => ({
-    said: spoken(`${words} ${reading.spans.get(spanId)?.text ?? original}`),
+    said: spoken(`${words} ${span === undefined ? "" : textIn(reading, span)}`),
     scrollTo: scrollingTo(spanId),
   }));
 }
@@ -305,11 +305,12 @@ export function say(editor: Editor, text: string): void {
 
 /** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
 export function unexported(state: EditorState): boolean {
-  const { edits, spans } = state.reading;
-  const { draft, layout, exported } = state;
-  const reads = draft === null ? undefined : (spans.get(draft.spanId)?.text ?? layout.spans.get(draft.spanId)?.text);
+  const { draft, layout, exported, reading } = state;
+  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
+  const reads = span === undefined ? undefined : textIn(reading, span);
   // Closing the tab ends no typing: what's in the field never reaches the history.
   if (draft !== null && draft.text !== reads) return true;
+  const { edits } = reading;
   return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 

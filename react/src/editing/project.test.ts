@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { Edit, Insert } from "../api/types";
 import { aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
-import { differing, project, type Reading, samePage, sameSpan } from "./project";
+import { differing, project, type Reading, samePage, sameSpan, textIn } from "./project";
 
 const SPANS = [aSpan({ id: "a" }), aSpan({ id: "b" }), aSpan({ id: "c", page: 1 })];
 const replace = (span_id: string, text: string): Edit => ({ kind: "replace", span_id, text });
@@ -32,6 +32,12 @@ describe("what the document reads as", () => {
     expect(reading.spans.get("a")?.text).toBe("two");
     expect(reading.edits).toEqual([replace("a", "two")]);
     expect(reading.ids).toEqual([2]);
+  });
+
+  test("what a span reads is its edit's words, else its own", () => {
+    const reading = read(add(EMPTY_HISTORY, replace("a", "one")));
+    expect(textIn(reading, aSpan({ id: "a" }))).toBe("one");
+    expect(textIn(reading, aSpan({ id: "b" }))).toBe("was b");
   });
 
   test("a span changed and changed back reads as untouched, and nothing is sent for it", () => {

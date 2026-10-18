@@ -6,7 +6,7 @@ import { FIND_DELAY_MS } from "./constants";
 import { change, type Editor, type EditorState, spoken } from "./editor";
 import { fitOf, runsPast, widthPt } from "./fit";
 import { wontMatch } from "./marks";
-import type { Reading } from "./project";
+import { type Reading, textIn } from "./project";
 import { finish } from "./typing";
 import { counted } from "./words";
 
@@ -152,7 +152,7 @@ function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Readi
   for (const span of spans) {
     const now = reading.spans.get(span.id);
     if (span.form_field || now?.redacted) continue;
-    const text = now?.text ?? span.text;
+    const text = textIn(reading, span);
     const places = placesIn(text, find.searched, find);
     if (places.length > 0) found.push({ span, text, places });
   }
