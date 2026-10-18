@@ -21,12 +21,7 @@
 .status { font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Nothing to count: no gap for it, and on a narrow screen no share of the row. */
 .status:empty { display: none; }
-/* Out of sight, and out of the accessibility tree, until the quiet spell is over. */
-.exporting {
-  font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap;
-  animation: after-quiet var(--dur-quick) var(--ease-out) backwards;
-}
-@keyframes after-quiet { from { visibility: hidden; opacity: 0; } }
+.exporting { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; }
 /* The tools and the one action, held together, each on one line: a focus ring's width apart. */
 .actions { flex: none; display: flex; align-items: center; gap: var(--s2); }
 .actions button { white-space: nowrap; }

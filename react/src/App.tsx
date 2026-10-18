@@ -60,21 +60,12 @@ function Screens() {
     const opening = await openFile(file, (sent, total) =>
       setScreen((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
     );
-    setScreen(
-      "opened" in opening ? { kind: "open", opened: opening.opened } : { kind: "failed", detail: opening.failed },
-    );
+    setScreen(opening);
   }
 
   if (screen.kind !== "open") {
-    const offered =
-      screen.kind === "waiting" && kept !== null ? { name: kept.file.name, until: kept.until } : undefined;
     return (
-      <Drop
-        landing={screen.kind === "waiting" ? { kind: "waiting", kept: offered } : screen}
-        onChoose={(file) => void open(file)}
-        onReopen={reopen}
-        onForget={forget}
-      />
+      <Drop landing={screen} kept={kept} onChoose={(file) => void open(file)} onReopen={reopen} onForget={forget} />
     );
   }
   const { opened } = screen;
