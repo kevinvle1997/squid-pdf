@@ -1,18 +1,10 @@
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-react";
 import "../styles/tokens.css";
+import { colorOf } from "../testing";
 import { Button } from "./Button";
 import { Sheet } from "./Sheet";
 import { Warn } from "./Warn";
-
-/** The colour a token resolves to outside any sheet, as the browser computes it. */
-function colorOf(token: string): string {
-  const probe = document.body.appendChild(document.createElement("span"));
-  probe.style.color = `var(${token})`;
-  const color = getComputedStyle(probe).color;
-  probe.remove();
-  return color;
-}
 
 afterEach(() => {
   delete document.documentElement.dataset.theme;

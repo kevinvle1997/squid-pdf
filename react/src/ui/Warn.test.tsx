@@ -1,16 +1,8 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-react";
 import "../styles/tokens.css";
+import { colorOf } from "../testing";
 import { Warn } from "./Warn";
-
-/** The colour a token resolves to here, as the browser computes it. */
-function colorOf(token: string): string {
-  const probe = document.body.appendChild(document.createElement("span"));
-  probe.style.color = `var(${token})`;
-  const color = getComputedStyle(probe).color;
-  probe.remove();
-  return color;
-}
 
 test("a warning is in --warn and bold, so it never reads as decoration", async () => {
   const screen = await render(<Warn>no é in this font</Warn>);

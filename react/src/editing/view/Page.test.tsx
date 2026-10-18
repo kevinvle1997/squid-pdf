@@ -7,6 +7,7 @@ import "../../styles/base.css";
 import { ProblemError, pageImage, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, COPY, halfWideGlyphs } from "../../fixtures";
+import { colorOf } from "../../testing";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
@@ -124,15 +125,6 @@ function farAway() {
   spacer.style.height = "20000px";
   document.body.append(spacer);
   window.scrollTo(0, 15000);
-}
-
-/** The colour `token` sets, read off a probe taken out again. */
-function colorOf(token: string): string {
-  const probe = document.body.appendChild(document.createElement("span"));
-  probe.style.color = `var(${token})`;
-  const color = getComputedStyle(probe).color;
-  probe.remove();
-  return color;
 }
 
 /** The sheet of the page `element` is on: the box after its margin that the page is drawn in. */
