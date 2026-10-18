@@ -28,14 +28,15 @@ vi.mock(import("../../api/client"), async (original) => ({
   pageImage: vi.fn(async () => undefined),
 }));
 
-// The page draws its margin twice each time it's drawn itself, so counting the margin counts the page.
+// The page draws its margin each time it's drawn itself, so counting the margin counts the page.
 const drawn = vi.hoisted(() => ({ margins: 0 }));
 vi.mock(import("./Margin"), async (original) => {
-  const { Margin } = await original();
+  const module = await original();
   return {
-    Margin: (props: Parameters<typeof Margin>[0]) => {
+    ...module,
+    Margin: (props: Parameters<typeof module.Margin>[0]) => {
       drawn.margins++;
-      return Margin(props);
+      return module.Margin(props);
     },
   };
 });

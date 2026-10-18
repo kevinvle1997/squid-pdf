@@ -32,6 +32,19 @@ export function changedWordsIn(original: string, now: string): string {
   return original.slice(first.index, last.index + last[0].length);
 }
 
+/** What one change's note says: its name, for what pressing it undoes, and its words beside the page and under it. */
+export interface NoteWords {
+  readonly label: string;
+  readonly struck: string; // the original's words it took out, struck through beside the page
+  readonly now: string; // what the span reads now, in the list under the page
+}
+
+/** The words of the note for `change`. A redaction takes every word out, so the note strikes them all. */
+export function noteOf({ span, text, redacted }: SpanReading): NoteWords {
+  if (redacted) return { label: `Undo: “${span.text}” is no longer redacted`, struck: span.text, now: "Redacted" };
+  return { label: `Undo: “${text}” goes back to “${span.text}”`, struck: changedWordsIn(span.text, text), now: text };
+}
+
 /** How many of `words` from the start, up to `limit`, `now` has too, in the same places. */
 function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], limit: number): number {
   let count = 0;

@@ -1,7 +1,8 @@
-import { Button } from "react-aria-components";
+import type { ReactNode } from "react";
+import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { putBack } from "../editor";
-import { changedWordsIn, notePlaces } from "../margin";
+import { noteOf, notePlaces } from "../margin";
 import type { SpanReading } from "../project";
 import { useEditor } from "./context";
 import { topOf } from "./geometry";
@@ -11,60 +12,67 @@ interface Props {
   info: PageInfo;
   changes: readonly SpanReading[]; // the spans replaced or redacted on this page
   noteHeightPt: number; // a note's height in page points, to keep notes a hit area apart
-  shape: "margin" | "list";
-  label: string;
+  pageNumber: number;
 }
 
 /**
- * The user's own changes, each a button that puts the original back. Beside the page on
- * a wide screen, in a list under it on a narrow one; CSS shows one or the other.
+ * The user's own changes beside the page, each a button that puts the original back, level with its
+ * line. On a narrow screen CSS shows the list under the page instead (`ChangeList`).
  */
-export function Margin({ info, changes, noteHeightPt, shape, label }: Props) {
-  const editor = useEditor();
-  if (changes.length === 0) return shape === "margin" ? <div className={styles.margin} /> : null;
-
-  const notes = changes.map(({ span, text: now, redacted }) => (
-    <Button
-      key={span.id}
-      className={styles.note}
-      aria-label={
-        redacted ? `Undo: “${span.text}” is no longer redacted` : `Undo: “${now}” goes back to “${span.text}”`
-      }
-      onPress={() => putBack(editor, span.id)}
-    >
-      {/* Beside the page a note is only struck words: pointed at or focused, it shows it undoes. */}
-      {shape === "margin" && <UndoMark />}
-      {/* A redaction takes every word out, so the note strikes them all. */}
-      <span className={styles.old}>{shape === "margin" && !redacted ? changedWordsIn(span.text, now) : span.text}</span>
-      {shape === "list" && <span className={styles.now}>{redacted ? "Redacted" : now}</span>}
-      {/* The list is a phone's per-change undo, with no Cmd+Z: each line says it's pressed to undo. */}
-      {shape === "list" && <span className={styles.undo}>Undo</span>}
-      <i className={styles.bar} aria-hidden="true" />
-    </Button>
-  ));
-
-  if (shape === "list") {
-    return (
-      <section className={styles.list} aria-label={`Your changes on ${label.toLowerCase()}`}>
-        <ul>
-          {notes.map((note) => (
-            <li key={note.key}>{note}</li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
-
+export function Margin({ info, changes, noteHeightPt, pageNumber }: Props) {
+  // Its grid cell stays, so a page with no changes keeps its column.
+  if (changes.length === 0) return <div className={styles.margin} />;
   const places = notePlaces(changes, noteHeightPt);
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
-    <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">
-      {notes.map((note, index) => (
-        <div key={note.key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-          {note}
-        </div>
-      ))}
-    </div>
+    <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
+      {changes.map((change, index) => {
+        const note = noteOf(change);
+        return (
+          <div key={change.span.id} className={styles.place} style={topOf(places[index] ?? 0, info)}>
+            <UndoNote spanId={change.span.id} label={note.label}>
+              {/* Beside the page a note is only struck words: pointed at or focused, it shows it undoes. */}
+              <UndoMark />
+              <span className={styles.old}>{note.struck}</span>
+            </UndoNote>
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
+/** The user's own changes in a list under the page, on a narrow screen: a phone's per-change undo. */
+export function ChangeList({ changes, pageNumber }: { changes: readonly SpanReading[]; pageNumber: number }) {
+  if (changes.length === 0) return null;
+  return (
+    <section className={styles.list} aria-label={`Your changes on page ${pageNumber}`}>
+      <ul>
+        {changes.map((change) => {
+          const note = noteOf(change);
+          return (
+            <li key={change.span.id}>
+              <UndoNote spanId={change.span.id} label={note.label}>
+                <span className={styles.old}>{change.span.text}</span>
+                <span className={styles.now}>{note.now}</span>
+                {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}
+                <span className={styles.undo}>Undo</span>
+              </UndoNote>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** One change's note: a button that puts the span's original back, named for what it undoes. */
+function UndoNote({ spanId, label, children }: { spanId: string; label: string; children: ReactNode }) {
+  const editor = useEditor();
+  return (
+    <Button className={styles.note} aria-label={label} onPress={() => putBack(editor, spanId)}>
+      {children}
+      <i className={styles.bar} aria-hidden="true" />
+    </Button>
   );
 }
 
