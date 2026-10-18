@@ -5,8 +5,9 @@ import { type Exported, exportPdf } from "../api/client";
 import type { Edit } from "../api/types";
 import { sentenceOf } from "../bugs";
 import { EXPORT_INTENT_MS } from "./constants";
-import { type Editor, spoken } from "./editor";
+import { type Editor, type EditorState, spoken } from "./editor";
 import { type Notice, plain, warn } from "./notices";
+import { textIn } from "./project";
 import { finish } from "./typing";
 
 /** The export started before Export was pressed, and when it starts: the pointer has rested on it a moment. */
@@ -18,6 +19,17 @@ export interface ExportAhead {
     readonly file: Promise<Exported>;
     answered: boolean;
   };
+}
+
+/** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
+export function unexported(state: EditorState): boolean {
+  const { draft, layout, exported, reading } = state;
+  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
+  const reads = span === undefined ? undefined : textIn(reading, span);
+  // Closing the tab ends no typing: what's in the field never reaches the history.
+  if (draft !== null && draft.text !== reads) return true;
+  const { edits } = reading;
+  return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 
 /** The pointer rests on Export, or focus does: once it has a moment, the export starts, for the press to take. */
@@ -87,14 +99,14 @@ function download(pdf: Blob, name: string): void {
 }
 
 export async function exportNow(editor: Editor): Promise<void> {
-  await exported(editor, [{ pages: undefined, name: editor.file.name }]);
+  await exportParts(editor, [{ pages: undefined, name: editor.file.name }]);
 }
 
 /** Download the document as two files: its pages up to `page`, and the rest. Every edit goes to both. */
 export async function splitAfter(editor: Editor, page: number): Promise<void> {
   const count = editor.store.get().doc.pages.length;
   const [before, after] = splitPages(count, page);
-  await exported(
+  await exportParts(
     editor,
     [before, after].map((pages) => ({ pages, name: partName(editor.file.name, pages) })),
   );
@@ -115,7 +127,7 @@ export function partName(fileName: string, pages: readonly number[]): string {
 }
 
 /** Download each part in turn, stopping at the first that fails, and say everything once. */
-async function exported(editor: Editor, parts: readonly Part[]): Promise<void> {
+async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void> {
   const { store } = editor;
   if (store.get().exporting) return;
   finish(editor, true);

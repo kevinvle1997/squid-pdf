@@ -1,10 +1,19 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FontInfo, SpanInfo, Strategy } from "../api/types";
-import { change, type Draft, type Editor, type EditorState, spoken } from "./editor";
+import { change, type Editor, type EditorState, spoken } from "./editor";
 import { fallbackFaceOf } from "./faces";
 import { type Fit, fitOf, troubleKindOf, troublesOf, wayDrawn } from "./fit";
 import type { Reading } from "./project";
+
+/** The text being typed into a span, not yet in the history. */
+export interface Draft {
+  readonly spanId: string;
+  readonly page: number;
+  readonly atPt: number | null; // where in the span the press was, from its start: the word to select
+  readonly text: string;
+  readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
+}
 
 /** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
 export function edit(editor: Editor, spanId: string, atPt: number | null): void {

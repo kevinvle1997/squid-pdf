@@ -1,7 +1,8 @@
 // The work on the open document, kept in this browser as it changes (documents/kept.ts), so a
 // reload or a closed tab loses none of it; and the editor started again from work kept before.
 import { keepFile, keepState } from "../documents/kept";
-import { type Editor, unexported } from "./editor";
+import type { Editor } from "./editor";
+import { unexported } from "./export";
 import { addOwnFace } from "./faces";
 import { entriesOf, type History } from "./history";
 import { project, UNEDITED } from "./project";
