@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { classes } from "./classes";
 import styles from "./Sheet.module.css";
 import { Trim } from "./Trim";
 
@@ -7,5 +8,5 @@ import { Trim } from "./Trim";
  * set on it reads as on white in both themes; the sheet itself keeps the theme's tokens, for its edge.
  */
 export function Sheet({ className, children }: { className?: string; children: ReactNode }) {
-  return <Trim className={className === undefined ? styles.sheet : `${styles.sheet} ${className}`}>{children}</Trim>;
+  return <Trim className={classes(styles.sheet, className)}>{children}</Trim>;
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { classes } from "./classes";
 import styles from "./Trim.module.css";
 
 /**
@@ -6,5 +7,5 @@ import styles from "./Trim.module.css";
  * so a sheet that clips its own overflow goes inside it, or beside an empty one in the same grid cell.
  */
 export function Trim({ className, children }: { className?: string; children?: ReactNode }) {
-  return <div className={className === undefined ? styles.trim : `${styles.trim} ${className}`}>{children}</div>;
+  return <div className={classes(styles.trim, className)}>{children}</div>;
 }

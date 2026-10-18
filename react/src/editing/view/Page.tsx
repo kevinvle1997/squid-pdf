@@ -1,6 +1,7 @@
 import { memo, type ReactNode, type Ref, useCallback, useMemo, useState } from "react";
 import { useFocusWithin } from "react-aria";
 import type { PageInfo } from "../../api/types";
+import { classes } from "../../ui/classes";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
 import { LAZY_MARGIN } from "../constants";
@@ -92,7 +93,7 @@ export const Page = memo(function Page({ index, info }: Props) {
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
           <img
             key={page.image?.tries ?? 0}
-            className={page.image?.failed == null ? styles.image : `${styles.image} ${styles.missing}`}
+            className={classes(styles.image, page.image?.failed != null && styles.missing)}
             src={page.src}
             alt=""
             decoding="async"

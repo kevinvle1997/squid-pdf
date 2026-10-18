@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useSyncExternalStore } from "react";
 import { Button, type PressEvent } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, RedactionInfo, SpanInfo } from "../../api/types";
+import { classes } from "../../ui/classes";
 import { atPtOf } from "../caret";
 import { onEscape } from "../commands";
 import { DOUBLE_PRESS_MS } from "../constants";
@@ -72,16 +73,14 @@ export const SpanMark = memo(function SpanMark(props: Props) {
     window.addEventListener("pointerdown", () => notes.hide(span.id), { once: true, capture: true });
   }
 
-  const className = [
+  const className = classes(
     styles.span,
     look.formField && styles.formField,
     look.changed && styles.changed,
     look.trouble && styles.trouble,
     look.redacted && styles.redacted,
     look.unredacted && styles.unredacted,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  );
 
   return (
     <Button
