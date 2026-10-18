@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import unicodedata
 from importlib import resources
 
@@ -69,6 +70,16 @@ def test_every_face_we_ship_is_the_file_it_names_and_draws():
     shipped = {path.name for path in resources.files("squidpdf").joinpath("fonts").iterdir()}
     font_files = {name for name in shipped if name.endswith((".ttf", ".otf"))}
     assert_equal(font_files, {face.file for face in CATALOG}, "font files, each in the catalog")
+
+
+def test_the_browser_finds_every_face_we_ship_by_its_name():
+    """The preview finds each face's file in `face-files.json`, as the catalog files it."""
+    listed = resources.files("squidpdf").joinpath("fonts", "face-files.json").read_text("utf-8")
+    assert_equal(
+        json.loads(listed),
+        {face.name: face.file for face in CATALOG},
+        "each face's file, by name (rebuild: uv run python scripts/face_files.py)",
+    )
 
 
 def test_glyph_advances_agree_with_the_server_measure(engine):

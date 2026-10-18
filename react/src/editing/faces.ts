@@ -1,17 +1,11 @@
 // The faces the preview draws in: the very files the server draws with, from
 // src/squidpdf/fonts, so a preview has the widths the render will have.
+import faceFiles from "../../../src/squidpdf/fonts/face-files.json";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { missingIn } from "./fit";
 
-// Longest first, so "Bold Italic" isn't read as "Italic".
-const STYLES = ["Bold Italic", "Bold", "Italic", "Regular"];
-
-/** A face's file, named as core/fonts/catalog.py names it: "Liberation Serif Bold" is LiberationSerif-Bold.ttf. */
-export function fileOf(face: string): string {
-  const style = STYLES.find((name) => face.endsWith(` ${name}`)) ?? "Regular";
-  const family = face.endsWith(` ${style}`) ? face.slice(0, -style.length - 1) : face;
-  return `${family.replaceAll(" ", "")}-${style.replaceAll(" ", "")}.ttf`;
-}
+// Each face's file, by its name, as the catalog files it: some families keep their source's file names.
+const FACE_FILES: Readonly<Record<string, string>> = faceFiles;
 
 /** The substitute a letter no copy of the span's font has is drawn in: the span's own, else its font's look-alike. */
 export function substituteOf(span: SpanInfo, font: FontInfo): string {
@@ -29,7 +23,7 @@ export function previewFaceOf(span: SpanInfo, { font, text }: { font: FontInfo; 
   return substituteOf(span, font);
 }
 
-const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
+const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.{ttf,otf}", {
   query: "?url",
   import: "default",
   eager: true,
@@ -38,7 +32,10 @@ const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.ttf", {
 /** The face a span previews in when its font isn't known. */
 export const DEFAULT_FACE = "Liberation Serif Regular";
 
-const urlOf = (face: string): string | undefined => FILES[`../../../src/squidpdf/fonts/${fileOf(face)}`];
+const urlOf = (face: string): string | undefined => {
+  const file = FACE_FILES[face];
+  return file === undefined ? undefined : FILES[`../../../src/squidpdf/fonts/${file}`];
+};
 const familyName = (face: string) => `preview ${face}`;
 const added = new Set<string>();
 

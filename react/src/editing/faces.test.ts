@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vitest";
+import FACE_FILES from "../../../src/squidpdf/fonts/face-files.json";
 import { aDoc, aFont, aSpan } from "../fixtures";
-import { DEFAULT_FACE, facesOf, fileOf, previewFaceOf } from "./faces";
+import { DEFAULT_FACE, facesOf, familyOf, previewFaceOf } from "./faces";
 
 describe("preview faces", () => {
-  test("a face's file is named as the server names it", () => {
-    expect(fileOf("Liberation Serif Bold")).toBe("LiberationSerif-Bold.ttf");
-    expect(fileOf("Liberation Sans Bold Italic")).toBe("LiberationSans-BoldItalic.ttf");
-    expect(fileOf("IBM Plex Mono Regular")).toBe("IBMPlexMono-Regular.ttf");
+  test("every face we ship previews in its own file, however its family names its files", () => {
+    for (const face of Object.keys(FACE_FILES)) expect(familyOf(face), face).toBe(`"preview ${face}", serif`);
   });
 
   test("the face the server draws a span with is the one previewed: the span's own, not its font's first span's", () => {
