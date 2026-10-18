@@ -18,7 +18,7 @@ import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
-import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
+import { AS_SET, fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
 import { textIn } from "../project";
@@ -53,7 +53,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const asked = useEditorState((state) => state.draft?.strategy);
   const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
   const way = fit === undefined ? "as-is" : wayDrawn(asked, fit);
-  const set = fit === undefined ? { size: 1, scaleX: 1 } : setAs(way, fit);
+  const set = fit === undefined ? AS_SET : setAs(way, fit);
   // Leave it long alone is no choice: nothing to offer.
   const choosable = fit !== undefined && fit.options.length > 1 ? fit.options : [];
   const ways = choosable.map((id) => ({ id, label: copy.options[id]?.label ?? id }));

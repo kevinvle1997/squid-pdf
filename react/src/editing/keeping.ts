@@ -17,8 +17,7 @@ interface KeptFont {
 export interface Work {
   readonly history: History;
   readonly fonts: readonly (readonly [string, KeptFont])[];
-  // Missing from work kept before fonts could be quieted, which lives out its hour after a deploy.
-  readonly quietFonts?: readonly string[];
+  readonly quietFonts: readonly string[];
 }
 
 // Each font copy's bytes, read once however often the work is kept.

@@ -1,9 +1,9 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import type { FontInfo, SpanInfo, Strategy } from "../api/types";
-import { change, type Editor, type EditorState, spoken } from "./editor";
+import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
+import { change, type Editor, type EditorState, say, spoken } from "./editor";
 import { substituteOf } from "./faces";
-import { type Fit, fitOf, troubleKindOf, troublesOf, wayDrawn } from "./fit";
+import { type Fit, fitOf, runsPast, troublesOf, wayDrawn } from "./fit";
 import type { Reading } from "./project";
 
 /** The text being typed into a span, not yet in the history. */
@@ -75,6 +75,11 @@ export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   return true;
 }
 
+/** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
+function troubleKindOf(fit: Fit, rules: FitRules): string {
+  return `${fit.missing.join("")} ${runsPast(fit.deltaPt, fit.roomPt, rules)}`;
+}
+
 /** What the field says of the ways out as they're first offered: the keys that choose one are the field's own. */
 const WAYS_KEYS = "Up or Down chooses how it fits";
 
@@ -125,7 +130,7 @@ export function typeInto(editor: Editor, typed: string): void {
 export function enter(editor: Editor): void {
   const { draft, doc } = editor.store.get();
   if (draft !== null && isEmpty(draft.text)) {
-    editor.store.set({ said: spoken(doc.copy.empty) });
+    say(editor, doc.copy.empty);
     return;
   }
   finish(editor, true, { returnFocus: true });
