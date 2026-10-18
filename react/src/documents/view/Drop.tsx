@@ -1,11 +1,12 @@
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
+import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { Sheet } from "../../ui/Sheet";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
-import { QUIET_MS } from "../constants";
-import type { Landing } from "../open";
+import type { Kept } from "../kept";
+import { type Landing, shareSent } from "../open";
 import styles from "./Drop.module.css";
 
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
@@ -13,14 +14,15 @@ const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" 
 
 interface Props {
   landing: Landing;
+  kept: Kept<unknown> | null; // what this browser kept, offered while the landing waits
   onChoose: (file: File) => void;
   onReopen: () => void; // the document kept here opens again, with its changes
   onForget: () => void; // the document kept here is deleted from this browser
 }
 
 /** The landing: the whole window takes a dropped PDF, and a blank sheet says so. No tool grid, no sign-in. */
-export function Drop({ landing, onChoose, onReopen, onForget }: Props) {
-  const kept = landing.kind === "waiting" ? landing.kept : undefined;
+export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
+  const offered = landing.kind === "waiting" ? kept : null;
   return (
     <DropZone
       className={styles.zone}
@@ -45,10 +47,10 @@ export function Drop({ landing, onChoose, onReopen, onForget }: Props) {
             {landing.kind === "opening" && <Progress {...landing} />}
             {landing.kind === "failed" && <Warn mark>{landing.detail}</Warn>}
           </p>
-          {kept !== undefined && (
+          {offered !== null && (
             <div className={styles.kept}>
               <p className={styles.keptSaid}>
-                Your changes to {kept.name} are kept in this browser until {TIME.format(kept.until)}.
+                Your changes to {offered.file.name} are kept in this browser until {TIME.format(offered.until)}.
               </p>
               <div className={styles.keptActions}>
                 <Button onPress={onReopen}>Open it again</Button>
@@ -65,20 +67,13 @@ export function Drop({ landing, onChoose, onReopen, onForget }: Props) {
   );
 }
 
+/** How far a file on its way has got: sending it, then the server reading it. A quick open shows nothing. */
 function Progress({ name, sent, total }: { name: string; sent: number; total: number }) {
-  // Sent, the server is reading the text: a real step, not invented progress.
-  const said =
-    total > 0 && sent >= total ? (
-      <>Reading the text of {name}</>
-    ) : (
-      <>
-        Sending {name} <Num>{PERCENT.format(total > 0 ? sent / total : 0)}</Num>
-      </>
-    );
-  // Hidden for the quiet spell by CSS, so a quick open never flashes it and no timer is needed.
+  const share = shareSent({ sent, total });
+  if (share === null) return <AfterQuiet>Reading the text of {name}</AfterQuiet>;
   return (
-    <span className={styles.progress} style={{ animationDelay: `${QUIET_MS}ms` }}>
-      {said}
-    </span>
+    <AfterQuiet>
+      Sending {name} <Num>{PERCENT.format(share)}</Num>
+    </AfterQuiet>
   );
 }

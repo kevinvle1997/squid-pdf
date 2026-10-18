@@ -9,28 +9,27 @@ export interface Opened {
   readonly doc: Document;
 }
 
-/** The document, or why it didn't open, in words for the user. */
-export type Opening = { opened: Opened } | { failed: string };
-
-/** A document kept in this browser, as the landing offers it: its name, and until when it's kept. */
-export interface Offered {
-  readonly name: string;
-  readonly until: number;
-}
-
-/**
- * What the landing shows: waiting for a file, one on its way to the server, or why the last didn't open;
- * and while it waits, a document kept here to open again.
- */
+/** What the landing shows: waiting for a file, one on its way to the server, or why the last didn't open. */
 export type Landing =
-  | { kind: "waiting"; kept?: Offered | undefined }
+  | { kind: "waiting" }
   | { kind: "opening"; name: string; sent: number; total: number }
   | { kind: "failed"; detail: string };
 
+/** The document opened, or why it didn't, in words for the user. */
+type Opening = { kind: "open"; opened: Opened } | Extract<Landing, { kind: "failed" }>;
+
+/** Send `file` to the server, which reads its text: the document opened, or why it didn't. */
 export async function openFile(file: File, onProgress: (sent: number, total: number) => void): Promise<Opening> {
   try {
-    return { opened: { file, doc: await upload(file, onProgress) } };
+    return { kind: "open", opened: { file, doc: await upload(file, onProgress) } };
   } catch (error) {
-    return { failed: sentenceOf(error) };
+    return { kind: "failed", detail: sentenceOf(error) };
   }
+}
+
+/** How much of a file on its way is sent, a share of it: none once it's all sent, as the server reads it. */
+export function shareSent({ sent, total }: { sent: number; total: number }): number | null {
+  // All sent, the server is reading the text: a real step, not invented progress.
+  if (total > 0 && sent >= total) return null;
+  return total > 0 ? sent / total : 0;
 }

@@ -1,6 +1,5 @@
 .zone {
-  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh where a browser doesn't know dvh yet */
-  min-height: 100vh; min-height: 100dvh;
+  min-height: 100dvh;
   display: flex; flex-direction: column;
   outline: none;
 }
@@ -32,9 +31,6 @@
   margin: var(--s3) 0 0; min-height: 1.5em;
   font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; text-wrap: balance;
 }
-/* Out of sight, and out of the accessibility tree, until the quiet spell is over. */
-.progress { animation: after-quiet var(--dur-quick) var(--ease-out) backwards; }
-@keyframes after-quiet { from { visibility: hidden; opacity: 0; } }
 /* A document this browser kept, offered back: under the call to act, not in its place. */
 .kept { display: flex; flex-direction: column; align-items: center; gap: var(--s3); margin-block-start: var(--s3); }
 .keptSaid { margin: 0; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }

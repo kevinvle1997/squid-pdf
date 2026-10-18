@@ -1,7 +1,7 @@
 // The bar over the document: its name and pages, what's changed and how much of it won't match, and
 // the tools and the one action, Export.
 import { useCallback } from "react";
-import { QUIET_MS } from "../../documents/constants";
+import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
 import { classes } from "../../ui/classes";
 import { Warn } from "../../ui/Warn";
@@ -48,12 +48,7 @@ export function Bar() {
         <span className={styles.status}>
           {changed === 0 ? <AtRest {...atRest} /> : <Changed changed={changed} {...warned} />}
         </span>
-        {exporting && (
-          // Hidden for the quiet spell by CSS, as opening a file is, so a quick export shows nothing.
-          <span className={styles.exporting} style={{ animationDelay: `${QUIET_MS}ms` }}>
-            Exporting
-          </span>
-        )}
+        {exporting && <AfterQuiet className={styles.exporting}>Exporting</AfterQuiet>}
         <span className={styles.actions}>
           <FindButton />
           <Fonts />
