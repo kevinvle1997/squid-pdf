@@ -11,7 +11,7 @@ import { shallowEqual } from "../store";
 import { stillShows } from "../strips";
 import { useEditor, useEditorState } from "./context";
 import { boxOf, layerOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
-import { Margin } from "./Margin";
+import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
 import { Previews, Settles } from "./Previews";
@@ -86,7 +86,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
     <section {...focusWithinProps} className={styles.page} aria-label={label} style={sheetWidthOf(info)}>
-      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} shape="margin" label={label} />
+      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} pageNumber={index + 1} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
@@ -120,7 +120,7 @@ export const Page = memo(function Page({ index, info }: Props) {
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
-      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} shape="list" label={label} />
+      <ChangeList changes={changes} pageNumber={index + 1} />
     </section>
   );
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aSpan } from "../fixtures";
-import { changedWordsIn, notePlaces } from "./margin";
+import { changedWordsIn, noteOf, notePlaces } from "./margin";
 import type { SpanReading } from "./project";
 
 const changeAt = (id: string, y0: number): SpanReading => ({
@@ -37,5 +37,29 @@ describe("what a note shows of the original", () => {
 
   test("a letter outside the basic plane is never cut in half", () => {
     expect(changedWordsIn("a 😀 b", "a 😁 b")).toBe("😀");
+  });
+});
+
+describe("what a note says", () => {
+  test("a change's note strikes the words it took out, and is named for what pressing it undoes", () => {
+    const change = {
+      ...changeAt("s", 100),
+      span: aSpan({ id: "s", text: "Paid on 14 March" }),
+      text: "Paid on 2 April",
+    };
+    expect(noteOf(change)).toEqual({
+      label: "Undo: “Paid on 2 April” goes back to “Paid on 14 March”",
+      struck: "14 March",
+      now: "Paid on 2 April",
+    });
+  });
+
+  test("a redaction's strikes every word, since it takes them all out", () => {
+    const redaction = { ...changeAt("s", 100), span: aSpan({ id: "s", text: "John Smith" }), redacted: true };
+    expect(noteOf(redaction)).toEqual({
+      label: "Undo: “John Smith” is no longer redacted",
+      struck: "John Smith",
+      now: "Redacted",
+    });
   });
 });
