@@ -182,3 +182,8 @@ here (Lato, Carlito, IBM Plex, Liberation) ship unmodified.
 A new or changed file changes what's drawn and what's judged, so bump
 `LIBRARY_VERSION` in `core/constants.py`: every saved analysis is then worked
 out again, and browsers fetch the font list again.
+
+The browser previews in these same files, and finds each face's in
+`face-files.json`. A new face, or a file renamed, rebuilds it:
+`uv run python scripts/face_files.py`. `tests/core/test_coverage.py` fails until
+it says what the catalog says.
