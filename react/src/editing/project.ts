@@ -27,10 +27,9 @@ export interface Reading {
   readonly spans: ReadonlyMap<string, SpanReading>; // only the spans an edit changes
   readonly pages: ReadonlyMap<number, PageEdits>; // only the pages with an edit
   readonly edits: readonly Edit[]; // what the server is sent: only what changes the file
-  readonly ids: readonly number[]; // the history's id for each edit sent, for what the server says of it
 }
 
-export const UNEDITED: Reading = { spans: new Map(), pages: new Map(), edits: [], ids: [] };
+export const UNEDITED: Reading = { spans: new Map(), pages: new Map(), edits: [] };
 
 /** What `span` reads in `reading`: its edit's words, else the document's own. */
 export function textIn(reading: Reading, span: SpanInfo): string {
@@ -128,5 +127,5 @@ export function project(spans: readonly SpanInfo[], entries: readonly Entry[], p
 
   // Sent: every edit but a replace a later one overrides, or one that puts back the original.
   const sent = entries.filter(({ edit }) => edit.kind !== "replace" || live.has(edit));
-  return { spans: readings, pages, edits: sent.map((entry) => entry.edit), ids: sent.map((entry) => entry.id) };
+  return { spans: readings, pages, edits: sent.map((entry) => entry.edit) };
 }

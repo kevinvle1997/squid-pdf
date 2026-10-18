@@ -48,21 +48,16 @@ const ownFaces = new Map<string, FontFace>();
 const OWN = "your copy of ";
 const ownFamily = (fontName: string) => `preview own ${fontName}`;
 
-/**
- * Put the user's copy of `fontName` on the document to preview in, read from `file` as it's chosen, so
- * it's ready by the time the server takes it. Whether the browser could read it as a font.
- */
-export async function addOwnFace(fontName: string, file: Blob): Promise<boolean> {
+/** Put the user's copy of `fontName` on the page to preview in, read now so it's ready when the server takes it. */
+export async function addOwnFace(fontName: string, file: Blob): Promise<void> {
   removeOwnFace(fontName);
   try {
     const face = new FontFace(ownFamily(fontName), await file.arrayBuffer());
     await face.load();
     document.fonts.add(face);
     ownFaces.set(fontName, face);
-    return true;
   } catch {
     // Not a font the browser reads: the preview stays in the look-alike, and the server says why.
-    return false;
   }
 }
 
