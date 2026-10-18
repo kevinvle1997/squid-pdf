@@ -3,6 +3,7 @@
 // What's compared is the verdict, not the pixels: the preview draws in a face we ship.
 import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
 import { type Fit, fitOf, runsPast } from "./fit";
+import { spanOf } from "./history";
 import { type Differing, differing, type Reading } from "./project";
 import type { Drawn } from "./render";
 
@@ -57,7 +58,7 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
   const noticed = after.notices.get(page)?.some((notice) => notice.kind === "span" && notice.span_id === span.id);
   const skipped = after.skipped.some(({ edit }) => {
     const sent = reading.edits[edit];
-    return sent !== undefined && sent.kind !== "insert" && sent.span_id === span.id;
+    return sent !== undefined && spanOf(sent) === span.id;
   });
   if (noticed || skipped) return true;
   const fit = after.fits.get(page)?.[span.id];
