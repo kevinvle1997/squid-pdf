@@ -1,5 +1,11 @@
 // Where the caret goes as a double press opens a span's field: the word under the press.
+import type { SpanInfo } from "../api/types";
 import { widthPt } from "./fit";
+
+/** Where a press `pressX` pixels into a span's mark, shown `shownPx` wide, lands in points from its start: none unlaid. */
+export function atPtOf(span: SpanInfo, { pressX, shownPx }: { pressX: number; shownPx: number }): number | null {
+  return shownPx > 0 ? (pressX / shownPx) * (span.bbox.x1 - span.bbox.x0) : null;
+}
 
 /** Where in `text` the letter at `atPt` points from its start begins, counted as the field counts: in UTF-16 units. */
 export function letterAt(

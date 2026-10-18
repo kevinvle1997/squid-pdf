@@ -41,3 +41,11 @@ export function commandFor(press: KeyPress, typing: boolean): Command | undefine
   const keys = keysOf(press);
   return COMMANDS.find((command) => command.keys === keys && (command.whileTyping || !typing));
 }
+
+/** A React Aria key handler where Escape runs `run`: every other key goes on, so the window's shortcuts hear it. */
+export function onEscape(run: () => void): (event: { key: string; continuePropagation(): void }) => void {
+  return (event) => {
+    if (event.key === "Escape") run();
+    else event.continuePropagation();
+  };
+}

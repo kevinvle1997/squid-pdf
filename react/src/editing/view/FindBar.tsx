@@ -3,6 +3,7 @@ import { Input, Label, TextField } from "react-aria-components";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
+import { onEscape } from "../commands";
 import {
   changeAll,
   changedSaid,
@@ -37,10 +38,7 @@ export function FindBar() {
   );
   if (!find.open) return null;
 
-  const closeOnEscape = (event: { key: string; continuePropagation: () => void }) => {
-    if (event.key === "Escape") closeFind(editor, { fromInside: true });
-    else event.continuePropagation();
-  };
+  const closeOnEscape = onEscape(() => closeFind(editor, { fromInside: true }));
   const searched = find.searched !== "" && find.searched === find.query;
   return (
     // biome-ignore lint/a11y/useSemanticElements: Chromium gives <search> no landmark yet, so a screen reader would miss it.

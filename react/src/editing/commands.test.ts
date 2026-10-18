@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { commandFor, keysOf } from "./commands";
+import { describe, expect, test, vi } from "vitest";
+import { commandFor, keysOf, onEscape } from "./commands";
 
 const press = (key: string, held: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
   key,
@@ -27,5 +27,20 @@ describe("shortcuts", () => {
     expect(commandFor(press("y", { ctrl: true }), false)?.keys).toBe("mod+y");
     expect(commandFor(press("s"), false)).toBeUndefined();
     expect(commandFor(press("z", { meta: true, alt: true }), false)).toBeUndefined();
+  });
+});
+
+describe("Escape in a control", () => {
+  test("runs what it's for and goes no further; any other key goes on to the shortcuts", () => {
+    const run = vi.fn();
+    const keyed = (key: string) => ({ key, continuePropagation: vi.fn() });
+    const escapePress = keyed("Escape");
+    onEscape(run)(escapePress);
+    expect(run).toHaveBeenCalledOnce();
+    expect(escapePress.continuePropagation).not.toHaveBeenCalled();
+    const save = keyed("s");
+    onEscape(run)(save);
+    expect(run).toHaveBeenCalledOnce();
+    expect(save.continuePropagation).toHaveBeenCalledOnce();
   });
 });

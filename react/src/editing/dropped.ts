@@ -5,6 +5,11 @@ import { type Editor, spoken } from "./editor";
 import { unexported } from "./export";
 import { warn } from "./notices";
 
+/** Whether a drag carries files, as a drop from the desktop does, not text or a link. */
+export function carriesFiles(data: Pick<DataTransfer, "types"> | null): boolean {
+  return data?.types.includes("Files") ?? false;
+}
+
 /** Whether a dropped file is a PDF: its type, or else its name's ending. */
 function isPdf(file: File): boolean {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
