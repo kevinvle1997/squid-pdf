@@ -1,10 +1,11 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
-import { change, type Editor, type EditorState, say, spoken } from "./editor";
+import { type Also, change, type Editor, type EditorState, say, spoken } from "./editor";
 import { substituteOf } from "./faces";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import { shownNameOf } from "./fonts";
+import type { HistoryAction } from "./history";
 import { editNote } from "./marks";
 import type { Reading } from "./project";
 
@@ -158,25 +159,40 @@ function isEmpty(text: string): boolean {
 }
 
 /**
- * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
- * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
+ * What ending the typing makes, for an action to make in its own update: the step it adds, with no
+ * edit unless `keep` and the words changed, and the rest it sets. `returnFocus` is `finish`'s.
  */
-export function finish(editor: Editor, keep: boolean, { returnFocus = false } = {}): void {
-  const { store } = editor;
-  const { draft, layout, reading } = store.get();
-  if (draft === null) return;
+export function typingEnd(
+  state: EditorState,
+  keep: boolean,
+  { returnFocus = false } = {},
+): { typed: HistoryAction; ended: Partial<EditorState> } {
+  const { draft, layout, reading } = state;
+  const nothing: HistoryAction = { kind: "add", edits: [] };
+  if (draft === null) return { typed: nothing, ended: {} };
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
   const now = reading.spans.get(draft.spanId);
   const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
   // Only a way out on offer goes with the edit: the server draws any other as typed, and says so.
-  const way = wayIn(store.get());
+  const way = wayIn(state);
   const strategy = way === "as-is" ? undefined : way;
   const unchanged = draft.text === was && strategy === now?.strategy;
   // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || unchanged || isEmpty(draft.text)) {
-    store.set(ended);
-    return;
-  }
+  if (!keep || unchanged || isEmpty(draft.text)) return { typed: nothing, ended };
   const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
-  change(editor, { kind: "add", edits: [replace] }, { ...ended, said: spoken(`Changed to ${draft.text}`) });
+  return { typed: { kind: "add", edits: [replace] }, ended: { ...ended, said: spoken(`Changed to ${draft.text}`) } };
+}
+
+/**
+ * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
+ * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
+ * `also` is the rest of the action that ends it, made in the same update.
+ */
+export function finish(
+  editor: Editor,
+  keep: boolean,
+  { returnFocus = false, also = {} }: { returnFocus?: boolean; also?: Also } = {},
+): void {
+  const { typed, ended } = typingEnd(editor.store.get(), keep, { returnFocus });
+  change(editor, typed, (next) => ({ ...ended, ...(typeof also === "function" ? also(next) : also) }));
 }

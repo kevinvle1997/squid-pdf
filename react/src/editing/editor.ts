@@ -218,25 +218,38 @@ export function sayOpening(editor: Editor): void {
   if (found.length > 0) say(editor, heardIn(found));
 }
 
-/** The rest of an action, or what it is once the history's read: what undo says the span reads. */
-type Also = Partial<EditorState> | ((reading: Reading) => Partial<EditorState>);
+/** The rest of an action, or what it is once the change is made: what undo says the span reads. */
+export type Also = Partial<EditorState> | ((next: EditorState) => Partial<EditorState>);
+
+/** The state once `actions` are made, in turn: the history, what it reads as, and what clears with it. Nothing is set. */
+export function changed(state: EditorState, actions: readonly HistoryAction[]): EditorState {
+  const history = actions.reduce(historyReducer, state.history);
+  if (history === state.history) return state;
+  const reading = project(state.doc.spans, entriesOf(history), state.reading);
+  return {
+    ...state,
+    history,
+    reading,
+    notices: noticesAfterChange(state.notices),
+    find: findAfterChange(state, reading),
+  };
+}
 
 /**
  * Every change to the history comes through here, and redraws what it changed. `also` is the
  * rest of the action that made it, so what's drawn never sees one half without the other.
  */
-export function change(editor: Editor, action: HistoryAction, also: Also = {}): void {
+export function change(editor: Editor, action: HistoryAction | readonly HistoryAction[], also: Also = {}): void {
   const { store, queue } = editor;
   const state = store.get();
-  const history = historyReducer(state.history, action);
-  if (history === state.history) {
-    if (typeof also !== "function" && Object.keys(also).length > 0) store.set(also);
+  const next = changed(state, [action].flat());
+  const rest = typeof also === "function" ? also(next) : also;
+  if (next === state) {
+    if (Object.keys(rest).length > 0) store.set(rest);
     return;
   }
-  const reading = project(state.doc.spans, entriesOf(history), state.reading);
-  const notices = noticesAfterChange(state.notices);
-  const find = findAfterChange(state, reading);
-  store.set({ history, reading, notices, find, ...(typeof also === "function" ? also(reading) : also) });
+  const { history, reading, notices, find } = next;
+  store.set({ history, reading, notices, find, ...rest });
   queue.draw(reading);
   void keepWork(editor);
 }
@@ -270,7 +283,7 @@ function stepped(editor: Editor, action: HistoryAction, { step, words }: { step:
     return;
   }
   const span = editor.store.get().layout.spans.get(spanId);
-  change(editor, action, (reading) => ({
+  change(editor, action, ({ reading }) => ({
     said: spoken(`${words} ${span === undefined ? "" : textIn(reading, span)}`),
     scrollTo: scrollingTo(spanId),
   }));

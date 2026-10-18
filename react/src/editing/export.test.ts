@@ -68,6 +68,21 @@ describe("export", () => {
     expect(editor.store.get().exporting).toBe(false);
   });
 
+  test("an export started while typing keeps the words and starts in the same update", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    edit(editor, "own", null);
+    typeInto(editor, "typed");
+    const heard: { exporting: boolean; typing: boolean }[] = [];
+    const stop = editor.store.subscribe(() => {
+      const { exporting, draft } = editor.store.get();
+      heard.push({ exporting, typing: draft !== null });
+    });
+    const exporting = exportNow(editor);
+    stop();
+    await exporting;
+    expect(heard).toEqual([{ exporting: true, typing: false }]);
+  });
+
   test("edits are unexported from the first one until an export takes them, and again after an undo", async () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
     expect(unexported(editor.store.get())).toBe(false);

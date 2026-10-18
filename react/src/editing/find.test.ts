@@ -3,7 +3,7 @@ import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aRedact, aReplace, aSpan, halfWideGlyphs } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
-import { change, createEditor, type Editor, undo } from "./editor";
+import { change, createEditor, type Editor, type EditorState, undo } from "./editor";
 import {
   changeAll,
   closeFind,
@@ -18,6 +18,7 @@ import {
   typeReplacement,
 } from "./find";
 import { matchesIn } from "./matching";
+import { edit, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
@@ -48,6 +49,15 @@ afterEach(() => {
 });
 
 const found = () => [...editor.store.get().find.matches].map(([page, spans]) => [page, [...spans.keys()]]);
+
+/** Each state `run` sets, as what's drawn would hear of it. */
+function updatesOf(run: () => void): EditorState[] {
+  const heard: EditorState[] = [];
+  const stop = editor.store.subscribe(() => heard.push(editor.store.get()));
+  run();
+  stop();
+  return heard;
+}
 
 describe("find", () => {
   test("finds once typing stops, in every span that reads it but a form field's or a redaction's", () => {
@@ -105,6 +115,32 @@ describe("find", () => {
     undo(editor);
     expect(editor.store.get().reading.spans.get("first")).toBeUndefined();
     expect(editor.store.get().reading.spans.get("similar")).toBeUndefined();
+  });
+
+  test("Change all while typing keeps the words, as their own step, found as typed, all in one update", () => {
+    edit(editor, "other", null);
+    typeInto(editor, `${DATE} now`);
+    typeQuery(editor, DATE);
+    typeReplacement(editor, "14 June");
+    const [changed, ...more] = updatesOf(() => changeAll(editor));
+    expect(more).toEqual([]);
+    expect(changed?.draft).toBeNull();
+    expect(changed?.reading.spans.get("other")?.text).toBe("14 June now");
+    expect(changed?.find.changed).toBe(3);
+
+    undo(editor);
+    expect(editor.store.get().reading.spans.get("other")?.text).toBe(`${DATE} now`);
+  });
+
+  test("Find opened while typing keeps the words and opens in the same update", () => {
+    closeFind(editor);
+    edit(editor, "other", null);
+    typeInto(editor, "now");
+    const [opened, ...more] = updatesOf(() => openFind(editor));
+    expect(more).toEqual([]);
+    expect(opened?.draft).toBeNull();
+    expect(opened?.reading.spans.get("other")?.text).toBe("now");
+    expect(opened?.find.open).toBe(true);
   });
 
   test("what Change all did stops being said once anything else changes: undo would take that, not the places", () => {

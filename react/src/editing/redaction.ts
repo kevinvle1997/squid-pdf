@@ -29,7 +29,7 @@ export function editAnyway(editor: Editor): void {
   if (unredacting === null || span === undefined) return;
   const isRedaction = (edit: Edit) => edit.kind === "redact" && edit.span_id === span.id;
   const redactions = new Set(entriesOf(history).flatMap((entry) => (isRedaction(entry.edit) ? [entry.id] : [])));
-  change(editor, { kind: "remove", ids: redactions }, (reading) => ({
+  change(editor, { kind: "remove", ids: redactions }, ({ reading }) => ({
     unredacting: null,
     draft: draftOf(span, { reading, atPt: unredacting.atPt }),
     focusTo: null,

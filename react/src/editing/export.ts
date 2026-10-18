@@ -130,8 +130,7 @@ export function partName(fileName: string, pages: readonly number[]): string {
 async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void> {
   const { store } = editor;
   if (store.get().exporting) return;
-  finish(editor, true);
-  store.set({ exporting: true });
+  finish(editor, true, { also: { exporting: true } });
   const edits = store.get().reading.edits;
   const said: Notice[] = [];
   let went = true;
