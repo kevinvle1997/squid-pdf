@@ -53,9 +53,7 @@ export function EditorShell({ opened, onOpen, kept }: Props) {
     if (pdf !== null) onOpen(pdf);
   });
 
-  // The one effect, for what happens outside React: the preview's faces, the live region on screen,
-  // shortcuts anywhere, the connection coming back, a file dropped anywhere, leaving with edits not
-  // exported, and the editor going.
+  // The one effect, for what happens outside React; each listener says what it's for.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
     resumeWork(editor);

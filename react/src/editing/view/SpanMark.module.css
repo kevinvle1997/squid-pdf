@@ -1,8 +1,8 @@
 /* A transparent button over the span's own pixels: the page image shows the text. Its corners are
-   2px, so its focus ring, 1px out, curves at --r-1: corners nest. */
+   its focus ring's, 1px out, less that 1px, so the ring curves at --r-1: corners nest. */
 .span {
   position: absolute;
-  padding: 0; margin: 0; border: 0; border-radius: 2px;
+  padding: 0; margin: 0; border: 0; border-radius: calc(var(--r-1) - 1px);
   background: transparent;
   cursor: text;
   touch-action: manipulation;
@@ -10,7 +10,7 @@
 }
 /* The hint is the page's own grey, in both themes: it says "text", not "change". */
 .span::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  content: ""; position: absolute; inset-inline: 0; bottom: -1px;
   height: 1px; background: var(--sheet-ink-lo); opacity: 0;
   transition: opacity var(--dur-press) var(--ease-out);
 }
@@ -19,9 +19,8 @@
 .span[data-hovered] { background: var(--mark-change-soft); mix-blend-mode: multiply; }
 /* On the page the ring is the page's own blue pencil: the dark theme's would wash out on white. */
 .span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
-/* A form field draws it, and an edit is left out: a dashed warning line, always. Quiet at rest, but
-   no fainter than a mark's 3:1 on the page. A font's warning has no line: it waits for an edit, in the
-   field, and a page in a similar font would be lined top to bottom. */
+/* A form field draws it, and an edit is left out: a dashed warning line, always, no fainter than a mark's
+   3:1. A font's warning has none: it waits for an edit, or a page in a similar font would be lined throughout. */
 .formField::after {
   opacity: .75; height: 1.5px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 2px, transparent 2px 4px);
@@ -33,7 +32,7 @@
 /* It went in, but not quite as typed: the server said why. The change keeps its solid line, and the
    warning's dashed one runs under it, clear of the focus ring, so each shows by its shape, never by colour alone. */
 .trouble::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -6px;
+  content: ""; position: absolute; inset-inline: 0; bottom: -6px;
   height: 2px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
 }

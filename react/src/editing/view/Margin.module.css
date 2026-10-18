@@ -1,6 +1,6 @@
 .margin { position: relative; }
 /* Level with its span: centred on it, a full hit area tall, the visible mark small. */
-.place { position: absolute; left: 0; right: 0; transform: translateY(-50%); }
+.place { position: absolute; inset-inline: 0; transform: translateY(-50%); }
 .note {
   display: flex; align-items: center; justify-content: flex-end; gap: var(--s1);
   width: 100%; min-height: var(--hit);

@@ -19,9 +19,9 @@ import { Previews, Settles } from "./Previews";
 const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
- * Watch the sheet from the moment it mounts: whether it's near enough the viewport to draw
- * (pages far off stay empty boxes), and a margin note's height in the page's points. The
- * pages near it are in `nearPages` too, for the render to ask for first.
+ * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points.
+ *
+ * Pages far off stay empty boxes. The pages near are in `nearPages` too, for the render to ask for first.
  */
 function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; nearPages: Set<number> }) {
   const [near, setNear] = useState(false);
