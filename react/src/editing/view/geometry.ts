@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { familyOf } from "../faces";
+import type { LineScale } from "../fit";
 
 /** A box on the page as percentages of it, so it scales with the page. */
 export function boxOf(
@@ -92,11 +93,7 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
 }
 
 /** Text in a span's place set at `size` and `scaleX`, shares of its own (a way out of a long line), as the page will draw it. */
-export function setAsStyle(
-  span: SpanInfo,
-  page: PageInfo,
-  { size, scaleX }: { size: number; scaleX: number },
-): CSSProperties {
+export function setAsStyle(span: SpanInfo, page: PageInfo, { size, scaleX }: LineScale): CSSProperties {
   // Narrowed from its start, as the server narrows the line.
   const narrowed = scaleX === 1 ? {} : { transform: `scaleX(${scaleX})`, transformOrigin: "0 0" };
   return { fontSize: points(span.size * size, page), ...narrowed };

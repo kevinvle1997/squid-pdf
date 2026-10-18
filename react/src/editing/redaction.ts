@@ -5,7 +5,7 @@ import type { Edit } from "../api/types";
 import { change, type Editor, spoken } from "./editor";
 import { entriesOf } from "./history";
 import { textIn } from "./project";
-import { draftOf, finish } from "./typing";
+import { draftOf } from "./typing";
 
 /** Redact the span typed in, or else `spanId`: the whole of it, whatever part was selected. Words typed there go. */
 export function redact(editor: Editor, spanId: string | null): void {
@@ -14,12 +14,11 @@ export function redact(editor: Editor, spanId: string | null): void {
   const span = target === null ? undefined : layout.spans.get(target);
   if (span === undefined || reading.spans.get(span.id)?.redacted) return;
   const words = textIn(reading, span);
-  // Typing into it ends unkept: redaction wins.
-  finish(editor, false);
   change(
     editor,
     { kind: "add", edits: [{ kind: "redact", span_id: span.id }] },
-    { said: spoken(`Redacted ${words}`), focusTo: { spanId: span.id }, unredacting: null },
+    // Typing into it ends unkept: redaction wins.
+    { draft: null, said: spoken(`Redacted ${words}`), focusTo: { spanId: span.id }, unredacting: null },
   );
 }
 

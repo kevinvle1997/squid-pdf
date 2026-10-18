@@ -6,13 +6,23 @@ import type { Copy, FitRules, FontInfo, SpanInfo, Strategy } from "../api/types"
 import { MISSING_SPACE_EM } from "./constants";
 import { fill, shownAs } from "./words";
 
+/** What the browser's fit check makes of a span reading other words. */
 export interface Fit {
-  originalPt: number; // how wide the original is, in points: where a way out ends the line
-  deltaPt: number; // how much longer than the original, in points; negative is shorter
-  roomPt: number; // the free space after the span on its line: too long is only past it
-  missing: string[]; // letters the span's font can't draw, each once, in the order typed
-  options: Strategy[]; // the ways out of an overflow, when there is one
+  readonly originalPt: number; // how wide the original is, in points: where a way out ends the line
+  readonly deltaPt: number; // how much longer than the original, in points; negative is shorter
+  readonly roomPt: number; // the free space after the span on its line: too long is only past it
+  readonly missing: readonly string[]; // letters the span's font can't draw, each once, in the order typed
+  readonly options: readonly Strategy[]; // the ways out of an overflow, when there is one
 }
+
+/** How a line is set to end where the original did: its size, and how much narrower its letters, as shares of its own. */
+export interface LineScale {
+  readonly size: number;
+  readonly scaleX: number;
+}
+
+/** A line set as the span is: what's drawn when no way out is taken. */
+export const AS_SET: LineScale = { size: 1, scaleX: 1 };
 
 const WHITESPACE = /\s/;
 
@@ -95,11 +105,8 @@ export function wayDrawn(asked: Strategy | undefined, { options }: Pick<Fit, "op
   return asked !== undefined && options.includes(asked) ? asked : "as-is";
 }
 
-/**
- * What a way out sets the line at, to end where the original did: its size, and how much narrower its
- * letters, each as a share of the span's own. `replace_fit` in editing/fit.py.
- */
-export function setAs(way: Strategy, { originalPt, deltaPt }: Pick<Fit, "originalPt" | "deltaPt">) {
+/** What a way out sets the line at, to end where the original did. `replace_fit` in editing/fit.py. */
+export function setAs(way: Strategy, { originalPt, deltaPt }: Pick<Fit, "originalPt" | "deltaPt">): LineScale {
   const toEnd = originalPt / (originalPt + deltaPt);
   switch (way) {
     case "shrink":
@@ -107,15 +114,10 @@ export function setAs(way: Strategy, { originalPt, deltaPt }: Pick<Fit, "origina
     case "condense":
       return { size: 1, scaleX: toEnd };
     case "as-is":
-      return { size: 1, scaleX: 1 };
+      return AS_SET;
     default:
       return way satisfies never;
   }
-}
-
-/** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
-export function troubleKindOf(fit: Fit, rules: FitRules): string {
-  return `${fit.missing.join("")} ${runsPast(fit.deltaPt, fit.roomPt, rules)}`;
 }
 
 /** Everything that won't come out as typed, in the server's words; empty when it fits. */

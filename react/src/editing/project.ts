@@ -56,12 +56,7 @@ export function samePage(a: PageEdits | undefined, b: PageEdits | undefined): bo
 }
 
 /** A span that reads differently than its page's strips show: what it reads now, or that it's redacted. */
-export interface Differing {
-  readonly span: SpanInfo;
-  readonly text: string;
-  readonly redacted: boolean;
-  readonly strategy: Strategy | undefined; // how a replacement too long is to fit, when one is asked for
-}
+export type Differing = Pick<SpanReading, "span" | "text" | "redacted" | "strategy">;
 
 /**
  * The spans that read differently in `now` than in `then`, with what each reads now: the
