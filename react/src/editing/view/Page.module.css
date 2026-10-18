@@ -43,36 +43,8 @@
   text-align: center;
   font-size: var(--fs-sm);
 }
-/* Words find found: tinted and underlined as the change they're about to be, until find closes. */
-.found { position: absolute; background: var(--mark-change-soft); mix-blend-mode: multiply; pointer-events: none; }
-.found::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--mark-change); }
-/* The tint goes in high contrast: a dashed box keeps the words found apart from a change. */
-@media (forced-colors: active) {
-  .found { outline: 1px dashed Highlight; }
-  .found::after { background: Highlight; }
-}
-/* A span put back, shown in the page's own pixels until the render lands: the image cropped to it. */
-.original { position: absolute; overflow: hidden; pointer-events: none; }
-.original img { position: absolute; max-width: none; height: auto; display: block; user-select: none; }
 /* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
 .anchor { position: absolute; pointer-events: none; }
-/* The page never themes: the marks and previews on it use the page's own tokens. */
-.preview {
-  position: absolute;
-  background: var(--sheet);
-  white-space: pre;
-  pointer-events: none;
-}
-/* The settle where a render said other than its preview: its words come up from faint, once. Opacity
-   only, so reduced motion keeps it: it's a cross-fade already, and it's how a disagreement gets seen. */
-.settle {
-  position: absolute;
-  background: var(--sheet);
-  opacity: 0;
-  pointer-events: none;
-  animation: settle var(--dur-settle) var(--ease-out);
-}
-@keyframes settle { from { opacity: .65; } }
 /* The list goes under the sheet, past the --s4 its crop marks reach. */
 @media (max-width: 820px) {
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
