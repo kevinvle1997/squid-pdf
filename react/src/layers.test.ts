@@ -85,7 +85,8 @@ describe("the browser's layers", () => {
     expect(handed.filter((entry) => !isDrawn(entry.split(" → ")[1] ?? ""))).toEqual([]);
   });
 
-  test("the API's shapes built by hand are for tests alone", () => {
-    expect(breaking(({ path }, spec) => spec === "fixtures" && !isTest(path))).toEqual([]);
+  test("what tests build or read by hand is for tests alone: the API's shapes, and what the page computes", () => {
+    const forTests = ["fixtures", "testing"];
+    expect(breaking(({ path }, spec) => forTests.includes(spec) && !isTest(path))).toEqual([]);
   });
 });
