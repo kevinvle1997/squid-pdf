@@ -8,6 +8,7 @@ import {
   changedSaid,
   closeFind,
   countShown,
+  type FindCount,
   findCount,
   setMatchCase,
   setWholeWords,
@@ -80,7 +81,7 @@ export function FindBar() {
             </span>
           </>
         ) : (
-          searched && <Counted places={count.places} unlike={count.unlike} />
+          searched && <Counted {...count} />
         )}
       </span>
       <Button
@@ -98,7 +99,7 @@ export function FindBar() {
 }
 
 /** The count, its warning in --warn: what will look different is a warning, never a change. */
-function Counted(count: { places: number; unlike: number }) {
+function Counted(count: FindCount) {
   const { plain, warned } = countShown(count);
   return (
     <>

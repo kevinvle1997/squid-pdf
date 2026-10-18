@@ -9,17 +9,15 @@ import {
   closeFind,
   countSaid,
   countShown,
-  type FindOptions,
   findCount,
+  matchesAcross,
   openFind,
-  placesAcross,
-  placesIn,
-  replacedIn,
   setMatchCase,
   setWholeWords,
   typeQuery,
   typeReplacement,
 } from "./find";
+import { matchesIn } from "./matching";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
@@ -49,7 +47,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const found = () => [...editor.store.get().find.hits].map(([page, spans]) => [page, [...spans.keys()]]);
+const found = () => [...editor.store.get().find.matches].map(([page, spans]) => [page, [...spans.keys()]]);
 
 describe("find", () => {
   test("finds once typing stops, in every span that reads it but a form field's or a redaction's", () => {
@@ -136,9 +134,9 @@ describe("find", () => {
   test("an edit elsewhere keeps a page's marks the same object, so that page doesn't redraw", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    const marks = editor.store.get().find.hits.get(0);
+    const marks = editor.store.get().find.matches.get(0);
     change(editor, { kind: "add", edits: [{ kind: "replace", span_id: "other", text: "still nothing" }] });
-    expect(editor.store.get().find.hits.get(0)).toBe(marks);
+    expect(editor.store.get().find.matches.get(0)).toBe(marks);
   });
 
   test("closing clears the marks and stops a find still waiting to run", () => {
@@ -147,71 +145,8 @@ describe("find", () => {
     vi.advanceTimersByTime(FIND_DELAY_MS);
     const { find } = editor.store.get();
     expect(find.open).toBe(false);
-    expect(find.hits.size).toBe(0);
+    expect(find.matches.size).toBe(0);
     expect(find.closed).toBe(1);
-  });
-});
-
-describe("matching", () => {
-  const ANY = { matchCase: false, wholeWords: false };
-  /** `text` with what reads `find` changed `to`, as "Find" matches with `options`. */
-  const change = (text: string, { find, to, ...options }: { find: string; to: string } & Partial<FindOptions>) =>
-    replacedIn(text, placesIn(text, find, { ...ANY, ...options }), to);
-
-  test("a space, quote or dash the keyboard can't type matches the one it can", () => {
-    const line = "Paid on 14\u00a0March to the Client\u2019s bank \u2013 in full";
-    expect(change(line, { find: "14 March", to: "2 April" })).toBe(
-      "Paid on 2\u00a0April to the Client\u2019s bank \u2013 in full",
-    );
-    expect(change(line, { find: "Client's", to: "Customer's" })).toBe(
-      "Paid on 14\u00a0March to the Customer\u2019s bank \u2013 in full",
-    );
-    expect(change(line, { find: "bank - in", to: "bank, in" })).toBe(
-      "Paid on 14\u00a0March to the Client\u2019s bank, in full",
-    );
-  });
-
-  test("a change is spelled as the page spelled what it replaces: its spaces, quotes and dashes, where all were one kind", () => {
-    expect(change("from 2019\u20132020", { find: "2019-2020", to: "2020-2021" })).toBe("from 2020\u20132021");
-    // A no-break space and a plain one in what was found: nothing to say which the change wants.
-    expect(change("14\u00a0March 2026", { find: "14 March 2026", to: "2 April 2027" })).toBe("2 April 2027");
-    expect(change("the Client\u2019s", { find: "Client\u2019s", to: "Customer's" })).toBe("the Customer\u2019s");
-  });
-
-  test("letters of either case match, unless Match case", () => {
-    expect(change("March and march", { find: "MARCH", to: "June" })).toBe("June and June");
-    expect(change("March and march", { find: "march", to: "june", matchCase: true })).toBe("March and june");
-  });
-
-  test("a match inside a word counts, unless Whole words", () => {
-    expect(change("Ann signed the Annual report", { find: "Ann", to: "Bea" })).toBe("Bea signed the Beaual report");
-    expect(change("Ann signed the Annual report", { find: "Ann", to: "Bea", wholeWords: true })).toBe(
-      "Bea signed the Annual report",
-    );
-  });
-
-  test("a ligature reads as its letters, and is only ever changed whole", () => {
-    expect(change("\ufb01nance", { find: "finance", to: "funds" })).toBe("funds");
-    // Half of one would leave the other letter's half behind.
-    expect(placesIn("\ufb01nance", "f", ANY)).toEqual([]);
-  });
-
-  test("an unseen hyphen or space between letters doesn't stop them matching, and goes with what's changed", () => {
-    expect(change("the infor\u00admation sheet", { find: "information", to: "data" })).toBe("the data sheet");
-    expect(change("a\u200bb", { find: "ab", to: "c" })).toBe("c");
-  });
-
-  test("a place found sits across its span by its letters' widths, so only the words found are marked", () => {
-    // Ten 5 pt letters across 50 pt: "cdef" is the third to the sixth.
-    const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
-    const glyphs = Object.fromEntries([..."abcdefghij"].map((letter) => [letter, 500]));
-    const places = placesIn(line.text, "cdef", ANY);
-    expect(placesAcross(line, { text: line.text, places, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
-  });
-
-  test("nothing to find finds nothing", () => {
-    expect(placesIn("anything", "", ANY)).toEqual([]);
-    expect(placesIn("anything", "\u00ad", ANY)).toEqual([]);
   });
 
   test("Match case and Whole words find again at once and say the count", () => {
@@ -227,5 +162,13 @@ describe("matching", () => {
     typeQuery(editor, "14 Mar");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(found()).toEqual([]);
+  });
+
+  test("a match sits across its span by its letters' widths, so only the words found are marked", () => {
+    // Ten 5 pt letters across 50 pt: "cdef" is the third to the sixth.
+    const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
+    const glyphs = Object.fromEntries([..."abcdefghij"].map((letter) => [letter, 500]));
+    const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
+    expect(matchesAcross(line, { text: line.text, matches, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
   });
 });
