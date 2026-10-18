@@ -1,0 +1,16 @@
+/* The landing's composition, and the crash screen's: the wordmark, then the sheet in the middle of the ground. */
+.screen { min-height: 100dvh; display: flex; flex-direction: column; }
+.top { padding: var(--s4); }
+.middle {
+  flex: 1;
+  display: grid; place-items: center;
+  padding: var(--s6) var(--s4);
+  text-align: center;
+}
+/* With a line at the foot: the sheet in the middle of what's above it. */
+.footed { grid-template-rows: 1fr auto; gap: var(--s6); padding-block-end: var(--s4); }
+.title {
+  margin: 0;
+  font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
+  text-wrap: balance;
+}
