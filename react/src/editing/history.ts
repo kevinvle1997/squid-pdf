@@ -59,11 +59,6 @@ export function entriesOf(history: History): Entry[] {
   return history.done.flat();
 }
 
-/** The edit list the server takes: every step's edits, in the order made. */
-export function editsOf(history: History): Edit[] {
-  return entriesOf(history).map((entry) => entry.edit);
-}
-
 /** The span an edit is to, if it's to one. */
 export function spanOf(edit: Edit): string | undefined {
   return "span_id" in edit ? edit.span_id : undefined;

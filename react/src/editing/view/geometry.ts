@@ -73,7 +73,7 @@ export function fieldScaleOf(
 }
 
 /** A PDF colour, each part from 0 to 1, as CSS. */
-export function rgbOf(color: readonly number[]): string {
+function rgbOf(color: readonly number[]): string {
   const [red = 0, green = 0, blue = 0] = color;
   return `rgb(${red * 255} ${green * 255} ${blue * 255})`;
 }

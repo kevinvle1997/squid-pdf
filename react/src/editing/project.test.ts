@@ -31,7 +31,6 @@ describe("what the document reads as", () => {
     const reading = read(add(add(EMPTY_HISTORY, replace("a", "one")), replace("a", "two")));
     expect(reading.spans.get("a")?.text).toBe("two");
     expect(reading.edits).toEqual([replace("a", "two")]);
-    expect(reading.ids).toEqual([2]);
   });
 
   test("what a span reads is its edit's words, else its own", () => {

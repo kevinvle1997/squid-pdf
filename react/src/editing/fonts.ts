@@ -14,7 +14,7 @@ import type { FontNotice } from "./notices";
 export const FONT_FILES = ["font/ttf", "font/otf", ".ttf", ".otf"];
 
 /** Whether a file dropped or picked is one of FONT_FILES: its type, or else its name's ending. */
-export function isFontFile(file: { name: string; type: string }): boolean {
+function isFontFile(file: { name: string; type: string }): boolean {
   const name = file.name.toLowerCase();
   return FONT_FILES.some((kind) => (kind.startsWith(".") ? name.endsWith(kind) : file.type === kind));
 }

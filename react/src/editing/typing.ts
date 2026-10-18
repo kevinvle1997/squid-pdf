@@ -35,7 +35,7 @@ function draftFitOf(state: EditorState, text: string): Fit | undefined {
 }
 
 /** The way out the draft's line is drawn with: the one chosen while it's offered, else as typed. */
-export function wayIn(state: EditorState): Strategy {
+function wayIn(state: EditorState): Strategy {
   const fit = state.draft === null ? undefined : draftFitOf(state, state.draft.text);
   return fit === undefined ? "as-is" : wayDrawn(state.draft?.strategy, fit);
 }

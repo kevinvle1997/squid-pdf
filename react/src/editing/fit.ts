@@ -32,7 +32,7 @@ export function widthPt(text: string, glyphs: Record<string, number>, size: numb
  * `text` spelled as the font has it: as typed, composed or in pieces (é is one letter, or e and an
  * accent). With none whole in the font, composed, as the faces we ship draw it. `_spelled` in core/plan.py.
  */
-export function spelledIn(text: string, glyphs: Record<string, number>): string {
+function spelledIn(text: string, glyphs: Record<string, number>): string {
   const composed = text.normalize("NFC");
   const spellings = [text, composed, text.normalize("NFD")];
   return spellings.find((spelling) => lackedIn(spelling, glyphs).length === 0) ?? composed;

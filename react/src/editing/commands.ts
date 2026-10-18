@@ -11,7 +11,7 @@ export interface Command {
   readonly run: (editor: Editor, spanId: string | null) => void; // spanId: the span the key was pressed on
 }
 
-export const COMMANDS: readonly Command[] = [
+const COMMANDS: readonly Command[] = [
   // Export takes the words being typed along.
   { keys: "mod+s", whileTyping: true, run: (editor) => void exportNow(editor) },
   // Find across the document, from anywhere: the browser's own find can't read the page's words.
