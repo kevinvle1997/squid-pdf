@@ -6,11 +6,11 @@ import {
   changedCount,
   createEditor,
   type Editor,
+  layoutOf,
   putBack,
   redo,
   undo,
   unexported,
-  unlikeAtRest,
   warnedCount,
 } from "./editor";
 import { exportNow, partName, splitAfter, splitPages } from "./export";
@@ -261,16 +261,18 @@ describe("an edit", () => {
 
 describe("before any change", () => {
   test("the places an edit won't match are counted for the bar: in a similar font, or unlike the text around them", () => {
-    expect(unlikeAtRest(DOC)).toEqual({ count: 1, approximate: false });
+    expect(layoutOf(DOC).unlikeAtRest).toEqual({ count: 1, approximate: false });
     const turned = aSpan({
       id: "turned",
       font: "Kept",
       fidelity: "approximate",
       why: { code: "turned_text", params: {} },
     });
-    expect(unlikeAtRest({ ...DOC, spans: [...DOC.spans, turned] })).toEqual({ count: 2, approximate: true });
+    expect(layoutOf({ ...DOC, spans: [...DOC.spans, turned] }).unlikeAtRest).toEqual({ count: 2, approximate: true });
     // Worked out once per document: the bar reads it on every change.
-    expect(unlikeAtRest(DOC)).toBe(unlikeAtRest(DOC));
+    const before = editor.store.get().layout.unlikeAtRest;
+    typed("own", "now");
+    expect(editor.store.get().layout.unlikeAtRest).toBe(before);
   });
 });
 

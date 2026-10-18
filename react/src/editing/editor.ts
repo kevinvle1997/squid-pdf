@@ -5,7 +5,7 @@ import type { Document, Edit, FontInfo, SpanInfo, Strategy } from "../api/types"
 import { Reopener } from "../documents/reopen";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, refound } from "./find";
-import { reattach } from "./fonts";
+import { reattach, shownNameOf } from "./fonts";
 import {
   EMPTY_HISTORY,
   entriesOf,
@@ -18,6 +18,7 @@ import {
 } from "./history";
 import type { PageImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
+import { wontMatch } from "./marks";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
 import { project, type Reading, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
@@ -73,12 +74,22 @@ function scrollingTo(spanId: string): ScrollTo {
   return { spanId, count: counted };
 }
 
-/** The document's spans and fonts, looked up by what the page needs. */
+/** What's worked out once from the document: its spans and fonts, looked up by what the page needs. */
 export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
+  readonly unlikeAtRest: UnlikeAtRest; // the bar reads it on every change, so it's one object until the document changes
+}
+
+/**
+ * Before any change, how many places an edit won't match: drawn in a similar font, or in the file's
+ * own but unlike the text around it (`approximate`). The bar says it, as the mockup's status does.
+ */
+export interface UnlikeAtRest {
+  readonly count: number;
+  readonly approximate: boolean;
 }
 
 export interface EditorState {
@@ -125,13 +136,13 @@ export function layoutOf(doc: Document): Layout {
     else onPage.push(span);
   }
   const fonts = new Map(doc.fonts.map((font) => [font.name, font]));
-  const warned = doc.spans.filter((span) => span.substitute !== null || span.why !== null);
+  const unlike = doc.spans.filter(wontMatch);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts,
-    // .get: every span's font is listed; its own name stands in if one weren't.
-    warnedFonts: new Set(warned.map((span) => fonts.get(span.font)?.shown_name ?? span.font)),
+    warnedFonts: new Set(unlike.map((span) => shownNameOf({ fonts }, span.font))),
+    unlikeAtRest: { count: unlike.length, approximate: unlike.some((span) => span.why !== null) },
   };
 }
 
@@ -302,22 +313,6 @@ export function unexported(state: EditorState): boolean {
   return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 
-// Each document's count of the places an edit won't match, worked out once: the bar reads it on every change.
-const UNLIKE = new WeakMap<Document, { count: number; approximate: boolean }>();
-
-/**
- * Before any change, how many places an edit won't match: drawn in a similar font, or in the file's
- * own but unlike the text around it (`approximate`). The bar says it, as the mockup's status does.
- */
-export function unlikeAtRest(doc: Document): { count: number; approximate: boolean } {
-  const kept = UNLIKE.get(doc);
-  if (kept !== undefined) return kept;
-  const unlike = doc.spans.filter((span) => span.substitute !== null || span.why !== null);
-  const counted = { count: unlike.length, approximate: unlike.some((span) => span.why !== null) };
-  UNLIKE.set(doc, counted);
-  return counted;
-}
-
 /** How many spans read other than the original. */
 export function changedCount(state: EditorState): number {
   return state.reading.spans.size;
@@ -331,11 +326,10 @@ export function warnedCount(state: EditorState): { count: number; label: string 
   let count = 0;
   let approximate = false;
   for (const { span, replaced } of state.reading.spans.values()) {
-    const inSubstitute = span.fidelity === "substitute";
-    const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
     if (!replaced) continue;
     if (span.why !== null) approximate = true;
-    if (inSubstitute || missing.length > 0 || span.why !== null) count++;
+    const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
+    if (wontMatch(span) || missing.length > 0) count++;
   }
   return { count, label: approximate ? "will look different" : "in a similar font" };
 }
