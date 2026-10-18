@@ -24,6 +24,11 @@ export interface Notices {
 
 export const NO_NOTICES: Notices = { document: [], export: [], reopen: null, font: null, drop: null };
 
+/** The lines once the user changes the history: only what opening found outlasts it, the rest is stale. */
+export function noticesAfterChange(notices: Notices): Notices {
+  return { ...NO_NOTICES, document: notices.document };
+}
+
 export const warn = (text: string): Notice => ({ tone: "warn", text });
 export const plain = (text: string): Notice => ({ tone: "plain", text });
 

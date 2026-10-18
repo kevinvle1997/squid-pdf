@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aSkipped, aSpanNotice } from "../fixtures";
-import { NO_NOTICES, noticeLines, plain, warn } from "./notices";
+import { NO_NOTICES, noticeLines, noticesAfterChange, plain, warn } from "./notices";
 import { NOTHING_DRAWN } from "./render";
 
 describe("the lines under the bar", () => {
@@ -32,5 +32,16 @@ describe("the lines under the bar", () => {
 
   test("nothing to say is no lines", () => {
     expect(noticeLines(NO_NOTICES, NOTHING_DRAWN)).toEqual([]);
+  });
+
+  test("a change to the history clears every line but what opening found", () => {
+    const notices = {
+      document: [warn("Signed.")],
+      export: [plain("Downloaded contract.pdf.")],
+      reopen: plain("Opened again."),
+      font: { ...warn("Not this font."), font: "Times" },
+      drop: warn("Not a PDF."),
+    };
+    expect(noticesAfterChange(notices)).toEqual({ ...NO_NOTICES, document: [warn("Signed.")] });
   });
 });

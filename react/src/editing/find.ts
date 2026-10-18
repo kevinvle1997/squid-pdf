@@ -22,7 +22,7 @@ export interface FindState extends FindOptions {
   readonly replacement: string; // what's typed in "Change to"
   readonly searched: string; // what was found, once typing in "Find" stopped
   readonly hits: ReadonlyMap<number, ReadonlyMap<string, readonly Place[]>>; // by page: each span found, and where in what it reads
-  readonly changed: number | null; // how many places "Change all" just changed, until typing again
+  readonly changed: number | null; // how many places "Change all" just changed, until anything else changes
   readonly opened: number; // counted: each open puts focus in "Find", even when it's open already
   readonly closed: number; // counted: closing from inside the bar puts focus back on the bar's "Find"
 }
@@ -196,11 +196,18 @@ export function placesAcross(
   return places.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 
-/** The find bar found again in `reading`: after any change to the history, while it's open. */
-export function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
+/** The find bar's places found again in `reading`. */
+function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
   const { find, doc } = state;
   const found = foundIn(doc.spans, { reading, find });
   return { ...find, hits: hitsOf(found, find.hits) };
+}
+
+/** The find bar once the history changes: found again while it's open, and what Change all did no longer said. */
+export function findAfterChange(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
+  const found = state.find.open ? refound(state, reading) : state.find;
+  // What Change all did is said until anything else changes the history: undo would take that instead.
+  return found.changed === null ? found : { ...found, changed: null };
 }
 
 /** How many places are found, and how many of them a change won't keep looking like the text around them. */
