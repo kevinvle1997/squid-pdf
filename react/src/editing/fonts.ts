@@ -1,8 +1,8 @@
 // The user's own copies of the document's fonts, attached through the reopener and kept beside the PDF.
 // The document comes back judged again, so marks and fits change in place, unannounced (Rule 6).
-import { deleteFont, ProblemError, putFont } from "../api/client";
+import { deleteFont, putFont } from "../api/client";
 import type { Document, FontInfo } from "../api/types";
-import { reportBug } from "../bugs";
+import { sentenceOf } from "../bugs";
 import { isGone } from "../documents/reopen";
 import { type Editor, type EditorState, type Layout, layoutOf, spoken } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
@@ -176,6 +176,5 @@ function refused(editor: Editor, fontName: string, error: unknown): void {
 
 /** Why `fontName`'s copy was refused, in the server's words, said beside that font too. */
 function refusalOf(fontName: string, error: unknown): FontNotice {
-  const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
-  return { tone: "warn", text, font: fontName };
+  return { tone: "warn", text: sentenceOf(error), font: fontName };
 }

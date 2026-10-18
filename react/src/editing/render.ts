@@ -4,9 +4,9 @@
 // so the swap never flickers. The pages near the screen are asked for first, on their own,
 // then the rest. A page whose render failed stays stale: the next change asks for it again,
 // and so does `retry`, when the connection comes back.
-import { ProblemError, render as renderOnServer } from "../api/client";
+import { render as renderOnServer } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
-import { reportBug } from "../bugs";
+import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
 import { bottomOf, regionsFor, stalePages } from "./strips";
@@ -198,8 +198,7 @@ export class RenderQueue {
     } catch (error) {
       if (ask.signal.aborted) return;
       this.#asking = null;
-      const failed = error instanceof ProblemError ? error.problem.detail : reportBug(error);
-      this.#drawn = { ...this.#drawn, failed };
+      this.#drawn = { ...this.#drawn, failed: sentenceOf(error) };
       this.#options.drawn(this.#drawn);
     }
   }
