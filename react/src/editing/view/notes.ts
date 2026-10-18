@@ -1,8 +1,5 @@
-// Which span's note a page shows: one at a time, shared by the page's marks. A TooltipTrigger
-// on every mark made each page that scrolled near mount dozens of them. Hover waits
-// NOTE_DELAY_MS, as the trigger's delay did; focus and a tap show it at once, and so does a
-// hover just after another note closed, since the reader is going from note to note. A note
-// focus showed is drawn only for keyboard focus, as the trigger did: the page decides that.
+// Which span's note a page shows: one at a time, shared by its marks, so a mark mounts nothing of its own.
+// A hover waits NOTE_DELAY_MS; focus, a tap, or a hover just after another note closed show it at once.
 import { NOTE_DELAY_MS } from "../constants";
 import { createStore, type Store } from "../store";
 

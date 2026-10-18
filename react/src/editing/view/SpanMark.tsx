@@ -27,10 +27,10 @@ interface Props {
 }
 
 /**
- * A span of the page's text: pressable, with its note on hover, focus and a single tap. A font's
- * warning waits for an edit, in the field (`editNote`).
- * The page hands it what it shows, so a page's marks subscribe to nothing of the editor's and
- * mount cheaply as the page scrolls near; each redraws only when what it's handed changes.
+ * A span of the page's text: pressable, with its note on hover, focus and a single tap.
+ *
+ * The page hands it what it shows, so a mark subscribes to nothing and mounts cheaply as the page scrolls
+ * near; it redraws only when what it's handed changes. A font's warning waits for an edit (`editNote`).
  */
 export const SpanMark = memo(function SpanMark(props: Props) {
   const { span, info, reading, font, fit, redaction, copy, focusTo, notes, noteId } = props;
