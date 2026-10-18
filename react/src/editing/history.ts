@@ -51,6 +51,8 @@ export function historyReducer(history: History, action: HistoryAction): History
         .filter((step) => step.length > 0);
       return { ...history, done, undone: [] };
     }
+    default:
+      return action satisfies never;
   }
 }
 

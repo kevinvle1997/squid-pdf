@@ -1,7 +1,7 @@
 // What the document reads as with its edits made: the one reading of the history that what's
 // drawn, what's rendered and what's exported all agree on. An object nothing changed stays
 // the same object from one reading to the next, so whatever draws it can skip it.
-import type { Edit, Insert, SpanInfo, Strategy } from "../api/types";
+import type { Edit, Insert, Replace, SpanInfo, Strategy } from "../api/types";
 import type { Entry } from "./history";
 
 export interface SpanReading {
@@ -87,13 +87,23 @@ export function differing(now: PageEdits | undefined, then: PageEdits | undefine
  */
 export function project(spans: readonly SpanInfo[], entries: readonly Entry[], previous = UNEDITED): Reading {
   // The last replace to a span wins, as on the server; a redaction is for good.
-  const replaces = new Map<string, Edit>();
+  const replaces = new Map<string, Replace>();
   const redacted = new Set<string>();
   const inserts: InsertReading[] = [];
   for (const { id, edit } of entries) {
-    if (edit.kind === "replace") replaces.set(edit.span_id, edit);
-    else if (edit.kind === "redact") redacted.add(edit.span_id);
-    else inserts.push({ id, edit });
+    switch (edit.kind) {
+      case "replace":
+        replaces.set(edit.span_id, edit);
+        break;
+      case "redact":
+        redacted.add(edit.span_id);
+        break;
+      case "insert":
+        inserts.push({ id, edit });
+        break;
+      default:
+        edit satisfies never;
+    }
   }
 
   const readings = new Map<string, SpanReading>();
@@ -106,11 +116,11 @@ export function project(spans: readonly SpanInfo[], entries: readonly Entry[], p
   const live = new Set<Edit>(); // the replaces that change what a span reads
   for (const span of spans) {
     const replace = replaces.get(span.id);
-    const text = replace?.kind === "replace" ? replace.text : span.text;
+    const text = replace?.text ?? span.text;
     const replaced = text !== span.text;
     if (replaced && replace !== undefined) live.add(replace);
     if (!replaced && !redacted.has(span.id)) continue;
-    const strategy = replaced && replace?.kind === "replace" ? replace.strategy : undefined;
+    const strategy = replaced ? replace?.strategy : undefined;
     const reading: SpanReading = { span, text, replaced, strategy, redacted: redacted.has(span.id) };
     const was = previous.spans.get(span.id);
     const kept = was !== undefined && sameSpan(was, reading) ? was : reading;
