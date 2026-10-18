@@ -1,9 +1,5 @@
-// The server's render of each edited row. Typing never waits on it: while a span reads other
-// than its page's strips show, the browser previews it. One request at a time, so an older
-// reply can never land over a newer one, and a strip goes in only once its images can paint,
-// so the swap never flickers. The pages near the screen are asked for first, on their own,
-// then the rest. A page whose render failed stays stale: the next change asks for it again,
-// and so does `retry`, when the connection comes back.
+// The server's render of each edited row, one request at a time so an older reply never lands over a
+// newer one. Typing never waits on it: the browser previews a span until a strip shows it.
 import { renderStrips } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { sentenceOf } from "../bugs";

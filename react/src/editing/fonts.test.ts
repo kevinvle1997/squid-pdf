@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 
 describe("the user's own copy of a font", () => {
-  test("once attached, the document the server judged again takes over, and nothing is said", async () => {
+  test("once attached, the document the server judged again takes over, with no line under the bar", async () => {
     vi.mocked(putFont).mockResolvedValue(JUDGED_AGAIN);
 
     await attachFont(editor, "Arial", FONT_FILE);

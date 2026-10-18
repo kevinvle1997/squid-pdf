@@ -1,5 +1,5 @@
 // The user's own copies of the document's fonts, attached through the reopener and kept beside the PDF.
-// The document comes back judged again, so marks and fits change in place, unannounced (Rule 6).
+// The document comes back judged again, so marks and fits change in place, with no line under the bar (Rule 6).
 import { deleteFont, putFont } from "../api/client";
 import type { Document, FontInfo } from "../api/types";
 import { sentenceOf } from "../bugs";

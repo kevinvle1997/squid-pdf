@@ -32,7 +32,7 @@ export function noticesAfterChange(notices: Notices): Notices {
 export const warn = (text: string): Notice => ({ tone: "warn", text });
 export const plain = (text: string): Notice => ({ tone: "plain", text });
 
-/** Everything to say under the bar now, warnings first, each sentence once; reopening is said in it. */
+/** Everything to say under the bar now, warnings first, each sentence once; reopening is the bar's own. */
 export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
   const fromRender = [
     ...(drawn.failed === null ? [] : [drawn.failed]),
@@ -47,11 +47,13 @@ export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
   return [...once.filter((notice) => notice.tone === "warn"), ...once.filter((notice) => notice.tone === "plain")];
 }
 
+/** Lines as one thing to hear, each in turn. */
+export function heardIn(lines: readonly Notice[]): string {
+  return lines.map((notice) => notice.text).join(" ");
+}
+
 /** The sentences `after` has that `before` didn't, as one thing to hear: empty when none is new. */
 export function newlySaid(before: readonly Notice[], after: readonly Notice[]): string {
   const known = new Set(before.map((notice) => notice.text));
-  return after
-    .filter((notice) => !known.has(notice.text))
-    .map((notice) => notice.text)
-    .join(" ");
+  return heardIn(after.filter((notice) => !known.has(notice.text)));
 }
