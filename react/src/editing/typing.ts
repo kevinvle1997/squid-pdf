@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import type { SpanInfo, Strategy } from "../api/types";
+import type { FontInfo, SpanInfo, Strategy } from "../api/types";
 import { change, type Draft, type Editor, type EditorState, spoken } from "./editor";
 import { fallbackFaceOf } from "./faces";
 import { type Fit, fitOf, troubleKindOf, troublesOf, wayDrawn } from "./fit";
@@ -26,17 +26,25 @@ export function draftOf(span: SpanInfo, { reading, atPt }: { reading: Reading; a
   return { spanId: span.id, page: span.page, atPt, text: now?.text ?? span.text, strategy: now?.strategy };
 }
 
-/** How the draft's span fits reading `text`: nothing while nothing's typed in, or its font is unknown. */
-function draftFitOf(state: EditorState, text: string): Fit | undefined {
-  const span = state.draft === null ? undefined : state.layout.spans.get(state.draft.spanId);
-  const font = span === undefined ? undefined : state.layout.fonts.get(span.font);
-  if (span === undefined || font === undefined) return undefined;
-  return fitOf(span, { font, text, rules: state.doc.fit });
+/** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */
+export function draftSpanOf(state: EditorState): { draft: Draft; span: SpanInfo; font: FontInfo } | undefined {
+  const { draft, layout } = state;
+  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
+  const font = span === undefined ? undefined : layout.fonts.get(span.font);
+  if (draft === null || span === undefined || font === undefined) return undefined;
+  return { draft, span, font };
+}
+
+/** How the draft's span fits what's typed: nothing while nothing's typed in, or its font is unknown. */
+function draftFitOf(state: EditorState): Fit | undefined {
+  const typing = draftSpanOf(state);
+  if (typing === undefined) return undefined;
+  return fitOf(typing.span, { font: typing.font, text: typing.draft.text, rules: state.doc.fit });
 }
 
 /** The way out the draft's line is drawn with: the one chosen while it's offered, else as typed. */
 function wayIn(state: EditorState): Strategy {
-  const fit = state.draft === null ? undefined : draftFitOf(state, state.draft.text);
+  const fit = draftFitOf(state);
   return fit === undefined ? "as-is" : wayDrawn(state.draft?.strategy, fit);
 }
 
@@ -50,7 +58,7 @@ export function chooseWayOut(editor: Editor, way: Strategy): void {
 /** Up or Down in the field: the way out before or after the one drawn, round the list; false with none to choose. */
 export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   const state = editor.store.get();
-  const fit = state.draft === null ? undefined : draftFitOf(state, state.draft.text);
+  const fit = draftFitOf(state);
   if (fit === undefined || fit.options.length < 2) return false;
   const at = fit.options.indexOf(wayDrawn(state.draft?.strategy, fit));
   const next = fit.options[(at + by + fit.options.length) % fit.options.length];
@@ -66,9 +74,9 @@ const WAYS_KEYS = "Up or Down chooses how it fits";
  * and whether there's a way out of a long line to choose, past leaving it long.
  */
 export function troublesIn(state: EditorState, text: string): { said: string[]; kind: string; offers: boolean } {
-  const span = state.draft === null ? undefined : state.layout.spans.get(state.draft.spanId);
-  const font = span === undefined ? undefined : state.layout.fonts.get(span.font);
-  if (span === undefined || font === undefined) return { said: [], kind: "", offers: false };
+  const typing = draftSpanOf(state);
+  if (typing === undefined) return { said: [], kind: "", offers: false };
+  const { draft, span, font } = typing;
   const { fit: rules, copy } = state.doc;
   // A form field draws it, not the page: whatever is typed, the edit is left out.
   if (span.form_field) return { said: [copy.form_field_not_edited], kind: "form field", offers: false };
@@ -76,7 +84,7 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   if (isEmpty(text)) return { said: [copy.empty], kind: "empty", offers: false };
   const fit = fitOf(span, { font, text, rules });
   const substitute = fallbackFaceOf(span, font);
-  const way = wayDrawn(state.draft?.strategy, fit);
+  const way = wayDrawn(draft.strategy, fit);
   // That an edit here won't match the text around it is said once, as typing starts (`editNote`), not with each letter.
   return {
     said: troublesOf(fit, { rules, copy, substitute, way }),
