@@ -1,9 +1,9 @@
 // The edited document, downloaded under its own name, or split in two at a page. An edit still
 // being typed goes in first. The whole document's export starts on the way to pressing Export,
 // and the press takes it if the edits it was asked with still stand.
-import { type Exported, exportPdf, ProblemError } from "../api/client";
+import { type Exported, exportPdf } from "../api/client";
 import type { Edit } from "../api/types";
-import { reportBug } from "../bugs";
+import { sentenceOf } from "../bugs";
 import { EXPORT_INTENT_MS } from "./constants";
 import { type Editor, spoken } from "./editor";
 import { type Notice, plain, warn } from "./notices";
@@ -158,6 +158,6 @@ async function downloaded(
     const said = [...leftOut, ...otherwise];
     return { said: said.length > 0 ? said : [plain(`Downloaded ${name}.`)], went: true };
   } catch (error) {
-    return { said: [warn(error instanceof ProblemError ? error.problem.detail : reportBug(error))], went: false };
+    return { said: [warn(sentenceOf(error))], went: false };
   }
 }

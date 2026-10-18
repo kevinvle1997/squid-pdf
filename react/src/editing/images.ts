@@ -1,8 +1,8 @@
 // A page image the browser couldn't load: why, said on its page in the server's words, and asked
 // for again on a backoff and when the connection comes back, until it comes. A document the
 // server lost opens again first, which gives every page a new address.
-import { ProblemError, pageImage } from "../api/client";
-import { reportBug } from "../bugs";
+import { pageImage } from "../api/client";
+import { sentenceOf } from "../bugs";
 import { IMAGE_RETRY_FIRST_MS, IMAGE_RETRY_MOST_MS } from "./constants";
 import { type Editor, spoken } from "./editor";
 import { warn } from "./notices";
@@ -21,7 +21,7 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
     await reopener.check();
   } catch (error) {
     // Lost, and it couldn't open again: said in the bar, where reopening is.
-    const text = error instanceof ProblemError ? error.problem.detail : reportBug(error);
+    const text = sentenceOf(error);
     const { notices } = editor.store.get();
     editor.store.set({ notices: { ...notices, reopen: warn(text) }, said: spoken(text) });
     return;
@@ -33,7 +33,7 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
     // It answers now: asked again, after the wait all the same, in case the image itself is what fails.
     failedOnPage(editor, page, null);
   } catch (error) {
-    failedOnPage(editor, page, error instanceof ProblemError ? error.problem.detail : reportBug(error));
+    failedOnPage(editor, page, sentenceOf(error));
   }
 }
 
