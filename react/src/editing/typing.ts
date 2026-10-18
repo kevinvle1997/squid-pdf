@@ -4,6 +4,8 @@ import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { change, type Editor, type EditorState, say, spoken } from "./editor";
 import { substituteOf } from "./faces";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
+import { shownNameOf } from "./fonts";
+import { editNote } from "./marks";
 import type { Reading } from "./project";
 
 /** The text being typed into a span, not yet in the history. */
@@ -125,6 +127,19 @@ export function typeInto(editor: Editor, typed: string): void {
   const offered = now.offers && !was.offers ? [WAYS_KEYS] : [];
   const said = now.kind !== was.kind && now.said.length > 0 ? spoken([...now.said, ...offered].join("; ")) : state.said;
   store.set({ draft: { ...state.draft, text }, said });
+}
+
+/** The field took focus as typing starts: what an edit here warns of, and what's wrong already, is heard once. */
+export function fieldFocused(editor: Editor): void {
+  const state = editor.store.get();
+  const { draft, layout, doc, quietFonts } = state;
+  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
+  if (draft === null || span === undefined) return;
+  const quiet = quietFonts.has(shownNameOf(layout, span.font));
+  const note = editNote(span, { font: layout.fonts.get(span.font), copy: doc.copy, quiet });
+  const trouble = troublesIn(state, draft.text).said.join("\n");
+  const heard = [note?.said, note?.why, trouble].filter(Boolean).join(" ");
+  if (heard !== "") say(editor, heard);
 }
 
 /** Enter: what was typed goes in and focus goes back to the span, unless the field is empty, which stays open. */
