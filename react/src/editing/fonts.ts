@@ -1,9 +1,8 @@
 // The user's own copies of the document's fonts, attached through the reopener and kept beside the PDF.
 // The document comes back judged again, so marks and fits change in place, with no line under the bar (Rule 6).
-import { deleteFont, putFont } from "../api/client";
+import { deleteFont, isGone, putFont } from "../api/client";
 import type { Copy, Document, FontInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
-import { isGone } from "../documents/reopen";
 import { type Editor, type EditorState, type Layout, layoutOf, spoken } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";

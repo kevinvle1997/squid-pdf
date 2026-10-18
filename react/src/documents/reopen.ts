@@ -1,12 +1,7 @@
 // Once the server no longer has the document (its hour ran out, or a deploy retired it), it
 // answers 404, and this browser's file opens it again under the same span ids.
-import { ProblemError, stillThere, upload } from "../api/client";
+import { isGone, stillThere, upload } from "../api/client";
 import type { Document } from "../api/types";
-
-/** Whether the server answered that it no longer has the document. */
-export function isGone(error: unknown): boolean {
-  return error instanceof ProblemError && error.problem.status === 404;
-}
 
 export class Reopener {
   #doc: Document;
