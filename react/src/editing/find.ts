@@ -1,32 +1,28 @@
-// Find and replace, all in the browser: every span that reads the words found, how many of those
-// places a change won't look like the text around them (Rule 1, before "Change all"), and the
-// change itself, one step in the history so one undo puts every place back.
-import type { SpanInfo } from "../api/types";
+// Find and replace, all in the browser: the spans that read the words, how many a change won't keep
+// looking like the text around them (Rule 1), and Change all, one step in the history.
+import type { FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, type Editor, type EditorState, spoken } from "./editor";
 import { fitOf, runsPast, widthPt } from "./fit";
 import { wontMatch } from "./marks";
+import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import { type Reading, textIn } from "./project";
 import { finish } from "./typing";
 import { counted } from "./words";
 
-/** How "Find" matches: letters of either case unless `matchCase`, inside a word too unless `wholeWords`. */
-export interface FindOptions {
-  readonly matchCase: boolean;
-  readonly wholeWords: boolean;
-}
-
+/** The find bar: what's typed in it, and what it found. */
 export interface FindState extends FindOptions {
   readonly open: boolean;
   readonly query: string; // what's typed in "Find", echoed at once
   readonly replacement: string; // what's typed in "Change to"
   readonly searched: string; // what was found, once typing in "Find" stopped
-  readonly hits: ReadonlyMap<number, ReadonlyMap<string, readonly Place[]>>; // by page: each span found, and where in what it reads
+  readonly matches: ReadonlyMap<number, ReadonlyMap<string, readonly Match[]>>; // by page: each span found, and where in what it reads
   readonly changed: number | null; // how many places "Change all" just changed, until anything else changes
   readonly opened: number; // counted: each open puts focus in "Find", even when it's open already
   readonly closed: number; // counted: closing from inside the bar puts focus back on the bar's "Find"
 }
 
+/** The find bar before it's opened. */
 export const FIND_CLOSED: FindState = {
   open: false,
   matchCase: false,
@@ -34,115 +30,17 @@ export const FIND_CLOSED: FindState = {
   query: "",
   replacement: "",
   searched: "",
-  hits: new Map(),
+  matches: new Map(),
   changed: null,
   opened: 0,
   closed: 0,
 };
 
-/** Where words were found in a text, from its `start` to its `end`, in UTF-16 units as `slice` takes them. */
-export interface Place {
-  readonly start: number;
-  readonly end: number;
-}
-
-// The space, quote and dash a keyboard types, and each letter a page may set instead: a date with a
-// no-break space, a name with a curly apostrophe, a range with an en dash. "Find" reads them as typed.
-const KEYBOARD: readonly { readonly typed: string; readonly letters: RegExp }[] = [
-  { typed: " ", letters: /[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]/u },
-  { typed: "'", letters: /[\u2018\u2019\u201a\u201b\u2032\u02bc]/u },
-  { typed: '"', letters: /[\u201c-\u201f\u2033]/u },
-  { typed: "-", letters: /[\u2010-\u2015\u2212]/u },
-];
-
-// Drawn as nothing, so read as nothing: a soft hyphen, a zero-width space or joiner.
-const UNSEEN = /[\u00ad\u200b\u2060\ufeff]/u;
-
-// A ligature, such as fi, read as the letters it joins.
-const LIGATURE = /[\ufb00-\ufb06]/u;
-
-const WORD_LETTER = /[\p{L}\p{M}\p{N}_]/u;
-
-/** A letter as "Find" reads it. */
-function readAs(letter: string, { matchCase }: Pick<FindOptions, "matchCase">): string {
-  const typed = KEYBOARD.find(({ letters }) => letters.test(letter))?.typed;
-  const read = typed ?? (UNSEEN.test(letter) ? "" : LIGATURE.test(letter) ? letter.normalize("NFKC") : letter);
-  return matchCase ? read : read.toLowerCase();
-}
-
-/**
- * `replacement` spelled as the page spelled `found`, the words it replaces: where every space, quote or
- * dash of a kind in `found` is the same letter the keyboard can't type, the replacement's are that letter.
- * Why: a no-break space a page set stays one, and a font that draws only that one draws the change.
- */
-function spelledAs(found: string, replacement: string): string {
-  let spelled = replacement;
-  for (const { typed, letters } of KEYBOARD) {
-    const set = new Set([...found].filter((letter) => letters.test(letter)));
-    const [only] = set;
-    if (set.size === 1 && only !== undefined && only !== typed) spelled = spelled.replaceAll(typed, only);
-  }
-  return spelled;
-}
-
-/** `text` as "Find" reads it, and for each unit of that the letter of `text` it came from, `from` to `to`. */
-function readOf(text: string, options: Pick<FindOptions, "matchCase">) {
-  let read = "";
-  const from: number[] = [];
-  const to: number[] = [];
-  let at = 0;
-  for (const letter of text) {
-    const piece = readAs(letter, options);
-    read += piece;
-    for (let unit = 0; unit < piece.length; unit++) {
-      from.push(at);
-      to.push(at + letter.length);
-    }
-    at += letter.length;
-  }
-  return { read, from, to };
-}
-
-/** Each place in `text` that reads `searched`, left to right and none overlapping, as `options` match. */
-export function placesIn(text: string, searched: string, options: FindOptions): Place[] {
-  const wanted = readOf(searched, options).read;
-  if (wanted === "") return [];
-  const { read, from, to } = readOf(text, options);
-  const places: Place[] = [];
-  let at = read.indexOf(wanted);
-  while (at !== -1) {
-    const end = at + wanted.length;
-    // Whole letters of the text, never half a ligature; and with Whole words, no letter either side.
-    const wholeLetters = from[at - 1] !== from[at] && from[end] !== from[end - 1];
-    const apart = !options.wholeWords || !(WORD_LETTER.test(read[at - 1] ?? "") || WORD_LETTER.test(read[end] ?? ""));
-    const start = from[at];
-    const stop = to[end - 1];
-    if (wholeLetters && apart && start !== undefined && stop !== undefined) {
-      places.push({ start, end: stop });
-      at = read.indexOf(wanted, end);
-    } else {
-      at = read.indexOf(wanted, at + 1);
-    }
-  }
-  return places;
-}
-
-/** `text` with each of `places` changed to `replacement`, spelled as the page spelled what it replaces. */
-export function replacedIn(text: string, places: readonly Place[], replacement: string): string {
-  let out = "";
-  let kept = 0;
-  for (const { start, end } of places) {
-    out += text.slice(kept, start) + spelledAs(text.slice(start, end), replacement);
-    kept = end;
-  }
-  return out + text.slice(kept);
-}
-
-/** One place found: its span, what it reads now, and where in that the words are. */
+/** One span found: the span, what it reads now, and where in that the words match. */
 interface Found {
   readonly span: SpanInfo;
   readonly text: string;
-  readonly places: readonly Place[];
+  readonly matches: readonly Match[];
 }
 
 /** Every span that reads `find.searched` now, in the document's order. A redaction or a form field takes no replace. */
@@ -153,39 +51,48 @@ function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Readi
     const now = reading.spans.get(span.id);
     if (span.form_field || now?.redacted) continue;
     const text = textIn(reading, span);
-    const places = placesIn(text, find.searched, find);
-    if (places.length > 0) found.push({ span, text, places });
+    const matches = matchesIn(text, find.searched, find);
+    if (matches.length > 0) found.push({ span, text, matches });
   }
   return found;
 }
 
-/** Whether two spans' places found are the same. */
-function samePlaces(a: readonly Place[] | undefined, b: readonly Place[]): boolean {
+/** Whether a span's matches are the same as before. */
+function sameMatches(a: readonly Match[] | undefined, b: readonly Match[]): boolean {
   return (
     a !== undefined &&
     a.length === b.length &&
-    b.every((place, i) => place.start === a[i]?.start && place.end === a[i]?.end)
+    b.every((match, i) => match.start === a[i]?.start && match.end === a[i]?.end)
   );
 }
 
-/** The places found, by page and span, keeping each page's map where it's the same, so only pages that changed redraw. */
-function hitsOf(found: readonly Found[], before: FindState["hits"]): FindState["hits"] {
-  const pages = new Map<number, Map<string, readonly Place[]>>();
-  for (const { span, places } of found) pages.set(span.page, (pages.get(span.page) ?? new Map()).set(span.id, places));
-  const same = (a: ReadonlyMap<string, readonly Place[]> | undefined, b: ReadonlyMap<string, readonly Place[]>) =>
-    a !== undefined && a.size === b.size && [...b].every(([id, places]) => samePlaces(a.get(id), places));
+/** Whether a page's matches, span by span, are the same as before. */
+function samePageMatches(a: ReadonlyMap<string, readonly Match[]>, b: ReadonlyMap<string, readonly Match[]>): boolean {
+  return a.size === b.size && [...b].every(([spanId, matches]) => sameMatches(a.get(spanId), matches));
+}
+
+/** The matches by page and span, keeping each page's map where it's the same, so only pages that changed redraw. */
+function matchesOf(found: readonly Found[], before: FindState["matches"]): FindState["matches"] {
+  const pages = new Map<number, Map<string, readonly Match[]>>();
+  for (const { span, matches } of found) {
+    const onPage = pages.get(span.page) ?? new Map<string, readonly Match[]>();
+    pages.set(span.page, onPage.set(span.id, matches));
+  }
   return new Map(
-    [...pages].map(([page, spans]) => [page, same(before.get(page), spans) ? (before.get(page) ?? spans) : spans]),
+    [...pages].map(([page, spans]) => {
+      const was = before.get(page);
+      return [page, was !== undefined && samePageMatches(was, spans) ? was : spans];
+    }),
   );
 }
 
 /**
- * Where each place found sits across its span, in points: its share of the span's width by the widths
+ * Where each match sits across its span, in points: its share of the span's width by the widths
  * of the letters before and in it, so the words found are marked, not the whole line.
  */
-export function placesAcross(
+export function matchesAcross(
   span: SpanInfo,
-  { text, places, glyphs }: { text: string; places: readonly Place[]; glyphs: Record<string, number> },
+  { text, matches, glyphs }: { text: string; matches: readonly Match[]; glyphs: Record<string, number> },
 ): { x0: number; x1: number }[] {
   const whole = widthPt(text, glyphs, span.size);
   const wide = span.bbox.x1 - span.bbox.x0;
@@ -193,14 +100,19 @@ export function placesAcross(
   const at = (index: number) =>
     span.bbox.x0 +
     (whole > 0 ? widthPt(text.slice(0, index), glyphs, span.size) / whole : index / Math.max(text.length, 1)) * wide;
-  return places.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
+  return matches.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 
-/** The find bar's places found again in `reading`. */
+/** The find bar's matches found again in `reading`. */
 function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
   const { find, doc } = state;
   const found = foundIn(doc.spans, { reading, find });
-  return { ...find, hits: hitsOf(found, find.hits) };
+  return { ...find, matches: matchesOf(found, find.matches) };
+}
+
+/** The find bar searching what "Find" shows now, though typing in it may not have stopped. */
+function searchingQuery(find: FindState): FindState {
+  return { ...find, searched: find.query };
 }
 
 /** The find bar once the history changes: found again while it's open, and what Change all did no longer said. */
@@ -211,23 +123,36 @@ export function findAfterChange(state: Pick<EditorState, "find" | "doc">, readin
 }
 
 /** How many places are found, and how many of them a change won't keep looking like the text around them. */
-export function findCount(state: EditorState): { places: number; unlike: number } {
+export interface FindCount {
+  readonly places: number;
+  readonly unlike: number;
+}
+
+/** Whether changing the words found in a span leaves it unlike the text around it. */
+function looksDifferent(
+  { span, text, matches }: Found,
+  { fonts, replacement, rules }: { fonts: ReadonlyMap<string, FontInfo>; replacement: string; rules: FitRules },
+): boolean {
+  // Drawn in a similar font, or set so an edit won't match: whatever the words.
+  if (wontMatch(span)) return true;
+  const font = fonts.get(span.font);
+  // Nothing to change to yet, or no widths to check it by.
+  if (replacement === "" || font === undefined) return false;
+  // The live check typing uses, on the words as they'd read changed.
+  const fit = fitOf(span, { font, text: replacedIn(text, matches, replacement), rules });
+  return fit.missing.length > 0 || runsPast(fit.deltaPt, fit.roomPt, rules);
+}
+
+/** The find bar's count now. */
+export function findCount(state: EditorState): FindCount {
   const { find, doc, reading, layout } = state;
   const found = foundIn(doc.spans, { reading, find });
-  const unlike = found.filter(({ span, text, places }) => {
-    // Drawn in a similar font, or set so an edit won't match: whatever the words.
-    if (wontMatch(span)) return true;
-    const font = layout.fonts.get(span.font);
-    if (find.replacement === "" || font === undefined) return false;
-    // The live check typing uses, on the words as they'd read changed.
-    const fit = fitOf(span, { font, text: replacedIn(text, places, find.replacement), rules: doc.fit });
-    return fit.missing.length > 0 || runsPast(fit.deltaPt, fit.roomPt, doc.fit);
-  }).length;
-  return { places: found.length, unlike };
+  const judging = { fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
+  return { places: found.length, unlike: found.filter((each) => looksDifferent(each, judging)).length };
 }
 
 /** The count before a change, as the find bar shows it: one phrase, the part that warns kept apart for --warn. */
-export function countShown({ places, unlike }: { places: number; unlike: number }): { plain: string; warned: string } {
+export function countShown({ places, unlike }: FindCount): { plain: string; warned: string } {
   if (places === 0) return { plain: "Nothing matches", warned: "" };
   const where = counted(places, { one: "place", other: "places" });
   // Every place will look like the text around it.
@@ -238,7 +163,7 @@ export function countShown({ places, unlike }: { places: number; unlike: number 
 }
 
 /** The count as said, in the words shown: "14 places, 3 of them will look different". */
-export function countSaid(count: { places: number; unlike: number }): string {
+export function countSaid(count: FindCount): string {
   const { plain, warned } = countShown(count);
   return `${plain}${warned}`;
 }
@@ -260,7 +185,7 @@ export function openFind(editor: Editor): void {
 export function closeFind(editor: Editor, { fromInside = false }: { fromInside?: boolean } = {}): void {
   clearTimeout(editor.finding.timer);
   const { find } = editor.store.get();
-  editor.store.set({ find: { ...find, open: false, hits: new Map(), closed: find.closed + (fromInside ? 1 : 0) } });
+  editor.store.set({ find: { ...find, open: false, matches: new Map(), closed: find.closed + (fromInside ? 1 : 0) } });
 }
 
 /** Typing in "Find": echoed at once, and found once typing stops for a moment. */
@@ -279,44 +204,41 @@ export function typeReplacement(editor: Editor, replacement: string): void {
 
 /** Match case on or off: found again at once, since nothing is being typed. */
 export function setMatchCase(editor: Editor, matchCase: boolean): void {
-  const { find } = editor.store.get();
-  editor.store.set({ find: { ...find, matchCase, changed: null } });
-  search(editor);
+  search(editor, { matchCase });
 }
 
 /** Whole words on or off: found again at once, as Match case is. */
 export function setWholeWords(editor: Editor, wholeWords: boolean): void {
-  const { find } = editor.store.get();
-  editor.store.set({ find: { ...find, wholeWords, changed: null } });
-  search(editor);
+  search(editor, { wholeWords });
 }
 
-/** Find what's typed, mark it, and say the count. */
-function search(editor: Editor): void {
+/** Find what "Find" shows, matched as `asked` says: marked, and the count said, in one update. */
+function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   const state = editor.store.get();
-  const find = refound({ ...state, find: { ...state.find, searched: state.find.query } }, state.reading);
-  editor.store.set({ find });
-  const after = editor.store.get();
-  if (find.searched !== "") editor.store.set({ said: spoken(countSaid(findCount(after))) });
+  const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null };
+  const find = refound({ ...state, find: searching }, state.reading);
+  const heard = find.searched !== "" && { said: spoken(countSaid(findCount({ ...state, find }))) };
+  editor.store.set({ find, ...heard });
 }
 
-/** Change every place found, as one step in the history. Needs words to change to: emptying a span is redaction's. */
+/** Change every place found, as one step in the history. */
 export function changeAll(editor: Editor): void {
   finish(editor, true);
   const state = editor.store.get();
-  const { find } = state;
+  // Nothing to change to: emptying a span is redaction's job.
+  if (state.find.replacement === "") return;
   // What's typed but not yet found is what the user sees in "Find": find it first.
-  const searched = find.query;
-  const found = foundIn(state.doc.spans, { reading: state.reading, find: { ...find, searched } });
-  if (found.length === 0 || find.replacement === "") return;
+  const find = searchingQuery(state.find);
+  const found = foundIn(state.doc.spans, { reading: state.reading, find });
+  if (found.length === 0) return;
   clearTimeout(editor.finding.timer);
-  const edits = found.map(({ span, text, places }) => ({
+  const edits = found.map(({ span, text, matches }) => ({
     kind: "replace" as const,
     span_id: span.id,
-    text: replacedIn(text, places, find.replacement),
+    text: replacedIn(text, matches, find.replacement),
   }));
   change(editor, { kind: "add", edits }, (reading) => ({
     said: spoken(changedSaid(found.length)),
-    find: { ...refound({ ...state, find: { ...find, searched } }, reading), changed: found.length },
+    find: { ...refound({ ...state, find }, reading), changed: found.length },
   }));
 }
