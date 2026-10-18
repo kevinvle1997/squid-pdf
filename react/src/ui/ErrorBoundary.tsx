@@ -10,13 +10,13 @@ interface Props {
  * to load after a deploy. React logs the error itself. A class, as React still requires for this.
  */
 export class ErrorBoundary extends Component<Props, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  render() {
+  override render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
