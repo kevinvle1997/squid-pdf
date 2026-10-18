@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "@fontsource/atkinson-hyperlegible-next/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { ProblemError, pageImage, renderStrips } from "../../api/client";
-import type { PageInfo, Render } from "../../api/types";
-import { A4, aDoc, aFit, aFont, aProblem, aReply, aSpan, COPY } from "../../fixtures";
+import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
+import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, COPY, halfWideGlyphs } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
@@ -44,18 +44,35 @@ vi.mock(import("./Margin"), async (original) => {
 const WORDS = "was here";
 const span = aSpan({ id: "s1", text: WORDS, size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 }, origin: [72, 120] });
 // Every letter half the size wide: the span's eight are 80 pt at 20 pt.
-const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
+const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 // A line on the next page, to show what a change to the first leaves alone.
 const elsewhere = aSpan({ id: "s2", page: 1, text: "was there" });
 const DOC = aDoc({ spans: [span, elsewhere], fonts: [aFont("Times-Roman", { glyphs })] });
 
+const FILE = new File(["%PDF-"], "contract.pdf");
+// The viewport the file starts in, put back after each test so none runs at the size another set.
+const VIEWPORT = { width: window.innerWidth, height: window.innerHeight };
+
 let editor: Editor;
+// What `farAway` adds below the page, taken out after the test even when it fails.
+let spacer: HTMLElement | null = null;
+
+/** Open `doc` in the editor the page draws from, in place of DOC. */
+function openDocument(doc: Document) {
+  editor = createEditor(FILE, doc, 2);
+}
 
 beforeEach(() => {
   vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
-  editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
+  openDocument(DOC);
+});
+
+afterEach(async () => {
+  spacer?.remove();
+  spacer = null;
+  await page.viewport(VIEWPORT.width, VIEWPORT.height);
 });
 
 async function draw(index = 0, info = A4) {
@@ -94,11 +111,35 @@ function contrastOnWhite(line: CSSStyleDeclaration): number {
 }
 
 /** Marks come once the page is near the viewport, which its observer says a moment after drawing. */
-async function editSpan(screen: Awaited<ReturnType<typeof draw>>) {
-  const mark = screen.getByRole("button", { name: WORDS });
+async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS) {
+  const mark = screen.getByRole("button", { name: words });
   await expect.element(mark).toBeInTheDocument();
   mark.element().focus();
   await userEvent.keyboard("{Enter}");
+}
+
+/** Scroll the page far enough away that it's past the margin pages are drawn within. */
+function farAway() {
+  spacer = document.createElement("div");
+  spacer.style.height = "20000px";
+  document.body.append(spacer);
+  window.scrollTo(0, 15000);
+}
+
+/** The colour `token` sets, read off a probe taken out again. */
+function colorOf(token: string): string {
+  const probe = document.body.appendChild(document.createElement("span"));
+  probe.style.color = `var(${token})`;
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}
+
+/** The sheet of the page `element` is on: the box after its margin that the page is drawn in. */
+function sheetOf(element: Element): Element {
+  const sheet = element.closest("section")?.children[1];
+  if (sheet === undefined) throw new Error("no sheet");
+  return sheet;
 }
 
 describe("a page", () => {
@@ -118,25 +159,16 @@ describe("a page", () => {
     // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance.
     const said = screen.getByText("30.0 pt too long");
     await expect.element(said).toBeVisible();
-    const warn = document.body.appendChild(document.createElement("span"));
-    warn.style.color = "var(--warn)";
-    expect(getComputedStyle(said.element()).color).toBe(getComputedStyle(warn).color);
+    expect(getComputedStyle(said.element()).color).toBe(colorOf("--warn"));
   });
 
   test("a line a little past its room offers the ways out; one pressed is drawn in the field at once, focus staying", async () => {
     // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
     const letters = "abcdefghijklmnopqrst";
     const long = aSpan({ id: "long", text: letters, bbox: { x0: 72, y0: 100, x1: 172, y1: 112 }, origin: [72, 110] });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }));
     const screen = await draw();
-    const mark = screen.getByRole("button", { name: letters });
-    await expect.element(mark).toBeInTheDocument();
-    mark.element().focus();
-    await userEvent.keyboard("{Enter}");
+    await editSpan(screen, letters);
     const field = screen.getByRole("textbox");
     await userEvent.keyboard("{End}u");
 
@@ -163,11 +195,7 @@ describe("a page", () => {
   test("an edit drawn smaller previews smaller, before its render lands", async () => {
     const letters = "abcdefghijklmnopqrst";
     const long = aSpan({ id: "long", text: letters, bbox: { x0: 72, y0: 100, x1: 172, y1: 112 }, origin: [72, 110] });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }));
     const screen = await draw();
     await expect.element(screen.getByRole("button", { name: letters })).toBeInTheDocument();
     edit(editor, long.id, null);
@@ -206,7 +234,7 @@ describe("a page", () => {
     // Kept in the file, trimmed to the letters it draws: the server falls back to the Lato we ship.
     const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold", glyphs });
     const bold = aSpan({ ...span, font: lato.name });
-    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [bold], fonts: [lato] }), 2);
+    openDocument(aDoc({ spans: [bold], fonts: [lato] }));
     const screen = await draw();
     await editSpan(screen);
     await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
@@ -217,7 +245,7 @@ describe("a page", () => {
   test("a span in a right-hand column has its chip under it, ending where it ends, not squeezed against the page's edge", async () => {
     await page.viewport(1400, 900);
     const amount = aSpan({ ...span, text: "was here", bbox: { x0: 480, y0: 100, x1: 560, y1: 124 } });
-    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [amount], fonts: DOC.fonts }), 2);
+    openDocument(aDoc({ spans: [amount], fonts: DOC.fonts }));
     const screen = await draw();
     await editSpan(screen);
     await userEvent.keyboard("{End}Q");
@@ -247,26 +275,16 @@ describe("a page", () => {
       fidelity: "substitute",
       substitute: "Liberation Sans Regular",
     });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }));
     screen.rerender(
       <EditorContext.Provider value={editor}>
         <Page index={0} info={A4} />
       </EditorContext.Provider>,
     );
-    const mark = screen.getByRole("button", { name: "in arial" });
-    await expect.element(mark).toBeInTheDocument();
-    mark.element().focus();
-    await userEvent.keyboard("{Enter}");
+    await editSpan(screen, "in arial");
     const similar = screen.getByText("a similar font", { exact: true });
     await expect.element(similar).toBeVisible();
-    const warn = document.body.appendChild(document.createElement("span"));
-    warn.style.color = "var(--warn)";
-    expect(getComputedStyle(similar.element()).color).toBe(getComputedStyle(warn).color);
-    warn.remove();
+    expect(getComputedStyle(similar.element()).color).toBe(colorOf("--warn"));
   });
 
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
@@ -288,9 +306,7 @@ describe("a page", () => {
     await userEvent.keyboard("{End}");
     // Far past the right edge of the page, as a long replacement runs.
     await userEvent.keyboard(" and a good deal more besides, running on past the edge of the page");
-    const sheet = screen.getByRole("textbox").element().closest("section")?.children[1];
-    if (sheet === undefined) throw new Error("no sheet");
-    expect(sheet.scrollLeft).toBe(0);
+    expect(sheetOf(screen.getByRole("textbox").element()).scrollLeft).toBe(0);
   });
 
   test("a face that finishes loading after the field opens sizes the field again", async () => {
@@ -333,7 +349,7 @@ describe("a page", () => {
     await userEvent.keyboard("{End} now");
     await screen.getByRole("button", { name: "Redact" }).click();
     await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
-    expect(editor.store.get().reading.edits).toEqual([{ kind: "redact", span_id: span.id }]);
+    expect(editor.store.get().reading.edits).toEqual([aRedact(span.id)]);
 
     const note = screen.getByRole("button", { name: `Undo: “${WORDS}” is no longer redacted` });
     await expect.element(note).toBeVisible();
@@ -348,19 +364,15 @@ describe("a page", () => {
     await editSpan(screen);
     await screen.getByRole("textbox").fill("is here");
     await userEvent.keyboard("{Enter}");
-    const below = document.createElement("div");
-    below.style.height = "20000px";
-    document.body.append(below);
     undo(editor);
     await vi.waitFor(() => expect(window.scrollY).toBeLessThan(1000));
-    window.scrollTo(0, 15000);
+    farAway();
     // The page draws again: its image goes as it leaves, and the server's verdict lands.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     editor.store.set({ drawn: { ...editor.store.get().drawn, fits: new Map([[0, { s1: aFit({}) }]]) } });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settled();
     expect(window.scrollY).toBe(15000);
-    below.remove();
   });
 
   test("the field stays while the page it's on is scrolled far away", async () => {
@@ -368,27 +380,18 @@ describe("a page", () => {
     await editSpan(screen);
     const field = screen.getByRole("textbox");
     await expect.element(field).toBeInTheDocument();
-    // Far enough below that the page is past the margin pages are drawn within.
-    const below = document.createElement("div");
-    below.style.height = "20000px";
-    document.body.append(below);
-    window.scrollTo(0, 15000);
+    farAway();
     // The image goes as the page leaves; the field the user typed in doesn't.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     await expect.element(field).toBeInTheDocument();
-    below.remove();
   });
 
   test("a page near the screen is one the render asks for first; scrolled far away, it isn't", async () => {
     await draw(1);
     await vi.waitFor(() => expect(editor.near).toEqual(new Set([1])));
-    const below = document.createElement("div");
-    below.style.height = "20000px";
-    document.body.append(below);
-    window.scrollTo(0, 15000);
+    farAway();
     await vi.waitFor(() => expect(editor.near).toEqual(new Set()));
-    below.remove();
   });
 
   test("a span holding focus keeps it while its page is scrolled far away, so focus never falls to the page", async () => {
@@ -396,14 +399,10 @@ describe("a page", () => {
     const mark = screen.getByRole("button", { name: WORDS });
     await expect.element(mark).toBeInTheDocument();
     mark.element().focus();
-    const below = document.createElement("div");
-    below.style.height = "20000px";
-    document.body.append(below);
-    window.scrollTo(0, 15000);
+    farAway();
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     await expect.element(mark).toHaveFocus();
-    below.remove();
   });
 
   test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
@@ -524,11 +523,11 @@ describe("a page", () => {
   describe("undo, before the server's render lands", () => {
     const below = aSpan({ id: "below", text: WORDS, size: 20, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     const beside = aSpan({ id: "beside", text: WORDS, size: 20, bbox: { x0: 300, y0: 100, x1: 380, y1: 124 } });
-    const strip = (y: number) => ({ page: 0, y, image: "" });
+    const strip = (y: number): ImageInfo => ({ page: 0, y, image: "" });
 
     /** Both spans changed, and the server's strips for them in. */
-    async function bothChanged(other: typeof below, images: { page: number; y: number; image: string }[]) {
-      editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ spans: [span, other], fonts: DOC.fonts }), 2);
+    async function bothChanged(other: typeof below, images: ImageInfo[]) {
+      openDocument(aDoc({ spans: [span, other], fonts: DOC.fonts }));
       vi.mocked(renderStrips).mockResolvedValue(aReply({ images }));
       const screen = await draw();
       await expect.element(screen.getByRole("button", { name: WORDS }).first()).toBeInTheDocument();
@@ -570,9 +569,9 @@ describe("a page", () => {
     await page.viewport(1400, 900);
     const letter: PageInfo = { width: 612, height: 792, turn_cw: 0 };
     const screen = await draw(0, letter);
-    const sheet = screen.getByRole("region", { name: "Page 1" }).element().children[1];
+    const sheet = sheetOf(screen.getByRole("region", { name: "Page 1" }).element());
     // 612 pt at 96 dpi is 816 px.
-    expect(sheet?.getBoundingClientRect().width).toBeCloseTo(816, 0);
+    expect(sheet.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
 
   test("on a wide screen, a margin note shows only the words the edit changed, and its name the whole line", async () => {
@@ -599,11 +598,7 @@ describe("a page", () => {
 
   test("a span with a note shares the page's note: keyboard focus shows it, Escape closes it, Enter still edits", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
@@ -630,11 +625,7 @@ describe("a page", () => {
       substitute: "Liberation Sans Regular",
     });
     const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular", why: "Not embedded.", glyphs });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [substituted], fonts: [substitutedFont] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [substituted], fonts: [substitutedFont] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "in arial" });
     await expect.element(mark).toBeInTheDocument();
@@ -657,11 +648,7 @@ describe("a page", () => {
 
   test("text a form field draws has the dashed warning line, and its note says an edit is left out", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
@@ -678,13 +665,11 @@ describe("a page", () => {
     const copyOf = (id: string, font: string, y0: number) =>
       aSpan({ id, text: "in drawn", font, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 }, ...turned });
     const fontOf = (name: string) => aFont(name, { shown_name: "Drawn-Regular", glyphs });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
+    openDocument(
       aDoc({
         spans: [copyOf("s3", "Type3 (5 0 R)", 300), copyOf("s4", "Type3 (9 0 R)", 400)],
         fonts: [fontOf("Type3 (5 0 R)"), fontOf("Type3 (9 0 R)")],
       }),
-      2,
     );
     const screen = await draw();
     const marks = screen.getByRole("button", { name: "in drawn" });
@@ -711,11 +696,7 @@ describe("a page", () => {
       why: { code: "turned_text", params: {} },
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
     });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "turned" });
     await expect.element(mark).toBeInTheDocument();
@@ -725,19 +706,12 @@ describe("a page", () => {
     const note = screen.getByText(COPY.approximate.turned_text ?? "");
     await expect.element(note).toBeVisible();
     await expect.element(screen.getByText("will look different", { exact: true })).toBeVisible();
-    const warn = document.body.appendChild(document.createElement("span"));
-    warn.style.color = "var(--warn)";
-    expect(getComputedStyle(note.element()).color).toBe(getComputedStyle(warn).color);
-    warn.remove();
+    expect(getComputedStyle(note.element()).color).toBe(colorOf("--warn"));
   });
 
   test("a click shows a span's note; a click's focus alone doesn't", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    editor = createEditor(
-      new File(["%PDF-"], "contract.pdf"),
-      aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }),
-      2,
-    );
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
@@ -745,7 +719,8 @@ describe("a page", () => {
     // A pointer was used last: focus that comes without a press is a click's, not the keyboard's.
     await userEvent.click(screen.getByRole("region", { name: "Page 1" }), { position: { x: 1, y: 1 } });
     mark.element().focus();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Focus is taken: the mark points at the page's note, which a click's focus leaves shut.
+    await expect.element(mark).toHaveAttribute("aria-describedby");
     await expect.element(note).not.toBeInTheDocument();
     await mark.click();
     await expect.element(note).toBeVisible();
