@@ -12,6 +12,9 @@ export interface Kept<Work> {
   readonly until: number; // when the server forgets it too, in ms since the epoch
 }
 
+/** The work kept with a document, and until when: what an editor opened again takes up. */
+export type KeptWork<Work> = Pick<Kept<Work>, "work" | "until">;
+
 const DATABASE = "squid-pdf";
 const STORE = "kept";
 const FILE = "file";

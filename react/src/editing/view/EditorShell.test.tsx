@@ -53,7 +53,7 @@ describe("the editor", () => {
       aReply({ notices: [aSpanNotice(drewOtherwise, span.id)], skipped: [aSkipped(0, leftOut)] }),
     );
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await change(screen, "is here");
     await expect.element(screen.getByText(drewOtherwise, { exact: true }).first()).toBeVisible();
@@ -68,7 +68,7 @@ describe("the editor", () => {
       { code: "b", params: {}, type: "t", detail: "This file is signed; editing breaks the signature." },
     ];
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={{ ...DOC, notices }} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: { ...DOC, notices } }} onOpen={vi.fn()} />,
     );
     const [first, second] = notices.map((notice) => notice.detail);
     await expect.element(screen.getByText(first ?? "", { exact: true }).first()).toBeVisible();
@@ -83,7 +83,7 @@ describe("the bar", () => {
     const unreachable = "We can't work on files right now. Try again in a few minutes.";
     vi.mocked(stillThere).mockRejectedValueOnce(new ProblemError(aProblem(503, unreachable)));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     // The page image fails to load here, as it does once the server has lost the document.
     await expect.element(screen.getByRole("banner").getByText(unreachable)).toBeVisible();
@@ -105,7 +105,7 @@ describe("the bar", () => {
   test("with nothing changed, it says how to start editing, and stops once something has", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     const hint = screen.getByText("Double-click text to change it");
     await expect.element(hint).toBeVisible();
@@ -116,7 +116,7 @@ describe("the bar", () => {
   test("before any change, it counts the places an edit will use a similar font, warned; then the changes", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
     const bar = screen.getByRole("banner");
     await expect.element(bar.getByText("will use a similar font", { exact: false })).toBeVisible();
@@ -137,7 +137,7 @@ describe("the bar", () => {
     try {
       expect(matchMedia("(pointer: coarse)").matches).toBe(true);
       const screen = await render(
-        <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+        <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
       );
       await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
       await expect.element(screen.getByText("Double-click text to change it")).not.toBeVisible();
@@ -157,7 +157,7 @@ describe("export", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(exportPdf).mockReturnValue(new Promise(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await screen.getByRole("button", { name: /Export/ }).click();
     const exporting = screen.getByRole("banner").getByText("Exporting");
@@ -181,7 +181,7 @@ describe("export, started on the way to pressing it", () => {
    */
   async function drawn() {
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await screen.getByText("contract.pdf").hover();
     return screen;
@@ -248,7 +248,7 @@ describe("an emptied span", () => {
   test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await change(screen, "");
     // Shown in the chip, the first on the page, and heard through the status.
@@ -265,7 +265,7 @@ describe("redaction", () => {
   test("Cmd+Delete redacts the span, and editing it asks first, beside it: Escape keeps it, Edit anyway opens it", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     const mark = screen.getByRole("button", { name: "was here" });
     await expect.element(mark).toBeInTheDocument();
@@ -291,7 +291,7 @@ describe("redaction", () => {
   test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     const mark = screen.getByRole("button", { name: "was here" });
     await expect.element(mark).toBeInTheDocument();
@@ -315,7 +315,7 @@ describe("leaving the page", () => {
     let kept: () => void = () => undefined;
     vi.mocked(keepState).mockReturnValueOnce(new Promise((resolve) => (kept = resolve)));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     expect(leave()).toBe(false);
@@ -329,7 +329,7 @@ describe("leaving the page", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(keepFile).mockRejectedValueOnce(new DOMException("refused", "InvalidStateError"));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await change(screen, "is here");
     await vi.waitFor(() => expect(keepFile).toHaveBeenCalled());
@@ -349,7 +349,7 @@ describe("leaving the page", () => {
     const fonts = [["Arial", { bytes: await FONT_FILE.arrayBuffer(), type: FONT_FILE.type }]];
     const kept = { work: { history, fonts }, until: Date.now() + 60_000 };
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} kept={kept} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} kept={kept} />,
     );
 
     await expect.element(screen.getByRole("button", { name: "is here" })).toBeInTheDocument();
@@ -364,7 +364,7 @@ describe("leaving the page", () => {
     vi.mocked(keepFile).mockClear();
     vi.mocked(keepState).mockClear();
     const file = new File(["%PDF-"], "contract.pdf");
-    const screen = await render(<EditorShell file={file} opened={DOC} onOpen={vi.fn()} />);
+    const screen = await render(<EditorShell opened={{ file: file, doc: DOC }} onOpen={vi.fn()} />);
     await change(screen, "is here");
     await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(1));
     expect(keepFile).toHaveBeenCalledWith(file);
@@ -386,7 +386,7 @@ describe("undo and redo", () => {
     const far = aSpan({ ...span, page: 2 });
     const doc = aDoc({ spans: [far], fonts: [aFont("Times-Roman")], pages: [A4, A4, A4] });
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={doc} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: doc }} onOpen={vi.fn()} />,
     );
     screen.getByRole("region", { name: "Page 3" }).element().scrollIntoView();
     await change(screen, "is here");
@@ -441,7 +441,7 @@ describe("the user's own copy of a font", () => {
   test("is offered while typing only once a letter typed is one the font can't draw", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
 
     await typeInto(screen, "was there");
@@ -455,7 +455,9 @@ describe("the user's own copy of a font", () => {
     // The file's own Times draws it, turned on the page, and has no Y.
     const turned = aSpan({ ...span, fidelity: "approximate", why: { code: "turned_text", params: {} } });
     const own = aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
-    const screen = await render(<EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={own} onOpen={vi.fn()} />);
+    const screen = await render(
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: own }} onOpen={vi.fn()} />,
+    );
     await typeInto(screen, "was Yes");
 
     const offer = screen.getByRole("button", { name: "Use your copy" });
@@ -475,7 +477,7 @@ describe("the user's own copy of a font", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
     await typeInto(screen, "was Yes");
 
@@ -497,7 +499,7 @@ describe("the user's own copy of a font", () => {
   test("text dragged onto the field is the field's to take, not a font", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
     await typeInto(screen, "was Yes");
 
@@ -517,7 +519,7 @@ describe("the user's own copy of a font", () => {
   test("a file picker taking the window's focus leaves the typing as it was", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
     await typeInto(screen, "was Yes");
     const windowLeft = vi.spyOn(document, "hasFocus").mockReturnValue(false);
@@ -535,7 +537,7 @@ describe("the user's own copy of a font", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
 
     await attachThroughFonts(screen);
@@ -553,7 +555,7 @@ describe("the user's own copy of a font", () => {
     // A real font file, so the browser can read it: one of ours, standing in for the user's Arial.
     const bytes = await (await fetch(SOME_FONT)).arrayBuffer();
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
     await attachThroughFonts(screen, new File([bytes], "arial.ttf", { type: "font/ttf" }));
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).toHaveFocus();
@@ -571,7 +573,7 @@ describe("the user's own copy of a font", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     vi.mocked(putFont).mockRejectedValue(new ProblemError(aProblem(422, MISMATCH)));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "letter.pdf")} opened={ARIAL_DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "letter.pdf"), doc: ARIAL_DOC }} onOpen={vi.fn()} />,
     );
 
     await attachThroughFonts(screen);
@@ -587,7 +589,7 @@ describe("the user's own copy of a font", () => {
       .mockReturnValue(new Promise(() => undefined));
     const opened = { ...DOC, pages: [A4, A4, A4] };
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={opened} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: opened }} onOpen={vi.fn()} />,
     );
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Split after/ }).elements()).toHaveLength(2);
@@ -613,7 +615,7 @@ describe("a file dropped on the editor", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const onOpen = vi.fn();
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={onOpen} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={onOpen} />,
     );
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     expect(dropOnPage([PDF])).toBe(true);
@@ -637,7 +639,7 @@ describe("find and replace", () => {
   test("Cmd+F opens find with focus in it; it counts, changes all, and Escape gives focus back to Find", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     await userEvent.keyboard("{Control>}f{/Control}");
@@ -660,7 +662,7 @@ describe("find and replace", () => {
   test("Match case and Whole words are checkboxes beside the fields, and find again as they're ticked", async () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const screen = await render(
-      <EditorShell file={new File(["%PDF-"], "contract.pdf")} opened={DOC} onOpen={vi.fn()} />,
+      <EditorShell opened={{ file: new File(["%PDF-"], "contract.pdf"), doc: DOC }} onOpen={vi.fn()} />,
     );
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     await userEvent.keyboard("{Control>}f{/Control}");

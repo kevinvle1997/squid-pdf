@@ -1,6 +1,6 @@
 // The work on the open document, kept in this browser as it changes (documents/kept.ts), so a
 // reload or a closed tab loses none of it; and the editor started again from work kept before.
-import { keepFile, keepState } from "../documents/kept";
+import { type KeptWork, keepFile, keepState } from "../documents/kept";
 import type { Editor } from "./editor";
 import { unexported } from "./export";
 import { addOwnFace } from "./faces";
@@ -75,7 +75,7 @@ export function atRisk(editor: Editor): boolean {
 }
 
 /** A new editor takes up work kept here before, before it's drawn: kept already, file and all. */
-export function takeUp(editor: Editor, { work, until }: { work: Work; until: number }): void {
+export function takeUp(editor: Editor, { work, until }: KeptWork<Work>): void {
   const { doc } = editor.store.get();
   editor.store.set({
     history: work.history,

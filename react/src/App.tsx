@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import styles from "./App.module.css";
-import { forgetKept, type Kept, keptDocument } from "./documents/kept";
+import { forgetKept, type Kept, type KeptWork, keptDocument } from "./documents/kept";
 import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
 import { Button } from "./ui/Button";
@@ -22,7 +22,7 @@ export function App() {
 }
 
 /** The landing, or the document open in the editor: opened again from this browser, with its work kept. */
-type Screen = Landing | { kind: "open"; opened: Opened; kept?: { work: unknown; until: number } };
+type Screen = Landing | { kind: "open"; opened: Opened; kept?: KeptWork<unknown> };
 
 function Screens() {
   const [screen, setScreen] = useState<Screen>({ kind: "waiting" });
@@ -81,13 +81,7 @@ function Screens() {
   return (
     <Suspense fallback={null}>
       {/* Keyed: the editor takes `opened` only as it starts, so another document is another editor. */}
-      <EditorShell
-        key={opened.doc.id}
-        file={opened.file}
-        opened={opened.doc}
-        onOpen={(file) => void open(file)}
-        kept={screen.kept}
-      />
+      <EditorShell key={opened.doc.id} opened={opened} onOpen={(file) => void open(file)} kept={screen.kept} />
     </Suspense>
   );
 }
