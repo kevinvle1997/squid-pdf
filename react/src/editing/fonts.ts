@@ -9,6 +9,7 @@ import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
 import { keepWork } from "./keeping";
 import type { FontNotice } from "./notices";
+import { draftSpanOf } from "./typing";
 
 /** The font files the user's copy can be: TrueType or OpenType, by type or by name. */
 export const FONT_FILES = ["font/ttf", "font/otf", ".ttf", ".otf"];
@@ -152,12 +153,10 @@ export function fontFocused(editor: Editor): void {
 
 /** Whether the field offers the user's copy: a letter typed is one no copy of the font draws. */
 export function offersCopy(state: EditorState): boolean {
-  const { draft, layout } = state;
-  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
-  const font = span === undefined ? undefined : layout.fonts.get(span.font);
+  const typing = draftSpanOf(state);
   // A form field draws it, or the user's copy is in already: another can't help.
-  if (draft === null || span === undefined || font === undefined || span.form_field || font.attached) return false;
-  return missingIn(draft.text, font.glyphs).length > 0;
+  if (typing === undefined || typing.span.form_field || typing.font.attached) return false;
+  return missingIn(typing.draft.text, typing.font.glyphs).length > 0;
 }
 
 /** The server judged every span again: its marks and fits take over, and every edited page is drawn again. */
