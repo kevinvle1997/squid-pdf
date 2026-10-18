@@ -4,7 +4,7 @@
 import type { Document, Edit, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import type { ExportAhead } from "./export";
-import { FIND_CLOSED, type FindState, refound } from "./find";
+import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
 import { reattach, shownNameOf } from "./fonts";
 import {
   EMPTY_HISTORY,
@@ -19,7 +19,7 @@ import {
 import type { PageImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
 import { wontMatch } from "./marks";
-import { NO_NOTICES, type Notices, newlySaid, noticeLines, plain, warn } from "./notices";
+import { NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
 import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
@@ -237,12 +237,8 @@ export function change(editor: Editor, action: HistoryAction, also: Also = {}): 
     return;
   }
   const reading = project(state.doc.spans, entriesOf(history), state.reading);
-  // What the last export, reopening or refused copy said is stale once the user edits again.
-  const notices = { ...state.notices, export: [], reopen: null, font: null, drop: null };
-  // The places found, found again in what the document now reads.
-  const found = state.find.open ? refound(state, reading) : state.find;
-  // What Change all did is said until anything else changes the history: undo would take that instead.
-  const find = found.changed === null ? found : { ...found, changed: null };
+  const notices = noticesAfterChange(state.notices);
+  const find = findAfterChange(state, reading);
   store.set({ history, reading, notices, find, ...(typeof also === "function" ? also(reading) : also) });
   queue.draw(reading);
   void keepWork(editor);
