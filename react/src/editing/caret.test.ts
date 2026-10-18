@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { aSpan } from "../fixtures";
+import { aSpan, halfWideGlyphs } from "../fixtures";
 import { atPtOf, letterAt, wordAround } from "./caret";
 
 // Every letter half the size wide: 5 pt each at 10 pt.
-const glyphs = Object.fromEntries([..."abcdefghijklmnopqrstuvwxyz "].map((letter) => [letter, 500]));
+const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 
 describe("the caret a double press puts down", () => {
   test("a press lands as far into the span, in points, as it is into its mark", () => {

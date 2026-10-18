@@ -6,6 +6,8 @@ type Schemas = components["schemas"];
 
 // Not read: `expires_at`. Nothing shows the hour, and a document the server lost opens again by itself.
 export type Document = Schemas["Document"];
+// Not read: `code`, `params` and `type`. Each is shown as its `detail`, the server's sentence.
+export type DocumentNoticeInfo = Schemas["DocumentNoticeInfo"];
 export type PageInfo = Schemas["PageInfo"];
 // Not read: `origin`, since the preview sits in the span's box only until the strip, drawn at `origin`, replaces it;
 // `fidelity`, since `substitute` is set exactly when it's "substitute", and `why` when it's "approximate".

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Edit, Insert, SpanInfo } from "../api/types";
-import { A4, aSpan } from "../fixtures";
+import type { Edit, SpanInfo } from "../api/types";
+import { A4, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import {
@@ -20,7 +20,6 @@ const spanAt = (y0: number, y1: number, page = 0): SpanInfo =>
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>
   project(SPANS, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
-const replace = (span: SpanInfo, text = "y"): Edit => ({ kind: "replace", span_id: span.id, text });
 
 describe("strips to redraw", () => {
   test("a strip reaches just past its span, and never past the page", () => {
@@ -30,7 +29,7 @@ describe("strips to redraw", () => {
   });
 
   test("new text's strip is a line tall around its baseline", () => {
-    const insert: Insert = { kind: "insert", page: 0, origin: [72, 400], text: "Signed", size: 10 };
+    const insert = anInsert({ origin: [72, 400], size: 10 });
     expect(insertRowOf(insert, A4)).toEqual({ y0: 388, y1: 405 });
   });
 
@@ -45,7 +44,7 @@ describe("strips to redraw", () => {
 
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
-    const reading = readingOf(replace(bottom), replace(top));
+    const reading = readingOf(aReplace(bottom.id), aReplace(top.id));
     expect(regionsFor(0, A4, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
@@ -57,21 +56,21 @@ describe("pages to redraw", () => {
   const [top, , other] = SPANS as [SpanInfo, SpanInfo, SpanInfo];
 
   test("a page is stale when its edits read other than what its strips were drawn from", () => {
-    const reading = readingOf(replace(top), replace(other));
+    const reading = readingOf(aReplace(top.id), aReplace(other.id));
     expect(stalePages(reading, new Map())).toEqual(new Set([0, 1]));
     expect(stalePages(reading, new Map([[0, reading]]))).toEqual(new Set([1]));
   });
 
   test("a page whose strips show edits since undone is stale, until it's drawn bare", () => {
-    const drawn = readingOf(replace(top));
+    const drawn = readingOf(aReplace(top.id));
     expect(stalePages(UNEDITED, new Map([[0, drawn]]))).toEqual(new Set([0]));
     expect(stalePages(UNEDITED, new Map([[0, UNEDITED]]))).toEqual(new Set());
   });
 
   test("a failed render leaves its page stale, so the next asks for it again", () => {
-    const first = readingOf(replace(top));
+    const first = readingOf(aReplace(top.id));
     // The render of `first` never landed; now page 1 is edited too.
-    const next = readingOf(replace(top), replace(other));
+    const next = readingOf(aReplace(top.id), aReplace(other.id));
     expect(stalePages(next, new Map([[1, first]]))).toEqual(new Set([0, 1]));
   });
 });
@@ -92,11 +91,11 @@ describe("a strip the server drew", () => {
   test("still shows an edit while one is in its rows; once none is, the page beneath is right as it is", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
     const strip = { y: 98, y1: 114 };
-    expect(stillShows(strip, { edits: readingOf(replace(top), replace(bottom)).pages.get(0), info: A4 })).toBe(true);
-    expect(stillShows(strip, { edits: readingOf(replace(bottom)).pages.get(0), info: A4 })).toBe(false);
-    expect(stillShows(strip, { edits: readingOf({ kind: "redact", span_id: top.id }).pages.get(0), info: A4 })).toBe(
+    expect(stillShows(strip, { edits: readingOf(aReplace(top.id), aReplace(bottom.id)).pages.get(0), info: A4 })).toBe(
       true,
     );
+    expect(stillShows(strip, { edits: readingOf(aReplace(bottom.id)).pages.get(0), info: A4 })).toBe(false);
+    expect(stillShows(strip, { edits: readingOf(aRedact(top.id)).pages.get(0), info: A4 })).toBe(true);
     expect(stillShows(strip, { edits: undefined, info: A4 })).toBe(false);
   });
 

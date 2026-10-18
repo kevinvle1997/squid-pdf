@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFont, aSpan } from "../fixtures";
+import { aDoc, aFont, aRedact, aReplace, aSpan, halfWideGlyphs } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
 import { change, createEditor, type Editor, undo } from "./editor";
 import {
@@ -22,7 +22,7 @@ import { matchesIn } from "./matching";
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
 // Every letter these tests type, as wide as each other, so "14 June" fits where "14 March" was.
-const glyphs = Object.fromEntries([..." 0123456789MarchJunewsoifdtly"].map((letter) => [letter, 500]));
+const glyphs = halfWideGlyphs(" 0123456789MarchJunewsoifdtly");
 const DATE = "14 March";
 const SPANS = [
   aSpan({ id: "first", text: `was ${DATE}`, room_pt: 50 }),
@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
   editor = createEditor(new File(["%PDF-"], "contract.pdf"), DOC, 2);
-  change(editor, { kind: "add", edits: [{ kind: "redact", span_id: "redacted" }] });
+  change(editor, { kind: "add", edits: [aRedact("redacted")] });
   openFind(editor);
 });
 
@@ -112,7 +112,7 @@ describe("find", () => {
     typeReplacement(editor, "14 June");
     changeAll(editor);
     expect(editor.store.get().find.changed).toBe(2);
-    change(editor, { kind: "add", edits: [{ kind: "redact", span_id: "other" }] });
+    change(editor, { kind: "add", edits: [aRedact("other")] });
     expect(editor.store.get().find.changed).toBeNull();
 
     // Closed meanwhile, the bar doesn't say it again when it opens.
@@ -135,7 +135,7 @@ describe("find", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
     const marks = editor.store.get().find.matches.get(0);
-    change(editor, { kind: "add", edits: [{ kind: "replace", span_id: "other", text: "still nothing" }] });
+    change(editor, { kind: "add", edits: [aReplace("other", "still nothing")] });
     expect(editor.store.get().find.matches.get(0)).toBe(marks);
   });
 
@@ -167,7 +167,7 @@ describe("find", () => {
   test("a match sits across its span by its letters' widths, so only the words found are marked", () => {
     // Ten 5 pt letters across 50 pt: "cdef" is the third to the sixth.
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
-    const glyphs = Object.fromEntries([..."abcdefghij"].map((letter) => [letter, 500]));
+    const glyphs = halfWideGlyphs("abcdefghij");
     const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
     expect(matchesAcross(line, { text: line.text, matches, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
   });

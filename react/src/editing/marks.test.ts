@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { aFit, aFont, aSpan, COPY as copy } from "../fixtures";
+import { aFit, aFont, aRedaction, aSpan, COPY as copy } from "../fixtures";
 import { editNote, lookOf, shortWarningOf } from "./marks";
 
 const span = aSpan({ id: "s1" });
@@ -12,9 +12,14 @@ const substitutedFont = aFont("Arial", {
 });
 const substituted = aSpan({ id: "s2", font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" });
 
+type Marked = Parameters<typeof lookOf>[0];
+/** What a mark shows, with all it isn't given unknown: a span's font, its reading, the server's verdicts. */
+const lookAt = (marked: Pick<Marked, "span"> & Partial<Marked>) =>
+  lookOf({ font: undefined, reading: undefined, fit: undefined, redaction: undefined, copy, ...marked });
+
 describe("what a span's mark shows, and an edit in it as typing starts", () => {
   test("a span in its own font, unedited, has nothing to say", () => {
-    expect(lookOf({ span, font: ownFont, reading: undefined, fit: undefined, redaction: undefined, copy })).toEqual({
+    expect(lookAt({ span, font: ownFont })).toEqual({
       formField: false,
       changed: false,
       trouble: false,
@@ -25,14 +30,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("untouched, a span in a similar font has no mark or note: its warning waits for an edit", () => {
-    const look = lookOf({
-      span: substituted,
-      font: substitutedFont,
-      reading: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
+    const look = lookAt({ span: substituted, font: substitutedFont });
     expect(look.note).toBeNull();
   });
 
@@ -68,42 +66,26 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("once changed, a span in a similar font says so on hover, as long as the edit stands", () => {
-    const look = lookOf({
-      span: substituted,
-      font: substitutedFont,
-      reading: changed,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
+    const look = lookAt({ span: substituted, font: substitutedFont, reading: changed });
     expect(look.note).toMatchObject({ warn: true, why: "Not embedded." });
   });
 
   test("after an edit, the server's verdict comes first, and only while the span is still changed", () => {
     const fit = aFit({ message: "2.0 pt too long, so it was shrunk" });
-    expect(
-      lookOf({ span: substituted, font: substitutedFont, reading: changed, fit, redaction: undefined, copy }),
-    ).toMatchObject({
+    expect(lookAt({ span: substituted, font: substitutedFont, reading: changed, fit })).toMatchObject({
       changed: true,
       trouble: true,
       note: { warn: true, said: "2.0 pt too long, so it was shrunk", why: null },
     });
     // Put back, before its page is drawn again: the old verdict no longer applies.
-    expect(lookOf({ span, font: ownFont, reading: undefined, fit, redaction: undefined, copy })).toMatchObject({
+    expect(lookAt({ span, font: ownFont, fit })).toMatchObject({
       trouble: false,
       note: null,
     });
   });
 
   test("before any edit, text a form field draws says an edit here is left out, whatever its font", () => {
-    const look = lookOf({
-      span: { ...substituted, form_field: true },
-      font: substitutedFont,
-      reading: undefined,
-      fit: undefined,
-      redaction: undefined,
-      copy,
-    });
+    const look = lookAt({ span: { ...substituted, form_field: true }, font: substitutedFont });
     expect(look.formField).toBe(true);
     expect(look.note).toEqual({ warn: true, said: copy.form_field_not_edited, why: null });
   });
@@ -120,13 +102,9 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
 
   test("a redaction says nothing until it's drawn, then what the server found, warned", () => {
     const redacted = { ...changed, replaced: false, redacted: true };
-    const before = lookOf({ span, font: ownFont, reading: redacted, fit: undefined, redaction: undefined, copy });
-    const signed = {
-      verified: true,
-      hidden_copies: ["signatures" as const],
-      message: "No signatures in the download.",
-    };
-    const after = lookOf({ span, font: ownFont, reading: redacted, fit: undefined, redaction: signed, copy });
+    const before = lookAt({ span, font: ownFont, reading: redacted });
+    const signed = aRedaction({ hidden_copies: ["signatures"], message: "No signatures in the download." });
+    const after = lookAt({ span, font: ownFont, reading: redacted, redaction: signed });
     expect(before).toMatchObject({ redacted: true, unredacted: false, note: null });
     expect(after).toMatchObject({ redacted: true, unredacted: false });
     expect(after.note).toEqual({ warn: true, said: "No signatures in the download.", why: null });
@@ -134,8 +112,8 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
 
   test("a redaction the server found still there is marked as a warning, and says so", () => {
     const redacted = { ...changed, replaced: false, redacted: true };
-    const left = { verified: false, hidden_copies: [], message: "This text couldn't be removed." };
-    const look = lookOf({ span, font: ownFont, reading: redacted, fit: undefined, redaction: left, copy });
+    const left = aRedaction({ verified: false, message: "This text couldn't be removed." });
+    const look = lookAt({ span, font: ownFont, reading: redacted, redaction: left });
     expect(look).toMatchObject({ redacted: true, unredacted: true });
     expect(look.note).toEqual({ warn: true, said: "This text couldn't be removed.", why: null });
   });
