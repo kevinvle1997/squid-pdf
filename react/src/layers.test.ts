@@ -1,6 +1,5 @@
-// The browser's layers, as tests/test_layers.py checks the server's. A feature's logic sits at
-// its folder's root and knows nothing of React; what draws it is in its view/, as only a
-// feature's api.py knows FastAPI. Imports go one way: editing may use documents, never back.
+// The browser's layers, as tests/test_layers.py checks the server's: a feature's logic knows nothing
+// of React, what draws it is in its view/, and imports go one way, editing to documents, never back.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +12,10 @@ const IMPORTS = /(?:^|\n)\s*(?:import|export)\b[^"';]*?["']([^"']+)["']|\bimport
 interface Source {
   path: string; // from src/, with forward slashes
   imports: string[]; // relative ones resolved from src/, packages as written
+  exports: string[]; // each name exported, as "type Name" for a type
 }
+
+const EXPORTS = /^export\s+(?:default\s+)?(?:async\s+)?(const|let|function|class|type|interface|enum)\s+(\w+)/gm;
 
 function sources(folder = SRC): Source[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
@@ -21,11 +23,15 @@ function sources(folder = SRC): Source[] {
     if (entry.isDirectory()) return sources(full);
     if (!/\.tsx?$/.test(entry.name) || entry.name.endsWith(".d.ts")) return [];
     const path = relative(SRC, full).split("\\").join("/");
-    const imports = [...readFileSync(full, "utf8").matchAll(IMPORTS)].map(([, from = "", lazy = ""]) => {
+    const text = readFileSync(full, "utf8");
+    const imports = [...text.matchAll(IMPORTS)].map(([, from = "", lazy = ""]) => {
       const spec = from || lazy;
       return spec.startsWith(".") ? posix.join(posix.dirname(path), spec) : spec;
     });
-    return [{ path, imports }];
+    const exports = [...text.matchAll(EXPORTS)].map(([, kind = "", name = ""]) =>
+      ["type", "interface", "enum"].includes(kind) ? `type ${name}` : name,
+    );
+    return [{ path, imports, exports }];
   });
 }
 
@@ -34,6 +40,9 @@ const isView = (path: string) => /^[^/]+\/view\//.test(path);
 const drawsWithReact = (path: string) =>
   isView(path) || path.startsWith("ui/") || ["App.tsx", "main.tsx"].includes(path);
 const isFramework = (spec: string) => FRAMEWORK.includes(spec) || spec.endsWith(".module.css");
+const isTest = (path: string) => /\.test\.tsx?$/.test(path);
+// What a view or a base component may hand out: a component, or a hook.
+const isDrawn = (name: string) => /^[A-Z]|^use[A-Z]/.test(name);
 const slice = (path: string) => path.split("/")[0] ?? "";
 
 function breaking(rule: (source: Source, spec: string) => boolean): string[] {
@@ -67,5 +76,16 @@ describe("the browser's layers", () => {
 
   test("editing may use documents, and documents never editing", () => {
     expect(breaking(({ path }, spec) => slice(path) === "documents" && slice(spec) === "editing")).toEqual([]);
+  });
+
+  test("a view or a base component hands out only what draws: no helper, and no type another module takes", () => {
+    const drawing = ALL.filter(({ path }) => path.endsWith(".tsx") && drawsWithReact(path) && !isTest(path));
+    const handed = drawing.flatMap(({ path, exports }) => exports.map((name) => `${path} → ${name}`));
+    expect(handed.length).toBeGreaterThan(0);
+    expect(handed.filter((entry) => !isDrawn(entry.split(" → ")[1] ?? ""))).toEqual([]);
+  });
+
+  test("the API's shapes built by hand are for tests alone", () => {
+    expect(breaking(({ path }, spec) => spec === "fixtures" && !isTest(path))).toEqual([]);
   });
 });
