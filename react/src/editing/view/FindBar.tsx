@@ -24,6 +24,12 @@ import { COMMAND } from "./keys";
 
 /** Find and replace, under the bar while it's open: the count says how many places will look different first. */
 export function FindBar() {
+  const open = useEditorState((state) => state.find.open);
+  return open ? <FindFields /> : null;
+}
+
+/** The open find bar's fields: closed, nothing of it is drawn, and nothing found is counted. */
+function FindFields() {
   const editor = useEditor();
   const find = useEditorState((state) => state.find);
   const count = useEditorState(findCount, shallowEqual);
@@ -36,10 +42,9 @@ export function FindBar() {
     },
     [find.opened],
   );
-  if (!find.open) return null;
-
   const closeOnEscape = onEscape(() => closeFind(editor, { fromInside: true }));
   const searched = find.searched !== "" && find.searched === find.query;
+  const nothingToChange = find.query === "" || find.replacement === "" || (searched && count.places === 0);
   return (
     // biome-ignore lint/a11y/useSemanticElements: Chromium gives <search> no landmark yet, so a screen reader would miss it.
     <div role="search" className={styles.bar} aria-label="Find and replace">
@@ -82,11 +87,7 @@ export function FindBar() {
           searched && <Counted {...count} />
         )}
       </span>
-      <Button
-        onPress={() => changeAll(editor)}
-        onKeyDown={closeOnEscape}
-        isDisabled={find.query === "" || find.replacement === "" || (searched && count.places === 0)}
-      >
+      <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={nothingToChange}>
         Change all
       </Button>
       <Button variant="quiet" onPress={() => closeFind(editor, { fromInside: true })} onKeyDown={closeOnEscape}>
