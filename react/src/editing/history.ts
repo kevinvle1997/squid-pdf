@@ -1,7 +1,5 @@
-// The edit history. The client holds it; every render and export sends what it adds up to.
-// Undo is truncation, the same for every kind of edit, so history stays one list. Each edit
-// has an id of its own, so it can be taken out by name wherever it stands: every edit to one
-// span from the margin, or one edit from the history list.
+// The edit history, held in the browser: the steps done, each undone whole, and those undone for redo.
+// Each edit has an id of its own, so it can be taken out wherever it stands, as putting a span back does.
 import type { Edit } from "../api/types";
 
 export interface Entry {

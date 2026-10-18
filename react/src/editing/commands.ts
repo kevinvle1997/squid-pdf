@@ -1,5 +1,5 @@
 // Keyboard shortcuts, wherever focus is: one table, read by one listener in EditorShell, so a
-// new binding is a row. The arrows join it with nudging.
+// new binding is a row.
 import { type Editor, redo, undo } from "./editor";
 import { exportNow } from "./export";
 import { openFind } from "./find";

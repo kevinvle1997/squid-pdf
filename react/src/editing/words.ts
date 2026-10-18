@@ -1,19 +1,19 @@
-// Filling in the server's sentences. The server writes every sentence about the document
-// and sends them unfilled in `copy`; the browser only puts the facts in.
+// Words the browser puts together: the server's sentences, sent unfilled in `copy`, with their facts
+// put in; and the plural forms of the browser's own labels.
 
 export type Facts = Record<string, string | number | readonly string[]>;
 
 // How a list goes into a sentence, as the server joins it (core/app/words, join_chars and join_letters).
 const JOINS: Record<string, string> = { chars: " or ", letters: " " };
 
-const ONE_PLACE = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const ONE_DECIMAL = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /** `sentence` with each {placeholder} filled; one with no fact stays as written. */
 export function fill(sentence: string, facts: Facts): string {
   return sentence.replace(/\{(\w+)\}/g, (placeholder: string, key: string) => {
     const fact = facts[key];
     if (fact === undefined) return placeholder;
-    if (typeof fact === "number") return ONE_PLACE.format(fact);
+    if (typeof fact === "number") return ONE_DECIMAL.format(fact);
     if (typeof fact === "string") return fact;
     return fact.join(JOINS[key] ?? " ");
   });
@@ -27,8 +27,8 @@ const QUOTED = /^[\p{P}\p{S}]$/u;
 
 /**
  * A character as a person can see it: itself, quoted if punctuation or a symbol, or its name in `names`
- * (the server's `copy.characters`) when it draws nothing alone. `_visible` in core/app/words, but for one the catalog doesn't name:
- * the server says Unicode's name, which the browser hasn't got, so it says the code point.
+ * (the server's `copy.characters`) when it draws nothing alone. `_visible` in core/app/words.
+ * One the catalog doesn't name, the server calls by Unicode's name; the browser hasn't got it, so says its code point.
  */
 export function shownAs(character: string, names: Readonly<Record<string, string>>): string {
   if (QUOTED.test(character)) return `\u201c${character}\u201d`;

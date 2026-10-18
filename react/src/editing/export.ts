@@ -6,7 +6,7 @@ import type { Edit } from "../api/types";
 import { sentenceOf } from "../bugs";
 import { EXPORT_INTENT_MS } from "./constants";
 import { type Editor, type EditorState, spoken } from "./editor";
-import { type Notice, plain, warn } from "./notices";
+import { heardIn, type Notice, plain, warn } from "./notices";
 import { textIn } from "./project";
 import { finish } from "./typing";
 
@@ -147,7 +147,7 @@ async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void
     exporting: false,
     ...(went && { exported: edits }),
     notices: { ...store.get().notices, export: once },
-    said: spoken(once.map((notice) => notice.text).join(" ")),
+    said: spoken(heardIn(once)),
   });
 }
 

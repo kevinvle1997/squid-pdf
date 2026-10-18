@@ -19,7 +19,7 @@ import {
 import type { FailedImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
 import { wontMatch } from "./marks";
-import { NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
+import { heardIn, NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
 import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
@@ -95,7 +95,7 @@ export interface EditorState {
   readonly draft: Draft | null;
   readonly unredacting: Unredacting | null;
   readonly focusTo: FocusTo | null;
-  readonly notices: Notices; // the lines under the bar, but the render's, which are in `drawn`
+  readonly notices: Notices; // what's said under the bar, and reopening in it; the render's lines are in `drawn`
   readonly said: Spoken; // what a screen reader hears, for what the page doesn't show
   readonly scrollTo: ScrollTo | null;
   readonly exporting: boolean;
@@ -161,18 +161,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     images: new Map(),
     find: FIND_CLOSED,
   });
-  // The server no longer had the document, and it opened again: the same spans, under a new id,
-  // with the user's copies back before anything is drawn or exported from it.
-  const reopener = new Reopener(file, opened, async (doc) => {
-    const { judged, refusal } = await reattach(editor, doc);
-    const reopen = plain(doc.copy.reopened);
-    const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
-    const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
-    store.set({ doc: judged, layout: layoutOf(judged), notices, said: spoken(heard) });
-    // Pages drawn with a copy now refused no longer show what export would give.
-    if (refusal !== null) queue.redraw(store.get().reading);
-    return judged;
-  });
+  const reopener = new Reopener(file, opened, (doc) => reopened(editor, doc));
   const near = new Set<number>();
   const queue = new RenderQueue({
     reopener,
@@ -197,6 +186,22 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
 }
 
 /**
+ * The server no longer had the document, and it opened again: the same spans, under a new id,
+ * with the user's copies back before anything is drawn or exported from it.
+ */
+async function reopened(editor: Editor, doc: Document): Promise<Document> {
+  const { store, queue } = editor;
+  const { judged, refusal } = await reattach(editor, doc);
+  const reopen = plain(doc.copy.reopened);
+  const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
+  const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
+  store.set({ doc: judged, layout: layoutOf(judged), notices, said: spoken(heard) });
+  // Pages drawn with a copy now refused no longer show what export would give.
+  if (refusal !== null) queue.redraw(store.get().reading);
+  return judged;
+}
+
+/**
  * A render landed or failed: what it drew goes in, where it disagrees with the preview pulses,
  * and a line it adds under the bar is heard.
  */
@@ -210,7 +215,7 @@ function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
 /** The editor is on screen: what opening the file found is heard, now its live region is there to say it. */
 export function sayOpening(editor: Editor): void {
   const found = editor.store.get().notices.document;
-  if (found.length > 0) say(editor, found.map((notice) => notice.text).join(" "));
+  if (found.length > 0) say(editor, heardIn(found));
 }
 
 /** The rest of an action, or what it is once the history's read: what undo says the span reads. */
@@ -291,7 +296,7 @@ export function say(editor: Editor, text: string): void {
   editor.store.set({ said: spoken(text) });
 }
 
-/** How many spans read other than the original. */
+/** How many spans an edit changes: replaced or redacted. */
 export function changedCount(state: EditorState): number {
   return state.reading.spans.size;
 }
