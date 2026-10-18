@@ -253,6 +253,17 @@ describe("a page", () => {
     expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
   });
 
+  test("the chip arrives as the field opens, in the motion every slip shares", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    const redact = screen.getByRole("button", { name: "Redact" });
+    await expect.element(redact).toBeVisible();
+    const chip = redact.element().closest("div");
+    // base.css's keyframes, which a module's own names would miss.
+    const playing = chip?.getAnimations().map((animation) => (animation as CSSAnimation).animationName);
+    expect(playing).toEqual(["arrive"]);
+  });
+
   test("the chip says the verdict on what's typed: it looks identical, or a similar font draws it, warned", async () => {
     const screen = await draw();
     await editSpan(screen);
