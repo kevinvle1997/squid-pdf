@@ -1,15 +1,10 @@
 /* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack in
    one order, whatever it says, so each part is where it was the last time; it's as wide as its widest row. */
 .chip {
-  position: absolute; z-index: var(--z-chip);
+  composes: slip from "../../ui/Slip.module.css";
   display: flex; flex-direction: column; gap: var(--s2);
-  padding: var(--s3);
-  border-radius: var(--r-3);
-  background: var(--strip); box-shadow: var(--lift-1);
-  font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
   white-space: nowrap; line-height: 1;
   pointer-events: none;
-  animation: arrive var(--dur-move) var(--ease-out);
 }
 /* What an edit here warns of, in full, as typing starts, and quieting it under that: above the edit's own facts. */
 .note {
@@ -42,11 +37,4 @@
 /* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }
-}
-/* The shadow goes in high contrast: an outline keeps the slip apart from the page under it. */
-@media (forced-colors: active) {
-  .chip { outline: 1px solid CanvasText; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .chip { animation: fade var(--dur-quick) var(--ease-out); }
 }

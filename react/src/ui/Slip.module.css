@@ -1,0 +1,17 @@
+/* A slip on the page: beside what it's about, outside it, floating above the page on the strip's
+   surface. What it holds, and how it lays that out, is each slip's own. */
+.slip {
+  position: absolute; z-index: var(--z-chip);
+  padding: var(--s3);
+  border-radius: var(--r-3);
+  background: var(--strip); box-shadow: var(--lift-1);
+  font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
+  animation: arrive var(--dur-move) var(--ease-out);
+}
+/* The shadow goes in high contrast: an outline keeps the slip apart from the page under it. */
+@media (forced-colors: active) {
+  .slip { outline: 1px solid CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slip { animation: fade var(--dur-quick) var(--ease-out); }
+}
