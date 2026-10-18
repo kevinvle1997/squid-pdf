@@ -2,18 +2,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, render } from "../api/client";
 import type { Render } from "../api/types";
 import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
-import {
-  changedCount,
-  createEditor,
-  type Editor,
-  layoutOf,
-  putBack,
-  redo,
-  undo,
-  unexported,
-  warnedCount,
-} from "./editor";
-import { exportNow, partName, splitAfter, splitPages } from "./export";
+import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
+import { exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
 import { quietFont } from "./quiet";
 import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing";

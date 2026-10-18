@@ -1,7 +1,8 @@
 // A file dropped on the editor, outside the field a font goes on: a PDF opens in place of this one, as
 // on the landing, unless that would lose what this browser alone holds. The browser never gets the
 // drop, which would open the file in this tab instead.
-import { type Editor, spoken, unexported } from "./editor";
+import { type Editor, spoken } from "./editor";
+import { unexported } from "./export";
 import { warn } from "./notices";
 
 /** Whether a dropped file is a PDF: its type, or else its name's ending. */

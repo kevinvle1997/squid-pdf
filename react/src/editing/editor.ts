@@ -1,7 +1,7 @@
 // One open document: its state, and what every action works through. Each action is a
 // function of the editor in the module named for it (typing, export); this one holds the
 // state and the change every edit, undo and put-back goes through.
-import type { Document, Edit, FontInfo, SpanInfo, Strategy } from "../api/types";
+import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
@@ -24,15 +24,7 @@ import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
-
-/** The text being typed into a span, not yet in the history. */
-export interface Draft {
-  readonly spanId: string;
-  readonly page: number;
-  readonly atPt: number | null; // where in the span the press was, from its start: the word to select
-  readonly text: string;
-  readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
-}
+import type { Draft } from "./typing";
 
 /**
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
@@ -297,17 +289,6 @@ export function closeEditor(editor: Editor): void {
 /** Tell a screen reader, for what the page doesn't show. */
 export function say(editor: Editor, text: string): void {
   editor.store.set({ said: spoken(text) });
-}
-
-/** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
-export function unexported(state: EditorState): boolean {
-  const { draft, layout, exported, reading } = state;
-  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
-  const reads = span === undefined ? undefined : textIn(reading, span);
-  // Closing the tab ends no typing: what's in the field never reaches the history.
-  if (draft !== null && draft.text !== reads) return true;
-  const { edits } = reading;
-  return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
 }
 
 /** How many spans read other than the original. */
