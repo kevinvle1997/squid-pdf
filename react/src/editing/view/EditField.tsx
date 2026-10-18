@@ -9,28 +9,19 @@ import {
   useState,
 } from "react";
 import { isFileDropItem, useDrop } from "react-aria";
-import { FileTrigger, Input, TextField } from "react-aria-components";
+import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Choices } from "../../ui/Choices";
-import { Num } from "../../ui/Num";
-import { Warn } from "../../ui/Warn";
 import { letterAt, wordAround } from "../caret";
 import { carriesFiles } from "../dropped";
-import { say } from "../editor";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
-import { attachDropped, attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
-import { editNote, shortWarningOf } from "../marks";
+import { attachDropped } from "../fonts";
 import { textIn } from "../project";
-import { quietFont } from "../quiet";
-import { redact } from "../redaction";
-import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
+import { enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "../typing";
+import { Chip } from "./Chip";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { fieldScaleOf, fieldWidthPt, pinnedUnder, points, spanTextStyle } from "./geometry";
-
-const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
+import { fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
 
 /**
  * Typing in place: the span's text in the face that will draw it, checked as it's typed.
@@ -43,26 +34,14 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => textIn(state.reading, span));
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
-  // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
-  const shown = useEditorState((state) => shownNameOf(state.layout, span.font));
-  const drawnIn = span.substitute ?? shown;
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
   // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
   const rules = useEditorState((state) => state.doc.fit);
-  const copy = useEditorState((state) => state.doc.copy);
   const asked = useEditorState((state) => state.draft?.strategy);
   const setting = settingOf(span, { font, text, asked, rules });
-  const ways = setting.offered.map((id) => ({ id, label: copy.options[id]?.label ?? id }));
-
   // One trouble a line: a sentence of the server's, then the fit's own.
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
-  const offered = useEditorState(offersCopy);
-  // What an edit here warns of, in full, as typing starts: until the user quiets its font.
-  const quiet = useEditorState((state) => state.quietFonts.has(shown));
-  const note = editNote(span, { font, copy, quiet });
-  const shortWarning = shortWarningOf(span);
-  const attaching = useEditorState((state) => state.attaching !== null);
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
@@ -72,15 +51,15 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
       field.current = input;
       const layer = input?.offsetParent;
       if (input == null || !(layer instanceof HTMLElement)) return;
-      const shown = new ResizeObserver(() => {
+      const resized = new ResizeObserver(() => {
         const fontPx = parseFloat(getComputedStyle(input).fontSize);
         setScale(fieldScaleOf(span.size, { pageWidthPt: info.width, shownPx: layer.clientWidth, fontPx }));
       });
-      shown.observe(layer);
+      resized.observe(layer);
       // A face that loads once the field is open draws its letters wider or narrower than first measured.
       document.fonts.addEventListener("loadingdone", measureAgain);
       return () => {
-        shown.disconnect();
+        resized.disconnect();
         document.fonts.removeEventListener("loadingdone", measureAgain);
       };
     },
@@ -104,12 +83,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   function place(event: FocusEvent<HTMLInputElement>) {
     if (placed.current) return;
     placed.current = true;
-    const field = event.currentTarget;
+    const input = event.currentTarget;
     const at = editor.store.get().draft?.atPt;
-    if (at == null) field.select();
-    else field.setSelectionRange(...wordAround(start, letterAt(start, at, { glyphs, size: span.size })));
-    const heard = [note?.said, note?.why, trouble].filter(Boolean).join(" ");
-    if (heard !== "") say(editor, heard);
+    if (at == null) input.select();
+    else input.setSelectionRange(...wordAround(start, letterAt(start, at, { glyphs, size: span.size })));
+    fieldFocused(editor);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -163,76 +141,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           }}
         />
       </TextField>
-      <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
-        {note !== null && (
-          // Said as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
-          <span className={styles.note}>
-            <span className={styles.noteWords} aria-hidden="true">
-              <Warn mark>{note.said}</Warn>
-              {note.why !== null && <span>{note.why}</span>}
-            </span>
-            <Button preventFocusOnPress excludeFromTabOrder onPress={() => quietFont(editor, shown, { quiet: true })}>
-              Don't show again for this font
-            </Button>
-          </span>
-        )}
-        {trouble !== "" ? (
-          <span className={styles.bad} aria-hidden="true">
-            <Warn>{trouble}</Warn>
-          </span>
-        ) : (
-          <span className={styles.facts} aria-hidden="true">
-            <span>{drawnIn}</span>
-            <Num>{SIZE.format(span.size * setting.size)} pt</Num>
-            {/* The verdict, before the edit (Rule 1): find's own words when it will match. */}
-            {shortWarning === null ? (
-              <span className={styles.identical}>looks identical</span>
-            ) : (
-              <Warn>{shortWarning}</Warn>
-            )}
-          </span>
-        )}
-        {ways.length > 0 && (
-          // A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus.
-          <span className={styles.ways}>
-            <Choices
-              label="How it fits"
-              options={ways}
-              chosen={setting.way}
-              onChoose={(next) => chooseWayOut(editor, next)}
-              keepFocus
-            />
-            <span className={styles.wayKeys} aria-hidden="true">
-              <kbd>↑↓</kbd>
-            </span>
-          </span>
-        )}
-        <span className={styles.actions}>
-          {offered && (
-            // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
-            <span className={styles.offer}>
-              Have this font?
-              <FileTrigger
-                acceptedFileTypes={FONT_FILES}
-                onSelect={(files) => {
-                  const file = files?.[0];
-                  if (file !== undefined) void attachFont(editor, span.font, file);
-                }}
-              >
-                <Button preventFocusOnPress excludeFromTabOrder isDisabled={attaching}>
-                  Use your copy
-                </Button>
-              </FileTrigger>
-            </span>
-          )}
-          {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
-          <span className={styles.redact}>
-            <Button preventFocusOnPress excludeFromTabOrder onPress={() => redact(editor, span.id)}>
-              Redact
-            </Button>
-          </span>
-        </span>
-      </div>
+      <Chip span={span} info={info} trouble={trouble} setting={setting} />
     </>
   );
 }

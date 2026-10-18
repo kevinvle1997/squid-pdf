@@ -6,7 +6,8 @@ import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo,
 import { exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
 import { quietFont } from "./quiet";
-import { edit, enter, finish, stepWayOut, troublesIn, typeInto } from "./typing";
+import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "./typing";
+import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -42,6 +43,28 @@ const typed = (spanId: string, text: string) => {
 };
 
 describe("an edit", () => {
+  test("as its field takes focus, what an edit there warns of is heard, until its font is quieted", () => {
+    // Its font has every letter it reads, so the warning is all there is to hear.
+    const glyphs = Object.fromEntries([..."was similar"].map((letter) => [letter, 500]));
+    const similar = aSpan({
+      id: "similar",
+      font: "Named",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+    });
+    const fonts = [aFont("Named", { substitute: "Liberation Serif Regular", glyphs })];
+    editor = createEditor(FILE, aDoc({ spans: [similar], fonts }), 2);
+    edit(editor, "similar", null);
+    fieldFocused(editor);
+    expect(editor.store.get().said.text).toBe(fill(COPY.substitute, { font: "Liberation Serif Regular" }));
+    finish(editor, false);
+    quietFont(editor, "Named", { quiet: true });
+    const quieted = editor.store.get().said;
+    edit(editor, "similar", null);
+    fieldFocused(editor);
+    expect(editor.store.get().said).toBe(quieted);
+  });
+
   test("typing holds a draft apart from the history, until it's finished", () => {
     edit(editor, "own", null);
     expect(editor.store.get().draft).toMatchObject({ spanId: "own", page: 0, text: "was own" });
