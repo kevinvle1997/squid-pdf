@@ -33,8 +33,8 @@ export function settlingAfter(
     // Not drawn by this landing: whatever it showed stays.
     if (was === reading) continue;
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
-    const facts = { reading, page, after, fonts, rules };
-    const spanIds = new Set(previewed.filter((each) => disagrees(each, facts)).map(({ span }) => span.id));
+    const landed = { reading, page, after, fonts, rules };
+    const spanIds = new Set(previewed.filter((each) => disagrees(each, landed)).map(({ span }) => span.id));
     next ??= new Map(settling);
     if (spanIds.size === 0) next.delete(page);
     else next.set(page, { spanIds, count: (settling.get(page)?.count ?? 0) + 1 });
@@ -42,16 +42,17 @@ export function settlingAfter(
   return next ?? settling;
 }
 
-interface Facts {
-  reading: Reading; // what the landing drew
-  page: number;
-  after: Drawn;
-  fonts: ReadonlyMap<string, FontInfo>;
-  rules: FitRules;
+/** One page of a landing: what it drew, and what the live check needs to judge it. */
+interface PageLanded {
+  readonly reading: Reading; // what the landing drew
+  readonly page: number;
+  readonly after: Drawn;
+  readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly rules: FitRules;
 }
 
 /** Whether the render of a previewed span says something the browser's live check didn't. */
-function disagrees({ span, text, redacted }: Differing, { reading, page, after, fonts, rules }: Facts): boolean {
+function disagrees({ span, text, redacted }: Differing, { reading, page, after, fonts, rules }: PageLanded): boolean {
   // A redaction previews bare, as it's drawn: there's no verdict to differ from.
   if (redacted) return false;
   // The browser never foresees a notice or a skip.

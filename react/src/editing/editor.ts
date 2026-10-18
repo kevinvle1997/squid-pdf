@@ -16,7 +16,7 @@ import {
   spanOf,
   touching,
 } from "./history";
-import type { PageImage } from "./images";
+import type { FailedImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
 import { wontMatch } from "./marks";
 import { NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
@@ -53,17 +53,17 @@ export interface ScrollTo {
 }
 
 // The last count given, for the whole page: two editors' counts never meet, so one will do.
-let counted = 0;
+let lastCount = 0;
 
 /** `text`, to be said now. */
 export function spoken(text: string): Spoken {
-  counted += 1;
-  return { text, count: counted };
+  lastCount += 1;
+  return { text, count: lastCount };
 }
 
 function scrollingTo(spanId: string): ScrollTo {
-  counted += 1;
-  return { spanId, count: counted };
+  lastCount += 1;
+  return { spanId, count: lastCount };
 }
 
 /** What's worked out once from the document: its spans and fonts, looked up by what the page needs. */
@@ -103,7 +103,7 @@ export interface EditorState {
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
   readonly quietFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full
-  readonly images: ReadonlyMap<number, PageImage>; // by page: each image that failed, until it loads
+  readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
 }
 

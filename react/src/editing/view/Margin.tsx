@@ -9,7 +9,7 @@ import styles from "./Margin.module.css";
 interface Props {
   info: PageInfo;
   changes: readonly SpanReading[]; // the spans replaced or redacted on this page
-  gapPt: number; // a note's height in page points, to keep notes a hit area apart
+  noteHeightPt: number; // a note's height in page points, to keep notes a hit area apart
   shape: "margin" | "list";
   label: string;
 }
@@ -18,7 +18,7 @@ interface Props {
  * The user's own changes, each a button that puts the original back. Beside the page on
  * a wide screen, in a list under it on a narrow one; CSS shows one or the other.
  */
-export function Margin({ info, changes, gapPt, shape, label }: Props) {
+export function Margin({ info, changes, noteHeightPt, shape, label }: Props) {
   const editor = useEditor();
   if (changes.length === 0) return shape === "margin" ? <div className={styles.margin} /> : null;
 
@@ -54,7 +54,7 @@ export function Margin({ info, changes, gapPt, shape, label }: Props) {
     );
   }
 
-  const places = notePlaces(changes, gapPt);
+  const places = notePlaces(changes, noteHeightPt);
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's inputs; these are notes on a proof.
     <div className={styles.margin} aria-label={`Changes on ${label.toLowerCase()}`} role="group">

@@ -10,7 +10,7 @@ import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { matchesAcross } from "../find";
 import { fitOf, setAs, wayDrawn } from "../fit";
-import { imageFailed, imageLoaded, type PageImage } from "../images";
+import { type FailedImage, imageFailed, imageLoaded } from "../images";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { differing, type PageEdits, type SpanReading } from "../project";
@@ -39,7 +39,7 @@ const NO_CHANGES: readonly SpanReading[] = [];
  */
 function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; nearPages: Set<number> }) {
   const [near, setNear] = useState(false);
-  const [gapPt, setGapPt] = useState(0);
+  const [noteHeightPt, setNoteHeightPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
       const nearby = new IntersectionObserver(
@@ -55,7 +55,7 @@ function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; ne
         const height = entry?.contentRect.height ?? 0;
         // A note is a hit area tall, and --hit is larger on a touch screen.
         const hit = parseFloat(getComputedStyle(sheet).getPropertyValue("--hit")) || 0;
-        setGapPt(height > 0 ? (hit / height) * heightPt : 0);
+        setNoteHeightPt(height > 0 ? (hit / height) * heightPt : 0);
       });
       nearby.observe(sheet);
       size.observe(sheet);
@@ -67,7 +67,7 @@ function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; ne
     },
     [index, heightPt, nearPages],
   );
-  return { ref, near, gapPt };
+  return { ref, near, noteHeightPt };
 }
 
 /** Everything a page draws from the editor's state: it redraws when one of these changes. */
@@ -81,7 +81,7 @@ interface PageState {
   readonly matches: ReadonlyMap<string, readonly Match[]> | undefined; // what find found here, by span, while it's open
   readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
   readonly src: string; // the page image
-  readonly image: PageImage | undefined; // why its image failed, and how often it's been asked for again
+  readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
   readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
   readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
@@ -155,7 +155,7 @@ export const Page = memo(function Page({ index, info }: Props) {
       aria-label={label}
       style={{ "--sheet-width": `${wide * PX_PER_PT}px` }}
     >
-      <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="margin" label={label} />
+      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} shape="margin" label={label} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
@@ -189,7 +189,7 @@ export const Page = memo(function Page({ index, info }: Props) {
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
-      <Margin info={info} changes={changes} gapPt={sheet.gapPt} shape="list" label={label} />
+      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} shape="list" label={label} />
     </section>
   );
 });
@@ -307,7 +307,7 @@ function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             key={span.id}
             span={span}
             info={info}
-            edited={readings.get(span.id)}
+            reading={readings.get(span.id)}
             font={page.fonts.get(span.font)}
             fit={page.fits[span.id]}
             redaction={page.redactions[span.id]}
@@ -362,7 +362,7 @@ function PageNote(props: { notes: Notes; id: string; page: PageState; readings: 
   const { note } = lookOf({
     span,
     font: page.fonts.get(span.font),
-    edited: readings.get(span.id),
+    reading: readings.get(span.id),
     fit: page.fits[span.id],
     redaction: page.redactions[span.id],
     copy: page.copy,

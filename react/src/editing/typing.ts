@@ -2,7 +2,7 @@
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FontInfo, SpanInfo, Strategy } from "../api/types";
 import { change, type Editor, type EditorState, spoken } from "./editor";
-import { fallbackFaceOf } from "./faces";
+import { substituteOf } from "./faces";
 import { type Fit, fitOf, troubleKindOf, troublesOf, wayDrawn } from "./fit";
 import type { Reading } from "./project";
 
@@ -92,7 +92,7 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   // Taking text out isn't a change: said while the field is empty.
   if (isEmpty(text)) return { said: [copy.empty], kind: "empty", offers: false };
   const fit = fitOf(span, { font, text, rules });
-  const substitute = fallbackFaceOf(span, font);
+  const substitute = substituteOf(span, font);
   const way = wayDrawn(draft.strategy, fit);
   // That an edit here won't match the text around it is said once, as typing starts (`editNote`), not with each letter.
   return {
