@@ -5,7 +5,7 @@ import type { Copy, FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../
 import { Tooltip } from "../../ui/Tooltip";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
-import { LAZY_MARGIN, PX_PER_PT, STRIP_PAD_PT } from "../constants";
+import { LAZY_MARGIN, PX_PER_PT } from "../constants";
 import type { EditorState, FocusTo, ScrollTo } from "../editor";
 import { previewFaceOf } from "../faces";
 import { type Place, placesAcross } from "../find";
@@ -16,7 +16,7 @@ import { differing, type PageEdits, type SpanReading } from "../project";
 import type { PageFits, PageRedactions, Strip } from "../render";
 import type { Settling } from "../settle";
 import { shallowEqual } from "../store";
-import { rowOf, stillShows } from "../strips";
+import { isUnderStrip, stillShows, stripBoxOf } from "../strips";
 import { useEditor, useEditorState } from "./context";
 import { EditField } from "./EditField";
 import { boxOf, cropOf, points, setAsStyle, shownSize, spanTextStyle } from "./geometry";
@@ -135,7 +135,7 @@ export const Page = memo(function Page({ index, info }: Props) {
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
   // undo needs no render to show it.
   const strips = useMemo(
-    () => page.strips?.filter((strip) => stillShows(strip, { edits: page.edits, page: info })),
+    () => page.strips?.filter((strip) => stillShows(strip, { edits: page.edits, info })),
     [page.strips, page.edits, info],
   );
   const [wide] = shownSize(info);
@@ -264,9 +264,9 @@ function Previews({ page, info, strips }: { page: PageState; info: PageInfo; str
     }
     // Put back: the page's own pixels are exactly right, under any strip still drawn over its row.
     if (text === span.text) {
-      const row = rowOf(span, info);
-      const covered = strips?.some((strip) => strip.y < row.y1 && strip.y1 > row.y0) ?? false;
-      return covered ? <Original key={span.id} span={span} info={info} src={page.src} /> : null;
+      return isUnderStrip(span, { strips, info }) ? (
+        <Original key={span.id} span={span} info={info} src={page.src} />
+      ) : null;
     }
     return (
       <Preview
@@ -281,14 +281,8 @@ function Previews({ page, info, strips }: { page: PageState; info: PageInfo; str
 
 /** The original page's pixels over a span put back, where a strip of its row still shows another edit. */
 function Original({ span, info, src }: { span: SpanInfo; info: PageInfo; src: string }) {
-  // The row the server would redraw, across the span with the same reach, so the old edit's ink goes too.
-  const { y0, y1 } = rowOf(span, info);
-  const box = {
-    x0: Math.max(0, span.bbox.x0 - STRIP_PAD_PT),
-    y0,
-    x1: Math.min(info.width, span.bbox.x1 + STRIP_PAD_PT),
-    y1,
-  };
+  // As far as the server would redraw, so the old edit's ink goes too.
+  const box = stripBoxOf(span, info);
   return (
     <span className={styles.original} aria-hidden="true" data-original="" style={boxOf(box, info)}>
       <img src={src} alt="" decoding="async" style={cropOf(box, info)} />

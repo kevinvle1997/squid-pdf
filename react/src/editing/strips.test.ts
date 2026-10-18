@@ -1,12 +1,22 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, Insert, SpanInfo } from "../api/types";
-import { aSpan, A4 as page } from "../fixtures";
+import { A4, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
-import { bottomOf, insertRowOf, merged, regionsFor, rowOf, stalePages, stillShows } from "./strips";
+import {
+  bottomOf,
+  insertRowOf,
+  isUnderStrip,
+  merged,
+  regionsFor,
+  rowOf,
+  stalePages,
+  stillShows,
+  stripBoxOf,
+} from "./strips";
 
-const spanAt = (y0: number, y1: number, pageIndex = 0): SpanInfo =>
-  aSpan({ id: `s${pageIndex}-${y0}`, page: pageIndex, bbox: { x0: 72, y0, x1: 100, y1 } });
+const spanAt = (y0: number, y1: number, page = 0): SpanInfo =>
+  aSpan({ id: `s${page}-${y0}`, page, bbox: { x0: 72, y0, x1: 100, y1 } });
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>
   project(SPANS, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
@@ -14,14 +24,14 @@ const replace = (span: SpanInfo, text = "y"): Edit => ({ kind: "replace", span_i
 
 describe("strips to redraw", () => {
   test("a strip reaches just past its span, and never past the page", () => {
-    expect(rowOf(spanAt(100, 112), page)).toEqual({ y0: 98, y1: 114 });
-    expect(rowOf(spanAt(0, 12), page).y0).toBe(0);
-    expect(rowOf(spanAt(835, 842), page).y1).toBe(842);
+    expect(rowOf(spanAt(100, 112), A4)).toEqual({ y0: 98, y1: 114 });
+    expect(rowOf(spanAt(0, 12), A4).y0).toBe(0);
+    expect(rowOf(spanAt(835, 842), A4).y1).toBe(842);
   });
 
   test("new text's strip is a line tall around its baseline", () => {
     const insert: Insert = { kind: "insert", page: 0, origin: [72, 400], text: "Signed", size: 10 };
-    expect(insertRowOf(insert, page)).toEqual({ y0: 388, y1: 405 });
+    expect(insertRowOf(insert, A4)).toEqual({ y0: 388, y1: 405 });
   });
 
   test("two edits on one line are one strip", () => {
@@ -36,7 +46,7 @@ describe("strips to redraw", () => {
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
     const reading = readingOf(replace(bottom), replace(top));
-    expect(regionsFor(0, page, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
+    expect(regionsFor(0, A4, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
     ]);
@@ -73,18 +83,32 @@ describe("a strip the server drew", () => {
       { page: 0, y0: 298, y1: 314 },
       { page: 1, y0: 98 },
     ];
-    expect(bottomOf({ page: 0, y: 297.75 }, regions, page)).toBe(314);
-    expect(bottomOf({ page: 0, y: 98 }, regions, page)).toBe(114);
+    expect(bottomOf({ page: 0, y: 297.75 }, regions, A4)).toBe(314);
+    expect(bottomOf({ page: 0, y: 98 }, regions, A4)).toBe(114);
     // A region with no bottom is the rest of the page.
-    expect(bottomOf({ page: 1, y: 98 }, regions, page)).toBe(page.height);
+    expect(bottomOf({ page: 1, y: 98 }, regions, A4)).toBe(A4.height);
   });
 
   test("still shows an edit while one is in its rows; once none is, the page beneath is right as it is", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
     const strip = { y: 98, y1: 114 };
-    expect(stillShows(strip, { edits: readingOf(replace(top), replace(bottom)).pages.get(0), page })).toBe(true);
-    expect(stillShows(strip, { edits: readingOf(replace(bottom)).pages.get(0), page })).toBe(false);
-    expect(stillShows(strip, { edits: readingOf({ kind: "redact", span_id: top.id }).pages.get(0), page })).toBe(true);
-    expect(stillShows(strip, { edits: undefined, page })).toBe(false);
+    expect(stillShows(strip, { edits: readingOf(replace(top), replace(bottom)).pages.get(0), info: A4 })).toBe(true);
+    expect(stillShows(strip, { edits: readingOf(replace(bottom)).pages.get(0), info: A4 })).toBe(false);
+    expect(stillShows(strip, { edits: readingOf({ kind: "redact", span_id: top.id }).pages.get(0), info: A4 })).toBe(
+      true,
+    );
+    expect(stillShows(strip, { edits: undefined, info: A4 })).toBe(false);
+  });
+
+  test("covers a span when it crosses the span's row, and reaches as far across it as it does down", () => {
+    const span = spanAt(100, 112);
+    expect(isUnderStrip(span, { strips: [{ y: 98, y1: 114 }], info: A4 })).toBe(true);
+    expect(isUnderStrip(span, { strips: [{ y: 298, y1: 314 }], info: A4 })).toBe(false);
+    expect(isUnderStrip(span, { strips: undefined, info: A4 })).toBe(false);
+    expect(stripBoxOf(span, A4)).toEqual({ x0: 70, y0: 98, x1: 102, y1: 114 });
+    expect(stripBoxOf(aSpan({ id: "wide", bbox: { x0: 1, y0: 100, x1: A4.width, y1: 112 } }), A4)).toMatchObject({
+      x0: 0,
+      x1: A4.width,
+    });
   });
 });
