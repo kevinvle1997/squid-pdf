@@ -21,6 +21,7 @@ import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, setAs, wayDrawn, widthPt } from "../fit";
 import { attachDropped, attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
+import { textIn } from "../project";
 import { quietFont } from "../quiet";
 import { redact } from "../redaction";
 import { chooseWayOut, enter, finish, stepWayOut, troublesIn, typeInto } from "../typing";
@@ -39,7 +40,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
   const text = useEditorState((state) => state.draft?.text ?? "");
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
-  const start = useEditorState((state) => state.reading.spans.get(span.id)?.text) ?? span.text;
+  const start = useEditorState((state) => textIn(state.reading, span));
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
   const shown = useEditorState((state) => shownNameOf(state.layout, span.font));

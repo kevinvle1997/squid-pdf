@@ -32,6 +32,11 @@ export interface Reading {
 
 export const UNEDITED: Reading = { spans: new Map(), pages: new Map(), edits: [], ids: [] };
 
+/** What `span` reads in `reading`: its edit's words, else the document's own. */
+export function textIn(reading: Reading, span: SpanInfo): string {
+  return reading.spans.get(span.id)?.text ?? span.text;
+}
+
 /** Whether two readings of a span draw the same. */
 export function sameSpan(a: SpanReading | undefined, b: SpanReading | undefined): boolean {
   if (a === b) return true;
