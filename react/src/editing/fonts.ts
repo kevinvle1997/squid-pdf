@@ -20,7 +20,7 @@ export function isFontFile(file: { name: string; type: string }): boolean {
 }
 
 /** The name the reader knows `fontName` by, as the server says it: copies of one font share it. */
-export function shownNameOf(layout: Layout, fontName: string): string {
+export function shownNameOf(layout: Pick<Layout, "fonts">, fontName: string): string {
   // .get: a font the document doesn't list goes by its own name.
   return layout.fonts.get(fontName)?.shown_name ?? fontName;
 }

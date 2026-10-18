@@ -5,6 +5,7 @@ import type { SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, type Editor, type EditorState, spoken } from "./editor";
 import { fitOf, runsPast, widthPt } from "./fit";
+import { wontMatch } from "./marks";
 import type { Reading } from "./project";
 import { finish } from "./typing";
 import { counted } from "./words";
@@ -208,7 +209,7 @@ export function findCount(state: EditorState): { places: number; unlike: number 
   const found = foundIn(doc.spans, { reading, find });
   const unlike = found.filter(({ span, text, places }) => {
     // Drawn in a similar font, or set so an edit won't match: whatever the words.
-    if (span.fidelity === "substitute" || span.why !== null) return true;
+    if (wontMatch(span)) return true;
     const font = layout.fonts.get(span.font);
     if (find.replacement === "" || font === undefined) return false;
     // The live check typing uses, on the words as they'd read changed.

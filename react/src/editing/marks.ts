@@ -67,6 +67,11 @@ function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   return { warn: true, said: redaction.message, why: null };
 }
 
+/** Whether an edit here won't match the text around it, whatever the words: a similar font, or its own set unlike it. */
+export function wontMatch(span: SpanInfo): boolean {
+  return span.substitute !== null || span.why !== null;
+}
+
 /** The chip's short warning on an edit here: "a similar font", "will look different", or none when it matches. */
 export function shortWarningOf(span: SpanInfo): string | null {
   if (span.substitute !== null) return "a similar font";

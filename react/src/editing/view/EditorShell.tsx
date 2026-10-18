@@ -10,7 +10,7 @@ import { Wordmark } from "../../ui/Wordmark";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { pdfDropped } from "../dropped";
-import { changedCount, closeEditor, createEditor, sayOpening, unlikeAtRest, warnedCount } from "../editor";
+import { changedCount, closeEditor, createEditor, sayOpening, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { openFind } from "../find";
@@ -133,7 +133,7 @@ function Bar() {
   const pages = useEditorState((state) => state.doc.pages.length);
   const changed = useEditorState(changedCount);
   const warned = useEditorState(warnedCount, shallowEqual);
-  const atRest = useEditorState((state) => unlikeAtRest(state.doc));
+  const atRest = useEditorState((state) => state.layout.unlikeAtRest);
   const exporting = useEditorState((state) => state.exporting);
   // The document opened again, or couldn't: said in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
