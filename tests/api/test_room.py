@@ -17,11 +17,11 @@ _PROSE = (
     "and its last",
 )
 _JUSTIFIED = (
-    "Justified text ends every line but its last at one edge, so none of them has any room "
-    "to run into: a line made longer breaks the edge it shares with the lines around it, "
-    "however much white space the page has beside it."
+    "Justified text ends every line but its last at one edge, and a line made longer may "
+    "still run past it into the white space beside it, as far as the page's rightmost "
+    "text, since it overlaps nothing on the way there."
 )
-_FAR_X = 480  # a column far right on the paragraph's first line, which mustn't widen it
+_FAR_X = 480  # a column far right on the paragraph's first line: the page's rightmost text
 _LABEL, _VALUE = "Delivery", "$12.00"
 _CELL = ("Large widget,", "boxed")  # a description over two lines
 _ROW_VALUE = "1"  # the row's value, set between the description's two lines
@@ -72,22 +72,13 @@ _GRID_STROKE = 0.5  # its lines' width: half of it is ink before the border
 _RULE_X = 200  # a rule down the page, many lines tall
 _RULE_WIDTH = 1.0  # half of it is ink before the rule's line
 _RULED = "beside a rule"
-_COLUMNS = (
-    ("Left column text that runs on", "Right column, line one"),
-    ("mid length line", None),
-    ("another left line", "Right column after a gap"),
-)
-# A second column 16 pt after the left one's first line: under the two ems a wide gap
-# on a line needs, so that row reads as one line.
-_GUTTER_X = 72 + pymupdf.get_text_length(_COLUMNS[0][0], fontsize=_SIZE) + 16
 
 
 def _add_walls_page(doc: pymupdf.Document) -> None:
-    """A page of what a longer line could run into, each where a paragraph's edge is far.
+    """A page of what a longer line could run into, each where the page's margin is far.
 
     A word set a little into the line's end, a word drawn turned across it, a table
-    grid drawn as one path, a second column across a narrow gutter, and a rule down
-    the page.
+    grid drawn as one path, and a rule down the page.
     """
     page = doc.new_page()
     page.insert_text((72, 86), _LONG, fontsize=_SIZE)
@@ -109,10 +100,6 @@ def _add_walls_page(doc: pymupdf.Document) -> None:
     page.insert_text((72, 500), _LONG, fontsize=_SIZE)
     page.insert_text((72, 514), _RULED, fontsize=_SIZE)
     page.draw_line((_RULE_X, 480), (_RULE_X, 700), width=_RULE_WIDTH)
-    for row, (left, right) in enumerate(_COLUMNS):
-        page.insert_text((72, 400 + row * 15), left, fontsize=_SIZE)
-        if right is not None:
-            page.insert_text((_GUTTER_X, 400 + row * 15), right, fontsize=_SIZE)
 
 
 @pytest.fixture
@@ -126,13 +113,19 @@ def _room_to(x: float, span: dict) -> float:
     return x - span["bbox"]["x1"]
 
 
+def _margin_of(doc: dict, page: int) -> float:
+    """Where the rightmost text on `page` ends."""
+    return max(span["bbox"]["x1"] for span in doc["spans"] if span["page"] == page)
+
+
 def test_each_line_has_the_room_the_page_leaves_it(room_doc):
-    """Up to what follows on its line, else its paragraph's widest line; none if justified."""
+    """Up to what it would overlap, else the page's rightmost text, justified or not."""
     first, second, _last = (span_starting(room_doc, 0, line) for line in _PROSE)
     label, *cell, boxed = (span_starting(room_doc, 0, s) for s in (_LABEL, *_CELL, _BOXED))
     justified = [s for s in room_doc["spans"] if s["page"] == 0 and 150 < s["bbox"]["y0"] < 260]
+    margin = _margin_of(room_doc, 0)
     rooms = {
-        "a short line of a ragged paragraph": (second, _room_to(first["bbox"]["x1"], second)),
+        "a short line, past its paragraph's widest": (second, _room_to(margin, second)),
         "its widest line, up to the far column": (first, _room_to(_FAR_X, first)),
         "a label, up to its value": (label, _room_to(_VALUE_X, label)),
         "a cell's first line, up to the row's value": (cell[0], _room_to(_VALUE_X, cell[0])),
@@ -143,14 +136,14 @@ def test_each_line_has_the_room_the_page_leaves_it(room_doc):
     for what, (span, room) in rooms.items():
         assert_close(span["room_pt"], room, 0.01, what)
     assert_at_least(len(justified), 3, "lines in the justified paragraph")
-    assert_equal([span["room_pt"] for span in justified], [0] * len(justified), "justified")
+    for line in justified:
+        assert_close(line["room_pt"], _room_to(margin, line), 0.01, "a justified line")
 
 
 def test_a_line_stops_at_whatever_a_longer_one_would_run_into(room_doc):
-    """Not only text it half overlaps: a kerned word, turned text, a grid's line, a column."""
-    kerned, turned_beside, turned, apple, mid, ruled = (
-        span_starting(room_doc, 1, s)
-        for s in (_KERNED[0], "short", "TURNED", _GRID[0], _COLUMNS[1][0], _RULED)
+    """Not only text it half overlaps: a kerned word, turned text, a grid's line, a rule."""
+    kerned, turned_beside, turned, apple, ruled = (
+        span_starting(room_doc, 1, s) for s in (_KERNED[0], "short", "TURNED", _GRID[0], _RULED)
     )
     rooms = {
         "a word set a little into its end": (kerned, 0),
@@ -162,7 +155,6 @@ def test_a_line_stops_at_whatever_a_longer_one_would_run_into(room_doc):
             apple,
             _room_to(_CELL_X - _GRID_STROKE / 2, apple),
         ),
-        "a second column across a narrow gutter": (mid, _room_to(_GUTTER_X, mid)),
         "a rule down the page": (ruled, _room_to(_RULE_X - _RULE_WIDTH / 2, ruled)),
     }
 
@@ -171,7 +163,7 @@ def test_a_line_stops_at_whatever_a_longer_one_would_run_into(room_doc):
 
 
 def test_an_edit_into_its_room_fits_and_one_past_it_says_how_far_past(mine, room_doc):
-    """The warning says the part that collides: past the paragraph's widest line."""
+    """Past its paragraph's widest line fits; the warning says the part past the margin."""
     span = span_starting(room_doc, 0, _PROSE[1])
     url = f"/api/documents/{room_doc['id']}/render"
 
@@ -181,8 +173,14 @@ def test_an_edit_into_its_room_fits_and_one_past_it_says_how_far_past(mine, room
         body = {"edits": [edit], "scale": 2, "regions": []}
         return mine.post(url, json=body).json()["fits"][span["id"]]
 
-    fits_in_room = fit_of(span["text"] + " and more")
-    runs_past = fit_of(span["text"] + " that now runs on well past the end of the longest line")
+    fits_in_room = fit_of(
+        span["text"] + " runs on past its paragraph's widest line, into the space"
+    )
+    runs_past = fit_of(
+        span["text"]
+        + " runs on past its paragraph's widest line, and on past the far column at "
+        "the right of the page too, as far as the edge of the paper and beyond it"
+    )
 
     said = (fits_in_room["message"], fits_in_room["options"])
     assert_equal(said, (None, []), "an edit into its room")

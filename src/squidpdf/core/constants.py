@@ -31,18 +31,6 @@ ROOM_SLACK_PT = 0.1
 
 # Room: how far a line runs to the right before it reaches anything, read from the page.
 ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairline is no wall
-# Left edges this close start one block, right ones make a justified edge: over a
-# PDF's rounding, under any indent a reader would see.
-ROOM_EDGE_PT = 1.0
-# Steps down a block this close, as a share, are one leading: a paragraph's lines
-# vary a little, a gap between paragraphs is far more.
-ROOM_LEADING_SLACK = 0.2
-# A step down past this many line heights starts another block: double spacing is
-# still one paragraph, a heading's space above usually isn't.
-ROOM_BLOCK_STEP_LINES = 2.5
-# A gap this many ems wide on a line starts another column: far wider than any space
-# between words, even in justified text.
-ROOM_COLUMN_EM = 2.0
 # Line art taller than this many of a page's tallest lines (a frame, a column rule) is
 # searched apart, so it doesn't widen the search through a chart's many short strokes.
 ROOM_TALL_ART_LINES = 4.0
@@ -84,10 +72,6 @@ LENT_COPIES_KEPT = 32
 ANALYSIS_TUNING = {
     "tolerance_pt": TOLERANCE_PT,
     "room_touch_pt": ROOM_TOUCH_PT,
-    "room_edge_pt": ROOM_EDGE_PT,
-    "room_leading_slack": ROOM_LEADING_SLACK,
-    "room_block_step_lines": ROOM_BLOCK_STEP_LINES,
-    "room_column_em": ROOM_COLUMN_EM,
     "turn_tolerance": TURN_TOLERANCE,
     "same_width": SAME_WIDTH,
     "same_font_shared": SAME_FONT_SHARED,
