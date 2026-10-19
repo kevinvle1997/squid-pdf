@@ -1,10 +1,20 @@
 // Where things sit on a page, as CSS, and how wide text draws there. Everything inside the page's layer
 // is in the page's own points, turned into shares of its size, so it scales with the page however wide it's shown.
 import type { CSSProperties } from "react";
-import type { PageInfo, SpanInfo } from "../../api/types";
+import type { FitInfo, PageInfo, SpanInfo } from "../../api/types";
 import { FIELD_SPARE_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
 import { familyOf } from "../faces";
 import { type LineScale, widthPt } from "../fit";
+
+/** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
+export function markBoxOf(
+  span: SpanInfo,
+  { replaced, fit }: { replaced: boolean; fit: FitInfo | undefined },
+): SpanInfo["bbox"] {
+  // A way out ends the line where the original did, and a shorter one keeps its place to press.
+  const runsLonger = replaced && fit !== undefined && fit.strategy === "as-is" && fit.delta_pt > 0;
+  return runsLonger ? { ...span.bbox, x1: span.bbox.x1 + fit.delta_pt } : span.bbox;
+}
 
 /** A box on the page as percentages of it, so it scales with the page. */
 export function boxOf(

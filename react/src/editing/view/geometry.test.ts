@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { A4, aSpan } from "../../fixtures";
+import { A4, aFit, aSpan } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
-import { cropOf, fieldScaleOf, layerOf, pinnedUnder, previewStyleOf, sheetWidthOf, topOf } from "./geometry";
+import { cropOf, fieldScaleOf, layerOf, markBoxOf, pinnedUnder, previewStyleOf, sheetWidthOf, topOf } from "./geometry";
 
 describe("a touch screen's field", () => {
   test("scales from the size it's set at down to the span's, as the page is shown", () => {
@@ -13,6 +13,19 @@ describe("a touch screen's field", () => {
   test("a size not worked out yet leaves the field as it is", () => {
     expect(fieldScaleOf(10, { pageWidthPt: 600, shownPx: 480, fontPx: 0 })).toBe(1);
     expect(fieldScaleOf(10, { pageWidthPt: 600, shownPx: 0, fontPx: 16 })).toBe(1);
+  });
+});
+
+describe("a span's mark", () => {
+  test("runs as far as a replacement left long is drawn, so all of it can be pointed at and pressed", () => {
+    const span = aSpan({ id: "s", bbox: { x0: 100, y0: 0, x1: 200, y1: 12 } });
+    const longer = aFit({ delta_pt: 40 });
+    expect(markBoxOf(span, { replaced: true, fit: longer })).toEqual({ x0: 100, y0: 0, x1: 240, y1: 12 });
+    // A way out ends it where the original did; shorter, or put back, it keeps the original's place.
+    expect(markBoxOf(span, { replaced: true, fit: aFit({ delta_pt: 40, strategy: "shrink" }) })).toEqual(span.bbox);
+    expect(markBoxOf(span, { replaced: true, fit: aFit({ delta_pt: -30 }) })).toEqual(span.bbox);
+    expect(markBoxOf(span, { replaced: false, fit: longer })).toEqual(span.bbox);
+    expect(markBoxOf(span, { replaced: true, fit: undefined })).toEqual(span.bbox);
   });
 });
 

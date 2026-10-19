@@ -480,6 +480,18 @@ describe("a page", () => {
     expect(settles()).toHaveLength(0);
   });
 
+  test("a replacement left long is pointed at and pressed along its whole length, past where the original ended", async () => {
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ delta_pt: 40 }) } }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "was here and more");
+    finish(editor, true);
+    // The original's 80 pt and the 40 pt the server drew past it, on the A4 page's 595.
+    const mark = screen.getByRole("button", { name: "was here and more" });
+    await expect.poll(() => Number.parseFloat(mark.element().style.width)).toBeCloseTo((120 / A4.width) * 100);
+  });
+
   test("a preview sets its words on the span's own line, so they don't move when the render lands", async () => {
     const screen = await draw();
     await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();

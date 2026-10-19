@@ -10,7 +10,7 @@ import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
 import { edit } from "../typing";
 import { useEditor } from "./context";
-import { boxOf } from "./geometry";
+import { boxOf, markBoxOf } from "./geometry";
 import type { Notes, Via } from "./notes";
 import styles from "./SpanMark.module.css";
 
@@ -97,7 +97,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       ref={takeFocus}
       className={className}
       data-span={span.id}
-      style={boxOf(span.bbox, info)}
+      style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}
       onHoverStart={(event) => showNote(event.target, "hover")}
