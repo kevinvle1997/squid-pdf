@@ -146,7 +146,7 @@ describe("the bar", () => {
 
   test("with nothing changed, it says how to start editing, and stops once something has", async () => {
     const screen = await openEditor();
-    const hint = screen.getByText("Double-click text to change it");
+    const hint = screen.getByText("Click text to change it");
     await expect.element(hint).toBeVisible();
     await changeSpan(screen, "is here");
     await expect.element(hint).not.toBeInTheDocument();
@@ -174,7 +174,7 @@ describe("the bar", () => {
       expect(matchMedia("(pointer: coarse)").matches).toBe(true);
       const screen = await openEditor();
       await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
-      await expect.element(screen.getByText("Double-click text to change it")).not.toBeVisible();
+      await expect.element(screen.getByText("Click text to change it")).not.toBeVisible();
       const key = screen
         .getByRole("button", { name: /^Export/ })
         .element()
@@ -378,7 +378,7 @@ describe("leaving the page", () => {
     expect(kept?.until).toBe(Date.parse(DOC.expires_at));
     expect(kept?.work).toMatchObject({ history: { done: [[{ edit: { span_id: span.id, text: "is here" } }]] } });
 
-    await screen.getByRole("button", { name: "is here" }).click();
+    screen.getByRole("button", { name: "is here" }).element().focus();
     await userEvent.keyboard("{Control>}z{/Control}");
     await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(2));
     expect(keepFile).toHaveBeenCalledTimes(1);

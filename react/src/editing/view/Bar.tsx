@@ -41,7 +41,7 @@ export function Bar() {
         {changed === 0 && (
           // Beside the count before any change, it gives way to it where the bar is narrow.
           <span className={classes(styles.hint, atRest.count > 0 && styles.besideCount)}>
-            <span className={styles.click}>Double-click text to change it</span>
+            <span className={styles.click}>Click text to change it</span>
             <span className={styles.tap}>Double-tap text to change it</span>
           </span>
         )}

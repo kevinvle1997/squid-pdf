@@ -11,7 +11,7 @@ import {
 import { isFileDropItem, useDrop } from "react-aria";
 import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
-import { letterAt, wordAround } from "../caret";
+import { selectionAt } from "../caret";
 import { carriesFiles } from "../dropped";
 import { DEFAULT_FACE, previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
@@ -78,15 +78,15 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     if (carriesFiles(event.dataTransfer)) handler?.(event);
   };
 
-  // Once, as the field takes focus: the caret goes where the press was, the word under it,
-  // or everything from the keyboard. Later focus keeps the caret where the user put it.
+  // Once, as the field takes focus: what the press that opened it selects, or everything from
+  // the keyboard. Later focus keeps the caret where the user put it.
   function place(event: FocusEvent<HTMLInputElement>) {
     if (placed.current) return;
     placed.current = true;
     const input = event.currentTarget;
-    const at = editor.store.get().draft?.atPt;
-    if (at == null) input.select();
-    else input.setSelectionRange(...wordAround(start, letterAt(start, at, { glyphs, size: span.size })));
+    const press = editor.store.get().draft?.press;
+    if (press == null) input.select();
+    else input.setSelectionRange(...selectionAt(start, press, { glyphs, size: span.size }));
     fieldFocused(editor);
   }
 

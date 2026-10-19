@@ -712,9 +712,10 @@ describe("a page", () => {
     expect(getComputedStyle(note.element()).color).toBe(colorOf("--warn"));
   });
 
-  test("a click shows a span's note; a click's focus alone doesn't", async () => {
+  test("hover shows a span's note and a click's focus alone doesn't; a click edits, its caret where it pressed", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
+    // Every letter measured, so the press lands on a letter.
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs("SSN 078") })] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
@@ -725,7 +726,13 @@ describe("a page", () => {
     // Focus is taken: the mark points at the page's note, which a click's focus leaves shut.
     await expect.element(mark).toHaveAttribute("aria-describedby");
     await expect.element(note).not.toBeInTheDocument();
-    await mark.click();
+    await mark.hover();
     await expect.element(note).toBeVisible();
+
+    await mark.click({ position: { x: 1, y: 4 } });
+    const textbox = screen.getByRole("textbox");
+    await expect.element(textbox).toHaveFocus();
+    const input = textbox.element() as HTMLInputElement;
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 0]);
   });
 });

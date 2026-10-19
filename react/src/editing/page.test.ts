@@ -24,7 +24,7 @@ describe("what a page draws", () => {
     editor.store.set({
       focusTo: { spanId: "second" },
       scrollTo: { spanId: "second", count: 1 },
-      unredacting: { spanId: "second", atPt: null },
+      unredacting: { spanId: "second", press: null },
     });
     const [first, second] = [pageState(editor.store.get(), 0), pageState(editor.store.get(), 1)];
     expect(first).toMatchObject({ typingIn: "first", focusTo: null, scrollTo: null, unredacting: null });

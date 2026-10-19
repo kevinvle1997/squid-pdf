@@ -3,6 +3,7 @@
 // state and the change every edit, undo and put-back goes through.
 import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
+import type { Press } from "./caret";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
 import { reattach, shownNameOf } from "./fonts";
@@ -37,7 +38,7 @@ export interface FocusTo {
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
   readonly spanId: string;
-  readonly atPt: number | null; // where in the span the press was: the word to select, if it's edited
+  readonly press: Press | null; // the press that asked: where the caret goes, if it's edited
 }
 
 /** Words for a screen reader, counted: the same words said again are heard again. */

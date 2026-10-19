@@ -20,8 +20,8 @@ export const FIELD_SPARE_EM = 0.5;
 export const INSERT_ASCENT_EM = 1;
 export const INSERT_DESCENT_EM = 0.3;
 
-/** A second press on the same span within this is a double press: it edits. */
-export const DOUBLE_PRESS_MS = 400;
+/** A second tap on the same span within this is a double tap: it edits. A mouse click edits at once. */
+export const DOUBLE_TAP_MS = 400;
 
 /** How long a pointer rests on a span before its note shows. Focus shows it at once. */
 export const NOTE_DELAY_MS = 250;

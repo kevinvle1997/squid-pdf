@@ -31,7 +31,7 @@ export function editAnyway(editor: Editor): void {
   const redactions = new Set(entriesOf(history).flatMap((entry) => (isRedaction(entry.edit) ? [entry.id] : [])));
   change(editor, { kind: "remove", ids: redactions }, ({ reading }) => ({
     unredacting: null,
-    draft: draftOf(span, { reading, atPt: unredacting.atPt }),
+    draft: draftOf(span, { reading, press: unredacting.press }),
     focusTo: null,
   }));
 }

@@ -1,16 +1,25 @@
 import { describe, expect, test } from "vitest";
 import { aSpan, halfWideGlyphs } from "../fixtures";
-import { atPtOf, letterAt, wordAround } from "./caret";
+import { letterAt, pressOf, selectionAt, wordAround } from "./caret";
 
 // Every letter half the size wide: 5 pt each at 10 pt.
 const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 
-describe("the caret a double press puts down", () => {
+describe("the caret a press puts down", () => {
   test("a press lands as far into the span, in points, as it is into its mark", () => {
     const span = aSpan({ id: "s", bbox: { x0: 100, y0: 0, x1: 200, y1: 12 } });
-    expect(atPtOf(span, { pressX: 50, shownPx: 200 })).toBe(25);
+    expect(pressOf(span, { pressX: 50, shownPx: 200, selects: "caret" })).toEqual({ atPt: 25, selects: "caret" });
     // Not laid out yet: nothing to say where it landed, so the whole span is selected.
-    expect(atPtOf(span, { pressX: 50, shownPx: 0 })).toBeNull();
+    expect(pressOf(span, { pressX: 50, shownPx: 0, selects: "caret" })).toBeNull();
+  });
+
+  test("a click's caret goes in the gap nearest it; a double tap selects the word under it", () => {
+    const caretAt = (atPt: number) => selectionAt("was here", { atPt, selects: "caret" }, { glyphs, size: 10 });
+    expect(caretAt(2)).toEqual([0, 0]);
+    expect(caretAt(3)).toEqual([1, 1]);
+    expect(caretAt(22)).toEqual([4, 4]);
+    expect(caretAt(400)).toEqual([8, 8]);
+    expect(selectionAt("was here", { atPt: 22, selects: "word" }, { glyphs, size: 10 })).toEqual([4, 8]);
   });
 
   test("the letter under the press, counted from the span's start", () => {

@@ -1,6 +1,7 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
+import type { Press } from "./caret";
 import { type Also, change, type Editor, type EditorState, say, spoken } from "./editor";
 import { substituteOf } from "./faces";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
@@ -13,29 +14,29 @@ import type { Reading } from "./project";
 export interface Draft {
   readonly spanId: string;
   readonly page: number;
-  readonly atPt: number | null; // where in the span the press was, from its start: the word to select
+  readonly press: Press | null; // the press that opened it, if one did: where the caret goes
   readonly text: string;
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
 }
 
 /** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
-export function edit(editor: Editor, spanId: string, atPt: number | null): void {
+export function edit(editor: Editor, spanId: string, press: Press | null): void {
   const { store } = editor;
   const { layout, reading, doc } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
   // Un-redacting by accident is a leak: the one edit that asks first (quality.md, Modals and prompts).
   if (reading.spans.get(spanId)?.redacted) {
-    store.set({ unredacting: { spanId, atPt }, said: spoken(doc.copy.undo_redaction) });
+    store.set({ unredacting: { spanId, press }, said: spoken(doc.copy.undo_redaction) });
     return;
   }
-  store.set({ draft: draftOf(span, { reading, atPt }), focusTo: null, unredacting: null });
+  store.set({ draft: draftOf(span, { reading, press }), focusTo: null, unredacting: null });
 }
 
-/** Typing into `span` as it reads in `reading`, the press `atPt` points from its start. */
-export function draftOf(span: SpanInfo, { reading, atPt }: { reading: Reading; atPt: number | null }): Draft {
+/** Typing into `span` as it reads in `reading`, opened by `press`. */
+export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; press: Press | null }): Draft {
   const now = reading.spans.get(span.id);
-  return { spanId: span.id, page: span.page, atPt, text: now?.text ?? span.text, strategy: now?.strategy };
+  return { spanId: span.id, page: span.page, press, text: now?.text ?? span.text, strategy: now?.strategy };
 }
 
 /** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */

@@ -69,9 +69,9 @@ describe("redacting", () => {
 describe("editing a redacted span", () => {
   test("asks first, in the server's words, and opens nothing yet", () => {
     redact(editor, "name");
-    edit(editor, "name", 12);
+    edit(editor, "name", { atPt: 12, selects: "caret" });
     const state = editor.store.get();
-    expect(state.unredacting).toEqual({ spanId: "name", atPt: 12 });
+    expect(state.unredacting).toEqual({ spanId: "name", press: { atPt: 12, selects: "caret" } });
     expect(state.draft).toBeNull();
     expect(state.said.text).toBe(COPY.undo_redaction);
   });

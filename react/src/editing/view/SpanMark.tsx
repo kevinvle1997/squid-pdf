@@ -2,9 +2,9 @@ import { memo, useCallback, useRef, useSyncExternalStore } from "react";
 import { Button, type PressEvent } from "react-aria-components";
 import type { Copy, FitInfo, FontInfo, PageInfo, RedactionInfo, SpanInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
-import { atPtOf } from "../caret";
+import { type Press, pressOf } from "../caret";
 import { onEscape } from "../commands";
-import { DOUBLE_PRESS_MS } from "../constants";
+import { DOUBLE_TAP_MS } from "../constants";
 import { type FocusTo, focusMoved } from "../editor";
 import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
@@ -28,7 +28,7 @@ interface Props {
 }
 
 /**
- * A span of the page's text: pressable, with its note on hover, focus and a single tap.
+ * A span of the page's text: a click edits it; its note shows on hover, focus and a single tap.
  *
  * The page hands it what it shows, so a mark subscribes to nothing and mounts cheaply as the page scrolls
  * near; it redraws only when what it's handed changes. A font's warning waits for an edit (`editNote`).
@@ -38,7 +38,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
   const editor = useEditor();
   const look = lookOf({ span, font, reading, fit, redaction, copy });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
-  const lastPress = useRef(0);
+  const lastTap = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
   const takeFocus = useCallback(
     (mark: HTMLButtonElement | null) => {
@@ -52,6 +52,12 @@ export const SpanMark = memo(function SpanMark(props: Props) {
     if (look.note !== null && focusTo === null && anchor instanceof Element) notes.show(span.id, anchor, via);
   };
 
+  function editAt(event: PressEvent, selects: Press["selects"]) {
+    const shownPx = event.target.getBoundingClientRect().width;
+    notes.hide(span.id);
+    edit(editor, span.id, pressOf(span, { pressX: event.x, shownPx, selects }));
+  }
+
   function pressed(event: PressEvent) {
     // Enter, Space, or a screen reader's activation: edit at once, the whole span selected.
     if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
@@ -59,15 +65,19 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       edit(editor, span.id, null);
       return;
     }
-    const at = performance.now();
-    if (at - lastPress.current < DOUBLE_PRESS_MS) {
-      lastPress.current = 0;
-      const atPt = atPtOf(span, { pressX: event.x, shownPx: event.target.getBoundingClientRect().width });
-      notes.hide(span.id);
-      edit(editor, span.id, atPt);
+    // A mouse click edits at once, the caret where it pressed: hovering already showed the note.
+    if (event.pointerType === "mouse") {
+      editAt(event, "caret");
       return;
     }
-    lastPress.current = at;
+    // A touch screen has no hover: a tap shows the note, and a second tap edits, the word selected.
+    const at = performance.now();
+    if (at - lastTap.current < DOUBLE_TAP_MS) {
+      lastTap.current = 0;
+      editAt(event, "word");
+      return;
+    }
+    lastTap.current = at;
     showNote(event.target, "tap"); // a tap shows the note a pointer would hover for
     // Nothing hovers off on a touch screen, so the next press anywhere closes it.
     window.addEventListener("pointerdown", () => notes.hide(span.id), { once: true, capture: true });

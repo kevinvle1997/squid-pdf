@@ -25,7 +25,7 @@
 /* The tools and the one action, held together, each on one line: a focus ring's width apart. */
 .actions { flex: none; display: flex; align-items: center; gap: var(--s2); }
 .actions button { white-space: nowrap; }
-/* How to start, while nothing's changed: a double-click with a pointer, a double-tap on a touch screen. */
+/* How to start, while nothing's changed: a click with a pointer, a double-tap on a touch screen. */
 .hint { font-size: var(--fs-sm); color: var(--ink-lo); }
 .tap { display: none; }
 @media (pointer: coarse) {
