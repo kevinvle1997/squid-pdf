@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from itertools import pairwise
+from statistics import median
 
 import pymupdf
 import pytest
@@ -529,11 +531,32 @@ _ARABIC = {"text": "ﺔﻴﺑﺮﻌﻟﺍ", "face": "FreeSerif Regular"}
 _ARABIC_DIGITS = {"text": "١٢٥٠", "face": "FreeSerif Regular"}
 
 
+def test_letter_spaced_text_is_exact_and_a_redraw_sets_its_letters_as_far_apart(tmp_path):
+    """Spacing a redraw copies: each letter as far past its width as the line's own were."""
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(drawn_with(str(tmp_path / "spaced.pdf"), setting="1.5 Tc")) as engine:
+        [span] = engine.index()
+        [report] = engine.assess(engine.index())
+        engine.remove([span], then_drawn=[LineToDraw(span, "Terms of sale")])
+        engine.draw(span, "Terms of sale")
+        engine.save(out)
+
+    assert_equal(report.state, "exact", "how the spaced line is judged")
+    [drawn] = _drawn(out)
+    letters = [char for char in drawn["chars"] if not char["c"].isspace()]
+    apart = [
+        b["origin"][0] - a["origin"][0] - (a["bbox"][2] - a["bbox"][0])
+        for a, b in pairwise(letters)
+        if a["origin"][0] < b["origin"][0]
+    ]
+    assert_equal(_text(drawn), "Terms of sale", "the line read back")
+    assert_close(median(apart), 1.5, 0.1, "how far apart the redrawn letters are set")
+
+
 @pytest.mark.parametrize(
     ("line", "state", "why"),
     [
         ({}, "exact", None),
-        ({"setting": "1.5 Tc"}, "approximate", "spaced_text"),
         ({"setting": "80 Tz"}, "approximate", "spaced_text"),
         ({"rotate": 90}, "approximate", "turned_text"),
         ({"rotate": 180}, "approximate", "turned_text"),
@@ -544,7 +567,6 @@ _ARABIC_DIGITS = {"text": "١٢٥٠", "face": "FreeSerif Regular"}
     ],
     ids=[
         "as its font sets it",
-        "letter spacing",
         "narrowed",
         "turned to read upward",
         "turned upside down",

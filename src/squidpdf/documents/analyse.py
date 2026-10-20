@@ -33,6 +33,8 @@ from squidpdf.documents.types import (
     SpanInfo,
 )
 
+_SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
+
 
 def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
     """Take out what acts on its own, index the new upload, keep its pages, and analyse it.
@@ -187,6 +189,7 @@ def _span_info(
         "why": _approximate_why(report),
         "substitute": report.substitute,
         "same_widths": report.same_widths,
+        "letter_spacing_em": round(report.letter_spacing, _SPACING_DP),
         "room_pt": round(room_pt, 2),
         "form_field": form_field,
     }

@@ -12,7 +12,7 @@ engine asks both.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import assert_never
 
@@ -168,6 +168,10 @@ class Engine:
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact, approximate or substitute, for one span."""
         plan = self.plans.plan_for(span, span.text)
+        return replace(self._judged(span, plan), letter_spacing=plan.letter_spacing)
+
+    def _judged(self, span: Span, plan: DrawPlan) -> FidelityReport:
+        """Exact, approximate or substitute, for one span, as `plan` draws its own text."""
         drawn_in = plan.drawn_in
         # The file's own font redraws its own text, as it is or not quite.
         if isinstance(drawn_in, PooledFont):
@@ -284,7 +288,9 @@ class Engine:
         unrotated. Returns what came out other than asked.
         """
         planned = self.plans.plan_for(span, text) if plan is None else plan
-        setting = Setting(span.size if size is None else size, scale_x, turn_ccw)
+        drawn_size = span.size if size is None else size
+        spacing = planned.letter_spacing_at(drawn_size)
+        setting = Setting(drawn_size, scale_x, turn_ccw, letter_spacing=spacing)
         return self.writer.draw(span, text, plan=planned, setting=setting)
 
     def turn_pages(self, turns: Mapping[int, QuarterTurn]) -> None:

@@ -786,6 +786,8 @@ export interface components {
             substitute: string | null;
             /** Same Widths */
             same_widths: boolean;
+            /** Letter Spacing Em */
+            letter_spacing_em: number;
             /** Room Pt */
             room_pt: number;
             /** Form Field */

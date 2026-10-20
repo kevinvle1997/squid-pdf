@@ -74,5 +74,12 @@ describe("a preview of a span's words", () => {
     expect(style).toMatchObject({ left: "10%", top: "10%", minWidth: "10%", fontSize: `${(5 / 595) * 100}cqw` });
     expect(style.lineHeight).toBe(`${(12 / 595) * 100}cqw`);
     expect(style.transform).toBeUndefined();
+    expect(style.letterSpacing).toBeUndefined();
+  });
+
+  test("sets its letters as far apart as the span's, in ems of the size it's set at", () => {
+    const span = aSpan({ id: "s", letter_spacing_em: 0.05 });
+    const style = previewStyleOf(span, A4, { face: "Liberation Serif Regular", scale: { size: 1, scaleX: 1 } });
+    expect(style.letterSpacing).toBe("0.05em");
   });
 });

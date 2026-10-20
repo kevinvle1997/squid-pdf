@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
@@ -47,6 +47,11 @@ class DrawPlan:
     left_out: list[str]  # letters no font we have can draw, each once, in the order typed
     # The code the span draws each letter with, where its own font has several: written alike.
     codes: Mapping[str, FontCode] = field(default_factory=dict)
+    letter_spacing: float = 0.0  # how far past its width each letter is set apart, per em
+
+    def letter_spacing_at(self, size: float) -> float:
+        """The letter spacing at `size`, in points."""
+        return self.letter_spacing * size
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -66,6 +71,11 @@ class DrawPlanner:
         line without them.
         """
         own = self.fonts.own(span)
+        spacing = self.fonts.letter_spacing(span, own)
+        return replace(self._plan_unspaced(span, text, own), letter_spacing=spacing)
+
+    def _plan_unspaced(self, span: Span, text: str, own: PooledFont | None) -> DrawPlan:
+        """`plan_for` before letter spacing: the font that draws the line, and its letters."""
         # Not in the file, or unusable: a face we ship draws it, less what even it lacks.
         if own is None:
             return self._plan_in_a_face(span, unicodedata.normalize("NFC", text))
@@ -123,11 +133,13 @@ class DrawPlanner:
     def width_of(self, span: Span, plan: DrawPlan, *, size: float) -> float:
         """How wide `plan`'s line is, placed as `draw` places it, at `size` points."""
         by_code = coded_in(plan)
+        spacing = plan.letter_spacing_at(size)
         # Written by code: widths come from each copy's width list.
         if by_code is not None:
             widths = (run.coded.letters[ch].width for run in by_code for ch in run.text)
-            return sum(widths) * size / EM
-        _words, width = self.words_of(span, plan.text, font=self.program_of(plan), size=size)
+            return sum(widths) * size / EM + spacing * len(plan.text)
+        font = self.program_of(plan)
+        _words, width = self.words_of(span, plan.text, font=font, size=size, spacing=spacing)
         return width
 
     def program_of(self, plan: DrawPlan) -> FontProgram:
@@ -142,15 +154,18 @@ class DrawPlanner:
         assert_never(drawn_in)
 
     def words_of(
-        self, span: Span, text: str, *, font: FontProgram, size: float
+        self, span: Span, text: str, *, font: FontProgram, size: float, spacing: float
     ) -> tuple[list[Word], float]:
-        """`text` as `draw` places it in `font`, and where the pen ends: its width."""
+        """`text` as `draw` places it in `font`, and where the pen ends: its width.
+
+        `spacing` sets each letter that many points past its width.
+        """
         one_run = not lacks_space(font) or " " not in text
         if one_run:
-            return [Word(text, 0.0)], font.width(text, size)
+            return [Word(text, 0.0)], font.width(text, size) + spacing * len(text)
         # No space to draw: each word goes where the file's gaps put it.
         gaps, usual = span_gaps(span, font), self.fonts.usual_gap(span, font)
-        return placed_words(text, font=font, size=size, gaps=gaps, usual=usual)
+        return placed_words(text, font=font, size=size, gaps=gaps, usual=usual, spacing=spacing)
 
     def widths(self, span: Span) -> dict[str, float]:
         """Each letter the span's font really draws, and its width per 1000 em.

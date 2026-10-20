@@ -44,6 +44,19 @@ export function widthPt(text: string, glyphs: Record<string, number>, size: numb
   return (thousandths * size) / 1000;
 }
 
+type SpacedBy = Pick<SpanInfo, "size" | "letter_spacing_em">;
+
+/** How wide `text` is set as `span` sets its letters, in points: their widths, each letter spaced as the span's are. */
+export function lineWidthPt(span: SpacedBy, text: string, glyphs: Record<string, number>): number {
+  return widthPt(text, glyphs, span.size) + letterSpacingPt(span, text);
+}
+
+/** How much `span`'s letter spacing adds to `text`, in points. */
+export function letterSpacingPt(span: SpacedBy, text: string): number {
+  // Counted by letter, not UTF-16 unit, as the server counts them.
+  return span.letter_spacing_em * span.size * [...text].length;
+}
+
 /**
  * `text` spelled as the font has it: as typed, composed or in pieces (é is one letter, or e and an
  * accent). With none whole in the font, composed, as the faces we ship draw it. `_spelled` in core/plan.py.
@@ -94,8 +107,8 @@ export function optionsFor(
 /** What would happen if `span` read `text` instead. */
 export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; text: string; rules: FitRules }): Fit {
   const spelled = spelledIn(text, font.glyphs);
-  const originalPt = widthPt(span.text, font.glyphs, span.size);
-  const deltaPt = Math.round((widthPt(spelled, font.glyphs, span.size) - originalPt) * 100) / 100;
+  const originalPt = lineWidthPt(span, span.text, font.glyphs);
+  const deltaPt = Math.round((lineWidthPt(span, spelled, font.glyphs) - originalPt) * 100) / 100;
   const roomPt = span.room_pt;
   return {
     originalPt,

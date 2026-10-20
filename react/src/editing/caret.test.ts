@@ -4,6 +4,7 @@ import { letterAt, pressOf, selectionAt, wordAround } from "./caret";
 
 // Every letter half the size wide: 5 pt each at 10 pt.
 const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
+const TEN_PT = { size: 10, letter_spacing_em: 0 };
 
 describe("the caret a press puts down", () => {
   test("a press lands as far into the span, in points, as it is into its mark", () => {
@@ -14,24 +15,24 @@ describe("the caret a press puts down", () => {
   });
 
   test("a click's caret goes in the gap nearest it; a double tap selects the word under it", () => {
-    const caretAt = (atPt: number) => selectionAt("was here", { atPt, selects: "caret" }, { glyphs, size: 10 });
+    const caretAt = (atPt: number) => selectionAt("was here", { atPt, selects: "caret" }, { glyphs, span: TEN_PT });
     expect(caretAt(2)).toEqual([0, 0]);
     expect(caretAt(3)).toEqual([1, 1]);
     expect(caretAt(22)).toEqual([4, 4]);
     expect(caretAt(400)).toEqual([8, 8]);
-    expect(selectionAt("was here", { atPt: 22, selects: "word" }, { glyphs, size: 10 })).toEqual([4, 8]);
+    expect(selectionAt("was here", { atPt: 22, selects: "word" }, { glyphs, span: TEN_PT })).toEqual([4, 8]);
   });
 
   test("the letter under the press, counted from the span's start", () => {
-    expect(letterAt("was here", 2, { glyphs, size: 10 })).toBe(0);
-    expect(letterAt("was here", 22, { glyphs, size: 10 })).toBe(4);
-    expect(letterAt("was here", 400, { glyphs, size: 10 })).toBe(8);
+    expect(letterAt("was here", 2, { glyphs, span: TEN_PT })).toBe(0);
+    expect(letterAt("was here", 22, { glyphs, span: TEN_PT })).toBe(4);
+    expect(letterAt("was here", 400, { glyphs, span: TEN_PT })).toBe(8);
   });
 
   test("a letter outside the basic plane counts as the field counts it, two units", () => {
     const script = { 𝒳: 500, " ": 500 };
     // The second 𝒳 starts 5 pt in, and 2 units into the field's text.
-    expect(letterAt("𝒳𝒳 ab", 7, { glyphs: script, size: 10 })).toBe(2);
+    expect(letterAt("𝒳𝒳 ab", 7, { glyphs: script, span: TEN_PT })).toBe(2);
   });
 
   test("the word around it is selected, whichever letter of it was pressed", () => {

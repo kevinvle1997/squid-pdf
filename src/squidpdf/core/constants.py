@@ -29,6 +29,10 @@ TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
 # point, would say 0.0, and nobody could see the difference.
 ROOM_SLACK_PT = 0.1
 
+# Letters set apart by less than this, per em, are kerned, not spaced: a kerned pair moves
+# about a hundredth of an em, a heading set tight two hundredths, a tracked label five.
+LETTER_SPACING_MIN_EM = 0.015
+
 # Room: how far a line runs to the right before it reaches anything, read from the page.
 ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairline is no wall
 # Line art taller than this many of a page's tallest lines (a frame, a column rule) is
@@ -72,6 +76,7 @@ LENT_COPIES_KEPT = 32
 ANALYSIS_TUNING = {
     "tolerance_pt": TOLERANCE_PT,
     "room_touch_pt": ROOM_TOUCH_PT,
+    "letter_spacing_min_em": LETTER_SPACING_MIN_EM,
     "turn_tolerance": TURN_TOLERANCE,
     "same_width": SAME_WIDTH,
     "same_font_shared": SAME_FONT_SHARED,

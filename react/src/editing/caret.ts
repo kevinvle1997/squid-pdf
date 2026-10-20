@@ -1,6 +1,6 @@
 // Where the caret goes as a press opens a span's field: a click's caret, or the word under a double tap.
 import type { SpanInfo } from "../api/types";
-import { widthPt } from "./fit";
+import { lineWidthPt } from "./fit";
 
 /** A press that opened a span's field: how far into the span it landed, and what it selects there. */
 export interface Press {
@@ -8,7 +8,8 @@ export interface Press {
   readonly selects: "caret" | "word";
 }
 
-type Measure = { glyphs: Record<string, number>; size: number };
+// What sets a span's letters: their widths, and its size and letter spacing.
+type Measure = { glyphs: Record<string, number>; span: Pick<SpanInfo, "size" | "letter_spacing_em"> };
 
 /** A press `pressX` pixels into a span's mark, shown `shownPx` wide, in points from its start: none unlaid. */
 export function pressOf(
@@ -26,11 +27,11 @@ export function selectionAt(text: string, press: Press, measure: Measure): [numb
 }
 
 /** The gap between letters nearest `atPt` points from the start of `text`, as a field puts a click's caret. */
-function caretAt(text: string, atPt: number, { glyphs, size }: Measure): number {
+function caretAt(text: string, atPt: number, { glyphs, span }: Measure): number {
   let widthSoFar = 0;
   let offset = 0;
   for (const letter of text) {
-    const width = widthPt(letter, glyphs, size);
+    const width = lineWidthPt(span, letter, glyphs);
     if (widthSoFar + width / 2 > atPt) return offset;
     widthSoFar += width;
     offset += letter.length;
@@ -39,11 +40,11 @@ function caretAt(text: string, atPt: number, { glyphs, size }: Measure): number 
 }
 
 /** Where in `text` the letter at `atPt` points from its start begins, counted as the field counts: in UTF-16 units. */
-export function letterAt(text: string, atPt: number, { glyphs, size }: Measure): number {
+export function letterAt(text: string, atPt: number, { glyphs, span }: Measure): number {
   let widthSoFar = 0;
   let offset = 0;
   for (const letter of text) {
-    widthSoFar += widthPt(letter, glyphs, size);
+    widthSoFar += lineWidthPt(span, letter, glyphs);
     if (widthSoFar > atPt) return offset;
     offset += letter.length;
   }

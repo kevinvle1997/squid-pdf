@@ -3,7 +3,7 @@
 import type { FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, changed, type Editor, type EditorState, spoken } from "./editor";
-import { fitOf, runsPast, widthPt } from "./fit";
+import { fitOf, lineWidthPt, runsPast } from "./fit";
 import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import { type Reading, textIn } from "./project";
@@ -94,12 +94,12 @@ export function matchesAcross(
   span: SpanInfo,
   { text, matches, glyphs }: { text: string; matches: readonly Match[]; glyphs: Record<string, number> },
 ): { x0: number; x1: number }[] {
-  const whole = widthPt(text, glyphs, span.size);
+  const whole = lineWidthPt(span, text, glyphs);
   const wide = span.bbox.x1 - span.bbox.x0;
   // Measured where the font has widths; else by letter count, the best guess without them.
   const at = (index: number) =>
     span.bbox.x0 +
-    (whole > 0 ? widthPt(text.slice(0, index), glyphs, span.size) / whole : index / Math.max(text.length, 1)) * wide;
+    (whole > 0 ? lineWidthPt(span, text.slice(0, index), glyphs) / whole : index / Math.max(text.length, 1)) * wide;
   return matches.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 

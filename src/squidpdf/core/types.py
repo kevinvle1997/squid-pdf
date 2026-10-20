@@ -254,6 +254,7 @@ class DrawnGlyph:
     letter: str
     glyph: GlyphId  # as `FontCode.glyph`; -1 for a ligature's later letters
     origin: tuple[float, float]
+    width: float  # how far its font moves the pen, in points, before any letter spacing
 
 
 @dataclass(frozen=True, slots=True)

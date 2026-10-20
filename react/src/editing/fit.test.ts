@@ -30,6 +30,12 @@ describe("the fit check", () => {
     expect(widthPt("abcdefghij", glyphs, 10)).toBe(50);
   });
 
+  test("a span's letter spacing sets each letter that much further, as the server measures it", () => {
+    // 0.1 em at 10 pt is a point past each letter: two more letters run 10 pt for their widths, 2 for spacing.
+    const spaced = aSpan({ id: "s", text: "abcdefghij", size: 10, letter_spacing_em: 0.1 });
+    expect(fitOf(spaced, { font, text: "abcdefghijkl", rules: RULES }).deltaPt).toBe(12);
+  });
+
   test("text as long as the original fits exactly", () => {
     const fit = fitOf(span, { font, text: "jihgfedcba", rules: RULES });
     expect(fit).toEqual({ originalPt: 50, deltaPt: 0, roomPt: 0, missing: [], options: [] });

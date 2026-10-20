@@ -67,12 +67,18 @@ def usual_gap(pieces: Iterable[TextPiece], *, font: FontProgram) -> float:
 
 
 def placed_words(
-    text: str, *, font: FontProgram, size: float, gaps: Sequence[float], usual: float
+    text: str,
+    *,
+    font: FontProgram,
+    size: float,
+    gaps: Sequence[float],
+    usual: float,
+    spacing: float,
 ) -> tuple[list[Word], float]:
     """Each word of `text` where the pen reaches it, and where the pen ends.
 
-    A space draws nothing: the k-th moves the pen `gaps[k]`, any past those `usual`.
-    The end is not the last word's: trailing spaces move the pen too.
+    A space draws nothing: the k-th moves the pen `gaps[k]`, any past those `usual`. Each
+    letter moves it `spacing` points more. The end is not the last word's: trailing spaces too.
     """
     each_gap = chain(gaps, repeat(usual))
     words: list[Word] = []
@@ -84,5 +90,5 @@ def placed_words(
         # Two spaces in a row leave an empty piece: nothing to draw.
         if word:
             words.append(Word(word, pen))
-            pen += font.width(word, size)
+            pen += font.width(word, size) + spacing * len(word)
     return words, pen

@@ -43,11 +43,12 @@ _LAYOUT_TABLES = ("GSUB", "GPOS", "GDEF")
 
 @dataclass(frozen=True, slots=True)
 class Setting:
-    """How a line is set: its size, how much it's narrowed, and how far it's turned."""
+    """How a line is set: its size, how much it's narrowed, how far it's turned, and spaced."""
 
     size: float  # in points
     scale_x: float  # 1 is as the font draws it; less narrows each run from its start
     turn_ccw: QuarterTurn  # on the page unrotated
+    letter_spacing: float  # how far past its width each letter is set apart, in points
 
 
 @dataclass(slots=True)
@@ -199,8 +200,9 @@ class PageWriter:
         cos, sin = QUARTER_TURNS[setting.turn_ccw]
         # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
-        words, _width = self.plans.words_of(span, text, font=font, size=setting.size)
-        offset_runs = _runs_in(words, resources=resources, font=font, size=setting.size)
+        size, spacing = setting.size, setting.letter_spacing
+        words, _width = self.plans.words_of(span, text, font=font, size=size, spacing=spacing)
+        offset_runs = _runs_in(words, resources=resources, font=font, setting=setting)
         runs = [
             TextRun(run.text, (x + step_x * run.offset, y + step_y * run.offset), run.resource)
             for run in offset_runs
@@ -213,6 +215,7 @@ class PageWriter:
             opacity=span.opacity,
             scale_x=setting.scale_x,
             turn_ccw=setting.turn_ccw,
+            letter_spacing=setting.letter_spacing,
         )
 
     def _write_codes(self, span: Span, coded_runs: list[CodedRun], *, setting: Setting) -> None:
@@ -233,6 +236,7 @@ class PageWriter:
             opacity=span.opacity,
             scale_x=setting.scale_x,
             turn_ccw=setting.turn_ccw,
+            letter_spacing=setting.letter_spacing,
         )
 
     def _resources(self, page: int, own: PooledFont, text: str) -> dict[str, str]:
@@ -310,7 +314,7 @@ def _resource_name(kind: str, source: str) -> str:
 
 
 def _runs_in(
-    words: Iterable[Word], *, resources: Mapping[str, str], font: FontProgram, size: float
+    words: Iterable[Word], *, resources: Mapping[str, str], font: FontProgram, setting: Setting
 ) -> list[_OffsetRun]:
     """Each word split where the font its letters are drawn in changes, in order.
 
@@ -319,12 +323,12 @@ def _runs_in(
     return [
         run
         for word in words
-        for run in _word_runs(word, resources=resources, font=font, size=size)
+        for run in _word_runs(word, resources=resources, font=font, setting=setting)
     ]
 
 
 def _word_runs(
-    word: Word, *, resources: Mapping[str, str], font: FontProgram, size: float
+    word: Word, *, resources: Mapping[str, str], font: FontProgram, setting: Setting
 ) -> list[_OffsetRun]:
     """One word split where its font changes, each run starting where the last ends."""
     runs: list[_OffsetRun] = []
@@ -332,7 +336,7 @@ def _word_runs(
     for resource, letters in groupby(word.text, key=lambda ch: resources[ch]):
         text = "".join(letters)
         runs.append(_OffsetRun(text, start, resource))
-        start += font.width(text, size)
+        start += font.width(text, setting.size) + setting.letter_spacing * len(text)
     return runs
 
 

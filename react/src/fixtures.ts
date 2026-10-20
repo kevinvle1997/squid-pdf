@@ -68,6 +68,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     why: null,
     substitute: null,
     same_widths: false,
+    letter_spacing_em: 0,
     room_pt: 0,
     form_field: false,
     ...fields,

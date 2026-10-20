@@ -86,7 +86,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     const input = event.currentTarget;
     const press = editor.store.get().draft?.press;
     if (press == null) input.select();
-    else input.setSelectionRange(...selectionAt(start, press, { glyphs, size: span.size }));
+    else input.setSelectionRange(...selectionAt(start, press, { glyphs, span }));
     fieldFocused(editor);
   }
 

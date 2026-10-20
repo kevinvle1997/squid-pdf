@@ -265,9 +265,9 @@ class _MuPDFDriver:
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
         """Each letter the page draws, and the shape its code picked, in the order drawn."""
         return [
-            DrawnGlyph(chr(letter), GlyphId(glyph), (origin[0], origin[1]))
+            DrawnGlyph(chr(letter), GlyphId(glyph), (origin[0], origin[1]), box[2] - box[0])
             for run in self.doc[page].get_texttrace()
-            for letter, glyph, origin, _box in run["chars"]
+            for letter, glyph, origin, box in run["chars"]
         ]
 
     def drawn_boxes(self, page: int) -> list[Rect]:
@@ -522,6 +522,7 @@ class _MuPDFDriver:
         opacity: float,
         scale_x: float,
         turn_ccw: QuarterTurn,
+        letter_spacing: float,
     ) -> None:
         """Write each run's codes in its font, from `origin` on, on top of the page.
 
@@ -544,7 +545,8 @@ class _MuPDFDriver:
         color_operands = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
         # Save the page's settings, set color, place the text, write each run in
         # its font and size, then put the settings back.
-        stream = f"q{paint} BT {color_operands} rg {placed} Tm {shown} ET Q"
+        spaced = _written_spacing(letter_spacing)
+        stream = f"q{paint} BT {color_operands} rg {placed} Tm{spaced} {shown} ET Q"
         self._add_content(page, stream.encode())
 
     def _resources_of(self, page: int, xrefs: set[int]) -> dict[int, str]:
@@ -580,12 +582,14 @@ class _MuPDFDriver:
         opacity: float,
         scale_x: float,
         turn_ccw: QuarterTurn,
+        letter_spacing: float,
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
         Each run's font is one `add_font` added. `scale_x` narrows each run from its own
         start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise about
-        its origin. Written as PyMuPDF's `insert_text` writes it, to the byte.
+        its origin. Written as PyMuPDF's `insert_text` writes it, to the byte, but for
+        `letter_spacing`, the points past its width each letter is set apart.
         """
         written = [run for run in runs if run.text]
         # No letter written (empty new text): nothing to add.
@@ -606,7 +610,9 @@ class _MuPDFDriver:
         # Each number as PyMuPDF writes one (format_g): the fewest digits its float needs.
         rgb = pymupdf.format_g(color)
         # Its size, and its color for strokes and fills alike.
-        setting = f"{pymupdf.format_g(size)} Tf {rgb} RG {rgb} rg"
+        setting = (
+            f"{pymupdf.format_g(size)} Tf {rgb} RG {rgb} rg{_written_spacing(letter_spacing)}"
+        )
         stream = ""
         for run in written:
             x, y = run.origin
@@ -932,6 +938,11 @@ def _written_name(resource: str) -> str:
 def _is_plain(byte: int) -> bool:
     """Whether a PDF name can hold `byte` as it is."""
     return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
+
+
+def _written_spacing(letter_spacing: float) -> str:
+    """Letter spacing as a drawing sets it, after a space; nothing when it's none."""
+    return f" {letter_spacing:.{_PDF_DP}f} Tc" if letter_spacing else ""
 
 
 def _written_narrowing(start: tuple[float, float], scale_x: float) -> str:

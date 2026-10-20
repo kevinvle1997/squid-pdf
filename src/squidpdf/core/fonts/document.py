@@ -12,8 +12,11 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import partial
+from itertools import pairwise
+from statistics import median
 
 from squidpdf.core.app.message import Message
+from squidpdf.core.constants import BASELINE_EPS, LETTER_SPACING_MIN_EM
 from squidpdf.core.fonts.attached import AttachedFonts, FontFiles
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
@@ -31,7 +34,19 @@ from squidpdf.core.fonts.pool import (
 from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import lacks_space, usual_gap
-from squidpdf.core.types import DrawnGlyph, FontCode, LookAlike, PageFont, Rect, Span, TextPiece
+from squidpdf.core.types import (
+    EM,
+    DrawnGlyph,
+    FontCode,
+    LookAlike,
+    PageFont,
+    Rect,
+    Span,
+    TextPiece,
+)
+
+# The glyph a ligature's later letters are read with: the one before drew them.
+_LIGATURE_TAIL = -1
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -100,7 +115,7 @@ class _GlyphsByHeight:
     glyphs: list[DrawnGlyph]
 
     def inside(self, box: Rect) -> Iterator[DrawnGlyph]:
-        """Each letter whose baseline starts inside `box`, top first."""
+        """Each letter whose baseline starts inside `box`, top first, each line as drawn."""
         first, past = bisect_left(self.tops, box.y0), bisect_right(self.tops, box.y1)
         for glyph in self.glyphs[first:past]:
             x, _y = glyph.origin
@@ -109,7 +124,7 @@ class _GlyphsByHeight:
 
 
 def _by_height(glyphs: list[DrawnGlyph]) -> _GlyphsByHeight:
-    """`glyphs`, sorted by their baselines."""
+    """`glyphs`, sorted by their baselines; on one, in the order drawn (a stable sort)."""
     ordered = sorted(glyphs, key=lambda glyph: glyph.origin[1])
     return _GlyphsByHeight([glyph.origin[1] for glyph in ordered], ordered)
 
@@ -472,6 +487,33 @@ class DocumentFonts:
                 codes.setdefault(glyph.letter, code)
         return codes
 
+    def letter_spacing(self, span: Span, own: PooledFont | None) -> float:
+        """How far past its width the page sets each letter of the span apart, per em.
+
+        Each letter measured as a redraw measures it, in `own`, and by the page's own box for
+        it, which a narrowed line narrows: kept only where both agree, and past kerning.
+        """
+        # New text, or a turned line: no letters of its own, or none set apart along the page.
+        if not span.fragments or span.turned:
+            return 0.0
+        glyphs = self._facts(span.page).drawn_glyphs(
+            partial(self.driver.drawn_glyphs, span.page)
+        )
+        # In the order drawn: a line drawn twice over, as for a shadow, starts again.
+        pairs = [(a, b) for a, b in pairwise(glyphs.inside(span.bbox)) if _within_a_word(a, b)]
+        # A letter alone, or only spaces between: nothing to read.
+        if not pairs:
+            return 0.0
+        width_of = partial(_DrawnWidths.of(own).width, size=span.size)
+        by_widths = median(
+            (b.origin[0] - a.origin[0] - width_of(a)) / span.size for a, b in pairs
+        )
+        by_boxes = median((b.origin[0] - a.origin[0] - a.width) / span.size for a, b in pairs)
+        spaced = abs(by_widths) >= LETTER_SPACING_MIN_EM
+        # Narrowed, not spaced: each letter's box is as narrow as it's set apart.
+        agreed = abs(by_widths - by_boxes) < LETTER_SPACING_MIN_EM
+        return by_widths if spaced and agreed else 0.0
+
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.
 
@@ -493,6 +535,46 @@ class DocumentFonts:
     def _page_lines(self, page: int) -> list[list[TextPiece]]:
         """The page's text as the index read it, else when first asked for, line by line."""
         return self.cache.text_lines(page, partial(self.driver.text_lines, page))
+
+
+@dataclass(frozen=True, slots=True)
+class _DrawnWidths:
+    """The widths a redraw measures the span's own copy in, per 1000 em."""
+
+    by_glyph: dict[int, float]  # written by code: each code's, by the shape it picks
+    by_letter: dict[str, float]  # written by letter: each letter's
+
+    @classmethod
+    def of(cls, own: PooledFont | None) -> _DrawnWidths:
+        """`own`'s own copy's widths; none for a font the file only names."""
+        # Not in the file: the page's own measure is all there is.
+        if own is None:
+            return cls({}, {})
+        coded = own.own.embedded.coded
+        codes = () if coded is None else coded.codes
+        # Lowest code first: a shape two codes pick has the first one's width.
+        by_glyph: dict[int, float] = {}
+        for code in codes:
+            by_glyph.setdefault(code.glyph, code.width)
+        return cls(by_glyph, own.own.widths)
+
+    def width(self, glyph: DrawnGlyph, *, size: float) -> float:
+        """How far `glyph` moves the pen at `size`; the page's own measure if none is listed."""
+        listed = self.by_glyph.get(glyph.glyph, self.by_letter.get(glyph.letter))
+        return glyph.width if listed is None else listed * size / EM
+
+
+def _within_a_word(letter: DrawnGlyph, following: DrawnGlyph) -> bool:
+    """Whether two letters drawn in a row are set apart only by letter spacing.
+
+    Not across a space, whose gap is a word's, nor a ligature, whose later letters draw
+    nothing, nor back to a line's start, where it's drawn again.
+    """
+    drawn = letter.glyph != _LIGATURE_TAIL and following.glyph != _LIGATURE_TAIL
+    letters = not letter.letter.isspace() and not following.letter.isspace()
+    level = abs(letter.origin[1] - following.origin[1]) <= BASELINE_EPS
+    onward = following.origin[0] > letter.origin[0]
+    return drawn and letters and level and onward
 
 
 def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:

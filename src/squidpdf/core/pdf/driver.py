@@ -238,12 +238,13 @@ class PdfDriver(Protocol):
         opacity: float,
         scale_x: float,
         turn_ccw: QuarterTurn,
+        letter_spacing: float,
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
         Each run's font is one `add_font` added. `scale_x` narrows each run from its own
         start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise about
-        its origin.
+        its origin. `letter_spacing` sets each letter that many points past its width.
         """
         ...
 
@@ -258,6 +259,7 @@ class PdfDriver(Protocol):
         opacity: float,
         scale_x: float,
         turn_ccw: QuarterTurn,
+        letter_spacing: float,
     ) -> None:
         """Write each run's codes in its font, from `origin` on, on top of the page.
 

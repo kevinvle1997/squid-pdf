@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { FitInfo, PageInfo, SpanInfo } from "../../api/types";
 import { FIELD_SPARE_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
 import { familyOf } from "../faces";
-import { type LineScale, widthPt } from "../fit";
+import { type LineScale, letterSpacingPt, lineWidthPt } from "../fit";
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
@@ -128,6 +128,8 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
     fontSize: points(span.size, page),
     fontFamily: familyOf(face),
     color: rgbOf(span.color),
+    // In ems of its size, so a way out that sets it smaller spaces it closer, as the server does.
+    letterSpacing: span.letter_spacing_em === 0 ? undefined : `${span.letter_spacing_em}em`,
   };
 }
 
@@ -171,6 +173,7 @@ export function fieldWidthPt(
   { text, face, glyphs }: { text: string; face: string; glyphs: Record<string, number> },
 ): number {
   // The file's widths count a letter its font lacks as nothing, which the browser draws in a fallback.
-  const typedPt = Math.max(widthPt(text, glyphs, span.size), shownWidthPt(text, face, span.size));
+  const shownPt = shownWidthPt(text, face, span.size) + letterSpacingPt(span, text);
+  const typedPt = Math.max(lineWidthPt(span, text, glyphs), shownPt);
   return Math.max(span.bbox.x1 - span.bbox.x0, typedPt + span.size * FIELD_SPARE_EM);
 }

@@ -42,6 +42,7 @@ class FidelityReport:
     # Why it isn't exact: the own font can't be used, or how it differs.
     why: Message | None = None
     same_widths: bool = False  # the substitute's letters are as wide, so nothing moves
+    letter_spacing: float = 0.0  # how far past its width each letter is set apart, per em
 
 
 def why_approximate(
