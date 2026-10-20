@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 from typing import BinaryIO
 
@@ -56,6 +56,10 @@ _ATTACHED_LOCK = ".fonts-lock"  # held by whoever attaches or removes a copy, an
 _ATTACHED_DIGEST_SIZE = 8  # bytes of each digest in a copy's file name, and of a set's
 # Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
+# Set to anything, in development: an analysis is kept under the app's own source too, so a
+# change to how a span is judged judges every document again on its next read.
+_JUDGE_BY_SOURCE = "SQUIDPDF_DEV_REJUDGE"
+_SOURCE_FILES = ("*.py", "*.toml")  # what can change how a span is judged, or said
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
@@ -519,6 +523,17 @@ def _pages_file() -> str:
     return _kept_as("pages.json")
 
 
+@cache
+def _source_digest() -> bytes:
+    """A digest of the app's own source, read once a process."""
+    package = Path(__file__).resolve().parents[1]
+    files = sorted(path for pattern in _SOURCE_FILES for path in package.rglob(pattern))
+    digest = hashlib.blake2s()
+    for path in files:
+        digest.update(path.read_bytes())
+    return digest.digest()
+
+
 def _rooms_file(build: str) -> str:
     """The file every span's room under `build` is kept in, beside `_analysis_file`."""
     return _analysis_kept_as(f"rooms-{build}.json")
@@ -555,5 +570,7 @@ def _analysis_kept_as(name: str) -> str:
     document's format is in it too, so a gone document has no analysis to answer from.
     """
     tuning = repr(ANALYSIS_TUNING).encode()
-    judged_by = hashlib.blake2s(tuning, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
+    # In development, the code that judged it: a server reloaded on a change is a new process.
+    source = _source_digest() if os.environ.get(_JUDGE_BY_SOURCE) else b""
+    judged_by = hashlib.blake2s(tuning + source, digest_size=_TUNING_DIGEST_SIZE).hexdigest()
     return _kept_as(f"a{constants.ANALYSIS_FORMAT}.{judged_by}.{name}")

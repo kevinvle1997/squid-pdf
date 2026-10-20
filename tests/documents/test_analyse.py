@@ -141,6 +141,19 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
     assert_equal(asked, [], "downloads at render")
 
 
+def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkeypatch):
+    """With SQUIDPDF_DEV_REJUDGE set, one kept by other code is worked out again on its read."""
+    _, folder = store.create("owner")
+    drawn_with(str(folder / store.ORIGINAL))
+    analyse.analyse_upload(str(folder), MAX_PAGES)
+    kept_before = store.load_analysis(folder, BUILD)
+
+    monkeypatch.setenv("SQUIDPDF_DEV_REJUDGE", "1")
+
+    kept = (kept_before is not None, store.load_analysis(folder, BUILD))
+    assert_equal(kept, (True, None), "kept without the switch, and found with it")
+
+
 def test_a_retune_judges_the_saved_index_again(monkeypatch):
     """A retune with no new build judges every document again, each span keeping its id."""
     _, folder = store.create("owner")
