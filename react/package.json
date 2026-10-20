@@ -18,7 +18,8 @@
     "perf": "PERF=1 playwright test perf --reporter=list"
   },
   "dependencies": {
-    "@fontsource/atkinson-hyperlegible-next": "5.3.0",
+    "@fontsource/fira-sans": "5.3.0",
+    "@fontsource/zilla-slab": "5.3.0",
     "react": "19.3.0",
     "react-aria": "3.52.1",
     "react-aria-components": "1.21.1",

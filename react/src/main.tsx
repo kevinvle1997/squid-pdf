@@ -1,6 +1,7 @@
-import "@fontsource/atkinson-hyperlegible-next/400.css";
-import "@fontsource/atkinson-hyperlegible-next/500.css";
-import "@fontsource/atkinson-hyperlegible-next/600.css";
+import "@fontsource/fira-sans/400.css";
+import "@fontsource/fira-sans/500.css";
+import "@fontsource/fira-sans/600.css";
+import "@fontsource/zilla-slab/600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import { StrictMode } from "react";
