@@ -11,6 +11,6 @@
 .footed { grid-template-rows: 1fr auto; gap: var(--s6); padding-block-end: var(--s4); }
 .title {
   margin: 0;
-  font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
+  font-family: var(--display); font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3;
   text-wrap: balance;
 }

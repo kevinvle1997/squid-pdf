@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
-import "@fontsource/atkinson-hyperlegible-next/600.css";
+import "@fontsource/fira-sans/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { ProblemError, pageImage, renderStrips } from "../../api/client";
