@@ -83,8 +83,6 @@ class _PageFacts:
     usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
     pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
-    # Each letter the page draws, with its shape, top first: read once a span's font needs it.
-    glyphs: _GlyphsByHeight | None = field(default=None, repr=False)
 
     def fonts_read_as(self, make: Callable[[], dict[str, PageFont]]) -> dict[str, PageFont]:
         """Its stored fonts by the name their text reads, found on first use."""
@@ -99,12 +97,6 @@ class _PageFacts:
     def pool(self, font: PageFont, make: Callable[[], PooledFont]) -> PooledFont | FontUnusable:
         """A span's font pooled with its other copies, made on first use, or why it can't be."""
         return remembered(self.pools, font, make)
-
-    def drawn_glyphs(self, make: Callable[[], list[DrawnGlyph]]) -> _GlyphsByHeight:
-        """The letters the page draws, with their shapes, read on first use."""
-        if self.glyphs is None:
-            self.glyphs = _by_height(make())
-        return self.glyphs
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -121,6 +113,14 @@ class _GlyphsByHeight:
             x, _y = glyph.origin
             if box.x0 <= x <= box.x1:
                 yield glyph
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _PageGlyphs:
+    """The letters one page draws, and which page."""
+
+    page: int
+    letters: _GlyphsByHeight = field(repr=False)
 
 
 def _by_height(glyphs: list[DrawnGlyph]) -> _GlyphsByHeight:
@@ -151,6 +151,9 @@ class _FontCache:
     look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
     # Every letter a font's copies draw, by the name they share, once a walk opened them all.
     every_letter: dict[str, frozenset[str]] = field(default_factory=dict)
+    # The letters the page last asked about draws: one page's, since a page's are many,
+    # and spans are judged page by page.
+    glyphs: _PageGlyphs | None = field(default=None, repr=False)
 
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
         """What page `number` says, read on first use."""
@@ -189,6 +192,12 @@ class _FontCache:
         """Keep every letter of the font `name`."""
         self.every_letter[name] = letters
 
+    def page_glyphs(self, page: int, make: Callable[[], list[DrawnGlyph]]) -> _GlyphsByHeight:
+        """The letters `page` draws, with their shapes, read unless it's the page last asked."""
+        if self.glyphs is None or self.glyphs.page != page:
+            self.glyphs = _PageGlyphs(page, _by_height(make()))
+        return self.glyphs.letters
+
     def forget_pages(self) -> None:
         """Forget everything, as a fresh cache: it was all looked up through page numbers.
 
@@ -201,6 +210,7 @@ class _FontCache:
         self.copies_names.clear()
         self.look_alikes.clear()
         self.every_letter.clear()
+        self.glyphs = None
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -475,9 +485,7 @@ class DocumentFonts:
         if coded is None or not coded.has_alternates(span.text):
             return {}
         by_shape = {(code.letter, code.glyph): code for code in coded.codes}
-        glyphs = self._facts(span.page).drawn_glyphs(
-            partial(self.driver.drawn_glyphs, span.page)
-        )
+        glyphs = self.cache.page_glyphs(span.page, partial(self.driver.drawn_glyphs, span.page))
         codes: dict[str, FontCode] = {}
         for glyph in glyphs.inside(span.bbox):
             # .get: a ligature's later letters, or a letter another font draws in the box.
@@ -496,9 +504,7 @@ class DocumentFonts:
         # New text, or a turned line: no letters of its own, or none set apart along the page.
         if not span.fragments or span.turned:
             return 0.0
-        glyphs = self._facts(span.page).drawn_glyphs(
-            partial(self.driver.drawn_glyphs, span.page)
-        )
+        glyphs = self.cache.page_glyphs(span.page, partial(self.driver.drawn_glyphs, span.page))
         # In the order drawn: a line drawn twice over, as for a shadow, starts again.
         pairs = [(a, b) for a, b in pairwise(glyphs.inside(span.bbox)) if _within_a_word(a, b)]
         # A letter alone, or only spaces between: nothing to read.
