@@ -47,3 +47,6 @@ export const IMAGE_RETRY_MOST_MS = 60_000;
 
 /** A space the font has no width for is counted at this share of the size, as TeX sets it. */
 export const MISSING_SPACE_EM = 0.25;
+
+/** How far below its button a list from the bar opens: --s3, more than a button centred in the bar has below it, so it opens under the bar. */
+export const BELOW_BAR_PX = 12;

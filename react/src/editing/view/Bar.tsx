@@ -6,15 +6,17 @@ import { Button } from "../../ui/Button";
 import { classes } from "../../ui/classes";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
-import { changedCount, type UnlikeAtRest, warnedCount } from "../editor";
+import { changedCount, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { openFind } from "../find";
 import { shallowEqual } from "../store";
+import type { Unlike } from "../unlike";
 import { counted, formOf } from "../words";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
 import { Fonts } from "./Fonts";
 import { COMMAND } from "./keys";
+import { UnlikeCount } from "./Unlike";
 
 /** The bar, held at the top. */
 export function Bar() {
@@ -46,7 +48,7 @@ export function Bar() {
           </span>
         )}
         <span className={styles.status}>
-          {changed === 0 ? <AtRest {...atRest} /> : <Changed changed={changed} {...warned} />}
+          {changed === 0 ? <AtRest unlike={atRest} /> : <Changed changed={changed} {...warned} />}
         </span>
         {exporting && <AfterQuiet className={styles.exporting}>Exporting</AfterQuiet>}
         <span className={styles.actions}>
@@ -71,7 +73,7 @@ export function Bar() {
   );
 }
 
-/** The changes, and how many of them won't match, the count warned: every one of them, or so many of them. */
+/** The changes, and how many of them won't match, the count warned and pressed for where: every one of them, or so many. */
 function Changed({ changed, count, label }: { changed: number; count: number; label: string }) {
   const changes = formOf(changed, { one: "change", other: "changes" });
   // Each matches the text around it.
@@ -79,26 +81,30 @@ function Changed({ changed, count, label }: { changed: number; count: number; la
   // None does: the changes' own count is the warning.
   if (count === changed) {
     return (
-      <>
+      <UnlikeCount changed>
         <Warn>{changed}</Warn> {changes} {label}
-      </>
+      </UnlikeCount>
     );
   }
   return (
     <>
-      {changed} {changes}, <Warn>{count}</Warn> of them {label}
+      {changed} {changes},{" "}
+      <UnlikeCount changed>
+        <Warn>{count}</Warn> of them {label}
+      </UnlikeCount>
     </>
   );
 }
 
-/** Before any change, where an edit won't match, warned (Rule 1, for the whole document): nothing when it all will. */
-function AtRest({ count, approximate }: UnlikeAtRest) {
+/** Before any change, where an edit won't match, warned and pressed for where (Rule 1): nothing when it all will. */
+function AtRest({ unlike }: { unlike: Unlike }) {
+  const { count, reasons } = unlike;
   if (count === 0) return null;
   const places = formOf(count, { one: "place", other: "places" });
   return (
-    <>
-      Edits in <Warn>{count}</Warn> {places} {approximate ? "will look different" : "will use a similar font"}
-    </>
+    <UnlikeCount changed={false}>
+      Edits in <Warn>{count}</Warn> {places} {reasons.length > 0 ? "will look different" : "will use a similar font"}
+    </UnlikeCount>
   );
 }
 

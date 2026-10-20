@@ -168,6 +168,24 @@ describe("the bar", () => {
     await expect.element(bar.getByText("will use a similar font", { exact: false })).not.toBeInTheDocument();
   });
 
+  test("the count opens where an edit won't match, grouped by font; Escape shuts it, focus back on the count", async () => {
+    const screen = await openEditor({ doc: ARIAL_DOC });
+    const count = screen.getByRole("button", { name: "Edits in 1 place will use a similar font" });
+    await count.click();
+    const list = screen.getByRole("dialog", { name: "Where edits won't match" });
+    await expect.element(list.getByRole("heading", { name: "In a similar font" })).toBeVisible();
+    await expect.element(list.getByText("Arial", { exact: true })).toBeVisible();
+    await expect.element(list.getByText("1 place", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(list).not.toBeInTheDocument();
+    await expect.element(count).toHaveFocus();
+
+    // After a change, the warned part of the count opens the changes' own.
+    await changeSpan(screen, "was there");
+    await screen.getByRole("button", { name: /in a similar font$/ }).click();
+    await expect.element(screen.getByRole("dialog").getByText("Arial", { exact: true })).toBeVisible();
+  });
+
   test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     try {

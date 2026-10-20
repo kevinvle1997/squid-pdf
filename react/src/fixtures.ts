@@ -49,6 +49,7 @@ export const COPY: Copy = {
   },
   approximate: {
     turned_text: "This text is turned on the page, and edits are drawn level, so an edit here will look different.",
+    undrawable_letters: "No font we have can draw {letters} here, so an edit here leaves them out.",
   },
   characters: { "\u00ad": "optional hyphen", "\u202f": "narrow no-break space", "\u0301": "acute accent" },
 };

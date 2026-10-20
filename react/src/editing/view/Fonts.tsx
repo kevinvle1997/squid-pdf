@@ -3,13 +3,11 @@ import { Dialog, DialogTrigger, FileTrigger, Popover } from "react-aria-componen
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
+import { BELOW_BAR_PX } from "../constants";
 import { attachFont, copiesByName, detachFont, drawnByOf, FONT_FILES, type FontCopies, fontFocused } from "../fonts";
 import { quietFont } from "../quiet";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
-
-// --s3 past the trigger: more than a button centred in the bar has below it, so the list opens under the bar.
-const BELOW_BAR = 12;
 
 /**
  * The document's fonts, from the bar, a row for each name, its copies together: what draws it, the
@@ -21,7 +19,7 @@ export function Fonts() {
   return (
     <DialogTrigger>
       <Button variant="quiet">Fonts</Button>
-      <Popover placement="bottom end" offset={BELOW_BAR} className={styles.popover}>
+      <Popover placement="bottom end" offset={BELOW_BAR_PX} className={styles.popover}>
         <Dialog aria-label="The document's fonts" className={styles.dialog}>
           <ul className={styles.list}>
             {rows.map((copies) => (

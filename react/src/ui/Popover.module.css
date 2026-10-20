@@ -1,0 +1,20 @@
+/* A list that floats from the bar: a slip with a shadow, no hairline, as a note is (design.md, Surfaces).
+   What it holds, and how it lays that out, is each list's own. */
+.popover {
+  z-index: var(--z-float);
+  /* Wide enough that a row changing its words doesn't resize it under the pointer. */
+  min-width: min(320px, calc(100vw - 2 * var(--s4)));
+  max-width: min(420px, calc(100vw - 2 * var(--s4)));
+  background: var(--strip);
+  border-radius: var(--r-3);
+  box-shadow: var(--lift-2);
+}
+.popover[data-entering] { animation: global(arrive) var(--dur-move) var(--ease-out); }
+.popover[data-exiting] { animation: global(fade) var(--dur-quick) var(--ease-out) reverse; }
+/* The shadow is dropped here, so an outline keeps the list apart from the page under it. */
+@media (forced-colors: active) {
+  .popover { outline: 1px solid CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }
+}

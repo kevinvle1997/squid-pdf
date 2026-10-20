@@ -128,14 +128,17 @@ describe("a change to the history", () => {
 
 describe("before any change", () => {
   test("the places an edit won't match are counted for the bar: in a similar font, or unlike the text around them", () => {
-    expect(layoutOf(DOC).unlikeAtRest).toEqual({ count: 1, approximate: false });
+    expect(layoutOf(DOC).unlikeAtRest).toMatchObject({ count: 1, reasons: [] });
     const turned = aSpan({
       id: "turned",
       font: "Kept",
       fidelity: "approximate",
       why: { code: "turned_text", params: {} },
     });
-    expect(layoutOf({ ...DOC, spans: [...DOC.spans, turned] }).unlikeAtRest).toEqual({ count: 2, approximate: true });
+    expect(layoutOf({ ...DOC, spans: [...DOC.spans, turned] }).unlikeAtRest).toMatchObject({
+      count: 2,
+      reasons: [{ code: "turned_text", places: 1 }],
+    });
     // Worked out once per document: the bar reads it on every change.
     const before = editor.store.get().layout.unlikeAtRest;
     typed("own", "now");

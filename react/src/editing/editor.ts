@@ -26,6 +26,7 @@ import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
+import { type Unlike, type UnlikePlace, unlikeOf } from "./unlike";
 
 /**
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
@@ -73,16 +74,8 @@ export interface Layout {
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
-  readonly unlikeAtRest: UnlikeAtRest; // the bar reads it on every change, so it's one object until the document changes
-}
-
-/**
- * Before any change, how many places an edit won't match: drawn in a similar font, or in the file's
- * own but unlike the text around it (`approximate`). The bar says it, as the mockup's status does.
- */
-export interface UnlikeAtRest {
-  readonly count: number;
-  readonly approximate: boolean;
+  // Before any change, every place an edit won't match, grouped: one object until the document changes.
+  readonly unlikeAtRest: Unlike;
 }
 
 export interface EditorState {
@@ -135,7 +128,10 @@ export function layoutOf(doc: Document): Layout {
     pages,
     fonts,
     warnedFonts: new Set(unlike.map((span) => shownNameOf({ fonts }, span.font))),
-    unlikeAtRest: { count: unlike.length, approximate: unlike.some((span) => span.why !== null) },
+    unlikeAtRest: unlikeOf(
+      unlike.map((span) => ({ span, missing: [] })),
+      { fonts, copy: doc.copy },
+    ),
   };
 }
 
@@ -320,13 +316,18 @@ export function changedCount(state: EditorState): number {
  * their own font but unlike the text around them. Once one is the latter, all "will look different".
  */
 export function warnedCount(state: EditorState): { count: number; label: string } {
-  let count = 0;
-  let approximate = false;
-  for (const { span, replaced } of state.reading.spans.values()) {
+  const places = changedUnlike(state);
+  const approximate = places.some(({ span }) => span.why !== null);
+  return { count: places.length, label: approximate ? "will look different" : "in a similar font" };
+}
+
+/** The changed spans that won't match: a similar font or unlike the text around them, or missing letters the server found. */
+export function changedUnlike({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): UnlikePlace[] {
+  const places: UnlikePlace[] = [];
+  for (const { span, replaced } of reading.spans.values()) {
     if (!replaced) continue;
-    if (span.why !== null) approximate = true;
-    const missing = state.drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
-    if (wontMatch(span) || missing.length > 0) count++;
+    const missing = drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
+    if (wontMatch(span) || missing.length > 0) places.push({ span, missing });
   }
-  return { count, label: approximate ? "will look different" : "in a similar font" };
+  return places;
 }
