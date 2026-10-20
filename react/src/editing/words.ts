@@ -26,15 +26,18 @@ const DRAWS_NOTHING = /^[\p{C}\p{Z}\s\p{Mn}\p{Me}]$/u;
 const QUOTED = /^[\p{P}\p{S}]$/u;
 
 /**
- * A character as a person can see it: itself, quoted if punctuation or a symbol, or its name in `names`
- * (the server's `copy.characters`) when it draws nothing alone. `_visible` in core/app/words.
- * One the catalog doesn't name, the server calls by Unicode's name; the browser hasn't got it, so says its code point.
+ * A character as a person can see it: its name in `names` (the server's `copy.characters`) when it draws
+ * nothing alone or looks like another letter, else itself, quoted if punctuation or a symbol. `_visible` in
+ * core/app/words. One the catalog doesn't name, the server calls by Unicode's name; the browser hasn't got it,
+ * so says its code point.
  */
 export function shownAs(character: string, names: Readonly<Record<string, string>>): string {
+  const named = names[character];
+  if (named !== undefined) return named;
   if (QUOTED.test(character)) return `\u201c${character}\u201d`;
   if (!DRAWS_NOTHING.test(character)) return character;
   const codePoint = character.codePointAt(0) ?? 0;
-  return names[character] ?? `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
 const PLURAL = new Intl.PluralRules("en");

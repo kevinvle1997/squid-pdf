@@ -114,14 +114,18 @@ def _written_out(name: str, value: Param, language: str) -> str:
 
 
 def _visible(character: str, language: str = ENGLISH) -> str:
-    """A character as a person sees it: itself, quoted, or its name if it draws nothing alone.
+    """A character as a person sees it: itself, quoted, or its name if it can't be told apart.
 
-    Named in `language`, e.g. "narrow no-break space", when a catalog names
-    it; else by Unicode's name, lower case; else, for a control character with
-    no name, by its code point, e.g. "U+0001". An accent on its own is named
-    too: in a sentence it would sit on the space before it.
+    Named in `language`, e.g. "narrow no-break space" or "capital I", when a
+    catalog names it; else, if it draws nothing alone, by Unicode's name, lower
+    case; else, for a control character with no name, by its code point, e.g.
+    "U+0001". An accent on its own is named too: in a sentence it would sit on
+    the space before it.
     """
     alone = len(character) == 1
+    # A space, or a letter another looks like: the catalog's name for it.
+    if alone and _name_key(character) in _ENGLISH_SENTENCES:
+        return sentence(_name_key(character), language)
     blank = alone and (not character.isprintable() or character.isspace())
     shows = not blank and not (alone and unicodedata.combining(character))
     # Punctuation or a symbol: quoted, as "no ( or ) in this font" reads as a sentence's own.
@@ -129,8 +133,7 @@ def _visible(character: str, language: str = ENGLISH) -> str:
         return _fill(sentence("quoted", language), {"char": character}, language)
     if shows:
         return character
-    # Its name in `language` when the catalog has one, else Unicode's.
-    return sentence(_name_key(character), language, default=_unicode_name(character))
+    return _unicode_name(character)
 
 
 def _name_key(character: str) -> str:

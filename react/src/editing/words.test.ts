@@ -36,6 +36,17 @@ describe("filling the server's sentences", () => {
     expect(["(", "Z", "€"].map((character) => shownAs(character, COPY.characters))).toEqual(["“(”", "Z", "“€”"]);
   });
 
+  // The server's own case, test_a_letter_that_looks_like_another_is_named_so_the_two_read_apart.
+  test("a letter that looks like another is named, so the two read apart", () => {
+    expect(["I", "l", "O", "0", "1"].map((character) => shownAs(character, COPY.characters))).toEqual([
+      "capital I",
+      "lowercase l",
+      "capital O",
+      "zero",
+      "1",
+    ]);
+  });
+
   test("a letter that draws is itself, and one only Unicode names is said by its code point", () => {
     expect(shownAs("é", COPY.characters)).toBe("é");
     // The server says "three-per-em space": the browser has no table of Unicode's names.

@@ -128,6 +128,16 @@ def test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_lett
     assert_equal(words.render(fit), expected, "the sentence quoting what isn't a letter")
 
 
+def test_a_letter_that_looks_like_another_is_named_so_the_two_read_apart():
+    """In many faces capital I and lowercase l are one stroke, and O and 0 differ by width."""
+    fit = Message("missing", {"chars": ["I", "l", "O", "0", "1"], "font": "Noto Sans Regular"})
+    expected = (
+        "no capital I or lowercase l or capital O or zero or 1 in this font,"
+        " so the line is drawn in our Noto Sans Regular"
+    )
+    assert_equal(words.render(fit), expected, "each look-alike by name, and a 1 as itself")
+
+
 def test_a_character_is_named_in_the_reader_s_language(pseudo):
     said = words.render(Message("left_out", {"letters": ["\u202f"]}), pseudo)
     expected = pseudo_sentence("Left out narrow no-break space: no font we have can draw them.")

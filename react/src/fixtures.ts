@@ -51,7 +51,15 @@ export const COPY: Copy = {
     turned_text: "This text is turned on the page, and edits are drawn level, so an edit here will look different.",
     undrawable_letters: "No font we have can draw {letters} here, so an edit here leaves them out.",
   },
-  characters: { "\u00ad": "optional hyphen", "\u202f": "narrow no-break space", "\u0301": "acute accent" },
+  characters: {
+    "\u00ad": "optional hyphen",
+    "\u202f": "narrow no-break space",
+    "\u0301": "acute accent",
+    "0": "zero",
+    I: "capital I",
+    O: "capital O",
+    l: "lowercase l",
+  },
 };
 
 /** A line of ten-point Times near the top of the first page, reading "was <id>". */
