@@ -17,7 +17,7 @@
   max-width: 43ch; white-space: normal; line-height: 1.4;
 }
 /* Each trouble a line of its own, at a prose measure: about 70 letters of this face. */
-.bad { white-space: pre-line; max-width: 55ch; line-height: 1.4; }
+.bad { white-space: pre-line; max-width: 57ch; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
 /* It will match: said in ink, as plainly as a warning is said in red. */
 .identical { color: var(--ink); }

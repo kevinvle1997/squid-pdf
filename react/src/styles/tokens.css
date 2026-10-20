@@ -45,10 +45,10 @@
   --fs-input: .8125rem;  /* a field typed into: the body's, but 16 px on a touch screen, below */
   --fs-display: 1.75rem; /* the one heading on the landing and the crash screen */
 
-  /* Two faces Mozilla commissioned for the open web, as an AGPL tool is. In Fira Sans, I, l and 1 never
-     look alike. The system faces after it draw what it lacks, ⌘ and the arrows. */
-  --ui: "Fira Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Zilla Slab", Rockwell, Georgia, serif; /* --fs-display alone, never a label, button or data */
+  /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the one
+     heading. The system faces after it draw what it lacks, ⌘ and the arrows. */
+  --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* --fs-display alone, never a label, button or data */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;

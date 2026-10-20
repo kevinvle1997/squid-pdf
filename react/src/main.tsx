@@ -1,7 +1,7 @@
-import "@fontsource/fira-sans/400.css";
-import "@fontsource/fira-sans/500.css";
-import "@fontsource/fira-sans/600.css";
-import "@fontsource/zilla-slab/600.css";
+import "@fontsource/funnel-display/600.css";
+import "@fontsource/funnel-sans/400.css";
+import "@fontsource/funnel-sans/500.css";
+import "@fontsource/funnel-sans/600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import { StrictMode } from "react";
