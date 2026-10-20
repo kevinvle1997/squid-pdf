@@ -182,3 +182,10 @@ char_u030b = "double acute accent"
 char_u030c = "caron"
 char_u0327 = "cedilla"
 char_u0328 = "ogonek"
+
+# A letter that looks like another in many faces, the interface's among them: capital I
+# and lowercase l are one stroke, and O and 0 differ only by width. Named, so they read apart.
+char_u0030 = "zero"
+char_u0049 = "capital I"
+char_u004f = "capital O"
+char_u006c = "lowercase l"
