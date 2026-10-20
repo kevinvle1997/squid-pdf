@@ -13,10 +13,9 @@ export interface UnlikePlace {
   readonly missing: readonly string[];
 }
 
-/** A row of the list, as the page knows it: which group, and its first place, to bring into view. */
+/** A row of the list, as the page knows it: which group, by its key. */
 export interface UnlikeRow {
   readonly key: string;
-  readonly first: string; // a span id
 }
 
 /** One font a similar one draws for: its name as shown, how many places, and why, in the server's words. */
@@ -54,14 +53,12 @@ export function unlikeOf(
   }
   const fontRows = [...byFont].map(([name, inFont]) => ({
     key: fontKey(name),
-    first: inFont[0]?.span.id ?? "",
     name,
     places: inFont.length,
     said: fontSaid(inFont, { fonts, copy }),
   }));
   const reasonRows = [...byReason].map(([code, spans]) => ({
     key: reasonKey(code),
-    first: spans[0]?.id ?? "",
     code,
     places: spans.length,
     said: reasonSaid(spans, copy),

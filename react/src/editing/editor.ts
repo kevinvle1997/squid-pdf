@@ -62,8 +62,7 @@ export function spoken(text: string): Spoken {
   return { text, count: lastCount };
 }
 
-/** The span `spanId`, to be brought into view. */
-export function scrollingTo(spanId: string): ScrollTo {
+function scrollingTo(spanId: string): ScrollTo {
   lastCount += 1;
   return { spanId, count: lastCount };
 }

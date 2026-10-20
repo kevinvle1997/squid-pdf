@@ -88,7 +88,7 @@ function Groups({ unlike }: { unlike: Unlike }) {
   );
 }
 
-/** The row's eye: shows its places on the page, bringing the first into view, until it's pressed again. */
+/** The row's eye: marks its places on the page where they are, until it's pressed again. */
 function ShowOnPage({ row, what }: { row: UnlikeRow; what: string }) {
   const editor = useEditor();
   const shown = useEditorState((state) => state.shownUnlike.has(row.key));

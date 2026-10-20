@@ -25,7 +25,7 @@ describe("where an edit won't match, grouped", () => {
   test("a similar font's places are under the font as shown, its copies together, with the server's why", () => {
     const unlike = unlikeOf([similar("a"), similar("b", "ABCDEF+Arial"), turned("c")], { fonts, copy: COPY });
     expect(unlike.count).toBe(3);
-    expect(unlike.fonts).toEqual([{ key: "font:Arial", first: "a", name: "Arial", places: 2, said: NOT_IN_FILE }]);
+    expect(unlike.fonts).toEqual([{ key: "font:Arial", name: "Arial", places: 2, said: NOT_IN_FILE }]);
   });
 
   test("the rest are under why the file's own won't match, the letters of every place said once, most places first", () => {
@@ -35,12 +35,11 @@ describe("where an edit won't match, grouped", () => {
     expect(unlike.reasons).toEqual([
       {
         key: "reason:undrawable_letters",
-        first: "a",
         code: "undrawable_letters",
         places: 3,
         said: "No font we have can draw 中 文 here, so an edit here leaves them out.",
       },
-      { key: "reason:turned_text", first: "b", code: "turned_text", places: 1, said: COPY.approximate.turned_text },
+      { key: "reason:turned_text", code: "turned_text", places: 1, said: COPY.approximate.turned_text },
     ]);
   });
 
@@ -51,7 +50,6 @@ describe("where an edit won't match, grouped", () => {
     expect(unlike.fonts).toEqual([
       {
         key: "font:Times-Roman",
-        first: "a",
         name: "Times-Roman",
         places: 1,
         said: "no é or ñ in this font, so the line is drawn in our Liberation Serif Regular",
