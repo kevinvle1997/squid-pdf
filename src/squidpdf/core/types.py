@@ -8,7 +8,8 @@ without the document changing, so it lives in `core.text.fidelity`, not here.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Iterator
+from collections import Counter
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, NewType, get_args
 
@@ -247,6 +248,15 @@ EM = 1000  # widths are given per 1000 em, as PDF font widths are
 
 
 @dataclass(frozen=True, slots=True)
+class DrawnGlyph:
+    """A letter as the page draws it: the shape its code picked, and where it starts."""
+
+    letter: str
+    glyph: GlyphId  # as `FontCode.glyph`; -1 for a ligature's later letters
+    origin: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
 class FontCode:
     """One code in a font, and what it draws."""
 
@@ -265,8 +275,22 @@ class CodedFont:
     """
 
     code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
-    # Each letter it can write, and the code for it.
+    # Each letter it can write, and the code for it: of several, the lowest.
     letters: dict[str, FontCode] = field(repr=False)
+    # Every code that draws a letter, lowest first: a letter can have several shapes.
+    codes: tuple[FontCode, ...] = field(repr=False)
+
+    def preferring(self, drawn: Mapping[str, FontCode]) -> CodedFont:
+        """The font writing each letter of `drawn` in the code given, the rest as before."""
+        if not drawn:
+            return self
+        return CodedFont(self.code_bytes, {**self.letters, **drawn}, self.codes)
+
+    def has_alternates(self, text: str) -> bool:
+        """Whether some letter of `text` has more than one code, each its own shape."""
+        letters = set(text)
+        counted = Counter(code.letter for code in self.codes if code.letter in letters)
+        return any(count > 1 for count in counted.values())
 
 
 SOLID = 1.0  # an opacity that hides what's under it

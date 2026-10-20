@@ -186,15 +186,16 @@ def _read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
     if font_codes is None:
         raise FontUnusable(Message("font_no_letter_list"))
 
+    # Only codes that draw a shape, for a letter someone could type; lowest code first.
+    typeable = tuple(
+        code for code in font_codes if code.glyph != 0 and not _is_control(code.letter)
+    )
     letters: dict[str, FontCode] = {}
-    for code in font_codes:  # lowest code first
-        # Only codes that draw a shape, for a letter someone could type.
-        typeable = code.glyph != 0 and not _is_control(code.letter)
-        if typeable:
-            letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
+    for code in typeable:
+        letters.setdefault(code.letter, code)  # a letter with two codes keeps the lowest
     if not letters:
         raise FontUnusable(Message("font_no_letter_list"))
-    return CodedFont(code_bytes, letters)
+    return CodedFont(code_bytes, letters, typeable)
 
 
 def _bytes_per_code(font: PageFont) -> int | None:

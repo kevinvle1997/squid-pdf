@@ -8,6 +8,7 @@ the copies before it lack.
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import partial
@@ -30,7 +31,7 @@ from squidpdf.core.fonts.pool import (
 from squidpdf.core.fonts.substitute import Substitute, substitute_for
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.spacing import lacks_space, usual_gap
-from squidpdf.core.types import LookAlike, PageFont, Span, TextPiece
+from squidpdf.core.types import DrawnGlyph, FontCode, LookAlike, PageFont, Rect, Span, TextPiece
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -67,6 +68,8 @@ class _PageFacts:
     usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
     pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
+    # Each letter the page draws, with its shape, top first: read once a span's font needs it.
+    glyphs: _GlyphsByHeight | None = field(default=None, repr=False)
 
     def fonts_read_as(self, make: Callable[[], dict[str, PageFont]]) -> dict[str, PageFont]:
         """Its stored fonts by the name their text reads, found on first use."""
@@ -81,6 +84,34 @@ class _PageFacts:
     def pool(self, font: PageFont, make: Callable[[], PooledFont]) -> PooledFont | FontUnusable:
         """A span's font pooled with its other copies, made on first use, or why it can't be."""
         return remembered(self.pools, font, make)
+
+    def drawn_glyphs(self, make: Callable[[], list[DrawnGlyph]]) -> _GlyphsByHeight:
+        """The letters the page draws, with their shapes, read on first use."""
+        if self.glyphs is None:
+            self.glyphs = _by_height(make())
+        return self.glyphs
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _GlyphsByHeight:
+    """Letters a page draws, top first, to find those whose baseline starts in a box."""
+
+    tops: list[float]  # each one's baseline, in order
+    glyphs: list[DrawnGlyph]
+
+    def inside(self, box: Rect) -> Iterator[DrawnGlyph]:
+        """Each letter whose baseline starts inside `box`, top first."""
+        first, past = bisect_left(self.tops, box.y0), bisect_right(self.tops, box.y1)
+        for glyph in self.glyphs[first:past]:
+            x, _y = glyph.origin
+            if box.x0 <= x <= box.x1:
+                yield glyph
+
+
+def _by_height(glyphs: list[DrawnGlyph]) -> _GlyphsByHeight:
+    """`glyphs`, sorted by their baselines."""
+    ordered = sorted(glyphs, key=lambda glyph: glyph.origin[1])
+    return _GlyphsByHeight([glyph.origin[1] for glyph in ordered], ordered)
 
 
 @dataclass(slots=True)
@@ -418,6 +449,28 @@ class DocumentFonts:
     def substitute(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
         return substitute_for(self.look_alike(span).face, text)
+
+    def drawn_codes(self, span: Span, own: PooledFont) -> dict[str, FontCode]:
+        """The code each letter of the span is drawn with, where its own copy has several.
+
+        Read from the page, so a redraw picks the shape the line shows: a list's tabular "1."
+        """
+        coded = own.own.embedded.coded
+        # Written by letter, or one code a letter: nothing to choose, and nothing to read.
+        if coded is None or not coded.has_alternates(span.text):
+            return {}
+        by_shape = {(code.letter, code.glyph): code for code in coded.codes}
+        glyphs = self._facts(span.page).drawn_glyphs(
+            partial(self.driver.drawn_glyphs, span.page)
+        )
+        codes: dict[str, FontCode] = {}
+        for glyph in glyphs.inside(span.bbox):
+            # .get: a ligature's later letters, or a letter another font draws in the box.
+            code = by_shape.get((glyph.letter, glyph.glyph))
+            # Drawn first wins: a line draws a letter one way.
+            if code is not None:
+                codes.setdefault(glyph.letter, code)
+        return codes
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.

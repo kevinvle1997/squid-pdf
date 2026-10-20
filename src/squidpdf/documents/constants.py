@@ -36,7 +36,7 @@ REPLY_VERSION = 6
 # How an original, its span index and page list are kept: bump it when one changes. One kept
 # in another reads as gone, never indexed again, and the browser opens it again from its copy.
 DOCUMENT_FORMAT = 3
-# How an analysis is kept: bump it when it changes shape; an old one is worked out again.
-ANALYSIS_FORMAT = 6
+# How an analysis is kept and judged: bump it when either changes; an old one is redone.
+ANALYSIS_FORMAT = 7
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

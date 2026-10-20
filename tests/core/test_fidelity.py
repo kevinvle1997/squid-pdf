@@ -30,7 +30,7 @@ from tests.conftest import (
     named_only,
     saved_as,
 )
-from tests.core.conftest import MERGED_TEXTS, coded_under
+from tests.core.conftest import LIST_MARKER, MERGED_TEXTS, TABULAR_PERIOD, coded_under
 from tests.helpers import (
     assert_all,
     assert_at_most,
@@ -231,6 +231,29 @@ def test_a_type3_font_is_exact_and_redraws_in_its_drawings_and_its_other_copies(
     fonts = {span["font"] for span in _drawn_on(saved)}
     redrawn = {span["font"] for span in _drawn_on(saved) if span["origin"][1] == baseline}
     assert_equal(redrawn, fonts, "the fonts the redraw used: both copies")
+
+
+def test_a_letter_with_two_codes_is_measured_and_redrawn_in_the_one_the_line_draws(
+    tabular_period, tmp_path
+):
+    """A list's tabular period is wider than the lower code's, which made it read as spaced.
+
+    The redraw writes each period in the code the line drew, so it keeps the marker's width.
+    """
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(tabular_period) as engine:
+        [span] = engine.index()
+        [report] = engine.assess(engine.index())
+        engine.remove([span], then_drawn=[LineToDraw(span, "2.1.")])
+        engine.draw(span, "2.1.")
+        engine.save(out)
+
+    assert_equal((span.text, report.state), (LIST_MARKER, "exact"), "the marker, and fidelity")
+    traced = [char for run in pymupdf.open(out)[0].get_texttrace() for char in run["chars"]]
+    periods = [glyph for letter, glyph, _origin, _box in traced if chr(letter) == "."]
+    assert_equal(
+        periods, [TABULAR_PERIOD, TABULAR_PERIOD], "the codes the periods are drawn in"
+    )
 
 
 def test_a_font_reached_only_by_code_is_exact_and_redraws_in_itself(coded, tmp_path):

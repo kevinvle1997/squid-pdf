@@ -370,6 +370,41 @@ def type3(tmp_path_factory) -> str:
     )
 
 
+# A numbered list's marker in a Type3 font with two periods, as Chrome prints tabular
+# figures: the narrow one running text uses, and a tabular one as wide as a figure.
+NARROW_PERIOD, TABULAR_PERIOD = 0x2E, 0x2F
+LIST_MARKER = "1.2."
+
+
+@pytest.fixture(scope="module")
+def tabular_period(tmp_path_factory) -> str:
+    """LIST_MARKER in a Type3 font whose letter list reads two codes as a period.
+
+    Each letter is the same square drawing: only widths and codes are read. The
+    narrow period is the lower code, and the page draws the tabular one.
+    """
+    marker = f"31{TABULAR_PERIOD:02X}32{TABULAR_PERIOD:02X}"
+    pairs = "<2E> <002E> <2F> <002E> <31> <0031> <32> <0032>"
+    return _embed_by_hand(
+        str(tmp_path_factory.mktemp("type3") / "tabular.pdf"),
+        {
+            "content": f"BT /F1 12 Tf 72 700 Td <{marker}> Tj ET".encode(),
+            "letter": b"600 0 0 0 600 700 d1 0 0 600 700 re f",
+            "to_unicode": to_unicode("<00> <FF>", f"4 beginbfchar {pairs} endbfchar"),
+        },
+        {
+            "descriptor": "<</Type/FontDescriptor/FontName/ABCDEF+Drawn-Regular/Flags 32"
+            "/ItalicAngle 0/FontBBox[0 0 600 700]>>",
+            "font": "<</Type/Font/Subtype/Type3/FontBBox[0 0 600 700]"
+            "/FontMatrix[0.001 0 0 0.001 0 0]/FirstChar 46/LastChar 50"
+            "/Encoding<</Type/Encoding/Differences[46/period 47/period.tf 49/one 50/two]>>"
+            "/Widths[100 600 0 600 600]"
+            "/CharProcs<</period {letter}/period.tf {letter}/one {letter}/two {letter}>>"
+            "/ToUnicode {to_unicode}/FontDescriptor {descriptor}>>",
+        },
+    )
+
+
 @pytest.fixture(scope="module")
 def type3_copies(tmp_path_factory) -> str:
     """Hello, then Yellow, each line in its own Type3 copy of one font (`type3_copies_at`)."""

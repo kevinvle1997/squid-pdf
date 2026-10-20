@@ -24,7 +24,7 @@ from squidpdf.core.constants import (
 )
 from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
-from squidpdf.core.types import EM, CodedFont, PageFont
+from squidpdf.core.types import EM, CodedFont, FontCode, PageFont
 
 # The copies that may lend the own copy letters, in the order they lend, given the
 # letters lent so far: whether a later one is worth opening can depend on them. A
@@ -152,14 +152,20 @@ class PooledFont:
             for copy, letters in groupby(text, key=self.copy_for)
         ]
 
-    def coded_runs(self, text: str) -> list[CodedRun] | None:
-        """`text` split by copy, each with its codes; None when a copy is written by letter."""
+    def coded_runs(self, text: str, *, drawn: Mapping[str, FontCode]) -> list[CodedRun] | None:
+        """`text` split by copy, each with its codes; None when a copy is written by letter.
+
+        The own copy writes a letter of `drawn` in the code given, as the span does.
+        """
         runs: list[CodedRun] = []
         for run in self.runs(text):
             coded = run.copy.embedded.coded
             # Written by letter: there are no codes to write it in.
             if coded is None:
                 return None
+            # The own copy draws each letter as the span does; another has codes of its own.
+            if run.copy is self.own:
+                coded = coded.preferring(drawn)
             runs.append(CodedRun(run.text, run.copy, coded))
         return runs
 

@@ -35,6 +35,7 @@ from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
     CodeRun,
+    DrawnGlyph,
     Face,
     FontCode,
     FontDescriptor,
@@ -260,6 +261,14 @@ class _MuPDFDriver:
         """
         letters = self._letters(page, near=boxes)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
+
+    def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
+        """Each letter the page draws, and the shape its code picked, in the order drawn."""
+        return [
+            DrawnGlyph(chr(letter), GlyphId(glyph), (origin[0], origin[1]))
+            for run in self.doc[page].get_texttrace()
+            for letter, glyph, origin, _box in run["chars"]
+        ]
 
     def drawn_boxes(self, page: int) -> list[Rect]:
         """The box around each thing the page draws but text: lines, shapes and pictures.

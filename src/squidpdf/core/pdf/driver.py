@@ -13,6 +13,7 @@ from typing import Protocol
 from squidpdf.core.app.message import Message
 from squidpdf.core.types import (
     CodeRun,
+    DrawnGlyph,
     Face,
     FontCode,
     FontDescriptor,
@@ -106,6 +107,10 @@ class PdfDriver(Protocol):
 
         A path is boxed piece by piece, so a grid drawn as one path still has its lines.
         """
+        ...
+
+    def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
+        """Each letter the page draws, and the shape its code picked, in the order drawn."""
         ...
 
     def form_fields(self, page: int) -> list[FormField]:

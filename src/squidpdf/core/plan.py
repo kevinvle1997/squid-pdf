@@ -8,8 +8,8 @@ exactly what's drawn.
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import assert_never
 
 from squidpdf.core.app.message import Message
@@ -20,7 +20,7 @@ from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_lette
 from squidpdf.core.pdf.driver import FontProgram, PdfDriver
 from squidpdf.core.text.fidelity import why_approximate
 from squidpdf.core.text.spacing import Word, lacks_space, placed_words, span_gaps
-from squidpdf.core.types import EM, Face, Span
+from squidpdf.core.types import EM, Face, FontCode, Span
 
 _WIDTH_DP = 2  # finer than any page can show
 # Unicode bidirectional classes of Hebrew and Arabic letters (R, AL), and Arabic digits (AN),
@@ -45,6 +45,8 @@ class DrawPlan:
     text: str  # the line as drawn: spelled as that font has it, less the letters left out
     missing: list[str]  # letters the span's own font lacks: its look-alike's, when it has none
     left_out: list[str]  # letters no font we have can draw, each once, in the order typed
+    # The code the span draws each letter with, where its own font has several: written alike.
+    codes: Mapping[str, FontCode] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -69,15 +71,16 @@ class DrawPlanner:
             return self._plan_in_a_face(span, unicodedata.normalize("NFC", text))
         text = _spelled(own, text)
         missing = own.missing(text)
+        codes = self.fonts.drawn_codes(span, own)
         # The own font draws every letter.
         if not missing:
-            return DrawPlan(own, text, [], [])
+            return DrawPlan(own, text, [], [], codes)
         substitute = self.fonts.substitute(span, text)
         # Nothing we have draws what it lacks: switching would gain nothing.
         undrawable = set(missing) <= set(substitute.left_out)
         if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
-            return DrawPlan(own, kept, missing, missing)
+            return DrawPlan(own, kept, missing, missing, codes)
         return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
 
     def _plan_in_a_face(self, span: Span, composed: str) -> DrawPlan:
@@ -187,7 +190,7 @@ def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
         return None
     # The file's copies, written by code: the line in their codes.
     if isinstance(drawn_in, PooledFont):
-        return drawn_in.coded_runs(plan.text)
+        return drawn_in.coded_runs(plan.text, drawn=plan.codes)
     assert_never(drawn_in)
 
 
