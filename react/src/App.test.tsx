@@ -73,6 +73,15 @@ test("a PDF dropped on the editor opens in place of the one open, as the landing
 
   const files = new DataTransfer();
   files.items.add(new File(["%PDF-"], "invoice.pdf", { type: "application/pdf" }));
+  // The editor listens from an effect, which can run after its file's name shows: a drag over
+  // the page is taken once it does, since both are listened for together.
+  await expect
+    .poll(() => {
+      const over = new DragEvent("dragover", { dataTransfer: files, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(over);
+      return over.defaultPrevented;
+    })
+    .toBe(true);
   const drop = new DragEvent("drop", { dataTransfer: files, bubbles: true, cancelable: true });
   document.body.dispatchEvent(drop);
   // Never the browser's: it would open the file in this tab.
