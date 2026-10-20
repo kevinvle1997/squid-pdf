@@ -3,10 +3,12 @@
 .group { display: flex; flex-direction: column; gap: var(--s2); }
 .heading { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--warn); }
 .list { display: flex; flex-direction: column; gap: var(--s3); margin: 0; padding: 0; list-style: none; }
+/* What the row's about and how many places, then its eye, all on its first line. */
 .row {
-  display: grid; grid-template-columns: 1fr auto; align-items: baseline;
-  gap: var(--s1) var(--s3);
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center;
+  gap: var(--s1) var(--s2);
 }
+.row > :global(button) { grid-column: 3; grid-row: 1; }
 /* A line between rows, as inside any slip, with a step of space on either side of it. */
 .row + .row { padding-block-start: var(--s3); border-block-start: 1px solid var(--rule-soft); }
 .name { font-weight: 600; overflow-wrap: anywhere; }

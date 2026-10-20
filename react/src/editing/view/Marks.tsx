@@ -1,5 +1,6 @@
 // What a page's spans are drawn as when it's near: a mark over each, the field where one is typed in,
-// the note their marks share, find's tint, and the prompt before a redaction is undone.
+// the note their marks share, find's tint, where edits won't match when the bar's list shows them,
+// and the prompt before a redaction is undone.
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
@@ -9,8 +10,9 @@ import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { type PageState, spanIn } from "../page";
 import type { SpanReading } from "../project";
+import { shownAmong } from "../unlike";
 import { EditField } from "./EditField";
-import { boxOf } from "./geometry";
+import { boxOf, markBoxOf } from "./geometry";
 import styles from "./Marks.module.css";
 import { createNotes, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
@@ -24,6 +26,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   return (
     <>
       {page.matches !== undefined && <Found page={page} info={info} readings={readings} matches={page.matches} />}
+      <Shown page={page} info={info} readings={readings} />
       {page.spans.map((span) =>
         span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -49,6 +52,33 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
       )}
     </>
   );
+}
+
+/** Where an edit won't match, in the rows of the bar's list whose eye is on: each place, as long as it's drawn. */
+function Shown({
+  page,
+  info,
+  readings,
+}: {
+  page: PageState;
+  info: PageInfo;
+  readings: ReadonlyMap<string, SpanReading>;
+}) {
+  const { shownUnlike: shown, changed, fits, fonts } = page;
+  return shownAmong(page.spans, { shown, changed, readings, fits, fonts }).flatMap((span) => {
+    // Being typed into: the field says how it won't match.
+    if (span.id === page.typingIn) return [];
+    const replaced = readings.get(span.id)?.replaced ?? false;
+    return (
+      <span
+        key={span.id}
+        className={styles.shown}
+        aria-hidden="true"
+        data-shown=""
+        style={boxOf(markBoxOf(span, { replaced, fit: fits[span.id] }), info)}
+      />
+    );
+  });
 }
 
 /** The words find found, tinted as the change they're about to be: only those words, not their whole line. */

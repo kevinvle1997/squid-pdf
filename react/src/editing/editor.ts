@@ -19,14 +19,13 @@ import {
 } from "./history";
 import type { FailedImage } from "./images";
 import { type Keeping, keepUntil, keepWork } from "./keeping";
-import { wontMatch } from "./marks";
 import { heardIn, NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
 import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
-import { type Unlike, type UnlikePlace, unlikeOf } from "./unlike";
+import { placeOf, type Unlike, type UnlikePlace, unlikeOf } from "./unlike";
 
 /**
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
@@ -63,7 +62,8 @@ export function spoken(text: string): Spoken {
   return { text, count: lastCount };
 }
 
-function scrollingTo(spanId: string): ScrollTo {
+/** The span `spanId`, to be brought into view. */
+export function scrollingTo(spanId: string): ScrollTo {
   lastCount += 1;
   return { spanId, count: lastCount };
 }
@@ -96,6 +96,7 @@ export interface EditorState {
   readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
+  readonly shownUnlike: ReadonlySet<string>; // the rows of where edits won't match shown on the page, by key
   readonly quietFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full
   readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
@@ -122,16 +123,14 @@ export function layoutOf(doc: Document): Layout {
     else onPage.push(span);
   }
   const fonts = new Map(doc.fonts.map((font) => [font.name, font]));
-  const unlike = doc.spans.filter(wontMatch);
+  const atRest = { changed: false, reading: undefined, missing: [] };
+  const unlike = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts,
-    warnedFonts: new Set(unlike.map((span) => shownNameOf({ fonts }, span.font))),
-    unlikeAtRest: unlikeOf(
-      unlike.map((span) => ({ span, missing: [] })),
-      { fonts, copy: doc.copy },
-    ),
+    warnedFonts: new Set(unlike.map(({ span }) => shownNameOf({ fonts }, span.font))),
+    unlikeAtRest: unlikeOf(unlike, { fonts, copy: doc.copy }),
   };
 }
 
@@ -154,6 +153,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     exported: UNEDITED.edits,
     attaching: null,
     focusFont: null,
+    shownUnlike: new Set(),
     quietFonts: new Set(),
     images: new Map(),
     find: FIND_CLOSED,
@@ -323,11 +323,9 @@ export function warnedCount(state: EditorState): { count: number; label: string 
 
 /** The changed spans that won't match: a similar font or unlike the text around them, or missing letters the server found. */
 export function changedUnlike({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): UnlikePlace[] {
-  const places: UnlikePlace[] = [];
-  for (const { span, replaced } of reading.spans.values()) {
-    if (!replaced) continue;
+  return [...reading.spans.values()].flatMap((spanReading) => {
+    const { span } = spanReading;
     const missing = drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
-    if (wontMatch(span) || missing.length > 0) places.push({ span, missing });
-  }
-  return places;
+    return placeOf(span, { changed: true, reading: spanReading, missing }) ?? [];
+  });
 }

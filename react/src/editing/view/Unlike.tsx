@@ -2,12 +2,14 @@
 import { type ReactNode, useMemo } from "react";
 import { Dialog, DialogTrigger, Heading, Popover } from "react-aria-components";
 import { Button } from "../../ui/Button";
+import { EyeToggle } from "../../ui/EyeToggle";
 import { BELOW_BAR_PX } from "../constants";
 import { changedUnlike } from "../editor";
+import { toggleShown } from "../shown";
 import { shallowEqual } from "../store";
-import { type Unlike, unlikeOf } from "../unlike";
+import { type Unlike, type UnlikeRow, unlikeOf } from "../unlike";
 import { counted } from "../words";
-import { useEditorState } from "./context";
+import { useEditor, useEditorState } from "./context";
 import styles from "./Unlike.module.css";
 
 const PLACES = { one: "place", other: "places" };
@@ -56,9 +58,10 @@ function Groups({ unlike }: { unlike: Unlike }) {
           </Heading>
           <ul className={styles.list}>
             {unlike.fonts.map((row) => (
-              <li key={row.name} className={styles.row}>
+              <li key={row.key} className={styles.row}>
                 <span className={styles.name}>{row.name}</span>
                 <span className={styles.places}>{counted(row.places, PLACES)}</span>
+                <ShowOnPage row={row} what={`the places in ${row.name}`} />
                 <span className={styles.said}>{row.said}</span>
               </li>
             ))}
@@ -72,9 +75,10 @@ function Groups({ unlike }: { unlike: Unlike }) {
           </Heading>
           <ul className={styles.list}>
             {unlike.reasons.map((row) => (
-              <li key={row.code} className={styles.row}>
+              <li key={row.key} className={styles.row}>
                 <span className={styles.said}>{row.said}</span>
                 <span className={styles.places}>{counted(row.places, PLACES)}</span>
+                <ShowOnPage row={row} what={counted(row.places, PLACES)} />
               </li>
             ))}
           </ul>
@@ -82,4 +86,11 @@ function Groups({ unlike }: { unlike: Unlike }) {
       )}
     </>
   );
+}
+
+/** The row's eye: shows its places on the page, bringing the first into view, until it's pressed again. */
+function ShowOnPage({ row, what }: { row: UnlikeRow; what: string }) {
+  const editor = useEditor();
+  const shown = useEditorState((state) => state.shownUnlike.has(row.key));
+  return <EyeToggle label={`Show ${what} on the page`} isSelected={shown} onChange={() => toggleShown(editor, row)} />;
 }

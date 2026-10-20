@@ -186,6 +186,25 @@ describe("the bar", () => {
     await expect.element(screen.getByRole("dialog").getByText("Arial", { exact: true })).toBeVisible();
   });
 
+  test("a row's eye marks its places on the page, closed or open, until it's pressed again", async () => {
+    const screen = await openEditor({ doc: ARIAL_DOC });
+    await screen.getByRole("button", { name: "Edits in 1 place will use a similar font" }).click();
+    const eye = screen.getByRole("button", { name: "Show the places in Arial on the page" });
+    const marked = () => document.querySelectorAll(`[data-shown]`).length;
+    expect(marked()).toBe(0);
+
+    await eye.click();
+    await expect.element(eye).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(marked).toBe(1);
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
+    expect(marked()).toBe(1);
+
+    await screen.getByRole("button", { name: "Edits in 1 place will use a similar font" }).click();
+    await screen.getByRole("button", { name: "Show the places in Arial on the page" }).click();
+    await expect.poll(marked).toBe(0);
+  });
+
   test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     try {
