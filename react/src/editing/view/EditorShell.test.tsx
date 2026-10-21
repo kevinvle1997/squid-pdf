@@ -153,17 +153,17 @@ describe("the bar", () => {
     await expect.element(hint).not.toBeInTheDocument();
   });
 
-  test("wide, the squid says it in the first page's margin, in the window, until a change is noted there", async () => {
+  test("wide, it says it in the first page's margin, in the window, until a change is noted there", async () => {
     const [wide, tall] = [window.innerWidth, window.innerHeight];
     await page.viewport(1400, 900);
     try {
       const screen = await openEditor();
-      const squid = screen.getByRole("region", { name: "Page 1" }).getByText("Click any word to fix it");
-      await expect.element(squid).toBeVisible();
+      const hint = screen.getByRole("region", { name: "Page 1" }).getByText("Click any word to fix it");
+      await expect.element(hint).toBeVisible();
       await expect.element(screen.getByRole("banner").getByText("Click any word to fix it")).not.toBeVisible();
-      expect(squid.element().getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+      expect(hint.element().getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
       await changeSpan(screen, "is here");
-      await expect.element(squid).not.toBeInTheDocument();
+      await expect.element(hint).not.toBeInTheDocument();
     } finally {
       await page.viewport(wide, tall);
     }

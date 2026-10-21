@@ -31,7 +31,7 @@
 .actions button { white-space: nowrap; }
 /* The one action: the highlighter, ink on it, as the squid's words are. */
 .export { --ink: var(--bar-act); --strip: var(--bar-act-ink); }
-/* How to start, while nothing's changed: here only where there's no margin for the squid to say it. */
+/* How to start, while nothing's changed: here only where there's no margin to say it in. */
 .hint { display: none; font-size: var(--fs-sm); color: var(--ink-lo); }
 /* A bar too narrow for everything: the count's words wrap before the name is cut. */
 @container (max-width: 1080px) {

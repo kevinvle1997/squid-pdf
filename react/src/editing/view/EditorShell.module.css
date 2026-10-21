@@ -1,5 +1,5 @@
 .top { position: sticky; top: 0; z-index: var(--z-bar); }
-/* A size container: the squid beside the first page takes what room the ground leaves. */
+/* A size container: the hint beside the first page takes what room the ground leaves. */
 .pages { container-type: inline-size; padding: var(--s7) var(--s5) var(--s8); outline: none; }
 @media (max-width: 820px) {
   /* Room above the first page for its crop marks, which reach --s4 out. */
