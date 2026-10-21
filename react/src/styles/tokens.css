@@ -50,18 +50,19 @@
   --sheet-rule-soft: #E8E8E8;
 
   /* The squid's voice and the one action on the bar, ink on it in both themes. Never on a page. */
-  --highlighter: #FFE45C; /* the squid's words, the facts' icons, Export */
+  --highlighter: #FFE45C; /* the squid's words, Export */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
   /* Small to large, so a parent never shares the radius of a child it holds tight. Paper is square: a
-     page, and the bars, which run edge to edge. What's handled is round, and what floats is rounded. */
+     page, and the bars, which run edge to edge. What's handled has a small corner, as tools draw a
+     button, and what floats is rounded. */
   --r-1: 3px; /* keycaps, the checkbox's box */
-  --r-2: 12px; /* the landing's drop zone, inside its sheet */
-  --r-3: 20px; /* what floats: slips, popovers, tooltips; the landing's facts and the mascot's word bubble */
-  --r-4: 28px; /* the landing's sheet: its zone's radius and the padding round it */
-  --r-pill: 999px; /* what's pressed or typed into: every button, choice and field */
+  --r-2: 8px; /* what's pressed or typed into: every button, choice and field, and a shortcut's tip */
+  --r-3: 12px; /* the landing's drop zone, inside its sheet */
+  --r-4: 20px; /* what floats: slips, popovers, notes; the mascot's word bubble */
+  --r-5: 28px; /* the landing's sheet: its zone's radius and the padding round it */
 
   /* rem, so the reader's own text-size setting works */
   --fs-micro: .6875rem;  /* measurements and keys */
@@ -75,6 +76,7 @@
      heading and the document's name. The system faces after it draw what it lacks, ⌘ and the arrows. */
   --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* --fs-display, and the document's name in the bar */
+  --page-face: "Times New Roman", Times, "Liberation Serif", serif; /* the landing's slips of a page, set as a document is */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;

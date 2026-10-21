@@ -1,9 +1,9 @@
-/* One shape for every button, round, as the landing's is: a variant changes its weight, never its size. */
+/* One shape for every button, a small corner, as tools draw one: a variant changes its weight, never its size. */
 .button {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.5;
-  padding: var(--s1) var(--s3); border: 1px solid; border-radius: var(--r-pill);
+  padding: var(--s1) var(--s3); border: 1px solid; border-radius: var(--r-2);
   cursor: pointer;
   transition:
     transform var(--dur-press) var(--ease-out),

@@ -5,6 +5,8 @@
   --rule: var(--bar-rule); --rule-soft: var(--bar-rule-soft);
   --strip: var(--bar); --field: var(--bar-field);
   --change: var(--bar-change); --warn: var(--bar-warn);
+  /* In a bar the small step is the body's: 12 px reads sparse across a 48 px bar. */
+  --fs-sm: var(--fs-base);
   background: var(--strip); color: var(--ink);
   border-block-end: 1px solid var(--rule);
 }

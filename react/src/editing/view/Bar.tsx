@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
 import { classes } from "../../ui/classes";
+import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
 import { changedCount, warnedCount } from "../editor";
@@ -120,8 +121,10 @@ function FindButton() {
     [closed],
   );
   return (
-    <Button ref={takeFocus} variant="quiet" onPress={() => openFind(editor)}>
-      Find <kbd>{COMMAND}F</kbd>
-    </Button>
+    <Shortcut keys={`${COMMAND}F`}>
+      <Button ref={takeFocus} variant="quiet" onPress={() => openFind(editor)}>
+        Find
+      </Button>
+    </Shortcut>
   );
 }

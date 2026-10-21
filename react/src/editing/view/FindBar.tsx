@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Input, Label, TextField } from "react-aria-components";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
+import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { onEscape } from "../commands";
 import {
@@ -90,9 +91,11 @@ function FindFields() {
       <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={nothingToChange}>
         Change all
       </Button>
-      <Button variant="quiet" onPress={() => closeFind(editor, { fromInside: true })} onKeyDown={closeOnEscape}>
-        Close <kbd>Esc</kbd>
-      </Button>
+      <Shortcut keys="Esc">
+        <Button variant="quiet" onPress={() => closeFind(editor, { fromInside: true })} onKeyDown={closeOnEscape}>
+          Close
+        </Button>
+      </Shortcut>
     </div>
   );
 }

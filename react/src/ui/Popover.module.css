@@ -6,7 +6,7 @@
   min-width: min(320px, calc(100vw - 2 * var(--s4)));
   max-width: min(420px, calc(100vw - 2 * var(--s4)));
   background: var(--strip);
-  border-radius: var(--r-3);
+  border-radius: var(--r-4);
   box-shadow: var(--lift-2);
 }
 .popover[data-entering] { animation: global(arrive) var(--dur-move) var(--ease-out); }

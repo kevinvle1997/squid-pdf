@@ -1,6 +1,6 @@
 .skip {
   position: absolute; inset-inline-start: var(--s2); inset-block-start: -100px; z-index: var(--z-skip);
-  background: var(--strip); color: var(--ink); border-radius: var(--r-3);
+  background: var(--strip); color: var(--ink); border-radius: var(--r-4);
   padding: var(--s2) var(--s3); font-size: var(--fs-sm);
   box-shadow: var(--lift-1);
 }
