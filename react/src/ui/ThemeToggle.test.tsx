@@ -16,11 +16,11 @@ test("pressed, it turns the interface dark and back, and the next visit opens in
   await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
   await toggle.click();
   await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
-  expect(getComputedStyle(document.documentElement).getPropertyValue("--bar").trim()).toBe("#222A26");
+  expect(getComputedStyle(document.documentElement).getPropertyValue("--bar").trim()).toBe("#EFF1EF");
   delete document.documentElement.dataset.theme;
   showPickedTheme();
   expect(document.documentElement.dataset.theme).toBe("dark");
   await toggle.click();
   expect(document.documentElement.dataset.theme).toBe("light");
-  expect(getComputedStyle(document.documentElement).getPropertyValue("--bar").trim()).toBe("#CBD3CE");
+  expect(getComputedStyle(document.documentElement).getPropertyValue("--bar").trim()).toBe("#1A211E");
 });
