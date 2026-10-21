@@ -4,12 +4,12 @@
   color-scheme: light; /* the browser's own scrollbars and controls follow the theme */
   /* The mat: a cutting mat, graphite smoked with its green, dark in both themes so the white page is the
      brightest thing on screen, and its grid. What's drawn on it reads as on it, in both themes alike. */
-  --ground: #1F2723;
-  --ground-line: #29332E;       /* the mat's grid, a line every step */
-  --ground-line-major: #33433B; /* and a firmer one every fifth */
+  --ground: #343E38;
+  --ground-line: #3E4943;       /* the mat's grid, a line every step */
+  --ground-line-major: #4A5B52; /* and a firmer one every fifth */
   --ground-ink: #EEEEEE;
   --ground-ink-lo: #B4B4B4;
-  --ground-ink-faint: #7B7B7B;  /* crop marks */
+  --ground-ink-faint: #8A8A8A;  /* crop marks */
   --ground-change: #8FAEFF;
   --ground-warn: #F0904F;
   --strip: #F9F9F9;      /* a surface: notices, slips, popovers, tooltips */
@@ -24,17 +24,17 @@
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
-  /* The bar: the mat's ink, a shade darker than the mat, with the highlighter for its one action. What's
-     set on it reads as on it. */
-  --bar: #151B18;
-  --bar-ink: #EEEEEE;
-  --bar-ink-lo: #B4B4B4;
-  --bar-ink-faint: #7B7B7B;
-  --bar-rule: #333936;
-  --bar-rule-soft: #282D2A;
-  --bar-field: #282D2A;
-  --bar-change: #8FAEFF;
-  --bar-warn: #F0904F;
+  /* The bar: a surface of the theme's own, lighter than the mat, with the highlighter for its one action.
+     What's set on it reads as on it. */
+  --bar: #F9F9F9;
+  --bar-ink: #202020;
+  --bar-ink-lo: #5A5A5A;
+  --bar-ink-faint: #8D8D8D;
+  --bar-rule: #CECECE;
+  --bar-rule-soft: #E8E8E8;
+  --bar-field: #FFFFFF;
+  --bar-change: #0F5CB0;
+  --bar-warn: #B5361F;
   --bar-act: #FFE45C;      /* the one action on the bar: the highlighter */
   --bar-act-ink: #202020;
 
@@ -122,10 +122,15 @@
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-    --bar: #0F1311;
-    --bar-rule: #2E3230;
-    --bar-rule-soft: #222624;
-    --bar-field: #222624;
+    --bar: #232724;
+    --bar-ink: #EEEEEE;
+    --bar-ink-lo: #B4B4B4;
+    --bar-ink-faint: #7B7B7B;
+    --bar-rule: #3A3E3C;
+    --bar-rule-soft: #2C312E;
+    --bar-field: #181C19;
+    --bar-change: #8FAEFF;
+    --bar-warn: #F0904F;
   }
 }
 :root[data-theme="dark"] {
@@ -145,8 +150,13 @@
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-  --bar: #0F1311;
-  --bar-rule: #2E3230;
-  --bar-rule-soft: #222624;
-  --bar-field: #222624;
+  --bar: #232724;
+  --bar-ink: #EEEEEE;
+  --bar-ink-lo: #B4B4B4;
+  --bar-ink-faint: #7B7B7B;
+  --bar-rule: #3A3E3C;
+  --bar-rule-soft: #2C312E;
+  --bar-field: #181C19;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
 }
