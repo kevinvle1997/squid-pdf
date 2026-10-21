@@ -9,12 +9,8 @@
 .zone[data-focus-visible] .sheet { outline: 2px solid var(--mark-change); outline-offset: calc(-1 * var(--s2)); }
 /* Under the heading: what happens once the file is open. */
 .then { margin: var(--s3) 0 0; font-size: var(--fs-lg); color: var(--ink-lo); text-wrap: balance; }
-/* The landing's one call to act: the primary button, larger and round, a hit area tall. Two classes, as
-   this stylesheet loads before the button's. */
-.sheet .choose {
-  margin-block-start: var(--s5); padding: var(--s3) var(--s6); min-height: var(--hit);
-  border-radius: var(--r-pill); font-size: var(--fs-lg); font-weight: 600;
-}
+/* The landing's one call to act. */
+.choose { composes: act from "../../ui/Sheet.module.css"; }
 /* Its line is kept when empty, so progress showing up moves nothing. */
 .status {
   margin: var(--s3) 0 0; min-height: 1.5em;
@@ -26,7 +22,7 @@
 .keptActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
 /* Under the sheet: three facts, side by side, then one above another on a narrow screen. */
 .facts {
-  width: min(100%, 760px); margin: 0; padding: 0; list-style: none;
+  width: min(100%, var(--landing-width)); margin: 0; padding: 0; list-style: none;
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4);
   text-align: start;
 }

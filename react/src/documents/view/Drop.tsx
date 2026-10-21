@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
@@ -71,38 +72,47 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
 function Facts() {
   return (
     <ul className={styles.facts}>
-      <li className={styles.fact}>
-        <span className={styles.factIcon}>
-          <svg viewBox="0 0 22 22" aria-hidden="true">
-            <path d="M4 6h10M4 11h7M4 16h10M17 4v14M15 4h4M15 18h4" />
-          </svg>
-        </span>
-        <span className={styles.factTitle}>Fix words on the page</span>
-        <span className={styles.factSaid}>Click a word and type.</span>
-      </li>
-      <li className={styles.fact}>
-        <span className={styles.factIcon}>
-          <svg viewBox="0 0 22 22" aria-hidden="true">
+      <Fact title="Fix words on the page" icon={<path d="M4 6h10M4 11h7M4 16h10M17 4v14M15 4h4M15 18h4" />}>
+        Click a word and type.
+      </Fact>
+      <Fact
+        title="Know before you save"
+        icon={
+          <>
             <path d="M1.5 11S5 4.5 11 4.5 20.5 11 20.5 11 17 17.5 11 17.5 1.5 11 1.5 11z" />
             <circle cx="11" cy="11" r="3" />
-          </svg>
-        </span>
-        <span className={styles.factTitle}>Know before you save</span>
-        <span className={styles.factSaid}>We'll tell you if a change won't look the same.</span>
-      </li>
-      <li className={styles.fact}>
-        <span className={styles.factIcon}>
-          <svg viewBox="0 0 22 22" aria-hidden="true">
+          </>
+        }
+      >
+        We'll tell you if a change won't look the same.
+      </Fact>
+      <Fact
+        title="Gone after an hour"
+        icon={
+          <>
             <circle cx="11" cy="11" r="8.5" />
             <path d="M11 6v5l3.5 2" />
-          </svg>
-        </span>
-        <span className={styles.factTitle}>Gone after an hour</span>
-        <span className={styles.factSaid}>
-          Your file is deleted from our server and this browser an hour after you're done.
-        </span>
-      </li>
+          </>
+        }
+      >
+        Your file is deleted from our server and this browser an hour after you're done.
+      </Fact>
     </ul>
+  );
+}
+
+/** One fact: its drawn icon, a few words, and a line under them. */
+function Fact({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <li className={styles.fact}>
+      <span className={styles.factIcon}>
+        <svg viewBox="0 0 22 22" aria-hidden="true">
+          {icon}
+        </svg>
+      </span>
+      <span className={styles.factTitle}>{title}</span>
+      <span className={styles.factSaid}>{children}</span>
+    </li>
   );
 }
 

@@ -67,6 +67,8 @@
   --hit: 24px; /* the smallest target */
   --bar-height: 48px;
   --margin-width: 104px; /* beside a page, where its changes are noted */
+  --landing-width: 760px; /* the landing's sheet and the facts under it, one measure */
+  --mascot-size: 150px; /* the mascot standing on that sheet */
 
   /* What sits over what, by role: the field and its chip over the page, the bar over both,
      and what opens from the bar over that. */
