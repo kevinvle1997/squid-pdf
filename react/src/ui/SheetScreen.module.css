@@ -30,7 +30,7 @@
   text-wrap: balance;
 }
 /* The word a heading marks, as the editor shows a word being typed into: the blue pencil's line under it, its
-   wash round it, and the caret after it, still, since no one is typing yet. */
+   wash round it, and the caret after it. */
 .title mark {
   background: none; color: inherit; padding-inline: var(--s1);
   box-shadow: inset 0 -3px 0 var(--mark-change), 0 0 0 1px var(--mark-change-soft);
@@ -39,6 +39,12 @@
   content: ""; display: inline-block; width: 3px; height: 0.8em; vertical-align: -0.05em;
   margin-inline-start: var(--s1);
   background: var(--sheet-ink);
+  animation: blink 1s steps(1) 5;
+}
+/* A typing caret's blink, five times and then still: blinking past five seconds needs a way to stop it. */
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .title mark::after { animation-iteration-count: 0; }
 }
 /* The shadows go in high contrast: an underline keeps the line. */
 @media (forced-colors: active) {
