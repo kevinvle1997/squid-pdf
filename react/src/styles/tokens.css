@@ -28,14 +28,22 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
+  /* The landing and the crash screen: squid ink on paper, and one highlighter. Never on a page or in the editor. */
+  --landing-ground: #F2F1EE;
+  --highlighter: #FFE58A; /* the heading's highlight, the mascot's word bubble, the facts' icons: ink on it in both themes */
+
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  /* Small to large, so a parent never shares the radius of a child it holds tight. The sheet
-     and the bars are square: paper is, and a bar runs edge to edge. */
+  /* Small to large, so a parent never shares the radius of a child it holds tight. A page and the
+     bars are square: paper is, and a bar runs edge to edge. The landing's are rounder, and friendlier. */
   --r-1: 3px; /* keycaps, the checkbox's box */
   --r-2: 5px; /* buttons, inputs, choices */
   --r-3: 8px; /* slips and popovers: the chip, the redaction prompt, tooltips, the fonts list */
+  --r-4: 12px; /* the landing's drop zone, inside its sheet */
+  --r-5: 20px; /* the landing's facts, and the mascot's word bubble */
+  --r-6: 28px; /* the landing's sheet: its zone's radius and the padding round it */
+  --r-pill: 999px; /* the landing's one button */
 
   /* rem, so the reader's own text-size setting works */
   --fs-micro: .6875rem;  /* measurements and keys */
@@ -43,7 +51,7 @@
   --fs-base: .8125rem;   /* body */
   --fs-lg: .9375rem;     /* the wordmark, titles */
   --fs-input: .8125rem;  /* a field typed into: the body's, but 16 px on a touch screen, below */
-  --fs-display: 1.75rem; /* the one heading on the landing and the crash screen */
+  --fs-display: clamp(2.25rem, 1.5rem + 3vw, 3.5rem); /* the one heading on the landing and the crash screen */
 
   /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the one
      heading. The system faces after it draw what it lacks, ⌘ and the arrows. */
@@ -90,6 +98,7 @@
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
+    --landing-ground: #1E1E1E;
   }
 }
 :root[data-theme="dark"] {
@@ -107,4 +116,5 @@
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
+  --landing-ground: #1E1E1E;
 }

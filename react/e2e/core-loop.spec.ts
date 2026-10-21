@@ -37,9 +37,9 @@ async function edit(page: Page, text: string) {
   await field.press("Enter");
 }
 
-test("the landing is only a drop target, and nothing on it fails an accessibility check", async ({ page }) => {
+test("the landing takes a PDF anywhere, and nothing on it fails an accessibility check", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Drop a PDF anywhere to fix its words");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Drop a PDF here");
   expect(await seriousProblems(page)).toEqual([]);
 });
 

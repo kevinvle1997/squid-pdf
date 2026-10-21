@@ -1,4 +1,4 @@
-import "@fontsource/funnel-display/600.css";
+import "@fontsource/funnel-display/800.css";
 import "@fontsource/funnel-sans/400.css";
 import "@fontsource/funnel-sans/500.css";
 import "@fontsource/funnel-sans/600.css";

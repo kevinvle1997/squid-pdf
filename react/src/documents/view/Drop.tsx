@@ -19,7 +19,7 @@ interface Props {
   onForget: () => void; // the document kept here is deleted from this browser
 }
 
-/** The landing: the whole window takes a dropped PDF, and a blank sheet says so. No tool grid, no sign-in. */
+/** The landing: the whole window takes a dropped PDF, a sheet says so, and three facts say what then. No sign-in. */
 export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
   const offered = landing.kind === "waiting" ? kept : null;
   return (
@@ -32,14 +32,16 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
       }}
     >
       <SheetScreen
-        title="Drop a PDF anywhere to fix its words"
-        sheetClassName={styles.sheet}
-        foot={
-          <p className={styles.fine}>
-            Your file is deleted an hour after you last touch it, from our server and this browser.
-          </p>
+        title={
+          <>
+            Drop a PDF <mark>here</mark>
+          </>
         }
+        says="Got a typo? I can help."
+        sheetClassName={styles.sheet}
+        foot={<Facts />}
       >
+        <p className={styles.then}>Then click any word to fix it.</p>
         <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
           <Button variant="primary" className={styles.choose} isDisabled={landing.kind === "opening"}>
             Choose a PDF
@@ -62,6 +64,45 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
         )}
       </SheetScreen>
     </DropZone>
+  );
+}
+
+/** What the tool does, and what becomes of the file, in three short facts under the sheet. */
+function Facts() {
+  return (
+    <ul className={styles.facts}>
+      <li className={styles.fact}>
+        <span className={styles.factIcon}>
+          <svg viewBox="0 0 22 22" aria-hidden="true">
+            <path d="M4 6h10M4 11h7M4 16h10M17 4v14M15 4h4M15 18h4" />
+          </svg>
+        </span>
+        <span className={styles.factTitle}>Fix words on the page</span>
+        <span className={styles.factSaid}>Click a word and type.</span>
+      </li>
+      <li className={styles.fact}>
+        <span className={styles.factIcon}>
+          <svg viewBox="0 0 22 22" aria-hidden="true">
+            <path d="M1.5 11S5 4.5 11 4.5 20.5 11 20.5 11 17 17.5 11 17.5 1.5 11 1.5 11z" />
+            <circle cx="11" cy="11" r="3" />
+          </svg>
+        </span>
+        <span className={styles.factTitle}>Know before you save</span>
+        <span className={styles.factSaid}>We'll tell you if a change won't look the same.</span>
+      </li>
+      <li className={styles.fact}>
+        <span className={styles.factIcon}>
+          <svg viewBox="0 0 22 22" aria-hidden="true">
+            <circle cx="11" cy="11" r="8.5" />
+            <path d="M11 6v5l3.5 2" />
+          </svg>
+        </span>
+        <span className={styles.factTitle}>Gone after an hour</span>
+        <span className={styles.factSaid}>
+          Your file is deleted from our server and this browser an hour after you're done.
+        </span>
+      </li>
+    </ul>
   );
 }
 

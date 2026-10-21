@@ -1,4 +1,7 @@
 /* What the sheet says when drawing failed, under its heading: the one screen that replaces the app. */
 .fine { margin: var(--s3) 0 0; font-size: var(--fs-sm); color: var(--ink-lo); text-wrap: balance; }
-/* A step larger, as Choose a PDF is; two classes, as this stylesheet loads before the button's. */
-.sheet .reload { margin-block-start: var(--s5); padding: var(--s2) var(--s4); font-size: var(--fs-base); min-height: var(--hit); }
+/* Larger and round, as Choose a PDF is; two classes, as this stylesheet loads before the button's. */
+.sheet .reload {
+  margin-block-start: var(--s5); padding: var(--s3) var(--s6); min-height: var(--hit);
+  border-radius: var(--r-pill); font-size: var(--fs-lg); font-weight: 600;
+}
