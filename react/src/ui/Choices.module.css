@@ -3,8 +3,8 @@
 .choice {
   position: relative;
   font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.5; color: var(--ink);
-  background: none; border: 1px solid var(--rule); border-radius: var(--r-2);
-  padding: var(--s1) var(--s2); cursor: pointer; white-space: nowrap;
+  background: none; border: 1px solid var(--rule); border-radius: var(--r-pill);
+  padding: var(--s1) var(--s3); cursor: pointer; white-space: nowrap;
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-quick) var(--ease-out),

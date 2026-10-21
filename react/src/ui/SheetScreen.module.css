@@ -1,7 +1,8 @@
 /* The landing's composition, and the crash screen's: the wordmark, then the mascot standing on the sheet in
    the middle, on the landing's own ground, and whatever the screen adds under the sheet. */
 .screen { min-height: 100dvh; display: flex; flex-direction: column; background: var(--landing-ground); }
-.top { padding: var(--s4) var(--s6); }
+/* Where the editor's bar puts the wordmark, so it stays put when a document opens. */
+.top { display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4); }
 .middle {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s7);
@@ -17,7 +18,7 @@
 /* Beside its head; on a narrow screen there's no room beside it, so it says nothing there. */
 .says {
   position: absolute; inset-block-start: var(--s7); inset-inline-start: calc(50% + var(--mascot-size) / 2 + var(--s4));
-  margin: 0; padding: var(--s2) var(--s4); border-radius: var(--r-5);
+  margin: 0; padding: var(--s2) var(--s4); border-radius: var(--r-3);
   background: var(--highlighter); color: var(--sheet-ink); box-shadow: var(--lift-1);
   font-size: var(--fs-lg); font-weight: 600; white-space: nowrap;
 }

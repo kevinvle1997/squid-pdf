@@ -1,9 +1,9 @@
-/* One shape for every button: a variant changes its weight, never its size. */
+/* One shape for every button, round, as the landing's is: a variant changes its weight, never its size. */
 .button {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.5;
-  padding: var(--s1) var(--s3); border: 1px solid; border-radius: var(--r-2);
+  padding: var(--s1) var(--s3); border: 1px solid; border-radius: var(--r-pill);
   cursor: pointer;
   transition:
     transform var(--dur-press) var(--ease-out),
@@ -26,7 +26,7 @@
 
 /* Solid ink, so the one action a screen asks for is the first thing found on it. Its border is
    see-through, so the fill reaches the edge in every state, with no rim when it lightens. */
-.primary { background: var(--ink); border-color: transparent; color: var(--strip); }
+.primary { background: var(--ink); border-color: transparent; color: var(--strip); font-weight: 600; }
 .primary[data-hovered] { background: color-mix(in srgb, var(--ink) 88%, var(--strip)); }
 .primary[data-disabled] { background: var(--rule-soft); color: var(--ink-lo); }
 .primary kbd { background: color-mix(in srgb, var(--strip) 16%, var(--ink)); color: var(--strip); }

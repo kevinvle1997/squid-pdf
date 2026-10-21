@@ -10,7 +10,7 @@
   grid-column: 2; justify-self: center;
   position: relative;
   display: flex; align-items: center; gap: var(--s1);
-  min-height: var(--hit); padding: 0 var(--s2); border: 0; border-radius: var(--r-2); background: none;
+  min-height: var(--hit); padding: 0 var(--s2); border: 0; border-radius: var(--r-pill); background: none;
   font: inherit; font-size: var(--fs-sm); color: var(--ink-lo); cursor: pointer;
   transition: transform var(--dur-press) var(--ease-out);
 }
