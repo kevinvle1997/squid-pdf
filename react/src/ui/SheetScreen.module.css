@@ -8,12 +8,15 @@
   padding: var(--s4) var(--s4) var(--s8);
   text-align: center;
 }
-.stage { position: relative; width: min(100%, 760px); display: flex; flex-direction: column; align-items: center; }
+.stage { position: relative; width: min(100%, var(--landing-width)); display: flex; flex-direction: column; align-items: center; }
 /* It stands on the sheet's top edge; positioned, so it's drawn over the sheet's edge. */
-.mascot { position: relative; display: block; width: 150px; height: 150px; margin-block-end: calc(-1 * var(--s5)); }
+.mascot {
+  position: relative; display: block; width: var(--mascot-size); height: var(--mascot-size);
+  margin-block-end: calc(-1 * var(--s5));
+}
 /* Beside its head; on a narrow screen there's no room beside it, so it says nothing there. */
 .says {
-  position: absolute; inset-block-start: var(--s7); inset-inline-start: calc(50% + 92px);
+  position: absolute; inset-block-start: var(--s7); inset-inline-start: calc(50% + var(--mascot-size) / 2 + var(--s4));
   margin: 0; padding: var(--s2) var(--s4); border-radius: var(--r-5);
   background: var(--highlighter); color: var(--sheet-ink); box-shadow: var(--lift-1);
   font-size: var(--fs-lg); font-weight: 600; white-space: nowrap;

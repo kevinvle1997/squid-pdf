@@ -79,7 +79,7 @@ function Screens() {
 /** Drawing failed: say so, and the way back, on the landing's sheet rather than a blank page. */
 function Crashed() {
   return (
-    <SheetScreen title="Something went wrong, and this page stopped" sheetClassName={styles.sheet}>
+    <SheetScreen title="Something went wrong, and this page stopped">
       <p className={styles.fine}>
         Reload to start again. Changes kept in this browser are offered there to open again.
       </p>

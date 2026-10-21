@@ -13,6 +13,12 @@
   padding: var(--s8) var(--s6);
   border: 3px dashed var(--sheet-ink); border-radius: var(--r-4);
 }
+/* A screen's one call to act, on its sheet: the primary button, larger and round. A class to compose,
+   as Choose a PDF and Reload do; two classes, as this stylesheet loads before the button's. */
+.zone .act {
+  margin-block-start: var(--s5); padding: var(--s3) var(--s6); min-height: var(--hit);
+  border-radius: var(--r-pill); font-size: var(--fs-lg); font-weight: 600;
+}
 /* What's on the sheet reads as on white, so the theme's tokens are bound to the page's for it. The
    sheet itself keeps the theme's, for what it draws on the ground outside its edge: a focus ring. */
 .sheet > * {
