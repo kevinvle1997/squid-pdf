@@ -1,6 +1,6 @@
 /* Square, edge to edge; a step tighter at the end, where Export's filled box carries its own padding. */
 .bar {
-  composes: inkBar from "../../ui/InkBar.module.css";
+  composes: masthead from "../../ui/Masthead.module.css";
   /* A size container: as it narrows, what's changed gives way, never the file's name. */
   container-type: inline-size;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
@@ -28,8 +28,8 @@
 /* The tools and the one action, held together, each on one line: a focus ring's width apart. */
 .actions { flex: none; display: flex; align-items: center; gap: var(--s2); }
 .actions button { white-space: nowrap; }
-/* The one action, in the landing's highlighter with ink on it: the one warm thing in the bar. */
-.export { --ink: var(--highlighter); --strip: var(--sheet-ink); }
+/* The one action: the landing's ink button on the highlighter, the highlighter on the sepia. */
+.export { --ink: var(--bar-act); --strip: var(--bar-act-ink); }
 /* How to start, while nothing's changed: here only where there's no margin for the squid to say it. */
 .hint { display: none; font-size: var(--fs-sm); color: var(--ink-lo); }
 /* A bar too narrow for everything: the count's words wrap before the name is cut. */

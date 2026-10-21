@@ -1,6 +1,6 @@
 /* Under the bar, held at the top with it: the find is about the whole document. */
 .bar {
-  composes: inkBar from "../../ui/InkBar.module.css";
+  composes: masthead from "../../ui/Masthead.module.css";
   /* A size container, as the bar is: the count takes a row of its own before it's squeezed. */
   container-type: inline-size;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);

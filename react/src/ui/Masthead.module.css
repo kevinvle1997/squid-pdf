@@ -1,11 +1,10 @@
-/* A bar in squid ink in both themes, edge to edge: what's set on it reads as on ink, so the theme's tokens
-   are bound to the bar's, as a sheet binds them to the page's. */
-.inkBar {
+/* The bar's own surface, edge to edge: the highlighter, or sepia ink in the dark. What's set on it reads as
+   on it, so the theme's tokens are bound to the bar's, as a sheet binds them to the page's. */
+.masthead {
   --ink: var(--bar-ink); --ink-lo: var(--bar-ink-lo); --ink-faint: var(--bar-ink-faint);
   --rule: var(--bar-rule); --rule-soft: var(--bar-rule-soft);
   --strip: var(--bar); --field: var(--bar-field);
   --change: var(--bar-change); --warn: var(--bar-warn);
-  color-scheme: dark;
   background: var(--strip); color: var(--ink);
   border-block-end: 1px solid var(--rule);
 }
