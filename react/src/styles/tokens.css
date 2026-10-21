@@ -49,8 +49,8 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The squid's voice and the one action on the bar, ink on it in both themes. Never on a page. */
-  --highlighter: #FFE45C; /* the squid's words, Export */
+  /* The squid's voice, the one action on the bar and the landing's promise, ink on it in both themes. Never on a page. */
+  --highlighter: #FFE45C; /* the squid's words, Export, what the landing promises */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -71,12 +71,12 @@
   --fs-lg: .9375rem;     /* the wordmark, titles */
   --fs-input: .8125rem;  /* a field typed into: the body's, but 16 px on a touch screen, below */
   --fs-display: clamp(2.25rem, 1.5rem + 3vw, 3.5rem); /* the one heading on the landing and the crash screen */
+  --fs-lead: clamp(1.5rem, 0.75rem + 1.6vw, 2rem); /* the landing's promise under the sheet: between the steps and the display */
 
-  /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the one
-     heading and the document's name. The system faces after it draw what it lacks, ⌘ and the arrows. */
+  /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the
+     headings and the document's name. The system faces after it draw what it lacks, ⌘ and the arrows. */
   --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* --fs-display, and the document's name in the bar */
-  --page-face: "Times New Roman", Times, "Liberation Serif", serif; /* the landing's slips of a page, set as a document is */
+  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* the headings, and the document's name in the bar */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;

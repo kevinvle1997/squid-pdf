@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
@@ -20,7 +19,7 @@ interface Props {
   onForget: () => void; // the document kept here is deleted from this browser
 }
 
-/** The landing: the whole window takes a dropped PDF, a sheet says so, and three facts say what then. No sign-in. */
+/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is said under the sheet. No sign-in. */
 export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
   const offered = landing.kind === "waiting" ? kept : null;
   return (
@@ -35,10 +34,9 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
       <SheetScreen
         title={
           <>
-            Drop a PDF <mark>here</mark>
+            Drop a PDF <mark className={styles.typed}>here</mark>
           </>
         }
-        says="Got a typo? I can help."
         sheetClassName={styles.sheet}
         foot={<Facts />}
       >
@@ -68,51 +66,28 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
   );
 }
 
-/** What the tool does, and what becomes of the file, in three short facts under the sheet. */
+/** What becomes of the file, said first and largest under the sheet, then what the tool does, in two facts. */
 function Facts() {
   return (
-    <ul className={styles.facts}>
-      <Fact
-        title="Fix words on the page"
-        specimen={
-          <>
-            Due in <s className={styles.struck}>30</s> <span className={styles.changed}>45</span> days
-          </>
-        }
-      >
-        Click a word and type.
-      </Fact>
-      <Fact
-        title="Know before you save"
-        specimen={
-          <>
-            Signed, <span className={styles.warned}>Lindqvist</span> &amp; Rowe
-          </>
-        }
-      >
-        We'll tell you if a change won't look the same.
-      </Fact>
-      <Fact
-        title="Gone after an hour"
-        specimen={
-          <>
-            Account <span className={styles.redacted}>04 1882 3907</span>
-          </>
-        }
-      >
-        Your file is deleted from our server and this browser an hour after you're done.
-      </Fact>
-    </ul>
+    <div className={styles.facts}>
+      <div className={styles.promise}>
+        <h2 className={styles.promiseTitle}>
+          We <mark className={styles.typed}>delete your file</mark> an hour after you're done.
+        </h2>
+        <p className={styles.promiseSaid}>After that, we keep no copy of it or your edits.</p>
+      </div>
+      <ul className={styles.factList}>
+        <Fact title="Fix any word">Click it and type.</Fact>
+        <Fact title="Know before you save">We'll tell you if a change won't look the same.</Fact>
+      </ul>
+    </div>
   );
 }
 
-/** One fact: a slip of a page showing its mark as the editor draws it, a few words, and a line under them. */
-function Fact({ title, specimen, children }: { title: string; specimen: ReactNode; children: ReactNode }) {
+/** One fact: a few words, and a line under them. */
+function Fact({ title, children }: { title: string; children: string }) {
   return (
     <li className={styles.fact}>
-      <span className={styles.specimen} aria-hidden="true">
-        {specimen}
-      </span>
       <span className={styles.factTitle}>{title}</span>
       <span className={styles.factSaid}>{children}</span>
     </li>
