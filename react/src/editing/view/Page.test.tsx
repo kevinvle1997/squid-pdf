@@ -600,6 +600,17 @@ describe("a page", () => {
     expect(note.element().textContent).toBe("was");
   });
 
+  test("a margin note sits on the mat, so it takes the mat's blue, not the theme's", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: `Undo: “is here” goes back to “${WORDS}”` });
+    await expect.element(note).toBeVisible();
+    expect(getComputedStyle(note.element()).color).toBe(colorOf("--ground-change"));
+  });
+
   test("on a narrow screen, each change is a line under the page that says it's pressed to undo", async () => {
     await page.viewport(400, 900);
     const screen = await draw();

@@ -2,33 +2,41 @@
    Tokens are roles, never colours. Nothing else in the app defines a colour. */
 :root {
   color-scheme: light; /* the browser's own scrollbars and controls follow the theme */
-  /* The booth: flat neutral grey, as a print viewing booth's surround is, so it doesn't tint the page. */
-  --ground: #D9D9D9;
-  --strip: #F9F9F9;      /* a surface: the bar, notices, slips, popovers, tooltips */
+  /* The mat: a cutting mat, graphite smoked with its green, dark in both themes so the white page is the
+     brightest thing on screen, and its grid. What's drawn on it reads as on it, in both themes alike. */
+  --ground: #1F2723;
+  --ground-line: #29332E;       /* the mat's grid, a line every step */
+  --ground-line-major: #33433B; /* and a firmer one every fifth */
+  --ground-ink: #EEEEEE;
+  --ground-ink-lo: #B4B4B4;
+  --ground-ink-faint: #7B7B7B;  /* crop marks */
+  --ground-change: #8FAEFF;
+  --ground-warn: #F0904F;
+  --strip: #F9F9F9;      /* a surface: notices, slips, popovers, tooltips */
   --field: #FFFFFF;      /* inside a text input in the chrome */
   --rule: #CECECE;       /* dividers, and the borders of buttons and inputs */
   --rule-soft: #E8E8E8;  /* hover fills, keycaps, dividers inside a slip */
   --ink: #202020;        /* text, and the one filled button */
-  --ink-lo: #5A5A5A;     /* the faintest text allowed, on the ground too */
-  --ink-faint: #8D8D8D;  /* lines and disabled marks, never text: crop marks, cut lines */
+  --ink-lo: #5A5A5A;     /* the faintest text allowed */
+  --ink-faint: #8D8D8D;  /* lines and disabled marks, never text: cut lines */
   --change: #0F5CB0;     /* blue pencil, as an editor marks a proof: you did something, and the focus ring */
   --warn: #B5361F;       /* proofreader's red, far from the blue in every kind of colour vision; never blue */
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
-  /* The bar: a highlighter stroke across the top, and in the dark sepia, the cuttlefish's ink, with the
-     highlighter for its one action. What's set on it reads as on it. */
-  --bar: #FFE58A;
-  --bar-ink: #202020;
-  --bar-ink-lo: #5C5331;
-  --bar-ink-faint: #A08B3E;
-  --bar-rule: #E0C254;
-  --bar-rule-soft: #F5D869;
-  --bar-field: #FFFFFF;
-  --bar-change: #0F5CB0;
-  --bar-warn: #A8301B;     /* proofreader's red, a step darker, to read on the yellow */
-  --bar-act: #202020;      /* the one action on the bar: the landing's ink button */
-  --bar-act-ink: #FFFFFF;
+  /* The bar: the mat's ink, a shade darker than the mat, with the highlighter for its one action. What's
+     set on it reads as on it. */
+  --bar: #151B18;
+  --bar-ink: #EEEEEE;
+  --bar-ink-lo: #B4B4B4;
+  --bar-ink-faint: #7B7B7B;
+  --bar-rule: #333936;
+  --bar-rule-soft: #282D2A;
+  --bar-field: #282D2A;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
+  --bar-act: #FFE45C;      /* the one action on the bar: the highlighter */
+  --bar-act-ink: #202020;
 
   /* The page never themes, so neither do the marks drawn on it, nor what's set on a white sheet. */
   --sheet: #FFFFFF;
@@ -41,9 +49,8 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The landing and the crash screen: squid ink on paper, and one highlighter. Never on a page. */
-  --landing-ground: #F2F1EE;
-  --highlighter: #FFE58A; /* the heading's highlight, the squid's words, the facts' icons, the bar: ink on it */
+  /* The squid's voice and the one action on the bar, ink on it in both themes. Never on a page. */
+  --highlighter: #FFE45C; /* the squid's words, the facts' icons, Export */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -98,11 +105,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground: #262626;
-    --strip: #303030;
-    --field: #1F1F1F;
-    --rule: #474747;
-    --rule-soft: #3B3B3B;
+    --ground: #121714;
+    --ground-line: #19201C;
+    --ground-line-major: #212C26;
+    --strip: #232724;
+    --field: #0E110F;
+    --rule: #3A3E3C;
+    --rule-soft: #2C312E;
     --ink: #EEEEEE;
     --ink-lo: #B4B4B4;
     --ink-faint: #7B7B7B;
@@ -111,27 +120,21 @@
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-    --bar: #241A13;
-    --bar-ink: #F3EBDD;
-    --bar-ink-lo: #C9B8A1;
-    --bar-ink-faint: #8C7865;
-    --bar-rule: #4B3B2E;
-    --bar-rule-soft: #3B2E24;
-    --bar-field: #382A20;
-    --bar-change: #8FAEFF;
-    --bar-warn: #F0904F;
-    --bar-act: #FFE58A;
-    --bar-act-ink: #202020;
-    --landing-ground: #1E1E1E;
+    --bar: #0F1311;
+    --bar-rule: #2E3230;
+    --bar-rule-soft: #222624;
+    --bar-field: #222624;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #262626;
-  --strip: #303030;
-  --field: #1F1F1F;
-  --rule: #474747;
-  --rule-soft: #3B3B3B;
+  --ground: #121714;
+  --ground-line: #19201C;
+  --ground-line-major: #212C26;
+  --strip: #232724;
+  --field: #0E110F;
+  --rule: #3A3E3C;
+  --rule-soft: #2C312E;
   --ink: #EEEEEE;
   --ink-lo: #B4B4B4;
   --ink-faint: #7B7B7B;
@@ -140,16 +143,8 @@
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-  --bar: #241A13;
-  --bar-ink: #F3EBDD;
-  --bar-ink-lo: #C9B8A1;
-  --bar-ink-faint: #8C7865;
-  --bar-rule: #4B3B2E;
-  --bar-rule-soft: #3B2E24;
-  --bar-field: #382A20;
-  --bar-change: #8FAEFF;
-  --bar-warn: #F0904F;
-  --bar-act: #FFE58A;
-  --bar-act-ink: #202020;
-  --landing-ground: #1E1E1E;
+  --bar: #0F1311;
+  --bar-rule: #2E3230;
+  --bar-rule-soft: #222624;
+  --bar-field: #222624;
 }

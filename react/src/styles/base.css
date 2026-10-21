@@ -1,9 +1,18 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-/* Flat: a booth is lit evenly, so the white page is the brightest thing on screen. */
+html { scrollbar-color: var(--ground-ink-faint) var(--ground); }
+/* The cutting mat the page lies on, as a proof does: a line every step, and a firmer one every fifth. */
 body {
   margin: 0;
-  background: var(--ground);
+  background-color: var(--ground);
+  background-image:
+    linear-gradient(var(--ground-line-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ground-line-major) 1px, transparent 1px),
+    linear-gradient(var(--ground-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ground-line) 1px, transparent 1px);
+  background-size:
+    calc(5 * var(--s6)) calc(5 * var(--s6)), calc(5 * var(--s6)) calc(5 * var(--s6)),
+    var(--s6) var(--s6), var(--s6) var(--s6);
   color: var(--ink);
   font-family: var(--ui);
   font-size: var(--fs-base);

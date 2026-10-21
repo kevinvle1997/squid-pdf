@@ -22,10 +22,9 @@ test("what's set on a sheet reads as on white, in the dark theme too", async () 
   expect(getComputedStyle(screen.getByRole("button").element()).color).toBe(colorOf("--sheet-ink"));
 });
 
-test("the sheet's own edge keeps the theme's tokens, so a ring on the ground around it stays visible", async () => {
-  document.documentElement.dataset.theme = "dark";
+test("the sheet's own edge takes the mat's tokens, so a ring on the mat around it stays visible", async () => {
   const screen = await render(<Sheet>Drop a PDF</Sheet>);
   const sheet = screen.container.firstElementChild as HTMLElement;
   sheet.style.outlineColor = "var(--change)";
-  expect(getComputedStyle(sheet).outlineColor).toBe(colorOf("--change"));
+  expect(getComputedStyle(sheet).outlineColor).toBe(colorOf("--ground-change"));
 });
