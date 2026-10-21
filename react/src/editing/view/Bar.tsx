@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
+import { ThemeToggle } from "../../ui/ThemeToggle";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
@@ -47,6 +48,7 @@ export function Bar() {
         <span className={styles.actions}>
           <FindButton />
           <Fonts />
+          <ThemeToggle />
           <Button
             variant="primary"
             className={styles.export}

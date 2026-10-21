@@ -1,0 +1,6 @@
+/* A quiet button, as a bar's tools are, holding only its icon, in ink in both themes. */
+.toggle {
+  composes: button quiet from "./Button.module.css";
+  padding: var(--s1);
+}
+.icon { width: 1rem; height: 1rem; }

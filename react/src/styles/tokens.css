@@ -12,29 +12,29 @@
   --ground-ink-faint: #8A8A8A;  /* crop marks */
   --ground-change: #8FAEFF;
   --ground-warn: #F0904F;
-  --strip: #F9F9F9;      /* a surface: notices, slips, popovers, tooltips */
+  --strip: #F5F8F6;      /* a surface: notices, slips, popovers, tooltips */
   --field: #FFFFFF;      /* inside a text input in the chrome */
-  --rule: #CECECE;       /* dividers, and the borders of buttons and inputs */
-  --rule-soft: #E8E8E8;  /* hover fills, keycaps, dividers inside a slip */
-  --ink: #202020;        /* text, and the one filled button */
-  --ink-lo: #5A5A5A;     /* the faintest text allowed */
-  --ink-faint: #8D8D8D;  /* lines and disabled marks, never text: cut lines */
+  --rule: #C8D0CB;       /* dividers, and the borders of buttons and inputs */
+  --rule-soft: #E3E9E5;  /* hover fills, keycaps, dividers inside a slip */
+  --ink: #19201C;        /* text, and the one filled button */
+  --ink-lo: #525C57;     /* the faintest text allowed */
+  --ink-faint: #87918C;  /* lines and disabled marks, never text: cut lines */
   --change: #0F5CB0;     /* blue pencil, as an editor marks a proof: you did something, and the focus ring */
   --warn: #B5361F;       /* proofreader's red, far from the blue in every kind of colour vision; never blue */
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
-  /* The bar: a surface of the theme's own, lighter than the mat, with the highlighter for its one action.
-     What's set on it reads as on it. */
-  --bar: #F9F9F9;
-  --bar-ink: #202020;
-  --bar-ink-lo: #5A5A5A;
-  --bar-ink-faint: #8D8D8D;
-  --bar-rule: #CECECE;
-  --bar-rule-soft: #E8E8E8;
-  --bar-field: #FFFFFF;
-  --bar-change: #0F5CB0;
-  --bar-warn: #B5361F;
+  /* The bar: the mat's green, pale in the light theme and dark in the dark, with the highlighter for its
+     one action. What's set on it reads as on it. */
+  --bar: #CBD3CE;
+  --bar-ink: #19201C;
+  --bar-ink-lo: #414B46;
+  --bar-ink-faint: #66716B; /* lines, and a field's edge, which holds 3:1 */
+  --bar-rule: #A3AFA8;
+  --bar-rule-soft: #BAC4BE;
+  --bar-field: #EEF2EF;
+  --bar-change: #0D4F98;
+  --bar-warn: #8F2814;
   --bar-act: #FFE45C;      /* the one action on the bar: the highlighter */
   --bar-act-ink: #202020;
 
@@ -110,25 +110,25 @@
     --ground: #121714;
     --ground-line: #19201C;
     --ground-line-major: #212C26;
-    --strip: #232724;
+    --strip: #27302B;
     --field: #0E110F;
-    --rule: #3A3E3C;
-    --rule-soft: #2C312E;
+    --rule: #3D4843;
+    --rule-soft: #303A35;
     --ink: #EEEEEE;
-    --ink-lo: #B4B4B4;
-    --ink-faint: #7B7B7B;
+    --ink-lo: #B3BBB7;
+    --ink-faint: #7A847F;
     --change: #8FAEFF;
     --warn: #F0904F;
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-    --bar: #232724;
+    --bar: #222A26;
     --bar-ink: #EEEEEE;
     --bar-ink-lo: #B4B4B4;
     --bar-ink-faint: #7B7B7B;
-    --bar-rule: #3A3E3C;
-    --bar-rule-soft: #2C312E;
-    --bar-field: #181C19;
+    --bar-rule: #3A4440;
+    --bar-rule-soft: #2D3631;
+    --bar-field: #171D1A;
     --bar-change: #8FAEFF;
     --bar-warn: #F0904F;
   }
@@ -138,25 +138,25 @@
   --ground: #121714;
   --ground-line: #19201C;
   --ground-line-major: #212C26;
-  --strip: #232724;
+  --strip: #27302B;
   --field: #0E110F;
-  --rule: #3A3E3C;
-  --rule-soft: #2C312E;
+  --rule: #3D4843;
+  --rule-soft: #303A35;
   --ink: #EEEEEE;
-  --ink-lo: #B4B4B4;
-  --ink-faint: #7B7B7B;
+  --ink-lo: #B3BBB7;
+  --ink-faint: #7A847F;
   --change: #8FAEFF;
   --warn: #F0904F;
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-  --bar: #232724;
+  --bar: #222A26;
   --bar-ink: #EEEEEE;
   --bar-ink-lo: #B4B4B4;
   --bar-ink-faint: #7B7B7B;
-  --bar-rule: #3A3E3C;
-  --bar-rule-soft: #2C312E;
-  --bar-field: #181C19;
+  --bar-rule: #3A4440;
+  --bar-rule-soft: #2D3631;
+  --bar-field: #171D1A;
   --bar-change: #8FAEFF;
   --bar-warn: #F0904F;
 }

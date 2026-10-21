@@ -1,4 +1,4 @@
-/* The bar's own surface, edge to edge, lighter than the mat. What's set on it reads as
+/* The bar's own surface, edge to edge, in the mat's green. What's set on it reads as
    on it, so the theme's tokens are bound to the bar's, as a sheet binds them to the page's. */
 .masthead {
   --ink: var(--bar-ink); --ink-lo: var(--bar-ink-lo); --ink-faint: var(--bar-ink-faint);
