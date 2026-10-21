@@ -1,5 +1,10 @@
-import type { ReactNode, RefObject } from "react";
-import { Tooltip as AriaTooltip, type TooltipTriggerState, TooltipTriggerStateContext } from "react-aria-components";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import {
+  Tooltip as AriaTooltip,
+  TooltipTrigger,
+  type TooltipTriggerState,
+  TooltipTriggerStateContext,
+} from "react-aria-components";
 import styles from "./Tooltip.module.css";
 import { Warn } from "./Warn";
 
@@ -43,3 +48,18 @@ export function Tooltip({ heading, warn = false, children, triggerRef, isOpen, o
     </TooltipTriggerStateContext.Provider>
   );
 }
+
+/** A button's keyboard shortcut, shown under it on hover or focus, as editors show theirs. */
+export function Shortcut({ keys, children }: { keys: string; children: ReactElement }) {
+  return (
+    <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
+      {children}
+      <AriaTooltip className={styles.shortcut} placement="bottom" offset={6}>
+        <kbd>{keys}</kbd>
+      </AriaTooltip>
+    </TooltipTrigger>
+  );
+}
+
+// Long enough that passing over the bar shows nothing; short enough that a pause on a button does.
+const SHORTCUT_DELAY_MS = 600;

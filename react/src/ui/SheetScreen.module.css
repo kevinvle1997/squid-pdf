@@ -2,7 +2,11 @@
    the middle, on the editor's mat, and whatever the screen adds under the sheet. */
 .screen { min-height: 100dvh; display: flex; flex-direction: column; }
 /* Where the editor's bar puts the wordmark, so it stays put when a document opens. */
-.top { composes: ground from "./Ground.module.css"; display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4); }
+.top {
+  composes: ground from "./Ground.module.css";
+  display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4);
+  color: var(--ink);
+}
 .middle {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s7);

@@ -3,7 +3,7 @@
   max-width: 292px;
   padding: var(--s3);
   background: var(--strip);
-  border-radius: var(--r-3);
+  border-radius: var(--r-4);
   box-shadow: var(--lift-2);
   font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-lo);
 }
@@ -14,6 +14,17 @@
 /* The shadow is dropped here, so an outline keeps the note apart from the page under it. */
 @media (forced-colors: active) {
   .note { outline: 1px solid CanvasText; }
+}
+/* A shortcut's tip: the keys alone, small, at a control's corner. */
+.shortcut {
+  padding: var(--s1);
+  border-radius: var(--r-2);
+  background: var(--strip);
+  box-shadow: var(--lift-2);
+}
+.shortcut[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }
+@media (forced-colors: active) {
+  .shortcut { outline: 1px solid CanvasText; }
 }
 @media (prefers-reduced-motion: reduce) {
   .note[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }

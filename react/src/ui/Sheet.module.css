@@ -4,7 +4,7 @@
   composes: ground from "./Ground.module.css";
   width: 100%;
   padding: var(--s4);
-  border-radius: var(--r-4);
+  border-radius: var(--r-5);
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
   color: var(--sheet-ink);
@@ -12,7 +12,7 @@
 .zone {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: var(--s8) var(--s6);
-  border: 3px dashed var(--sheet-ink); border-radius: var(--r-2);
+  border: 3px dashed var(--sheet-ink); border-radius: var(--r-3);
 }
 /* A screen's one call to act, on its sheet: the primary button, larger. A class to compose, as
    Choose a PDF and Reload do; two classes, as this stylesheet loads before the button's. */

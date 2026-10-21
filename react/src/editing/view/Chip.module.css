@@ -1,8 +1,10 @@
 /* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack in
-   one order, whatever it says, so each part is where it was the last time; it's as wide as its widest row. */
+   one order, whatever it says, so each part is where it was the last time; its words run to one
+   measure, so they fill it instead of stopping short of the rows under them. */
 .chip {
   composes: slip from "../../ui/Slip.module.css";
   display: flex; flex-direction: column; gap: var(--s2);
+  max-width: 30rem;
   white-space: nowrap; line-height: 1;
   pointer-events: none;
 }
@@ -14,10 +16,10 @@
 }
 .noteWords {
   display: flex; flex-direction: column; gap: var(--s1);
-  max-width: 43ch; white-space: normal; line-height: 1.4;
+  white-space: normal; line-height: 1.4;
 }
-/* Each trouble a line of its own, at a prose measure: about 70 letters of this face. */
-.bad { white-space: pre-line; max-width: 57ch; line-height: 1.4; }
+/* Each trouble a line of its own. */
+.bad { white-space: pre-line; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
 /* It will match: said in ink, as plainly as a warning is said in red. */
 .identical { color: var(--ink); }
@@ -26,14 +28,14 @@
   display: flex; align-items: center; gap: var(--s2);
   pointer-events: auto;
 }
-/* What a pointer can press, always last and in one row: the user's own copy of the span's font, and
-   redacting the span, at the row's end. */
+/* What a pointer can press, always last and in one row on the chip's one left edge: the user's own copy
+   of the span's font, and redacting the span. */
 .actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
 .offer {
   display: flex; align-items: baseline; gap: var(--s2);
   pointer-events: auto;
 }
-.redact { margin-inline-start: auto; pointer-events: auto; }
+.redact { pointer-events: auto; }
 /* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }

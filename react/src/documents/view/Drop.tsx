@@ -72,15 +72,21 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
 function Facts() {
   return (
     <ul className={styles.facts}>
-      <Fact title="Fix words on the page" icon={<path d="M4 6h10M4 11h7M4 16h10M17 4v14M15 4h4M15 18h4" />}>
+      <Fact
+        title="Fix words on the page"
+        specimen={
+          <>
+            Due in <s className={styles.struck}>30</s> <span className={styles.changed}>45</span> days
+          </>
+        }
+      >
         Click a word and type.
       </Fact>
       <Fact
         title="Know before you save"
-        icon={
+        specimen={
           <>
-            <path d="M1.5 11S5 4.5 11 4.5 20.5 11 20.5 11 17 17.5 11 17.5 1.5 11 1.5 11z" />
-            <circle cx="11" cy="11" r="3" />
+            Signed, <span className={styles.warned}>Lindqvist</span> &amp; Rowe
           </>
         }
       >
@@ -88,10 +94,9 @@ function Facts() {
       </Fact>
       <Fact
         title="Gone after an hour"
-        icon={
+        specimen={
           <>
-            <circle cx="11" cy="11" r="8.5" />
-            <path d="M11 6v5l3.5 2" />
+            Account <span className={styles.redacted}>04 1882 3907</span>
           </>
         }
       >
@@ -101,14 +106,12 @@ function Facts() {
   );
 }
 
-/** One fact: its drawn icon, a few words, and a line under them. */
-function Fact({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+/** One fact: a slip of a page showing its mark as the editor draws it, a few words, and a line under them. */
+function Fact({ title, specimen, children }: { title: string; specimen: ReactNode; children: ReactNode }) {
   return (
     <li className={styles.fact}>
-      <span className={styles.factIcon}>
-        <svg viewBox="0 0 22 22" aria-hidden="true">
-          {icon}
-        </svg>
+      <span className={styles.specimen} aria-hidden="true">
+        {specimen}
       </span>
       <span className={styles.factTitle}>{title}</span>
       <span className={styles.factSaid}>{children}</span>

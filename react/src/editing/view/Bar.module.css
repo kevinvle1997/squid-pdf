@@ -1,10 +1,10 @@
-/* Square, edge to edge; a step tighter at the end, where Export's filled box carries its own padding. */
+/* Square, edge to edge, the same gutter at both ends, so Export's edge mirrors the wordmark's. */
 .bar {
   composes: masthead from "../../ui/Masthead.module.css";
   /* A size container: as it narrows, what's changed gives way, never the file's name. */
   container-type: inline-size;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
-  min-height: var(--bar-height); padding-block: var(--s2); padding-inline: var(--s4) var(--s3);
+  min-height: var(--bar-height); padding-block: var(--s2); padding-inline: var(--s4);
 }
 .file {
   display: flex; align-items: baseline; gap: var(--s2);
@@ -18,15 +18,16 @@
 }
 .meta { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* Only the room the file leaves: when its narrowest won't fit there, it takes the next row, whole. */
-.end { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--s4); }
+.end { flex: 1 1 0; display: flex; align-items: center; gap: var(--s4); }
 /* A sentence, not a count: it wraps rather than squeeze the bar's buttons. */
 .reopen { flex: 0 1 48ch; min-width: 0; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.3; }
 .status { font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Nothing to count: no gap for it, and on a narrow screen no share of the row. */
 .status:empty { display: none; }
 .exporting { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; }
-/* The tools and the one action, held together, each on one line: a focus ring's width apart. */
-.actions { flex: none; display: flex; align-items: center; gap: var(--s2); }
+/* The tools and the one action, held together at the end, each on one line: a focus ring's width apart.
+   What's changed stays beside the file's name, as a document's status sits beside its title. */
+.actions { flex: none; display: flex; align-items: center; gap: var(--s2); margin-inline-start: auto; }
 .actions button { white-space: nowrap; }
 /* The one action: the highlighter, ink on it, as the squid's words are. */
 .export { --ink: var(--bar-act); --strip: var(--bar-act-ink); }
@@ -45,6 +46,6 @@
   .file { flex: 1 1 auto; border-inline-start: 0; padding-inline-start: 0; }
   .end { flex-basis: 100%; flex-wrap: wrap; gap: var(--s1) var(--s3); }
   /* Words are never squeezed past a few: then the buttons take a row of their own, still at the end. */
-  .status, .hint { flex: 1 1 0; min-width: 8em; }
+  .status, .hint { flex: 1 1 0; min-width: 12em; }
   .actions { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; }
 }
