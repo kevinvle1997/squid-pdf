@@ -3,7 +3,7 @@
 .sheet {
   width: 100%;
   padding: var(--s4);
-  border-radius: var(--r-6);
+  border-radius: var(--r-4);
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
   color: var(--sheet-ink);
@@ -11,13 +11,13 @@
 .zone {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: var(--s8) var(--s6);
-  border: 3px dashed var(--sheet-ink); border-radius: var(--r-4);
+  border: 3px dashed var(--sheet-ink); border-radius: var(--r-2);
 }
-/* A screen's one call to act, on its sheet: the primary button, larger and round. A class to compose,
-   as Choose a PDF and Reload do; two classes, as this stylesheet loads before the button's. */
+/* A screen's one call to act, on its sheet: the primary button, larger. A class to compose, as
+   Choose a PDF and Reload do; two classes, as this stylesheet loads before the button's. */
 .zone .act {
   margin-block-start: var(--s5); padding: var(--s3) var(--s6); min-height: var(--hit);
-  border-radius: var(--r-pill); font-size: var(--fs-lg); font-weight: 600;
+  font-size: var(--fs-lg);
 }
 /* What's on the sheet reads as on white, so the theme's tokens are bound to the page's for it. The
    sheet itself keeps the theme's, for what it draws on the ground outside its edge: a focus ring. */

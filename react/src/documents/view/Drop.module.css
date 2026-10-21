@@ -28,7 +28,7 @@
 }
 .fact {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
-  padding: var(--s4) var(--s5); border-radius: var(--r-5);
+  padding: var(--s4) var(--s5); border-radius: var(--r-3);
   background: var(--strip); box-shadow: var(--lift-1);
 }
 .factIcon {

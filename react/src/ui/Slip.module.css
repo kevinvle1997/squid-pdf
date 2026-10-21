@@ -2,7 +2,7 @@
    surface. What it holds, and how it lays that out, is each slip's own. */
 .slip {
   position: absolute; z-index: var(--z-chip);
-  padding: var(--s3);
+  padding: var(--s4);
   border-radius: var(--r-3);
   background: var(--strip); box-shadow: var(--lift-1);
   font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);

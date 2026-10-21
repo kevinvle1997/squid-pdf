@@ -35,15 +35,13 @@
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  /* Small to large, so a parent never shares the radius of a child it holds tight. A page and the
-     bars are square: paper is, and a bar runs edge to edge. The landing's are rounder, and friendlier. */
+  /* Small to large, so a parent never shares the radius of a child it holds tight. Paper is square: a
+     page, and the bars, which run edge to edge. What's handled is round, and what floats is rounded. */
   --r-1: 3px; /* keycaps, the checkbox's box */
-  --r-2: 5px; /* buttons, inputs, choices */
-  --r-3: 8px; /* slips and popovers: the chip, the redaction prompt, tooltips, the fonts list */
-  --r-4: 12px; /* the landing's drop zone, inside its sheet */
-  --r-5: 20px; /* the landing's facts, and the mascot's word bubble */
-  --r-6: 28px; /* the landing's sheet: its zone's radius and the padding round it */
-  --r-pill: 999px; /* the landing's one button */
+  --r-2: 12px; /* the landing's drop zone, inside its sheet */
+  --r-3: 20px; /* what floats: slips, popovers, tooltips; the landing's facts and the mascot's word bubble */
+  --r-4: 28px; /* the landing's sheet: its zone's radius and the padding round it */
+  --r-pill: 999px; /* what's pressed or typed into: every button, choice and field */
 
   /* rem, so the reader's own text-size setting works */
   --fs-micro: .6875rem;  /* measurements and keys */

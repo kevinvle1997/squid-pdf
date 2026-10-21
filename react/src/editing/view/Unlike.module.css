@@ -1,5 +1,5 @@
 .popover { composes: popover from "../../ui/Popover.module.css"; }
-.dialog { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s3); outline: none; }
+.dialog { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s4); outline: none; }
 .group { display: flex; flex-direction: column; gap: var(--s2); }
 .heading { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--warn); }
 .list { display: flex; flex-direction: column; gap: var(--s3); margin: 0; padding: 0; list-style: none; }
