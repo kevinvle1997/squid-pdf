@@ -12,7 +12,8 @@
 .input {
   font: inherit; font-size: var(--fs-input); color: var(--ink);
   width: 24ch; padding: var(--s1) var(--s3);
-  background: var(--field); border: 1px solid var(--rule); border-radius: var(--r-2);
+  /* Its edge is a line, not a hairline: it's what shows where to type, so it holds 3:1. */
+  background: var(--field); border: 1px solid var(--ink-faint); border-radius: var(--r-2);
 }
 .input[data-focused] { outline: none; border-color: var(--change); box-shadow: inset 0 0 0 1px var(--change); }
 /* The query, its choices and what it found, each a group: a hairline between them, with room either side. */
