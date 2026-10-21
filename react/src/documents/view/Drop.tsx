@@ -72,7 +72,7 @@ function Facts() {
     <div className={styles.facts}>
       <div className={styles.promise}>
         <h2 className={styles.promiseTitle}>
-          We <mark className={styles.typed}>delete your file</mark> an hour after you're done.
+          We <mark>delete your file</mark> an hour after you're done.
         </h2>
         <p className={styles.promiseSaid}>After that, we keep no copy of it or your edits.</p>
       </div>
