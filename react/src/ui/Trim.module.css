@@ -1,6 +1,6 @@
 /* Crop marks just outside each corner: where the sheet is trimmed, which is what exports. Each is a
    1px line --s3 long, --s1 off the edge, so it reaches --s4 out: the gap between a page and its margin. */
-.trim { position: relative; }
+.trim { composes: ground from "./Ground.module.css"; position: relative; }
 .trim::before {
   --edge: calc(var(--s1) + var(--s3)); /* the sheet's edge, from the outside of the marks' box */
   --line: linear-gradient(var(--ink-faint) 0 0);

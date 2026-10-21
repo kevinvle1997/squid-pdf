@@ -1,0 +1,7 @@
+/* What's drawn straight on the mat: it's dark in both themes, so the theme's tokens are bound to the mat's,
+   as the bar binds them to its own. */
+.ground {
+  --ink: var(--ground-ink); --ink-lo: var(--ground-ink-lo); --ink-faint: var(--ground-ink-faint);
+  --change: var(--ground-change); --warn: var(--ground-warn);
+  color: var(--ink);
+}

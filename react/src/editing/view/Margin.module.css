@@ -1,4 +1,4 @@
-.margin { position: relative; }
+.margin { composes: ground from "../../ui/Ground.module.css"; position: relative; }
 /* Level with its span: centred on it, a full hit area tall, the visible mark small. */
 .place { position: absolute; inset-inline: 0; transform: translateY(-50%); }
 .note {
@@ -28,7 +28,7 @@
 .now { color: var(--ink); }
 .bar { flex: none; width: var(--s3); border-top: 2px solid currentColor; }
 @keyframes penned { from { opacity: 0; transform: translateX(var(--s2)); } }
-.list { display: none; }
+.list { composes: ground from "../../ui/Ground.module.css"; display: none; }
 .list ul { list-style: none; margin: 0; padding: 0; }
 /* A row per change: the words it took out over the words it put in, each whole, and Undo beside them. */
 .list .note {

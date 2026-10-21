@@ -1,6 +1,7 @@
 /* White in both themes, as paper is: a sheet as wide as the screen allows, rounded, with a dashed zone on it
    that says where a file goes, and what's on it centred. */
 .sheet {
+  composes: ground from "./Ground.module.css";
   width: 100%;
   padding: var(--s4);
   border-radius: var(--r-4);
@@ -20,7 +21,7 @@
   font-size: var(--fs-lg);
 }
 /* What's on the sheet reads as on white, so the theme's tokens are bound to the page's for it. The
-   sheet itself keeps the theme's, for what it draws on the ground outside its edge: a focus ring. */
+   sheet itself takes the mat's, for what it draws on the mat outside its edge: a focus ring. */
 .sheet > * {
   --ink: var(--sheet-ink); --ink-lo: var(--sheet-ink-lo);
   --rule: var(--sheet-rule); --rule-soft: var(--sheet-rule-soft);

@@ -1,8 +1,8 @@
 /* The landing's composition, and the crash screen's: the wordmark, then the mascot standing on the sheet in
-   the middle, on the landing's own ground, and whatever the screen adds under the sheet. */
-.screen { min-height: 100dvh; display: flex; flex-direction: column; background: var(--landing-ground); }
+   the middle, on the editor's mat, and whatever the screen adds under the sheet. */
+.screen { min-height: 100dvh; display: flex; flex-direction: column; }
 /* Where the editor's bar puts the wordmark, so it stays put when a document opens. */
-.top { display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4); }
+.top { composes: ground from "./Ground.module.css"; display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4); }
 .middle {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s7);
@@ -29,8 +29,18 @@
   font-family: var(--display); font-size: var(--fs-display); font-weight: 800; letter-spacing: -0.035em; line-height: 1.3;
   text-wrap: balance;
 }
-/* The word a heading marks, as a highlighter marks it: across the lower half of its letters. */
+/* The word a heading marks, as the editor shows a word being typed into: the blue pencil's line under it, its
+   wash round it, and the caret after it, still, since no one is typing yet. */
 .title mark {
-  background: linear-gradient(transparent 55%, var(--highlighter) 55%, var(--highlighter) 95%, transparent 95%);
-  color: inherit; padding-inline: var(--s1);
+  background: none; color: inherit; padding-inline: var(--s1);
+  box-shadow: inset 0 -3px 0 var(--mark-change), 0 0 0 1px var(--mark-change-soft);
+}
+.title mark::after {
+  content: ""; display: inline-block; width: 3px; height: 0.8em; vertical-align: -0.05em;
+  margin-inline-start: var(--s1);
+  background: var(--sheet-ink);
+}
+/* The shadows go in high contrast: an underline keeps the line. */
+@media (forced-colors: active) {
+  .title mark { text-decoration: underline 3px; }
 }

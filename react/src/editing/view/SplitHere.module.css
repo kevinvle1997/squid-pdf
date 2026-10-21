@@ -1,6 +1,7 @@
 /* In the gap between two pages, on the page's own columns so it sits under the sheet: the whole gap,
    and never less than a hit area. */
 .split {
+  composes: ground from "../../ui/Ground.module.css";
   display: grid; grid-template-columns: var(--margin-width) minmax(0, 1fr); gap: var(--s4);
   align-items: center;
   width: 100%; max-width: calc(var(--margin-width) + var(--s4) + var(--sheet-width));
