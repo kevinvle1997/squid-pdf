@@ -49,8 +49,8 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The squid's voice, the one action on the bar and the landing's promise, ink on it in both themes. Never on a page. */
-  --highlighter: #FFE45C; /* the squid's words, Export, what the landing promises */
+  /* The one action on the bar and the landing's promise, ink on it in both themes. Never on a page. */
+  --highlighter: #FFE45C; /* Export, what the landing promises */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -61,7 +61,7 @@
   --r-1: 3px; /* keycaps, the checkbox's box */
   --r-2: 8px; /* what's pressed or typed into: every button, choice and field, and a shortcut's tip */
   --r-3: 12px; /* the landing's drop zone, inside its sheet */
-  --r-4: 20px; /* what floats: slips, popovers, notes; the mascot's word bubble */
+  --r-4: 20px; /* what floats: slips, popovers, notes */
   --r-5: 28px; /* the landing's sheet: its zone's radius and the padding round it */
 
   /* rem, so the reader's own text-size setting works */

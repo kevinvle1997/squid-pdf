@@ -3,7 +3,6 @@
 import { useCallback } from "react";
 import { AfterQuiet } from "../../ui/AfterQuiet";
 import { Button } from "../../ui/Button";
-import { classes } from "../../ui/classes";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
@@ -16,7 +15,6 @@ import { counted, formOf } from "../words";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
 import { Fonts } from "./Fonts";
-import { HintWords } from "./Hint";
 import { COMMAND } from "./keys";
 import { UnlikeCount } from "./Unlike";
 
@@ -41,12 +39,6 @@ export function Bar() {
       <span className={styles.end}>
         {reopen !== null && (
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
-        )}
-        {changed === 0 && (
-          // Only where there's no margin for the squid; beside the count, it gives way to it.
-          <span className={classes(styles.hint, atRest.count > 0 && styles.besideCount)}>
-            <HintWords />
-          </span>
         )}
         <span className={styles.status}>
           {changed === 0 ? <AtRest unlike={atRest} /> : <Changed changed={changed} {...warned} />}

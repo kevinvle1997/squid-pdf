@@ -144,31 +144,6 @@ describe("the bar", () => {
     await page.viewport(wide, tall);
   });
 
-  test("with nothing changed, it says how to start editing, and stops once something has", async () => {
-    const screen = await openEditor();
-    // Narrow, with no margin beside the page: the bar says it.
-    const hint = screen.getByRole("banner").getByText("Click any word to fix it");
-    await expect.element(hint).toBeVisible();
-    await changeSpan(screen, "is here");
-    await expect.element(hint).not.toBeInTheDocument();
-  });
-
-  test("wide, it says it in the first page's margin, in the window, until a change is noted there", async () => {
-    const [wide, tall] = [window.innerWidth, window.innerHeight];
-    await page.viewport(1400, 900);
-    try {
-      const screen = await openEditor();
-      const hint = screen.getByRole("region", { name: "Page 1" }).getByText("Click any word to fix it");
-      await expect.element(hint).toBeVisible();
-      await expect.element(screen.getByRole("banner").getByText("Click any word to fix it")).not.toBeVisible();
-      expect(hint.element().getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
-      await changeSpan(screen, "is here");
-      await expect.element(hint).not.toBeInTheDocument();
-    } finally {
-      await page.viewport(wide, tall);
-    }
-  });
-
   test("before any change, it counts the places an edit will use a similar font, warned; then the changes", async () => {
     const screen = await openEditor({ doc: ARIAL_DOC });
     const bar = screen.getByRole("banner");
@@ -223,14 +198,11 @@ describe("the bar", () => {
     await expect.poll(marked).toBe(0);
   });
 
-  test("on a touch screen, it says to double-tap, and no button hints at a key", async () => {
+  test("on a touch screen, no button hints at a key", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     try {
       expect(matchMedia("(pointer: coarse)").matches).toBe(true);
       const screen = await openEditor();
-      const bar = screen.getByRole("banner");
-      await expect.element(bar.getByText("Double-tap any word to fix it")).toBeVisible();
-      await expect.element(bar.getByText("Click any word to fix it")).not.toBeVisible();
       const key = screen
         .getByRole("button", { name: /^Export/ })
         .element()
