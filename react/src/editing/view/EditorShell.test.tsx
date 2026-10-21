@@ -146,10 +146,27 @@ describe("the bar", () => {
 
   test("with nothing changed, it says how to start editing, and stops once something has", async () => {
     const screen = await openEditor();
-    const hint = screen.getByText("Click text to change it");
+    // Narrow, with no margin beside the page: the bar says it.
+    const hint = screen.getByRole("banner").getByText("Click any word to fix it");
     await expect.element(hint).toBeVisible();
     await changeSpan(screen, "is here");
     await expect.element(hint).not.toBeInTheDocument();
+  });
+
+  test("wide, the squid says it in the first page's margin, in the window, until a change is noted there", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(1400, 900);
+    try {
+      const screen = await openEditor();
+      const squid = screen.getByRole("region", { name: "Page 1" }).getByText("Click any word to fix it");
+      await expect.element(squid).toBeVisible();
+      await expect.element(screen.getByRole("banner").getByText("Click any word to fix it")).not.toBeVisible();
+      expect(squid.element().getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+      await changeSpan(screen, "is here");
+      await expect.element(squid).not.toBeInTheDocument();
+    } finally {
+      await page.viewport(wide, tall);
+    }
   });
 
   test("before any change, it counts the places an edit will use a similar font, warned; then the changes", async () => {
@@ -159,7 +176,8 @@ describe("the bar", () => {
     expect(bar.getByText("will use a similar font", { exact: false }).element().textContent).toBe(
       "Edits in 1 place will use a similar font",
     );
-    const warn = document.body.appendChild(document.createElement("span"));
+    // The bar's own warning colour, which reads on its ink.
+    const warn = bar.element().appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
     expect(getComputedStyle(bar.getByText("1", { exact: true }).element()).color).toBe(getComputedStyle(warn).color);
     warn.remove();
@@ -210,8 +228,9 @@ describe("the bar", () => {
     try {
       expect(matchMedia("(pointer: coarse)").matches).toBe(true);
       const screen = await openEditor();
-      await expect.element(screen.getByText("Double-tap text to change it")).toBeVisible();
-      await expect.element(screen.getByText("Click text to change it")).not.toBeVisible();
+      const bar = screen.getByRole("banner");
+      await expect.element(bar.getByText("Double-tap any word to fix it")).toBeVisible();
+      await expect.element(bar.getByText("Click any word to fix it")).not.toBeVisible();
       const key = screen
         .getByRole("button", { name: /^Export/ })
         .element()

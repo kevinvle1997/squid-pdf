@@ -1,0 +1,21 @@
+/* At the top of the margin, where the changes will be noted; on a narrow screen the margin goes, and the
+   bar says it. Its words take what room the margin and the ground beside it leave, and wrap past that. */
+.hint {
+  position: absolute; inset-block-start: var(--s6); inset-inline-end: 0;
+  display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1);
+  width: max-content;
+  max-width: calc(var(--margin-width) + (100cqw - min(100cqw, var(--margin-width) + var(--s4) + var(--sheet-width))) / 2);
+  pointer-events: none;
+}
+.says { composes: says from "../../ui/Says.module.css"; font-size: var(--fs-base); line-height: 1.3; }
+/* Drawn as a background: it says nothing the words don't, as the landing's has empty alt text. */
+.squid {
+  display: block; width: calc(var(--mascot-size) * 3 / 5); aspect-ratio: 1;
+  margin-inline-end: var(--s4);
+  background: url("../../ui/mascot.svg") center / contain no-repeat;
+}
+.tap { display: none; }
+@media (pointer: coarse) {
+  .click { display: none; }
+  .tap { display: inline; }
+}

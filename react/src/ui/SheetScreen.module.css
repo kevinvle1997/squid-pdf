@@ -17,10 +17,9 @@
 }
 /* Beside its head; on a narrow screen there's no room beside it, so it says nothing there. */
 .says {
+  composes: says from "./Says.module.css";
   position: absolute; inset-block-start: var(--s7); inset-inline-start: calc(50% + var(--mascot-size) / 2 + var(--s4));
-  margin: 0; padding: var(--s2) var(--s4); border-radius: var(--r-3);
-  background: var(--highlighter); color: var(--sheet-ink); box-shadow: var(--lift-1);
-  font-size: var(--fs-lg); font-weight: 600; white-space: nowrap;
+  font-size: var(--fs-lg); white-space: nowrap;
 }
 @media (max-width: 820px) {
   .says { display: none; }
