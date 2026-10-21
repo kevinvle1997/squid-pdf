@@ -11,7 +11,7 @@ import { SheetScreen } from "./ui/SheetScreen";
 const loadEditor = () => import("./editing/view/EditorShell");
 const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
-/** The landing is a drop target and nothing else; once a file is open, the editor. */
+/** The landing, which takes a dropped PDF; once a file is open, the editor. */
 export function App() {
   return (
     <ErrorBoundary fallback={<Crashed />}>

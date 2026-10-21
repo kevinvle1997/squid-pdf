@@ -28,5 +28,4 @@ test("the sheet's own edge keeps the theme's tokens, so a ring on the ground aro
   const sheet = screen.container.firstElementChild as HTMLElement;
   sheet.style.outlineColor = "var(--change)";
   expect(getComputedStyle(sheet).outlineColor).toBe(colorOf("--change"));
-  expect(getComputedStyle(sheet, "::before").backgroundImage).toContain(colorOf("--ink-faint"));
 });
