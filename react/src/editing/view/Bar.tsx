@@ -15,6 +15,7 @@ import { counted, formOf } from "../words";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
 import { Fonts } from "./Fonts";
+import { HintWords } from "./Hint";
 import { COMMAND } from "./keys";
 import { UnlikeCount } from "./Unlike";
 
@@ -41,10 +42,9 @@ export function Bar() {
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
         )}
         {changed === 0 && (
-          // Beside the count before any change, it gives way to it where the bar is narrow.
+          // Only where there's no margin for the squid; beside the count, it gives way to it.
           <span className={classes(styles.hint, atRest.count > 0 && styles.besideCount)}>
-            <span className={styles.click}>Click text to change it</span>
-            <span className={styles.tap}>Double-tap text to change it</span>
+            <HintWords />
           </span>
         )}
         <span className={styles.status}>
@@ -56,6 +56,7 @@ export function Bar() {
           <Fonts />
           <Button
             variant="primary"
+            className={styles.export}
             onPress={() => void exportNow(editor)}
             // On the way to pressing it, the export starts, for the press to take.
             onHoverStart={() => exportIntended(editor)}

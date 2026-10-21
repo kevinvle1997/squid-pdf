@@ -1,12 +1,11 @@
 /* Under the bar, held at the top with it: the find is about the whole document. */
 .bar {
+  composes: inkBar from "../../ui/InkBar.module.css";
   /* A size container, as the bar is: the count takes a row of its own before it's squeezed. */
   container-type: inline-size;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
   /* Its end is the bar's, so Close lines up under Export. */
   padding-block: var(--s2); padding-inline: var(--s4) var(--s3);
-  background: var(--strip);
-  border-block-end: 1px solid var(--rule);
 }
 .bar button { flex-shrink: 0; white-space: nowrap; }
 .field { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; }

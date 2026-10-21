@@ -28,9 +28,20 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The landing and the crash screen: squid ink on paper, and one highlighter. Never on a page or in the editor. */
+  /* The bar is squid ink in both themes, as the landing's ink is: what's set on it reads as on ink. */
+  --bar: #1E1E1E;
+  --bar-ink: #F2F2F2;
+  --bar-ink-lo: #B8B8B8;
+  --bar-ink-faint: #7B7B7B;
+  --bar-rule: #3A3A3A;
+  --bar-rule-soft: #333333;
+  --bar-field: #2B2B2B;
+  --bar-change: #8FAEFF; /* the dark theme's blue pencil, and so the bar's focus ring */
+  --bar-warn: #F0904F;   /* the dark theme's red, which reads on ink */
+
+  /* The landing and the crash screen: squid ink on paper, and one highlighter. Never on a page. */
   --landing-ground: #F2F1EE;
-  --highlighter: #FFE58A; /* the heading's highlight, the mascot's word bubble, the facts' icons: ink on it in both themes */
+  --highlighter: #FFE58A; /* the heading's highlight, the squid's words, the facts' icons, the bar's Export: ink on it */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -52,9 +63,9 @@
   --fs-display: clamp(2.25rem, 1.5rem + 3vw, 3.5rem); /* the one heading on the landing and the crash screen */
 
   /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the one
-     heading. The system faces after it draw what it lacks, ⌘ and the arrows. */
+     heading and the document's name. The system faces after it draw what it lacks, ⌘ and the arrows. */
   --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* --fs-display alone, never a label, button or data */
+  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* --fs-display, and the document's name in the bar */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;

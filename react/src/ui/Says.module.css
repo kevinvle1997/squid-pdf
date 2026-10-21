@@ -1,0 +1,6 @@
+/* The squid's word bubble: the highlighter, with ink on it in both themes, rounded as what floats is. */
+.says {
+  margin: 0; padding: var(--s2) var(--s4); border-radius: var(--r-3);
+  background: var(--highlighter); color: var(--sheet-ink); box-shadow: var(--lift-1);
+  font-weight: 600;
+}
