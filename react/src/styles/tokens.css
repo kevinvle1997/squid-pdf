@@ -16,6 +16,19 @@
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
+  /* The bar: a highlighter stroke across the top, and in the dark sepia, the cuttlefish's ink, with the
+     highlighter for its one action. What's set on it reads as on it. */
+  --bar: #FFE58A;
+  --bar-ink: #202020;
+  --bar-ink-lo: #5C5331;
+  --bar-ink-faint: #A08B3E;
+  --bar-rule: #E0C254;
+  --bar-rule-soft: #F5D869;
+  --bar-field: #FFFFFF;
+  --bar-change: #0F5CB0;
+  --bar-warn: #A8301B;     /* proofreader's red, a step darker, to read on the yellow */
+  --bar-act: #202020;      /* the one action on the bar: the landing's ink button */
+  --bar-act-ink: #FFFFFF;
 
   /* The page never themes, so neither do the marks drawn on it, nor what's set on a white sheet. */
   --sheet: #FFFFFF;
@@ -28,20 +41,9 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The bar is squid ink in both themes, as the landing's ink is: what's set on it reads as on ink. */
-  --bar: #1E1E1E;
-  --bar-ink: #F2F2F2;
-  --bar-ink-lo: #B8B8B8;
-  --bar-ink-faint: #7B7B7B;
-  --bar-rule: #3A3A3A;
-  --bar-rule-soft: #333333;
-  --bar-field: #2B2B2B;
-  --bar-change: #8FAEFF; /* the dark theme's blue pencil, and so the bar's focus ring */
-  --bar-warn: #F0904F;   /* the dark theme's red, which reads on ink */
-
   /* The landing and the crash screen: squid ink on paper, and one highlighter. Never on a page. */
   --landing-ground: #F2F1EE;
-  --highlighter: #FFE58A; /* the heading's highlight, the squid's words, the facts' icons, the bar's Export: ink on it */
+  --highlighter: #FFE58A; /* the heading's highlight, the squid's words, the facts' icons, the bar: ink on it */
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -109,6 +111,17 @@
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
+    --bar: #241A13;
+    --bar-ink: #F3EBDD;
+    --bar-ink-lo: #C9B8A1;
+    --bar-ink-faint: #8C7865;
+    --bar-rule: #4B3B2E;
+    --bar-rule-soft: #3B2E24;
+    --bar-field: #382A20;
+    --bar-change: #8FAEFF;
+    --bar-warn: #F0904F;
+    --bar-act: #FFE58A;
+    --bar-act-ink: #202020;
     --landing-ground: #1E1E1E;
   }
 }
@@ -127,5 +140,16 @@
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
+  --bar: #241A13;
+  --bar-ink: #F3EBDD;
+  --bar-ink-lo: #C9B8A1;
+  --bar-ink-faint: #8C7865;
+  --bar-rule: #4B3B2E;
+  --bar-rule-soft: #3B2E24;
+  --bar-field: #382A20;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
+  --bar-act: #FFE58A;
+  --bar-act-ink: #202020;
   --landing-ground: #1E1E1E;
 }
