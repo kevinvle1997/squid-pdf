@@ -2,40 +2,41 @@
    Tokens are roles, never colours. Nothing else in the app defines a colour. */
 :root {
   color-scheme: light; /* the browser's own scrollbars and controls follow the theme */
-  /* The mat: sage, a grey with green in it, near white in the light theme and near black in the dark,
-     never brighter than the white page, and its grid. What's drawn on it reads as on it. */
-  --ground: #F7F9F8;
-  --ground-line: #E6E9E8;       /* the mat's grid, a line every step */
-  --ground-line-major: #DFE2E0; /* and a firmer one every fifth */
-  --ground-ink: #1A211E;
-  --ground-ink-lo: #5F6563;
-  --ground-ink-faint: #868E8B;  /* crop marks */
+  /* The mat: an olive-warm stone grey, with its grid. In the light theme a step below the bar and the
+     white page; in the dark lifted to a mid grey, since the page never dims and a near-black mat makes
+     it glare. What's drawn on it reads as on it. */
+  --ground: #E0DED3;
+  --ground-line: #DCDAD0;       /* the mat's grid, a line every step */
+  --ground-line-major: #D9D7CC; /* and a firmer one every fifth */
+  --ground-ink: #23221B;
+  --ground-ink-lo: #525046;
+  --ground-ink-faint: #747266;  /* crop marks */
   --ground-change: #0F5CB0;
   --ground-warn: #B5361F;
   --strip: #FFFFFF;      /* a surface: notices, slips, popovers, tooltips */
   --field: #FFFFFF;      /* inside a text input in the chrome */
-  --rule: #D7DAD9;       /* dividers, and the borders of buttons and inputs */
-  --rule-soft: #EEF1F0;  /* hover fills, keycaps, dividers inside a slip */
-  --ink: #1A211E;        /* text, and the one filled button */
-  --ink-lo: #5F6563;     /* the faintest text allowed */
-  --ink-faint: #868E8B;  /* lines and disabled marks, never text: cut lines */
+  --rule: #D6D3C8;       /* dividers, and the borders of buttons and inputs */
+  --rule-soft: #EFEDE5;  /* hover fills, keycaps, dividers inside a slip */
+  --ink: #23221B;        /* text, and the one filled button */
+  --ink-lo: #5F5D53;     /* the faintest text allowed */
+  --ink-faint: #8A887C;  /* lines and disabled marks, never text: cut lines */
   --change: #0F5CB0;     /* blue pencil, as an editor marks a proof: you did something, and the focus ring */
   --warn: #B5361F;       /* proofreader's red, far from the blue in every kind of colour vision; never blue */
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
-  /* The bar: ink over the light theme's mat, and a pale warm grey over the dark one's, with the
-     highlighter for its one action. Neither is a strong colour: a wide field of one pulls the eye off
-     the page, and on a dark ground it vibrates. What's set on it reads as on it. */
-  --bar: #1A211E;
-  --bar-ink: #ECEEED;
-  --bar-ink-lo: #ADB5B2;
-  --bar-ink-faint: #7C8481; /* lines, and a field's edge, which holds 3:1 */
-  --bar-rule: #2C3531;
-  --bar-rule-soft: #27302C;
-  --bar-field: #101211;
-  --bar-change: #8FAEFF;
-  --bar-warn: #F0904F;
+  /* The bar: one step from the mat on the same warm scale, a hairline apart, never its opposite: lighter
+     than the mat in the light theme, darker in the dark. The highlighter is its one action. What's set
+     on it reads as on it. */
+  --bar: #FAF9F4;
+  --bar-ink: #23221B;
+  --bar-ink-lo: #5F5D53;
+  --bar-ink-faint: #7E7C70; /* lines, and a field's edge, which holds 3:1 */
+  --bar-rule: #D6D3C8;
+  --bar-rule-soft: #EEECE3;
+  --bar-field: #FFFFFF;
+  --bar-change: #0F5CB0;
+  --bar-warn: #B5361F;
   --bar-act: #FFE45C;      /* the one action on the bar: the highlighter */
   --bar-act-ink: #202020;
 
@@ -108,66 +109,66 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground: #121714;
-    --ground-line: #19201C;
-    --ground-line-major: #212C26;
-    --ground-ink: #EEEEEE;
-    --ground-ink-lo: #B4B4B4;
-    --ground-ink-faint: #7B7B7B;
-    --ground-change: #8FAEFF;
+    --ground: #3B3931;
+    --ground-line: #413F37;
+    --ground-line-major: #47453C;
+    --ground-ink: #EFEDE6;
+    --ground-ink-lo: #CFCBBF;
+    --ground-ink-faint: #8F8C81;
+    --ground-change: #B3C6FF;
     --ground-warn: #F0904F;
-    --strip: #EFF1EF;
-    --field: #FFFFFF;
-    --rule: #D7DAD7;
-    --rule-soft: #E7E9E7;
-    --ink: #1D211C;
-    --ink-lo: #60655F;
-    --ink-faint: #7F847D;
-    --change: #0F5CB0;
-    --warn: #B5361F;
+    --strip: #2D2B25;
+    --field: #22201B;
+    --rule: #4A473F;
+    --rule-soft: #37352E;
+    --ink: #EFEDE6;
+    --ink-lo: #B8B5AA;
+    --ink-faint: #7D7A70;
+    --change: #8FAEFF;
+    --warn: #F0904F;
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-    --bar: #EFF1EF;
-    --bar-ink: #1D211C;
-    --bar-ink-lo: #60655F;
-    --bar-ink-faint: #7F847D;
-    --bar-rule: #D7DAD7;
-    --bar-rule-soft: #E7E9E7;
-    --bar-field: #FFFFFF;
-    --bar-change: #0F5CB0;
-    --bar-warn: #B5361F;
+    --bar: #25231E;
+    --bar-ink: #EFEDE6;
+    --bar-ink-lo: #B8B5AA;
+    --bar-ink-faint: #7D7A70;
+    --bar-rule: #37352E;
+    --bar-rule-soft: #302E28;
+    --bar-field: #1C1B17;
+    --bar-change: #8FAEFF;
+    --bar-warn: #F0904F;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #121714;
-  --ground-line: #19201C;
-  --ground-line-major: #212C26;
-  --ground-ink: #EEEEEE;
-  --ground-ink-lo: #B4B4B4;
-  --ground-ink-faint: #7B7B7B;
-  --ground-change: #8FAEFF;
+  --ground: #3B3931;
+  --ground-line: #413F37;
+  --ground-line-major: #47453C;
+  --ground-ink: #EFEDE6;
+  --ground-ink-lo: #CFCBBF;
+  --ground-ink-faint: #8F8C81;
+  --ground-change: #B3C6FF;
   --ground-warn: #F0904F;
-  --strip: #EFF1EF;
-  --field: #FFFFFF;
-  --rule: #D7DAD7;
-  --rule-soft: #E7E9E7;
-  --ink: #1D211C;
-  --ink-lo: #60655F;
-  --ink-faint: #7F847D;
-  --change: #0F5CB0;
-  --warn: #B5361F;
+  --strip: #2D2B25;
+  --field: #22201B;
+  --rule: #4A473F;
+  --rule-soft: #37352E;
+  --ink: #EFEDE6;
+  --ink-lo: #B8B5AA;
+  --ink-faint: #7D7A70;
+  --change: #8FAEFF;
+  --warn: #F0904F;
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-  --bar: #EFF1EF;
-  --bar-ink: #1D211C;
-  --bar-ink-lo: #60655F;
-  --bar-ink-faint: #7F847D;
-  --bar-rule: #D7DAD7;
-  --bar-rule-soft: #E7E9E7;
-  --bar-field: #FFFFFF;
-  --bar-change: #0F5CB0;
-  --bar-warn: #B5361F;
+  --bar: #25231E;
+  --bar-ink: #EFEDE6;
+  --bar-ink-lo: #B8B5AA;
+  --bar-ink-faint: #7D7A70;
+  --bar-rule: #37352E;
+  --bar-rule-soft: #302E28;
+  --bar-field: #1C1B17;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
 }
