@@ -13,6 +13,7 @@ import { stillShows } from "../strips";
 import { pageInView, zoomShown } from "../zoom";
 import { useEditor, useEditorState } from "./context";
 import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
+import { Hint } from "./Hint";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
@@ -104,6 +105,7 @@ export const Page = memo(function Page({ index, info }: Props) {
     // The sheet's printed width, which the page's own column and max width are built from.
     <section {...focusWithinProps} className={styles.page} aria-label={label} style={sheetWidthOf(info)}>
       <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} pageNumber={index + 1} />
+      {index === 0 && <Hint where="over" />}
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.

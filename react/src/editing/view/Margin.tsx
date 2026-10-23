@@ -7,6 +7,7 @@ import { noteOf, notePlaces } from "../margin";
 import type { SpanReading } from "../project";
 import { useEditor } from "./context";
 import { topOf } from "./geometry";
+import { Hint } from "./Hint";
 import styles from "./Margin.module.css";
 
 interface Props {
@@ -21,8 +22,8 @@ interface Props {
  * line. On a narrow screen CSS shows the list under the page instead (`ChangeList`).
  */
 export function Margin({ info, changes, noteHeightPt, pageNumber }: Props) {
-  // Its grid cell stays, so a page with no changes keeps its column.
-  if (changes.length === 0) return <div className={styles.margin} />;
+  // Its grid cell stays, so a page with no changes keeps its column; the first page's says how to start.
+  if (changes.length === 0) return <div className={styles.margin}>{pageNumber === 1 && <Hint where="margin" />}</div>;
   const places = notePlaces(changes, noteHeightPt);
   return (
     <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
