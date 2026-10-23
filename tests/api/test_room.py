@@ -184,6 +184,11 @@ def test_an_edit_into_its_room_fits_and_one_past_it_says_how_far_past(mine, room
 
     said = (fits_in_room["message"], fits_in_room["options"])
     assert_equal(said, (None, []), "an edit into its room")
-    past_by = round(runs_past["delta_pt"] - span["room_pt"], 2)
-    too_long = words.render(Message("too_long", {"delta_pt": past_by}))
+    [part] = runs_past["message_parts"]
+    percent = part["params"]["percent"]
+    too_long = words.render(Message("too_long", {"percent": percent}))
     assert_equal(runs_past["message"], too_long, "an edit past its room")
+    # How far past its room, not past the original's end, as a share of the line.
+    past_pt = runs_past["delta_pt"] - span["room_pt"]
+    wide = span["bbox"]["x1"] - span["bbox"]["x0"]
+    assert_close(percent, past_pt / wide * 100, 1, "how far past its room, as a share")

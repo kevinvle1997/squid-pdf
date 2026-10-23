@@ -149,9 +149,9 @@ def test_render_says_what_went_wrong_in_the_language_asked_for(pseudo, mine, doc
     )
     assert_equal((skipped["detail"], skipped["code"], skipped["params"]), expected, "the skip")
     fit = rendered["fits"][span["id"]]
-    too_long = pseudo_sentence(words.sentence("too_long")).format(
-        delta_pt=f"{fit['delta_pt']:.1f}"
-    )
+    [part] = fit["message_parts"]
+    percent = part["params"]["percent"]
+    too_long = pseudo_sentence(words.sentence("too_long")).format(percent=percent)
     assert_equal(fit["message"], too_long, "the fit's message")
-    parts = [{"code": "too_long", "params": {"delta_pt": fit["delta_pt"]}}]
+    parts = [{"code": "too_long", "params": {"percent": percent}}]
     assert_equal(fit["message_parts"], parts, "the fit's message, unsaid")

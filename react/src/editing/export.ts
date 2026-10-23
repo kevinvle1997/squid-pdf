@@ -1,4 +1,4 @@
-// The edited document, downloaded under its own name, or split in two at a page. An edit still
+// The edited document, downloaded under its own name marked edited, or split in two at a page. An edit still
 // being typed goes in first. The whole document's export starts on the way to pressing Export,
 // and the press takes it if the edits it was asked with still stand.
 import { type Exported, exportPdf } from "../api/client";
@@ -82,10 +82,10 @@ function takenAhead(editor: Editor, edits: readonly Edit[], pages: Part["pages"]
   return undefined;
 }
 
-/** One file to download: which pages, in order, or every page; and its name. */
+/** One file to download: which pages, in order, or every page; and its name, once it's known whether anything's edited. */
 interface Part {
   readonly pages: readonly number[] | undefined;
-  readonly name: string;
+  readonly name: (edited: boolean) => string;
 }
 
 function download(pdf: Blob, name: string): void {
@@ -99,7 +99,13 @@ function download(pdf: Blob, name: string): void {
 }
 
 export async function exportNow(editor: Editor): Promise<void> {
-  await exportParts(editor, [{ pages: undefined, name: editor.file.name }]);
+  await exportParts(editor, [{ pages: undefined, name: (edited) => exportName(editor.file.name, { edited }) }]);
+}
+
+/** The whole document's file name: the upload's, marked edited when it is, so it isn't taken for the original in a downloads folder. */
+export function exportName(fileName: string, { edited }: { edited: boolean }): string {
+  if (!edited) return fileName;
+  return `${fileName.replace(/\.pdf$/i, "")}, edited.pdf`;
 }
 
 /** Download the document as two files: its pages up to `page`, and the rest. Every edit goes to both. */
@@ -108,7 +114,7 @@ export async function splitAfter(editor: Editor, page: number): Promise<void> {
   const [before, after] = splitPages(count, page);
   await exportParts(
     editor,
-    [before, after].map((pages) => ({ pages, name: partName(editor.file.name, pages) })),
+    [before, after].map((pages) => ({ pages, name: () => partName(editor.file.name, pages) })),
   );
 }
 
@@ -131,11 +137,12 @@ async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void
   const { store } = editor;
   if (store.get().exporting) return;
   finish(editor, true, { also: { exporting: true } });
+  // Read once the words being typed are in: they may be the first edit.
   const edits = store.get().reading.edits;
   const said: Notice[] = [];
   let went = true;
   for (const part of parts) {
-    const result = await downloaded(editor, edits, part);
+    const result = await downloaded(editor, edits, { pages: part.pages, name: part.name(edits.length > 0) });
     said.push(...result.said);
     went = result.went;
     if (!went) break;
@@ -154,7 +161,7 @@ async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void
 async function downloaded(
   editor: Editor,
   edits: readonly Edit[],
-  { pages, name }: Part,
+  { pages, name }: { pages: Part["pages"]; name: string },
 ): Promise<{ said: Notice[]; went: boolean }> {
   const { store, reopener } = editor;
   const asked = () => reopener.withDocument((doc) => exportPdf(doc.id, [...edits], { pages }));

@@ -1,0 +1,13 @@
+/* Paper and ink, as a page is: the page never themes, and the squid is cut from it. */
+.edge { fill: var(--sheet); stroke: var(--sheet); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+.ink { fill: var(--sheet); stroke: var(--sheet-ink); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.eyes { fill: var(--sheet-ink); }
+.glints { fill: var(--sheet); }
+.smile { fill: none; stroke: var(--sheet-ink); stroke-width: 3; stroke-linecap: round; }
+/* In high contrast the paper and ink become the system's: the outline keeps its shape. */
+@media (forced-colors: active) {
+  .edge { fill: Canvas; stroke: Canvas; }
+  .ink, .glints { fill: Canvas; }
+  .ink, .smile { stroke: CanvasText; }
+  .eyes { fill: CanvasText; }
+}

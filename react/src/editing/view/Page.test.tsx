@@ -129,7 +129,8 @@ function farAway() {
 
 /** The sheet of the page `element` is on: the box after its margin that the page is drawn in. */
 function sheetOf(element: Element): Element {
-  const sheet = element.closest("section")?.children[1];
+  // The one child its page's shape is held on, whatever is set beside it (the margin).
+  const sheet = element.closest("section")?.querySelector(":scope > [style*='aspect-ratio']") ?? undefined;
   if (sheet === undefined) throw new Error("no sheet");
   return sheet;
 }
@@ -148,8 +149,8 @@ describe("a page", () => {
     await expect.element(field).toHaveFocus();
     await userEvent.keyboard("{End}");
     await userEvent.keyboard("xyz");
-    // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance.
-    const said = screen.getByText("30.0 pt too long");
+    // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance, said as a share of the line.
+    const said = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
     await expect.element(said).toBeVisible();
     expect(getComputedStyle(said.element()).color).toBe(colorOf("--warn"));
   });
@@ -167,14 +168,18 @@ describe("a page", () => {
     const ways = screen.getByRole("radiogroup", { name: "How it fits" });
     await expect.element(ways).toBeVisible();
     await expect.element(ways.getByRole("radio", { name: "Leave it long" })).toBeChecked();
-    await expect.element(screen.getByText("5.0 pt too long")).toBeVisible();
+    await expect
+      .element(screen.getByText("about 5% too long for its place: shorten it, or it runs into what's beside it"))
+      .toBeVisible();
     const fontSize = () => parseFloat(getComputedStyle(field.element()).fontSize);
     const asTyped = fontSize();
 
     await ways.getByRole("radio", { name: "Make it slightly smaller" }).click();
     await expect.element(field).toHaveFocus();
     expect(fontSize()).toBeCloseTo((asTyped * 100) / 105, 1);
-    await expect.element(screen.getByText("5.0 pt too long")).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByText("about 5% too long for its place: shorten it, or it runs into what's beside it"))
+      .not.toBeInTheDocument();
 
     // The field's own keys choose too: the next is tightening the letters, at the size typed.
     await userEvent.keyboard("{ArrowDown}");
@@ -202,26 +207,6 @@ describe("a page", () => {
     expect(parseFloat(getComputedStyle(preview() ?? document.body).fontSize)).toBeCloseTo((asTyped * 100) / 105, 1);
   });
 
-  test("a number in the chip's sentence keeps its dot tight, as running text does", async () => {
-    const screen = await draw();
-    await editSpan(screen);
-    await userEvent.keyboard("{End}xyz");
-    const said = screen.getByText("30.0 pt too long");
-    await expect.element(said).toBeVisible();
-    await document.fonts.ready;
-    const words = said.element().lastChild;
-    if (!(words instanceof Text)) throw new Error("no sentence in the chip");
-    const widthOf = (at: number) => {
-      const letter = document.createRange();
-      letter.setStart(words, at);
-      letter.setEnd(words, at + 1);
-      return letter.getBoundingClientRect().width;
-    };
-    // The interface face's own dot is half a digit wide; tabular figures make it a whole one.
-    const at = words.data.indexOf(".");
-    expect(widthOf(at)).toBeLessThan(widthOf(at - 1) * 0.75);
-  });
-
   test("the field names the font that draws it, and a missing letter the face the server draws it in", async () => {
     // Kept in the file, trimmed to the letters it draws: the server falls back to the Lato we ship.
     const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold", glyphs });
@@ -229,7 +214,8 @@ describe("a page", () => {
     openDocument(aDoc({ spans: [bold], fonts: [lato] }));
     const screen = await draw();
     await editSpan(screen);
-    await expect.element(screen.getByText("Lato-Bold", { exact: true })).toBeVisible();
+    // As a reader writes it: "Lato-Bold" is PostScript's.
+    await expect.element(screen.getByText("Lato Bold", { exact: true })).toBeVisible();
     await userEvent.keyboard("{End}Q");
     await expect.element(screen.getByText("no Q in this font, so the line is drawn in our Lato Bold")).toBeVisible();
   });
@@ -429,6 +415,50 @@ describe("a page", () => {
     } finally {
       await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
     }
+  });
+
+  test("on a touch screen, a tap on a line with nothing to say edits it, the word under it selected", async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    try {
+      const screen = await draw();
+      const mark = screen.getByRole("button", { name: WORDS });
+      await expect.element(mark).toBeInTheDocument();
+      const box = mark.element().getBoundingClientRect();
+      // On "was", the first word: a quarter of the way along "was here".
+      const at = { x: box.left + box.width / 4, y: box.top + box.height / 2 };
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const field = screen.getByRole("textbox");
+      await expect.element(field).toHaveFocus();
+      const input = field.element();
+      if (!(input instanceof HTMLInputElement)) throw new Error("no field");
+      expect(input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0)).toBe("was");
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
+  });
+
+  test("a redaction is the page's white where its words were, boxed in the pencil, not the wash a pointer draws", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("button", { name: "Redact" }).click();
+    const mark = screen.getByRole("button", { name: `${WORDS} (redacted)` });
+    await expect.element(mark).toBeInTheDocument();
+    const style = getComputedStyle(mark.element());
+    expect(style.backgroundColor).toBe(colorOf("--sheet"));
+    expect(style.boxShadow).toContain(colorOf("--mark-change"));
+  });
+
+  test("a note for words only added shows them after a caret, not a word kept beside them struck", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("was here now");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: `Undo: “was here now” goes back to “${WORDS}”` });
+    await expect.element(note).toBeVisible();
+    expect(note.element().textContent).toBe("now");
+    expect(note.element().querySelector("[style*='line-through'], s, del")).toBeNull();
   });
 
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {
@@ -703,7 +733,7 @@ describe("a page", () => {
     marks.nth(0).element().focus();
     await userEvent.keyboard("{Enter}");
     // The file's own font draws it, named as the reader knows it, not by its object.
-    await expect.element(screen.getByText("Drawn-Regular", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Drawn Regular", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Don't show again for this font" }).click();
     await userEvent.keyboard("{Escape}");
 

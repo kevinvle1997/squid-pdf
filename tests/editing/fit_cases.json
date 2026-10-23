@@ -12,7 +12,7 @@
       "original_pt": 100,
       "delta_pt": 15,
       "room_pt": 20,
-      "too_long_by": null,
+      "too_long_percent": null,
       "options": []
     },
     {
@@ -20,7 +20,7 @@
       "original_pt": 100,
       "delta_pt": 25,
       "room_pt": 20,
-      "too_long_by": 5,
+      "too_long_percent": 5,
       "options": [
         "as-is"
       ]
@@ -30,7 +30,7 @@
       "original_pt": 100,
       "delta_pt": 5,
       "room_pt": 0,
-      "too_long_by": 5,
+      "too_long_percent": 5,
       "options": [
         "shrink",
         "condense",
@@ -42,7 +42,7 @@
       "original_pt": 100,
       "delta_pt": 10,
       "room_pt": 10,
-      "too_long_by": null,
+      "too_long_percent": null,
       "options": []
     },
     {
@@ -50,7 +50,7 @@
       "original_pt": 100,
       "delta_pt": 13,
       "room_pt": 10,
-      "too_long_by": 3,
+      "too_long_percent": 3,
       "options": [
         "as-is"
       ]
@@ -60,7 +60,7 @@
       "original_pt": 100,
       "delta_pt": 3,
       "room_pt": 2,
-      "too_long_by": null,
+      "too_long_percent": null,
       "options": []
     },
     {
@@ -68,7 +68,7 @@
       "original_pt": 100,
       "delta_pt": 5,
       "room_pt": 2,
-      "too_long_by": 3,
+      "too_long_percent": 3,
       "options": [
         "shrink",
         "condense",
@@ -80,7 +80,7 @@
       "original_pt": 100,
       "delta_pt": 20.03,
       "room_pt": 20,
-      "too_long_by": null,
+      "too_long_percent": null,
       "options": []
     },
     {
@@ -88,7 +88,17 @@
       "original_pt": 100,
       "delta_pt": 20.15,
       "room_pt": 20,
-      "too_long_by": 0.15,
+      "too_long_percent": 1,
+      "options": [
+        "as-is"
+      ]
+    },
+    {
+      "what": "a short line past its room: the share is of the line, not of 100 pt",
+      "original_pt": 40,
+      "delta_pt": 10,
+      "room_pt": 0,
+      "too_long_percent": 25,
       "options": [
         "as-is"
       ]

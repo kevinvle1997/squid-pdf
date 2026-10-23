@@ -28,7 +28,8 @@ interface Props {
 }
 
 /**
- * A span of the page's text: a click edits it; its note shows on hover, focus and a single tap.
+ * A span of the page's text: a click edits it, and so does a tap on one with no note; a note shows on
+ * hover, focus and a single tap, and a second tap edits.
  *
  * The page hands it what it shows, so a mark subscribes to nothing and mounts cheaply as the page scrolls
  * near; it redraws only when what it's handed changes. A font's warning waits for an edit (`editNote`).
@@ -70,7 +71,12 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       editAt(event, "caret");
       return;
     }
-    // A touch screen has no hover: a tap shows the note, and a second tap edits, the word selected.
+    // A touch screen has no hover: with no note to read, a tap edits at once, the word under it selected.
+    if (look.note === null) {
+      editAt(event, "word");
+      return;
+    }
+    // With one, a tap shows the note, and a second tap edits, the word selected.
     const at = performance.now();
     if (at - lastTap.current < DOUBLE_TAP_MS) {
       lastTap.current = 0;

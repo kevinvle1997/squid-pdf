@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aSpan } from "../fixtures";
-import { changedWordsIn, noteOf, notePlaces } from "./margin";
+import { changedWordsIn, insertedWordsIn, noteOf, notePlaces } from "./margin";
 import type { SpanReading } from "./project";
 
 const changeAt = (id: string, y0: number): SpanReading => ({
@@ -50,6 +50,8 @@ describe("what a note says", () => {
     expect(noteOf(change)).toEqual({
       label: "Undo: “Paid on 2 April” goes back to “Paid on 14 March”",
       struck: "14 March",
+      inserted: null,
+      was: "Paid on 14 March",
       now: "Paid on 2 April",
     });
   });
@@ -59,7 +61,23 @@ describe("what a note says", () => {
     expect(noteOf(redaction)).toEqual({
       label: "Undo: “John Smith” is no longer redacted",
       struck: "John Smith",
+      inserted: null,
+      was: "John Smith",
       now: "Redacted",
     });
+  });
+
+  test("words only added are shown as added, not as the word kept beside them struck", () => {
+    const change = {
+      ...changeAt("s", 100),
+      span: aSpan({ id: "s", text: "SERVICES AGREEMENT" }),
+      text: "SERVICES AGREEMENT ✓",
+    };
+    expect(noteOf(change)).toMatchObject({ struck: "AGREEMENT", inserted: "✓" });
+    expect(insertedWordsIn("was here", "now was here")).toBe("now");
+    expect(insertedWordsIn("was here", "was very much here")).toBe("very much");
+    // A word changed or taken out: nothing was only added.
+    expect(insertedWordsIn("was here", "is here now")).toBeNull();
+    expect(insertedWordsIn("was here", "was")).toBeNull();
   });
 });

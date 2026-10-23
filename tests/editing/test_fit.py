@@ -96,11 +96,13 @@ def test_the_shared_cases_use_the_servers_rules():
 @pytest.mark.parametrize("case", _SHARED["cases"], ids=lambda case: case["what"])
 def test_a_line_is_too_long_only_past_its_room_as_the_browser_says(case):
     """Its room is the free space after it on its line; the warning says how far past it."""
-    report = FitReport(delta_pt=case["delta_pt"], room_pt=case["room_pt"])
+    report = FitReport(
+        delta_pt=case["delta_pt"], room_pt=case["room_pt"], original_pt=case["original_pt"]
+    )
     options = options_for(case["delta_pt"], case["original_pt"], room_pt=case["room_pt"])
 
-    too_long_by = case["too_long_by"]
-    said = [] if too_long_by is None else [Message("too_long", {"delta_pt": too_long_by})]
+    percent = case["too_long_percent"]
+    said = [] if percent is None else [Message("too_long", {"percent": percent})]
     assert_equal(report.describe(), said, "what's said of the length")
-    assert_equal(report.ok, too_long_by is None, "whether it fits")
+    assert_equal(report.ok, percent is None, "whether it fits")
     assert_equal([option.name for option in options], case["options"], "the ways out")

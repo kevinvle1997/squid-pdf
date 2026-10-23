@@ -2,7 +2,7 @@
 // looking like the text around them (Rule 1), and Change all, one step in the history.
 import type { FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { change, changed, type Editor, type EditorState, spoken } from "./editor";
+import { change, changed, type Editor, type EditorState, scrollingTo, spoken } from "./editor";
 import { fitOf, lineWidthPt, runsPast } from "./fit";
 import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
@@ -17,6 +17,7 @@ export interface FindState extends FindOptions {
   readonly replacement: string; // what's typed in "Change to"
   readonly searched: string; // what was found, once typing in "Find" stopped
   readonly matches: ReadonlyMap<number, ReadonlyMap<string, readonly Match[]>>; // by page: each span found, and where in what it reads
+  readonly current: string | null; // the place gone to with Enter, by span, while it's still found
   readonly changed: number | null; // how many places "Change all" just changed, until anything else changes
   readonly opened: number; // counted: each open puts focus in "Find", even when it's open already
   readonly closed: number; // counted: closing from inside the bar puts focus back on the bar's "Find"
@@ -31,6 +32,7 @@ export const FIND_CLOSED: FindState = {
   replacement: "",
   searched: "",
   matches: new Map(),
+  current: null,
   changed: null,
   opened: 0,
   closed: 0,
@@ -103,11 +105,52 @@ export function matchesAcross(
   return matches.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 
-/** The find bar's matches found again in `reading`. */
+/** The find bar's matches found again in `reading`; the place gone to stays while it's still found. */
 function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
   const { find, doc } = state;
   const found = foundIn(doc.spans, { reading, find });
-  return { ...find, matches: matchesOf(found, find.matches) };
+  const current = found.some(({ span }) => span.id === find.current) ? find.current : null;
+  return { ...find, matches: matchesOf(found, find.matches), current };
+}
+
+/** The places found, by span, in the document's order: the order they were found in. */
+export function placesIn(find: Pick<FindState, "matches">): string[] {
+  return [...find.matches.values()].flatMap((onPage) => [...onPage.keys()]);
+}
+
+/** Where the place gone to is among those found, counting from 1, and how many there are; null before one is. */
+export function placeAt(find: Pick<FindState, "matches" | "current">): { at: number; of: number } | null {
+  const places = placesIn(find);
+  const index = find.current === null ? -1 : places.indexOf(find.current);
+  return index < 0 ? null : { at: index + 1, of: places.length };
+}
+
+/** The place `step` from the one gone to, round from the last to the first; the first or last when none is yet. */
+function placeAfter(places: readonly string[], current: string | null, step: 1 | -1): string | undefined {
+  const index = current === null ? -1 : places.indexOf(current);
+  if (index < 0) return step === 1 ? places[0] : places.at(-1);
+  return places[(index + step + places.length) % places.length];
+}
+
+/** Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and said. */
+export function stepFind(editor: Editor, step: 1 | -1): void {
+  const { find: before } = editor.store.get();
+  if (!before.open) return;
+  // What's typed but not yet found is what the user sees in "Find": find it first, and not again after.
+  if (before.searched !== before.query) {
+    clearTimeout(editor.finding.timer);
+    search(editor);
+  }
+  const { find } = editor.store.get();
+  const places = placesIn(find);
+  const current = placeAfter(places, find.current, step);
+  if (current === undefined) return;
+  const at = places.indexOf(current) + 1;
+  editor.store.set({
+    find: { ...find, current },
+    scrollTo: scrollingTo(current, "center"),
+    said: spoken(`${at} of ${places.length}`),
+  });
 }
 
 /** The find bar searching what "Find" shows now, though typing in it may not have stopped. */
@@ -187,7 +230,8 @@ export function openFind(editor: Editor): void {
 export function closeFind(editor: Editor, { fromInside = false }: { fromInside?: boolean } = {}): void {
   clearTimeout(editor.finding.timer);
   const { find } = editor.store.get();
-  editor.store.set({ find: { ...find, open: false, matches: new Map(), closed: find.closed + (fromInside ? 1 : 0) } });
+  const closed = find.closed + (fromInside ? 1 : 0);
+  editor.store.set({ find: { ...find, open: false, matches: new Map(), current: null, closed } });
 }
 
 /** Typing in "Find": echoed at once, and found once typing stops for a moment. */
@@ -217,7 +261,7 @@ export function setWholeWords(editor: Editor, wholeWords: boolean): void {
 /** Find what "Find" shows, matched as `asked` says: marked, and the count said, in one update. */
 function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   const state = editor.store.get();
-  const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null };
+  const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null, current: null };
   const find = refound({ ...state, find: searching }, state.reading);
   const heard = find.searched !== "" && { said: spoken(countSaid(findCount({ ...state, find }))) };
   editor.store.set({ find, ...heard });

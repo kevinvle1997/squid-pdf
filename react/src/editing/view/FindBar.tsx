@@ -12,8 +12,10 @@ import {
   countShown,
   type FindCount,
   findCount,
+  placeAt,
   setMatchCase,
   setWholeWords,
+  stepFind,
   typeQuery,
   typeReplacement,
 } from "../find";
@@ -44,7 +46,13 @@ function FindFields() {
     [find.opened],
   );
   const closeOnEscape = onEscape(() => closeFind(editor, { fromInside: true }));
+  // In "Find", Enter goes to the next place found and Shift+Enter the one before, as every editor's find does.
+  const stepOnEnter = (event: { key: string; shiftKey: boolean; continuePropagation(): void }) => {
+    if (event.key === "Enter") stepFind(editor, event.shiftKey ? -1 : 1);
+    else closeOnEscape(event);
+  };
   const searched = find.searched !== "" && find.searched === find.query;
+  const at = placeAt(find);
   const nothingToChange = find.query === "" || find.replacement === "" || (searched && count.places === 0);
   return (
     // biome-ignore lint/a11y/useSemanticElements: Chromium gives <search> no landmark yet, so a screen reader would miss it.
@@ -53,7 +61,7 @@ function FindFields() {
         className={styles.field}
         value={find.query}
         onChange={(query) => typeQuery(editor, query)}
-        onKeyDown={closeOnEscape}
+        onKeyDown={stepOnEnter}
       >
         <Label>Find</Label>
         <Input ref={focusFind} className={styles.input} spellCheck={false} autoComplete="off" />
@@ -76,16 +84,46 @@ function FindFields() {
         </Checkbox>
       </span>
       <span className={styles.count}>
-        {find.changed !== null ? (
-          <>
-            {changedSaid(find.changed)}
-            <span className={styles.undoKey}>
-              {" "}
-              <kbd>{COMMAND}Z</kbd> puts {formOf(find.changed, { one: "it", other: "them all" })} back.
-            </span>
-          </>
-        ) : (
-          searched && <Counted {...count} />
+        {find.changed === null && searched && count.places > 0 && (
+          <span className={styles.step}>
+            {at !== null && <span className={styles.at}>{`${at.at} of ${at.of}`}</span>}
+            <Shortcut keys="Shift Enter">
+              <Button
+                variant="quiet"
+                aria-label="Previous place"
+                onPress={() => stepFind(editor, -1)}
+                onKeyDown={closeOnEscape}
+              >
+                <Chevron up />
+              </Button>
+            </Shortcut>
+            <Shortcut keys="Enter">
+              <Button
+                variant="quiet"
+                aria-label="Next place"
+                onPress={() => stepFind(editor, 1)}
+                onKeyDown={closeOnEscape}
+              >
+                <Chevron />
+              </Button>
+            </Shortcut>
+          </span>
+        )}
+        {(find.changed !== null || searched) && (
+          // Its own box, so a line it wraps onto starts under its words, not under the steps.
+          <span className={styles.words}>
+            {find.changed !== null ? (
+              <>
+                {changedSaid(find.changed)}
+                <span className={styles.undoKey}>
+                  {" "}
+                  <kbd>{COMMAND}Z</kbd> puts {formOf(find.changed, { one: "it", other: "them all" })} back.
+                </span>
+              </>
+            ) : (
+              <Counted {...count} />
+            )}
+          </span>
         )}
       </span>
       <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={nothingToChange}>
@@ -97,6 +135,25 @@ function FindFields() {
         </Button>
       </Shortcut>
     </div>
+  );
+}
+
+/** A chevron, drawn: down for the next place, up for the one before. The button's name says which. */
+function Chevron({ up = false }: { up?: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={up ? "M3.5 8.75 7 5.25l3.5 3.5" : "M3.5 5.25 7 8.75l3.5-3.5"} />
+    </svg>
   );
 }
 

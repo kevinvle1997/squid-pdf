@@ -50,3 +50,9 @@ export const MISSING_SPACE_EM = 0.25;
 
 /** How far below its button a list from the bar opens: --s3, more than a button centred in the bar has below it, so it opens under the bar. */
 export const BELOW_BAR_PX = 12;
+
+/** The shares of its printed size a page can be zoomed to: as far out as a page and a half side by side, as far in as a line's words fill a phone. */
+export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;
+
+/** A step this close to the share shown, as a share of it, is skipped: zooming in from 45% goes to 75%, not 50%. */
+export const ZOOM_SKIP = 1.15;

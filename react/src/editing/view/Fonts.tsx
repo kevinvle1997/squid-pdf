@@ -4,7 +4,16 @@ import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Warn } from "../../ui/Warn";
 import { BELOW_BAR_PX } from "../constants";
-import { attachFont, copiesByName, detachFont, drawnByOf, FONT_FILES, type FontCopies, fontFocused } from "../fonts";
+import {
+  attachFont,
+  copiesByName,
+  detachFont,
+  drawnByOf,
+  FONT_FILES,
+  type FontCopies,
+  fontFocused,
+  readableName,
+} from "../fonts";
 import { quietFont } from "../quiet";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
@@ -34,7 +43,8 @@ export function Fonts() {
 
 /** One font's row: its copies act together, since attaching and removing one reach them all. */
 function FontRow({ copies }: { copies: FontCopies }) {
-  const { shownName: name, names, font, attached } = copies;
+  const { shownName, names, font, attached } = copies;
+  const name = readableName(shownName);
   const editor = useEditor();
   const copy = useEditorState((state) => state.doc.copy);
   const refused = useEditorState((state) => {
@@ -44,8 +54,8 @@ function FontRow({ copies }: { copies: FontCopies }) {
   const busy = useEditorState((state) => state.attaching !== null);
   const working = useEditorState((state) => state.attaching !== null && names.includes(state.attaching));
   const focusHere = useEditorState((state) => state.focusFont !== null && names.includes(state.focusFont));
-  const warned = useEditorState((state) => state.layout.warnedFonts.has(name));
-  const warns = useEditorState((state) => !state.quietFonts.has(name));
+  const warned = useEditorState((state) => state.layout.warnedFonts.has(shownName));
+  const warns = useEditorState((state) => !state.quietFonts.has(shownName));
   const drawnBy = drawnByOf(copies, copy);
   // Sent focus, the row's button takes it as it's drawn: the one pressed has just gone.
   const takeFocus = useCallback(
@@ -84,7 +94,7 @@ function FontRow({ copies }: { copies: FontCopies }) {
       )}
       {warned && (
         <span className={styles.warns}>
-          <Checkbox isSelected={warns} onChange={(on) => quietFont(editor, name, { quiet: !on })}>
+          <Checkbox isSelected={warns} onChange={(on) => quietFont(editor, shownName, { quiet: !on })}>
             Warn before each edit
           </Checkbox>
         </span>

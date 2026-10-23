@@ -7,34 +7,37 @@ import { ThemeToggle } from "../../ui/ThemeToggle";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
-import { changedCount, warnedCount } from "../editor";
+import { changedCount, runLongCount, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { openFind } from "../find";
 import { shallowEqual } from "../store";
 import type { Unlike } from "../unlike";
-import { counted, formOf } from "../words";
+import { formOf } from "../words";
+import { whereSaid } from "../zoom";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
 import { Fonts } from "./Fonts";
 import { COMMAND } from "./keys";
+import { Shortcuts } from "./Shortcuts";
 import { UnlikeCount } from "./Unlike";
 
 /** The bar, held at the top. */
 export function Bar() {
   const editor = useEditor();
-  const pages = useEditorState((state) => state.doc.pages.length);
+  const where = useEditorState(whereSaid);
   const changed = useEditorState(changedCount);
   const warned = useEditorState(warnedCount, shallowEqual);
+  const runLong = useEditorState(runLongCount);
   const atRest = useEditorState((state) => state.layout.unlikeAtRest);
   const exporting = useEditorState((state) => state.exporting);
   // The document opened again, or couldn't: said in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
   return (
     <header className={styles.bar}>
-      <Wordmark />
+      <Wordmark compact />
       <span className={styles.file}>
-        <span className={styles.name}>{editor.file.name}</span>
-        <span className={styles.meta}>{counted(pages, { one: "page", other: "pages" })}</span>
+        <h1 className={styles.name}>{editor.file.name}</h1>
+        <span className={styles.meta}>{where}</span>
       </span>
       {/* What's changed and the buttons, together: beside the file while they fit, under it when they don't. */}
       <span className={styles.end}>
@@ -43,11 +46,18 @@ export function Bar() {
         )}
         <span className={styles.status}>
           {changed === 0 ? <AtRest unlike={atRest} /> : <Changed changed={changed} {...warned} />}
+          {/* Left long past its room: each change says so on its mark, and the bar counts them. */}
+          {changed > 0 && runLong > 0 && (
+            <span className={styles.runLong}>
+              <Warn>{runLong} too long</Warn>
+            </span>
+          )}
         </span>
         {exporting && <AfterQuiet className={styles.exporting}>Exporting</AfterQuiet>}
         <span className={styles.actions}>
           <FindButton />
           <Fonts />
+          <Shortcuts />
           <ThemeToggle />
           <Button
             variant="primary"

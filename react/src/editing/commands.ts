@@ -2,8 +2,9 @@
 // new binding is a row.
 import { type Editor, redo, undo } from "./editor";
 import { exportNow } from "./export";
-import { openFind } from "./find";
+import { openFind, stepFind } from "./find";
 import { redact } from "./redaction";
+import { showShortcuts } from "./shortcuts";
 
 export interface Command {
   readonly keys: string; // as "mod+shift+z"; mod is Cmd or Ctrl, either on any platform
@@ -16,6 +17,9 @@ const COMMANDS: readonly Command[] = [
   { keys: "mod+s", whileTyping: true, run: (editor) => void exportNow(editor) },
   // Find across the document, from anywhere: the browser's own find can't read the page's words.
   { keys: "mod+f", whileTyping: true, run: openFind },
+  // The next place found, or the one before, while find is open: as a browser's find goes on.
+  { keys: "mod+g", whileTyping: true, run: (editor) => stepFind(editor, 1) },
+  { keys: "mod+shift+g", whileTyping: true, run: (editor) => stepFind(editor, -1) },
   // In a text field, undo and redo are the field's own.
   { keys: "mod+z", whileTyping: false, run: undo },
   { keys: "mod+shift+z", whileTyping: false, run: redo },
@@ -24,6 +28,9 @@ const COMMANDS: readonly Command[] = [
   // field they're the field's own, deleting a word or a line, as they do everywhere else; its chip has Redact.
   { keys: "mod+backspace", whileTyping: false, run: redact },
   { keys: "mod+delete", whileTyping: false, run: redact },
+  // The list of these keys: ? is shifted on most keyboards, and not on some.
+  { keys: "shift+?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },
+  { keys: "?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },
 ];
 
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;

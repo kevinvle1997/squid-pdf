@@ -12,8 +12,10 @@ import {
   findCount,
   matchesAcross,
   openFind,
+  placeAt,
   setMatchCase,
   setWholeWords,
+  stepFind,
   typeQuery,
   typeReplacement,
 } from "./find";
@@ -206,5 +208,44 @@ describe("find", () => {
     const glyphs = halfWideGlyphs("abcdefghij");
     const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
     expect(matchesAcross(line, { text: line.text, matches, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
+  });
+});
+
+describe("stepping through the places found", () => {
+  const current = () => editor.store.get().find.current;
+
+  test("Enter goes to each place in the document's order, round from the last, brought into the middle and said", () => {
+    typeQuery(editor, DATE);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    stepFind(editor, 1);
+    expect(current()).toBe("first");
+    expect(editor.store.get().said.text).toBe("1 of 2");
+    expect(editor.store.get().scrollTo).toMatchObject({ spanId: "first", block: "center" });
+    stepFind(editor, 1);
+    expect(current()).toBe("similar");
+    stepFind(editor, 1);
+    expect(current()).toBe("first");
+    stepFind(editor, -1);
+    expect(current()).toBe("similar");
+    expect(placeAt(editor.store.get().find)).toEqual({ at: 2, of: 2 });
+  });
+
+  test("a step before typing has stopped finds first, and a new search starts from the top again", () => {
+    typeQuery(editor, DATE);
+    stepFind(editor, -1);
+    expect(current()).toBe("similar");
+    // The search typing would have run is done already: it doesn't come back to undo the step.
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    expect(current()).toBe("similar");
+    typeQuery(editor, "14 M");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    expect(current()).toBeNull();
+    expect(placeAt(editor.store.get().find)).toBeNull();
+  });
+
+  test("with find shut, nothing is gone to", () => {
+    closeFind(editor);
+    stepFind(editor, 1);
+    expect(current()).toBeNull();
   });
 });

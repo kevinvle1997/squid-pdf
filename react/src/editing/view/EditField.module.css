@@ -28,8 +28,16 @@
   }
 }
 .troubleInput { box-shadow: inset 0 -2px 0 var(--mark-warn), 0 0 0 1px var(--mark-warn-soft); }
+/* Where a line left long runs out of room: a dashed warning line across it, over the field, so what's past it shows. */
+.roomEnds {
+  position: absolute; z-index: var(--z-field);
+  margin-block: calc(-1 * var(--s1)); padding-block: var(--s1);
+  border-inline-start: 2px dashed var(--mark-warn);
+  pointer-events: none;
+}
 /* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
 @media (forced-colors: active) {
   .input { outline: 2px solid Highlight; }
   .troubleInput { outline: 2px dashed CanvasText; }
+  .roomEnds { border-color: CanvasText; }
 }

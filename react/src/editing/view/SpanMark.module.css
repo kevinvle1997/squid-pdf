@@ -36,9 +36,10 @@
   height: 2px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
 }
-/* Redacted: you did this, so the change's own line, and its tint over the bare page where the words were. */
-/* Hovered too: a redaction is what it is, whatever font drew the words that went. */
-.redacted, .redacted[data-hovered] { background: var(--mark-change-soft); }
+/* Redacted: white where the words were, as it exports, boxed in the pencil so it reads as taken out, not as
+   blank paper; and the change's own line. The wash stays what's pointed at or found, never a redaction at rest. */
+.redacted { background: var(--sheet); box-shadow: inset 0 0 0 1.5px var(--mark-change); }
+.redacted[data-hovered] { background: var(--mark-change-soft); }
 .redacted::after, .redacted[data-hovered]::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* Redacted, but the server found its words still there: a warning, never the change's colour. */
 .unredacted, .unredacted[data-hovered] { background: var(--mark-warn-soft); }

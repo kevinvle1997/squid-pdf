@@ -22,6 +22,7 @@ export interface PageState {
   readonly fits: PageFits;
   readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
   readonly matches: ReadonlyMap<string, readonly Match[]> | undefined; // what find found here, by span, while it's open
+  readonly foundAt: string | null; // the place find went to, when it's here
   readonly shownUnlike: ReadonlySet<string>; // the rows of where edits won't match shown, by key
   readonly changed: boolean; // whether anything in the document is changed: what those rows count
   readonly settling: Settling | undefined; // the spans its last render disagreed with, to pulse
@@ -50,6 +51,10 @@ export function pageState(state: EditorState, index: number): PageState {
     fits: state.drawn.fits.get(index) ?? NO_FITS,
     redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
     matches: state.find.matches.get(index),
+    foundAt:
+      state.find.current !== null && state.layout.spans.get(state.find.current)?.page === index
+        ? state.find.current
+        : null,
     shownUnlike: state.shownUnlike,
     // Read only for the rows shown: with none, a first change elsewhere redraws no page.
     changed: state.shownUnlike.size > 0 && state.reading.spans.size > 0,

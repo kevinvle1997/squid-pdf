@@ -3,12 +3,12 @@
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import type { Press } from "./caret";
 import { type Also, change, type Editor, type EditorState, say, spoken } from "./editor";
-import { substituteOf } from "./faces";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import { shownNameOf } from "./fonts";
 import type { HistoryAction } from "./history";
 import { editNote } from "./marks";
 import type { Reading } from "./project";
+import { drawingOf } from "./substitutes";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {
@@ -102,11 +102,11 @@ export function troublesIn(state: EditorState, text: string): { said: string[]; 
   // Taking text out isn't a change: said while the field is empty.
   if (isEmpty(text)) return { said: [copy.empty], kind: "empty", offers: false };
   const fit = fitOf(span, { font, text, rules });
-  const substitute = substituteOf(span, font);
+  const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
   // That an edit here won't match the text around it is said once, as typing starts (`editNote`), not with each letter.
   return {
-    said: troublesOf(fit, { rules, copy, substitute, way }),
+    said: troublesOf(fit, { rules, copy, drawing, way }),
     kind: `${troubleKindOf(fit, rules)} ${way}`,
     offers: waysOffered(fit).length > 0,
   };

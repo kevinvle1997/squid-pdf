@@ -25,6 +25,13 @@
   text-decoration-line: line-through; text-decoration-color: var(--change); text-decoration-thickness: 1.5px;
 }
 .note[data-hovered] .old, .note[data-focus-visible] .old { color: var(--change); }
+/* Words only added, in the pencil, after the caret a proof marks an insertion with: nothing struck, since nothing went. */
+.added {
+  display: inline-flex; align-items: baseline; gap: var(--s1);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--change);
+}
+.caret { flex: none; align-self: center; }
 .now { color: var(--ink); }
 .bar { flex: none; width: var(--s3); border-top: 2px solid currentColor; }
 @keyframes penned { from { opacity: 0; transform: translateX(var(--s2)); } }

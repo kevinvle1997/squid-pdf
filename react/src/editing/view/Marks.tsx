@@ -4,6 +4,7 @@
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
+import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
 import { matchesAcross } from "../find";
 import { lookOf } from "../marks";
@@ -81,7 +82,7 @@ function Shown({
   });
 }
 
-/** The words find found, tinted as the change they're about to be: only those words, not their whole line. */
+/** The words find found, tinted as the change they're about to be: only those words, not their whole line; the place gone to ringed. */
 function Found({
   page,
   info,
@@ -98,10 +99,11 @@ function Found({
     if (inSpan === undefined || span.id === page.typingIn) return [];
     const text = readings.get(span.id)?.text ?? span.text;
     const glyphs = page.fonts.get(span.font)?.glyphs ?? {};
+    const gone = span.id === page.foundAt;
     return matchesAcross(span, { text, matches: inSpan, glyphs }).map(({ x0, x1 }) => (
       <span
         key={`${span.id}:${x0}`}
-        className={styles.found}
+        className={classes(styles.found, gone && styles.foundAt)}
         aria-hidden="true"
         data-found=""
         style={boxOf({ ...span.bbox, x0, x1 }, info)}

@@ -144,6 +144,9 @@ class Copy(TypedDict):
     """The sentences the browser fills in as the user types, in the reader's language."""
 
     missing: str
+    will_leave_out: (
+        str  # letters no font we have draws, said before the edit as the render says them after
+    )
     too_long: str
     substitute: str  # when the substitute's letters may be another width
     substitute_same_widths: str  # when they are exactly as wide: `same_widths` on the font

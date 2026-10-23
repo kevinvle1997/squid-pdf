@@ -7,7 +7,7 @@ import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
-import { attachFont, FONT_FILES, offersCopy, shownNameOf } from "../fonts";
+import { attachFont, FONT_FILES, offersCopy, readableName, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
 import { quietFont } from "../quiet";
 import { redact } from "../redaction";
@@ -52,7 +52,12 @@ export function Chip({ span, info, trouble, setting }: Props) {
           </Button>
         </span>
       )}
-      <Verdict span={span} trouble={trouble} drawnIn={span.substitute ?? shown} sizePt={span.size * setting.size} />
+      <Verdict
+        span={span}
+        trouble={trouble}
+        drawnIn={span.substitute ?? readableName(shown)}
+        sizePt={span.size * setting.size}
+      />
       {ways.length > 0 && (
         // A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus.
         <span className={styles.ways}>

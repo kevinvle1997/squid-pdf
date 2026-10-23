@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import mascot from "./mascot.svg";
+import { Mascot } from "./Mascot";
 import { Sheet } from "./Sheet";
 import styles from "./SheetScreen.module.css";
 import { Wordmark } from "./Wordmark";
@@ -20,7 +20,7 @@ export function SheetScreen({ title, children, foot, sheetClassName }: Props) {
       </header>
       <main className={styles.middle}>
         <div className={styles.stage}>
-          <img className={styles.mascot} src={mascot} alt="" width={150} height={150} />
+          <Mascot className={styles.mascot} />
           <Sheet className={sheetClassName}>
             <h1 className={styles.title}>{title}</h1>
             {children}

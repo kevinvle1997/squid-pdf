@@ -24,7 +24,7 @@ from tests.api.conftest import (
     upload,
     with_hidden_copies,
 )
-from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
+from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
@@ -109,8 +109,16 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
 
     assert_true(fit["delta_pt"] > TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
-    too_long = words.sentence("too_long").format(delta_pt=f"{fit['delta_pt']:.1f}")
-    assert_equal(fit["message"], too_long, "the message")
+    [part] = fit["message_parts"]
+    percent = part["params"]["percent"]
+    assert_equal(
+        fit["message"], words.sentence("too_long").format(percent=percent), "the message"
+    )
+    # Said as a share of the line, to the next whole percent; the line is about its box wide.
+    wide = span["bbox"]["x1"] - span["bbox"]["x0"]
+    assert_close(
+        percent, fit["delta_pt"] / wide * 100, 1, "how far past, as a share of the line"
+    )
     # Taken, a way out ends the line where the original did: nothing runs long.
     shrunk = _render(mine, doc, [{**edit, "strategy": "shrink"}], []).json()["fits"][span["id"]]
     assert_equal((shrunk["strategy"], shrunk["message"]), ("shrink", None), "a way out taken")
