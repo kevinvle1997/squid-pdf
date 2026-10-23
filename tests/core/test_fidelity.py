@@ -21,6 +21,7 @@ from squidpdf.core import (
     open_pdf,
     words,
 )
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.pdf.driver import FontProgram
 from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
@@ -144,6 +145,43 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     assert_equal((report.substitute, report.same_widths), (face, same_widths), "the report")
     [drawn] = _drawn(out)
     expected = ("Hello again", saved_as(face))
+    assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
+
+
+def _serif_described_as_plain(path: str) -> str:
+    """One line in a trimmed serif whose /Flags say only Nonsymbolic, as many producers write.
+
+    PT Serif's file under a name we don't ship, so neither the name nor the PDF's
+    description says what kind of font it is: only the file's own PANOSE does.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="q", fontbuffer=face_bytes(FACES["PT Serif Regular"]))
+    page.insert_text((72, 96), "Hello there", fontname="q", fontsize=_SIZE)
+    doc.subset_fonts()
+    for xref in range(1, doc.xref_length()):
+        # The Type0 font and the font inside it name it; its description names it too.
+        if doc.xref_get_key(xref, "BaseFont")[0] == "name":
+            doc.xref_set_key(xref, "BaseFont", "/QQQQQQ+Quillon-Book")
+        if doc.xref_get_key(xref, "Type")[1] == "/FontDescriptor":
+            doc.xref_set_key(xref, "FontName", "/QQQQQQ+Quillon-Book")
+            doc.xref_set_key(xref, "Flags", "32")
+    doc.save(path)
+    return path
+
+
+def test_a_serif_its_pdf_doesnt_call_serif_is_redrawn_in_a_serif(tmp_path):
+    """Letters its trimmed copy lacked redrew a serif invoice's line in Liberation Sans."""
+    path = _serif_described_as_plain(str(tmp_path / "plain.pdf"))
+    out = str(tmp_path / "redrawn.pdf")
+    with open_pdf(path) as engine:
+        span = next(iter(engine.index()))
+        engine.remove([span], then_drawn=[LineToDraw(span, "Zed")])
+        engine.draw(span, "Zed")
+        engine.save(out)
+
+    [drawn] = _drawn(out)
+    expected = ("Zed", saved_as("Liberation Serif Regular"))
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
 
 

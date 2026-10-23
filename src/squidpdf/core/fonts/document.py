@@ -20,7 +20,7 @@ from squidpdf.core.constants import BASELINE_EPS, LETTER_SPACING_MIN_EM
 from squidpdf.core.fonts.attached import AttachedFonts, FontFiles
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
-from squidpdf.core.fonts.look_alike import look_alike
+from squidpdf.core.fonts.look_alike import kind_in_file, look_alike
 from squidpdf.core.fonts.names import strip_subset
 from squidpdf.core.fonts.pool import (
     FontCopy,
@@ -463,13 +463,16 @@ class DocumentFonts:
         page_font = self._page_font(span)
         xref = None if page_font is None else page_font.xref
         key = (strip_subset(span.font), xref)
-        return self.cache.look_alike(key, partial(self._look_alike_of, span.font, xref))
+        return self.cache.look_alike(key, partial(self._look_alike_of, span, xref))
 
-    def _look_alike_of(self, font_name: str, xref: int | None) -> LookAlike:
-        """The look-alike for the font named `font_name`, stored as object `xref`, if it is."""
+    def _look_alike_of(self, span: Span, xref: int | None) -> LookAlike:
+        """The look-alike for the span's font, stored as object `xref`, if it is."""
         # New text, or a font the page doesn't list: go by the name alone.
         descriptor = None if xref is None else self.driver.font_descriptor(xref)
-        return look_alike(font_name, descriptor)
+        own = self.own(span)
+        # The file's own copy says what kind of font it is where the description doesn't.
+        file_kind = None if own is None else kind_in_file(own.own.embedded.file)
+        return look_alike(span.font, descriptor, file_kind=file_kind)
 
     def substitute(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` when the span's own font can't, and what it leaves out."""
