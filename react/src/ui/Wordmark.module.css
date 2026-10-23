@@ -5,3 +5,10 @@
 }
 /* In em, so it grows with the name at a larger text size: 18px at the default, the size its strokes are drawn for. */
 .wordmark svg { display: block; flex: none; width: 1.2em; height: 1.2em; }
+/* Where the bar needs its room for the document: the squid stands for the name, which a screen reader still reads. */
+@media (max-width: 820px) {
+  .compact .name {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+}

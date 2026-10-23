@@ -7,6 +7,7 @@ learns why.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import assert_never
 
@@ -36,6 +37,10 @@ class Option:
     detail: Message
 
 
+# A line's width when it has none to speak of: what a share past its room is taken of.
+_SOME_WIDTH_PT = 1.0
+
+
 @dataclass(frozen=True, slots=True)
 class FitReport:
     """The answer to 'what happens if I type this'.
@@ -51,6 +56,9 @@ class FitReport:
 
     delta_pt: float
     room_pt: float = 0.0  # the free space after it on its line (`core.text.room`)
+    original_pt: float = (
+        0.0  # how wide the original line is: what a line too long is a share of
+    )
     missing: list[str] = field(default_factory=list)  # the span's own font lacks these
     options: list[Option] = field(default_factory=list)
     strategy: Strategy = "as-is"
@@ -69,6 +77,17 @@ class FitReport:
         """Whether the line runs past its room by more than the tolerance would allow."""
         return runs_past(self.delta_pt, self.room_pt)
 
+    @property
+    def percent_past_room(self) -> int:
+        """How far past its room the line runs, as a whole percent of the original, at least 1.
+
+        A share, not points, which anyone reads: `percentPastRoom` in react/src/editing/fit.ts.
+        """
+        past_pt = self.delta_pt - self.room_pt
+        # Rounded first, so a share that's whole in decimal isn't pushed up by binary.
+        share = round(past_pt / max(self.original_pt, _SOME_WIDTH_PT) * 100, 6)
+        return max(1, math.ceil(share))
+
     def describe(self) -> list[Message]:
         """Everything that won't come out as typed, in the order it's told; empty if nothing."""
         parts: list[Message] = []
@@ -85,9 +104,7 @@ class FitReport:
             parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))
         # The part past its room collides, unless a way out ends it where the original did.
         if self.too_long and self.strategy == "as-is":
-            parts.append(
-                Message("too_long", {"delta_pt": round(self.delta_pt - self.room_pt, 2)})
-            )
+            parts.append(Message("too_long", {"percent": self.percent_past_room}))
         # The user's choice of way out wasn't one on offer.
         passed_over = self.asked != "as-is" and self.strategy != self.asked
         if passed_over and self.too_long:
@@ -205,6 +222,7 @@ def replace_fit(
     report = FitReport(
         delta_pt=round(delta_pt, 2),
         room_pt=round(room_pt, 2),
+        original_pt=round(original_width, 2),
         missing=typed_plan.missing,
         options=options,
         strategy=drawn_strategy,

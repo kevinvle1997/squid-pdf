@@ -3,7 +3,16 @@ import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/
 import type { Document, Render } from "../api/types";
 import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
-import { attachDropped, attachFont, copiesByName, detachFont, drawnByOf, type FontCopies, offersCopy } from "./fonts";
+import {
+  attachDropped,
+  attachFont,
+  copiesByName,
+  detachFont,
+  drawnByOf,
+  type FontCopies,
+  offersCopy,
+  readableName,
+} from "./fonts";
 import { noticeLines } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 import { fill } from "./words";
@@ -271,5 +280,15 @@ describe("copies of one font, shown under one name", () => {
     expect(deleted).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
     expect(editor.attached.size).toBe(0);
     expect(editor.store.get().said.text).toBe("Your copy of Drawn-Regular is removed");
+  });
+});
+
+describe("a font's name, as shown", () => {
+  test("reads as a reader writes it: PostScript's dashes spaced, its words apart, its PS and MT marks gone", () => {
+    expect(readableName("Times-Roman")).toBe("Times Roman");
+    expect(readableName("TimesNewRomanPS-BoldMT")).toBe("Times New Roman Bold");
+    expect(readableName("ArialMT")).toBe("Arial");
+    expect(readableName("Calibri,Bold")).toBe("Calibri Bold");
+    expect(readableName("Liberation Serif Regular")).toBe("Liberation Serif Regular");
   });
 });

@@ -23,7 +23,7 @@ describe("what a page draws", () => {
     edit(editor, "first", null);
     editor.store.set({
       focusTo: { spanId: "second" },
-      scrollTo: { spanId: "second", count: 1 },
+      scrollTo: { spanId: "second", count: 1, block: "nearest" },
       unredacting: { spanId: "second", press: null },
     });
     const [first, second] = [pageState(editor.store.get(), 0), pageState(editor.store.get(), 1)];

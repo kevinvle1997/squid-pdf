@@ -112,6 +112,7 @@ def _copy_in(said_in: str) -> Copy:
     }
     return {
         "missing": words.sentence("missing", said_in),
+        "will_leave_out": words.sentence("will_leave_out", said_in),
         "too_long": words.sentence("too_long", said_in),
         "substitute": words.sentence("substitute", said_in),
         "substitute_same_widths": words.sentence("substitute_same_widths", said_in),

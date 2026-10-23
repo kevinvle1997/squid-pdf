@@ -10,8 +10,9 @@ import { type PageState, pageState, spanIn } from "../page";
 import type { SpanReading } from "../project";
 import { shallowEqual } from "../store";
 import { stillShows } from "../strips";
+import { pageInView, zoomShown } from "../zoom";
 import { useEditor, useEditorState } from "./context";
-import { boxOf, layerOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
+import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
@@ -20,15 +21,25 @@ import { Previews, Settles } from "./Previews";
 const NO_CHANGES: readonly SpanReading[] = [];
 
 /**
- * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points.
+ * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points;
+ * whether it's the page under the window's middle; and, the first page, the share of its printed size it shows at.
  *
  * Pages far off stay empty boxes. The pages near are in `nearPages` too, for the render to ask for first.
  */
-function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; nearPages: Set<number> }) {
+function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set<number> }) {
+  const editor = useEditor();
+  const heightPt = info.height;
   const [near, setNear] = useState(false);
   const [noteHeightPt, setNoteHeightPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
+      // A line across the window's middle: the page it crosses is the one being read.
+      const middle = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) pageInView(editor, index);
+        },
+        { rootMargin: "-50% 0px -50% 0px" },
+      );
       const nearby = new IntersectionObserver(
         ([entry]) => {
           const isNear = entry?.isIntersecting ?? false;
@@ -43,16 +54,21 @@ function useSheet(index: number, { heightPt, nearPages }: { heightPt: number; ne
         // A note is a hit area tall, and --hit is larger on a touch screen.
         const hit = parseFloat(getComputedStyle(sheet).getPropertyValue("--hit")) || 0;
         setNoteHeightPt(height > 0 ? (hit / height) * heightPt : 0);
+        // The first page says what share of its printed size the pages show at, for the zoom to say and step from.
+        const width = entry?.contentRect.width ?? 0;
+        if (index === 0 && width > 0) zoomShown(editor, width / printedPxOf(info));
       });
       nearby.observe(sheet);
+      middle.observe(sheet);
       size.observe(sheet);
       return () => {
         nearby.disconnect();
+        middle.disconnect();
         size.disconnect();
         nearPages.delete(index);
       };
     },
-    [index, heightPt, nearPages],
+    [editor, index, info, heightPt, nearPages],
   );
   return { ref, near, noteHeightPt };
 }
@@ -68,7 +84,7 @@ interface Props {
  */
 export const Page = memo(function Page({ index, info }: Props) {
   const editor = useEditor();
-  const sheet = useSheet(index, { heightPt: info.height, nearPages: editor.near });
+  const sheet = useSheet(index, info, { nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans ?? NO_CHANGES;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
@@ -142,13 +158,17 @@ function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTM
 }
 
 /**
- * Over the span undo or redo changed, brought into view once, as it's first drawn: it stays,
- * and the page drawing again mustn't pull the view back. Nothing scrolls if it's in view.
+ * Over the span undo or redo changed, or find went to, brought into view once, as it's first drawn: it
+ * stays, and the page drawing again mustn't pull the view back. Nothing scrolls if it's in view.
  */
 function ScrollAnchor({ page, info }: { page: PageState; info: PageInfo }) {
-  const bringIntoView = useCallback((anchor: HTMLSpanElement | null) => {
-    anchor?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, []);
+  const block = page.scrollTo?.block ?? "nearest";
+  const bringIntoView = useCallback(
+    (anchor: HTMLSpanElement | null) => {
+      anchor?.scrollIntoView({ block, inline: "nearest" });
+    },
+    [block],
+  );
   const span = page.scrollTo === null ? undefined : spanIn(page, page.scrollTo.spanId);
   if (span === undefined) return null;
   return <span className={styles.anchor} aria-hidden="true" style={boxOf(span.bbox, info)} ref={bringIntoView} />;

@@ -8,17 +8,19 @@ import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { carriesFiles, pdfDropped } from "../dropped";
 import { closeEditor, createEditor, sayOpening } from "../editor";
+import { unexported } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { retryImages } from "../images";
 import { atRisk, isWork, resumeWork, takeUp } from "../keeping";
 import { noticeLines } from "../notices";
 import { Bar } from "./Bar";
-import { EditorContext, useEditorState } from "./context";
+import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
 import { isTyping, spanOn } from "./keys";
 import { Page } from "./Page";
 import { SplitHere } from "./SplitHere";
+import { ZoomControl } from "./Zoom";
 
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
@@ -92,16 +94,27 @@ export function EditorShell({ opened, onOpen, kept }: Props) {
   return (
     <EditorContext.Provider value={editor}>
       <SkipLink to="pages">Skip to the document</SkipLink>
-      {/* Held at the top together, however many rows the bar wraps to. */}
+      <Title />
+      {/* Held at the top together, however many rows the bar wraps to; the lines under it hang below, over the
+          pages, so one coming or going never moves the document. */}
       <div className={styles.top}>
         <Bar />
         <FindBar />
+        <div className={styles.notices}>
+          <NoticeLine />
+        </div>
       </div>
-      <NoticeLine />
       <Pages />
       <Said />
     </EditorContext.Provider>
   );
+}
+
+/** The tab's title: the document's name, starred while it has changes the last export didn't take. */
+function Title() {
+  const editor = useEditor();
+  const changed = useEditorState((state) => state.reading.edits.length > 0 && unexported(state));
+  return <title>{`${changed ? "* " : ""}${editor.file.name} · squid-pdf`}</title>;
 }
 
 function NoticeLine() {
@@ -117,14 +130,24 @@ function NoticeLine() {
 
 function Pages() {
   const pages = useEditorState((state) => state.doc.pages);
+  const asked = useEditorState((state) => state.zoom.asked);
+  // Zoomed to a share of the printed size: each page takes that much, and the pages scroll sideways past the window.
+  const zoomed = asked === null ? undefined : { "--zoom": asked };
   return (
-    <main id="pages" className={styles.pages} tabIndex={-1}>
+    <main
+      id="pages"
+      className={styles.pages}
+      tabIndex={-1}
+      style={zoomed}
+      data-zoomed={asked === null ? undefined : ""}
+    >
       {pages.map((info, index) => (
         <Fragment key={index}>
           <Page index={index} info={info} />
           {index < pages.length - 1 && <SplitHere after={index} info={info} />}
         </Fragment>
       ))}
+      <ZoomControl />
     </main>
   );
 }

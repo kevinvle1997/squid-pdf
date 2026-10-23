@@ -11,6 +11,7 @@ import {
   A4,
   aDoc,
   aDocumentNotice,
+  aFit,
   aFont,
   aProblem,
   aReplace,
@@ -21,6 +22,7 @@ import {
   COPY,
   halfWideGlyphs,
 } from "../../fixtures";
+import { colorOf } from "../../testing";
 import { EXPORT_INTENT_MS } from "../constants";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { EditorShell } from "./EditorShell";
@@ -122,6 +124,80 @@ describe("the editor", () => {
   });
 });
 
+describe("finding your way", () => {
+  const twice = aDoc({
+    spans: [span, aSpan({ id: "s2", text: "here too", bbox: { x0: 72, y0: 140, x1: 152, y1: 164 } })],
+    fonts: [aFont("Times-Roman")],
+  });
+
+  test("in find, Enter goes to the next place found and Shift+Enter the one before, round, each said", async () => {
+    const screen = await openEditor({ doc: twice });
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("here");
+    const bar = screen.getByRole("search");
+    await expect.element(bar.getByText("2 places will look identical")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(bar.getByText("1 of 2")).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("1 of 2");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(bar.getByText("2 of 2")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(bar.getByText("1 of 2")).toBeVisible();
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    await expect.element(bar.getByText("2 of 2")).toBeVisible();
+    await bar.getByRole("button", { name: "Previous place" }).click();
+    await expect.element(bar.getByText("1 of 2")).toBeVisible();
+    // The place gone to is ringed, apart from the rest found.
+    const ringed = [...document.querySelectorAll("[data-found]")].filter(
+      (found) => getComputedStyle(found).outlineStyle === "solid",
+    );
+    expect(ringed).toHaveLength(1);
+  });
+
+  test("the bar says which page is being read", async () => {
+    const pages = [A4, A4];
+    const screen = await openEditor({ doc: { ...twice, pages } });
+    await expect.element(screen.getByRole("banner").getByText("Page 1 of 2")).toBeVisible();
+  });
+
+  test("zoomed in, the page shows wider than printed; pressing the share shown fits it to the window again", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(1400, 900);
+    try {
+      const screen = await openEditor();
+      const sheet = () =>
+        screen.getByRole("region", { name: "Page 1" }).element().querySelector("[style*='aspect-ratio']");
+      const printed = (DOC.pages[0]?.width ?? 0) * (4 / 3);
+      await expect.element(screen.getByRole("button", { name: "Fit to the window, now 100%" })).toBeVisible();
+      await screen.getByRole("button", { name: "Zoom in" }).click();
+      await expect.poll(() => sheet()?.getBoundingClientRect().width).toBeCloseTo(printed * 1.25, 0);
+      await expect.element(screen.getByRole("button", { name: "Fit to the window, now 125%" })).toBeVisible();
+      await screen.getByRole("button", { name: "Fit to the window, now 125%" }).click();
+      await expect.poll(() => sheet()?.getBoundingClientRect().width).toBeCloseTo(printed, 0);
+    } finally {
+      await page.viewport(wide, tall);
+    }
+  });
+
+  test("? lists every key the editor answers to, and Escape shuts the list", async () => {
+    const screen = await openEditor();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("?");
+    const list = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect.element(list).toBeVisible();
+    await expect.element(list.getByText("The next place found, or the one before")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(list).not.toBeInTheDocument();
+  });
+
+  test("the tab names the document, starred while it has changes no export took", async () => {
+    const screen = await openEditor();
+    await expect.poll(() => document.title).toBe("contract.pdf · squid-pdf");
+    await changeSpan(screen, "is here");
+    await expect.poll(() => document.title).toBe("* contract.pdf · squid-pdf");
+  });
+});
+
 describe("the bar", () => {
   test("says when the document couldn't be opened again, where the document's name is", async () => {
     const unreachable = "We can't work on files right now. Try again in a few minutes.";
@@ -179,7 +255,19 @@ describe("the bar", () => {
     await expect.element(screen.getByRole("dialog").getByText("Arial", { exact: true })).toBeVisible();
   });
 
-  test("a row's eye marks its places on the page, closed or open, until it's pressed again", async () => {
+  test("after a change, it counts the lines left long past their room, warned", async () => {
+    const tooLong = { code: "too_long", params: { percent: 12 } };
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({ fits: { [span.id]: aFit({ delta_pt: 10, message: "about 12% too long", message_parts: [tooLong] }) } }),
+    );
+    const screen = await openEditor();
+    await changeSpan(screen, "is here and there");
+    const long = screen.getByRole("banner").getByText("1 too long");
+    await expect.element(long).toBeVisible();
+    expect(getComputedStyle(long.element()).color).toBe(colorOf("--bar-warn"));
+  });
+
+  test("a row's eye marks its places on the page, shutting the list that would lie over them, until it's pressed again", async () => {
     const screen = await openEditor({ doc: ARIAL_DOC });
     await screen.getByRole("button", { name: "Edits in 1 place will use a similar font" }).click();
     const eye = screen.getByRole("button", { name: "Show the places in Arial on the page" });
@@ -187,15 +275,16 @@ describe("the bar", () => {
     expect(marked()).toBe(0);
 
     await eye.click();
-    await expect.element(eye).toHaveAttribute("aria-pressed", "true");
-    await expect.poll(marked).toBe(1);
-    await userEvent.keyboard("{Escape}");
     await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
-    expect(marked()).toBe(1);
-
-    await screen.getByRole("button", { name: "Edits in 1 place will use a similar font" }).click();
-    await screen.getByRole("button", { name: "Show the places in Arial on the page" }).click();
+    await expect.poll(marked).toBe(1);
+    // The count says its places are shown, and opens the list again to stop showing them.
+    const count = screen.getByRole("button", { name: "Edits in 1 place will use a similar font (shown on the page)" });
+    await count.click();
+    const shown = screen.getByRole("button", { name: "Show the places in Arial on the page" });
+    await expect.element(shown).toHaveAttribute("aria-pressed", "true");
+    await shown.click();
     await expect.poll(marked).toBe(0);
+    await expect.element(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   test("on a touch screen, no button hints at a key", async () => {
@@ -252,7 +341,7 @@ describe("export, started on the way to pressing it", () => {
     expect(vi.mocked(exportPdf).mock.calls[0]?.[1]).toEqual([aReplace(span.id, "is here")]);
 
     await exportButton.click();
-    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    await expect.element(screen.getByText("Downloaded contract, edited.pdf.").first()).toBeVisible();
     expect(exportPdf).toHaveBeenCalledTimes(1);
   });
 
@@ -282,7 +371,7 @@ describe("export, started on the way to pressing it", () => {
     await screen.getByRole("textbox").fill("is there");
     await userEvent.keyboard("{Enter}");
     await screen.getByRole("button", { name: /^Export/ }).click();
-    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    await expect.element(screen.getByText("Downloaded contract, edited.pdf.").first()).toBeVisible();
     expect(exportPdf).toHaveBeenCalledTimes(2);
     expect(vi.mocked(exportPdf).mock.calls[1]?.[1]).toEqual([aReplace(span.id, "is there")]);
   });
@@ -296,7 +385,7 @@ describe("export, started on the way to pressing it", () => {
     await vi.waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1));
 
     await exportButton.click();
-    await expect.element(screen.getByText("Downloaded contract.pdf.").first()).toBeVisible();
+    await expect.element(screen.getByText("Downloaded contract, edited.pdf.").first()).toBeVisible();
     expect(exportPdf).toHaveBeenCalledTimes(2);
   });
 });

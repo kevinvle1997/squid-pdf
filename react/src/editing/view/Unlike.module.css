@@ -1,4 +1,7 @@
 .popover { composes: popover from "../../ui/Popover.module.css"; }
+/* The count's words wrap as one run; its marks keep to the end of the button. */
+.count { gap: var(--s1); text-align: start; }
+.chevron { flex: none; color: var(--ink-lo); }
 .dialog { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s4); outline: none; }
 .group { display: flex; flex-direction: column; gap: var(--s2); }
 .heading { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--warn); }

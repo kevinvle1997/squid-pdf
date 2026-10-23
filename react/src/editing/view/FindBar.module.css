@@ -19,7 +19,13 @@
 /* The query, its choices and what it found, each a group: a hairline between them, with room either side. */
 .options, .count:not(:empty) { margin-inline-start: var(--s3); padding-inline-start: var(--s6); border-inline-start: 1px solid var(--rule); }
 .options { display: flex; align-items: center; gap: var(--s3); }
-.count { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
+.count { flex: 1; min-width: 0; display: flex; align-items: center; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
+.words { min-width: 0; }
+/* Where Enter went, and the way to the place before or after: ahead of the count, as a find bar has them. */
+.step { display: flex; flex-shrink: 0; align-items: center; gap: var(--s1); margin-inline-end: var(--s3); }
+.step button { padding-inline: var(--s1); }
+.step svg { display: block; }
+.at { color: var(--ink); margin-inline-end: var(--s1); }
 /* The focus's border colour and shadow are both dropped here, so an outline shows it instead. */
 @media (forced-colors: active) {
   .input[data-focused] { outline: 2px solid Highlight; outline-offset: -2px; }
@@ -37,9 +43,10 @@
   .input { flex: 1; width: auto; min-width: 0; }
   .count { flex-basis: 100%; order: 1; }
 }
-/* On a phone, a row for each field, with the choices and buttons under them. */
+/* On a phone, three rows, not five: the two fields side by side, each labelled above it; the choices; then
+   what was found, with Change all and Close at its end. */
 @media (max-width: 820px) {
-  .field { flex: 1 1 14rem; }
-  /* The choices a row of their own, so Change all and Close stay together under them. */
+  .field { flex: 1 1 0; flex-direction: column; align-items: stretch; gap: var(--s1); }
   .options { flex: 1 1 100%; }
+  .count { flex: 1 1 0; order: 0; }
 }

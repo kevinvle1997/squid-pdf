@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
+import { Tip } from "../../ui/Tooltip";
 import { putBack } from "../editor";
 import { noteOf, notePlaces } from "../margin";
 import type { SpanReading } from "../project";
@@ -29,11 +30,21 @@ export function Margin({ info, changes, noteHeightPt, pageNumber }: Props) {
         const note = noteOf(change);
         return (
           <div key={change.span.id} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-            <UndoNote spanId={change.span.id} label={note.label}>
-              {/* Beside the page a note is only struck words: pointed at or focused, it shows it undoes. */}
-              <UndoMark />
-              <span className={styles.old}>{note.struck}</span>
-            </UndoNote>
+            <Tip heading={`Was “${note.was}”`} detail={`Now “${note.now}”`}>
+              <UndoNote spanId={change.span.id} label={note.label}>
+                {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
+                <UndoMark />
+                {note.inserted === null ? (
+                  <span className={styles.old}>{note.struck}</span>
+                ) : (
+                  // Words only added: they're marked as a proof marks an insertion, not one kept struck.
+                  <span className={styles.added}>
+                    <InsertMark />
+                    {note.inserted}
+                  </span>
+                )}
+              </UndoNote>
+            </Tip>
           </div>
         );
       })}
@@ -73,6 +84,26 @@ function UndoNote({ spanId, label, children }: { spanId: string; label: string; 
       {children}
       <i className={styles.bar} aria-hidden="true" />
     </Button>
+  );
+}
+
+/** An insertion, drawn as a proofreader's caret, at the words' own size. The note's name says what it undoes. */
+function InsertMark() {
+  return (
+    <svg
+      width="8"
+      height="10"
+      viewBox="0 0 8 10"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={styles.caret}
+    >
+      <path d="M1 8.5 4 2.5l3 6" />
+    </svg>
   );
 }
 

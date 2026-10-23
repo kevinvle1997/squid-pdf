@@ -61,5 +61,20 @@ export function Shortcut({ keys, children }: { keys: string; children: ReactElem
   );
 }
 
+/** A note in full over what's pressed, on hover or focus: a heading, and a detail under it. */
+export function Tip({ heading, detail, children }: { heading: string; detail: string; children: ReactElement }) {
+  return (
+    <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
+      {children}
+      <AriaTooltip className={styles.note} placement="top" offset={8}>
+        <span className={styles.words}>
+          <span className={styles.heading}>{heading}</span>
+          {detail}
+        </span>
+      </AriaTooltip>
+    </TooltipTrigger>
+  );
+}
+
 // Long enough that passing over the bar shows nothing; short enough that a pause on a button does.
 const SHORTCUT_DELAY_MS = 600;

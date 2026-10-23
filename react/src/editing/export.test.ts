@@ -3,7 +3,7 @@ import { exportPdf, ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
 import { createEditor, type Editor, undo } from "./editor";
-import { exportNow, partName, splitAfter, splitPages, unexported } from "./export";
+import { exportName, exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
@@ -64,7 +64,8 @@ describe("export", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }], {
       pages: undefined,
     });
-    expect(editor.store.get().notices.export).toEqual([plain("Downloaded contract.pdf.")]);
+    // Named once the typing is in: it's the edit that marks the file edited.
+    expect(editor.store.get().notices.export).toEqual([plain("Downloaded contract, edited.pdf.")]);
     expect(editor.store.get().exporting).toBe(false);
   });
 
@@ -183,5 +184,13 @@ describe("a split's parts", () => {
   test("are named from the upload, with the pages they hold counted from one", () => {
     expect(partName("contract.pdf", [0, 1, 2])).toBe("contract, pages 1–3.pdf");
     expect(partName("Contract.PDF", [3])).toBe("Contract, page 4.pdf");
+  });
+});
+
+describe("the whole document's file name", () => {
+  test("is the upload's, marked edited once it is, so it isn't taken for the original", () => {
+    expect(exportName("contract.pdf", { edited: true })).toBe("contract, edited.pdf");
+    expect(exportName("Contract.PDF", { edited: true })).toBe("Contract, edited.pdf");
+    expect(exportName("contract.pdf", { edited: false })).toBe("contract.pdf");
   });
 });

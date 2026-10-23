@@ -4,6 +4,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   useCallback,
+  useEffect,
   useReducer,
   useRef,
   useState,
@@ -13,15 +14,15 @@ import { Input, TextField } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { selectionAt } from "../caret";
 import { carriesFiles } from "../dropped";
-import { DEFAULT_FACE, previewFaceOf } from "../faces";
-import { settingOf } from "../fit";
+import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
+import { fitOf, runsPast, settingOf } from "../fit";
 import { attachDropped } from "../fonts";
 import { textIn } from "../project";
 import { enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { Chip } from "./Chip";
 import { useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
-import { fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
+import { boxOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
 
 /**
  * Typing in place: the span's text in the face that will draw it, checked as it's typed.
@@ -34,12 +35,17 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
   const start = useEditorState((state) => textIn(state.reading, span));
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
+  // A letter the look-alike lacks sends the line to its broadest face, put on the page only once one does.
+  useEffect(() => addFaces([face]), [face]);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
   // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
   const rules = useEditorState((state) => state.doc.fit);
   const asked = useEditorState((state) => state.draft?.strategy);
   const setting = settingOf(span, { font, text, asked, rules });
+  // Left long, a line past its room shows where the room ends: what to shorten it to.
+  const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
+  const pastRoom = fit !== undefined && setting.way === "as-is" && runsPast(fit.deltaPt, fit.roomPt, rules);
   // One trouble a line: a sentence of the server's, then the fit's own.
   const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
   const field = useRef<HTMLInputElement>(null);
@@ -141,6 +147,13 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           }}
         />
       </TextField>
+      {pastRoom && (
+        <span
+          className={styles.roomEnds}
+          aria-hidden="true"
+          style={boxOf({ ...span.bbox, x0: span.bbox.x1 + span.room_pt, x1: span.bbox.x1 + span.room_pt }, info)}
+        />
+      )}
       <Chip span={span} info={info} trouble={trouble} setting={setting} />
     </>
   );

@@ -3,24 +3,22 @@
 import faceFiles from "../../../src/squidpdf/fonts/face-files.json";
 import type { Document, FontInfo, SpanInfo } from "../api/types";
 import { missingIn } from "./fit";
+import { substituteFor, substituteOf } from "./substitutes";
 
 // Each face's file, by its name, as the catalog files it: some families keep their source's file names.
 const FACE_FILES: Readonly<Record<string, string>> = faceFiles;
 
-/** The substitute a letter no copy of the span's font has is drawn in: the span's own, else its font's look-alike. */
-export function substituteOf(span: SpanInfo, font: FontInfo): string {
-  return span.substitute ?? font.look_alike;
-}
-
 /**
  * The face to preview `text` typed over `span` in: the user's own copy of its font once the server has
- * taken it and draws the line with it; else the face a missing letter is drawn in, standing in for the
- * file's own font, which the browser has no copy of, until the server's render replaces it.
+ * taken it and draws the line with it; else the face a missing letter sends the line to, standing in for
+ * the file's own font, which the browser has no copy of, until the server's render replaces it.
  */
 export function previewFaceOf(span: SpanInfo, { font, text }: { font: FontInfo; text: string }): string {
+  const missing = missingIn(text, font.glyphs);
   const own = font.attached && ownFaces.has(font.name) && span.substitute === null;
-  if (own && missingIn(text, font.glyphs).length === 0) return `${OWN_COPY_PREFIX}${font.name}`;
-  return substituteOf(span, font);
+  if (own && missing.length === 0) return `${OWN_COPY_PREFIX}${font.name}`;
+  // Its look-alike lacks a letter its broadest has: the server draws the whole line there.
+  return missing.length === 0 ? substituteOf(span, font) : substituteFor(substituteOf(span, font), text).face;
 }
 
 const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.{ttf,otf}", {
@@ -65,7 +63,10 @@ export function removeOwnFace(fontName: string): void {
   ownFaces.delete(fontName);
 }
 
-/** Every face a document's edits can preview in: each span's similar font, each font's look-alike, and the default. */
+/**
+ * Every face a document's edits preview in at first: each span's similar font, each font's look-alike,
+ * and the default. A broadest face, which a letter they lack sends a line to, is added once one does.
+ */
 export function facesOf({ spans, fonts }: Pick<Document, "spans" | "fonts">): Set<string> {
   const substitutes = spans.flatMap((span) => span.substitute ?? []);
   return new Set([DEFAULT_FACE, ...substitutes, ...fonts.map((font) => font.look_alike)]);

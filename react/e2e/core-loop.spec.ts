@@ -160,18 +160,18 @@ test("a change put back from the margin leaves the page as it was", async ({ pag
   await expect(page.locator("img[data-strip]")).toHaveCount(0);
 });
 
-test("Cmd+S downloads the edited PDF under its own name", async ({ page }) => {
+test("Cmd+S downloads the edited PDF under its own name, marked edited", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 2 April 2026 between");
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("Control+s");
   const download = await downloading;
-  expect(download.suggestedFilename()).toBe("sample.pdf");
+  expect(download.suggestedFilename()).toBe("sample, edited.pdf");
   const bytes = await readFile(await download.path());
   expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
-  await expect(page.getByRole("paragraph").filter({ hasText: "Downloaded sample.pdf." })).toBeVisible();
-  await expect(page.getByRole("status")).toHaveText("Downloaded sample.pdf.");
+  await expect(page.getByRole("paragraph").filter({ hasText: "Downloaded sample, edited.pdf." })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Downloaded sample, edited.pdf.");
 });
 
 test("Cmd+Delete redacts a line, and the file downloaded no longer has its words", async ({ page }) => {
@@ -276,7 +276,9 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
   // Each letter makes it longer; the number on screen ticks, what's said doesn't.
   await field.pressSequentially("xxx");
-  await expect(page.getByRole("status")).toHaveText("5.5 pt too long; Up or Down chooses how it fits");
+  await expect(page.getByRole("status")).toHaveText(
+    "about 3% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",
+  );
   await field.fill("This agreement is made on 2 April 2026 between");
 
   await page.keyboard.press("Tab");

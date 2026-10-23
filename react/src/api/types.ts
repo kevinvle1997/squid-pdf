@@ -24,8 +24,8 @@ export type Region = Schemas["Region"];
 export type RenderBody = Schemas["RenderBody"];
 export type Render = Schemas["Render"];
 export type ImageInfo = Schemas["ImageInfo"];
-// Not read: `options`, since the field offers the ways out from its own check, on the server's rules, as it's typed;
-// `message_parts`, since the note says `message` whole.
+// Not read: `options`, since the field offers the ways out from its own check, on the server's rules, as it's typed.
+// `message_parts` is read only for its codes, to count the lines left long; the note says `message` whole.
 export type FitInfo = Schemas["FitInfo"];
 // Not read: `hidden_copies`. The note says `message`, which names each place already.
 export type RedactionInfo = Schemas["RedactionInfo"];

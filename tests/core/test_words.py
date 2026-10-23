@@ -36,7 +36,7 @@ def test_every_language_has_every_sentence_with_the_same_placeholders():
     [
         ("too_long", None, "missing"),
         ("too_long", "TOO LONG", "other placeholders"),
-        ("too_long", "{delta} PT TOO LONG", "other placeholders"),
+        ("too_long", "{share}% TOO LONG", "other placeholders"),
         ("not_a_sentence", "NOT A SENTENCE", "not in English"),
     ],
     ids=["a sentence left out", "a placeholder left out", "a placeholder renamed", "an extra"],
@@ -66,17 +66,26 @@ def _dressed(sentence: str) -> bool:
 @pytest.mark.parametrize(
     ("message", "said"),
     [
-        (Message("too_long", {"delta_pt": 3.14159}), "3.1 pt too long"),
+        (
+            Message("as_is_detail", {"delta_pt": 3.14159}),
+            "Runs 3.1 pt past where the original ended.",
+        ),
         # Rounded up from a half, as the browser's Intl.NumberFormat writes it too.
-        (Message("too_long", {"delta_pt": 2.25}), "2.3 pt too long"),
-        (Message("too_long", {"delta_pt": 1.45}), "1.5 pt too long"),
+        (
+            Message("as_is_detail", {"delta_pt": 2.25}),
+            "Runs 2.3 pt past where the original ended.",
+        ),
+        (
+            Message("as_is_detail", {"delta_pt": 1.45}),
+            "Runs 1.5 pt past where the original ended.",
+        ),
         (
             Message("missing", {"chars": ["é", "ß"], "font": "Carlito Bold"}),
             "no é or ß in this font, so the line is drawn in our Carlito Bold",
         ),
         (
             Message("left_out", {"letters": ["中", "文"]}),
-            "Left out 中 文: no font we have can draw them.",
+            "Left out 中 文, which no font we have can draw.",
         ),
     ],
     ids=["a fraction", "a half", "a half just under in binary", "characters", "letters"],
@@ -87,8 +96,9 @@ def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
 
 def test_a_number_is_written_with_the_reader_s_decimal_separator(pseudo, monkeypatch):
     monkeypatch.setitem(words.CATALOGS[pseudo], "decimal_separator", ",")
-    said = words.render(Message("too_long", {"delta_pt": 3.14159}), pseudo)
-    assert_equal(said, pseudo_sentence("3,1 pt too long"), "a fraction in another language")
+    said = words.render(Message("as_is_detail", {"delta_pt": 3.14159}), pseudo)
+    expected = pseudo_sentence("Runs 3,1 pt past where the original ended.")
+    assert_equal(said, expected, "a fraction in another language")
 
 
 def test_a_list_with_no_joiner_of_its_own_is_joined_as_items():
@@ -118,7 +128,7 @@ def test_a_character_that_draws_nothing_is_named(character, said):
     expected = f"no é or {said} in this font, so the line is drawn in our Noto Sans Regular"
     assert_equal(words.render(fit), expected, "the sentence naming it")
     left_out = Message("left_out", {"letters": [character]})
-    expected = f"Left out {said}: no font we have can draw them."
+    expected = f"Left out {said}, which no font we have can draw."
     assert_equal(words.render(left_out), expected, "the sentence naming it")
 
 
@@ -140,7 +150,9 @@ def test_a_letter_that_looks_like_another_is_named_so_the_two_read_apart():
 
 def test_a_character_is_named_in_the_reader_s_language(pseudo):
     said = words.render(Message("left_out", {"letters": ["\u202f"]}), pseudo)
-    expected = pseudo_sentence("Left out narrow no-break space: no font we have can draw them.")
+    expected = pseudo_sentence(
+        "Left out narrow no-break space, which no font we have can draw."
+    )
     assert_equal(said, expected, "the name, in the language asked for")
 
 
@@ -160,6 +172,6 @@ def test_every_character_name_in_the_catalog_is_said_for_its_character(pseudo):
         key
         for key, said in names.items()
         if words.render(_left_out(chr(int(key.removeprefix("char_u"), 16))), pseudo)
-        != pseudo_sentence(f"Left out {said}: no font we have can draw them.")
+        != pseudo_sentence(f"Left out {said}, which no font we have can draw.")
     ]
     assert_equal(unsaid, [], "names in the catalog their character isn't said by")

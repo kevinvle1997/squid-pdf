@@ -26,6 +26,7 @@ import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { placeOf, type Unlike, type UnlikePlace, unlikeOf } from "./unlike";
+import { FITTED, type Zoom } from "./zoom";
 
 /**
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
@@ -47,10 +48,11 @@ export interface Spoken {
   readonly count: number;
 }
 
-/** A span its page brings into view, if it's off screen: what undo or redo changed. Counted, as `Spoken` is. */
+/** A span its page brings into view, if it's off screen: what undo or redo changed, or the place find went to. Counted, as `Spoken` is. */
 export interface ScrollTo {
   readonly spanId: string;
   readonly count: number;
+  readonly block: ScrollLogicalPosition; // "nearest" for what changed in place; "center" for a place gone to
 }
 
 // The last count given, for the whole page: two editors' counts never meet, so one will do.
@@ -62,9 +64,10 @@ export function spoken(text: string): Spoken {
   return { text, count: lastCount };
 }
 
-function scrollingTo(spanId: string): ScrollTo {
+/** `spanId`, to be brought into view now: as little as it takes, or into the middle (`block`). */
+export function scrollingTo(spanId: string, block: ScrollLogicalPosition = "nearest"): ScrollTo {
   lastCount += 1;
-  return { spanId, count: lastCount };
+  return { spanId, count: lastCount, block };
 }
 
 /** What's worked out once from the document: its spans and fonts, looked up by what the page needs. */
@@ -81,6 +84,8 @@ export interface EditorState {
   readonly doc: Document; // the server's copy now
   readonly layout: Layout;
   readonly scale: number; // pixels per point, as the page images are drawn
+  readonly zoom: Zoom; // how large the pages show
+  readonly pageInView: number; // the page under the window's middle, as the bar says where the reader is
   readonly history: History;
   readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
@@ -99,6 +104,7 @@ export interface EditorState {
   readonly quietFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full
   readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
+  readonly shortcutsOpen: boolean; // the list of the editor's keys, from the bar
 }
 
 export interface Editor {
@@ -138,6 +144,8 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     doc: opened,
     layout: layoutOf(opened),
     scale,
+    zoom: FITTED,
+    pageInView: 0,
     history: EMPTY_HISTORY,
     reading: UNEDITED,
     drawn: NOTHING_DRAWN,
@@ -156,6 +164,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     quietFonts: new Set(),
     images: new Map(),
     find: FIND_CLOSED,
+    shortcutsOpen: false,
   });
   const reopener = new Reopener(file, opened, (doc) => reopened(editor, doc));
   const near = new Set<number>();
@@ -318,6 +327,14 @@ export function warnedCount(state: EditorState): { count: number; label: string 
   const places = changedUnlike(state);
   const approximate = places.some(({ span }) => span.why !== null);
   return { count: places.length, label: approximate ? "will look different" : "in a similar font" };
+}
+
+/** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
+export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
+  return [...reading.spans.values()].filter(({ span, replaced }) => {
+    const fit = drawn.fits.get(span.page)?.[span.id];
+    return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
+  }).length;
 }
 
 /** The changed spans that won't match: a similar font or unlike the text around them, or missing letters the server found. */

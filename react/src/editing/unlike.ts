@@ -1,10 +1,10 @@
 // Where an edit won't match the text around it, grouped by why: each font a similar one draws for,
 // then each reason the file's own font won't match. The bar's count opens it (quality.md, Rule 1).
 import type { Copy, FontInfo, SpanInfo } from "../api/types";
-import { substituteOf } from "./faces";
 import { wontMatch } from "./marks";
 import type { SpanReading } from "./project";
 import type { PageFits } from "./render";
+import { substituteOf } from "./substitutes";
 import { type Facts, fill, shownAs } from "./words";
 
 /** A span an edit won't match at, and the letters its own font lacks for the words typed there, if those are why. */

@@ -13,6 +13,7 @@
 }
 /* The document's name, in the landing heading's face: the one title on the screen. */
 .name {
+  margin: 0;
   font-family: var(--display); font-size: var(--fs-lg); font-weight: 800; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -25,6 +26,8 @@
 /* Nothing to count: no gap for it, and on a narrow screen no share of the row. */
 .status:empty { display: none; }
 .exporting { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; }
+/* How many changes run long, its own phrase after the count, a step from it. */
+.runLong { margin-inline-start: var(--s2); }
 /* The tools and the one action, held together at the end, each on one line: a focus ring's width apart.
    What's changed stays beside the file's name, as a document's status sits beside its title. */
 .actions { flex: none; display: flex; align-items: center; gap: var(--s2); margin-inline-start: auto; }

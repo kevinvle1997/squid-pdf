@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
-  <title>A placeholder for the squid-pdf mascot</title>
-  <rect x="4" y="4" width="152" height="152" rx="20" fill="#FFFFFF" fill-opacity="0.8" stroke="#8D8D8D" stroke-width="2.5" stroke-dasharray="8 6"/>
-  <path d="M80 26c-17 0-26 18-26 37v14q26 8 52 0V63c0-19-9-37-26-37z" fill="none" stroke="#B4B4B4" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M62 82c-2 10 3 15 0 24M74 84c0 11 4 16 2 26M86 84c0 11-4 16-2 26M98 82c2 10-3 15 0 24" fill="none" stroke="#B4B4B4" stroke-width="3" stroke-linecap="round"/>
-  <text x="80" y="140" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#5A5A5A">Mascot SVG</text>
-</svg>

@@ -77,10 +77,15 @@ function shownSize(page: PageInfo): [wide: number, tall: number] {
   return turned ? [page.height, page.width] : [page.width, page.height];
 }
 
-/** The page's printed width, which its column and its most width are built from. */
-export function sheetWidthOf(page: PageInfo): { "--sheet-width": string } {
+/** How wide the page is printed, in CSS pixels: as it shows at 100%. */
+export function printedPxOf(page: PageInfo): number {
   const [wide] = shownSize(page);
-  return { "--sheet-width": `${wide * PX_PER_PT}px` };
+  return wide * PX_PER_PT;
+}
+
+/** The page's printed width, which its column and its most width are built from, zoomed (`--zoom`). */
+export function sheetWidthOf(page: PageInfo): { "--sheet-width": string } {
+  return { "--sheet-width": `${printedPxOf(page)}px` };
 }
 
 /** The sheet's shape as the page is shown, so its box is held before the image comes. */

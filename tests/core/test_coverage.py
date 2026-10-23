@@ -18,6 +18,8 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent  # noqa: PLC27
 from squidpdf.core import open_pdf
 from squidpdf.core.fonts.catalog import CATALOG, FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
+from squidpdf.core.fonts.look_alike import broadest
+from squidpdf.core.fonts.substitute import face_coverage
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
 from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
 
@@ -80,6 +82,32 @@ def test_the_browser_finds_every_face_we_ship_by_its_name():
         {face.name: face.file for face in CATALOG},
         "each face's file, by name (rebuild: uv run python scripts/face_files.py)",
     )
+
+
+def test_the_browser_knows_which_letters_each_face_draws_as_the_server_does():
+    """The browser says what a line leaves out before the edit, from `face-letters.json`."""
+    listed = (
+        resources.files("squidpdf").joinpath("fonts", "face-letters.json").read_text("utf-8")
+    )
+    faces = json.loads(listed)
+    rebuild = "(rebuild: uv run python scripts/face_files.py)"
+    assert_equal(list(faces), [face.name for face in CATALOG], f"each face, in order {rebuild}")
+    for face in CATALOG:
+        drawn = {ord(ch) for ch in face_coverage(face).drawable()}
+        assert_equal(
+            _codes_in(faces[face.name]["letters"]), drawn, f"what {face.name} draws {rebuild}"
+        )
+        said = faces[face.name]["broadest"]
+        assert_equal(said, broadest(face).name, f"where {face.name}'s line goes {rebuild}")
+
+
+def _codes_in(runs: list[int | list[int]]) -> set[int]:
+    """The code points a list of runs holds: a code point alone, or a run's first and last."""
+    codes: set[int] = set()
+    for run in runs:
+        first, last = (run, run) if isinstance(run, int) else run
+        codes.update(range(first, last + 1))
+    return codes
 
 
 def test_glyph_advances_agree_with_the_server_measure(engine):

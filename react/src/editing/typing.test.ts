@@ -72,12 +72,27 @@ describe("an edit", () => {
     const doc = aDoc({ spans: [aSpan({ id: "ab", text: "ab" })], fonts: [aFont("Times-Roman", { glyphs })] });
     editor = createEditor(FILE, doc, 2);
     edit(editor, "ab", null);
+    // 10 pt past a 10 pt line, then 15: the share ticks up, and what was said stands.
+    const doubled = "about 100% too long for its place: shorten it, or it runs into what's beside it";
     typeInto(editor, "abab");
-    expect(editor.store.get().said.text).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe(doubled);
     typeInto(editor, "ababa");
-    expect(editor.store.get().said.text).toBe("10.0 pt too long");
+    expect(editor.store.get().said.text).toBe(doubled);
     typeInto(editor, "ababac");
     expect(editor.store.get().said.text).toContain("no c in this font");
+  });
+
+  test("a letter no font we ship draws is said to be left out before Enter, as the render will say it after", () => {
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
+    // Room after it, so the space typed doesn't run it long: the letter is the one thing to say.
+    const similar = aSpan({ id: "named", text: "abc", substitute: "Liberation Serif Bold", room_pt: 50 });
+    const font = aFont("Times-Roman", { look_alike: "Liberation Serif Bold", glyphs });
+    editor = createEditor(FILE, aDoc({ spans: [similar], fonts: [font] }), 2);
+    edit(editor, "named", null);
+    typeInto(editor, "abc ✓");
+    expect(troublesIn(editor.store.get(), "abc ✓").said).toEqual([
+      "“✓” can't be drawn in any font we have, and will be left out",
+    ]);
   });
 
   test("Up or Down chooses how a long line fits, and the edit takes it while it's offered", () => {
@@ -87,7 +102,9 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "long", null);
     typeInto(editor, `${long.text}u`);
-    expect(editor.store.get().said.text).toBe("5.0 pt too long; Up or Down chooses how it fits");
+    expect(editor.store.get().said.text).toBe(
+      "about 5% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",
+    );
 
     // From leaving it long, the last, round to the first.
     expect(stepWayOut(editor, 1)).toBe(true);

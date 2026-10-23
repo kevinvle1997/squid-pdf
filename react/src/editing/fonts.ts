@@ -185,3 +185,17 @@ function refused(editor: Editor, fontName: string, error: unknown): void {
 function refusalOf(fontName: string, error: unknown): FontNotice {
   return { tone: "warn", text: sentenceOf(error), font: fontName };
 }
+
+/**
+ * A font's name as a reader writes it, for a label: PostScript's dashes and commas spaced, its words run
+ * together set apart, and its PS and MT marks dropped. "TimesNewRomanPS-BoldMT" reads "Times New Roman Bold".
+ * Only shown: the name the code knows a font by stays as the server sends it.
+ */
+export function readableName(name: string): string {
+  return name
+    .replace(/(PS|MT)(?=$|[-,])/g, "")
+    .replace(/[-,_]+/g, " ")
+    .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+}

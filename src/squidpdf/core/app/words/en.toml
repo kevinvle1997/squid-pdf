@@ -8,10 +8,10 @@
 # What's wrong with a replacement.
 # `{font}` is the face that draws the line instead.
 missing = "no {chars} in this font, so the line is drawn in our {font}"
-will_leave_out = "{letters} will be left out: no font we have can draw them"
+will_leave_out = "{letters} can't be drawn in any font we have, and will be left out"
 chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"
-too_long = "{delta_pt} pt too long"
+too_long = "about {percent}% too long for its place: shorten it, or it runs into what's beside it"
 # A font the file doesn't let us use. `{font}` is the face that draws instead.
 substitute = "Edits here use {font}, which may be a different width from the original."
 # The same, when that face's letters are exactly as wide as the original's.
@@ -55,7 +55,7 @@ undrawable_letters = "No font we have can draw {letters} here, so an edit here l
 
 # An edit that went in, but not quite as asked. `{letters}` is space-separated.
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
-left_out = "Left out {letters}: no font we have can draw them."
+left_out = "Left out {letters}, which no font we have can draw."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
 # Said by the browser while the field it's typed in is empty: taking text out isn't a change.

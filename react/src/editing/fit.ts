@@ -4,6 +4,7 @@
 // server's fit arrives with the render and wins.
 import type { Copy, FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { MISSING_SPACE_EM } from "./constants";
+import type { Drawing } from "./substitutes";
 import { fill, shownAs } from "./words";
 
 /** What the browser's fit check makes of a span reading other words. */
@@ -160,18 +161,36 @@ export function settingOf(
   return { way, ...setAs(way, fit), offered: waysOffered(fit) };
 }
 
-/** Everything that won't come out as typed, in the server's words; empty when it fits. */
+// A line's width when it has none to speak of: what a share past its room is taken of. `_SOME_WIDTH_PT` in editing/fit.py.
+const SOME_WIDTH_PT = 1;
+
+/** How far past its room the line runs, as a whole percent of the original, at least 1: `percent_past_room` in editing/fit.py. */
+export function percentPastRoom({
+  originalPt,
+  deltaPt,
+  roomPt,
+}: Pick<Fit, "originalPt" | "deltaPt" | "roomPt">): number {
+  // Rounded first, so a share that's whole in decimal isn't pushed up by binary.
+  const share = Math.round(((deltaPt - roomPt) / Math.max(originalPt, SOME_WIDTH_PT)) * 100 * 1e6) / 1e6;
+  return Math.max(1, Math.ceil(share));
+}
+
+/** Everything that won't come out as typed, in the server's words and order (`FitReport.describe`); empty when it fits. */
 export function troublesOf(
   fit: Fit,
-  { rules, copy, substitute, way = "as-is" }: { rules: FitRules; copy: Copy; substitute: string; way?: Strategy },
+  { rules, copy, drawing, way = "as-is" }: { rules: FitRules; copy: Copy; drawing: Drawing; way?: Strategy },
 ): string[] {
   const troubles: string[] = [];
-  const chars = fit.missing.map((letter) => shownAs(letter, copy.characters));
-  if (chars.length > 0) troubles.push(fill(copy.missing, { chars, font: substitute }));
+  const named = (letters: readonly string[]) => letters.map((letter) => shownAs(letter, copy.characters));
+  // Letters its own font lacks but the face it goes to has: the whole line switches.
+  if (drawing.switched.length > 0) {
+    troubles.push(fill(copy.missing, { chars: named(drawing.switched), font: drawing.face }));
+  }
+  // Letters nothing we have draws.
+  if (drawing.leftOut.length > 0) troubles.push(fill(copy.will_leave_out, { letters: named(drawing.leftOut) }));
   // The part past its room collides, unless a way out ends it where the original did.
   if (runsPast(fit.deltaPt, fit.roomPt, rules) && way === "as-is") {
-    const pastRoomPt = Math.round((fit.deltaPt - fit.roomPt) * 100) / 100;
-    troubles.push(fill(copy.too_long, { delta_pt: pastRoomPt }));
+    troubles.push(fill(copy.too_long, { percent: String(percentPastRoom(fit)) }));
   }
   return troubles;
 }
