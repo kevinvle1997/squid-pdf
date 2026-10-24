@@ -129,7 +129,7 @@ function farAway() {
 
 /** The sheet of the page `element` is on: the box after its margin that the page is drawn in. */
 function sheetOf(element: Element): Element {
-  // The one child its page's shape is held on, whatever is set beside it (the margin, the first page's hint).
+  // The one child its page's shape is held on, whatever is set beside it (the margin).
   const sheet = element.closest("section")?.querySelector(":scope > [style*='aspect-ratio']") ?? undefined;
   if (sheet === undefined) throw new Error("no sheet");
   return sheet;
@@ -436,19 +436,6 @@ describe("a page", () => {
     } finally {
       await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
     }
-  });
-
-  test("until something's changed, the first page's margin says how to start, in the mat's quiet ink", async () => {
-    await page.viewport(1400, 900);
-    const screen = await draw();
-    // In the margin; the line over the page is a narrow screen's, with no margin to say it in.
-    const hint = screen.getByRole("region", { name: "Page 1" }).getByText("Click any word to fix it").first();
-    await expect.element(hint).toBeVisible();
-    expect(getComputedStyle(hint.element().closest("p") ?? document.body).color).toBe(colorOf("--ground-ink-lo"));
-    await editSpan(screen);
-    await screen.getByRole("textbox").fill("is here");
-    await userEvent.keyboard("{Enter}");
-    await expect.element(hint).not.toBeInTheDocument();
   });
 
   test("a redaction is the page's white where its words were, boxed in the pencil, not the wash a pointer draws", async () => {
