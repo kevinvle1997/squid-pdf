@@ -40,3 +40,11 @@ def test_a_run_past_every_code_a_font_can_have_stops_there(tmp_path):
     widths = open_driver(path).listed_widths(xref) or {}
 
     assert_at_most(len(widths), _TWO_BYTE_CODES, "letters read from one long run")
+
+
+def test_a_type0_whose_inner_font_points_nowhere_has_no_list(type0_pointing_nowhere):
+    """Its inner font, or its list of them, points past the file's last object."""
+    driver = open_driver(type0_pointing_nowhere)
+    damaged = next(font for font in driver.fonts(0) if font.resource == "F0")
+
+    assert_equal(driver.listed_widths(damaged.xref), None, "letters read from no font")
