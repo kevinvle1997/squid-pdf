@@ -34,7 +34,7 @@ _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye s
 _FILL_OPACITY_NAME = "fitzca99{:02d}"
 _PERCENT = 100  # a fill opacity is named to a hundredth, 0 to 99
 
-_PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
+PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 # A number, or a bracket, in a two-byte font's width list (`/W`).
 _W_TOKEN = re.compile(r"\[|\]|-?\d+(?:\.\d+)?")
 _RUN_TOKENS = 3  # `first last w`: a run of CIDs all one width
@@ -43,6 +43,8 @@ _WHOLE_NUMBER = re.compile(r"-?\d+")
 _IDENTITY_ENCODINGS = ("/Identity-H", "/Identity-V")  # a two-byte font whose codes are its CIDs
 # An object reference, `12 0 R`: the number is what's kept.
 _OBJECT_REFERENCE = re.compile(r"(\d+) \d+ R")
+# The object the first entry of an array points at: "[15 0 R]" -> 15.
+_FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
 
 # The keys of marked content's hidden copies.
 _HIDDEN_COPY_KEYS = ("ActualText", "Alt", "E")
@@ -213,7 +215,7 @@ class PdfFile:
         is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
         value_type, _value = self.doc.xref_get_key(xref, "ToUnicode")
-        if value_type == _PDF_NULL:
+        if value_type == PDF_NULL:
             return None
 
         with self._mupdf_font_record(xref) as font:
@@ -254,24 +256,48 @@ class PdfFile:
             if first is None or last is None:
                 return None
             return range(max(first, 0), min(last, _ONE_BYTE_CODES - 1) + 1)
-        descendants = self._entry(xref, "DescendantFonts")
+        value_type, _value = self.doc.xref_get_key(xref, "DescendantFonts")
         # Neither kind of list: the reader falls back on widths of its own.
-        if descendants is None:
+        if value_type == PDF_NULL:
             return None
         # `/W` lists CIDs: only by Identity is a code its CID, so its letter can be read.
         if self._entry(xref, "Encoding") not in _IDENTITY_ENCODINGS:
             return None
-        inner = _OBJECT_REFERENCE.search(descendants)
-        # The one inside written in place, not as an object of its own: rare, and not read.
-        if inner is None or "<<" in descendants:
+        inner = self.inner_font(xref)
+        # The one inside written in place, or nowhere in the file: not read.
+        if inner is None:
             return None
-        w = self._entry(int(inner.group(1)), "W")
+        w = self._entry(inner, "W")
         return None if w is None else _cids_in(w)
+
+    def inner_font(self, xref: int) -> int | None:
+        """A two-byte (Type0) font's inner font, by number; None without one of its own.
+
+        None too when it, or the list it's in, points past the file's last object.
+        """
+        value_type, value = self.doc.xref_get_key(xref, "DescendantFonts")
+        # The list kept as an object of its own ("12 0 R"): read it there.
+        if value_type == "xref":
+            listed = int(value.split()[0])
+            # A damaged file can point past its last object: there's no list to read.
+            if not self._has_object(listed):
+                return None
+            value = self.doc.xref_object(listed, compressed=True)
+        inner = _FIRST_REFERENCE.match(value)
+        # No list, as a simple font has, or its inner font written out in place: rare.
+        if inner is None:
+            return None
+        number = int(inner.group(1))
+        return number if self._has_object(number) else None
+
+    def _has_object(self, xref: int) -> bool:
+        """Whether the file has an object numbered `xref`: none is 0, or past its last."""
+        return 0 < xref < self.doc.xref_length()
 
     def _entry(self, xref: int, key: str) -> str | None:
         """An object's entry as written, a reference to another followed; None when absent."""
         value_type, value = self.doc.xref_get_key(xref, key)
-        if value_type == _PDF_NULL:
+        if value_type == PDF_NULL:
             return None
         # Kept in an object of its own, `9 0 R`: what that object holds.
         referenced = _OBJECT_REFERENCE.search(value) if value_type == "xref" else None

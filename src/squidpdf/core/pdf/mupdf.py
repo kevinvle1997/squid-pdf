@@ -8,7 +8,6 @@ Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is
 from __future__ import annotations
 
 import math
-import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -28,6 +27,7 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_OWN_ERRORS,
     MUPDF_SYSTEM_ERRORS,
     MUPDF_TOO_HEAVY,
+    PDF_NULL,
     PdfFile,
 )
 from squidpdf.core.pdf.png import png_of
@@ -66,8 +66,6 @@ _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
 _PRINTABLE = range(0x21, 0x7F)
 _ENDS_OR_ESCAPES_A_NAME = b"()<>[]{}/%#"
 
-# The object the first entry of an array points at: "[15 0 R]" -> 15.
-_FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
 # Where a font description keeps the font file, by the kind of file it is.
 _FONT_FILES = ("FontFile2", "FontFile3")
 
@@ -109,7 +107,6 @@ _STRIP_LIFTS = (0.05, 0.2)
 
 # The catalog entry for the file's tags: the reading order a screen reader follows.
 _TAGS_KEY = "StructTreeRoot"
-_PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
 
 # MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
 # errors all derive from one, so the narrower ones go first.
@@ -374,28 +371,11 @@ class _MuPDFDriver:
 
         None when a Type0's inner font isn't an object of its own in the file.
         """
-        value_type, value = self.doc.xref_get_key(xref, "DescendantFonts")
+        value_type, _value = self.doc.xref_get_key(xref, "DescendantFonts")
         # A simple font describes itself.
         if value_type not in ("array", "xref"):
             return xref
-        # The list of inner fonts kept as an object of its own ("12 0 R"): read it there.
-        if value_type == "xref":
-            list_xref = _object_number(value)
-            # A damaged file can point past its last object: there's no list to read.
-            if not self._has_object(list_xref):
-                return None
-            value = self.doc.xref_object(list_xref, compressed=True)
-        inner = _FIRST_REFERENCE.match(value)
-        # Written out in place: rare, and not worth it.
-        if inner is None:
-            return None
-        inner_xref = int(inner.group(1))
-        # Pointing past the file's last object, as a damaged file can: nothing to describe it.
-        return inner_xref if self._has_object(inner_xref) else None
-
-    def _has_object(self, xref: int) -> bool:
-        """Whether the file has an object numbered `xref`: none is 0, or past its last."""
-        return 0 < xref < self.doc.xref_length()
+        return self.file.inner_font(xref)
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
@@ -693,12 +673,12 @@ class _MuPDFDriver:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
         catalog = self.doc.pdf_catalog()  # the file's root entry, where the tags are listed
         value_type, _value = self.doc.xref_get_key(xref=catalog, key=_TAGS_KEY)
-        return value_type != _PDF_NULL
+        return value_type != PDF_NULL
 
     def drop_tags(self) -> None:
         """Remove the file's tags. Saving then drops every page only they pointed at."""
         catalog = self.doc.pdf_catalog()  # the file's root entry, where the tags are listed
-        self.doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=_PDF_NULL)
+        self.doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=PDF_NULL)
 
     def _add_content(self, page: int, stream: bytes) -> None:
         """Draw `stream` on top of everything on the page.
