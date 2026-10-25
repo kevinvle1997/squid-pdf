@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import optimizeLocales from "@react-aria/optimize-locales-plugin";
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
@@ -46,7 +47,8 @@ function caddyPolicy(): string {
 }
 
 export default defineConfig(({ isPreview }) => ({
-  plugins: [react()],
+  // React Aria's own words, such as a drop zone's, in the interface's one language: the landing carried every one.
+  plugins: [react(), optimizeLocales.vite({ locales: ["en-US"] })],
   // The code the landing links: this build's (`sourceCode`).
   define: { __SOURCE_CODE__: JSON.stringify(sourceCode()) },
   // Bundled up front, so a test never reloads halfway with a second copy of React.
