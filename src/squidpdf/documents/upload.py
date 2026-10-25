@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from squidpdf.core import Reply, Workers, words
-from squidpdf.documents import constants, store
+from squidpdf.documents import constants, disk, store
 from squidpdf.documents.analyse import analyse_upload
 from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
@@ -91,7 +91,7 @@ class UploadController:
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
         async with disk_held(declared, most=constants.MAX_FILE_BYTES):
-            with store.full_disk_refused():
+            with disk.full_disk_refused():
                 doc_id, folder = await asyncio.to_thread(store.create, owner_digest)
                 await _deleted_if_it_fails(
                     folder, _save_original(chunks, to=folder / store.ORIGINAL)

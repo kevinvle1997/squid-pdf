@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from squidpdf.core import Problem, Reply, Workers, strip_subset, words
-from squidpdf.documents import constants, store
+from squidpdf.documents import attached, constants, disk, store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.errors import (
     FontMismatch,
@@ -62,10 +62,10 @@ class AttachController:
         declared_too_large = declared is not None and declared > constants.MAX_FONT_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FONT_MB)
-        attached = await asyncio.to_thread(store.attached_files, doc.folder)
-        if not attached.can_keep(name):
+        files = await asyncio.to_thread(attached.attached_files, doc.folder)
+        if not files.can_keep(name):
             raise TooManyFonts(constants.MAX_FONTS)
-        arriving = await asyncio.to_thread(store.arriving_font, doc.folder)
+        arriving = await asyncio.to_thread(attached.arriving_font, doc.folder)
         try:
             async with disk_held(declared, most=constants.MAX_FONT_BYTES):
                 await _save_font(chunks, to=arriving)
@@ -112,22 +112,22 @@ def _attach_font(folder: Path, *, name: str, arrived: Path) -> KeptAnalysis:
     if span is None:
         raise NoSuchFont()
     font_file = arrived.read_bytes()
-    with store.fonts_locked(folder):
+    with attached.fonts_locked(folder):
         # Counted again under the lock: two attaches at once each passed the count before it.
-        if not store.attached_files(folder).can_keep(name):
+        if not attached.attached_files(folder).can_keep(name):
             raise TooManyFonts(constants.MAX_FONTS)
         with store.open_original(folder) as engine:
             why = engine.why_not_its_font(span, font_file)
         if why is not None:
             raise _REFUSALS.get(why.key, FontMismatch)(debug=why.key)
-        store.keep_font(folder, name, arrived)
+        attached.keep_font(folder, name, arrived)
         return analyse(folder)
 
 
 def _detach_font(folder: Path, *, name: str) -> KeptAnalysis:
     """Remove the user's copy of the font `name`, and judge the document again. In a worker."""
-    with store.fonts_locked(folder):
-        store.drop_font(folder, name)
+    with attached.fonts_locked(folder):
+        attached.drop_font(folder, name)
         return analyse(folder)
 
 
@@ -145,7 +145,7 @@ async def _save_font(chunks: AsyncIterable[bytes], *, to: Path) -> None:
     size = 0
     out = await asyncio.to_thread(_opened_to_write, to)
     try:
-        with store.full_disk_refused():
+        with disk.full_disk_refused():
             async for chunk in chunks:
                 size += len(chunk)
                 # Read as a module attribute, so a test can lower the limit.
