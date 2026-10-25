@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from squidpdf.core import Fragment, Page, Rect, Span, index_as_json, index_of, new_text
-from squidpdf.documents import api as documents, constants, store
+from squidpdf.documents import api as documents, attached, constants, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
 from squidpdf.documents.store import _KeptIndexes  # noqa: PLC2701 (a holder's forget test needs a fresh one)
@@ -98,7 +98,7 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = store.create("owner")
     first = KeptAnalysis(b'{"worked": "out"}', b"[]", "its-digest")
-    store.save_analysis(folder, "a-build", first, attached=store.attached_files(folder).key)
+    store.save_analysis(folder, "a-build", first, attached=attached.attached_files(folder).key)
     whole = sorted(path.name for path in folder.iterdir())
 
     def cut_short(*_paths: object) -> None:
@@ -107,7 +107,9 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
     monkeypatch.setattr(store.os, "replace", cut_short)
     with pytest.raises(raised):
         again = KeptAnalysis(b'{"worked": "out again"}', b"[1]", "its-next-digest")
-        store.save_analysis(folder, "a-build", again, attached=store.attached_files(folder).key)
+        store.save_analysis(
+            folder, "a-build", again, attached=attached.attached_files(folder).key
+        )
 
     assert_equal(store.load_analysis(folder, "a-build"), first, "the analysis kept")
     names = sorted(path.name for path in folder.iterdir())
@@ -183,7 +185,7 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
             folder,
             "a-build",
             KeptAnalysis(b"{}", b"[]", "its-digest"),
-            attached=store.attached_files(folder).key,
+            attached=attached.attached_files(folder).key,
         )
 
 
@@ -301,11 +303,11 @@ def test_a_copy_of_a_font_removed_after_it_was_listed_reads_as_no_copy_not_no_do
     """
     doc_id, folder = store.create("owner")
     store.save_index(folder, index_of([]))  # found only when its index is kept
-    arrived = store.arriving_font(folder)
+    arrived = attached.arriving_font(folder)
     arrived.write_bytes(b"a font")
-    store.keep_font(folder, "Arial", arrived)
-    listed = store.attached_files(folder)
-    store.drop_font(folder, "Arial")
+    attached.keep_font(folder, "Arial", arrived)
+    listed = attached.attached_files(folder)
+    attached.drop_font(folder, "Arial")
 
     with pytest.raises(KeyError):
         listed["Arial"]
@@ -317,12 +319,12 @@ def test_a_copy_replaced_again_and_again_then_removed_leaves_none(tmp_path):
     folder = tmp_path / "doc"
     folder.mkdir()
     for round_number in range(20):
-        arrived = store.arriving_font(folder)
+        arrived = attached.arriving_font(folder)
         arrived.write_bytes(b"copy %d" % round_number)
-        store.keep_font(folder, "Arial", arrived)
+        attached.keep_font(folder, "Arial", arrived)
 
-    kept_before = len(store.attached_files(folder).paths)
-    store.drop_font(folder, "Arial")
+    kept_before = len(attached.attached_files(folder).paths)
+    attached.drop_font(folder, "Arial")
 
     assert_equal(kept_before, 1, "copies kept for one font")
     assert_equal(list((folder / "fonts").glob("[!.]*")), [], "copies left once removed")

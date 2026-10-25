@@ -126,39 +126,39 @@ def _in_body(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:
         waiting.extend(ast.iter_child_nodes(node))
 
 
-# The store's names a coroutine may call itself: they touch no disk.
-_STORE_ON_THE_LOOP = {
-    "full_disk_refused",  # only names a full disk, for writes made in a thread
-}
+# The modules that read and write a document's folder: the store, and the user's font copies.
+_DISK_MODULES = ("store", "attached")
 
 
-def _store_name_called(node: ast.AST) -> str | None:
-    """The `store.<name>` a node calls, or None when it calls nothing of the store's."""
+def _disk_name_called(node: ast.AST) -> str | None:
+    """The `store.<name>` or `attached.<name>` a node calls; None when it calls neither's."""
     if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
         return None
     called = node.func
-    of_store = isinstance(called.value, ast.Name) and called.value.id == "store"
-    return called.attr if of_store else None
+    module = called.value
+    # Called on something other than a module named for the disk.
+    if not (isinstance(module, ast.Name) and module.id in _DISK_MODULES):
+        return None
+    return f"{module.id}.{called.attr}"
 
 
-def _store_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
-    """Each coroutine in `tree` and the `store.<name>` it calls itself, on the event loop."""
+def _disk_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
+    """Each coroutine in `tree`, and each disk module's function it calls on the loop."""
     for function in ast.walk(tree):
         if not isinstance(function, ast.AsyncFunctionDef):
             continue
         for node in _in_body(function):
-            name = _store_name_called(node)
+            name = _disk_name_called(node)
             if name is not None:
                 yield function.name, name
 
 
 def test_a_coroutine_reaches_the_store_only_through_a_thread():
-    """A coroutine never calls the store itself: the store reads the disk, unseen by ruff."""
+    """A coroutine never calls the store itself, nor the font copies: both read the disk."""
     breaking = [
-        f"{module}.{coroutine}: store.{name}"
+        f"{module}.{coroutine}: {name}"
         for module, tree in _TREES.items()
-        for coroutine, name in _store_calls(tree)
-        if name not in _STORE_ON_THE_LOOP
+        for coroutine, name in _disk_calls(tree)
     ]
     assert_equal(breaking, [], "store calls on the event loop, not through asyncio.to_thread")
 
