@@ -10,16 +10,11 @@ from squidpdf.editing.apply import (
     resolve as resolve,
 )
 from squidpdf.editing.edits import (
-    DeletePage as DeletePage,
     Edit as Edit,
     Insert as Insert,
-    MovePage as MovePage,
-    PageEdit as PageEdit,
-    PageOp as PageOp,
     Redact as Redact,
     Replace as Replace,
     RotatePage as RotatePage,
-    SpanEdit as SpanEdit,
     Strategy as Strategy,
     check_text as check_text,
 )
