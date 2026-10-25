@@ -1,4 +1,4 @@
-import { memo, type ReactNode, type Ref, useCallback, useMemo, useState } from "react";
+import { memo, type ReactNode, type Ref, startTransition, useCallback, useMemo, useState } from "react";
 import { useFocusWithin } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
@@ -45,7 +45,8 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
           const isNear = entry?.isIntersecting ?? false;
           if (isNear) nearPages.add(index);
           else nearPages.delete(index);
-          setNear(isNear);
+          // In the background: a page's marks are dozens of buttons, drawn in slices the scroll can go between.
+          startTransition(() => setNear(isNear));
         },
         { rootMargin: LAZY_MARGIN },
       );
