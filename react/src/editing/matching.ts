@@ -30,6 +30,9 @@ const LIGATURE = /[\ufb00-\ufb06]/u;
 
 const WORD_LETTER = /[\p{L}\p{M}\p{N}_]/u;
 
+// What a keyboard types as it is: none of it unseen, a ligature, or a letter typed as another.
+const AS_TYPED = /^[\x20-\x7e]*$/;
+
 /** A letter as a keyboard would type it: its kind's space, quote or dash, nothing if it's unseen, a ligature's letters. */
 function typedAs(letter: string): string {
   const typed = KEYBOARD.find(({ letters }) => letters.test(letter))?.typed;
@@ -60,11 +63,23 @@ function spelledAs(found: string, replacement: string): string {
   return spelled;
 }
 
+/** For one unit of what "Find" reads in a text, where the letter it came from starts, or ends; undefined past either end. */
+type LetterAt = (unit: number) => number | undefined;
+
 /** `text` as "Find" reads it, and for each unit of that, where in `text` the letter it came from starts and ends. */
 function readOf(
   text: string,
   options: Pick<FindOptions, "matchCase">,
-): { read: string; letterStart: number[]; letterEnd: number[] } {
+): { read: string; startOf: LetterAt; endOf: LetterAt } {
+  // Read as it is, a unit a letter, with no letter looked at alone: most of a document's text.
+  if (AS_TYPED.test(text)) {
+    const inText = (unit: number) => unit >= 0 && unit < text.length;
+    return {
+      read: options.matchCase ? text : text.toLowerCase(),
+      startOf: (unit) => (inText(unit) ? unit : undefined),
+      endOf: (unit) => (inText(unit) ? unit + 1 : undefined),
+    };
+  }
   let read = "";
   const letterStart: number[] = [];
   const letterEnd: number[] = [];
@@ -78,25 +93,24 @@ function readOf(
     }
     at += letter.length;
   }
-  return { read, letterStart, letterEnd };
+  return { read, startOf: (unit) => letterStart[unit], endOf: (unit) => letterEnd[unit] };
 }
 
 /** Each place in `text` that reads `searched`, left to right and none overlapping, as `options` match. */
 export function matchesIn(text: string, searched: string, options: FindOptions): Match[] {
   const wanted = readOf(searched, options).read;
   if (wanted === "") return [];
-  const { read, letterStart, letterEnd } = readOf(text, options);
+  const { read, startOf, endOf } = readOf(text, options);
   const matches: Match[] = [];
   let readAt = read.indexOf(wanted);
   while (readAt !== -1) {
     const readEnd = readAt + wanted.length;
     // Whole letters of the text, never half a ligature; and with Whole words, no letter either side.
-    const wholeLetters =
-      letterStart[readAt - 1] !== letterStart[readAt] && letterStart[readEnd] !== letterStart[readEnd - 1];
+    const wholeLetters = startOf(readAt - 1) !== startOf(readAt) && startOf(readEnd) !== startOf(readEnd - 1);
     const apart =
       !options.wholeWords || !(WORD_LETTER.test(read[readAt - 1] ?? "") || WORD_LETTER.test(read[readEnd] ?? ""));
-    const start = letterStart[readAt];
-    const end = letterEnd[readEnd - 1];
+    const start = startOf(readAt);
+    const end = endOf(readEnd - 1);
     if (wholeLetters && apart && start !== undefined && end !== undefined) {
       matches.push({ start, end });
       readAt = read.indexOf(wanted, readEnd);
