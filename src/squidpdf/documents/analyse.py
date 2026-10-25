@@ -54,21 +54,21 @@ def analyse_upload(folder: Path, max_pages: int) -> KeptAnalysis:
         return _analysed(engine, folder, index, rooms=rooms, attached=attached)
 
 
-def _take_in(path: Path, max_pages: int) -> None:
+def _take_in(folder: Path, max_pages: int) -> None:
     """Refuse a file past `max_pages`; rewrite one with what acts on its own, without it.
 
     Before the index, so every span id is the rewritten file's. Nothing here needs what
     goes, and a viewer would run it from the file the user downloads.
     """
-    with store.open_original(path) as engine:
+    with store.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
         # Nothing to take out: the original stays exactly as it was sent.
         if not engine.drop_active_content():
             return
         # Nothing was added, so saving says nothing.
-        store.replace_original(path, engine.save)
-    store.keep_active_content_dropped(path)
+        store.replace_original(folder, engine.save)
+    store.keep_active_content_dropped(folder)
 
 
 def analyse(folder: Path) -> KeptAnalysis:
@@ -85,7 +85,7 @@ def analyse(folder: Path) -> KeptAnalysis:
 
 def _analysed(
     engine: Engine,
-    path: Path,
+    folder: Path,
     index: SpanIndex,
     *,
     rooms: Mapping[str, float],
@@ -120,10 +120,10 @@ def _analysed(
     ]
     facts: AnalysisFacts = {
         "build": BUILD,
-        "active_content_dropped": store.active_content_dropped(path),
+        "active_content_dropped": store.active_content_dropped(folder),
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
-            for page in store.load_pages(path)
+            for page in store.load_pages(folder)
         ],
         "fonts": fonts,
     }
@@ -137,7 +137,7 @@ def _analysed(
         for span in index
     ]
     kept = _kept_analysis(facts, spans)
-    store.save_analysis(path, BUILD, kept, attached=attached.key)
+    store.save_analysis(folder, BUILD, kept, attached=attached.key)
     return kept
 
 

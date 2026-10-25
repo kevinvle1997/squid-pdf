@@ -11,17 +11,17 @@ from squidpdf.core import BUILD, SpanIndex
 from squidpdf.documents import store
 
 
-def kept_rooms(path: Path, index: SpanIndex) -> dict[str, float]:
+def kept_rooms(folder: Path, index: SpanIndex) -> dict[str, float]:
     """Every span's room, by id, as kept; worked out from the original, and kept, when it isn't.
 
     Read before the original is opened, as the index is: a delete after that can't take it.
     """
-    kept = store.load_rooms(path, BUILD)
+    kept = store.load_rooms(folder, BUILD)
     # Kept under this build and tuning: no page is read.
     if kept is not None:
         return kept
     # After a deploy or a retune: every page read again, once.
-    with store.open_original(path) as engine:
+    with store.open_original(folder) as engine:
         rooms = engine.rooms(index, index)
-    store.save_rooms(path, BUILD, rooms)
+    store.save_rooms(folder, BUILD, rooms)
     return rooms
