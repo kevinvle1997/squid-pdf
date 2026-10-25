@@ -7,11 +7,11 @@ channels is most of a page image's time: MuPDF writes every PNG in colour, at on
 from __future__ import annotations
 
 import struct
-import zlib
 from dataclasses import dataclass
 from itertools import chain
 
 import pymupdf
+from zlib_ng import zlib_ng
 
 from squidpdf.core.constants import PNG_COLOR_LEVEL, PNG_GRAY_LEVEL
 
@@ -73,7 +73,7 @@ def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout) -> bytes
     chunks = [
         _chunk(b"IHDR", header),
         _chunk(b"pHYs", resolution),
-        _chunk(b"IDAT", zlib.compress(unfiltered, layout.level)),
+        _chunk(b"IDAT", zlib_ng.compress(unfiltered, layout.level)),
         _chunk(b"IEND", b""),
     ]
     return _SIGNATURE + b"".join(chunks)
@@ -81,9 +81,8 @@ def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout) -> bytes
 
 def _chunk(name: bytes, data: bytes) -> bytes:
     """One chunk of a PNG: its length, its name, `data`, and a checksum of the last two."""
-    return (
-        struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data))
-    )
+    checksum = zlib_ng.crc32(name + data)
+    return struct.pack(">I", len(data)) + name + data + struct.pack(">I", checksum)
 
 
 def _pixels_per_meter(per_inch: int) -> int:

@@ -24,7 +24,6 @@ import { UnlikeCount } from "./Unlike";
 /** The bar, held at the top. */
 export function Bar() {
   const editor = useEditor();
-  const where = useEditorState(whereSaid);
   const changed = useEditorState(changedCount);
   const warned = useEditorState(warnedCount, shallowEqual);
   const runLong = useEditorState(runLongCount);
@@ -37,7 +36,7 @@ export function Bar() {
       <Wordmark compact />
       <span className={styles.file}>
         <h1 className={styles.name}>{editor.file.name}</h1>
-        <span className={styles.meta}>{where}</span>
+        <Where />
       </span>
       {/* What's changed and the buttons, together: beside the file while they fit, under it when they don't. */}
       <span className={styles.end}>
@@ -77,6 +76,12 @@ export function Bar() {
       </span>
     </header>
   );
+}
+
+/** Which page is in view: drawn alone, since it changes with each page the document scrolls past. */
+function Where() {
+  const where = useEditorState(whereSaid);
+  return <span className={styles.meta}>{where}</span>;
 }
 
 /** The changes, and how many of them won't match, the count warned and pressed for where: every one of them, or so many. */

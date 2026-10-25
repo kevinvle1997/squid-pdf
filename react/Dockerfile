@@ -10,7 +10,8 @@ COPY src/squidpdf/fonts/ /repo/src/squidpdf/fonts/
 COPY react/ ./
 # The commit this image is built from, whose code the landing links (compose.yaml passes it).
 ARG SQUIDPDF_COMMIT
-RUN npm run build
+# Then each built file's brotli copy, which Caddy sends as it is (Caddyfile).
+RUN npm run build && node scripts/compress.mjs dist
 
 FROM caddy:2.11.4
 COPY --from=build /repo/react/dist /srv

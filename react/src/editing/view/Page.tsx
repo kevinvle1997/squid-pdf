@@ -1,4 +1,4 @@
-import { memo, type ReactNode, type Ref, useCallback, useMemo, useState } from "react";
+import { memo, type ReactNode, type Ref, startTransition, useCallback, useMemo, useState } from "react";
 import { useFocusWithin } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
@@ -45,7 +45,8 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
           const isNear = entry?.isIntersecting ?? false;
           if (isNear) nearPages.add(index);
           else nearPages.delete(index);
-          setNear(isNear);
+          // In the background: a page's marks are dozens of buttons, drawn in slices the scroll can go between.
+          startTransition(() => setNear(isNear));
         },
         { rootMargin: LAZY_MARGIN },
       );
@@ -99,11 +100,13 @@ export const Page = memo(function Page({ index, info }: Props) {
   // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
   // page whose mark has focus, or focus would fall to the document as its mark went.
   const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
+  // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
+  const notes = keepMarks ? changes : NO_CHANGES;
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
     <section {...focusWithinProps} className={styles.page} aria-label={label} style={sheetWidthOf(info)}>
-      <Margin info={info} changes={changes} noteHeightPt={sheet.noteHeightPt} pageNumber={index + 1} />
+      <Margin info={info} changes={notes} noteHeightPt={sheet.noteHeightPt} pageNumber={index + 1} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
@@ -122,22 +125,27 @@ export const Page = memo(function Page({ index, info }: Props) {
             <Warn mark>{page.image.failed}</Warn>
           </p>
         )}
-        {strips?.map((strip) => (
-          <img
-            key={strip.y}
-            className={styles.strip}
-            src={strip.src}
-            alt=""
-            data-strip=""
-            style={topOf(strip.y, info)}
-          />
-        ))}
-        <Settles page={page} info={info} />
-        <Previews page={page} info={info} strips={strips} />
+        {/* What's drawn over the image goes with it: a far page decodes none of its strips or previews. */}
+        {sheet.near && (
+          <>
+            {strips?.map((strip) => (
+              <img
+                key={strip.y}
+                className={styles.strip}
+                src={strip.src}
+                alt=""
+                data-strip=""
+                style={topOf(strip.y, info)}
+              />
+            ))}
+            <Settles page={page} info={info} />
+            <Previews page={page} info={info} strips={strips} />
+          </>
+        )}
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
-      <ChangeList changes={changes} pageNumber={index + 1} />
+      <ChangeList changes={notes} pageNumber={index + 1} />
     </section>
   );
 });

@@ -394,6 +394,25 @@ describe("a page", () => {
     await expect.element(mark).toHaveFocus();
   });
 
+  test("a page scrolled far away holds none of its changes' notes or previews, and has them again as it comes back", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: /^Undo: / });
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await expect.element(note).toBeVisible();
+    await vi.waitFor(() => expect(sheet.querySelector("[data-preview]")).not.toBeNull());
+    // Focus held in the page keeps what's on it; nothing holds it here.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    farAway();
+    await expect.element(note).not.toBeInTheDocument();
+    expect(sheet.querySelector("[data-preview]")).toBeNull();
+    window.scrollTo(0, 0);
+    await expect.element(note).toBeVisible();
+    await vi.waitFor(() => expect(sheet.querySelector("[data-preview]")).not.toBeNull());
+  });
+
   test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     try {
