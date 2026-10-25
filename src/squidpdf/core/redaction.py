@@ -14,7 +14,15 @@ from dataclasses import dataclass
 from functools import partial
 
 from squidpdf.core.pdf.driver import PdfDriver
-from squidpdf.core.types import COPY_PLACES, CopyPlace, HiddenCopy, HiddenPlace, Span, by_page
+from squidpdf.core.types import (
+    COPY_PLACES,
+    CopyPlace,
+    HiddenCopy,
+    HiddenPlace,
+    Span,
+    asked_by_page,
+    by_page,
+)
 
 # A word: a run of letters and digits (`\w` without its underscore).
 _WORD = re.compile(r"[^\W_]+")
@@ -61,8 +69,7 @@ class RedactionCheck:
         own box is read, so the same words elsewhere aren't a leak. Spaces are
         ignored, so respacing can't hide a leftover.
         """
-        left = (self._left_on(page, on_page) for page, on_page in by_page(spans).items())
-        return [span for on_page in left for span in on_page]
+        return asked_by_page(spans, self._left_on)
 
     def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, with any word of their text still in their box."""
@@ -75,8 +82,7 @@ class RedactionCheck:
 
         Matched as `Engine.drop_hidden_copies` deletes them (`whole_words`).
         """
-        left = (self._hidden_on(page, on_page) for page, on_page in by_page(spans).items())
-        return [span for on_page in left for span in on_page]
+        return asked_by_page(spans, self._hidden_on)
 
     def _hidden_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, with a word of their text in a hidden copy there."""
