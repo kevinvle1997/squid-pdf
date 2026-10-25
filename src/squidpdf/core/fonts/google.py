@@ -249,17 +249,7 @@ def _fetched(
     one nor a failure is waited on again for FETCH_RETRY_S (`retries`).
     """
     cached_path = folder / GOOGLE_FONTS_COMMIT / file.source
-    try:
-        cached_copy = _read_cached_copy(cached_path, file)
-    except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
-        # Counted by grep: how often the cache is empty, and whether this call may download.
-        may_download = download is not None
-        _log.write(
-            LogEvent.GOOGLE_CACHE_MISSED,
-            font=OwnText(file.source),
-            may_download=may_download,
-        )
-        cached_copy = None
+    cached_copy = _cached(file, cached_path, may_download=download is not None)
     # In the cache and sound: nothing to download. A damaged copy is logged where it's read.
     if cached_copy is not None:
         tally(Tally.GOOGLE_HIT)
@@ -273,6 +263,33 @@ def _fetched(
         tally(Tally.GOOGLE_FAILED)
         return None
     fetching = _Fetching(cached_path=cached_path, download=download, retries=retries)
+    font_file = _waited_for(file, fetching)
+    # Had: nothing to hold back.
+    if font_file is not None:
+        tally(Tally.GOOGLE_FETCHED)
+        return font_file
+    tally(Tally.GOOGLE_FAILED)
+    # None came, or none in time: held back, every file if the network never answered.
+    retries.hold(file.source, now + FETCH_RETRY_S, answered=fetching.answered)
+    return None
+
+
+def _cached(file: GoogleFile, cached_path: Path, *, may_download: bool) -> bytes | None:
+    """The cached copy of `file`, checked; None when there's none, or it's damaged."""
+    try:
+        return _read_cached_copy(cached_path, file)
+    except FileNotFoundError:  # not cached yet, or a cut whose hash was never written
+        # Counted by grep: how often the cache is empty, and whether this call may download.
+        _log.write(
+            LogEvent.GOOGLE_CACHE_MISSED,
+            font=OwnText(file.source),
+            may_download=may_download,
+        )
+        return None
+
+
+def _waited_for(file: GoogleFile, fetching: _Fetching) -> bytes | None:
+    """`file`, downloaded in the background and waited on for FETCH_TIMEOUT_S, or None."""
     # A daemon: one still hanging never keeps the worker from exiting.
     threading.Thread(target=_download_and_cache, args=(file, fetching), daemon=True).start()
     waited_from = time.monotonic()
@@ -284,14 +301,7 @@ def _fetched(
         )
         font_file = None
     tally(Tally.GOOGLE_MS, ms_since(waited_from))
-    # Had: nothing to hold back.
-    if font_file is not None:
-        tally(Tally.GOOGLE_FETCHED)
-        return font_file
-    tally(Tally.GOOGLE_FAILED)
-    # None came, or none in time: held back, every file if the network never answered.
-    retries.hold(file.source, now + FETCH_RETRY_S, answered=fetching.answered)
-    return None
+    return font_file
 
 
 @dataclass(frozen=True, slots=True, eq=False)
