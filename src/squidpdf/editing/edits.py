@@ -34,6 +34,9 @@ def check_text(text: str) -> None:
     scope), and the rest draw nothing. From the browser, pydantic turns the
     ValueError into a bad request.
     """
+    # Each character refused below is unprintable, so printable text passes as it is.
+    if text.isprintable():
+        return
     for position, ch in enumerate(text):
         if not _is_on_a_line(ch):
             raise ValueError(f"text: U+{ord(ch):04X} at {position}; new text is one line")
