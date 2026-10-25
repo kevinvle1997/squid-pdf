@@ -36,58 +36,56 @@ from squidpdf.documents.types import (
 _SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
 
 
-def analyse_upload(folder: str, max_pages: int) -> KeptAnalysis:
+def analyse_upload(folder: Path, max_pages: int) -> KeptAnalysis:
     """Take out what acts on its own, index the new upload, keep its pages, and analyse it.
 
     The one place an index is built, so no span id the browser holds ever moves.
     Raises TooManyPages past `max_pages`, before reading a page.
     """
-    path = Path(folder)
-    _take_in(path, max_pages)
-    attached = store.attached_files(path)
-    with store.open_to_analyse(path, attached) as engine:
+    _take_in(folder, max_pages)
+    attached = store.attached_files(folder)
+    with store.open_to_analyse(folder, attached) as engine:
         index = engine.index()
-        store.save_index(path, index)
-        store.save_pages(path, engine.pages())
+        store.save_index(folder, index)
+        store.save_pages(folder, engine.pages())
         # How far each line can run before it's too long: kept, so nothing works it out again.
         rooms = engine.rooms(index, index)
-        store.save_rooms(path, BUILD, rooms)
-        return _analysed(engine, path, index, rooms=rooms, attached=attached)
+        store.save_rooms(folder, BUILD, rooms)
+        return _analysed(engine, folder, index, rooms=rooms, attached=attached)
 
 
-def _take_in(path: Path, max_pages: int) -> None:
+def _take_in(folder: Path, max_pages: int) -> None:
     """Refuse a file past `max_pages`; rewrite one with what acts on its own, without it.
 
     Before the index, so every span id is the rewritten file's. Nothing here needs what
     goes, and a viewer would run it from the file the user downloads.
     """
-    with store.open_original(path) as engine:
+    with store.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
         # Nothing to take out: the original stays exactly as it was sent.
         if not engine.drop_active_content():
             return
         # Nothing was added, so saving says nothing.
-        store.replace_original(path, engine.save)
-    store.keep_active_content_dropped(path)
+        store.replace_original(folder, engine.save)
+    store.keep_active_content_dropped(folder)
 
 
-def analyse(folder: str) -> KeptAnalysis:
+def analyse(folder: Path) -> KeptAnalysis:
     """Analyse a stored document again, under this build, over the index kept at upload.
 
     Raises Gone if that index was deleted or kept in another format.
     """
-    path = Path(folder)
-    index = store.require_index(path)
-    rooms = kept_rooms(path, index)
-    attached = store.attached_files(path)
-    with store.open_to_analyse(path, attached) as engine:
-        return _analysed(engine, path, index, rooms=rooms, attached=attached)
+    index = store.require_index(folder)
+    rooms = kept_rooms(folder, index)
+    attached = store.attached_files(folder)
+    with store.open_to_analyse(folder, attached) as engine:
+        return _analysed(engine, folder, index, rooms=rooms, attached=attached)
 
 
 def _analysed(
     engine: Engine,
-    path: Path,
+    folder: Path,
     index: SpanIndex,
     *,
     rooms: Mapping[str, float],
@@ -122,10 +120,10 @@ def _analysed(
     ]
     facts: AnalysisFacts = {
         "build": BUILD,
-        "active_content_dropped": store.active_content_dropped(path),
+        "active_content_dropped": store.active_content_dropped(folder),
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
-            for page in store.load_pages(path)
+            for page in store.load_pages(folder)
         ],
         "fonts": fonts,
     }
@@ -139,7 +137,7 @@ def _analysed(
         for span in index
     ]
     kept = _kept_analysis(facts, spans)
-    store.save_analysis(path, BUILD, kept, attached=attached.key)
+    store.save_analysis(folder, BUILD, kept, attached=attached.key)
     return kept
 
 

@@ -80,7 +80,7 @@ class AttachController:
         self, folder: Path, *, name: str, arrived: Path
     ) -> KeptAnalysis:
         """Check and keep the copy, and judge the document again, on a worker."""
-        task = partial(_attach_font, str(folder), name=name, arrived=str(arrived))
+        task = partial(_attach_font, folder, name=name, arrived=arrived)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
@@ -97,41 +97,39 @@ class DetachController:
 
     async def _enqueue_detach_font(self, folder: Path, *, name: str) -> KeptAnalysis:
         """Remove the copy, and judge the document again, on a worker."""
-        task = partial(_detach_font, str(folder), name=name)
+        task = partial(_detach_font, folder, name=name)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
-def _attach_font(folder: str, *, name: str, arrived: str) -> KeptAnalysis:
+def _attach_font(folder: Path, *, name: str, arrived: Path) -> KeptAnalysis:
     """Check the copy that `arrived` is the font `name`, keep it, and judge again. In a worker.
 
     Raises NoSuchFont for a font the document doesn't use, and FontMismatch for a
     file that isn't it: checked against the file's copies, or its width list.
     """
-    path = Path(folder)
-    index = store.require_index(path)
+    index = store.require_index(folder)
     # The first span in the font speaks for it, as in the analysis.
     span = next((span for span in index if strip_subset(span.font) == name), None)
     if span is None:
         raise NoSuchFont()
-    font_file = Path(arrived).read_bytes()
-    with store.fonts_locked(path):
+    font_file = arrived.read_bytes()
+    with store.fonts_locked(folder):
         # Counted again under the lock: two attaches at once each passed the count before it.
-        attached = store.attached_files(path)
+        attached = store.attached_files(folder)
         if name not in attached and len(attached.paths) >= constants.MAX_FONTS:
             raise TooManyFonts(constants.MAX_FONTS)
-        with store.open_original(path) as engine:
+        with store.open_original(folder) as engine:
             why = engine.why_not_its_font(span, font_file)
         if why is not None:
             raise _REFUSALS.get(why.key, FontMismatch)(debug=why.key)
-        store.keep_font(path, name, Path(arrived))
+        store.keep_font(folder, name, arrived)
         return analyse(folder)
 
 
-def _detach_font(folder: str, *, name: str) -> KeptAnalysis:
+def _detach_font(folder: Path, *, name: str) -> KeptAnalysis:
     """Remove the user's copy of the font `name`, and judge the document again. In a worker."""
-    path = Path(folder)
-    with store.fonts_locked(path):
-        store.drop_font(path, name)
+    with store.fonts_locked(folder):
+        store.drop_font(folder, name)
         return analyse(folder)
 
 

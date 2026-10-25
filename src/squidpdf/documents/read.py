@@ -58,7 +58,7 @@ class ReadController:
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse, str(folder))
+        task = partial(analyse, folder)
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 

@@ -36,13 +36,13 @@ class PageController:
 
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
         """Draw the page on a worker."""
-        task = partial(_draw_page, str(folder), page=page, scale=scale)
+        task = partial(_draw_page, folder, page=page, scale=scale)
         return await self.workers.run(PAGE_IMAGE_TIMEOUT_S, task)
 
 
-def _draw_page(folder: str, page: int, scale: float) -> bytes:
+def _draw_page(folder: Path, page: int, scale: float) -> bytes:
     """Draw one page of the original, unrotated. Runs in a worker."""
-    with store.open_original(Path(folder)) as engine:
+    with store.open_original(folder) as engine:
         return engine.page_image(page, scale)
 
 

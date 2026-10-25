@@ -96,7 +96,7 @@ class RenderController:
         """Draw the regions on a worker."""
         task = partial(
             _draw_regions,
-            str(folder),
+            folder,
             edits=edits,
             regions=regions,
             strips=strips,
@@ -106,7 +106,7 @@ class RenderController:
 
 
 def _draw_regions(
-    folder: str,
+    folder: Path,
     *,
     edits: list[Edit],
     regions: list[Region],
@@ -117,10 +117,9 @@ def _draw_regions(
 
     `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
     """
-    path = Path(folder)
-    index = store.require_index(path)
-    rooms = kept_rooms(path, index)
-    with store.open_original(path) as engine:
+    index = store.require_index(folder)
+    rooms = kept_rooms(folder, index)
+    with store.open_original(folder) as engine:
         resolved = resolve(engine, index, rooms=rooms, edits=edits)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)

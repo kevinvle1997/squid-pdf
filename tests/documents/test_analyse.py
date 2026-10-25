@@ -111,7 +111,7 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
 
     try:
         asked = _google_through(monkeypatch, hanging)
-        analyse.analyse_upload(str(in_google_families), MAX_PAGES)
+        analyse.analyse_upload(in_google_families, MAX_PAGES)
         assert_equal(len(asked), 1, "downloads waited on by the analysis")
         assert_at_most(FETCH_TIMEOUT_S, ANALYSE_TIMEOUT_S, "one wait, in the analysis's time")
 
@@ -130,7 +130,7 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
     """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
     _google_through(monkeypatch, lambda _url: poppins)  # only Poppins' file has its hash
-    analyse.analyse_upload(str(in_google_families), MAX_PAGES)
+    analyse.analyse_upload(in_google_families, MAX_PAGES)
     cached = sorted(path.name for path in (store.root() / "fonts").rglob("*.ttf"))
     assert_equal(cached, ["Poppins-Regular.ttf"], "what the analysis cached")
 
@@ -145,7 +145,7 @@ def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkey
     """With SQUIDPDF_DEV_REJUDGE set, one kept by other code is worked out again on its read."""
     _, folder = store.create("owner")
     drawn_with(str(folder / store.ORIGINAL))
-    analyse.analyse_upload(str(folder), MAX_PAGES)
+    analyse.analyse_upload(folder, MAX_PAGES)
     kept_before = store.load_analysis(folder, BUILD)
 
     monkeypatch.setenv("SQUIDPDF_DEV_REJUDGE", "1")
@@ -158,14 +158,14 @@ def test_a_retune_judges_the_saved_index_again(monkeypatch):
     """A retune with no new build judges every document again, each span keeping its id."""
     _, folder = store.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="80 Tz")
-    [before] = orjson.loads(analyse.analyse_upload(str(folder), MAX_PAGES).spans)
+    [before] = orjson.loads(analyse.analyse_upload(folder, MAX_PAGES).spans)
     loose = 1000.0
     # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
     monkeypatch.setattr(plan, "TOLERANCE_PT", loose)
     monkeypatch.setattr(store, "ANALYSIS_TUNING", ANALYSIS_TUNING | {"tolerance_pt": loose})
 
     kept = store.load_analysis(folder, BUILD)
-    [after] = orjson.loads(analyse.analyse(str(folder)).spans)
+    [after] = orjson.loads(analyse.analyse(folder).spans)
 
     assert_equal(kept, None, "the analysis kept under the old tuning, as a read finds it")
     judged = [(span["id"], span["fidelity"]) for span in (before, after)]
@@ -176,7 +176,7 @@ def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usab
     _, folder = store.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="80 Tz")
 
-    kept = analyse.analyse_upload(str(folder), MAX_PAGES)
+    kept = analyse.analyse_upload(folder, MAX_PAGES)
 
     [span] = orjson.loads(kept.spans)
     judged = (span["fidelity"], span["why"])
@@ -190,7 +190,7 @@ def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
     _, folder = store.create("owner")
     type3_copies_at(str(folder / store.ORIGINAL))
 
-    kept = analyse.analyse_upload(str(folder), MAX_PAGES)
+    kept = analyse.analyse_upload(folder, MAX_PAGES)
 
     fonts = orjson.loads(kept.facts)["fonts"]
     named = [(font["name"].startswith("Type3 ("), font["shown_name"]) for font in fonts]
@@ -209,4 +209,4 @@ def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(
 
     monkeypatch.setattr(Engine, "pages", read_pages)
     with pytest.raises(TooManyPages):
-        analyse.analyse_upload(str(folder), 1)  # the sample has two
+        analyse.analyse_upload(folder, 1)  # the sample has two

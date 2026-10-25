@@ -75,24 +75,23 @@ class ExportController:
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
         """Make the PDF on a worker."""
-        task = partial(_make_pdf, str(folder), str(scratch), edits=edits, pages=pages)
+        task = partial(_make_pdf, folder, scratch, edits=edits, pages=pages)
         return await self.workers.run(EXPORT_TIMEOUT_S, task)
 
 
 def _make_pdf(
-    folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
+    folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
 ) -> Exported:
     """Save the document in `folder`, the edits applied and checked, into `scratch`.
 
     The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
     """
-    path = Path(folder)
-    index = store.require_index(path)
-    rooms = kept_rooms(path, index)
+    index = store.require_index(folder)
+    rooms = kept_rooms(folder, index)
 
-    with store.open_original(path) as engine:
+    with store.open_original(folder) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.
-        out = Path(scratch) / _EXPORTED
+        out = scratch / _EXPORTED
         saved = save_edited(engine, index, rooms=rooms, edits=edits, pages=pages, to=str(out))
         skipped = [skip.edit for skip in saved.applied.skipped]
         # Only the file's own notices: render already said apply's.
