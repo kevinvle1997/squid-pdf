@@ -43,15 +43,15 @@ def analyse_upload(folder: Path, max_pages: int) -> KeptAnalysis:
     Raises TooManyPages past `max_pages`, before reading a page.
     """
     _take_in(folder, max_pages)
-    copies = attached.attached_files(folder)
-    with store.open_to_analyse(folder, copies) as engine:
+    files = attached.attached_files(folder)
+    with store.open_to_analyse(folder, files) as engine:
         index = engine.index()
         store.save_index(folder, index)
         store.save_pages(folder, engine.pages())
         # How far each line can run before it's too long: kept, so nothing works it out again.
         rooms = engine.rooms(index, index)
         store.save_rooms(folder, BUILD, rooms)
-        return _analysed(engine, folder, index, rooms=rooms, copies=copies)
+        return _analysed(engine, folder, index, rooms=rooms, files=files)
 
 
 def _take_in(folder: Path, max_pages: int) -> None:
@@ -78,9 +78,9 @@ def analyse(folder: Path) -> KeptAnalysis:
     """
     index = store.require_index(folder)
     rooms = kept_rooms(folder, index)
-    copies = attached.attached_files(folder)
-    with store.open_to_analyse(folder, copies) as engine:
-        return _analysed(engine, folder, index, rooms=rooms, copies=copies)
+    files = attached.attached_files(folder)
+    with store.open_to_analyse(folder, files) as engine:
+        return _analysed(engine, folder, index, rooms=rooms, files=files)
 
 
 def _analysed(
@@ -89,11 +89,11 @@ def _analysed(
     index: SpanIndex,
     *,
     rooms: Mapping[str, float],
-    copies: attached.AttachedFiles,
+    files: attached.AttachedFiles,
 ) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
 
-    Kept under the set of the user's copies it was judged with, `copies`.
+    Kept under the set of the user's copies it was judged with, `files`.
 
     Kept in no language: each sentence as its code and facts, said when it's sent.
     Handed back as its JSON, so it leaves the worker fast and the reply sends its spans as is.
@@ -113,7 +113,7 @@ def _analysed(
             "why": _substitute_why(reports[span.id]),
             "same_widths": reports[span.id].same_widths,
             "look_alike": engine.look_alike(span),
-            "attached": strip_subset(span.font) in copies,
+            "attached": strip_subset(span.font) in files,
             "glyphs": engine.widths(span),
         }
         for span in first_span_of_font.values()
@@ -137,7 +137,7 @@ def _analysed(
         for span in index
     ]
     kept = _kept_analysis(facts, spans)
-    store.save_analysis(folder, BUILD, kept, attached=copies.key)
+    store.save_analysis(folder, BUILD, kept, attached=files.key)
     return kept
 
 
