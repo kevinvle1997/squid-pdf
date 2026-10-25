@@ -21,6 +21,8 @@ _DENSE_WORDS = (
     "purpose agreed liability is limited to the fees paid in the period before the claim"
 ).split()
 _DENSE_TERMS = ("the Services", "the Client", "the Provider", "Confidential Information")
+# The sample's opening line; the long fixture's first page opens with it, for a test to find.
+_OPENING = "This agreement is made on 14 March 2026 between"
 
 
 def write_sample(path: str) -> None:
@@ -32,7 +34,7 @@ def write_sample(path: str) -> None:
     referenced.insert_text((72, 96), "SERVICES AGREEMENT", fontname="tibo", fontsize=13)
     referenced.insert_text(
         (72, 128),
-        "This agreement is made on 14 March 2026 between",
+        _OPENING,
         fontname="tiro",
         fontsize=11,
     )
@@ -81,23 +83,27 @@ def write_dense(path: str, *, pages: int) -> None:
         page.insert_text((72, 84), f"Schedule {number + 1}", fontname="tibo", fontsize=13)
         baseline = _DENSE_TOP
         if number == 0:
-            opening = "This agreement is made on 14 March 2026 between"
-            page.insert_text((72, baseline), opening, fontname="tiro", fontsize=_DENSE_SIZE)
+            page.insert_text((72, baseline), _OPENING, fontname="tiro", fontsize=_DENSE_SIZE)
             baseline += _DENSE_LEADING
         while baseline <= _DENSE_BOTTOM:
-            line = [choose.choice(_DENSE_WORDS) for _ in range(choose.randint(9, 12))]
-            runs = [(" ".join(line) + " ", "tiro")]
-            if choose.random() < 1 / 3:
-                cut = choose.randint(2, len(line) - 2)
-                runs = [
-                    (" ".join(line[:cut]) + " ", "tiro"),
-                    (choose.choice(_DENSE_TERMS) + " ", "tibo"),
-                    (" ".join(line[cut:]), "tiro"),
-                ]
             x = 72.0
-            for text, font in runs:
+            for text, font in _dense_runs(choose):
                 page.insert_text((x, baseline), text, fontname=font, fontsize=_DENSE_SIZE)
                 x += pymupdf.get_text_length(text, fontname=font, fontsize=_DENSE_SIZE)
             baseline += _DENSE_LEADING
     doc.save(path)
     doc.close()
+
+
+def _dense_runs(choose: random.Random) -> list[tuple[str, str]]:
+    """One line of made-up words, as its runs and their fonts; one in three has a bold term."""
+    line = [choose.choice(_DENSE_WORDS) for _ in range(choose.randint(9, 12))]
+    # Plain: the whole line in the body font.
+    if choose.random() >= 1 / 3:
+        return [(" ".join(line) + " ", "tiro")]
+    cut = choose.randint(2, len(line) - 2)
+    return [
+        (" ".join(line[:cut]) + " ", "tiro"),
+        (choose.choice(_DENSE_TERMS) + " ", "tibo"),
+        (" ".join(line[cut:]), "tiro"),
+    ]
