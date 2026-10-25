@@ -44,6 +44,7 @@ from squidpdf.core.types import (
     Rect,
     Span,
     SpanIndex,
+    asked_by_page,
     by_page,
     turn_added,
 )
@@ -128,11 +129,7 @@ class Engine:
         of the value the field shows: text the page draws there, a hint printed
         in an empty field, say, is the page's, and an edit changes it.
         """
-        return [
-            span
-            for page, on_page in by_page(spans).items()
-            for span in self._in_fields_on(page, on_page)
-        ]
+        return asked_by_page(spans, self._in_fields_on)
 
     def _in_fields_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, that a form field draws."""
@@ -230,8 +227,7 @@ class Engine:
         the text.
         """
         self._read_before_erasing(spans, then_drawn)
-        left = (self._erased_on(page, on_page) for page, on_page in by_page(spans).items())
-        return [span for on_page in left for span in on_page]
+        return asked_by_page(spans, self._erased_on)
 
     def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Erase `spans`, all on `page`; returns those with any word of their text left."""

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, NewType, get_args
 
@@ -398,6 +398,13 @@ def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
     for span in spans:
         grouped.setdefault(span.page, []).append(span)
     return grouped
+
+
+def asked_by_page[T](
+    spans: Iterable[Span], ask: Callable[[int, list[Span]], list[T]]
+) -> list[T]:
+    """What `ask` answers for each page's share of `spans`, as one list, page by page."""
+    return [answer for page, on_page in by_page(spans).items() for answer in ask(page, on_page)]
 
 
 def index_as_json(index: SpanIndex) -> bytes:
