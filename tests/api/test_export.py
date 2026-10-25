@@ -121,7 +121,7 @@ def _stall(*_args: object, **_kwargs: object) -> None:
 
 
 def _make_pdf_stalling_once_open(
-    folder: str, scratch: str, *, edits: list[Edit], pages: list[int] | None
+    folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
 ) -> Exported:
     """`_make_pdf`, hanging where it opens the original. Runs in a worker, the patch with it."""
     with mock.patch.object(store, "open_original", _stall):

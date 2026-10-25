@@ -107,7 +107,7 @@ class UploadController:
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse_upload, str(folder), constants.MAX_PAGES)
+        task = partial(analyse_upload, folder, constants.MAX_PAGES)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
