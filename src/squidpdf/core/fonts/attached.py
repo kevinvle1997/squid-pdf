@@ -51,7 +51,7 @@ class AttachedFonts:
         # Nothing attached for it: no news, so nothing to say.
         if name not in self.files:
             return None
-        return self._copy(own.font, name)
+        return self.opened_copy(own.font, name)
 
     def own_for(self, font: PageFont) -> FontCopy | None:
         """The user's copy, for a font the page only names; None when they attached none.
@@ -61,13 +61,13 @@ class AttachedFonts:
         name = strip_subset(font.name)
         if name not in self.files:
             return None
-        copy = self._copy(font, name)
+        copy = self.opened_copy(font, name)
         why = why_unlike_listed(copy, self.driver.listed_widths(font.xref))
         if why is not None:
             raise FontUnusable(why)
         return copy
 
-    def _copy(self, font: PageFont, name: str) -> FontCopy:
+    def opened_copy(self, font: PageFont, name: str) -> FontCopy:
         """The copy attached for `name`, standing for `font`. Raises FontUnusable if no font."""
         embedded = recalled(self.opened, name, partial(self._open, name))
         lent = Lent(_SOURCE.format(name=name), name)

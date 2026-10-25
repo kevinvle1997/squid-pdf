@@ -405,10 +405,11 @@ class DocumentFonts:
         # Not on the page: new text, in no font of the document's.
         if page_font is None:
             return Message("font_not_in_file")
-        candidate = AttachedFonts(self.driver, {strip_subset(page_font.name): font_file})
+        name = strip_subset(page_font.name)
+        candidate = AttachedFonts(self.driver, {name: font_file})
         own = self._opened(page_font)
         try:
-            # Only named: checked against the page's width list.
+            # Only named: checked against the page's width list. Type3 isn't stored, yet draws.
             only_named = isinstance(own, FontUnusable) and not page_font.is_embedded
             if only_named:
                 candidate.own_for(page_font)
@@ -417,12 +418,9 @@ class DocumentFonts:
             if isinstance(own, FontUnusable):
                 return own.reason
             in_file = pooled_font(own, partial(self._file_copies, span.page, own))
-            copy = candidate.copy_of(own)
+            copy = candidate.opened_copy(own.font, name)
         except FontUnusable as refused:  # it isn't the font, or isn't a font at all
             return refused.reason
-        # The span's font has no name `copy_of` keys by: not the user's to attach.
-        if copy is None:
-            return Message("font_not_in_file")
         return why_turned_away(copy, own=own, letters=in_file.every_letter())
 
     def _file_copies(
