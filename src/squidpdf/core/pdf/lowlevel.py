@@ -815,14 +815,15 @@ class PdfFile:
         fields = list(
             _each_reached(mu.pdf_dict_get(form, mu.PDF_ENUM_NAME_Fields), _FIELD_KIDS)
         )
-        reached = {mu.pdf_to_num(field) for field in fields}
+        # By number: one written inline has none of its own (0), and is a field of its own.
+        reached = {mu.pdf_to_num(field) for field in fields if mu.pdf_is_indirect(field)}
         for _page, annotation in self._each_annotation():
             # A comment or a link, not a form field's part.
             if not _is_widget(annotation):
                 continue
             for field in _field_line(annotation):
-                # Reached already, through the form's list or another of its parts.
-                if mu.pdf_to_num(field) in reached:
+                # An object of its own, reached already, from the form's list or another part.
+                if mu.pdf_is_indirect(field) and mu.pdf_to_num(field) in reached:
                     continue
                 reached.add(mu.pdf_to_num(field))
                 fields.append(field)

@@ -10,6 +10,7 @@ from tests.conftest import FORM_FIELD_VALUE, FORM_HINT, FORM_LINE
 from tests.helpers import assert_equal
 
 _SCALE = 2
+_INLINE_NAME = "Ada Quill"  # the words two inline fields show
 
 
 def _said(rendered: dict) -> list[tuple[str, str, str, str]]:
@@ -73,3 +74,35 @@ def test_a_redaction_in_a_form_field_takes_its_words_out_of_the_field(mine, form
     saved = pymupdf.open(stream=exported.content, filetype="pdf")
     assert_equal([widget.field_value for widget in saved[0].widgets()], ["", ""], "the values")
     assert_equal(saved[0].get_text().splitlines(), [FORM_LINE, FORM_HINT], "the page's lines")
+
+
+def _inline_fields() -> bytes:
+    """A name on the page, and two fields that show it, each written inside the page's list.
+
+    Written inline, with no object of their own, as some producers write them, so
+    both share object number 0. The form lists neither, as a half-flattened one leaves them.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), _INLINE_NAME, fontname="helv", fontsize=12)
+    fields = " ".join(
+        f"<</Type/Annot/Subtype/Widget/FT/Tx/T({name})/V({_INLINE_NAME})"
+        f"/Rect[300 {top} 500 {top + 20}]/P {page.xref} 0 R>>"
+        for name, top in (("one", 400), ("two", 450))
+    )
+    doc.xref_set_key(page.xref, "Annots", f"[{fields}]")
+    doc.xref_set_key(doc.pdf_catalog(), "AcroForm", "<</Fields[]>>")
+    return doc.tobytes()
+
+
+def test_a_redaction_takes_its_words_out_of_every_field_written_inline(mine):
+    """Two inline fields share object number 0; each is still read, and loses the words."""
+    doc = upload(mine, _inline_fields()).json()
+    name = next(span for span in doc["spans"] if span["text"] == _INLINE_NAME)
+    edits = [{"kind": "redact", "span_id": name["id"]}]
+
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+
+    assert_equal(exported.status_code, 200, "the export's status")
+    saved = pymupdf.open(stream=exported.content, filetype="pdf")
+    assert_equal([widget.field_value for widget in saved[0].widgets()], ["", ""], "the values")
