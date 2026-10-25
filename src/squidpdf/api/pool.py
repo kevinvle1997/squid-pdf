@@ -223,7 +223,7 @@ class WorkerPool:
             raise
         start = self.starts / uuid.uuid4().hex  # this try's own: the worker makes it
         try:
-            job = partial(_noted_start, str(start), request_id=current_request_id(), task=task)
+            job = partial(_noted_start, start, request_id=current_request_id(), task=task)
             future = pool.submit(job, time_left)
         # Raised by pebble: the pool broke, or no worker or pipe could be had for a new one.
         except (RuntimeError, OSError) as refused:
@@ -311,14 +311,14 @@ def start_pool() -> WorkerPool:
 
 
 def _noted_start[T](
-    start: str, *, request_id: str | None, task: Callable[[], T]
+    start: Path, *, request_id: str | None, task: Callable[[], T]
 ) -> WorkerAnswer[bytes]:
     """In a worker: note that it started `task` by making the file `start`, then run it.
 
     Its lines carry the id of the request it's for, and what it tallied goes back
     with it. Its result is pickled here: pebble's threads then never read one of ours.
     """
-    Path(start).touch()
+    start.touch()
     try:
         answer = in_request(request_id, partial(_run_tallied, task))
     except Exception as failure:  # the task's own, which pebble sends back as it is
