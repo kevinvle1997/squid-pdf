@@ -127,6 +127,11 @@ class AttachedFiles:
         """Whether there's a copy for `font_name`, read without reading it."""
         return _name_digest_of(font_name) in self.paths
 
+    def has_room_for(self, font_name: str) -> bool:
+        """Whether a copy of `font_name` can be kept: it replaces one, or there's room."""
+        # Read as a module attribute, so a test can lower the limit.
+        return font_name in self or len(self.paths) < constants.MAX_FONTS
+
 
 def attached_files(folder: Path) -> AttachedFiles:
     """The user's own copies of the document's fonts, listed now, each read when asked for."""
