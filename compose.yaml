@@ -1,5 +1,7 @@
 # The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
-# this file, filled in from env.example and never committed.
+# this file, filled in from env.example and never committed. A build names the
+# commit it's from, whose code the landing links:
+#   SQUIDPDF_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
 #
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
@@ -49,6 +51,9 @@ services:
     build:
       context: .
       dockerfile: react/Dockerfile
+      # Unset, the landing links the repository's main branch, and the build says so.
+      args:
+        SQUIDPDF_COMMIT: ${SQUIDPDF_COMMIT:-}
     image: squidpdf-proxy
     restart: unless-stopped
     logging: *logging

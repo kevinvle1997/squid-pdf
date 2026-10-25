@@ -8,6 +8,8 @@ COPY react/package.json react/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY src/squidpdf/fonts/ /repo/src/squidpdf/fonts/
 COPY react/ ./
+# The commit this image is built from, whose code the landing links (compose.yaml passes it).
+ARG SQUIDPDF_COMMIT
 RUN npm run build
 
 FROM caddy:2.11.4

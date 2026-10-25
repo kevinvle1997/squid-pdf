@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
@@ -12,6 +13,29 @@ const api: Record<string, string> = process.env.VITEST
   : { "/api": process.env.SQUIDPDF_API ?? "http://127.0.0.1:8000" };
 // A folder with key.pem and cert.pem: the end to end tests serve over HTTPS, as Caddy does.
 const tls = process.env.SQUIDPDF_TLS;
+// The landing links the code this build runs, as the AGPL asks of a copy run for others (section 13).
+const REPOSITORY = "https://github.com/kevinvle1997/squid-pdf";
+
+/** Where this build's code is read: its commit's tree, else the repository, and the build says why. */
+function sourceCode(): string {
+  // The deploy's commit (compose.yaml), else this checkout's.
+  const commit = process.env.SQUIDPDF_COMMIT || checkoutCommit();
+  if (commit) return `${REPOSITORY}/tree/${commit}`;
+  process.emitWarning(
+    "No commit to link, so the landing links the repository's main branch: set SQUIDPDF_COMMIT to the commit this build is from.",
+  );
+  return REPOSITORY;
+}
+
+/** This checkout's commit, or none outside one: the web image's build has no .git. */
+function checkoutCommit(): string | undefined {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    // No git, or no repository here: the caller falls back, and says so.
+    return undefined;
+  }
+}
 
 /** The Content-Security-Policy Caddy sends, read from its one home, the Caddyfile. */
 function caddyPolicy(): string {
@@ -23,6 +47,8 @@ function caddyPolicy(): string {
 
 export default defineConfig(({ isPreview }) => ({
   plugins: [react()],
+  // The code the landing links: this build's (`sourceCode`).
+  define: { __SOURCE_CODE__: JSON.stringify(sourceCode()) },
   // Bundled up front, so a test never reloads halfway with a second copy of React.
   optimizeDeps: {
     include: [

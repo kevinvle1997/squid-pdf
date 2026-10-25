@@ -13,3 +13,14 @@ test("under the sheet, the landing promises the file is deleted, and only the to
   const carets = [...document.querySelectorAll("mark")].map((mark) => getComputedStyle(mark, "::after"));
   expect(carets.map((caret) => caret.animationIterationCount)).toEqual(["5", "1"]);
 });
+
+test("the promise's line links the code this page was built from", async () => {
+  const screen = await render(
+    <Drop landing={{ kind: "waiting" }} kept={null} onChoose={vi.fn()} onReopen={vi.fn()} onForget={vi.fn()} />,
+  );
+  await expect
+    .element(screen.getByRole("link", { name: "read the code that does it" }))
+    .toHaveAttribute("href", __SOURCE_CODE__);
+  // A commit's tree in the repository, or the repository itself where the build had no commit to name.
+  expect(__SOURCE_CODE__).toMatch(/^https:\/\/github\.com\/kevinvle1997\/squid-pdf(\/tree\/\S+)?$/);
+});

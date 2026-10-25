@@ -66,7 +66,7 @@ export function Drop({ landing, kept, onChoose, onReopen, onForget }: Props) {
   );
 }
 
-/** What becomes of the file, said first and largest under the sheet, then what the tool does, in two facts. */
+/** What becomes of the file, said first and largest under the sheet with the code that does it, then what the tool does, in two facts. */
 function Facts() {
   return (
     <div className={styles.facts}>
@@ -74,7 +74,13 @@ function Facts() {
         <h2 className={styles.promiseTitle}>
           We <mark>delete your file</mark> an hour after you're done.
         </h2>
-        <p className={styles.promiseSaid}>After that, we keep no copy of it or your edits.</p>
+        <p className={styles.promiseSaid}>
+          After that, we keep no copy of it or your edits. squid-pdf is open source, so you can{" "}
+          <a className={styles.source} href={__SOURCE_CODE__}>
+            read the code that does it
+          </a>
+          .
+        </p>
       </div>
       <ul className={styles.factList}>
         <Fact title="Fix any word">Click it and type.</Fact>
