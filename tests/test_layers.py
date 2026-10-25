@@ -160,7 +160,7 @@ def test_a_coroutine_reaches_the_store_only_through_a_thread():
         for module, tree in _TREES.items()
         for coroutine, name in _disk_calls(tree)
     ]
-    assert_equal(breaking, [], "store calls on the event loop, not through asyncio.to_thread")
+    assert_equal(breaking, [], "disk calls on the event loop, not through asyncio.to_thread")
 
 
 # Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.

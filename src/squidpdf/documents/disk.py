@@ -1,4 +1,4 @@
-"""Writes that a full disk refuses in words: the server is full, not broken."""
+"""Naming a full disk: a write it refuses is the server being full, not broken."""
 
 from __future__ import annotations
 
