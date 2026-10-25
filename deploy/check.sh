@@ -85,6 +85,20 @@ pass "the browser app is served: $status in ${seconds}s"
 [[ -n $(header referrer-policy) && -n $(header permissions-policy) ]] ||
   fail "the page has no Referrer-Policy or Permissions-Policy"
 pass "the page carries a Content-Security-Policy that refuses framing"
+[[ $(header cache-control) == no-cache ]] || fail "the page's Cache-Control is '$(header cache-control)'"
+pass "the page is checked again on each visit"
+
+script=$(grep -o '/assets/index-[^"]*\.js' "$work/body" | head -n 1)
+read -r status seconds < <(call "${signed_in[@]}" --header 'accept-encoding: br, gzip' "$base$script")
+[[ $status == 200 && $(header content-encoding) == br ]] ||
+  fail "the app's script answered $status, content-encoding '$(header content-encoding)'"
+[[ $(header cache-control) == max-age=31536000,immutable ]] ||
+  fail "the app's script's Cache-Control is '$(header cache-control)'"
+pass "the app's script is sent as built, in brotli, and kept: $(size_of "$work/body") bytes"
+read -r status seconds < <(call "${signed_in[@]}" "$base/assets/none.js")
+[[ $status == 404 ]] || fail "a built file the build doesn't have answered $status, not 404"
+[[ $(header cache-control) != *immutable* ]] || fail "the 404 is kept: '$(header cache-control)'"
+pass "a built file the build doesn't have is missing, not the app's page, and not kept"
 
 read -r status seconds < <(call "${signed_in[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")

@@ -43,13 +43,24 @@
 		reverse_proxy app:8000
 	}
 
-	# The rest of the host is the browser app, built into this image (react/Dockerfile).
+	# The browser app's built files, built into this image (react/Dockerfile). Each carries a hash of its
+	# contents in its name, so it never changes; one the build doesn't have is missing, not the app's page.
+	handle /assets/* {
+		root * /srv
+		# Kept for good, as it never changes. A 404 isn't kept: a later build's file must still be found.
+		@built file
+		header @built Cache-Control "max-age=31536000, immutable"
+		file_server {
+			# The brotli copy made as the image was built (react/scripts/compress.mjs), to a browser that takes it.
+			precompressed br
+		}
+	}
+
+	# Any other path is the app's one page: checked again on each visit, a 304 while it's the same, so a
+	# deploy reaches every browser rather than leaving one on a page whose files are gone.
 	handle {
 		root * /srv
-		# Built files carry a hash of their contents in their name, so they never change.
-		@built path /assets/*
-		header @built Cache-Control "max-age=31536000, immutable"
-		# Any other path is the app's one page.
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
