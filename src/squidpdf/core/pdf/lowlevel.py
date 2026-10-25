@@ -16,8 +16,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Literal, assert_never
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
 
 import pymupdf
 
@@ -25,6 +23,13 @@ from squidpdf.core.app.message import Message
 from squidpdf.core.constants import IMAGE_SOONER_BY
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
+from squidpdf.core.pdf.strings import (
+    hex_strings_in,
+    literal_strings_in,
+    may_hold,
+    may_hold_a_string,
+)
+from squidpdf.core.pdf.xmp import readings_of, xml_of, xml_strings
 from squidpdf.core.types import SOLID, CopyPlace, FontCode, GlyphId, HiddenCopy, Rect
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
@@ -66,28 +71,6 @@ _MARKED_CODECS = {
     codecs.BOM_UTF16_LE: "utf-16-le",
     codecs.BOM_UTF8: "utf-8",
 }
-# An escape in a string in brackets: octal digits, a line end, or one byte.
-_ESCAPE = re.compile(rb"\\(?:([0-7]{1,3})|(\r\n|.))", re.DOTALL)
-# What a string in brackets reads apart from its bytes: an escape, or a bracket.
-_LITERAL_PART = re.compile(_ESCAPE.pattern + rb"|[()]", re.DOTALL)
-_BRACKET_DEPTH = {b"(": 1, b")": -1}  # how each bracket changes how deep in strings it is
-# What an escape stands for, by what follows the backslash, but octal digits; any other, itself.
-_ESCAPED = {
-    b"n": b"\n",
-    b"r": b"\r",
-    b"t": b"\t",
-    b"b": b"\b",
-    b"f": b"\f",
-    b"\r\n": b"",
-    b"\r": b"",
-    b"\n": b"",
-}
-# A string written in hex, from a < up to the > that ends it.
-_HEX_STRING = re.compile(rb"<[^>]*")
-# What a string written in hex reads past: anything but its digits.
-_NOT_HEX = re.compile(rb"[^0-9A-Fa-f]")
-# Printable ASCII and white space, no escape (\) or hex string (<): its strings read as written.
-_PLAIN_DRAWING = re.compile(rb"[^\\<\x00-\x08\x0b\x0e-\x1f\x7f-\xff]*")
 
 # What the file says about itself (its Info) that says when, not what.
 _INFO_DATES = ("CreationDate", "ModDate")
@@ -112,46 +95,6 @@ _FIELD_CHOSEN = "I"  # a choice field's chosen options, by their places in its l
 _APPEARANCE = "AP"  # an annotation's drawing (its appearance), kept apart from the page's
 # A form field's part's captions (in its MK): as it rests, hovered and pressed.
 _CAPTIONS = ("CA", "RC", "AC")
-# The namespaces whose attributes XML and RDF read themselves, not text.
-_XML_OWN = (
-    "http://www.w3.org/2000/xmlns/",
-    "http://www.w3.org/XML/1998/namespace",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-)
-# The packet's wrapper around metadata (XMP), a note to a program; it holds no words.
-_XMP_PACKET = "xpacket"
-# XMP properties whose values are typed, not words, by namespace: rewritten, they'd be invalid.
-_XMP_TYPED = {
-    "http://purl.org/dc/elements/1.1/": ("format",),
-    "http://ns.adobe.com/pdf/1.3/": ("PDFVersion", "Trapped"),
-    "http://www.aiim.org/pdfa/ns/id/": ("part", "conformance", "amd", "rev"),
-    "http://www.aiim.org/pdfua/ns/id/": ("part", "amd", "rev"),
-    "http://ns.adobe.com/xap/1.0/t/pg/": (
-        "NPages",
-        "HasVisibleTransparency",
-        "HasVisibleOverprint",
-    ),
-    "http://ns.adobe.com/xap/1.0/rights/": ("Marked",),
-    "http://ns.adobe.com/xap/1.0/": ("CreateDate", "ModifyDate", "MetadataDate", "Rating"),
-    "http://ns.adobe.com/xap/1.0/mm/": (
-        "DocumentID",
-        "InstanceID",
-        "OriginalDocumentID",
-        "VersionID",
-    ),
-    "http://ns.adobe.com/xap/1.0/sType/ResourceRef#": (
-        "documentID",
-        "instanceID",
-        "originalDocumentID",
-        "versionID",
-    ),
-    "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#": ("instanceID", "when"),
-}
-# How deep metadata (XMP) is read as XML; deeper goes whole. XMP nests a dozen or so, and
-# reading or writing it takes a call per level, which Python limits.
-_XML_DEEPEST = 100
-# The encodings XMP may use; what isn't read as XML can't say which, so it's read in each.
-_XMP_ENCODINGS = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
 # What a signed file's catalog keeps only for its signatures, so it goes with them.
 _SIGNATURE_CHECKS = ("Perms", "DSS")
 # What a file keeps only to act on its own or hold files: event actions (AA), named scripts and
@@ -557,7 +500,7 @@ class PdfFile:
         As with a key written twice: MuPDF keeps the last, another reader the other.
         """
         # No string written in it, as in most (`<</MCID 0>>`): none to lose.
-        if not _may_hold_a_string(written):
+        if not may_hold_a_string(written):
             return False
         return len(self._strings_in(_as_written(marking))) < len(self._strings_in(written))
 
@@ -1058,7 +1001,7 @@ class PdfFile:
         return [
             text
             for drawing, resources in drawings
-            if _may_hold(drawing, holding)
+            if may_hold(drawing, holding)
             for text in self._strings_written_in(drawing, resources)
         ]
 
@@ -1069,11 +1012,11 @@ class PdfFile:
         if stream is None:
             return []
         written = _bytes_of(stream)
-        dom = _xml_of(written)
+        dom = xml_of(written)
         # Not XML: any of it may hold a word, in any encoding it may be in.
         if dom is None:
-            return [_readings_of(written)]
-        return [str(piece.nodeValue) for piece in _xml_strings(dom)]
+            return [readings_of(written)]
+        return [str(piece.nodeValue) for piece in xml_strings(dom)]
 
     def _rewrite_metadata(self, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(text)` for each string in the metadata (XMP); it goes if not XML."""
@@ -1083,16 +1026,16 @@ class PdfFile:
         if stream is None:
             return
         written = _bytes_of(stream)
-        dom = _xml_of(written)
+        dom = xml_of(written)
         # Not XML, and nothing in it would change: it stays as the file wrote it.
-        if dom is None and not _changes([_readings_of(written)], rewritten):
+        if dom is None and not _changes([readings_of(written)], rewritten):
             return
         # Not XML, so not written back: it goes, as something in it would change.
         if dom is None:
             mu.pdf_dict_del(self._root(), mu.PDF_ENUM_NAME_Metadata)
             return
         changed = False
-        for piece in _xml_strings(dom):
+        for piece in xml_strings(dom):
             text = str(piece.nodeValue)
             kept = rewritten(text)
             if kept != text:
@@ -1615,17 +1558,12 @@ def _string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     return mu.pdf_parse_stm_obj(mu.PdfDocument(), reader, lexbuf)
 
 
-def _may_hold_a_string(written: bytes) -> bool:
-    """Whether `written` may hold a string: one starts at ( or at a < that isn't half of <<."""
-    return b"(" in written or b"<" in written.replace(b"<<", b"")
-
-
 def _strings_anywhere_in(written: bytes) -> list[str]:
     """Each string in `written`, part of a drawing, as text, wherever a reader may start one.
 
     That's at any ( or <, since a reader may read the bytes before it otherwise than MuPDF.
     """
-    held = _literal_strings_in(written) + _hex_strings_in(written)
+    held = literal_strings_in(written) + hex_strings_in(written)
     return [text for string in held for text in _texts_held_in(string)]
 
 
@@ -1648,61 +1586,6 @@ def _strings_past_an_end_in(image: _InlineImage) -> list[str]:
     if not ends:
         return []
     return _strings_anywhere_in(image.written[min(ends) :])
-
-
-def _literal_strings_in(written: bytes) -> list[bytes]:
-    """The bytes of each string in brackets in `written`, through the ) that closes it.
-
-    One inside another is read only as part of it, since it ends inside it.
-    """
-    found: list[bytes] = []
-    start = written.find(b"(")
-    while start != -1:
-        end = _literal_end(written, start)
-        found.append(_ESCAPE.sub(_unescaped, written[start + 1 : end]))
-        start = written.find(b"(", end)
-    return found
-
-
-def _literal_end(written: bytes, start: int) -> int:
-    """Just past the ) that closes the string in brackets at `written[start]`, or the end."""
-    depth = 0  # strings open: the one at `start`, and each in it
-    for part in _LITERAL_PART.finditer(written, start):
-        # .get: an escape changes no depth.
-        depth += _BRACKET_DEPTH.get(part[0], 0)
-        # Closed: back out of the one at `start`.
-        if depth == 0:
-            return part.end()
-    return len(written)
-
-
-def _unescaped(escape: re.Match[bytes]) -> bytes:
-    """What an escape in a string in brackets stands for: a byte, or nothing for a line end."""
-    octal, other = escape.groups()
-    # Octal digits: the byte they number, past 255 wrapping, as MuPDF and pdf.js read it.
-    if octal is not None:
-        return bytes([int(octal, 8) % 256])
-    return _ESCAPED.get(other, other)
-
-
-def _hex_strings_in(written: bytes) -> list[bytes]:
-    """The bytes of each string in hex in `written`, whole and from each < to the next.
-
-    Each from its first digit and its second too: a reader starting partway lines up with one.
-    """
-    found: list[bytes] = []
-    for string in _HEX_STRING.finditer(written):
-        whole = string[0]
-        # From the first <, then from each alone: with one <, the two are one.
-        parts = [whole, *whole.split(b"<")[1:]]
-        for digits in dict.fromkeys(_NOT_HEX.sub(b"", part) for part in parts):
-            found += [_bytes_of_hex(digits[skip:]) for skip in (0, 1)]
-    return found
-
-
-def _bytes_of_hex(digits: bytes) -> bytes:
-    """The bytes hex digits write, a last digit alone read with a 0 after it, as readers do."""
-    return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
 
 
 def _texts_held_in(held: bytes) -> list[str]:
@@ -1913,12 +1796,7 @@ def _held_text_of(item: pymupdf.mupdf.PdfObj) -> str:
     # A string: PDF says how it's encoded.
     if mu.pdf_is_string(item):
         return _text_of(item)
-    return _readings_of(_bytes_of(item))
-
-
-def _readings_of(written: bytes) -> str:
-    """Bytes in an encoding they don't name, read in each XMP may use, one after another."""
-    return "\n".join(written.decode(encoding, "replace") for encoding in _XMP_ENCODINGS)
+    return readings_of(_bytes_of(item))
 
 
 def _changes(texts: list[str], rewritten: Callable[[str], str]) -> bool:
@@ -1929,18 +1807,6 @@ def _changes(texts: list[str], rewritten: Callable[[str], str]) -> bool:
 def _is_changed_by(rewritten: Callable[[str], str], text: str) -> bool:
     """Whether `rewritten` changes `text`: whether it holds a word `rewritten` deletes."""
     return rewritten(text) != text
-
-
-def _may_hold(drawing: bytes, holding: Callable[[str], bool]) -> bool:
-    """Whether a string in `drawing` may hold a word `holding` looks for.
-
-    A plain drawing `holding` is false of, read whole, holds none: a string's
-    brackets set its words apart.
-    """
-    # Not plain: a string in it may read other than it's written.
-    if _PLAIN_DRAWING.fullmatch(drawing) is None:
-        return True
-    return holding(drawing.decode("ascii"))
 
 
 def _options_of(field: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
@@ -2009,34 +1875,6 @@ def _annotations_on(pdf_page: pymupdf.mupdf.PdfPage) -> Iterator[pymupdf.mupdf.P
         widget = mu.pdf_next_widget(widget)
 
 
-def _xml_of(written: bytes) -> minidom.Document | None:
-    """XML as written, read; None when it can't be read, declares words, or nests too deep.
-
-    A DOCTYPE is written back as it came, with any words it declares (an entity), so
-    XML with one goes whole.
-    """
-    # Not XML, an unknown encoding, or one expat can't read, as UTF-32, which XMP allows.
-    try:
-        dom = minidom.parseString(written)
-    except ExpatError, LookupError, ValueError:
-        return None
-    # A DOCTYPE: what it declares isn't read.
-    if dom.doctype is not None:
-        return None
-    # Nested too deep to read through.
-    if _nests_deeper(dom, _XML_DEEPEST):
-        return None
-    return dom
-
-
-def _nests_deeper(dom: minidom.Document, levels: int) -> bool:
-    """Whether XML nests more than `levels` deep, read a level at a time, not by calls."""
-    level: list[minidom.Node] = list(dom.childNodes)
-    for _deeper in range(levels):
-        level = [child for node in level for child in node.childNodes]
-    return bool(level)
-
-
 def _widget_entries(page: int, widget: pymupdf.mupdf.PdfObj) -> Iterator[_Entry]:
     """What a form field's part draws, its captions, and its description of itself."""
     mu = pymupdf.mupdf
@@ -2060,41 +1898,6 @@ def _comment_entries(page: int, annotation: pymupdf.mupdf.PdfObj) -> Iterator[_E
     for key in _COMMENT_LABELS:
         yield _Entry("comments", annotation, key, "text", shown=shown)
     yield _Entry("comments", annotation, _FORMATTED_WORDS, "whole", shown=shown)
-
-
-def _xml_strings(node: minidom.Node) -> Iterator[minidom.Node]:
-    """Each piece of text in XML: its text, comments, notes and attributes' values, as nodes.
-
-    Not an attribute XML or RDF reads, the packet's wrapper, or a typed value:
-    rewriting one would break the metadata.
-    """
-    for child in node.childNodes:
-        # The packet's wrapper (xpacket), which says where the metadata starts and ends.
-        if isinstance(child, minidom.ProcessingInstruction) and child.target == _XMP_PACKET:
-            continue
-        # Text (CDATA too), a comment, or a note to a program (a processing instruction).
-        if isinstance(child, minidom.CharacterData | minidom.ProcessingInstruction):
-            yield child
-            continue
-        # A typed value, which says when, which or what kind, not what.
-        if isinstance(child, minidom.Element) and _is_typed(child):
-            continue
-        # An element: its attributes' values, then what's inside.
-        if isinstance(child, minidom.Element):
-            values = child.attributes.values()
-            yield from (value for value in values if _is_xml_text(value))
-            yield from _xml_strings(child)
-
-
-def _is_typed(node: minidom.Element | minidom.Attr) -> bool:
-    """Whether an XML element or attribute is a typed metadata value, by its name."""
-    # .get: most namespaces name no typed value.
-    return node.localName in _XMP_TYPED.get(node.namespaceURI or "", ())
-
-
-def _is_xml_text(attribute: minidom.Attr) -> bool:
-    """Whether an attribute holds text: not one XML or RDF reads, nor a typed value."""
-    return attribute.namespaceURI not in _XML_OWN and not _is_typed(attribute)
 
 
 @dataclass(frozen=True, slots=True)
