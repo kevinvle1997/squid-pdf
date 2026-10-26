@@ -311,6 +311,30 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
     _assert_cut(out, 0, "Noto Serif Regular", "Hi Ωμέγα")
 
 
+def test_new_text_in_a_pages_font_as_its_text_names_it_is_drawn_in_that_font(tmp_path):
+    """An insert named as the text reads its font (the file's inside name) is the page's own.
+
+    The page lists the font as Liberation Serif Regular; its text, and so the browser, reads
+    LiberationSerif, the name inside the font's file.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="own", fontbuffer=face_bytes(FACES["Liberation Serif Regular"]))
+    page.insert_text((72, 96), "Terms of payment", fontname="own", fontsize=12)
+    path, out = tmp_path / "own.pdf", tmp_path / "inserted.pdf"
+    doc.save(path)
+    with open_pdf(str(path)) as engine:
+        [span] = engine.index()
+        insert = Insert(0, (72.0, 300.0), "Signed", 12.0, span.font)
+        fit = insert_fit(engine, insert).report
+        _apply(engine, [insert], engine.index())
+        engine.save(str(out))
+
+    assert_equal((span.font, fit.unavailable), ("LiberationSerif", ""), "the font, and usable")
+    drawn = _drawn(out, 0, "Signed")["font"]
+    assert_equal(drawn, _drawn(out, 0, "Terms")["font"], "what drew it: the page's own font")
+
+
 @pytest.mark.parametrize(
     ("font", "text", "face", "said"),
     [

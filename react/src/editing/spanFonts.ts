@@ -6,7 +6,7 @@ export type FontsByObject = ReadonlyMap<number | string, FontInfo>;
 
 /** The document's fonts, each under its object, else its name. */
 export function fontsByObject(fonts: readonly FontInfo[]): FontsByObject {
-  return new Map(fonts.map((font) => [font.object ?? font.name, font]));
+  return new Map(fonts.map((font) => [font.font_object ?? font.name, font]));
 }
 
 /** The font that draws `span`, by its object, else its name; undefined for one the server doesn't list. */

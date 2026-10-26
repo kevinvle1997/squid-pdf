@@ -93,13 +93,12 @@ class Page:
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
-    """A bit of text the page draws in one go, as the driver reads it: often part of a word.
-
-    `font_object` is what says which font draws it; `font` is only that font's name, to show.
-    """
+    """A bit of text the page draws in one go, as the driver reads it: often part of a word."""
 
     text: str
-    font: str  # its font's name, subset prefix aside
+    # Its font's name, subset prefix aside, which the span id, the look-alike and the user's
+    # copies go by.
+    font: str
     font_object: int | None  # its font's PDF object; None when the page lists no font for it
     size: float
     color: tuple[float, float, float]  # r, g, b, each 0-1
@@ -212,16 +211,18 @@ class Fragment:
 class Span:
     """A run of text the user can edit, merged from one or more fragments.
 
-    `font_object` says which font draws it, and `font` is that font's name, to show. `origin` is
-    the baseline start, not the box's top-left. `id` never changes: the index is built once from
-    the pristine file (SpanIndex). `color`, `opacity` and `direction` are its first fragment's.
+    `origin` is the baseline start, not the box's top-left. `id` never changes: the index is
+    built once from the pristine file (SpanIndex). `color`, `opacity` and `direction` are its
+    first fragment's.
     """
 
     id: str
     page: int
     text: str
-    font: str  # its font's name, subset prefix aside; for new text, the face or font asked for
-    font_object: int | None  # its font's PDF object; None when the page lists no font for it
+    # Its font's name, as its first piece's (`TextPiece.font`); for new text, the one asked for.
+    font: str
+    # Its font's PDF object; None when the page lists none for it, or for new text in a face.
+    font_object: int | None
     size: float
     color: tuple[float, float, float]
     opacity: float  # 0 is see-through, 1 solid
@@ -241,6 +242,11 @@ class Span:
         horizontal, vertical = self.direction
         # Upside down has no vertical part, only a leftward one.
         return horizontal < 0 or abs(vertical) > TURN_TOLERANCE
+
+
+def same_font(text: TextPiece | Span, other: TextPiece | Span) -> bool:
+    """Whether two bits of text are in one font: one object, or one name where there's none."""
+    return (text.font_object, text.font) == (other.font_object, other.font)
 
 
 EM = 1000  # widths are given per 1000 em, as PDF font widths are

@@ -289,7 +289,7 @@ describe("copies of one font, shown under one name", () => {
   });
 
   test("listed under one name, as two fonts of a merged file are, take the user's copy in once", async () => {
-    const twoObjects = [aFont("Arial", { object: 5 }), aFont("Arial", { object: 9 })];
+    const twoObjects = [aFont("Arial", { font_object: 5 }), aFont("Arial", { font_object: 9 })];
     const doc = aDoc({ spans: DOC.spans, fonts: twoObjects });
     editor = createEditor(new File(["%PDF-"], "letter.pdf"), doc, 2);
     vi.mocked(putFont).mockResolvedValue(doc);

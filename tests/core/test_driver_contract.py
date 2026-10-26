@@ -17,6 +17,21 @@ from tests.helpers import assert_equal
 
 _ADDED_AT = (72.0, 400.0)  # clear of the sample's own lines
 _BLACK = (0.0, 0.0, 0.0)
+_TEXT_FIELD = 7  # PyMuPDF's PDF_WIDGET_TYPE_TEXT, set at import, so type checkers can't see it
+# Two fonts whose names differ only past the 31 bytes MuPDF keeps: an upright and its italic.
+_CUT_ALIKE = ("ABCDEF+MyriadProX-SemiboldCondensed", "GHIJKL+MyriadProX-SemiboldCondensedIt")
+
+
+def _named_font(doc: pymupdf.Document, name: str) -> int:
+    """A TrueType font the file only names, `name`, with widths for its printable codes."""
+    font = doc.get_new_xref()
+    widths = " ".join(["500"] * 95)
+    doc.update_object(
+        font,
+        f"<</Type/Font/Subtype/TrueType/BaseFont/{name}/FirstChar 32/LastChar 126"
+        f"/Widths[{widths}]/Encoding/WinAnsiEncoding>>",
+    )
+    return font
 
 
 def test_empty_bytes_are_not_a_font_the_driver_opens(pdf):
@@ -179,3 +194,53 @@ def test_a_lines_box_holds_each_of_its_letters_boxes(tmp_path):
         if not _holds(line["bbox"], char["bbox"])
     ]
     assert_equal(outside, [], "letters outside their line's box")
+
+
+def test_each_piece_names_a_font_the_page_lists_or_none_for_a_form_fields_own(tmp_path):
+    """The page writes in Times, and a filled field draws its value in its own Helvetica."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 96), FORM_LINE, fontname="tiro", fontsize=12)
+    field = pymupdf.Widget()
+    field.field_type = _TEXT_FIELD
+    field.field_name = "ssn"
+    field.field_value = FORM_FIELD_VALUE
+    field.rect = pymupdf.Rect(72, 120, 300, 140)
+    page.add_widget(field)
+    path = tmp_path / "field.pdf"
+    doc.save(path)
+    with open_pdf(str(path)) as engine:
+        listed = {font.xref for font in engine.driver.fonts(0)}
+        pieces = [piece for line in engine.driver.text_lines(0) for piece in line]
+
+    named_by = {piece.text: piece.font_object for piece in pieces}
+    [times] = listed
+    assert_equal(named_by, {FORM_LINE: times, FORM_FIELD_VALUE: None}, "each piece's font")
+
+
+def test_two_fonts_whose_names_mupdf_cuts_alike_are_neither_taken_for_the_other(tmp_path):
+    """MuPDF keeps 31 bytes of a name: both read as one cut, and nothing says which is which.
+
+    Each is only named, with a width list, as Word leaves a font it didn't store.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    fonts = [_named_font(doc, name) for name in _CUT_ALIKE]
+    content = doc.get_new_xref()
+    doc.update_object(content, "<<>>")
+    doc.update_stream(
+        content, b"BT /F1 14 Tf 72 700 Td (Upright) Tj ET BT /F2 14 Tf 72 650 Td (Italic) Tj ET"
+    )
+    doc.xref_set_key(
+        page.xref, "Resources", f"<</Font<</F1 {fonts[0]} 0 R/F2 {fonts[1]} 0 R>>>>"
+    )
+    doc.xref_set_key(page.xref, "Contents", f"{content} 0 R")
+    path = tmp_path / "cut.pdf"
+    doc.save(path)
+    with open_pdf(str(path)) as engine:
+        named_by = [(span.font, span.font_object) for span in engine.index()]
+
+    cut = "MyriadProX-SemiboldConde"
+    assert_equal(
+        named_by, [(cut, None), (cut, None)], "each span's font: its cut name, no object"
+    )

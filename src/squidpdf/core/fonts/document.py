@@ -42,6 +42,7 @@ from squidpdf.core.types import (
     Rect,
     Span,
     TextPiece,
+    same_font,
 )
 
 # The glyph a ligature's later letters are read with: the one before drew them.
@@ -76,15 +77,15 @@ class _PageFacts:
     fonts: list[PageFont]
     # The same fonts by their PDF object, which is how text names the font that draws it.
     by_object: dict[int, PageFont]
-    # The page's usual gap for a space, by the font's object and the font it's measured in.
-    usual_gaps: dict[tuple[int | None, FontProgram], float] = field(default_factory=dict)
+    # The page's usual gap for a space, by the font's object and name, and the font measured in.
+    usual_gaps: dict[tuple[int | None, str, FontProgram], float] = field(default_factory=dict)
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
     pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
 
     def usual_gap(
-        self, key: tuple[int | None, FontProgram], make: Callable[[], float]
+        self, key: tuple[int | None, str, FontProgram], make: Callable[[], float]
     ) -> float:
-        """The usual gap for a space, by font object and the font measured in, on first use."""
+        """The usual gap for a space, by its font and the font measured in, on first use."""
         return made_once(self.usual_gaps, key, make)
 
     def pool(self, font: PageFont, make: Callable[[], PooledFont]) -> PooledFont | FontUnusable:
@@ -256,8 +257,7 @@ class DocumentFonts:
         # A font the page doesn't list, or new text in a face we ship.
         if span.font_object is None:
             return None
-        # .get: new text can name a font of another page's.
-        return self._facts(span.page).by_object.get(span.font_object)
+        return self._facts(span.page).by_object[span.font_object]
 
     def _facts(self, page: int) -> _PageFacts:
         """What the page says, its fonts read the first time it's asked about."""
@@ -272,11 +272,16 @@ class DocumentFonts:
             by_object.setdefault(font.xref, font)
         return _PageFacts(fonts, by_object)
 
-    def font_named(self, page: int, name: str) -> int | None:
-        """The object of the page's font listed as `name`, subset prefix aside; None if none.
+    def font_object_named(self, page: int, name: str) -> int | None:
+        """The object of the page's font that goes by `name`, for new text in it; None if none.
 
-        For new text, which names its font. The first by the name, in the library's order.
+        As the page's text names it, which the browser is told; else as the page lists it.
         """
+        pieces = _each_piece(self._page_lines(page))
+        named = (piece.font_object for piece in pieces if piece.font == name)
+        in_text = next((font_object for font_object in named if font_object is not None), None)
+        if in_text is not None:
+            return in_text
         wanted = strip_subset(name)
         listed = (font for font in self._facts(page).fonts if strip_subset(font.name) == wanted)
         return next((font.xref for font in listed), None)
@@ -354,8 +359,8 @@ class DocumentFonts:
     def _read_copies_name(self, font: PageFont) -> str:
         """The name every copy of the font goes by, subset prefix aside.
 
-        A Type3 font's text names it by its object, so no two copies share that
-        name: the font its description names stands in, when it names one.
+        A Type3 font's own name is often its object's, so no two copies share it:
+        the font its description names stands in, when it names one.
         """
         descriptor = self.driver.font_descriptor(font.xref) if font.kind == "type3" else None
         # Its own name: not a Type3, or a Type3 whose description names no font.
@@ -500,17 +505,17 @@ class DocumentFonts:
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.
 
-        Kept by the font's object and the font measured in, what it's worked out
+        Kept by the span's font and the font measured in, what it's worked out
         from; the page's text is read once, before any edit.
         """
-        font_object = span.font_object
-        measure = partial(self._usual_gap_on, span.page, font_object=font_object, font=font)
-        return self._facts(span.page).usual_gap((font_object, font), measure)
+        measure = partial(self._usual_gap_on, span, font=font)
+        key = (span.font_object, span.font, font)
+        return self._facts(span.page).usual_gap(key, measure)
 
-    def _usual_gap_on(self, page: int, *, font_object: int | None, font: FontProgram) -> float:
-        """The page's usual gap for a space in the font `font_object`, measured in `font`."""
-        lines = self._page_lines(page)
-        in_font = [piece for piece in _each_piece(lines) if piece.font_object == font_object]
+    def _usual_gap_on(self, span: Span, *, font: FontProgram) -> float:
+        """The usual gap for a space in the span's font, on its page, measured in `font`."""
+        lines = self._page_lines(span.page)
+        in_font = [piece for piece in _each_piece(lines) if same_font(piece, span)]
         return usual_gap(in_font, font=font)
 
     def _page_lines(self, page: int) -> list[list[TextPiece]]:

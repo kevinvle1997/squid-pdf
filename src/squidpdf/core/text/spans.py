@@ -9,7 +9,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 
 from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
-from squidpdf.core.types import Fragment, Rect, Span, SpanIndex, TextPiece, index_of, span_id
+from squidpdf.core.types import (
+    Fragment,
+    Rect,
+    Span,
+    SpanIndex,
+    TextPiece,
+    index_of,
+    same_font,
+    span_id,
+)
 
 _POSITION_DP = 2  # boxes, origins and sizes, as span ids and the client see them
 _KERNING_PT = -1.0  # a gap down to this far below 0 is kerning pulling letters together
@@ -62,9 +71,7 @@ def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
 
 def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     """Whether `piece` carries on the span that `previous` ends."""
-    # The same font object, or for a font the page doesn't list, the same name.
-    same_font = (previous.font_object, previous.font) == (piece.font_object, piece.font)
-    if not same_font:
+    if not same_font(previous, piece):
         return False
     if abs(previous.size - piece.size) > SIZE_EPS:
         return False

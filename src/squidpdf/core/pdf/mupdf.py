@@ -33,6 +33,7 @@ from squidpdf.core.pdf.lowlevel import (
     pdf_file,
 )
 from squidpdf.core.pdf.png import png_of
+from squidpdf.core.pdf.text_fonts import as_pymupdf_names, page_text_fonts
 from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
@@ -73,8 +74,6 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
-_NAME_CUT_AT = 31  # bytes of a font's name MuPDF keeps for the text it reads
-_PREFIX_PLUS_AT = 6  # where PyMuPDF looks for the "+" that ends a subset prefix
 
 # A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
 _KINDS: dict[str, FontKind] = {
@@ -244,31 +243,34 @@ class _MuPDFDriver:
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in.
 
-        MuPDF's text names a piece's font only by name, so the font is found by the name its
-        text reads: as the page lists it, else as its file names itself.
+        MuPDF's text names a piece's font only by name (`core.pdf.text_fonts`), so two fonts on
+        one page whose text reads one name both give the first one's object.
         """
         blocks = self.doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
         fonts = self.fonts(page)
-        by_name = _PageTextFonts(_by_listed_name(fonts))
-        named_inside = partial(self._by_name_inside, fonts)
+        by_name = page_text_fonts(fonts)
+        by_embedded_name = partial(self._by_embedded_name, fonts)
         return [
             [
                 _text_piece(
-                    raw, direction=line["dir"], font=by_name.font_of(raw["font"], named_inside)
+                    raw,
+                    direction=line["dir"],
+                    font=by_name.font_of(raw["font"], by_embedded_name),
+                    font_name=by_name.name_of(raw["font"]),
                 )
                 for raw in line["spans"]
             ]
             for line in _each_line(blocks)
         ]
 
-    def _by_name_inside(self, fonts: list[PageFont]) -> dict[str, PageFont]:
+    def _by_embedded_name(self, fonts: list[PageFont]) -> dict[str, PageFont]:
         """The stored ones of `fonts` by the name inside each file, as their text reads it."""
         by_name: dict[str, PageFont] = {}
         # The library's order: the first by a name wins.
         for font in fonts:
-            inside = self.file.fonts.text_font_name(font.xref) if font.is_embedded else None
-            if inside is not None:
-                by_name.setdefault(_as_pymupdf_names(inside), font)
+            embedded = self.file.fonts.text_font_name(font.xref) if font.is_embedded else None
+            if embedded is not None:
+                by_name.setdefault(as_pymupdf_names(embedded), font)
         return by_name
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
@@ -787,69 +789,16 @@ def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
                 yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
-@dataclass(slots=True)
-class _PageTextFonts:
-    """A page's fonts by the name their text reads, to find the one that draws a piece."""
-
-    listed: dict[str, PageFont]  # each by the name the page lists it under, as text reads that
-    # Each stored one by the name inside its file: None until a piece reads a name not listed.
-    inside: dict[str, PageFont] | None = None
-
-    def font_of(
-        self, read_as: str, named_inside: Callable[[], dict[str, PageFont]]
-    ) -> PageFont | None:
-        """The font whose text reads `read_as`, as listed or as named inside; None if none."""
-        # .get: a name the page doesn't list, as the one a font's own file gives.
-        listed = self.listed.get(read_as)
-        if listed is not None:
-            return listed
-        if self.inside is None:
-            self.inside = named_inside()
-        # .get: a font the page doesn't list, such as one only a form field's own drawing uses.
-        return self.inside.get(read_as)
-
-
-def _by_listed_name(fonts: list[PageFont]) -> dict[str, PageFont]:
-    """`fonts` by the name each is listed under, as text reads it: cut, no subset prefix."""
-    by_name: dict[str, PageFont] = {}
-    # The library's order: of two whose text reads one name, as cut alike, the first wins.
-    for font in fonts:
-        by_name.setdefault(_as_pymupdf_names(_cut_of(font.name)), font)
-    return by_name
-
-
-def _whole_name(read_as: str, font: PageFont | None) -> str:
-    """The name a piece's font is read as, whole where that's the page's listing of it, cut."""
-    # A font the page doesn't list, or one its text reads by the name inside its file.
-    if font is None or _as_pymupdf_names(_cut_of(font.name)) != read_as:
-        return read_as
-    return _as_pymupdf_names(font.name)
-
-
-def _cut_of(name: str) -> str:
-    """`name` as MuPDF keeps it for the text it reads; PyMuPDF reads each byte as a letter."""
-    return name[:_NAME_CUT_AT]
-
-
-def _as_pymupdf_names(name: str) -> str:
-    """`name` as PyMuPDF names a piece's font: without a subset prefix it finds.
-
-    Its own rule, not `strip_subset`'s: a "+" anywhere else stays.
-    """
-    has_prefix = name[_PREFIX_PLUS_AT : _PREFIX_PLUS_AT + 1] == "+"
-    return name[_PREFIX_PLUS_AT + 1 :] if has_prefix else name
-
-
 def _text_piece(
-    raw: dict, *, direction: tuple[float, float], font: PageFont | None
+    raw: dict, *, direction: tuple[float, float], font: PageFont | None, font_name: str
 ) -> TextPiece:
     """One piece of text from get_text("dict"), drawn in `font`, on a `direction` line.
 
-    `font` is None for a font the page doesn't list.
+    `font` is None for a font the page doesn't list; `font_name` is its name either way.
     """
     return TextPiece(
         text=raw["text"],
-        font=_whole_name(raw["font"], font),
+        font=font_name,
         font_object=None if font is None else font.xref,
         size=raw["size"],
         color=_rgb(raw["color"]),
