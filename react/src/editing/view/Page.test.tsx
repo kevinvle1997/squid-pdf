@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import "@fontsource/funnel-sans/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { ProblemError, pageImage, renderStrips } from "../../api/client";
+import { ProblemError, pageImage, pageUrl, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
@@ -25,6 +25,7 @@ vi.mock(import("../../documents/localPersistence"), async (original) => ({
 vi.mock(import("../../api/client"), async (original) => ({
   ...(await original()),
   renderStrips: vi.fn(),
+  pageUrl: vi.fn(),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
 }));
@@ -51,6 +52,9 @@ const elsewhere = aSpan({ id: "s2", page: 1, text: "was there" });
 const DOC = aDoc({ spans: [span, elsewhere], fonts: [aFont("Times-Roman", { glyphs })] });
 
 const FILE = new File(["%PDF-"], "contract.pdf");
+// Every page's image: one white pixel, which loads, so no failure or retry draws the page again mid-test.
+const WHITE_PIXEL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP4DwABAQEAHLCMmQAAAABJRU5ErkJggg==";
 // The viewport the file starts in, put back after each test so none runs at the size another set.
 const VIEWPORT = { width: window.innerWidth, height: window.innerHeight };
 
@@ -67,6 +71,7 @@ beforeEach(() => {
   vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
+  vi.mocked(pageUrl).mockReset().mockReturnValue(WHITE_PIXEL);
   openDocument(DOC);
 });
 
@@ -654,7 +659,8 @@ describe("a page", () => {
 
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
-    // No server answers in this test, so the page's image fails as it would with one too busy.
+    // An image no browser can decode, so the page's image fails; asked why, the server says it's too busy.
+    vi.mocked(pageUrl).mockReturnValue("data:image/png;base64,");
     vi.mocked(pageImage).mockRejectedValueOnce(new ProblemError(aProblem(503, busy)));
     const screen = await draw();
     await expect.element(screen.getByRole("region", { name: "Page 1" }).getByText(busy)).toBeVisible();
