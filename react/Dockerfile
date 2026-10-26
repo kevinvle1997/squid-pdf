@@ -17,3 +17,6 @@ FROM caddy:2.11.4
 # Where Caddy reads it by default. Its policy allows this build's style by hash, so the two ship as one.
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /repo/react/dist /srv
+# The hash of the compose.yaml and env.example it was built beside, which a deploy checks (deploy/check-compose.sh).
+ARG SQUIDPDF_COMPOSE_HASH
+LABEL squidpdf.compose-hash="$SQUIDPDF_COMPOSE_HASH"

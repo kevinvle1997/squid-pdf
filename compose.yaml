@@ -3,9 +3,11 @@
 #
 # A deploy or a rollback is one tag: SQUIDPDF_TAG in .env set to a commit on main, as
 # env.example says, then the images CI built and checked for it:
-#   docker compose pull && docker compose up -d --no-build
+#   docker compose pull && deploy/check-compose.sh && docker compose up -d --no-build
 # The Caddyfile is built into the proxy image, so its policy moves with the app it allows.
-# The checkout moves only when this file or env.example changed, which the release says.
+# The checkout moves only when this file or env.example changed: the check then stops the
+# deploy and says so, as the proxy image names the two it was built beside.
+# An image older than the check names neither, so it's refused: its own commit's header deploys it.
 # --no-build: a missing image fails, rather than building on the server beside the app.
 # To roll back, name an earlier commit the package pages list: not every one has images.
 # Once, after the first publish, make both packages public on ghcr.io; until then a pull is
@@ -66,6 +68,8 @@ services:
       # Unset, the landing links the repository's main branch, and the build says so.
       args:
         SQUIDPDF_COMMIT: ${SQUIDPDF_COMMIT:-}
+        # Unset, deploy/check-compose.sh refuses the image: CI sets it from its checkout.
+        SQUIDPDF_COMPOSE_HASH: ${SQUIDPDF_COMPOSE_HASH:-}
     image: ghcr.io/kevinvle1997/squidpdf-proxy:${SQUIDPDF_TAG:-latest}
     restart: unless-stopped
     logging: *logging
