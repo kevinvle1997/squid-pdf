@@ -95,6 +95,19 @@ def string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
     return mu.pdf_parse_stm_obj(mu.PdfDocument(), reader, lexbuf)
 
 
+def metadata_stream(doc: pymupdf.Document) -> pymupdf.mupdf.PdfObj | None:
+    """The document's metadata (XMP), a stream the catalog names; None when it has none."""
+    mu = pymupdf.mupdf
+    stream = mu.pdf_dict_get(root_of(doc), mu.PDF_ENUM_NAME_Metadata)
+    return stream if mu.pdf_is_stream(stream) else None
+
+
+def put_stream(doc: pymupdf.Document, stream: pymupdf.mupdf.PdfObj, written: bytes) -> None:
+    """Put `written` in place of a stream's bytes, stored as they are."""
+    mu = pymupdf.mupdf
+    mu.pdf_update_stream(pdf_of(doc), stream, mu.fz_new_buffer_from_copied_data(written), 0)
+
+
 def put_text(holder: pymupdf.mupdf.PdfObj, key: str, text: str) -> None:
     """Put `text` in a dictionary under `key`: words left stay, and with none the key goes."""
     mu = pymupdf.mupdf

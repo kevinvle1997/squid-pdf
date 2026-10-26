@@ -11,6 +11,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Saved
 
 _EXPORTED = "export.pdf"  # the file saved and checked by the worker, then read by the server
+_PRODUCER = "squidpdf"  # the Producer an exported file names: the program that changed it last
 
 # The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
 SKIPPED_HEADER = "Squid-Skipped-Edits"
@@ -130,7 +132,7 @@ def save_edited(
     to: str,
     driver_factory: DriverFactory,
 ) -> Saved:
-    """Apply the edits, keep `pages`, save to `to`, and check the redactions there.
+    """Apply the edits, keep `pages`, save to `to` naming squidpdf, and check the redactions.
 
     Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
     The same save and check whether a browser downloads the file or the CLI writes it.
@@ -139,6 +141,8 @@ def save_edited(
     resolved = resolve(engine, index, rooms=rooms, edits=edits)
     order = page_order(resolved, pages)
     redactions = RedactionController(redacted_in(resolved))
+    # Before the edits: a redaction takes its words out of the mark as from every hidden copy.
+    engine.mark_changed_by(_PRODUCER, datetime.now(UTC))
     applied = apply_edits(engine, resolved)
     notices: list[Message] = []
     # By their numbers in the original, so before any page is renumbered.

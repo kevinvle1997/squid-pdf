@@ -8,6 +8,7 @@ these two protocols over pypdfium2 and pikepdf, and give the engine what `core.p
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from typing import Protocol
 
 from squidpdf.core.app.message import Message
@@ -298,6 +299,15 @@ class PdfDriver(Protocol):
 
     def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
         """Set the turn `page` asks for, clockwise, in place of the one it had."""
+        ...
+
+    def mark_changed_by(self, producer: str, when: datetime) -> None:
+        """Say in the file's metadata that `producer` changed it, at `when`.
+
+        Its Info's Producer becomes `producer` and its ModDate `when`, in UTC; the rest stays.
+        XMP read as XML says the same in each pdf:Producer, xmp:ModifyDate and xmp:MetadataDate
+        it holds, and gains none it lacks.
+        """
         ...
 
     def save(self, path: str) -> None:

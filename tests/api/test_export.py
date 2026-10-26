@@ -9,6 +9,7 @@ import tempfile
 import time
 import zlib
 from collections.abc import Collection, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pymupdf
@@ -37,6 +38,8 @@ from tests.api.conftest import (
 )
 from tests.conftest import StoreWith, cannot_cut
 from tests.helpers import (
+    assert_at_least,
+    assert_at_most,
     assert_equal,
     assert_false,
     assert_in,
@@ -169,6 +172,16 @@ def _opened(response) -> pymupdf.Document:
     kind = response.headers["content-type"]
     assert_equal((response.status_code, kind), (200, "application/pdf"), response.text[:200])
     return pymupdf.open(stream=response.content, filetype="pdf")
+
+
+def _info(pdf: pymupdf.Document, key: str) -> str:
+    """What the file's Info holds under `key`; "null" when it holds nothing there."""
+    return pdf.xref_get_key(-1, f"Info/{key}")[1]  # -1: the file's trailer
+
+
+def _changed_at(pdf: pymupdf.Document) -> datetime:
+    """When the file's Info says it last changed (its ModDate), in UTC."""
+    return datetime.strptime(_info(pdf, "ModDate"), "D:%Y%m%d%H%M%SZ").replace(tzinfo=UTC)
 
 
 def _files(doc: dict) -> list[str]:
@@ -726,18 +739,23 @@ def _signatures_in(pdf: pymupdf.Document) -> tuple[list[str], str, str]:
     return values, pdf.xref_get_key(catalog, "Perms")[0], pdf.xref_get_key(catalog, "DSS")[0]
 
 
-# Metadata (XMP) as Acrobat writes it: in its packet's wrapper, with typed values of each kind.
+_TYPED_CHANGED_AT = "2024-05-04T09:00:00Z"  # when its XMP says it last changed, both ways
+_TYPED_PRODUCER = "Acrobat Distiller"  # the program its XMP names, with no word of its line
+# Metadata (XMP) as Acrobat writes it: in its packet's wrapper, with typed values of each kind,
+# its last change as an attribute and as an element; namespaces first, as the mark writes them.
 _TYPED_XMP = (
     '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
     '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
-    '<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/"'
+    '<rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/"'
     ' xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/" xmlns:dc="http://purl.org/dc/elements/1.1/"'
     ' xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"'
-    ' xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/"'
-    ' xmp:ModifyDate="2024-05-03T10:00:00Z" xmpMM:DocumentID="xmp.did:3F2A9C"'
+    ' xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/" rdf:about=""'
+    f' xmp:ModifyDate="{_TYPED_CHANGED_AT}" xmpMM:DocumentID="xmp.did:3F2A9C"'
     ' pdf:Trapped="False" pdfaid:part="2" pdfaid:conformance="B">'
     "<xmp:CreateDate>2024-05-03T10:00:00Z</xmp:CreateDate>"
+    f"<xmp:MetadataDate>{_TYPED_CHANGED_AT}</xmp:MetadataDate>"
+    f"<pdf:Producer>{_TYPED_PRODUCER}</pdf:Producer>"
     "<xmpMM:InstanceID>uuid:5d3c0f12-2024-11e9</xmpMM:InstanceID>"
     "<dc:format>application/pdf</dc:format>"
     "<pdf:PDFVersion>1.7</pdf:PDFVersion>"
@@ -764,6 +782,7 @@ def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
     """They say when, which or what kind, not what, so none is a copy.
 
     Rewritten, they wouldn't be valid, and the packet a PDF/A file must have would break.
+    Only the mark sets its producer and the dates of its last change, as on every export.
     """
     doc = upload(mine, typed_metadata).json()
     line = span_starting(doc, 0, "Begin")
@@ -774,7 +793,39 @@ def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
 
     places = rendered["redactions"][line["id"]]["hidden_copies"]
     assert_equal(places, [], "the places render names")
-    assert_equal(_opened(response).get_xml_metadata(), _TYPED_XMP, "the metadata")
+    saved = _opened(response)
+    assert_equal(saved.get_xml_metadata(), _with_mark(_TYPED_XMP, saved), "the metadata")
+    # The check reads the mark as a hidden copy, and "PDF" is no whole word of it.
+    assert_equal(_info(saved, "Producer"), "squidpdf", "the program the Info names")
+
+
+def _with_mark(xmp: str, pdf: pymupdf.Document) -> str:
+    """`_TYPED_XMP`'s packet, naming squidpdf and the time `pdf`'s Info says it changed."""
+    changed_at = _changed_at(pdf).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return xmp.replace(_TYPED_PRODUCER, "squidpdf").replace(_TYPED_CHANGED_AT, changed_at)
+
+
+def test_an_exported_files_xmp_says_what_its_info_says(mine, typed_metadata):
+    """A PDF/A file's XMP must agree with its Info: each names squidpdf and the same time."""
+    doc = upload(mine, typed_metadata).json()
+
+    saved = _opened(_export(mine, doc, []))
+
+    xmp = saved.get_xml_metadata()
+    changed_at = _changed_at(saved).strftime("%Y-%m-%dT%H:%M:%SZ")
+    said = {
+        "ModifyDate": re.findall(r'xmp:ModifyDate="([^"]*)"', xmp),
+        "MetadataDate": re.findall(r"<xmp:MetadataDate>([^<]*)<", xmp),
+        "Producer": re.findall(r"<pdf:Producer>([^<]*)<", xmp),
+        "CreateDate": re.findall(r"<xmp:CreateDate>([^<]*)<", xmp),
+    }
+    expected = {
+        "ModifyDate": [changed_at],
+        "MetadataDate": [changed_at],
+        "Producer": ["squidpdf"],
+        "CreateDate": ["2024-05-03T10:00:00Z"],
+    }
+    assert_equal(said, expected, "what the XMP says of the file's last change and its making")
 
 
 def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
@@ -1016,6 +1067,78 @@ def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(min
     got = [(n["kind"], n["code"], n["detail"]) for n in said]
     assert_equal(got, expected, "what came out other than asked")
     assert_equal(_opened(response).page_count, 1, "pages in the file")
+
+
+@pytest.fixture(scope="module")
+def described(three_pages) -> bytes:
+    """The three pages, saying what made them and when, as most files do."""
+    doc = pymupdf.open(stream=three_pages, filetype="pdf")
+    doc.set_metadata(
+        {
+            "title": "Lease",
+            "creator": "Writer",
+            "producer": "Printer",
+            "modDate": "D:20240503100000Z",
+        }
+    )
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("edited", "pages"),
+    [(True, None), (False, None), (False, [2, 0])],
+    ids=["an edit", "no edit", "a split's part"],
+)
+def test_an_exported_file_says_squidpdf_changed_it_and_when(mine, described, edited, pages):
+    """Every export is squidpdf's rewrite of the file: its Info says so, not its pages.
+
+    Its other Info entries stay the file's own: Creator names the program that made it.
+    """
+    doc = upload(mine, described).json()
+    first = span_starting(doc, 0, "First")
+    edits = [{"kind": "replace", "span_id": first["id"], "text": "One"}] if edited else []
+    asked_at = datetime.now(UTC).replace(microsecond=0)  # a PDF date keeps whole seconds
+
+    response = _export(mine, doc, edits, pages)
+
+    saved = _opened(response)
+    said = [_info(saved, key) for key in ("Producer", "Title", "Creator")]
+    assert_equal(said, ["squidpdf", "Lease", "Writer"], "what the Info holds")
+    changed_at = _changed_at(saved).timestamp()
+    assert_at_least(changed_at, asked_at.timestamp(), "when the Info says it changed")
+    assert_at_most(changed_at, time.time(), "when the Info says it changed")
+
+
+def _odd_info(shape: str) -> bytes:
+    """A page whose Info isn't the object of its own the format asks for.
+
+    The upload takes each, so the export must too. The one in the trailer itself says "Lease".
+    """
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 100), "First page", fontname="helv", fontsize=12)
+    if shape == "in the trailer":
+        doc.xref_set_key(-1, "Info", "<</Title(Lease)/Producer(Printer)>>")
+    if shape == "leading nowhere":
+        doc.xref_set_key(-1, "Info", "99 0 R")
+    if shape == "not a dictionary":
+        text = doc.get_new_xref()
+        doc.update_object(text, "(just words)")
+        doc.xref_set_key(-1, "Info", f"{text} 0 R")
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("shape", "title"),
+    [("in the trailer", "Lease"), ("leading nowhere", "null"), ("not a dictionary", "null")],
+)
+def test_an_info_kept_oddly_still_exports_and_names_squidpdf(mine, shape, title):
+    """An Info in the trailer itself keeps its entries; one that holds none is made anew."""
+    doc = upload(mine, _odd_info(shape)).json()
+
+    saved = _opened(_export(mine, doc, []))
+
+    said = [_info(saved, key) for key in ("Producer", "Title")]
+    assert_equal(said, ["squidpdf", title], "what the Info holds")
 
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):

@@ -176,6 +176,9 @@ def test_edit_replaces_the_text_and_saves(pdf, tmp_path, capsys):
     saved = _text(out_pdf)
     assert_in("ninety days", saved, "the saved PDF after an edit")
     assert_not_in("thirty days", saved, "the saved PDF after an edit")
+    with pymupdf.open(out_pdf) as doc:
+        producer = doc.xref_get_key(-1, "Info/Producer")  # -1: the file's trailer
+    assert_equal(producer, ("string", "squidpdf"), "the program the Info names")
 
 
 def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys):

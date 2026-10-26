@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from functools import partial
 from typing import assert_never
 
@@ -315,6 +316,10 @@ class Engine:
             return []
         self.driver.drop_tags()
         return [Message("tags_dropped")]
+
+    def mark_changed_by(self, producer: str, when: datetime) -> None:
+        """Say in the file's metadata that `producer` changed it, at `when`."""
+        self.driver.mark_changed_by(producer, when)
 
     def save(self, path: str) -> list[Message]:
         """Write the document to `path`, the fonts we added cut to the letters drawn in them.
