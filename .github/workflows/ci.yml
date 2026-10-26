@@ -192,10 +192,14 @@ jobs:
             "$(( cores * 1792 + 1024 ))" "$(( cores * 256 ))" >> .env
 
       - name: Build
-        run: docker compose build
+        run: SQUIDPDF_COMPOSE_HASH=$(deploy/check-compose.sh --hash) docker compose build
         # The landing links this commit's code (compose.yaml).
         env:
           SQUIDPDF_COMMIT: ${{ github.sha }}
+
+      # The check a deploy runs before up, here so the image can't lose its label unnoticed.
+      - name: The proxy names the compose.yaml it was built beside
+        run: deploy/check-compose.sh
 
       - name: Start
         run: |
