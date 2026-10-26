@@ -1,7 +1,7 @@
 import styles from "./Mascot.module.css";
 
 // The squid's outline, drawn twice: once wide in the paper's white, a cut-out's edge that keeps it apart from
-// either mat, then in ink. Its mantle, fins at its crown, and five arms, the outer two curling as the wordmark's do.
+// either mat, then in ink. Its mantle, fins at its crown, and five arms, the outer two curling.
 const SHAPES = [
   { d: "M61 102c-2 12-12 17-15 27-2 7 4 12 10 8", arm: true },
   { d: "M99 102c2 12 12 17 15 27 2 7-4 12-10 8", arm: true },
