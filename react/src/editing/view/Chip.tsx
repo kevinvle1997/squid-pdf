@@ -47,7 +47,12 @@ export function Chip({ span, info, trouble, setting }: Props) {
             <Warn mark>{note.said}</Warn>
             {note.why !== null && <span>{note.why}</span>}
           </span>
-          <Button keepFocus onPress={() => quietFont(editor, shown, { quiet: true })}>
+          <Button
+            variant="quiet"
+            className={styles.quietFont}
+            keepFocus
+            onPress={() => quietFont(editor, shown, { quiet: true })}
+          >
             Don't show again for this font
           </Button>
         </span>
