@@ -75,7 +75,7 @@ async def upload(
     upload_controller: Annotated[
         UploadController, Depends(controller_with_workers(UploadController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
     response: Response,
 ) -> Response:
     """A raw PDF sent as application/pdf, no filename. Answers with every span judged."""
@@ -83,7 +83,7 @@ async def upload(
         owner.digest(token),
         declared=declared_size(request),
         chunks=request.stream(),
-        said_in=said_in,
+        language=language,
     )
     return response_of(reply, media_type=_JSON, set_by=response)
 
@@ -108,11 +108,11 @@ async def read(
     read_controller: Annotated[
         ReadController, Depends(controller_with_workers(ReadController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
 ) -> Response:
     """The document, in the reader's language, or 304 if the browser has it already."""
     if_none_match = request.headers.get("if-none-match")  # absent on a first read
-    reply = await read_controller.read(doc, said_in=said_in, if_none_match=if_none_match)
+    reply = await read_controller.read(doc, language=language, if_none_match=if_none_match)
     return response_of(reply, media_type=_JSON)
 
 
@@ -136,7 +136,7 @@ async def attach_font(
     attach_controller: Annotated[
         AttachController, Depends(controller_with_workers(AttachController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
 ) -> Response:
     """The user's own copy of a document font, raw TrueType or OpenType; spans judged again."""
     reply = await attach_controller.attach(
@@ -144,7 +144,7 @@ async def attach_font(
         font_name=font_name,
         declared=declared_size(request),
         chunks=request.stream(),
-        said_in=said_in,
+        language=language,
     )
     return response_of(reply, media_type=_JSON)
 
@@ -157,10 +157,10 @@ async def detach_font(
     detach_controller: Annotated[
         DetachController, Depends(controller_with_workers(DetachController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
 ) -> Response:
     """The user's copy of a document font removed; every span judged again."""
-    reply = await detach_controller.detach(doc, font_name=font_name, said_in=said_in)
+    reply = await detach_controller.detach(doc, font_name=font_name, language=language)
     return response_of(reply, media_type=_JSON)
 
 

@@ -1,9 +1,6 @@
 """How a route gets its controller, and sends what the controller hands back.
 
-Every feature's controller is built the same way, with the app's workers (the
-pool of processes PDF work runs in), and every Reply goes out the same way: its
-status, its headers, and the media type the route names. A header of our own
-is listed in the route's `responses`, so the OpenAPI says it's there.
+A header of our own is listed in the route's `responses`, so the OpenAPI says it's there.
 """
 
 from __future__ import annotations

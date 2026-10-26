@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aDoc } from "../fixtures";
-import { scaleFor, whereSaid, zoomStep } from "./zoom";
+import { scaleFor, whereSentence, zoomStep } from "./zoom";
 
 describe("a zoom step", () => {
   test("in goes to the next share worth the press: from a phone's fit, three quarters, not a half", () => {
@@ -31,7 +31,7 @@ test("the bar says which page is being read, or a one-page document's length", (
       { width: 595, height: 842, turn_cw: 0 },
     ],
   });
-  expect(whereSaid({ doc: two, pageInView: 1 })).toBe("Page 2 of 2");
+  expect(whereSentence({ doc: two, pageInView: 1 })).toBe("Page 2 of 2");
   const one = aDoc({ pages: [{ width: 595, height: 842, turn_cw: 0 }] });
-  expect(whereSaid({ doc: one, pageInView: 0 })).toBe("1 page");
+  expect(whereSentence({ doc: one, pageInView: 0 })).toBe("1 page");
 });

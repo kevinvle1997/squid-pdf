@@ -5,20 +5,20 @@ import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
 import type { PageState } from "../page";
 import { differing } from "../project";
+import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
-import { isUnderStrip, stripBoxOf } from "../strips";
 import { boxOf, cropOf, previewStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
 /** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
 export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
-  const { settling } = page;
-  if (settling === undefined) return null;
+  const { disagreement } = page;
+  if (disagreement === undefined) return null;
   return page.spans
-    .filter((span) => settling.spanIds.has(span.id))
+    .filter((span) => disagreement.spanIds.has(span.id))
     .map((span) => (
       <span
-        key={`${span.id}:${settling.count}`}
+        key={`${span.id}:${disagreement.count}`}
         className={styles.settle}
         aria-hidden="true"
         data-settle=""

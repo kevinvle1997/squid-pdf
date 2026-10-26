@@ -37,10 +37,8 @@ def declared_size(request: Request) -> int | None:
 class BodyLimit:
     """Reads a request's body before its route does, and refuses one past MAX_BODY_BYTES.
 
-    However it's sent: a size stated up front is checked before any is read,
-    and a body sent in chunks, which states none, is counted as it comes. A
-    route read into memory whole would otherwise take any size. Starlette
-    builds it, as `BodyLimit(app, streamed=...)`.
+    A stated size is checked before any is read, and a chunked body, which states
+    none, is counted as it comes: a route that reads it whole would take any size.
     """
 
     app: ASGIApp  # guarded, all but the requests `streamed` answers

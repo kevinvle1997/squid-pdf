@@ -1,6 +1,5 @@
-// State that lives outside React. A handler reads it the moment it changes, with no ref kept
-// beside a copy in state; what's drawn subscribes to the part it shows, so a change to one
-// span redraws that span, not the document.
+// State outside React, so a handler reads it the moment it changes, and what's drawn subscribes to the part
+// it shows: a change to one span redraws that span, not the document.
 
 export interface Store<S> {
   get(): S;

@@ -1,5 +1,5 @@
-// Which strips of a page to redraw. Edits stay in their row, so a full-width strip around each
-// changed line is byte-identical to the page around it.
+// Which regions of a page to redraw, each a full-width strip: edits stay in their row, so a strip
+// around each changed line is byte-identical to the page around it.
 import type { Insert, PageInfo, Region, SpanInfo } from "../api/types";
 import { INSERT_ASCENT_EM, INSERT_DESCENT_EM, STRIP_PAD_PT } from "./constants";
 import { type PageEdits, type Reading, samePage } from "./project";

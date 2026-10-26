@@ -117,57 +117,65 @@ def resolve(
 ) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
-    A redaction that points at nothing raises BadReference instead of being
-    skipped, and a replace after a redaction of the same text raises
-    RedactionConflict: redaction wins, so the list's order can't undo one.
-
-    A span edited twice is drawn once, in its final state: otherwise a second
-    correction draws over the first, and a Redact after a Replace would leave
-    the replacement showing while it's reported gone.
+    A redaction that points at nothing raises BadReference, and a replace after a redaction of
+    the same text raises RedactionConflict: the order can't undo one. A span edited twice is
+    drawn once, as its last edit leaves it, or a Redact after a Replace would show text gone.
     """
     page_count = engine.page_count()
-    spans = _SpanEdits(latest={})
-    inserts: list[_ListedInsert] = []
+    listed = _EditList(
+        page_count,
+        spans=_SpanEdits(latest={}),
+        pages=_PageOps(order=list(range(page_count)), turns={}),
+        inserts=[],
+    )
     skipped: list[Skipped] = []
-    pages = _PageOps(order=list(range(page_count)), turns={})
     for position, edit in enumerate(edits):
-        # A page op naming pages the document has: folded into the pages kept, in list order.
-        if isinstance(edit, RotatePage | DeletePage | MovePage) and _names_pages(
-            edit, page_count
-        ):
-            skipped += [Skipped(position, "bad_reference", why) for why in pages.fold(edit)]
-            continue
-        # A page op naming a page it doesn't have.
-        if isinstance(edit, RotatePage | DeletePage | MovePage):
-            skipped.append(Skipped(position, "bad_reference", Message("no_page")))
-            continue
-        # An insert on a page the document has.
-        if isinstance(edit, Insert) and is_page(edit.page, page_count):
-            inserts.append(_ListedInsert(position, edit))
-            continue
-        # An insert on a page it doesn't have.
-        if isinstance(edit, Insert):
-            skipped.append(Skipped(position, "bad_reference", Message("no_page")))
-            continue
-        # An edit of a span: its last so far, if the document has the span.
-        if isinstance(edit, SpanEdit):
-            # .get: the browser can send a span id this document doesn't have.
-            span = index.get(edit.span_id)
-            said = spans.add(edit, span, position=position)
-            skipped += [Skipped(position, "bad_reference", why) for why in said]
-            continue
-        assert_never(edit)
-    span_edits = list(spans.latest.values())
+        left_out = listed.read(edit, index=index, position=position)
+        skipped += [Skipped(position, "bad_reference", why) for why in left_out]
+    span_edits = list(listed.spans.latest.values())
     return Resolved(
         span_edits,
-        inserts=inserts,
+        inserts=listed.inserts,
         skipped=skipped,
         # Of the rooms the caller read from the original, only the edited spans'.
         rooms={edited_span.span.id: rooms[edited_span.span.id] for edited_span in span_edits},
         page_count=page_count,
-        order=pages.order,
-        turns=pages.turns,
+        order=listed.pages.order,
+        turns=listed.pages.turns,
     )
+
+
+@dataclass(slots=True)
+class _EditList:
+    """The edit list read so far, by kind: span edits, inserts and page ops."""
+
+    page_count: int
+    spans: _SpanEdits
+    pages: _PageOps
+    inserts: list[_ListedInsert]
+
+    def read(self, edit: Edit, *, index: SpanIndex, position: int) -> list[Message]:
+        """Read one more edit; returns why it's left out, if it is."""
+        # A page op naming pages the document has: folded into the pages kept, in list order.
+        if isinstance(edit, RotatePage | DeletePage | MovePage) and _names_pages(
+            edit, self.page_count
+        ):
+            return self.pages.fold(edit)
+        # A page op naming a page it doesn't have.
+        if isinstance(edit, RotatePage | DeletePage | MovePage):
+            return [Message("no_page")]
+        # An insert on a page the document has.
+        if isinstance(edit, Insert) and is_page(edit.page, self.page_count):
+            self.inserts.append(_ListedInsert(position, edit))
+            return []
+        # An insert on a page it doesn't have.
+        if isinstance(edit, Insert):
+            return [Message("no_page")]
+        # An edit of a span: its last so far, if the document has the span.
+        if isinstance(edit, SpanEdit):
+            # .get: the browser can send a span id this document doesn't have.
+            return self.spans.add(edit, index.get(edit.span_id), position=position)
+        assert_never(edit)
 
 
 @dataclass(slots=True)

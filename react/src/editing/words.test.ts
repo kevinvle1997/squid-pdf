@@ -27,8 +27,8 @@ describe("filling the server's sentences", () => {
     ["\u00ad", "optional hyphen"],
     ["\x01", "U+0001"],
     ["\u0301", "acute accent"],
-  ])("a character that draws nothing is named: %j is %s", (character, said) => {
-    expect(shownAs(character, SENTENCES.characters)).toBe(said);
+  ])("a character that draws nothing is named: %j is %s", (character, name) => {
+    expect(shownAs(character, SENTENCES.characters)).toBe(name);
   });
 
   // The server's own case, test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_letter_isnt.

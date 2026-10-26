@@ -1,3 +1,0 @@
-/* Out of sight, and out of the accessibility tree, until the quiet spell is over. */
-.afterQuiet { animation: after-quiet var(--dur-quick) var(--ease-out) backwards; }
-@keyframes after-quiet { from { visibility: hidden; opacity: 0; } }

@@ -68,5 +68,5 @@ def language_of(request: Request) -> str:
     return _best_language(request.headers.get("accept-language"))
 
 
-# A route's reader's language, as a parameter: `said_in: ReaderLanguage`.
+# A route's reader's language, as a parameter: `language: ReaderLanguage`.
 ReaderLanguage = Annotated[str, Depends(language_of)]

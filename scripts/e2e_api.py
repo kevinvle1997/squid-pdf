@@ -2,9 +2,8 @@
 
     uv run python scripts/e2e_api.py 8765
 
-The app as deployed, but for its per-address limits: every spec sends from one
-address, so the run would be refused past them, as the API's own tests would
-(`tests/api/conftest.py`, which raises the same three).
+As deployed, but with the per-address limits raised as the API's tests raise them
+(`tests/api/conftest.py`): every spec sends from one address.
 """
 
 from __future__ import annotations

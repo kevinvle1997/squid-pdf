@@ -1,6 +1,5 @@
-// The open document's editor, for what draws it. State is read through a selector, so a
-// component redraws only when what it selected changes; actions take the editor itself,
-// which never changes, so passing it down redraws nothing.
+// The open document's editor, for what draws it. A selector redraws a component only when what it selected
+// changes; the editor itself never changes, so passing it down redraws nothing.
 import { createContext, useContext } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { Editor, EditorState } from "../editor";

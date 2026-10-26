@@ -1,6 +1,5 @@
-// The face a line goes to when the span's own font lacks a letter, and what even that face leaves out:
-// `substitute_for` in core/fonts/substitute.py, from the server's own lists of what each face we ship
-// draws (`face-letters.json`, written by scripts/face_files.py), so the field says it before the edit.
+// The face a line goes to when its own font lacks a letter, and what even that face leaves out, as
+// core/fonts/substitute.py decides from `face-letters.json` (scripts/face_files.py), so the field says it first.
 import faceLetters from "../../../src/squidpdf/fonts/face-letters.json";
 import type { FontInfo, SpanInfo } from "../api/types";
 

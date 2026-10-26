@@ -1,10 +1,8 @@
 """Where the words go in a font with no space of its own.
 
-pdfTeX's fonts have none: TeX never draws a space, it moves the pen. Typing one
-draws the font's empty glyph instead, wider than the gap and read back as
-U+0000. So such a line is drawn word by word, each gap as wide as the file
-made it. A gap is how far the pen moves for one space, in ems. Pure
-functions: no PDF is opened here.
+pdfTeX's fonts have none: TeX moves the pen instead. Typing one draws the empty glyph, wider
+than the gap and read back as U+0000, so such a line is drawn word by word, each gap (the
+pen's move for one space, in ems) as wide as the file made it.
 """
 
 from __future__ import annotations

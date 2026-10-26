@@ -34,34 +34,34 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
     expect(look.note).toBeNull();
   });
 
-  test("as typing starts, a similar font is said and warned, whatever its widths", () => {
+  test("as typing starts, a similar font is announced and warned, whatever its widths", () => {
     const sameWidths = { ...substituted, same_widths: true };
-    expect(editNote(substituted, { font: substitutedFont, sentences, quiet: false })).toEqual({
+    expect(editNote(substituted, { font: substitutedFont, sentences, muted: false })).toEqual({
       warn: true,
-      said: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
+      sentence: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: "Not embedded.",
     });
-    expect(editNote(sameWidths, { font: substitutedFont, sentences, quiet: false })).toEqual({
+    expect(editNote(sameWidths, { font: substitutedFont, sentences, muted: false })).toEqual({
       warn: true,
-      said: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
+      sentence: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
       why: "Not embedded.",
     });
     expect(shortWarningOf(substituted)).toBe("a similar font");
   });
 
-  test("a font the user quieted says nothing in full as typing starts, but the chip's short warning stays", () => {
-    expect(editNote(substituted, { font: substitutedFont, sentences, quiet: true })).toBeNull();
+  test("a font whose warning the user muted says nothing in full as typing starts, but the chip's short warning stays", () => {
+    expect(editNote(substituted, { font: substitutedFont, sentences, muted: true })).toBeNull();
     expect(shortWarningOf(substituted)).toBe("a similar font");
   });
 
-  test("the span's own fidelity is what's said, not its font's first span's", () => {
+  test("the span's own fidelity is what's told, not its font's first span's", () => {
     // The font's own copy draws its first span, so the font names no similar face; this span's doesn't.
-    expect(editNote(substituted, { font: aFont("Arial"), sentences, quiet: false })).toEqual({
+    expect(editNote(substituted, { font: aFont("Arial"), sentences, muted: false })).toEqual({
       warn: true,
-      said: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
+      sentence: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: null,
     });
-    expect(editNote(span, { font: substitutedFont, sentences, quiet: false })).toBeNull();
+    expect(editNote(span, { font: substitutedFont, sentences, muted: false })).toBeNull();
     expect(shortWarningOf(span)).toBeNull();
   });
 
@@ -75,7 +75,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
     expect(lookAt({ span: substituted, font: substitutedFont, reading: changed, fit })).toMatchObject({
       changed: true,
       trouble: true,
-      note: { warn: true, said: "2.0 pt too long, so it was shrunk", why: null },
+      note: { warn: true, sentence: "2.0 pt too long, so it was shrunk", why: null },
     });
     // Put back, before its page is drawn again: the old verdict no longer applies.
     expect(lookAt({ span, font: ownFont, fit })).toMatchObject({
@@ -87,14 +87,14 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   test("before any edit, text a form field draws says an edit here is left out, whatever its font", () => {
     const look = lookAt({ span: { ...substituted, form_field: true }, font: substitutedFont });
     expect(look.formField).toBe(true);
-    expect(look.note).toEqual({ warn: true, said: sentences.form_field_not_edited, why: null });
+    expect(look.note).toEqual({ warn: true, sentence: sentences.form_field_not_edited, why: null });
   });
 
   test("as typing starts, text the file's own font draws but an edit won't match says why, warned", () => {
     const turned = aSpan({ id: "s3", fidelity: "approximate", why: { code: "turned_text", params: {} } });
-    expect(editNote(turned, { font: ownFont, sentences, quiet: false })).toEqual({
+    expect(editNote(turned, { font: ownFont, sentences, muted: false })).toEqual({
       warn: true,
-      said: sentences.approximate.turned_text,
+      sentence: sentences.approximate.turned_text,
       why: null,
     });
     expect(shortWarningOf(turned)).toBe("will look different");
@@ -107,7 +107,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
     const after = lookAt({ span, font: ownFont, reading: redacted, redaction: signed });
     expect(before).toMatchObject({ redacted: true, unredacted: false, note: null });
     expect(after).toMatchObject({ redacted: true, unredacted: false });
-    expect(after.note).toEqual({ warn: true, said: "No signatures in the download.", why: null });
+    expect(after.note).toEqual({ warn: true, sentence: "No signatures in the download.", why: null });
   });
 
   test("a redaction the server found still there is marked as a warning, and says so", () => {
@@ -115,6 +115,6 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
     const left = aRedaction({ verified: false, message: "This text couldn't be removed." });
     const look = lookAt({ span, font: ownFont, reading: redacted, redaction: left });
     expect(look).toMatchObject({ redacted: true, unredacted: true });
-    expect(look.note).toEqual({ warn: true, said: "This text couldn't be removed.", why: null });
+    expect(look.note).toEqual({ warn: true, sentence: "This text couldn't be removed.", why: null });
   });
 });

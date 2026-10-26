@@ -25,11 +25,9 @@ class LineFit:
     def plan_for(self, span: Span, text: str) -> DrawPlan:
         """How `text` is drawn at this span: worked out once, for a fit to ask all it needs of.
 
-        Its `missing` are the letters no copy of the span's font in the file really
-        draws: each is checked for a shape, since a trimmed (subset) font still lists
-        letters whose shapes were emptied; a font not in the file is checked against
-        its look-alike. Its `left_out` are those no font we have draws. `width_of`
-        and `substitute` read it too.
+        Its `missing` are the letters no copy of the span's font in the file really draws,
+        each checked for a shape, since a trimmed (subset) font lists letters it emptied; a
+        font not in the file is checked against its look-alike. `left_out`: none we have draws.
         """
         return self.plans.plan_for(span, text)
 

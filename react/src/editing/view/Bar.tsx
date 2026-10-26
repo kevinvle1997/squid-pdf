@@ -1,7 +1,7 @@
 // The bar over the document: its name and pages, what's changed and how much of it won't match, and
 // the tools and the one action, Export.
 import { useCallback } from "react";
-import { AfterQuiet } from "../../ui/AfterQuiet";
+import { AfterDelay } from "../../ui/AfterDelay";
 import { Button } from "../../ui/Button";
 import { ThemeToggle } from "../../ui/ThemeToggle";
 import { Shortcut } from "../../ui/Tooltip";
@@ -10,16 +10,16 @@ import { Wordmark } from "../../ui/Wordmark";
 import { changedCount, runLongCount, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { openFind } from "../find";
+import type { Mismatches } from "../mismatches";
 import { shallowEqual } from "../store";
-import type { Unlike } from "../unlike";
 import { formOf } from "../words";
-import { whereSaid } from "../zoom";
+import { whereSentence } from "../zoom";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
 import { Fonts } from "./Fonts";
 import { COMMAND } from "./keys";
+import { MismatchCount } from "./Mismatches";
 import { Shortcuts } from "./Shortcuts";
-import { UnlikeCount } from "./Unlike";
 
 /** The bar, held at the top. */
 export function Bar() {
@@ -27,9 +27,9 @@ export function Bar() {
   const changed = useEditorState(changedCount);
   const warned = useEditorState(warnedCount, shallowEqual);
   const runLong = useEditorState(runLongCount);
-  const atRest = useEditorState((state) => state.layout.unlikeAtRest);
+  const atRest = useEditorState((state) => state.layout.mismatchesAtRest);
   const exporting = useEditorState((state) => state.exporting);
-  // The document opened again, or couldn't: said in the bar's status, beside the counts.
+  // The document opened again, or couldn't: shown in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
   return (
     <header className={styles.bar}>
@@ -44,7 +44,7 @@ export function Bar() {
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
         )}
         <span className={styles.status}>
-          {changed === 0 ? <AtRest unlike={atRest} /> : <Changed changed={changed} {...warned} />}
+          {changed === 0 ? <AtRest mismatches={atRest} /> : <Changed changed={changed} {...warned} />}
           {/* Left long past its room: each change says so on its mark, and the bar counts them. */}
           {changed > 0 && runLong > 0 && (
             <span className={styles.runLong}>
@@ -52,7 +52,7 @@ export function Bar() {
             </span>
           )}
         </span>
-        {exporting && <AfterQuiet className={styles.exporting}>Exporting</AfterQuiet>}
+        {exporting && <AfterDelay className={styles.exporting}>Exporting</AfterDelay>}
         <span className={styles.actions}>
           <FindButton />
           <Fonts />
@@ -80,7 +80,7 @@ export function Bar() {
 
 /** Which page is in view: drawn alone, since it changes with each page the document scrolls past. */
 function Where() {
-  const where = useEditorState(whereSaid);
+  const where = useEditorState(whereSentence);
   return <span className={styles.meta}>{where}</span>;
 }
 
@@ -92,30 +92,30 @@ function Changed({ changed, count, label }: { changed: number; count: number; la
   // None does: the changes' own count is the warning.
   if (count === changed) {
     return (
-      <UnlikeCount changed>
+      <MismatchCount changed>
         <Warn>{changed}</Warn> {changes} {label}
-      </UnlikeCount>
+      </MismatchCount>
     );
   }
   return (
     <>
       {changed} {changes},{" "}
-      <UnlikeCount changed>
+      <MismatchCount changed>
         <Warn>{count}</Warn> of them {label}
-      </UnlikeCount>
+      </MismatchCount>
     </>
   );
 }
 
 /** Before any change, where an edit won't match, warned and pressed for where (Rule 1): nothing when it all will. */
-function AtRest({ unlike }: { unlike: Unlike }) {
-  const { count, reasons } = unlike;
+function AtRest({ mismatches }: { mismatches: Mismatches }) {
+  const { count, reasons } = mismatches;
   if (count === 0) return null;
   const places = formOf(count, { one: "place", other: "places" });
   return (
-    <UnlikeCount changed={false}>
+    <MismatchCount changed={false}>
       Edits in <Warn>{count}</Warn> {places} {reasons.length > 0 ? "will look different" : "will use a similar font"}
-    </UnlikeCount>
+    </MismatchCount>
   );
 }
 

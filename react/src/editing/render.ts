@@ -5,7 +5,7 @@ import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, Ski
 import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
 import type { Reading } from "./project";
-import { bottomOf, regionsFor, stalePages } from "./strips";
+import { bottomOf, regionsFor, stalePages } from "./redrawRegions";
 
 /** A strip of a page the server drew, ready to paint: its top and bottom in points, and its image's address. */
 export interface Strip {
@@ -43,10 +43,10 @@ export const NOTHING_DRAWN: Drawn = {
 };
 
 /**
- * What a reply says, less the images and `expires_at`, which goes to keeping. Not read: `insert_fits`,
+ * What a reply says, less the images and `expires_at`, which goes to `persistUntil`. Not read: `insert_fits`,
  * since nothing inserts yet; and `build`, since a deploy retires the document.
  */
-type Said = Pick<Render, "fits" | "redactions" | "notices" | "skipped">;
+type RenderReply = Pick<Render, "fits" | "redactions" | "notices" | "skipped">;
 
 /** The page a notice is about: its span's, or its insert's. A notice about the whole file names none. */
 function pageOfNotice(reading: Reading, notice: NoticeInfo): number | undefined {
@@ -78,11 +78,11 @@ function onPages<V>(reading: Reading, bySpan: Readonly<Record<string, V>>): Map<
  * A reply's fits, redactions and notices, by the page each is about. The server sends a fit for
  * every replaced span, and a verdict for every redacted one in the regions drawn.
  */
-function byPage(reading: Reading, said: Said, drawing: readonly number[]) {
-  const fits = onPages(reading, said.fits);
-  const redactions = onPages(reading, said.redactions);
+function byPage(reading: Reading, reply: RenderReply, drawing: readonly number[]) {
+  const fits = onPages(reading, reply.fits);
+  const redactions = onPages(reading, reply.redactions);
   const notices = new Map<number, NoticeInfo[]>();
-  for (const notice of said.notices) {
+  for (const notice of reply.notices) {
     // One that names no page came from drawing these pages all the same: it goes with the first.
     const page = pageOfNotice(reading, notice) ?? drawing[0];
     if (page !== undefined) notices.set(page, [...(notices.get(page) ?? []), notice]);
@@ -165,7 +165,7 @@ export class RenderQueue {
       if (edits === undefined || info === undefined) bare.push(page);
       else stale.set(page, regionsFor(page, info, edits));
     }
-    if (bare.length > 0) this.#landed(reading, bare, { landing: [], said: null });
+    if (bare.length > 0) this.#landed(reading, bare, { landing: [], reply: null });
     // The pages near the screen on their own: a render of every page waits on the slowest.
     const shown = [...stale.keys()].filter((page) => near.has(page));
     const drawing = shown.length > 0 ? shown : [...stale.keys()];
@@ -188,7 +188,7 @@ export class RenderQueue {
       this.#options.extended(reply.expires_at);
       if (ask.signal.aborted) return;
       this.#asking = null;
-      this.#landed(reading, drawing, { landing: strips, said: reply });
+      this.#landed(reading, drawing, { landing: strips, reply });
       // Then the rest, still stale: near the screen first again, as it is now.
       if (drawing.length < stale.size) void this.#draw(reading);
     } catch (error) {
@@ -199,18 +199,18 @@ export class RenderQueue {
     }
   }
 
-  /** `pages` now show `reading`, in `landing`; `said` is the server's reply, or null for pages it wasn't asked about. */
+  /** `pages` now show `reading`, in `landing`; `reply` is the server's, or null for pages it wasn't asked about. */
   #landed(
     reading: Reading,
     pages: readonly number[],
-    { landing, said }: { landing: readonly Strip[]; said: Said | null },
+    { landing, reply }: { landing: readonly Strip[]; reply: RenderReply | null },
   ) {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);
     const redactions = new Map(this.#drawn.redactions);
     const notices = new Map(this.#drawn.notices);
-    const landed = byPage(reading, said ?? { fits: {}, redactions: {}, notices: [], skipped: [] }, pages);
+    const landed = byPage(reading, reply ?? { fits: {}, redactions: {}, notices: [], skipped: [] }, pages);
     for (const page of pages) {
       const onPage = landing.filter((strip) => strip.page === page);
       if (onPage.length > 0) strips.set(page, onPage);
@@ -221,8 +221,8 @@ export class RenderQueue {
       setOrDelete(notices, page, landed.notices.get(page));
     }
     // Skipped is of the whole edit list: a reply replaces it, and it goes with the last edit.
-    const skipped = said?.skipped ?? (reading.edits.length === 0 ? [] : this.#drawn.skipped);
-    const failed = said === null ? this.#drawn.failed : null;
+    const skipped = reply?.skipped ?? (reading.edits.length === 0 ? [] : this.#drawn.skipped);
+    const failed = reply === null ? this.#drawn.failed : null;
     this.#drawn = { strips, from, fits, redactions, notices, skipped, failed };
     this.#options.drawn(this.#drawn);
   }

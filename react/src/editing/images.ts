@@ -1,10 +1,9 @@
-// A page image the browser couldn't load: why, said on its page in the server's words, and asked
-// for again on a backoff and when the connection comes back, until it comes. A document the
-// server lost opens again first, which gives every page a new address.
+// A page image the browser couldn't load: why, on its page in the server's words, and asked for again on a
+// backoff and when the connection returns. A document the server lost opens again first: every page's address changes.
 import { pageImage } from "../api/client";
 import { sentenceOf } from "../bugs";
 import { IMAGE_RETRY_FIRST_MS, IMAGE_RETRY_MOST_MS } from "./constants";
-import { type Editor, spoken } from "./editor";
+import { announcing, type Editor } from "./editor";
 import { warn } from "./notices";
 
 /** A page whose image failed, until it loads. */
@@ -23,7 +22,7 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
     // Lost, and it couldn't open again: said in the bar, where reopening is.
     const text = sentenceOf(error);
     const { notices } = editor.store.get();
-    editor.store.set({ notices: { ...notices, reopen: warn(text) }, said: spoken(text) });
+    editor.store.set({ notices: { ...notices, reopen: warn(text) }, announcement: announcing(text) });
     return;
   }
   // Opened again: every page has a new address, so its image comes again by itself.
@@ -61,7 +60,7 @@ function failedOnPage(editor: Editor, page: number, why: string | null): void {
   const heard = why !== null && why !== image.failed && !elsewhere;
   editor.store.set({
     images: new Map(images).set(page, { ...image, failed: why ?? image.failed }),
-    ...(heard && { said: spoken(why) }),
+    ...(heard && { announcement: announcing(why) }),
   });
   clearTimeout(editor.retries.get(page));
   const wait = Math.min(IMAGE_RETRY_FIRST_MS * 2 ** image.tries, IMAGE_RETRY_MOST_MS);

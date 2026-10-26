@@ -1,12 +1,8 @@
 """A PDF open for editing: its spans, what we can promise about each, and the edits on it.
 
-The product's own logic, written against a `core.pdf.driver.PdfDriver`'s primitives,
-so it's the same over any PDF library. Open one with `core.open_pdf`.
-
-The engine speaks only in primitives (remove, draw), so it never learns what a
-Replace or a Redact is, which is what keeps `core` free of feature imports.
-What draws a line is `core.plan`'s, and drawing it is `core.writer`'s: the
-engine asks both.
+Written against a `PdfDriver`'s primitives (remove, draw), so it's the same over any PDF
+library and never learns what a Replace or a Redact is: that keeps `core` free of feature
+imports. Open one with `core.open_pdf`.
 """
 
 from __future__ import annotations
@@ -217,14 +213,9 @@ class Engine:
     def remove(self, spans: list[Span], *, then_drawn: Sequence[LineToDraw]) -> list[Span]:
         """Delete these spans' text for real, not by covering it with a box.
 
-        Returns the spans with any word of their text still in their box, as
-        `RedactionCheck.still_there` says it: the erase couldn't reach it, as a form field draws
-        its value, not the page. `then_drawn` are the lines `draw` will draw
-        after: what they need is read first, while the page still has it. One
-        box per span, not per fragment: the cost grows with the box count, and a
-        span's box covers its fragments. Lines, underlines and links stay; a
-        comment written on the page over them (a FreeText) goes, as it can carry
-        the text.
+        Returns the spans with a word still in their box, which the erase couldn't reach, as a
+        form field's value. `then_drawn` is read first, while the page still has it. One box per
+        span, which covers its fragments: cost grows per box. A FreeText goes; lines don't.
         """
         self._read_before_erasing(spans, then_drawn)
         return asked_by_page(spans, self._erased_on)

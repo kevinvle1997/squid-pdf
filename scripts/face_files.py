@@ -2,11 +2,8 @@
 
     uv run python scripts/face_files.py
 
-The browser previews in the very files the server draws with, and finds each one
-in `face-files.json`: a family filed as its source ships it (FreeSans.ttf,
-lmroman10-regular.otf) can't be worked out from the face's name. `face-letters.json`
-says which letters each face really draws, and the face a line goes to when it
-can't, so the browser says before an edit what the server will leave out.
+The browser previews in the server's own files, by `face-files.json`: a file's name can't
+be worked out from its face's. `face-letters.json` lists what each draws, and its fallback.
 """
 
 from __future__ import annotations

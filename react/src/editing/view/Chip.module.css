@@ -8,7 +8,7 @@
   white-space: nowrap; line-height: 1;
   pointer-events: none;
 }
-/* What an edit here warns of, in full, as typing starts, and quieting it under that: above the edit's own facts. */
+/* What an edit here warns of, in full, as typing starts, and muting it under that: above the edit's own facts. */
 .note {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
@@ -19,7 +19,7 @@
   white-space: normal; line-height: 1.4;
 }
 /* The chip's least action, so quiet: pulled out by its own padding, its words keep the note's left edge. */
-.quietFont { margin-inline-start: calc(-1 * var(--s3)); }
+.muteWarning { margin-inline-start: calc(-1 * var(--s3)); }
 /* Each trouble a line of its own. */
 .bad { white-space: pre-line; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }

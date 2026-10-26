@@ -1,30 +1,30 @@
-// A document kept in this browser until the server's own hour runs out, so a reload or a closed tab loses
-// no work. Files are kept as bytes: Safari's private windows, as WebKit's tests run, won't keep a Blob.
+// A document persisted in this browser until the server's own hour runs out, so a reload or a closed tab
+// loses no work. Files are stored as bytes: Safari's private windows, as WebKit's tests run, won't store a Blob.
 import type { Document } from "../api/types";
 import { sentenceOf } from "../bugs";
 
-/** What's kept of a document: the file, the server's reading of it, the work done to it, and until when. */
-export interface Kept<Work> {
+/** What's persisted of a document: the file, the server's reading of it, the work done to it, and until when. */
+export interface Persisted<Work> {
   readonly file: File;
   readonly doc: Document;
   readonly work: Work;
   readonly until: number; // when the server forgets it too, in ms since the epoch
 }
 
-/** The work kept with a document, and until when: what an editor opened again takes up. */
-export type KeptWork<Work> = Pick<Kept<Work>, "work" | "until">;
+/** The work persisted with a document, and until when: what an editor opened again restores. */
+export type PersistedWork<Work> = Pick<Persisted<Work>, "work" | "until">;
 
+// The names saved work is stored under: renaming one loses every user's saved work.
 const DATABASE = "squid-pdf";
 const STORE = "kept";
 const FILE = "file";
 const STATE = "state";
-// What's kept changes shape with the code that keeps it: one kept by another shape is forgotten.
+// What's stored changes shape with the code: one stored in another shape is forgotten.
 const FORMAT = 1;
 
-// One connection for the page's life, opened on first use.
 let connection: Promise<IDBDatabase> | undefined;
 
-/** The browser's database the document is kept in. */
+/** The browser's database the document is persisted in, opened on first use. */
 function database(): Promise<IDBDatabase> {
   connection ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE, 1);
@@ -46,18 +46,18 @@ async function inStore<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore)
   });
 }
 
-/** A file as it's kept: its bytes, and what makes them a file again. */
-interface KeptFile {
+/** A file as it's stored: its bytes, and what makes them a file again. */
+interface PersistedFile {
   readonly bytes: ArrayBuffer;
   readonly name: string;
   readonly type: string;
   readonly lastModified: number;
 }
 
-/** Keep `file`, in place of any document kept before: its state follows with `keepState`. */
-export async function keepFile(file: File): Promise<void> {
+/** Persist `file`, in place of any document persisted before: its state follows with `persistState`. */
+export async function persistFile(file: File): Promise<void> {
   // Read before the transaction: one waiting on anything else commits empty.
-  const keptFile: KeptFile = {
+  const persistedFile: PersistedFile = {
     bytes: await file.arrayBuffer(),
     name: file.name,
     type: file.type,
@@ -65,22 +65,22 @@ export async function keepFile(file: File): Promise<void> {
   };
   await inStore("readwrite", (store) => {
     store.delete(STATE);
-    return store.put(keptFile, FILE);
+    return store.put(persistedFile, FILE);
   });
 }
 
-/** Keep what's true of the kept file now: the server's reading of it, the work done to it, and until when. */
-export async function keepState<Work>(state: Omit<Kept<Work>, "file">): Promise<void> {
+/** Persist what's true of the persisted file now: the server's reading of it, the work done to it, and until when. */
+export async function persistState<Work>(state: Omit<Persisted<Work>, "file">): Promise<void> {
   await inStore("readwrite", (store) => store.put({ ...state, format: FORMAT }, STATE));
 }
 
-/** The document kept here: none if there's none, or its hour has run out, or it was kept in another shape. */
-export async function keptDocument(): Promise<Kept<unknown> | null> {
-  const keptFile = await inStore("readonly", (store) => store.get(FILE));
+/** The document persisted here: none if there's none, or its hour has run out, or it was stored in another shape. */
+export async function persistedDocument(): Promise<Persisted<unknown> | null> {
+  const persistedFile = await inStore("readonly", (store) => store.get(FILE));
   const state = await inStore("readonly", (store) => store.get(STATE));
-  const whole = keptFile?.bytes instanceof ArrayBuffer && state?.format === FORMAT;
+  const whole = persistedFile?.bytes instanceof ArrayBuffer && state?.format === FORMAT;
   if (whole && state.until > Date.now()) {
-    const { bytes, name, type, lastModified } = keptFile;
+    const { bytes, name, type, lastModified } = persistedFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
       doc: renamed(state.doc),
@@ -88,28 +88,28 @@ export async function keptDocument(): Promise<Kept<unknown> | null> {
       until: state.until,
     };
   }
-  // Past its hour, or half kept: nothing to open again, so nothing to keep.
-  if (keptFile !== undefined || state !== undefined) await forgetKept();
+  // Past its hour, or half stored: nothing to open again, so nothing to keep.
+  if (persistedFile !== undefined || state !== undefined) await forgetPersisted();
   return null;
 }
 
-/** A kept reading of the document, its sentences as `sentences` though it was kept when they were `copy`. */
-// Nothing is kept past the server's hour, so this can go once the rename has been deployed that long.
+/** A persisted reading of the document, its sentences as `sentences` though it was stored when they were `copy`. */
+// Nothing is stored past the server's hour, so this can go once the rename has been deployed that long.
 function renamed(doc: Document | (Omit<Document, "sentences"> & { copy: Document["sentences"] })): Document {
   if ("sentences" in doc) return doc;
   const { copy, ...rest } = doc;
   return { ...rest, sentences: copy };
 }
 
-/** Forget the document kept here, file and all. */
-export async function forgetKept(): Promise<void> {
+/** Forget the document persisted here, file and all. */
+export async function forgetPersisted(): Promise<void> {
   await inStore("readwrite", (store) => store.clear());
 }
 
-/** Forget the document kept here: null once it's gone, else why it's still kept, in words for the user. */
+/** Forget the document persisted here: null once it's gone, else why it's still here, in words for the user. */
 export async function forgetOrSayWhy(name: string): Promise<string | null> {
   try {
-    await forgetKept();
+    await forgetPersisted();
     return null;
   } catch (error) {
     // The browser's storage refused: a failure no server saw, so said in the browser's own words.

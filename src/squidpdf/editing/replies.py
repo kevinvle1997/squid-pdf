@@ -20,7 +20,7 @@ from squidpdf.editing.types import (
 )
 
 
-def fit_info(fit: FitReport, said_in: str) -> FitInfo:
+def fit_info(fit: FitReport, language: str) -> FitInfo:
     """A fit as the browser gets it: option names, since it has their sentences."""
     parts = fit.describe()
     return {
@@ -29,27 +29,27 @@ def fit_info(fit: FitReport, said_in: str) -> FitInfo:
         "left_out": fit.left_out,
         "options": [option.name for option in fit.options],
         "strategy": fit.strategy,
-        "message": words.render_all(parts, said_in),
+        "message": words.render_all(parts, language),
         "message_parts": [part.as_info() for part in parts],
     }
 
 
-def redaction_info(redaction: Redaction, said_in: str) -> RedactionInfo:
+def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:
     """A redaction drawn, as the browser gets it: its places by name, and what to say of it."""
     return {
         "verified": redaction.verified,
         "hidden_copies": redaction.hidden_copies,
-        "message": words.render_all(_said_of(redaction, said_in), said_in),
+        "message": words.render_all(_said_of(redaction, language), language),
     }
 
 
-def _said_of(redaction: Redaction, said_in: str) -> list[Message]:
+def _said_of(redaction: Redaction, language: str) -> list[Message]:
     """What to say of a redaction drawn: its words still there, else where else they were."""
     # Still in the file: the download is refused.
     if not redaction.verified:
         return [Message("not_redacted")]
     copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
-    named = [words.sentence(f"place_{place}", said_in) for place in copy_places]
+    named = [words.sentence(f"place_{place}", language) for place in copy_places]
     said = [Message("hidden_copies", {"places": named})] if named else []
     # A signed file: the redaction takes every signature, whatever it holds.
     if "signatures" in redaction.hidden_copies:
@@ -57,17 +57,17 @@ def _said_of(redaction: Redaction, said_in: str) -> list[Message]:
     return said
 
 
-def skipped_info(skipped: Skipped, said_in: str) -> SkippedInfo:
+def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:
     """An edit left out, as the browser gets it: why, in words and unsaid."""
-    return {"edit": skipped.edit, "type": skipped.type, **words.said(skipped.detail, said_in)}
+    return {"edit": skipped.edit, "type": skipped.type, **words.said(skipped.detail, language)}
 
 
-def notice_info(notice: Notice, said_in: str) -> NoticeInfo:
+def notice_info(notice: Notice, language: str) -> NoticeInfo:
     """What came out other than asked, as the browser gets it: why, in words and unsaid.
 
     `kind` says what it's about, so the browser knows which name to read.
     """
-    said = words.said(notice.detail, said_in)
+    said = words.said(notice.detail, language)
     # A replace or a redaction: named by its span.
     if isinstance(notice, SpanNotice):
         return {"kind": "span", "span_id": notice.span_id, **said}

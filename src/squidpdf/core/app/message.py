@@ -1,9 +1,8 @@
 """What the app tells a person, before it's put into anyone's words.
 
-Below the API nothing writes a sentence: it says what happened as a Message,
-the key of a sentence in `core.app.words` and the facts that fill it, and the edge
-puts that into the reader's language. Plain data, so a worker can pickle it
-back and the analysis can keep it on disk.
+Below the API nothing writes a sentence: it names one in `core.app.words` with the facts
+that fill it, and the edge says it in the reader's language. Plain data, so a worker can
+pickle it back and the analysis can keep it on disk.
 """
 
 from __future__ import annotations

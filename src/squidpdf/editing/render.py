@@ -26,9 +26,9 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
+from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
-from squidpdf.documents.rooms import kept_rooms
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
 from squidpdf.editing.apply import is_page, log_fits, plan, redacted_by, resolve, run
@@ -60,7 +60,7 @@ class RenderController:
         edits: list[Edit],
         regions: list[Region],
         scale: int,
-        said_in: str,
+        language: str,
     ) -> Reply[Render]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
@@ -81,8 +81,8 @@ class RenderController:
         rendered = await self._enqueue_draw_regions(
             doc.folder, edits=edits, regions=regions, strips=strips, drawn_pages=drawn_pages
         )
-        body = _reply_body(rendered, doc.expires_at, said_in)
-        return Reply(body, words.language_headers(said_in))
+        body = _reply_body(rendered, doc.expires_at, language)
+        return Reply(body, words.language_headers(language))
 
     async def _enqueue_draw_regions(
         self,
@@ -210,21 +210,21 @@ def _strip_of(region: Region, page: Page) -> Rect:
     return Rect(0.0, top, page.width, bottom)
 
 
-def _reply_body(rendered: Rendered, expires_at: float, said_in: str) -> Render:
+def _reply_body(rendered: Rendered, expires_at: float, language: str) -> Render:
     """What render worked out, as the browser gets it, in the reader's words."""
     return {
         "images": rendered.images,
-        "fits": {span_id: fit_info(fit, said_in) for span_id, fit in rendered.fits.items()},
+        "fits": {span_id: fit_info(fit, language) for span_id, fit in rendered.fits.items()},
         "insert_fits": [
-            {**fit_info(fit, said_in), "edit": position}
+            {**fit_info(fit, language), "edit": position}
             for position, fit in rendered.insert_fits.items()
         ],
         "redactions": {
-            span_id: redaction_info(redaction, said_in)
+            span_id: redaction_info(redaction, language)
             for span_id, redaction in rendered.redactions.items()
         },
-        "skipped": [skipped_info(skipped, said_in) for skipped in rendered.skipped],
-        "notices": [notice_info(notice, said_in) for notice in rendered.notices],
+        "skipped": [skipped_info(skipped, language) for skipped in rendered.skipped],
+        "notices": [notice_info(notice, language) for notice in rendered.notices],
         "build": BUILD,
         "expires_at": time_of(expires_at),
     }

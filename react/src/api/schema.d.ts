@@ -572,10 +572,8 @@ export interface components {
          * Redact
          * @description Remove a span's text and draw nothing in its place.
          *
-         *     Mechanically the first half of a Replace. A covering rectangle would leave
-         *     the text extractable underneath, which is how documents get leaked, so this
-         *     deletes the text from the page itself and the result is checked by re-reading
-         *     the output.
+         *     A covering box would leave the text extractable underneath, so this deletes it from the
+         *     page itself, and the output is re-read to check.
          */
         Redact: {
             /** Span Id */

@@ -1,6 +1,5 @@
-// One open document: its state, and what every action works through. Each action is a
-// function of the editor in the module named for it (typing, export); this one holds the
-// state and the change every edit, undo and put-back goes through.
+// One open document: its state, and the change every edit, undo and put-back goes through. Each action
+// is a function of the editor in the module named for it (typing, export).
 import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import type { Press } from "./caret";
@@ -18,14 +17,14 @@ import {
   touching,
 } from "./history";
 import type { FailedImage } from "./images";
-import { type Keeping, keepUntil, keepWork } from "./keeping";
-import { heardIn, NO_NOTICES, type Notices, newlySaid, noticeLines, noticesAfterChange, plain, warn } from "./notices";
+import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
+import { heardIn, NO_NOTICES, type Notices, newlyHeard, noticeLines, noticesAfterChange, plain, warn } from "./notices";
+import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
-import { NOTHING_SETTLING, type Settling, settlingAfter } from "./settle";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
-import { placeOf, type Unlike, type UnlikePlace, unlikeOf } from "./unlike";
+import { type Persistence, persistUntil, persistWork } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
 /**
@@ -42,13 +41,13 @@ export interface Unredacting {
   readonly press: Press | null; // the press that asked: where the caret goes, if it's edited
 }
 
-/** Words for a screen reader, counted: the same words said again are heard again. */
-export interface Spoken {
+/** Words for a screen reader, counted: the same words announced again are heard again. */
+export interface Announcement {
   readonly text: string;
   readonly count: number;
 }
 
-/** A span its page brings into view, if it's off screen: what undo or redo changed, or the place find went to. Counted, as `Spoken` is. */
+/** A span its page brings into view, if it's off screen: what undo or redo changed, or the place find went to. Counted, as `Announcement` is. */
 export interface ScrollTo {
   readonly spanId: string;
   readonly count: number;
@@ -58,8 +57,8 @@ export interface ScrollTo {
 // The last count given, for the whole page: two editors' counts never meet, so one will do.
 let lastCount = 0;
 
-/** `text`, to be said now. */
-export function spoken(text: string): Spoken {
+/** `text`, to be announced now. */
+export function announcing(text: string): Announcement {
   lastCount += 1;
   return { text, count: lastCount };
 }
@@ -76,8 +75,7 @@ export interface Layout {
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: ReadonlyMap<string, FontInfo>;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
-  // Before any change, every place an edit won't match, grouped: one object until the document changes.
-  readonly unlikeAtRest: Unlike;
+  readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
 }
 
 export interface EditorState {
@@ -89,19 +87,19 @@ export interface EditorState {
   readonly history: History;
   readonly reading: Reading; // what the history reads as
   readonly drawn: Drawn; // the server's strips, and what they were drawn from
-  readonly settling: ReadonlyMap<number, Settling>; // by page: the spans the last render there disagreed with
+  readonly disagreements: ReadonlyMap<number, PreviewDisagreement>; // by page: the spans the last render there disagreed with
   readonly draft: Draft | null;
   readonly unredacting: Unredacting | null;
   readonly focusTo: FocusTo | null;
-  readonly notices: Notices; // what's said under the bar, and reopening in it; the render's lines are in `drawn`
-  readonly said: Spoken; // what a screen reader hears, for what the page doesn't show
+  readonly notices: Notices; // the lines under the bar, and reopening in it; the render's lines are in `drawn`
+  readonly announcement: Announcement; // what a screen reader hears, for what the page doesn't show
   readonly scrollTo: ScrollTo | null;
   readonly exporting: boolean;
   readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
   readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
   readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
-  readonly shownUnlike: ReadonlySet<string>; // the rows of where edits won't match shown on the page, by key
-  readonly quietFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full
+  readonly shownMismatches: ReadonlySet<string>; // the rows of the mismatch list shown on the page, by key
+  readonly mutedFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full, by name shown
   readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
   readonly shortcutsOpen: boolean; // the list of the editor's keys, from the bar
@@ -117,7 +115,7 @@ export interface Editor {
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
   readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found
   readonly ahead: ExportAhead; // the export started on the way to pressing Export
-  readonly keeping: Keeping; // what's kept of it in this browser
+  readonly persistence: Persistence; // what's persisted of it in this browser
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -129,13 +127,13 @@ export function layoutOf(doc: Document): Layout {
   }
   const fonts = new Map(doc.fonts.map((font) => [font.name, font]));
   const atRest = { changed: false, reading: undefined, missing: [] };
-  const unlike = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
+  const mismatches = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts,
-    warnedFonts: new Set(unlike.map(({ span }) => shownNameOf({ fonts }, span.font))),
-    unlikeAtRest: unlikeOf(unlike, { fonts, sentences: doc.sentences }),
+    warnedFonts: new Set(mismatches.map(({ span }) => shownNameOf({ fonts }, span.font))),
+    mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
   };
 }
 
@@ -149,19 +147,19 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     history: EMPTY_HISTORY,
     reading: UNEDITED,
     drawn: NOTHING_DRAWN,
-    settling: NOTHING_SETTLING,
+    disagreements: NO_DISAGREEMENTS,
     draft: null,
     unredacting: null,
     focusTo: null,
     notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
-    said: { text: "", count: 0 },
+    announcement: { text: "", count: 0 },
     scrollTo: null,
     exporting: false,
     exported: UNEDITED.edits,
     attaching: null,
     focusFont: null,
-    shownUnlike: new Set(),
-    quietFonts: new Set(),
+    shownMismatches: new Set(),
+    mutedFonts: new Set(),
     images: new Map(),
     find: FIND_CLOSED,
     shortcutsOpen: false,
@@ -173,7 +171,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     scale,
     near,
     drawn: (drawn) => drawnNow(store, drawn),
-    extended: (expiresAt) => keepUntil(editor, expiresAt),
+    extended: (expiresAt) => persistUntil(editor, expiresAt),
   });
   const editor: Editor = {
     store,
@@ -185,7 +183,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     retries: new Map(),
     finding: {},
     ahead: {},
-    keeping: { file: false, history: null, until: Date.parse(opened.expires_at) },
+    persistence: { file: false, history: null, until: Date.parse(opened.expires_at) },
   };
   return editor;
 }
@@ -200,7 +198,7 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
   const reopen = plain(doc.sentences.reopened);
   const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
   const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
-  store.set({ doc: judged, layout: layoutOf(judged), notices, said: spoken(heard) });
+  store.set({ doc: judged, layout: layoutOf(judged), notices, announcement: announcing(heard) });
   // Pages drawn with a copy now refused no longer show what export would give.
   if (refusal !== null) queue.redraw(store.get().reading);
   return judged;
@@ -211,16 +209,16 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
  * and a line it adds under the bar is heard.
  */
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
-  const { notices, drawn: before, layout, doc, settling } = store.get();
-  const heard = newlySaid(noticeLines(notices, before), noticeLines(notices, drawn));
-  const settles = settlingAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, settling });
-  store.set({ drawn, settling: settles, ...(heard !== "" && { said: spoken(heard) }) });
+  const { notices, drawn: before, layout, doc, disagreements } = store.get();
+  const heard = newlyHeard(noticeLines(notices, before), noticeLines(notices, drawn));
+  const after = disagreementsAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, disagreements });
+  store.set({ drawn, disagreements: after, ...(heard !== "" && { announcement: announcing(heard) }) });
 }
 
-/** The editor is on screen: what opening the file found is heard, now its live region is there to say it. */
-export function sayOpening(editor: Editor): void {
+/** The editor is on screen: what opening the file found is heard, now its live region is there to announce it. */
+export function announceOpening(editor: Editor): void {
   const found = editor.store.get().notices.document;
-  if (found.length > 0) say(editor, heardIn(found));
+  if (found.length > 0) announce(editor, heardIn(found));
 }
 
 /** The rest of an action, or what it is once the change is made: what undo says the span reads. */
@@ -256,7 +254,7 @@ export function change(editor: Editor, action: HistoryAction | readonly HistoryA
   const { history, reading, notices, find } = next;
   store.set({ history, reading, notices, find, ...rest });
   queue.draw(reading);
-  void keepWork(editor);
+  void persistWork(editor);
 }
 
 /** Put a span back as the document had it, from its margin note; focus goes to the span. */
@@ -265,17 +263,17 @@ export function putBack(editor: Editor, spanId: string): void {
   change(
     editor,
     { kind: "remove", ids: touching(history, spanId) },
-    { said: spoken(`Put back ${layout.spans.get(spanId)?.text ?? ""}`), focusTo: { spanId } },
+    { announcement: announcing(`Put back ${layout.spans.get(spanId)?.text ?? ""}`), focusTo: { spanId } },
   );
 }
 
-/** Take off the last thing done; say what its span reads now and bring it into view. Focus stays. */
+/** Take off the last thing done; announce what its span reads now and bring it into view. Focus stays. */
 export function undo(editor: Editor): void {
   const step = editor.store.get().history.done.at(-1);
   stepped(editor, { kind: "undo" }, { step, words: "Back to" });
 }
 
-/** Bring back the last thing undone, said and brought into view as undo does. */
+/** Bring back the last thing undone, announced and brought into view as undo does. */
 export function redo(editor: Editor): void {
   const step = editor.store.get().history.undone.at(-1);
   stepped(editor, { kind: "redo" }, { step, words: "Changed to" });
@@ -289,7 +287,7 @@ function stepped(editor: Editor, action: HistoryAction, { step, words }: { step:
   }
   const span = editor.store.get().layout.spans.get(spanId);
   change(editor, action, ({ reading }) => ({
-    said: spoken(`${words} ${span === undefined ? "" : textIn(reading, span)}`),
+    announcement: announcing(`${words} ${span === undefined ? "" : textIn(reading, span)}`),
     scrollTo: scrollingTo(spanId),
   }));
 }
@@ -310,8 +308,8 @@ export function closeEditor(editor: Editor): void {
 }
 
 /** Tell a screen reader, for what the page doesn't show. */
-export function say(editor: Editor, text: string): void {
-  editor.store.set({ said: spoken(text) });
+export function announce(editor: Editor, text: string): void {
+  editor.store.set({ announcement: announcing(text) });
 }
 
 /** How many spans an edit changes: replaced or redacted. */
@@ -319,12 +317,9 @@ export function changedCount(state: EditorState): number {
   return state.reading.spans.size;
 }
 
-/**
- * How many changed spans won't match: drawn in a substitute (the reader's "similar font"), or in
- * their own font but unlike the text around them. Once one is the latter, all "will look different".
- */
+/** How many changed spans won't match, and the bar's words: once one is in its own font, all "will look different". */
 export function warnedCount(state: EditorState): { count: number; label: string } {
-  const places = changedUnlike(state);
+  const places = changedMismatches(state);
   const approximate = places.some(({ span }) => span.why !== null);
   return { count: places.length, label: approximate ? "will look different" : "in a similar font" };
 }
@@ -337,8 +332,8 @@ export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "
   }).length;
 }
 
-/** The changed spans that won't match: a similar font or unlike the text around them, or missing letters the server found. */
-export function changedUnlike({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): UnlikePlace[] {
+/** The changed spans that won't match: in a similar font, set apart from the text around them, or missing letters the server found. */
+export function changedMismatches({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): MismatchPlace[] {
   return [...reading.spans.values()].flatMap((spanReading) => {
     const { span } = spanReading;
     const missing = drawn.fits.get(span.page)?.[span.id]?.missing ?? [];

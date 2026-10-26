@@ -29,7 +29,7 @@ class ReadController:
     workers: Workers  # where it analyses, off the server's own thread
 
     async def read(
-        self, doc: Loaded, *, said_in: str, if_none_match: str | None
+        self, doc: Loaded, *, language: str, if_none_match: str | None
     ) -> Reply[bytes]:
         """The document as JSON with its ETag, or a 304 when `if_none_match` is that ETag.
 
@@ -37,16 +37,16 @@ class ReadController:
         on every visit, and a 304's browser keeps the body it had.
         """
         digest = await asyncio.to_thread(store.load_analysis_digest, doc.folder, BUILD)
-        etag = None if digest is None else _etag_of(digest, said_in)
+        etag = None if digest is None else _etag_of(digest, language)
         # The browser's copy is current: a 304 carries no body, so the analysis isn't read.
         if etag is not None and if_none_match == etag:
-            return Reply(b"", _headers_of(doc, etag, said_in), HTTPStatus.NOT_MODIFIED)
+            return Reply(b"", _headers_of(doc, etag, language), HTTPStatus.NOT_MODIFIED)
         kept = await self._saved_analysis(doc)
         # The fonts' letters are read and written out again: off the server's thread.
         body = await asyncio.to_thread(
-            document_json, doc.id, expires_at=doc.expires_at, kept=kept, said_in=said_in
+            document_json, doc.id, expires_at=doc.expires_at, kept=kept, language=language
         )
-        return Reply(body, _headers_of(doc, _etag_of(kept.digest, said_in), said_in))
+        return Reply(body, _headers_of(doc, _etag_of(kept.digest, language), language))
 
     async def _saved_analysis(self, doc: Loaded) -> KeptAnalysis:
         """The analysis kept, worked out first if the build, the tuning or its format is new."""
@@ -62,16 +62,16 @@ class ReadController:
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 
-def _headers_of(doc: Loaded, etag: str, said_in: str) -> dict[str, str]:
+def _headers_of(doc: Loaded, etag: str, language: str) -> dict[str, str]:
     """The headers of a read, the same on a 200 and a 304."""
     return {
         "ETag": etag,
         "Cache-Control": DOCUMENT_CACHE,
         EXPIRES_HEADER: time_of(doc.expires_at),
-        **words.language_headers(said_in),
+        **words.language_headers(language),
     }
 
 
-def _etag_of(digest: str, said_in: str) -> str:
+def _etag_of(digest: str, language: str) -> str:
     """The document's ETag: over its analysis and the rest of its reply but `expires_at`."""
-    return f'"{xxhash.xxh3_64_hexdigest((digest + reply_digest(said_in)).encode())}"'
+    return f'"{xxhash.xxh3_64_hexdigest((digest + reply_digest(language)).encode())}"'

@@ -1,11 +1,8 @@
 """Every sentence the app says, each under a key, in every language we have.
 
-A language is one file here, named by its tag: `en.toml` is English. Code below
-the API names a sentence by its key in a Message; the edge says it in the
-reader's language with `render`.
-
-Placeholders are bare `{name}`, so the browser can fill them too. A key is
-renamed only with the browser, in the same change: the browser can branch on it.
+A language is one file here, named by its tag: `en.toml` is English. Placeholders are bare
+`{name}`, so the browser can fill them too, and a key is renamed only with the browser,
+in the same change: the browser can branch on it.
 """
 
 from __future__ import annotations
@@ -116,11 +113,9 @@ def _written_out(name: str, value: Param, language: str) -> str:
 def _visible(character: str, language: str = ENGLISH) -> str:
     """A character as a person sees it: itself, quoted, or its name if it can't be told apart.
 
-    Named in `language`, e.g. "narrow no-break space" or "capital I", when a
-    catalog names it; else, if it draws nothing alone, by Unicode's name, lower
-    case; else, for a control character with no name, by its code point, e.g.
-    "U+0001". An accent on its own is named too: in a sentence it would sit on
-    the space before it.
+    Named by the catalog where it names it ("capital I"); else, if it draws nothing alone,
+    by Unicode's name, or its code point when it has none. An accent alone is named too: in
+    a sentence it would sit on the space before it.
     """
     alone = len(character) == 1
     # A space, or a letter another looks like: the catalog's name for it.

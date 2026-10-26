@@ -6,9 +6,8 @@ import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
 
-// Everything under /api is the Python app's; the rest of the host is this one's.
-// Same origin in development too: the owner cookie is SameSite=Strict, and the API has no CORS.
-// The view's tests have no server: what they ask of it is mocked, and page images just fail.
+// /api is the Python app's, on the same origin in development too: the owner cookie is SameSite=Strict and the
+// API has no CORS. The view's tests have no server: what they ask of it is mocked.
 const api: Record<string, string> = process.env.VITEST
   ? {}
   : { "/api": process.env.SQUIDPDF_API ?? "http://127.0.0.1:8000" };

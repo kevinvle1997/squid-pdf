@@ -1,9 +1,8 @@
 """The document's fonts: each span's own, pooled, its look-alike, and its gaps.
 
-What the engine knows about fonts, read through the driver once and kept, each copy
-once per listing. A span's font is its page's copy pooled with every other copy of it
-in the file (`core.fonts.pool`), then the user's copy, then Google's, each lending what
-the copies before it lack.
+Read through the driver once and kept, each copy once per listing. A span's font is its
+page's copy pooled with every other copy in the file (`core.fonts.pool`), then the user's
+copy, then Google's, each lending what the copies before it lack.
 """
 
 from __future__ import annotations
@@ -261,10 +260,9 @@ class DocumentFonts:
     def _page_font(self, span: Span) -> PageFont | None:
         """The page's font by the span's font name, subset prefix aside; None when it has none.
 
-        By the name the page lists it under, else by the one its text reads: a
-        font stored in the file can be read under the name inside it, as ours
-        are once an export redraws with them. The first by a name, in the
-        library's order; any other is pooled with it.
+        By the name the page lists it under, else by the name inside it, which its text reads
+        (as ours, once an export redraws with them). The first by a name, in the library's
+        order; any other is pooled with it.
         """
         name = strip_subset(span.font)
         # .get: new text can name a font the page doesn't have.
@@ -324,10 +322,9 @@ class DocumentFonts:
     ) -> Iterator[FontCopy | FontUnusable]:
         """Every copy that may lend the own copy letters, in the order they lend: the chain.
 
-        The file's other copies, nearest page first; then copies from outside
-        the file, only while `letters`, those the pool has so far, lacks one
-        someone could type, each as the copy or why there's none to be had. A
-        face we ship is the engine's last resort, not a lender.
+        The file's other copies, nearest page first; then copies from outside the file, only
+        while `letters` (the pool's so far) lacks one someone could type, each as the copy or
+        why it can't be had. A face we ship is the last resort, not a lender.
         """
         yield from self._file_copies(page, own, letters)
         # From outside the file, in order: the user's copy goes before Google's, saving a fetch.

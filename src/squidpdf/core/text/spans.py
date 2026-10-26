@@ -1,9 +1,7 @@
 """From the pieces a page draws to the spans a person edits.
 
-PDF writers split a sentence into many pieces to adjust letter spacing, so a
-piece is often a few letters and sometimes half a word. Without merging,
-find-and-replace misses most real matches and the user can click something
-that is not a whole word. Pure functions: no PDF is opened here.
+PDF writers split a sentence into pieces to adjust spacing, often a few letters each.
+Unmerged, find-and-replace misses most matches and a click can land on half a word.
 """
 
 from __future__ import annotations

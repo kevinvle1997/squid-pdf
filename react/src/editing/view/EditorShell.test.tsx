@@ -6,7 +6,7 @@ import "../../styles/base.css";
 import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
 import { exportPdf, ProblemError, putFont, renderStrips, stillThere, upload } from "../../api/client";
 import type { Document, Render } from "../../api/types";
-import { type KeptWork, keepFile, keepState } from "../../documents/kept";
+import { type PersistedWork, persistFile, persistState } from "../../documents/localPersistence";
 import {
   A4,
   aDoc,
@@ -27,11 +27,11 @@ import { EXPORT_INTENT_MS } from "../constants";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { EditorShell } from "./EditorShell";
 
-// What's kept in this browser is the App's to test, in the browser's real storage; here, what's asked of it.
-vi.mock(import("../../documents/kept"), async (original) => ({
+// What's persisted in this browser is the App's to test, in the browser's real storage; here, what's asked of it.
+vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
-  keepFile: vi.fn(async () => undefined),
-  keepState: vi.fn(async () => undefined),
+  persistFile: vi.fn(async () => undefined),
+  persistState: vi.fn(async () => undefined),
 }));
 
 vi.mock(import("../../api/client"), async (original) => ({
@@ -67,19 +67,21 @@ beforeEach(() => {
   vi.mocked(putFont).mockReset();
 });
 
-/** The editor on `doc`, opened from a file named `name`, taking up `kept` when given. */
+/** The editor on `doc`, opened from a file named `name`, restoring `persisted` when given. */
 function openEditor({
   doc = DOC,
   name = "contract.pdf",
   onOpen = vi.fn(),
-  kept,
+  persisted,
 }: {
   doc?: Document;
   name?: string;
   onOpen?: (file: File) => void;
-  kept?: KeptWork<unknown>;
+  persisted?: PersistedWork<unknown>;
 } = {}) {
-  return render(<EditorShell opened={{ file: new File(["%PDF-"], name), doc }} onOpen={onOpen} kept={kept} />);
+  return render(
+    <EditorShell opened={{ file: new File(["%PDF-"], name), doc }} onOpen={onOpen} persisted={persisted} />,
+  );
 }
 
 /** Open the field on "was here" and type `text` in it. */
@@ -130,7 +132,7 @@ describe("finding your way", () => {
     fonts: [aFont("Times-Roman")],
   });
 
-  test("in find, Enter goes to the next place found and Shift+Enter the one before, round, each said", async () => {
+  test("in find, Enter goes to the next place found and Shift+Enter the one before, round, each announced", async () => {
     const screen = await openEditor({ doc: twice });
     await userEvent.keyboard("{Control>}f{/Control}");
     await userEvent.keyboard("here");
@@ -299,7 +301,7 @@ describe("the bar", () => {
 });
 
 describe("export", () => {
-  test("says it's under way only past the quiet spell, so a quick one shows nothing", async () => {
+  test("says it's under way only past the delay, so a quick one shows nothing", async () => {
     vi.mocked(exportPdf).mockReturnValue(new Promise(() => undefined));
     const screen = await openEditor();
     await screen.getByRole("button", { name: /Export/ }).click();
@@ -442,34 +444,34 @@ describe("leaving the page", () => {
     return leaving.defaultPrevented;
   };
 
-  test("asks first only while edits since the last export aren't kept in this browser yet", async () => {
-    let kept: () => void = () => undefined;
-    vi.mocked(keepState).mockReturnValueOnce(new Promise((resolve) => (kept = resolve)));
+  test("asks first only while edits since the last export aren't persisted in this browser yet", async () => {
+    let persisted: () => void = () => undefined;
+    vi.mocked(persistState).mockReturnValueOnce(new Promise((resolve) => (persisted = resolve)));
     const screen = await openEditor();
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     expect(leave()).toBe(false);
     await changeSpan(screen, "is here");
     expect(leave()).toBe(true);
-    kept();
+    persisted();
     await vi.waitFor(() => expect(leave()).toBe(false));
   });
 
   test("asks first when this browser keeps nothing, as a private window may", async () => {
-    vi.mocked(keepFile).mockRejectedValueOnce(new DOMException("refused", "InvalidStateError"));
+    vi.mocked(persistFile).mockRejectedValueOnce(new DOMException("refused", "InvalidStateError"));
     const screen = await openEditor();
     await changeSpan(screen, "is here");
-    await vi.waitFor(() => expect(keepFile).toHaveBeenCalled());
+    await vi.waitFor(() => expect(persistFile).toHaveBeenCalled());
     expect(leave()).toBe(true);
   });
 
-  test("work kept here comes back with the user's copies of its fonts, given again to a server that lost it", async () => {
+  test("work persisted here comes back with the user's copies of its fonts, given again to a server that lost it", async () => {
     vi.mocked(renderStrips).mockRejectedValueOnce(new ProblemError(aProblem(404, "Not found.")));
     vi.mocked(upload).mockResolvedValueOnce({ ...ARIAL_DOC, id: "again" });
     vi.mocked(putFont).mockResolvedValue({ ...USERS_COPY, id: "again" });
     const history = historyReducer(EMPTY_HISTORY, { kind: "add", edits: [aReplace(ARIAL_SPAN.id, "is here")] });
     const fonts = [["Arial", { bytes: await FONT_FILE.arrayBuffer(), type: FONT_FILE.type }]];
-    const kept = { work: { history, fonts }, until: Date.now() + 60_000 };
-    const screen = await openEditor({ doc: ARIAL_DOC, name: "letter.pdf", kept });
+    const persisted = { work: { history, fonts }, until: Date.now() + 60_000 };
+    const screen = await openEditor({ doc: ARIAL_DOC, name: "letter.pdf", persisted });
 
     await expect.element(screen.getByRole("button", { name: "is here" })).toBeInTheDocument();
     await vi.waitFor(() => expect(putFont).toHaveBeenCalledWith("again", "Arial", expect.any(Blob)));
@@ -478,22 +480,22 @@ describe("leaving the page", () => {
     expect(given?.type).toBe(FONT_FILE.type);
   });
 
-  test("each change is kept as it's made: the file once, then the history, until the server's hour ends", async () => {
-    vi.mocked(keepFile).mockClear();
-    vi.mocked(keepState).mockClear();
+  test("each change is persisted as it's made: the file once, then the history, until the server's hour ends", async () => {
+    vi.mocked(persistFile).mockClear();
+    vi.mocked(persistState).mockClear();
     const file = new File(["%PDF-"], "contract.pdf");
     const screen = await render(<EditorShell opened={{ file: file, doc: DOC }} onOpen={vi.fn()} />);
     await changeSpan(screen, "is here");
-    await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(1));
-    expect(keepFile).toHaveBeenCalledWith(file);
-    const [kept] = vi.mocked(keepState).mock.calls[0] ?? [];
-    expect(kept?.until).toBe(Date.parse(DOC.expires_at));
-    expect(kept?.work).toMatchObject({ history: { done: [[{ edit: { span_id: span.id, text: "is here" } }]] } });
+    await vi.waitFor(() => expect(persistState).toHaveBeenCalledTimes(1));
+    expect(persistFile).toHaveBeenCalledWith(file);
+    const [persisted] = vi.mocked(persistState).mock.calls[0] ?? [];
+    expect(persisted?.until).toBe(Date.parse(DOC.expires_at));
+    expect(persisted?.work).toMatchObject({ history: { done: [[{ edit: { span_id: span.id, text: "is here" } }]] } });
 
     screen.getByRole("button", { name: "is here" }).element().focus();
     await userEvent.keyboard("{Control>}z{/Control}");
-    await vi.waitFor(() => expect(keepState).toHaveBeenCalledTimes(2));
-    expect(keepFile).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(persistState).toHaveBeenCalledTimes(2));
+    expect(persistFile).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -508,7 +510,7 @@ describe("undo and redo", () => {
     await userEvent.keyboard("{Control>}z{/Control}");
     const status = screen.getByRole("status");
     await expect.element(status).toHaveTextContent("Back to was here");
-    const firstSaid = status.element().firstElementChild;
+    const firstAnnouncement = status.element().firstElementChild;
 
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
     await expect.element(status).toHaveTextContent("Changed to is here");
@@ -517,7 +519,7 @@ describe("undo and redo", () => {
     await userEvent.keyboard("{Control>}z{/Control}");
 
     await expect.element(status).toHaveTextContent("Back to was here");
-    expect(status.element().firstElementChild).not.toBe(firstSaid);
+    expect(status.element().firstElementChild).not.toBe(firstAnnouncement);
     await vi.waitFor(() => expect(window.scrollY).toBeGreaterThan(0));
     expect(document.activeElement).toBe(focused);
   });
@@ -553,9 +555,9 @@ describe("the user's own copy of a font", () => {
     const why = screen.getByText(SENTENCES.approximate.turned_text ?? "", { exact: false }).first();
     await expect.element(offer).toBeVisible();
     await expect.element(why).toBeVisible();
-    const said = why.element().getBoundingClientRect();
+    const sentence = why.element().getBoundingClientRect();
     const pressed = offer.element().getBoundingClientRect();
-    const apart = pressed.left >= said.right || pressed.top >= said.bottom;
+    const apart = pressed.left >= sentence.right || pressed.top >= sentence.bottom;
     expect(apart).toBe(true);
     // On the page, not past its edge: the offer stays where a pointer can reach it.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element().getBoundingClientRect();

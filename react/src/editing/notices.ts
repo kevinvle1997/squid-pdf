@@ -1,6 +1,5 @@
-// The lines under the bar, kept by where each came from, since each clears on its own terms.
-// What the render said lives with what it drew (`Drawn`), so a page's notices go when its
-// strips do; the rest are here.
+// The lines under the bar, by where each came from, since each clears on its own terms. The render's
+// live with what it drew (`Drawn`), so a page's notices go when its strips do.
 import type { Drawn } from "./render";
 
 /** A line under the bar about what just happened. */
@@ -53,7 +52,7 @@ export function heardIn(lines: readonly Notice[]): string {
 }
 
 /** The sentences `after` has that `before` didn't, as one thing to hear: empty when none is new. */
-export function newlySaid(before: readonly Notice[], after: readonly Notice[]): string {
+export function newlyHeard(before: readonly Notice[], after: readonly Notice[]): string {
   const known = new Set(before.map((notice) => notice.text));
   return heardIn(after.filter((notice) => !known.has(notice.text)));
 }

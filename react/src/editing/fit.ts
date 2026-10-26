@@ -1,7 +1,5 @@
-// The fit check, run in the browser as the user types (typing sends no request).
-// It mirrors editing/fit.py with the server's own thresholds and letter widths, so the two
-// agree; where they can't (a missing letter switches the line to another font), the
-// server's fit arrives with the render and wins.
+// The fit check as the user types, mirroring editing/fit.py with the server's thresholds and widths; where
+// the two can't agree (a missing letter switches the font), the server's fit lands with the render and wins.
 import type { FitRules, FontInfo, Sentences, SpanInfo, Strategy } from "../api/types";
 import { MISSING_SPACE_EM } from "./constants";
 import type { Drawing } from "./substitutes";

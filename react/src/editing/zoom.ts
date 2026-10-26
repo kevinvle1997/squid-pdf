@@ -51,7 +51,7 @@ export function pageInView(editor: Editor, page: number): void {
 }
 
 /** What the bar says of where the reader is: "Page 3 of 8", or a one-page document's "1 page". */
-export function whereSaid({ doc, pageInView: page }: Pick<EditorState, "doc" | "pageInView">): string {
+export function whereSentence({ doc, pageInView: page }: Pick<EditorState, "doc" | "pageInView">): string {
   const pages = doc.pages.length;
   return pages === 1 ? "1 page" : `Page ${page + 1} of ${pages}`;
 }

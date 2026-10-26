@@ -9,7 +9,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes to the repository.
 permissions:
   contents: read
 
@@ -39,8 +38,7 @@ jobs:
       - name: Test
         run: uv run pytest -q -n auto
 
-  # Nothing else would notice if the test image stopped building. The suite itself
-  # runs in `backend`; here a slice of it proves the tools, tests and fixtures made it in.
+  # Nothing else would notice the test image breaking; a slice of the suite proves it runs.
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -53,8 +51,6 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
-  # The browser app: it lints, its types are the API's OpenAPI, it typechecks, its unit
-  # tests pass, and the core loop works end to end in Chromium and WebKit against the real API.
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -119,8 +115,6 @@ jobs:
           name: playwright-traces
           path: react/test-results/
 
-  # The image served behind Caddy as deployed, with a password made here and
-  # thrown away: the gate, an upload and an export, all through the proxy.
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -163,7 +157,6 @@ jobs:
         shell: bash
         run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
 
-      # The caps compose.yaml gives (it says why) are on the running containers.
       - name: The containers' caps
         run: |
           cap=$(docker inspect "$(docker compose ps -q proxy)" --format '{{.HostConfig.NanoCpus}}')
@@ -175,15 +168,14 @@ jobs:
             [[ $driver == local ]] || { echo "the $service's log goes to $driver, not the rotating local driver"; exit 1; }
           done
 
-      # Two IPv6 clients in different /64s, given to the runner, count apart through the
-      # published port: one uses up its minute's uploads, and the other is still let in.
+      # In different /64s, which the rate limit counts apart.
       - name: IPv6 clients count apart
         run: |
           first=fd8b:2c41:e0d5:1::1
           second=fd8b:2c41:e0d5:2::1
           sudo ip -6 addr add "$first/128" dev lo
           sudo ip -6 addr add "$second/128" dev lo
-          # The password goes to curl in a file, as deploy/check.sh does.
+          # In a file, not on the command line, where any process could read it.
           (umask 077 && printf 'user = "ci:%s"\n' "$SQUIDPDF_PASSWORD" > /tmp/login)
           # An empty upload is counted before its body is read, and costs the app nothing.
           upload_from() {
@@ -218,9 +210,8 @@ jobs:
         if: failure()
         run: docker compose logs
 
-  # The one number the product is judged on. Runs against the generated fixture
-  # here; the real answer comes from the corpus of ten real PDFs, which cannot
-  # be committed because they are other people's documents.
+  # The one number the product is judged on, here on the fixture: the real PDFs can't be
+  # committed, since they are other people's documents.
   report:
     runs-on: ubuntu-latest
     timeout-minutes: 10

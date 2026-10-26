@@ -1,15 +1,15 @@
-// The user's own copies of the document's fonts, attached through the reopener and kept beside the PDF.
+// The user's own copies of the document's fonts, attached through the reopener and held beside the PDF.
 // The document comes back judged again, so marks and fits change in place, with no line under the bar (Rule 6).
 import { deleteFont, isGone, putFont } from "../api/client";
 import type { Document, FontInfo, Sentences } from "../api/types";
 import { sentenceOf } from "../bugs";
-import { type Editor, type EditorState, type Layout, layoutOf, spoken } from "./editor";
+import { announcing, type Editor, type EditorState, type Layout, layoutOf } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
-import { keepWork } from "./keeping";
 import type { FontNotice } from "./notices";
 import { draftSpanOf } from "./typing";
 import { fill } from "./words";
+import { persistWork } from "./workPersistence";
 
 /** The font files the user's copy can be: TrueType or OpenType, by type or by name. */
 export const FONT_FILES = ["font/ttf", "font/otf", ".ttf", ".otf"];
@@ -51,11 +51,11 @@ export function copiesByName(fonts: readonly FontInfo[]): FontCopies[] {
 }
 
 /** What draws a row's font, in the server's words: the user's copy, the file's own, or a similar font, warned. */
-export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences): { said: string; warn: boolean } {
-  if (attached) return { said: sentences.drawn_in_your_copy, warn: false };
-  if (font.substitute === null) return { said: sentences.drawn_in_own_copy, warn: false };
-  const substituteSaid = font.same_widths ? sentences.substitute_same_widths : sentences.substitute;
-  return { said: fill(substituteSaid, { font: font.substitute }), warn: true };
+export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences): { sentence: string; warn: boolean } {
+  if (attached) return { sentence: sentences.drawn_in_your_copy, warn: false };
+  if (font.substitute === null) return { sentence: sentences.drawn_in_own_copy, warn: false };
+  const substituteSentence = font.same_widths ? sentences.substitute_same_widths : sentences.substitute;
+  return { sentence: fill(substituteSentence, { font: font.substitute }), warn: true };
 }
 
 /** Every font listed under the name `fontName` is shown by: its copies, itself among them. */
@@ -82,9 +82,9 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
       editor.attached.set(name, file);
     }
     await preview;
-    const said = spoken(`Your copy of ${shownNameOf(layout, fontName)} is in use`);
-    judgedAgain(editor, doc, { said, focusFont: fontName });
-    void keepWork(editor);
+    const announcement = announcing(`Your copy of ${shownNameOf(layout, fontName)} is in use`);
+    judgedAgain(editor, doc, { announcement, focusFont: fontName });
+    void persistWork(editor);
   } catch (error) {
     // A copy put in before the refusal stays, as the server has it; the rest preview no more.
     for (const name of copies) if (editor.attached.get(name) !== file) removeOwnFace(name);
@@ -127,9 +127,9 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
     }
     removeOwnFace(name);
   }
-  const said = spoken(`Your copy of ${shownNameOf(layout, fontName)} is removed`);
-  judgedAgain(editor, doc, { said, focusFont: fontName });
-  void keepWork(editor);
+  const announcement = announcing(`Your copy of ${shownNameOf(layout, fontName)} is removed`);
+  judgedAgain(editor, doc, { announcement, focusFont: fontName });
+  void persistWork(editor);
 }
 
 /**
@@ -178,7 +178,11 @@ function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>):
 function refused(editor: Editor, fontName: string, error: unknown): void {
   const refusal = refusalOf(fontName, error);
   const { notices } = editor.store.get();
-  editor.store.set({ notices: { ...notices, font: refusal }, attaching: null, said: spoken(refusal.text) });
+  editor.store.set({
+    notices: { ...notices, font: refusal },
+    attaching: null,
+    announcement: announcing(refusal.text),
+  });
 }
 
 /** Why `fontName`'s copy was refused, in the server's words, said beside that font too. */

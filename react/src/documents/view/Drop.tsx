@@ -1,10 +1,10 @@
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
-import { AfterQuiet } from "../../ui/AfterQuiet";
+import { AfterDelay } from "../../ui/AfterDelay";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
 import { SheetScreen } from "../../ui/SheetScreen";
 import { Warn } from "../../ui/Warn";
-import type { Kept } from "../kept";
+import type { Persisted } from "../localPersistence";
 import { type Landing, shareSent } from "../open";
 import styles from "./Drop.module.css";
 
@@ -13,16 +13,16 @@ const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" 
 
 interface Props {
   landing: Landing;
-  kept: Kept<unknown> | null; // what this browser kept, offered while the landing waits
-  forgetFailed: string | null; // why "Delete it now" left it kept, in words for the user
+  persisted: Persisted<unknown> | null; // offered while the landing waits
+  forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
   onChoose: (file: File) => void;
-  onReopen: () => void; // the document kept here opens again, with its changes
-  onForget: () => void; // the document kept here is deleted from this browser
+  onReopen: () => void; // the document persisted here opens again, with its changes
+  onForget: () => void; // the document persisted here is deleted from this browser
 }
 
-/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is said under the sheet. No sign-in. */
-export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget }: Props) {
-  const offered = landing.kind === "waiting" ? kept : null;
+/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is told under the sheet. No sign-in. */
+export function Drop({ landing, persisted, forgetFailed, onChoose, onReopen, onForget }: Props) {
+  const offered = landing.kind === "waiting" ? persisted : null;
   return (
     <DropZone
       className={styles.zone}
@@ -54,11 +54,11 @@ export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget
           {offered !== null && forgetFailed !== null && <Warn mark>{forgetFailed}</Warn>}
         </p>
         {offered !== null && (
-          <div className={styles.kept}>
-            <p className={styles.keptSaid}>
+          <div className={styles.persisted}>
+            <p className={styles.persistedSentence}>
               Your changes to {offered.file.name} are kept in this browser until {TIME.format(offered.until)}.
             </p>
-            <div className={styles.keptActions}>
+            <div className={styles.persistedActions}>
               <Button onPress={onReopen}>Open it again</Button>
               {/* Quiet beside it: opening is the likely press, and deleting can't be undone. */}
               <Button variant="quiet" onPress={onForget}>
@@ -72,7 +72,7 @@ export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget
   );
 }
 
-/** What becomes of the file, said first and largest under the sheet with the code that does it, then what the tool does, in two facts. */
+/** What becomes of the file, told first and largest under the sheet with the code that does it, then what the tool does, in two facts. */
 function Facts() {
   return (
     <div className={styles.facts}>
@@ -80,7 +80,7 @@ function Facts() {
         <h2 className={styles.promiseTitle}>
           We <mark>delete your file</mark> an hour after you're done.
         </h2>
-        <p className={styles.promiseSaid}>
+        <p className={styles.promiseSentence}>
           After that, we keep no copy of it or your edits. squid-pdf is open source, so you can{" "}
           <a className={styles.source} href={__SOURCE_CODE__}>
             read the code that does it
@@ -101,7 +101,7 @@ function Fact({ title, children }: { title: string; children: string }) {
   return (
     <li className={styles.fact}>
       <span className={styles.factTitle}>{title}</span>
-      <span className={styles.factSaid}>{children}</span>
+      <span className={styles.factSentence}>{children}</span>
     </li>
   );
 }
@@ -109,10 +109,10 @@ function Fact({ title, children }: { title: string; children: string }) {
 /** How far a file on its way has got: sending it, then the server reading it. A quick open shows nothing. */
 function Progress({ name, sent, total }: { name: string; sent: number; total: number }) {
   const share = shareSent({ sent, total });
-  if (share === null) return <AfterQuiet>Reading the text of {name}</AfterQuiet>;
+  if (share === null) return <AfterDelay>Reading the text of {name}</AfterDelay>;
   return (
-    <AfterQuiet>
+    <AfterDelay>
       Sending {name} <Num>{PERCENT.format(share)}</Num>
-    </AfterQuiet>
+    </AfterDelay>
   );
 }

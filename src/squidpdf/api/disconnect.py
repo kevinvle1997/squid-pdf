@@ -1,14 +1,8 @@
 """A request whose browser leaves before its answer stops, and its long PDF work with it.
 
-Uvicorn doesn't stop a request's handler when the browser goes: an upload's
-analysis would run on in a worker for its whole timeout, answering no one, and
-a browser could queue many tasks and leave. Cancelling the handler cancels its
-wait for the pool (`api/pool.py`): a task still waiting for a worker is
-dropped, and a long one is stopped. A short one, a render or a page image,
-finishes in its worker, since stopping it would kill the worker.
-
-The watch begins once the request's body is in. `BodyLimit` reads every body
-but an upload's, a GET's empty one included, so GETs are watched too.
+Uvicorn doesn't stop a handler when the browser goes, so a browser could queue tasks and
+leave. Cancelling drops a waiting task and stops a long one; a short one (a render, a page
+image) finishes, or its worker would die. BodyLimit reads a GET's empty body: it's watched too.
 """
 
 from __future__ import annotations

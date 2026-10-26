@@ -3,7 +3,7 @@ import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
-import { quietFont } from "./quiet";
+import { setWarningMuted } from "./mutedWarnings";
 import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "./typing";
 import { fill } from "./words";
 
@@ -34,7 +34,7 @@ const typed = (spanId: string, text: string) => {
 };
 
 describe("an edit", () => {
-  test("as its field takes focus, what an edit there warns of is heard, until its font is quieted", () => {
+  test("as its field takes focus, what an edit there warns of is heard, until its font's warning is muted", () => {
     // Its font has every letter it reads, so the warning is all there is to hear.
     const glyphs = halfWideGlyphs("was similar");
     const similar = aSpan({
@@ -47,13 +47,13 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [similar], fonts }), 2);
     edit(editor, "similar", null);
     fieldFocused(editor);
-    expect(editor.store.get().said.text).toBe(fill(SENTENCES.substitute, { font: "Liberation Serif Regular" }));
+    expect(editor.store.get().announcement.text).toBe(fill(SENTENCES.substitute, { font: "Liberation Serif Regular" }));
     finish(editor, false);
-    quietFont(editor, "Named", { quiet: true });
-    const quieted = editor.store.get().said;
+    setWarningMuted(editor, "Named", { muted: true });
+    const muted = editor.store.get().announcement;
     edit(editor, "similar", null);
     fieldFocused(editor);
-    expect(editor.store.get().said).toBe(quieted);
+    expect(editor.store.get().announcement).toBe(muted);
   });
 
   test("typing holds a draft apart from the history, until it's finished", () => {
@@ -64,22 +64,22 @@ describe("an edit", () => {
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
-    expect(editor.store.get().said.text).toBe("Changed to now");
+    expect(editor.store.get().announcement.text).toBe("Changed to now");
   });
 
-  test("a trouble is said as it appears or changes, not as its numbers tick by with each letter", () => {
+  test("a trouble is announced as it appears or changes, not as its numbers tick by with each letter", () => {
     const glyphs = { a: 500, b: 500 }; // 5 pt each at 10 pt
     const doc = aDoc({ spans: [aSpan({ id: "ab", text: "ab" })], fonts: [aFont("Times-Roman", { glyphs })] });
     editor = createEditor(FILE, doc, 2);
     edit(editor, "ab", null);
-    // 10 pt past a 10 pt line, then 15: the share ticks up, and what was said stands.
+    // 10 pt past a 10 pt line, then 15: the share ticks up, and what was announced stands.
     const doubled = "about 100% too long for its place: shorten it, or it runs into what's beside it";
     typeInto(editor, "abab");
-    expect(editor.store.get().said.text).toBe(doubled);
+    expect(editor.store.get().announcement.text).toBe(doubled);
     typeInto(editor, "ababa");
-    expect(editor.store.get().said.text).toBe(doubled);
+    expect(editor.store.get().announcement.text).toBe(doubled);
     typeInto(editor, "ababac");
-    expect(editor.store.get().said.text).toContain("no c in this font");
+    expect(editor.store.get().announcement.text).toContain("no c in this font");
   });
 
   test("a letter no font we ship draws is said to be left out before Enter, as the render will say it after", () => {
@@ -90,7 +90,7 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [similar], fonts: [font] }), 2);
     edit(editor, "named", null);
     typeInto(editor, "abc ✓");
-    expect(troublesIn(editor.store.get(), "abc ✓").said).toEqual([
+    expect(troublesIn(editor.store.get(), "abc ✓").sentences).toEqual([
       "“✓” can't be drawn in any font we have, and will be left out",
     ]);
   });
@@ -102,14 +102,14 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "long", null);
     typeInto(editor, `${long.text}u`);
-    expect(editor.store.get().said.text).toBe(
+    expect(editor.store.get().announcement.text).toBe(
       "about 5% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",
     );
 
     // From leaving it long, the last, round to the first.
     expect(stepWayOut(editor, 1)).toBe(true);
-    expect(editor.store.get().said.text).toBe(SENTENCES.options.shrink?.label);
-    expect(troublesIn(editor.store.get(), `${long.text}u`).said).toEqual([]);
+    expect(editor.store.get().announcement.text).toBe(SENTENCES.options.shrink?.label);
+    expect(troublesIn(editor.store.get(), `${long.text}u`).sentences).toEqual([]);
     finish(editor, true);
     expect(editor.store.get().reading.edits).toEqual([
       { kind: "replace", span_id: "long", text: `${long.text}u`, strategy: "shrink" },
@@ -134,7 +134,7 @@ describe("an edit", () => {
       2,
     );
     edit(editor, "field", null);
-    expect(troublesIn(editor.store.get(), "was field").said).toEqual([SENTENCES.form_field_not_edited]);
+    expect(troublesIn(editor.store.get(), "was field").sentences).toEqual([SENTENCES.form_field_not_edited]);
   });
 
   test("a pasted tab or line separator becomes a space, and a bidi control is dropped, since the server refuses new text with one", () => {
@@ -146,14 +146,14 @@ describe("an edit", () => {
   test("emptied, the field says it can't be, and Enter keeps it open; Escape still leaves it as it was", () => {
     edit(editor, "own", null);
     typeInto(editor, "  ");
-    expect(editor.store.get().said.text).toBe(SENTENCES.empty);
-    expect(troublesIn(editor.store.get(), "  ").said).toEqual([SENTENCES.empty]);
-    const said = editor.store.get().said;
+    expect(editor.store.get().announcement.text).toBe(SENTENCES.empty);
+    expect(troublesIn(editor.store.get(), "  ").sentences).toEqual([SENTENCES.empty]);
+    const announcement = editor.store.get().announcement;
     enter(editor);
     expect(editor.store.get().draft?.text).toBe("  ");
-    // Said again, for a screen reader pressing Enter: the field stays.
-    expect(editor.store.get().said.text).toBe(SENTENCES.empty);
-    expect(editor.store.get().said.count).not.toBe(said.count);
+    // Announced again, for a screen reader pressing Enter: the field stays.
+    expect(editor.store.get().announcement.text).toBe(SENTENCES.empty);
+    expect(editor.store.get().announcement.count).not.toBe(announcement.count);
     typeInto(editor, "now");
     enter(editor);
     expect(editor.store.get().draft).toBeNull();
@@ -175,15 +175,15 @@ describe("an edit", () => {
     const glyphs = halfWideGlyphs("was turned");
     editor = createEditor(FILE, aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
     edit(editor, "turned", null);
-    expect(troublesIn(editor.store.get(), "was turned").said).toEqual([]);
+    expect(troublesIn(editor.store.get(), "was turned").sentences).toEqual([]);
   });
 
-  test("a font quieted warns no more as typing starts, and is said; warned again, it's back", () => {
-    quietFont(editor, "Named", { quiet: true });
-    expect(editor.store.get().quietFonts).toEqual(new Set(["Named"]));
-    expect(editor.store.get().said.text).toBe("Edits in Named won't warn again");
-    quietFont(editor, "Named", { quiet: false });
-    expect(editor.store.get().quietFonts).toEqual(new Set());
-    expect(editor.store.get().said.text).toBe("Edits in Named warn again");
+  test("a font muted warns no more as typing starts, and is announced; warned again, it's back", () => {
+    setWarningMuted(editor, "Named", { muted: true });
+    expect(editor.store.get().mutedFonts).toEqual(new Set(["Named"]));
+    expect(editor.store.get().announcement.text).toBe("Edits in Named won't warn again");
+    setWarningMuted(editor, "Named", { muted: false });
+    expect(editor.store.get().mutedFonts).toEqual(new Set());
+    expect(editor.store.get().announcement.text).toBe("Edits in Named warn again");
   });
 });

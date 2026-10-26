@@ -78,7 +78,7 @@ class UploadController:
         *,
         declared: int | None,
         chunks: AsyncIterable[bytes],
-        said_in: str,
+        language: str,
     ) -> Reply[bytes]:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
@@ -101,9 +101,9 @@ class UploadController:
         # Off the server's thread: it reads every font's letters and writes them out again.
         body = await _deleted_if_it_fails(
             folder,
-            asyncio.to_thread(_reply_body, doc_id, folder=folder, kept=kept, said_in=said_in),
+            asyncio.to_thread(_reply_body, doc_id, folder=folder, kept=kept, language=language),
         )
-        return Reply(body, words.language_headers(said_in), HTTPStatus.CREATED)
+        return Reply(body, words.language_headers(language), HTTPStatus.CREATED)
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
@@ -111,9 +111,9 @@ class UploadController:
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
-def _reply_body(doc_id: str, *, folder: Path, kept: KeptAnalysis, said_in: str) -> bytes:
+def _reply_body(doc_id: str, *, folder: Path, kept: KeptAnalysis, language: str) -> bytes:
     """The reply's JSON: the new document's hour started, every span judged as kept."""
-    return document_json(doc_id, expires_at=store.touch(folder), kept=kept, said_in=said_in)
+    return document_json(doc_id, expires_at=store.touch(folder), kept=kept, language=language)
 
 
 def _documents_disk_free() -> int:

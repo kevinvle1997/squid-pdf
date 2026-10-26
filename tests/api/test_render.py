@@ -40,9 +40,8 @@ _SHADING = (
     "<</ShadingType 2/ColorSpace/DeviceRGB/Coords[250 40 340 180]"
     "/Function<</FunctionType 2/Domain[0 1]/C0[0.8 0.1 0.1]/C1[0.1 0.1 0.8]/N 1>>>>"
 )
-# Flipped to top-down points on a page 842 high, as the strip is asked for: a box the
-# shading fills; a triangle, whose slanted sides the strip cuts; and a box clipped by a
-# peaked path, whose straight sides, off the pixel grid, the strip cuts to a rectangle.
+# Flipped to top-down points on a page 842 high: a box the shading fills, a triangle whose
+# slants the strip cuts, and a box clipped by a peaked path, its off-grid sides cut square.
 _ACROSS_THE_STRIP = (
     "q 1 0 0 -1 0 842 cm "
     "q 250.3 40.7 90 140 re W n /Sh sh Q "

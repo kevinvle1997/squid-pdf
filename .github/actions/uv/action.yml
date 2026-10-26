@@ -1,6 +1,4 @@
-# The Python side as every job needs it: uv, cached on the lockfile, and by default
-# the environment the suite runs in (every extra, the dev tools). One copy, so the
-# jobs can't drift into testing different environments.
+# One copy of the Python setup, so the jobs can't drift into testing different environments.
 name: uv
 description: Install uv and sync the locked environment.
 

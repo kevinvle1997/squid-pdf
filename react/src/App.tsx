@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import styles from "./App.module.css";
-import { forgetOrSayWhy, type Kept, type KeptWork, keptDocument } from "./documents/kept";
+import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
 import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
 import { Button } from "./ui/Button";
@@ -20,45 +20,45 @@ export function App() {
   );
 }
 
-/** The landing, or the document open in the editor: opened again from this browser, with its work kept. */
-type Screen = Landing | { kind: "open"; opened: Opened; kept?: KeptWork<unknown> };
+/** The landing, or the document open in the editor: opened again from this browser, with its work persisted. */
+type Screen = Landing | { kind: "open"; opened: Opened; persisted?: PersistedWork<unknown> };
 
-/** Deleting what this browser kept: under way, or why it's still kept. */
+/** Deleting what this browser persisted: under way, or why it's still there. */
 type Forgetting = { kind: "under way" } | { kind: "failed"; detail: string };
 
 function Screens() {
   const [screen, setScreen] = useState<Screen>({ kind: "waiting" });
-  const [kept, setKept] = useState<Kept<unknown> | null>(null);
+  const [persisted, setPersisted] = useState<Persisted<unknown> | null>(null);
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
 
-  // What this browser kept, read as the landing first shows: it's outside React, in the browser's storage.
+  // Read as the landing first shows: it's outside React, in the browser's storage.
   useEffect(() => {
-    // Refused (a private window, say): nothing kept, so nothing to offer.
-    keptDocument().then(setKept, () => undefined);
+    // Refused (a private window, say): nothing persisted, so nothing to offer.
+    persistedDocument().then(setPersisted, () => undefined);
   }, []);
 
   function reopen() {
     // A delete under way would take the work from under the editor.
-    if (kept === null || forgetting?.kind === "under way") return;
+    if (persisted === null || forgetting?.kind === "under way") return;
     void loadEditor();
     setScreen({
       kind: "open",
-      opened: { file: kept.file, doc: kept.doc },
-      kept: { work: kept.work, until: kept.until },
+      opened: { file: persisted.file, doc: persisted.doc },
+      persisted: { work: persisted.work, until: persisted.until },
     });
-    setKept(null);
+    setPersisted(null);
   }
 
   async function forget() {
-    if (kept === null) return;
+    if (persisted === null) return;
     setForgetting({ kind: "under way" });
-    const detail = await forgetOrSayWhy(kept.file.name);
-    // Still kept, so still offered, and said.
+    const detail = await forgetOrSayWhy(persisted.file.name);
+    // Still persisted, so still offered, and why.
     if (detail !== null) {
       setForgetting({ kind: "failed", detail });
       return;
     }
-    setKept(null);
+    setPersisted(null);
     setForgetting(null);
   }
 
@@ -78,7 +78,7 @@ function Screens() {
     return (
       <Drop
         landing={screen}
-        kept={kept}
+        persisted={persisted}
         forgetFailed={forgetting?.kind === "failed" ? forgetting.detail : null}
         onChoose={(file) => void open(file)}
         onReopen={reopen}
@@ -90,7 +90,12 @@ function Screens() {
   return (
     <Suspense fallback={null}>
       {/* Keyed: the editor takes `opened` only as it starts, so another document is another editor. */}
-      <EditorShell key={opened.doc.id} opened={opened} onOpen={(file) => void open(file)} kept={screen.kept} />
+      <EditorShell
+        key={opened.doc.id}
+        opened={opened}
+        onOpen={(file) => void open(file)}
+        persisted={screen.persisted}
+      />
     </Suspense>
   );
 }
