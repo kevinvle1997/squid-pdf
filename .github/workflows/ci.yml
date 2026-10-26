@@ -83,14 +83,20 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
-      # The lockfile pins Playwright, and Playwright pins its browsers. The key names them,
-      # so a cache saved before one was added can't hit without it.
+      # Playwright pins its browsers, so a bump of any other dependency keeps the cache.
+      - name: Playwright's version
+        id: playwright
+        run: |
+          version=$(jq -er '.packages["node_modules/@playwright/test"].version' package-lock.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The key names the browsers, so a cache saved before one was added can't hit without it.
       - name: Browser cache
         id: browser
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-webkit-${{ runner.os }}-${{ hashFiles('react/package-lock.json') }}
+          key: playwright-chromium-webkit-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       # Before the tests: the view's tests run in Chromium too. WebKit is for the end to end.
       - name: Browsers
