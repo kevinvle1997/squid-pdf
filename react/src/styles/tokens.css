@@ -13,7 +13,7 @@
   --ground-ink-faint: #747266;  /* crop marks */
   --ground-change: #0F5CB0;
   --ground-warn: #B5361F;
-  --strip: #FFFFFF;      /* a surface: notices, slips, popovers, tooltips */
+  --strip: #FFFFFF;      /* a surface: notices, popovers, tooltips; a slip on the page is the sheet's */
   --field: #FFFFFF;      /* inside a text input in the chrome */
   --rule: #D6D3C8;       /* dividers, and the borders of buttons and inputs */
   --rule-soft: #EFEDE5;  /* hover fills, keycaps, dividers inside a slip */

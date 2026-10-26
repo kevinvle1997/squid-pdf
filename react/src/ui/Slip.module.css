@@ -1,10 +1,15 @@
-/* A slip on the page: beside what it's about, outside it, floating above the page on the strip's
-   surface. What it holds, and how it lays that out, is each slip's own. */
+/* A slip on the page: beside what it's about, outside it, floating above the page. What it holds, and
+   how it lays that out, is each slip's own. */
 .slip {
+  /* It lies on the page, which never themes, so what's on it reads as on white, as on a sheet. */
+  --ink: var(--sheet-ink); --ink-lo: var(--sheet-ink-lo);
+  --rule: var(--sheet-rule); --rule-soft: var(--sheet-rule-soft);
+  --strip: var(--sheet); --field: var(--sheet);
+  --change: var(--mark-change); --warn: var(--mark-warn);
   position: absolute; z-index: var(--z-chip);
   padding: var(--s4);
   border-radius: var(--r-4);
-  background: var(--strip); box-shadow: var(--lift-1);
+  background: var(--sheet); box-shadow: var(--lift-1);
   font-family: var(--ui); font-size: var(--fs-sm); color: var(--ink-lo);
   animation: global(arrive) var(--dur-move) var(--ease-out);
 }
