@@ -80,7 +80,6 @@ export function placeOf(
   span: SpanInfo,
   { changed, reading, missing }: { changed: boolean; reading: SpanReading | undefined; missing: readonly string[] },
 ): MismatchPlace | undefined {
-  // Before any change: the whole document, as the bar's count is.
   if (!changed) return wontMatch(span) ? { span, missing: [] } : undefined;
   const replaced = reading?.replaced ?? false;
   return replaced && (wontMatch(span) || missing.length > 0) ? { span, missing } : undefined;
@@ -103,7 +102,7 @@ export function shownAmong(
     fonts: ReadonlyMap<string, FontInfo>;
   },
 ): SpanInfo[] {
-  // Nothing shown: no span need be judged.
+  // No span need be judged.
   if (shown.size === 0) return [];
   return spans.filter((span) => {
     const missing = fits[span.id]?.missing ?? [];

@@ -57,7 +57,7 @@ export interface Substitute {
 export function substituteFor(lookAlike: string, text: string): Substitute {
   const composed = text.normalize("NFC");
   const inLookAlike = { face: lookAlike, leftOut: lackedBy(lookAlike, composed) };
-  // The look-alike draws every letter: no face could leave out fewer.
+  // No face could leave out fewer.
   if (inLookAlike.leftOut.length === 0) return inLookAlike;
   const broadest = broadestOf(lookAlike);
   if (broadest === undefined) return inLookAlike;
