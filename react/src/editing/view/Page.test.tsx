@@ -7,7 +7,7 @@ import "../../styles/base.css";
 import { ProblemError, pageImage, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, COPY, halfWideGlyphs } from "../../fixtures";
-import { colorOf } from "../../testing";
+import { colorOf, emulateTouchScreen } from "../../testing";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
@@ -414,47 +414,38 @@ describe("a page", () => {
   });
 
   test("on a touch screen the field is set at 16 px, so iOS doesn't zoom, and drawn at the span's size", async () => {
-    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-    try {
-      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
-      const screen = await draw();
-      await editSpan(screen);
-      const field = screen.getByRole("textbox").element();
-      expect(getComputedStyle(field).fontSize).toBe("16px");
-      // The span's box, as wide as the page is shown: what the field must look like on it.
-      const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
-      if (layer === undefined) throw new Error("no page image");
-      const spanPx = (pt: number) => (pt / A4.width) * layer.width;
-      const drawn = field.getBoundingClientRect();
-      expect(drawn.height).toBeCloseTo(spanPx(span.bbox.y1 - span.bbox.y0), 0);
-      expect(drawn.left).toBeCloseTo(layer.left + spanPx(span.bbox.x0), 0);
-      // Its letters drawn at the span's size: 16 px, scaled down.
-      const scale = new DOMMatrix(getComputedStyle(field).transform).a;
-      expect(16 * scale).toBeCloseTo(spanPx(span.size), 1);
-    } finally {
-      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
-    }
+    await emulateTouchScreen();
+    const screen = await draw();
+    await editSpan(screen);
+    const field = screen.getByRole("textbox").element();
+    expect(getComputedStyle(field).fontSize).toBe("16px");
+    // The span's box, as wide as the page is shown: what the field must look like on it.
+    const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
+    if (layer === undefined) throw new Error("no page image");
+    const spanPx = (pt: number) => (pt / A4.width) * layer.width;
+    const drawn = field.getBoundingClientRect();
+    expect(drawn.height).toBeCloseTo(spanPx(span.bbox.y1 - span.bbox.y0), 0);
+    expect(drawn.left).toBeCloseTo(layer.left + spanPx(span.bbox.x0), 0);
+    // Its letters drawn at the span's size: 16 px, scaled down.
+    const scale = new DOMMatrix(getComputedStyle(field).transform).a;
+    expect(16 * scale).toBeCloseTo(spanPx(span.size), 1);
   });
 
   test("on a touch screen, a tap on a line with nothing to say edits it, the word under it selected", async () => {
-    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-    try {
-      const screen = await draw();
-      const mark = screen.getByRole("button", { name: WORDS });
-      await expect.element(mark).toBeInTheDocument();
-      const box = mark.element().getBoundingClientRect();
-      // On "was", the first word: a quarter of the way along "was here".
-      const at = { x: box.left + box.width / 4, y: box.top + box.height / 2 };
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-      const field = screen.getByRole("textbox");
-      await expect.element(field).toHaveFocus();
-      const input = field.element();
-      if (!(input instanceof HTMLInputElement)) throw new Error("no field");
-      expect(input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0)).toBe("was");
-    } finally {
-      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
-    }
+    await emulateTouchScreen();
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: WORDS });
+    await expect.element(mark).toBeInTheDocument();
+    const box = mark.element().getBoundingClientRect();
+    // On "was", the first word: a quarter of the way along "was here".
+    const at = { x: box.left + box.width / 4, y: box.top + box.height / 2 };
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const field = screen.getByRole("textbox");
+    await expect.element(field).toHaveFocus();
+    const input = field.element();
+    if (!(input instanceof HTMLInputElement)) throw new Error("no field");
+    expect(input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0)).toBe("was");
   });
 
   test("a redaction is the page's white where its words were, boxed in the pencil, not the wash a pointer draws", async () => {

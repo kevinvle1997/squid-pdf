@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { cdp, page, userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -22,7 +22,7 @@ import {
   COPY,
   halfWideGlyphs,
 } from "../../fixtures";
-import { colorOf } from "../../testing";
+import { colorOf, emulateTouchScreen } from "../../testing";
 import { EXPORT_INTENT_MS } from "../constants";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { EditorShell } from "./EditorShell";
@@ -288,18 +288,13 @@ describe("the bar", () => {
   });
 
   test("on a touch screen, no button hints at a key", async () => {
-    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-    try {
-      expect(matchMedia("(pointer: coarse)").matches).toBe(true);
-      const screen = await openEditor();
-      const key = screen
-        .getByRole("button", { name: /^Export/ })
-        .element()
-        .querySelector("kbd");
-      expect(key === null ? "none" : getComputedStyle(key).display).toBe("none");
-    } finally {
-      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
-    }
+    await emulateTouchScreen();
+    const screen = await openEditor();
+    const key = screen
+      .getByRole("button", { name: /^Export/ })
+      .element()
+      .querySelector("kbd");
+    expect(key === null ? "none" : getComputedStyle(key).display).toBe("none");
   });
 });
 
