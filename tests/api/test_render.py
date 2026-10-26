@@ -6,6 +6,7 @@ import base64
 import itertools
 import json
 import random
+from pathlib import Path
 
 import pymupdf
 import pytest
@@ -13,17 +14,23 @@ import pytest
 from squidpdf.api import constants as api_constants
 from squidpdf.core import COPY_PLACES, Engine, Message, words, write_dense
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import store
+from squidpdf.documents.store import FolderStore
 from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
     NAME_COPIES,
     REDACTED_NAME,
     InProcess,
     around,
+    edit_counts,
+    export_lines,
+    refusing_own_copies,
     span_starting,
     upload,
     with_hidden_copies,
 )
+from tests.conftest import in_a_copy_lacking
 from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
@@ -50,6 +57,17 @@ _ACROSS_THE_STRIP = (
     "0.2 0.2 0.8 rg 450 30 110 160 re f Q "
     "Q"
 )
+
+
+# The facts of `lacking_a_letter`: its one line, whose copy of its font has no "€".
+_LACKING_LINE = "Total 14 €"
+
+
+@pytest.fixture(scope="module")
+def lacking_a_letter(tmp_path_factory) -> bytes:
+    """One line whose stored copy of its font has no shape for the "€" it holds."""
+    path = str(tmp_path_factory.mktemp("fx") / "lacking.pdf")
+    return Path(in_a_copy_lacking(path, text=_LACKING_LINE, lacking="€")).read_bytes()
 
 
 def _render(client, doc: dict, edits: list[dict], regions: list[dict], *, scale: int = _SCALE):
@@ -385,6 +403,68 @@ def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
 
     assert_equal(response.status_code, 200, "drawn within the render timeout")
     assert_equal(len(response.json()["images"]), count, "an image per strip")
+
+
+@pytest.mark.parametrize(
+    ("driver_factory", "verdict", "counted"),
+    [
+        # The file's own copy draws the words typed, as the page sets the line.
+        (open_driver, ("exact", None), "edits_exact"),
+        # The page refuses the file's own copy, so a similar font draws them.
+        (refusing_own_copies, ("substitute", "Liberation Serif Regular"), "edits_substitute"),
+    ],
+    ids=["drawn in its own font", "on a page that refuses it"],
+)
+def test_an_edits_fit_says_how_it_is_drawn_as_its_export_counts_it(
+    app, mine, lacking_a_letter, capsys, monkeypatch, driver_factory, verdict, counted
+):
+    """A span judged a similar font's at upload, for a letter its copy lacks, edited without it.
+
+    Its note kept saying "a similar font", though the file and its log said otherwise.
+    """
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's line is captured
+    monkeypatch.setattr(app.state, "documents", FolderStore(driver_factory))
+    doc = upload(mine, lacking_a_letter).json()
+    [span] = doc["spans"]
+    edits = [{"kind": "replace", "span_id": span["id"], "text": "Total 2"}]
+
+    fit = _render(mine, doc, edits, [around(span)]).json()["fits"][span["id"]]
+    counts = edit_counts(export_lines(mine, doc, edits, capsys))
+
+    upload_verdict = (span["fidelity"], span["substitute"])
+    expected = ("substitute", "Liberation Serif Regular")
+    assert_equal(upload_verdict, expected, "the span, judged on its own text")
+    assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the edit, as render says it")
+    assert_equal(counts, {counted: "1"}, "the edit, as its export counts it")
+
+
+_PAGE_FONT = "the page's"  # new text in the font the page's line is in
+
+
+@pytest.mark.parametrize(
+    ("driver_factory", "font", "text", "verdict"),
+    [
+        # No font of the document's to stand in for: it is what's asked.
+        (open_driver, "Caveat Bold", "Signed", ("exact", None)),
+        # In the page's own font, which draws it.
+        (open_driver, _PAGE_FONT, "Paid", ("exact", None)),
+        # In the page's own font, whose copy lacks "€": a similar font draws the line.
+        (open_driver, _PAGE_FONT, "Paid €", ("substitute", "Liberation Serif Regular")),
+        # In the page's own font, on a page that refuses it: a similar font draws it.
+        (refusing_own_copies, _PAGE_FONT, "Paid", ("substitute", "Liberation Serif Regular")),
+    ],
+)
+def test_new_texts_fit_says_how_it_is_drawn_as_a_replaces_does(
+    app, mine, lacking_a_letter, monkeypatch, driver_factory, font, text, verdict
+):
+    monkeypatch.setattr(app.state, "documents", FolderStore(driver_factory))
+    doc = upload(mine, lacking_a_letter).json()
+    [span] = doc["spans"]
+    insert = {**_INSERT, "text": text, "font": span["font"] if font == _PAGE_FONT else font}
+
+    [fit] = _render(mine, doc, [insert], [{"page": 0}]).json()["insert_fits"]
+
+    assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the new text's verdict")
 
 
 def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkeypatch):

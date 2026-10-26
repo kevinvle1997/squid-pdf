@@ -32,7 +32,15 @@ from squidpdf.documents.replies import time_of
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
-from squidpdf.editing.apply import is_page, log_fits, plan, redacted_by, resolve, run
+from squidpdf.editing.apply import (
+    is_page,
+    log_fits,
+    plan,
+    redacted_by,
+    resolve,
+    run,
+    verdicts_of,
+)
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import fit_info, notice_info, redaction_info, skipped_info
@@ -129,32 +137,35 @@ def _draw_regions(
         steps = plan(engine, resolved, fits, strips=strips)
         redactions = RedactionController(tuple(redacted_by(steps)))
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
-        notices = run(engine, steps).notices
-        verdicts = redactions.verdicts(engine)
+        ran = run(engine, steps)
+        verdicts = verdicts_of(fits, ran)
+        gone = redactions.gone(engine)
         images = _draw(engine, regions, drawn_pages=drawn_pages)
 
     redaction_per_span = {
-        span_id: Redaction(gone, hidden[span_id]) for span_id, gone in verdicts.items()
+        span_id: Redaction(words_gone, hidden[span_id]) for span_id, words_gone in gone.items()
     }
     return Rendered(
         images,
         fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()},
         insert_fits={position: fitted.report for position, fitted in fits.inserts.items()},
+        verdicts=verdicts.replaces,
+        insert_verdicts=verdicts.inserts,
         skipped=resolved.skipped,
-        notices=notices + _said_unredacted(verdicts),
+        notices=ran.notices + _said_unredacted(gone),
         redactions=redaction_per_span,
     )
 
 
-def _said_unredacted(verdicts: dict[str, bool]) -> list[Notice]:
+def _said_unredacted(gone: dict[str, bool]) -> list[Notice]:
     """A notice for each redaction drawn whose words are still in the file, on the page or not.
 
     Said now, while the user can still undo it: export refuses the file.
     """
     return [
         SpanNotice(span_id, Message("not_redacted"))
-        for span_id, gone in verdicts.items()
-        if not gone
+        for span_id, words_gone in gone.items()
+        if not words_gone
     ]
 
 
@@ -218,9 +229,12 @@ def _reply_body(rendered: Rendered, expires_at: float, language: str) -> Render:
     """What render worked out, as the browser gets it, in the reader's words."""
     return {
         "images": rendered.images,
-        "fits": {span_id: fit_info(fit, language) for span_id, fit in rendered.fits.items()},
+        "fits": {
+            span_id: fit_info(fit, rendered.verdicts[span_id], language)
+            for span_id, fit in rendered.fits.items()
+        },
         "insert_fits": [
-            {**fit_info(fit, language), "edit": position}
+            {**fit_info(fit, rendered.insert_verdicts[position], language), "edit": position}
             for position, fit in rendered.insert_fits.items()
         ],
         "redactions": {

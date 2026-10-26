@@ -124,7 +124,7 @@ export function aDoc(fields: Partial<Document> = {}): Document {
   };
 }
 
-/** The server's fit for a replacement that went in as typed. */
+/** The server's fit for a replacement that went in as typed, in the file's own font. */
 export function aFit(fields: Partial<FitInfo> = {}): FitInfo {
   return {
     delta_pt: 0,
@@ -134,6 +134,10 @@ export function aFit(fields: Partial<FitInfo> = {}): FitInfo {
     strategy: "as-is",
     message: null,
     message_parts: [],
+    fidelity: "exact",
+    why: null,
+    substitute: null,
+    same_widths: false,
     ...fields,
   };
 }

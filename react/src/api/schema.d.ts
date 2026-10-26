@@ -325,7 +325,10 @@ export interface components {
         };
         /**
          * FitInfo
-         * @description Whether a replacement fits, the ways out if not, and which one was drawn.
+         * @description Whether a replacement fits, the ways out if not, which one was drawn, and its verdict.
+         *
+         *     The verdict is the edit's own, as drawn, in the four fields a span's at upload is in
+         *     (`SpanInfo`): `why` set only when approximate, `substitute` only when substitute.
          */
         FitInfo: {
             /** Delta Pt */
@@ -341,6 +344,16 @@ export interface components {
             message: string | null;
             /** Message Parts */
             message_parts: components["schemas"]["MessageInfo"][];
+            /**
+             * Fidelity
+             * @enum {string}
+             */
+            fidelity: "exact" | "approximate" | "substitute";
+            why: components["schemas"]["ApproximateInfo"] | null;
+            /** Substitute */
+            substitute: string | null;
+            /** Same Widths */
+            same_widths: boolean;
         };
         /**
          * FitRules
@@ -474,6 +487,16 @@ export interface components {
             message: string | null;
             /** Message Parts */
             message_parts: components["schemas"]["MessageInfo"][];
+            /**
+             * Fidelity
+             * @enum {string}
+             */
+            fidelity: "exact" | "approximate" | "substitute";
+            why: components["schemas"]["ApproximateInfo"] | null;
+            /** Substitute */
+            substitute: string | null;
+            /** Same Widths */
+            same_widths: boolean;
             /** Edit */
             edit: number;
         };

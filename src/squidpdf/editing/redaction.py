@@ -25,7 +25,7 @@ class RedactionController:
         """
         return engine.redaction.hidden_places(self.redacted)
 
-    def verdicts(self, engine: Engine) -> dict[str, bool]:
+    def gone(self, engine: Engine) -> dict[str, bool]:
         """Whether each redacted span's words are gone from the document in memory, by span id.
 
         Render's early run of export's check, on pages still numbered as in the original.

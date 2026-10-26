@@ -158,7 +158,7 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     engine.save(str(tmp_path / "redacted.pdf"))
 
     redacted = redacted_in(_resolved(engine, index, edits))
-    verified = RedactionController(redacted).verdicts(engine)
+    verified = RedactionController(redacted).gone(engine)
     assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())

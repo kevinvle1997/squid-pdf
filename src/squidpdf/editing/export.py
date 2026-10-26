@@ -146,8 +146,8 @@ def _tally_by_fidelity(replaced: list[Replaced]) -> None:
     At export, not render: a file downloaded is the edits made, each span's last edit once.
     """
     for outcome in replaced:
-        tally(_TALLY_OF[outcome.fidelity])
-        if outcome.fidelity == "substitute":
+        tally(_TALLY_OF[outcome.verdict.fidelity])
+        if outcome.verdict.fidelity == "substitute":
             _log_substitute(outcome)
 
 
@@ -155,7 +155,7 @@ def _log_substitute(outcome: Replaced) -> None:
     """A replace a similar font drew: the face, its widths, the font if our lists name it."""
     loggable = loggable_family(outcome.shown_name)
     font = OwnText(_UNLISTED if loggable is None else loggable)
-    substitute = outcome.substitute
+    substitute = outcome.verdict.substitute
     face = OwnText(substitute.face.file)
     same_widths = substitute.same_widths
     # The font gives a letter typed no width: no number, rather than a wrong one.

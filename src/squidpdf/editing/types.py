@@ -18,10 +18,10 @@ from squidpdf.core import (
     Page,
     SaidInfo,
     Style,
-    SubstituteWidths,
 )
+from squidpdf.documents.types import ApproximateInfo
 from squidpdf.editing.edits import Strategy
-from squidpdf.editing.fit import FitReport
+from squidpdf.editing.fit import FitReport, Verdict
 
 # Why an edit was left out: what it points at isn't in the document.
 type _SkipReason = Literal["bad_reference"]
@@ -71,11 +71,10 @@ Notice = SpanNotice | InsertNotice | FileNotice
 
 @dataclass(frozen=True, slots=True)
 class Replaced:
-    """A replace as drawn: in its span's own font or not, and the face that drew it or would."""
+    """A replace as drawn, and the name of the font it replaced the words of."""
 
-    fidelity: Fidelity
+    verdict: Verdict
     shown_name: str  # a file's words: logged only through loggable_family
-    substitute: SubstituteWidths  # drew it in its font's place, if `fidelity` says so
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +126,8 @@ class Rendered:
     images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
     fits: dict[str, FitReport]  # by the replaced span's id
     insert_fits: dict[int, FitReport]  # by the insert's place in the list the browser sent
+    verdicts: dict[str, Verdict]  # how each replace came out, by its span's id, as `fits`
+    insert_verdicts: dict[int, Verdict]  # how each insert came out, as `insert_fits`
     skipped: list[Skipped]
     notices: list[Notice]
     redactions: dict[str, Redaction]
@@ -164,7 +165,11 @@ class ImageInfo(TypedDict):
 
 
 class FitInfo(TypedDict):
-    """Whether a replacement fits, the ways out if not, and which one was drawn."""
+    """Whether a replacement fits, the ways out if not, which one was drawn, and its verdict.
+
+    The verdict is the edit's own, as drawn, in the four fields a span's at upload is in
+    (`SpanInfo`): `why` set only when approximate, `substitute` only when substitute.
+    """
 
     delta_pt: float
     missing: list[str]
@@ -173,6 +178,10 @@ class FitInfo(TypedDict):
     strategy: Strategy
     message: str | None  # every part below in the reader's words, in one line
     message_parts: list[MessageInfo]  # what's wrong, each for the browser to say itself
+    fidelity: Fidelity
+    why: ApproximateInfo | None
+    substitute: str | None  # the face we ship that draws it, when its font can't
+    same_widths: bool  # that face's letters are as wide as the original's
 
 
 class InsertFitInfo(FitInfo):

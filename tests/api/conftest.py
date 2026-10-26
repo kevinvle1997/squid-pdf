@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pymupdf
 import pytest
@@ -14,7 +15,12 @@ from httpx import Response
 
 from squidpdf.api import constants as api_constants
 from squidpdf.api.app import create_app
-from squidpdf.core import Problem
+from squidpdf.core import Message, Problem
+from squidpdf.core.pdf.driver import DriverError, PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
+from squidpdf.core.types import FontResource
+from tests.conftest import log_lines
+from tests.helpers import assert_equal
 
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
@@ -146,6 +152,49 @@ def around(span: dict) -> dict:
     """A region: the full-width strip over a span's line."""
     box = span["bbox"]
     return {"page": span["page"], "y0": box["y0"] - _MARGIN_PT, "y1": box["y1"] + _MARGIN_PT}
+
+
+def log_fields(line: str) -> dict[str, str]:
+    """A line's fields, by name."""
+    return dict(word.split("=", 1) for word in line.split() if "=" in word)
+
+
+def export_lines(mine, doc: dict, edits: list[dict], capsys) -> list[str]:
+    """Export `edits`, and the lines it logged."""
+    capsys.readouterr()
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+    assert_equal(exported.status_code, 200, "exported")
+    return log_lines(capsys.readouterr().out)
+
+
+def edit_counts(lines: list[str]) -> dict[str, str]:
+    """The export's counts of its edits by fidelity, as its access line has them."""
+    [access] = [line for line in lines if " request_done " in line]
+    fields = log_fields(access)
+    return {name: count for name, count in fields.items() if name.startswith("edits_")}
+
+
+@dataclass(frozen=True, slots=True)
+class _RefusingDriver:
+    """MuPDF's driver, on pages that refuse the file's own fonts' copies, as broken ones do."""
+
+    driver: PdfDriver
+
+    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
+        """Refused for the file's own copies, which the writer names "F…"; else added."""
+        if resource.startswith("F"):
+            raise DriverError(Message("font_not_added"))
+        return self.driver.add_font(page, font_file, resource=resource)
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def refusing_own_copies(path: str) -> PdfDriver:
+    """A driver factory for the store: MuPDF's, on pages that refuse the file's own copies."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _RefusingDriver(open_driver(path)))
 
 
 # The facts of `with_hidden_copies`: the name its page shows, which the tests redact.
