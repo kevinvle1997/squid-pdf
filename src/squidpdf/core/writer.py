@@ -124,7 +124,7 @@ class PageWriter:
         """Draw `text` at the span's baseline as `plan` says; says what came out otherwise."""
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
-        # A face we ship draws the whole line, less what even it can't draw.
+        # The whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             self._write_in_face(span, drawn_in, text=plan.text, setting=setting)
             return _said_left_out(plan.left_out)

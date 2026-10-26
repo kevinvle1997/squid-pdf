@@ -121,7 +121,6 @@ def coverage_of(
     # With glyph_ids the font is written by code, and a space with no code can't be.
     always_drawable = _ALWAYS_DRAWABLE if glyph_ids is None else frozenset[str]()
     unparsed = Coverage(usable=False, listed_letters=listed, always_drawable=always_drawable)
-    # No bytes: nothing to parse.
     if not buffer:
         return unparsed
     try:

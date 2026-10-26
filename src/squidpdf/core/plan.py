@@ -80,7 +80,6 @@ class DrawPlanner:
         text = _spelled(own, text)
         missing = own.missing(text)
         codes = self.fonts.drawn_codes(span, own)
-        # The own font draws every letter.
         if not missing:
             return DrawPlan(own, text, [], [], codes)
         substitute = self.fonts.substitute(span, text)
@@ -95,7 +94,7 @@ class DrawPlanner:
         """How `composed` is drawn in a face we ship, at a span whose own font we can't use."""
         look_alike = self.fonts.look_alike(span).face
         missing = face_coverage(look_alike).missing(composed)
-        # The look-alike draws every letter: it's the substitute, and draws the line as typed.
+        # It's the substitute, and draws the line as typed.
         if not missing:
             return DrawPlan(look_alike, composed, [], [])
         substitute = self.fonts.substitute(span, composed)
@@ -146,7 +145,6 @@ class DrawPlanner:
         # The file's own copies, pooled: they measure as one font.
         if isinstance(drawn_in, PooledFont):
             return drawn_in
-        # A face we ship, opened to measure with.
         if isinstance(drawn_in, Face):
             return self.driver.face_font(drawn_in)
         assert_never(drawn_in)
@@ -195,7 +193,6 @@ def coded_in(plan: DrawPlan) -> list[CodedRun] | None:
     None unless they draw it by code.
     """
     drawn_in = plan.drawn_in
-    # A face we ship: no codes.
     if isinstance(drawn_in, Face):
         return None
     # The file's copies, written by letter: no codes.

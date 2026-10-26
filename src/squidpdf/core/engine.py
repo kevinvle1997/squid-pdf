@@ -130,7 +130,7 @@ class Engine:
     def _in_fields_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, that a form field draws."""
         fields = self.driver.form_fields(page)
-        # A page with no field showing text: nothing to find, so no span is looked at.
+        # Nothing to find, so no span is looked at.
         if not fields:
             return []
         return [span for span in spans if any(_field_draws(field, span) for field in fields)]
@@ -172,7 +172,6 @@ class Engine:
             if unlike is None:
                 return FidelityReport(span.id, "exact", span.font, in_file=True)
             return FidelityReport(span.id, "approximate", span.font, in_file=True, why=unlike)
-        # A face we ship draws it in the font's place.
         if isinstance(drawn_in, Face):
             return self._substitute_report(span, drawn_in)
         assert_never(drawn_in)
@@ -249,7 +248,7 @@ class Engine:
 
         A signature goes whatever it holds: the redaction rewrites the file, so none would hold.
         """
-        # No span: nothing to delete, and a pattern of no words would match everywhere.
+        # Nothing to delete, signatures included: a pattern of no words would match everywhere.
         if not spans:
             return
         for page, on_page in by_page(spans).items():

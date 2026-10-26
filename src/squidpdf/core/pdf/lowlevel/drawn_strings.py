@@ -91,7 +91,6 @@ def _strings_written_in(
         if token == pymupdf.mupdf.PDF_TOK_STRING:
             found.append(_string_from(pdf, start, reader=reader, lexbuf=lexbuf))
             continue
-        # Not an image written into the drawing.
         if not is_image_start(token, drawing=drawing, start=start, reader=reader):
             continue
         image = read_past_image(pdf, reader, lexbuf, drawing=drawing, resources=resources)
@@ -225,7 +224,6 @@ def _texts_held_in(held: bytes) -> list[str]:
     if held[:2] in UTF16_MARKS:
         texts.append(text_of(string_of(b" " + held)))
     for mark, codec in _MARKED_CODECS.items():
-        # No string in it starts with this mark.
         if mark not in held:
             continue
         pieces = [held, *held.split(b")")]

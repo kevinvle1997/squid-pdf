@@ -78,13 +78,12 @@ def _flate_fewest(written: bytes, wanted: int) -> int | None:
     for start in range(0, len(written), _FLATE_STEP):
         before = decoder.copy()  # to feed this step again byte by byte
         step = len(decoder.decompress(written[start : start + _FLATE_STEP]))
-        # Not there yet within this step.
         if given + step < wanted:
             given += step
             continue
         for taken, byte in enumerate(written[start : start + _FLATE_STEP], start=1):
             given += len(before.decompress(bytes([byte])))
-            # Enough: they end with this byte.
+            # They end with this byte.
             if given >= wanted:
                 return start + taken
     return None
@@ -104,11 +103,10 @@ def _a85_fewest(written: bytes, wanted: int) -> int | None:
         if byte == _A85_END:
             ends_here = in_group > 0 and given + in_group - 1 >= wanted
             return taken if ends_here else None
-        # White space, read past.
         if byte in _WHITE_SPACE:
             continue
         given, in_group = _a85_after(byte, given=given, in_group=in_group)
-        # Enough: they end with this character.
+        # They end with this character.
         if given >= wanted:
             return taken
     return None
@@ -141,7 +139,7 @@ def _hex_fewest(written: bytes, wanted: int) -> int | None:
             return taken if -(-digits // 2) >= wanted else None
         # Any but white space, as a reader that reads it as a 0 counts it.
         digits += byte not in _WHITE_SPACE
-        # Enough: they end with this digit.
+        # They end with this digit.
         if digits // 2 >= wanted:
             return taken
     return None
@@ -175,7 +173,7 @@ def _run_length_fewest(written: bytes, wanted: int) -> int | None:
         # A run of the next byte, repeated.
         given += _RUN_REPEATS - length
         at += 2
-        # Enough: they end with this run.
+        # They end with this run.
         if given >= wanted:
             return min(at, len(written))
     return None

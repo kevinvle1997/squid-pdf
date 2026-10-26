@@ -48,7 +48,6 @@ class AttachedFonts:
         Raises FontUnusable when the file attached can't be opened.
         """
         name = strip_subset(own.font.name)
-        # Nothing attached for it: no news, so nothing to say.
         if name not in self.files:
             return None
         return self.opened_copy(own.font, name)

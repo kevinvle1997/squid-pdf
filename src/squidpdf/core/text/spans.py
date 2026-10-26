@@ -62,7 +62,6 @@ def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
 
 def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     """Whether `piece` carries on the span that `previous` ends."""
-    # Another font or size.
     if previous.font != piece.font:
         return False
     if abs(previous.size - piece.size) > SIZE_EPS:
@@ -70,7 +69,6 @@ def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     # Another colour or opacity: a span is redrawn in one.
     if previous.color != piece.color or previous.opacity != piece.opacity:
         return False
-    # Another baseline.
     _x, previous_y = previous.origin
     _x, y = piece.origin
     if abs(previous_y - y) > BASELINE_EPS:

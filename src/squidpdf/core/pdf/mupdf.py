@@ -576,7 +576,7 @@ class _MuPDFDriver:
         writes it, but for `letter_spacing`.
         """
         written = [run for run in runs if run.text]
-        # No letter written (empty new text): nothing to add.
+        # Empty new text.
         if not written:
             return
         pdf_page = self.doc[page]
@@ -976,7 +976,6 @@ def _written_run(
 
 def _written_turn(turn_ccw: QuarterTurn) -> str:
     """The matrix turning a run `turn_ccw` counter-clockwise, as a drawing writes it."""
-    # Not turned: nothing to write.
     if turn_ccw == 0:
         return ""
     cos, sin = QUARTER_TURNS[turn_ccw]
