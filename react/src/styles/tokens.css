@@ -76,9 +76,9 @@
   --fs-lead: clamp(1.5rem, 0.75rem + 1.6vw, 2rem); /* the landing's promise under the sheet: between the steps and the display */
 
   /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the
-     headings and the document's name. The system faces after it draw what it lacks, ⌘ and the arrows. */
+     headings. The system faces after it draw what it lacks, ⌘ and the arrows. */
   --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* the headings, and the document's name in the bar */
+  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* the display step, and the landing's promise */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;
