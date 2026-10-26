@@ -18,6 +18,8 @@
   display: flex; flex-direction: column; gap: var(--s1);
   white-space: normal; line-height: 1.4;
 }
+/* The chip's least action, so quiet: pulled out by its own padding, its words keep the note's left edge. */
+.quietFont { margin-inline-start: calc(-1 * var(--s3)); }
 /* Each trouble a line of its own. */
 .bad { white-space: pre-line; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
