@@ -84,6 +84,12 @@ tags_dropped = "The tags that tell screen readers how to read this file went wit
 reopened = "The server no longer had this document, so it was opened again from this browser."
 # An export that left some edits out, because they point at nothing in the document.
 export_left_out = "Downloaded, but some changes were left out: they point at text that isn't in this document."
+# A page deleted in the editor: on the slip left where it was, and announced. It names no number,
+# since the slip sits in the page's place, and the pages after it are counted again without it.
+page_left_out = "This page is left out of the download"
+# A deleted page put back, or its delete undone: announced. `{page}` is its number among the pages
+# shown, now it's back.
+page_put_back = "Page {page} is back in the download"
 
 # Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"

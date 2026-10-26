@@ -38,6 +38,8 @@ export const SENTENCES: Sentences = {
   undo_redaction: "This text is redacted. Editing it undoes the redaction. Edit it anyway?",
   reopened: "The server no longer had this document, so it was opened again from this browser.",
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
+  page_left_out: "This page is left out of the download",
+  page_put_back: "Page {page} is back in the download",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",
   options: {

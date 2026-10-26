@@ -157,6 +157,8 @@ class Sentences(TypedDict):
     undo_redaction: str
     reopened: str
     export_left_out: str
+    page_left_out: str  # a page deleted in the editor, said on the slip in its place
+    page_put_back: str  # a deleted page back in the download
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
     options: dict[str, dict[str, str]]

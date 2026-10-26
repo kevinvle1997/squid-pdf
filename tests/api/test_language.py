@@ -54,6 +54,10 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     )
     empty = sentences["empty"]
     assert_equal(empty, pseudo_sentence(words.sentence("empty")), "a sentence said as typed")
+    left_out = sentences["page_left_out"]
+    assert_equal(left_out, pseudo_sentence(words.sentence("page_left_out")), "a page deleted")
+    put_back = sentences["page_put_back"]
+    assert_equal(put_back, pseudo_sentence(words.sentence("page_put_back")), "a page put back")
     shrink = sentences["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
     turned = sentences["approximate"]["turned_text"]
