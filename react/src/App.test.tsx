@@ -125,6 +125,24 @@ test("Delete it now forgets the document kept here, file and all", async () => {
   await expect.poll(() => keptDocument()).toBeNull();
 });
 
+test("Delete it now refused by the browser's storage says so, keeps the offer, and can be pressed again", async () => {
+  await keptHere(Date.now() + 60_000);
+  const screen = await render(<App />);
+  const refusing = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementation(() => {
+    throw new DOMException("Refused", "UnknownError");
+  });
+  await screen.getByRole("button", { name: "Delete it now" }).click();
+  const said =
+    "This browser wouldn't delete your changes to contract.pdf. Try again, or clear this site's data in the browser's settings.";
+  await expect.element(screen.getByRole("status")).toHaveTextContent(said);
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
+  refusing.mockRestore();
+  await screen.getByRole("button", { name: "Delete it now" }).click();
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("status")).not.toHaveTextContent(said);
+  await expect.poll(() => keptDocument()).toBeNull();
+});
+
 test("one past the server's hour isn't offered, and is forgotten", async () => {
   await keptHere(Date.now() - 1);
   const screen = await render(<App />);
