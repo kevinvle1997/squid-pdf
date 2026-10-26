@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -199,7 +199,7 @@ jobs:
         run: |
           {
             echo '### Served behind the proxy'
-            echo "Image: $(docker image inspect squidpdf --format '{{.Size}}' | numfmt --to=iec)"
+            echo "Image: $(docker image inspect "$(docker compose config --images app)" --format '{{.Size}}' | numfmt --to=iec)"
             echo "Up and healthy in ${STARTED_MS} ms"
             echo '```'
             cat /tmp/check.txt
@@ -237,3 +237,45 @@ jobs:
             sed 's/\x1b\[[0-9;]*m//g' /tmp/report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # What a deploy pulls (compose.yaml): images from a commit every job above passed on.
+  publish:
+    if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, image, frontend, deploy, report]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    # Compose won't load its file without these; only the tag and the commit reach the images.
+    env:
+      SQUIDPDF_TAG: ${{ github.sha }}
+      SQUIDPDF_COMMIT: ${{ github.sha }}
+      SQUIDPDF_DOMAIN: unused
+      SQUIDPDF_USER: unused
+      SQUIDPDF_PASSWORD_HASH: unused
+      SQUIDPDF_APP_MEMORY: 1g
+      SQUIDPDF_APP_SCRATCH: 1m
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build
+        run: docker compose build
+
+      - name: Sign in to the registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        run: docker compose push
+
+      # Only from main's tip, so a re-run of an older run can't move latest back.
+      - name: Push as latest
+        run: |
+          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/main | cut -f1)
+          [[ $tip == "$GITHUB_SHA" ]] || { echo "main has moved on to $tip; latest stays"; exit 0; }
+          for image in $(docker compose config --images); do
+            docker tag "$image" "${image%:*}:latest"
+            docker push "${image%:*}:latest"
+          done
