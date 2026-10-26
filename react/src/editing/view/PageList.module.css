@@ -1,0 +1,43 @@
+/* Held under the bar with it, taking no room on a wide screen: the ticks hang below it, on the mat. Padded as
+   the pages are, so a length in cqw here is one there. */
+.list {
+  composes: ground from "../../ui/Ground.module.css";
+  position: relative; height: 0;
+  padding-inline: var(--s5);
+  container-type: inline-size;
+}
+.list ol { display: contents; list-style: none; margin: 0; padding: 0; }
+.list li { display: contents; }
+/* Just before the first page's margin, where the page sits (Page.module.css), in the room it leaves the list. */
+.ticks {
+  composes: column from "./Page.module.css";
+  position: absolute; top: var(--s7);
+  inset-inline-end: calc(100cqw + var(--s5) - var(--page-start) + var(--s1));
+  max-height: calc(100vh - 2 * var(--bar-height) - var(--s7));
+  overflow-y: auto;
+  display: flex; flex-direction: column; align-items: flex-end;
+}
+/* A short line at the hit area's end, the page being read's longer and in full ink. Drawn as a border, so it
+   stays in high contrast. */
+.tick {
+  position: relative; display: block; width: var(--hit); height: var(--hit); flex: none;
+  border-radius: var(--r-1); cursor: pointer;
+}
+.tick::after {
+  content: ""; position: absolute; inset-inline-end: 0; top: calc(50% - 1px);
+  width: var(--s3); border-top: 2px solid var(--ink-lo);
+}
+.tick[data-hovered]::after { border-top-color: var(--ink); }
+.tick[data-current]::after { width: var(--s5); border-top-color: var(--ink); }
+.tick[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+.where { font-size: var(--fs-micro); color: var(--ink-lo); font-variant-numeric: tabular-nums; }
+@media (max-width: 820px) {
+  /* A row of its own under the bar, on the mat's plain colour, so the pages pass under it. */
+  .list { height: auto; padding-inline: var(--s4); background: var(--ground); }
+  .ticks {
+    position: static; max-height: none; overflow-x: auto; overflow-y: hidden;
+    flex-direction: row; align-items: center;
+  }
+  .tick::after { inset-inline: 0; margin-inline: auto; }
+  .where { flex: none; margin-inline-start: var(--s2); }
+}

@@ -15,6 +15,8 @@
   padding: var(--s1); border: 0; border-radius: var(--r-2); background: none;
   color: var(--ink-lo); cursor: pointer;
   transition: transform var(--dur-press) var(--ease-out), color var(--dur-quick) var(--ease-out);
+  /* A page gone to from the page list shows from its top, clear of the bar, the find bar and the list held over it. */
+  scroll-margin-block: calc(2 * var(--bar-height) + var(--hit) + var(--s4)) var(--s6);
 }
 /* The hit area grows past the icon without moving it, as ui/Button's does. */
 .button::before {
