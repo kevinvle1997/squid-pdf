@@ -19,8 +19,8 @@ import {
   aSkipped,
   aSpan,
   aSpanNotice,
-  COPY,
   halfWideGlyphs,
+  SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { EXPORT_INTENT_MS } from "../constants";
@@ -390,8 +390,8 @@ describe("an emptied span", () => {
     const screen = await openEditor();
     await changeSpan(screen, "");
     // Shown in the chip, the first on the page, and heard through the status.
-    await expect.element(screen.getByText(COPY.empty).first()).toBeVisible();
-    await expect.element(screen.getByRole("status")).toHaveTextContent(COPY.empty);
+    await expect.element(screen.getByText(SENTENCES.empty).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(SENTENCES.empty);
     await expect.element(screen.getByRole("textbox")).toHaveFocus();
     await userEvent.keyboard("{Escape}");
     await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
@@ -411,7 +411,7 @@ describe("redaction", () => {
     await expect.element(screen.getByRole("status")).toHaveTextContent("Redacted was here");
 
     await userEvent.keyboard("{Enter}");
-    const asked = screen.getByRole("group", { name: COPY.undo_redaction });
+    const asked = screen.getByRole("group", { name: SENTENCES.undo_redaction });
     await expect.element(asked).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Keep redaction" })).toHaveFocus();
     await userEvent.keyboard("{Escape}");
@@ -550,7 +550,7 @@ describe("the user's own copy of a font", () => {
     await typeInSpan(screen, "was Yes");
 
     const offer = screen.getByRole("button", { name: "Use your copy" });
-    const why = screen.getByText(COPY.approximate.turned_text ?? "", { exact: false }).first();
+    const why = screen.getByText(SENTENCES.approximate.turned_text ?? "", { exact: false }).first();
     await expect.element(offer).toBeVisible();
     await expect.element(why).toBeVisible();
     const said = why.element().getBoundingClientRect();

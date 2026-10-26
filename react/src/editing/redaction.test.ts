@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aSpan, COPY } from "../fixtures";
+import { aDoc, aSpan, SENTENCES } from "../fixtures";
 import { commandFor } from "./commands";
 import { createEditor, type Editor, undo } from "./editor";
 import { editAnyway, keepRedaction, redact } from "./redaction";
@@ -73,7 +73,7 @@ describe("editing a redacted span", () => {
     const state = editor.store.get();
     expect(state.unredacting).toEqual({ spanId: "name", press: { atPt: 12, selects: "caret" } });
     expect(state.draft).toBeNull();
-    expect(state.said.text).toBe(COPY.undo_redaction);
+    expect(state.said.text).toBe(SENTENCES.undo_redaction);
   });
 
   test("Edit anyway takes the redaction out, and opens the span as it reads without it", () => {

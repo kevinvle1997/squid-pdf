@@ -1,7 +1,6 @@
 // Made-up API replies for tests, whole and typed. A field the server adds breaks here, where
 // `npm run types` brings it in, instead of hiding behind a cast in every test. Tests only.
 import type {
-  Copy,
   Document,
   DocumentNoticeInfo,
   FileNoticeInfo,
@@ -15,6 +14,7 @@ import type {
   RedactionInfo,
   Render,
   Replace,
+  Sentences,
   SkippedInfo,
   SpanInfo,
   SpanNoticeInfo,
@@ -27,7 +27,7 @@ export const A4: PageInfo = { width: 595, height: 842, turn_cw: 0 };
 export const RULES: FitRules = { tolerance_pt: 4, room_slack_pt: 0.1, condense_limit: 0.05, shrink_floor: 0.9 };
 
 /** The server's sentences, as core/app/words/en.toml writes them. */
-export const COPY: Copy = {
+export const SENTENCES: Sentences = {
   missing: "no {chars} in this font, so the line is drawn in our {font}",
   will_leave_out: "{letters} can't be drawn in any font we have, and will be left out",
   too_long: "about {percent}% too long for its place: shorten it, or it runs into what's beside it",
@@ -113,7 +113,7 @@ export function aDoc(fields: Partial<Document> = {}): Document {
     spans,
     fonts: [],
     fit: RULES,
-    copy: COPY,
+    sentences: SENTENCES,
     notices: [],
     ...fields,
   };

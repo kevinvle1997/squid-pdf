@@ -40,7 +40,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             font={page.fonts.get(span.font)}
             fit={page.fits[span.id]}
             redaction={page.redactions[span.id]}
-            copy={page.copy}
+            sentences={page.sentences}
             focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
             notes={notes}
             noteId={noteId}
@@ -126,7 +126,7 @@ function PageNote({
     reading: readings.get(span.id),
     fit: page.fits[span.id],
     redaction: page.redactions[span.id],
-    copy: page.copy,
+    sentences: page.sentences,
   });
   if (note === null) return null;
   return (
@@ -158,5 +158,5 @@ function UndoRedactionAt({
 }) {
   const span = spanIn(page, spanId);
   if (span === undefined || !readings.get(spanId)?.redacted) return null;
-  return <UndoRedaction span={span} info={info} copy={page.copy} />;
+  return <UndoRedaction span={span} info={info} sentences={page.sentences} />;
 }

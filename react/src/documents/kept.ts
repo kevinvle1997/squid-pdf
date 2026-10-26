@@ -83,7 +83,7 @@ export async function keptDocument(): Promise<Kept<unknown> | null> {
     const { bytes, name, type, lastModified } = keptFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
-      doc: state.doc,
+      doc: renamed(state.doc),
       work: state.work,
       until: state.until,
     };
@@ -91,6 +91,14 @@ export async function keptDocument(): Promise<Kept<unknown> | null> {
   // Past its hour, or half kept: nothing to open again, so nothing to keep.
   if (keptFile !== undefined || state !== undefined) await forgetKept();
   return null;
+}
+
+/** A kept reading of the document, its sentences as `sentences` though it was kept when they were `copy`. */
+// Nothing is kept past the server's hour, so this can go once the rename has been deployed that long.
+function renamed(doc: Document | (Omit<Document, "sentences"> & { copy: Document["sentences"] })): Document {
+  if ("sentences" in doc) return doc;
+  const { copy, ...rest } = doc;
+  return { ...rest, sentences: copy };
 }
 
 /** Forget the document kept here, file and all. */

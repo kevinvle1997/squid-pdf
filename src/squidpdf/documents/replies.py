@@ -20,13 +20,13 @@ from squidpdf.core import (
 from squidpdf.documents import constants
 from squidpdf.documents.types import (
     AnalysisFacts,
-    Copy,
     Document,
     DocumentNoticeInfo,
     FitRules,
     FontFacts,
     FontInfo,
     KeptAnalysis,
+    Sentences,
 )
 
 _NO_SPANS = b"[]"  # the spans kept for a file with no text, as a scan
@@ -49,7 +49,7 @@ def document_json(doc_id: str, *, expires_at: float, kept: KeptAnalysis, said_in
         "id": doc_id,
         "expires_at": time_of(expires_at),
         "fit": _fit_rules(),
-        "copy": _copy_in(said_in),
+        "sentences": _sentences_in(said_in),
         "notices": _notices_in(
             has_text=kept.spans != _NO_SPANS,
             active_content_dropped=facts["active_content_dropped"],
@@ -101,8 +101,8 @@ def _font_info(font: FontFacts, said_in: str) -> FontInfo:
     }
 
 
-def _copy_in(said_in: str) -> Copy:
-    """The sentences the browser fills in as the user types, in `said_in`, unfilled."""
+def _sentences_in(said_in: str) -> Sentences:
+    """The sentences the browser says about the document, in `said_in`, unfilled."""
     options = {
         name: {
             "label": words.sentence(keys.label, said_in),

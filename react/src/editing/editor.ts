@@ -135,7 +135,7 @@ export function layoutOf(doc: Document): Layout {
     pages,
     fonts,
     warnedFonts: new Set(unlike.map(({ span }) => shownNameOf({ fonts }, span.font))),
-    unlikeAtRest: unlikeOf(unlike, { fonts, copy: doc.copy }),
+    unlikeAtRest: unlikeOf(unlike, { fonts, sentences: doc.sentences }),
   };
 }
 
@@ -197,7 +197,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
 async function reopened(editor: Editor, doc: Document): Promise<Document> {
   const { store, queue } = editor;
   const { judged, refusal } = await reattach(editor, doc);
-  const reopen = plain(doc.copy.reopened);
+  const reopen = plain(doc.sentences.reopened);
   const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
   const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
   store.set({ doc: judged, layout: layoutOf(judged), notices, said: spoken(heard) });

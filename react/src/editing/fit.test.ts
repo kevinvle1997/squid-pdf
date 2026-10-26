@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
-import { aFont, aSpan, COPY as copy, halfWideGlyphs, RULES } from "../fixtures";
+import { aFont, aSpan, halfWideGlyphs, RULES, SENTENCES as sentences } from "../fixtures";
 import { fitOf, missingIn, optionsFor, setAs, settingOf, troublesOf, wayDrawn, waysOffered, widthPt } from "./fit";
 import { fill } from "./words";
 
@@ -17,7 +17,7 @@ const drawnIn = (switched: readonly string[], leftOut: readonly string[] = []) =
   switched,
   leftOut,
 });
-const SAID = { rules: RULES, copy, drawing: drawnIn([]) };
+const SAID = { rules: RULES, sentences, drawing: drawnIn([]) };
 const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50, y1: 12 } });
 
 describe("a missing letter", () => {
@@ -152,7 +152,7 @@ describe("a way out", () => {
 describe("a line is too long only past its room, as the server says", () => {
   test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_percent, options }) => {
     const fit = { originalPt: original_pt, deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };
-    const said = too_long_percent === null ? [] : [fill(copy.too_long, { percent: String(too_long_percent) })];
+    const said = too_long_percent === null ? [] : [fill(sentences.too_long, { percent: String(too_long_percent) })];
     expect(troublesOf(fit, { ...SAID, rules: shared.rules })).toEqual(said);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
   });

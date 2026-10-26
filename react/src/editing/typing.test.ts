@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFont, aSpan, COPY, halfWideGlyphs } from "../fixtures";
+import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
 import { quietFont } from "./quiet";
 import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "./typing";
@@ -47,7 +47,7 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ spans: [similar], fonts }), 2);
     edit(editor, "similar", null);
     fieldFocused(editor);
-    expect(editor.store.get().said.text).toBe(fill(COPY.substitute, { font: "Liberation Serif Regular" }));
+    expect(editor.store.get().said.text).toBe(fill(SENTENCES.substitute, { font: "Liberation Serif Regular" }));
     finish(editor, false);
     quietFont(editor, "Named", { quiet: true });
     const quieted = editor.store.get().said;
@@ -108,7 +108,7 @@ describe("an edit", () => {
 
     // From leaving it long, the last, round to the first.
     expect(stepWayOut(editor, 1)).toBe(true);
-    expect(editor.store.get().said.text).toBe(COPY.options.shrink?.label);
+    expect(editor.store.get().said.text).toBe(SENTENCES.options.shrink?.label);
     expect(troublesIn(editor.store.get(), `${long.text}u`).said).toEqual([]);
     finish(editor, true);
     expect(editor.store.get().reading.edits).toEqual([
@@ -134,7 +134,7 @@ describe("an edit", () => {
       2,
     );
     edit(editor, "field", null);
-    expect(troublesIn(editor.store.get(), "was field").said).toEqual([COPY.form_field_not_edited]);
+    expect(troublesIn(editor.store.get(), "was field").said).toEqual([SENTENCES.form_field_not_edited]);
   });
 
   test("a pasted tab or line separator becomes a space, and a bidi control is dropped, since the server refuses new text with one", () => {
@@ -146,13 +146,13 @@ describe("an edit", () => {
   test("emptied, the field says it can't be, and Enter keeps it open; Escape still leaves it as it was", () => {
     edit(editor, "own", null);
     typeInto(editor, "  ");
-    expect(editor.store.get().said.text).toBe(COPY.empty);
-    expect(troublesIn(editor.store.get(), "  ").said).toEqual([COPY.empty]);
+    expect(editor.store.get().said.text).toBe(SENTENCES.empty);
+    expect(troublesIn(editor.store.get(), "  ").said).toEqual([SENTENCES.empty]);
     const said = editor.store.get().said;
     enter(editor);
     expect(editor.store.get().draft?.text).toBe("  ");
     // Said again, for a screen reader pressing Enter: the field stays.
-    expect(editor.store.get().said.text).toBe(COPY.empty);
+    expect(editor.store.get().said.text).toBe(SENTENCES.empty);
     expect(editor.store.get().said.count).not.toBe(said.count);
     typeInto(editor, "now");
     enter(editor);

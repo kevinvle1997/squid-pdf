@@ -1,4 +1,4 @@
-// Words the browser puts together: the server's sentences, sent unfilled in `copy`, with their facts
+// Words the browser puts together: the server's `sentences`, sent unfilled, with their facts
 // put in; and the plural forms of the browser's own labels.
 
 export type Facts = Record<string, string | number | readonly string[]>;
@@ -26,7 +26,7 @@ const DRAWS_NOTHING = /^[\p{C}\p{Z}\s\p{Mn}\p{Me}]$/u;
 const QUOTED = /^[\p{P}\p{S}]$/u;
 
 /**
- * A character as a person can see it: its name in `names` (the server's `copy.characters`) when it draws
+ * A character as a person can see it: its name in `names` (the server's `sentences.characters`) when it draws
  * nothing alone or looks like another letter, else itself, quoted if punctuation or a symbol. `_visible` in
  * core/app/words. One the catalog doesn't name, the server calls by Unicode's name; the browser hasn't got it,
  * so says its code point.

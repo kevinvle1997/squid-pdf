@@ -180,7 +180,7 @@ export interface components {
          * ApproximateInfo
          * @description How an approximate span would come back unlike itself, in no language.
          *
-         *     `code` names the reason, and its sentence: `copy.approximate[code]`. `params` fill it.
+         *     `code` names the reason, and its sentence: `sentences.approximate[code]`. `params` fill it.
          */
         ApproximateInfo: {
             /**
@@ -209,50 +209,6 @@ export interface components {
         };
         /** @enum {string} */
         Category: "sans" | "serif" | "mono" | "handwriting";
-        /**
-         * Copy
-         * @description The sentences the browser fills in as the user types, in the reader's language.
-         */
-        Copy: {
-            /** Missing */
-            missing: string;
-            /** Will Leave Out */
-            will_leave_out: string;
-            /** Too Long */
-            too_long: string;
-            /** Substitute */
-            substitute: string;
-            /** Substitute Same Widths */
-            substitute_same_widths: string;
-            /** Drawn In Your Copy */
-            drawn_in_your_copy: string;
-            /** Drawn In Own Copy */
-            drawn_in_own_copy: string;
-            /** Undo Redaction */
-            undo_redaction: string;
-            /** Reopened */
-            reopened: string;
-            /** Export Left Out */
-            export_left_out: string;
-            /** Form Field Not Edited */
-            form_field_not_edited: string;
-            /** Empty */
-            empty: string;
-            /** Options */
-            options: {
-                [key: string]: {
-                    [key: string]: string;
-                };
-            };
-            /** Approximate */
-            approximate: {
-                [key: string]: string;
-            };
-            /** Characters */
-            characters: {
-                [key: string]: string;
-            };
-        };
         /**
          * DeletePage
          * @description Leave a page out of the file, and everything on it.
@@ -284,7 +240,7 @@ export interface components {
             /** Expires At */
             expires_at: string;
             fit: components["schemas"]["FitRules"];
-            copy: components["schemas"]["Copy"];
+            sentences: components["schemas"]["Sentences"];
             /** Notices */
             notices: components["schemas"]["DocumentNoticeInfo"][];
         };
@@ -734,6 +690,50 @@ export interface components {
             kind: "rotate_page";
         };
         /**
+         * Sentences
+         * @description The sentences the browser says about the document, unfilled, in the reader's language.
+         */
+        Sentences: {
+            /** Missing */
+            missing: string;
+            /** Will Leave Out */
+            will_leave_out: string;
+            /** Too Long */
+            too_long: string;
+            /** Substitute */
+            substitute: string;
+            /** Substitute Same Widths */
+            substitute_same_widths: string;
+            /** Drawn In Your Copy */
+            drawn_in_your_copy: string;
+            /** Drawn In Own Copy */
+            drawn_in_own_copy: string;
+            /** Undo Redaction */
+            undo_redaction: string;
+            /** Reopened */
+            reopened: string;
+            /** Export Left Out */
+            export_left_out: string;
+            /** Form Field Not Edited */
+            form_field_not_edited: string;
+            /** Empty */
+            empty: string;
+            /** Options */
+            options: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Approximate */
+            approximate: {
+                [key: string]: string;
+            };
+            /** Characters */
+            characters: {
+                [key: string]: string;
+            };
+        };
+        /**
          * SkippedInfo
          * @description An edit left out, by its place in the list the browser sent, and why.
          *
@@ -757,10 +757,8 @@ export interface components {
          * SpanInfo
          * @description One editable span and whether it keeps its own font.
          *
-         *     `why` says how an approximate span would come back unlike itself, in no
-         *     language: its sentence is in the reply's `copy`, under `approximate`.
-         *     `form_field` is true when a form field draws the text, not the page: an
-         *     edit to it is left out, and `copy`'s `form_field_not_edited` says so.
+         *     `why` names how an approximate span comes back unlike itself (`sentences.approximate`);
+         *     `form_field`, text a form field draws, which an edit leaves alone (`form_field_not_edited`).
          */
         SpanInfo: {
             /** Id */

@@ -46,7 +46,7 @@ function FontRow({ copies }: { copies: FontCopies }) {
   const { shownName, names, font, attached } = copies;
   const name = readableName(shownName);
   const editor = useEditor();
-  const copy = useEditorState((state) => state.doc.copy);
+  const sentences = useEditorState((state) => state.doc.sentences);
   const refused = useEditorState((state) => {
     const notice = state.notices.font;
     return notice !== null && names.includes(notice.font) ? notice.text : null;
@@ -56,7 +56,7 @@ function FontRow({ copies }: { copies: FontCopies }) {
   const focusHere = useEditorState((state) => state.focusFont !== null && names.includes(state.focusFont));
   const warned = useEditorState((state) => state.layout.warnedFonts.has(shownName));
   const warns = useEditorState((state) => !state.quietFonts.has(shownName));
-  const drawnBy = drawnByOf(copies, copy);
+  const drawnBy = drawnByOf(copies, sentences);
   // Sent focus, the row's button takes it as it's drawn: the one pressed has just gone.
   const takeFocus = useCallback(
     (button: HTMLButtonElement | null) => {
