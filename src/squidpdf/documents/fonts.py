@@ -49,7 +49,7 @@ class AttachController:
         font_name: str,
         declared: int | None,
         chunks: AsyncIterable[bytes],
-        said_in: str,
+        language: str,
     ) -> Reply[bytes]:
         """Keep `chunks` as the copy of `font_name`, if it's that font; judge every span again.
 
@@ -73,7 +73,7 @@ class AttachController:
         finally:
             # Kept under its name by now, or refused: either way, nothing to keep here.
             await asyncio.to_thread(arriving.unlink, missing_ok=True)
-        return await _document_reply(doc, kept=kept, said_in=said_in)
+        return await _document_reply(doc, kept=kept, language=language)
 
     async def _enqueue_attach_font(
         self, folder: Path, *, name: str, arrived: Path
@@ -89,10 +89,10 @@ class DetachController:
 
     workers: Workers  # where the document is judged again
 
-    async def detach(self, doc: Loaded, *, font_name: str, said_in: str) -> Reply[bytes]:
+    async def detach(self, doc: Loaded, *, font_name: str, language: str) -> Reply[bytes]:
         """Remove the copy of `font_name`, if there is one, and judge every span again."""
         kept = await self._enqueue_detach_font(doc.folder, name=strip_subset(font_name))
-        return await _document_reply(doc, kept=kept, said_in=said_in)
+        return await _document_reply(doc, kept=kept, language=language)
 
     async def _enqueue_detach_font(self, folder: Path, *, name: str) -> KeptAnalysis:
         """Remove the copy, and judge the document again, on a worker."""
@@ -131,13 +131,13 @@ def _detach_font(folder: Path, *, name: str) -> KeptAnalysis:
         return analyse(folder)
 
 
-async def _document_reply(doc: Loaded, *, kept: KeptAnalysis, said_in: str) -> Reply[bytes]:
-    """The document judged again, as the browser gets it, in `said_in`."""
+async def _document_reply(doc: Loaded, *, kept: KeptAnalysis, language: str) -> Reply[bytes]:
+    """The document judged again, as the browser gets it, in `language`."""
     # Off the server's thread: it reads every font's letters and writes them out again.
     body = await asyncio.to_thread(
-        document_json, doc.id, expires_at=doc.expires_at, kept=kept, said_in=said_in
+        document_json, doc.id, expires_at=doc.expires_at, kept=kept, language=language
     )
-    return Reply(body, words.language_headers(said_in))
+    return Reply(body, words.language_headers(language))
 
 
 async def _save_font(chunks: AsyncIterable[bytes], *, to: Path) -> None:

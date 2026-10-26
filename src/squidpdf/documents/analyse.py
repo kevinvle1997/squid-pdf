@@ -24,7 +24,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import attached, store
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.rooms import kept_rooms
+from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.types import (
     AnalysisFacts,
     ApproximateInfo,
@@ -93,40 +93,13 @@ def _analysed(
 ) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
 
-    Kept under the set of the user's copies it was judged with, `files`.
-
-    Kept in no language: each sentence as its code and facts, said when it's sent.
-    Handed back as its JSON, so it leaves the worker fast and the reply sends its spans as is.
+    Kept under the set of the user's copies it was judged with, `files`, in no language: each
+    sentence as its code and facts. As JSON, it leaves the worker fast and is sent as it is.
     """
     reports = {report.span_id: report for report in engine.assess(index)}
     # Text a form field draws: said before any edit, since an edit to it is left out.
     form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
-    # Index order: the first span in each font speaks for it.
-    first_span_of_font: dict[str, Span] = {}
-    for span in index:
-        first_span_of_font.setdefault(span.font, span)
-    fonts: list[FontFacts] = [
-        {
-            "name": span.font,
-            "shown_name": engine.shown_name(span),
-            "substitute": reports[span.id].substitute,
-            "why": _substitute_why(reports[span.id]),
-            "same_widths": reports[span.id].same_widths,
-            "look_alike": engine.look_alike(span),
-            "attached": strip_subset(span.font) in files,
-            "glyphs": engine.widths(span),
-        }
-        for span in first_span_of_font.values()
-    ]
-    facts: AnalysisFacts = {
-        "build": BUILD,
-        "active_content_dropped": store.active_content_dropped(folder),
-        "pages": [
-            {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
-            for page in store.load_pages(folder)
-        ],
-        "fonts": fonts,
-    }
+    facts = _document_facts(folder, _fonts_of(engine, index, reports=reports, files=files))
     spans = [
         _span_info(
             span,
@@ -139,6 +112,46 @@ def _analysed(
     kept = _kept_analysis(facts, spans)
     store.save_analysis(folder, BUILD, kept, attached=files.key)
     return kept
+
+
+def _fonts_of(
+    engine: Engine,
+    index: SpanIndex,
+    *,
+    reports: Mapping[str, FidelityReport],
+    files: attached.AttachedFiles,
+) -> list[FontFacts]:
+    """Each font's facts, from the first span in it."""
+    # Index order: the first span in each font speaks for it.
+    first_span_of_font: dict[str, Span] = {}
+    for span in index:
+        first_span_of_font.setdefault(span.font, span)
+    return [
+        {
+            "name": span.font,
+            "shown_name": engine.shown_name(span),
+            "substitute": reports[span.id].substitute,
+            "why": _substitute_why(reports[span.id]),
+            "same_widths": reports[span.id].same_widths,
+            "look_alike": engine.look_alike(span),
+            "attached": strip_subset(span.font) in files,
+            "glyphs": engine.widths(span),
+        }
+        for span in first_span_of_font.values()
+    ]
+
+
+def _document_facts(folder: Path, fonts: list[FontFacts]) -> AnalysisFacts:
+    """What the analysis says of the whole document: its build, pages and fonts."""
+    return {
+        "build": BUILD,
+        "active_content_dropped": store.active_content_dropped(folder),
+        "pages": [
+            {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
+            for page in store.load_pages(folder)
+        ],
+        "fonts": fonts,
+    }
 
 
 def _kept_analysis(facts: AnalysisFacts, spans: list[SpanInfo]) -> KeptAnalysis:

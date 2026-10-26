@@ -48,9 +48,8 @@ WORKER_START_S = 30
 BROKEN_POOL_CHECK_S = 0.1
 
 
-# Worker failures, matched in order with `isinstance`, and the first match wins.
-# `isinstance`, not a dict keyed by type: a subclass of a row's type must find it.
-# The order, because a new row could overlap one above it: the narrower goes first.
+# Worker failures, matched in order with `isinstance`, so a subclass finds its row; the
+# first match wins, so a narrower row goes above one it overlaps.
 WORKER_FAILURES = (
     # Out of time, waiting or working: slow, not necessarily broken.
     Failure(raised=TimeoutError, problem=TooSlow),

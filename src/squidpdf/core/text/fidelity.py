@@ -1,11 +1,8 @@
-"""Whether an edit will look identical, decided before the user commits.
+"""Whether an edit will look identical, decided before the user commits. This is the product.
 
-This is the product. Everything else is a text editor.
-
-Kept apart from `Span` on purpose: a Span is what the PDF says, and that does not
-change. Fidelity is what *we* can promise given the fonts we ship, which changes
-when the library does. Joining them would make the span index go stale for a
-reason that has nothing to do with the document.
+Kept apart from `Span` on purpose: a Span is what the PDF says, which never changes, and
+fidelity is what our fonts can promise, which changes with them. Joined, the span index
+would go stale for a reason that has nothing to do with the document.
 """
 
 from __future__ import annotations

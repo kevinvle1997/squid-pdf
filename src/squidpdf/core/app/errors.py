@@ -38,14 +38,14 @@ class Problem(Exception):
         """What the user is told, in no language yet: the sentence's key and its facts."""
         return Message(self.type, dict(self.fill))
 
-    def said_in(self, language: str) -> str:
+    def sentence_in(self, language: str) -> str:
         """The sentence the user reads, in `language`: its Message, said as any other is."""
         return words.render(self.message, language)
 
     @property
     def detail(self) -> str:
         """The sentence the user reads, in English, placeholders filled."""
-        return self.said_in(words.ENGLISH)
+        return self.sentence_in(words.ENGLISH)
 
     def __reduce__(self) -> tuple[Any, ...]:
         """Raised in a worker, it reaches the server whole: `fill` isn't in `args`.
@@ -150,10 +150,8 @@ class ErrorController:
     def result_of[T](self, task: Callable[[], T]) -> T:
         """What `task()` returns, or the Problem a row says its failure means.
 
-        A worker runs its task through this: a library's exception may hold a
-        pointer, so it can't be sent back from another process, but its meaning
-        can. A failure no row claims goes up as it is, for a layer above to
-        claim or to log as the bug it is.
+        A worker runs its task through this: a library's exception may hold a pointer,
+        so it can't cross processes, but its meaning can. One no row claims goes up as it is.
         """
         try:
             return task()

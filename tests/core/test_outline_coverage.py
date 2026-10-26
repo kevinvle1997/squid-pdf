@@ -12,9 +12,8 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
 from tests.helpers import assert_equal
 
-# Two of each format we ship: TrueType outlines (the largest and a common one)
-# and CFF, Adobe's compact outlines. Drawing every face takes too long for the
-# suite; the PR that brought the outline read in compared all of them.
+# Two of each format we ship, TrueType and CFF (Adobe's compact outlines): drawing every
+# face takes too long for the suite.
 _SAMPLED = [
     "FreeSerif Regular",
     "Liberation Sans Regular",

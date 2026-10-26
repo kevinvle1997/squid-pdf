@@ -349,10 +349,9 @@ def _square(width: int) -> Glyph:
 def _variable_font() -> bytes:
     """A made-up variable font with one letter, A: 500 wide at weight 400, wider when bolder.
 
-    The weight axis runs 100 to 900, default 400. Its one variation moves A's
-    right edge and its advance (the third, fourth and sixth points: two corners,
-    then the right side's phantom point) out by _WIDE at 900, so A is 620 wide
-    at 700.
+    The weight axis runs 100 to 900, default 400. Its one variation moves A's right edge and
+    advance (points three, four and six: two corners, then the right phantom point) out by
+    _WIDE at 900, so A is 620 wide at 700.
     """
     fb = FontBuilder(_EM, isTTF=True)
     fb.setupGlyphOrder([".notdef", "A"])

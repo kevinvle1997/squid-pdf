@@ -1,9 +1,8 @@
 """Every copy of one font in the file, pooled, so a letter one copy lacks comes from another.
 
-A PDF stores only the letters it used, per copy of a font, and one file can
-hold several copies of one face: merged documents, or a copy per page, and
-Google's copy of it can join them. `core.fonts.document` finds and opens the
-copies; the pool takes each in only when a letter needs it.
+A PDF stores only the letters it used, per copy, and one file can hold several copies of a
+face (merged documents, a copy per page), which Google's can join. `core.fonts.document`
+finds and opens them; the pool takes each in only when a letter needs it.
 """
 
 from __future__ import annotations
@@ -26,9 +25,8 @@ from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.types import EM, CodedFont, FontCode, PageFont
 
-# The copies that may lend the own copy letters, in the order they lend, given the
-# letters lent so far: whether a later one is worth opening can depend on them. A
-# copy from outside the file that can't be had comes as why, to be said.
+# The copies that may lend the own copy letters, in lending order, given those lent so far
+# (they decide whether a later one is worth opening); one that can't be had comes as why.
 type _Lenders = Callable[[Mapping[str, FontCopy]], Iterable[FontCopy | FontUnusable]]
 
 
@@ -92,13 +90,9 @@ class _TurnedAway:
 class PooledFont:
     """The span's own copy of its font, and the copies of the same font, taken in as needed.
 
-    Each letter comes from the first copy, in the order they lend, that really
-    draws it. A copy is taken in only when a letter the ones so far lack is
-    asked for, so a line the own copy draws opens no other. Implements
-    `core.pdf.driver.FontProgram`, so it measures like one font. Made by
-    `pooled_font`; its fields are never replaced, only filled. `eq=False` is
-    needed, not only tidy: it's part of a dict key (`_PageFacts.usual_gaps`),
-    so it hashes as itself.
+    Each letter comes from the first copy, in lending order, that draws it; a copy is taken in
+    only when a letter the ones so far lack is asked for. Measures as one `FontProgram`.
+    `eq=False` is needed: it's in a dict key (`_PageFacts.usual_gaps`), so it hashes as itself.
     """
 
     own: FontCopy  # the copy the span's page uses
@@ -176,10 +170,8 @@ class PooledFont:
     def why_missing(self, text: str) -> Message:
         """Why the pool can't draw all of `text`.
 
-        A copy turned away that draws a missing letter says why it was; else a
-        copy from outside the file that couldn't be had says why, after the
-        file's own reason (Google's `google_*` sentences); else no copy of the
-        font has the letter.
+        A copy turned away that draws a missing letter says why; else one from outside the file
+        that couldn't be had, after the file's own reason; else no copy has the letter.
         """
         # A missing letter took every copy in, so every copy turned away is known.
         missing = self.missing(text)
@@ -323,10 +315,9 @@ def why_turned_away(
 ) -> Message | None:
     """Why `other` isn't the same font as the pool so far, only the same name; None when it is.
 
-    The same font is the same kind, written the same way (by letter or by
-    code), shares at least SAME_FONT_SHARED letters, and draws every letter
-    both have as wide within SAME_WIDTH. A space isn't compared: a copy that
-    never drew one gives its empty glyph's width instead.
+    The same font is the same kind, written the same way (by letter or by code), shares at
+    least SAME_FONT_SHARED letters, and draws those both have within SAME_WIDTH. A space isn't
+    compared: a copy that never drew one gives its empty glyph's width.
     """
     same_kind = other.font.kind == own.font.kind
     same_way = (other.embedded.coded is None) == (own.embedded.coded is None)

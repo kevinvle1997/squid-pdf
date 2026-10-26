@@ -57,9 +57,8 @@ PNG_COLOR_LEVEL = 6  # the usual level, MuPDF's own: lower made some photos larg
 # Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
 LIBRARY_VERSION = "11"
 
-# Google's font collection (github.com/google/fonts) at this commit: the family
-# list in `fonts/google-families.json` is read from it, and every copy is fetched
-# from it. Part of `build`: a new pin judges every document again.
+# Google's font collection (github.com/google/fonts) at this commit: `google-families.json`
+# and every copy come from it. Part of `build`: a new pin judges every document again.
 GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
 # How long one fetch of Google's copy may take before the line goes to the substitute.
 FETCH_TIMEOUT_S = 5.0
@@ -83,9 +82,8 @@ ANALYSIS_TUNING = {
     "keyboard_ranges": KEYBOARD_RANGES,
 }
 
-# The letters a face we ship lists widths for, so the browser can preview new text:
-# Latin, Greek, Cyrillic, punctuation, currency, letterlike signs and arrows.
-# Short to keep the font list small; letters past these still draw.
+# The letters a face we ship lists widths for, so the browser can preview new text;
+# short to keep the font list small, and letters past these still draw.
 GLYPH_LIST_RANGES = (
     range(0x20, 0x250),
     range(0x370, 0x530),
@@ -113,9 +111,8 @@ OPTION_KEYS = {
     "as-is": _OptionKeys(label="as_is_label", detail="as_is_detail"),
 }
 
-# Where the redaction check reads an image in a drawing, as another reader than MuPDF ends it.
-# How many bytes sooner than MuPDF another reader may end an image's counted bytes: it reads
-# a line end after ID as one byte, or its decoder needs fewer bytes ahead.
+# How many bytes sooner than MuPDF another reader may end an image in a drawing, for the
+# redaction check: it may read a line end after ID as one byte, or decode fewer bytes ahead.
 IMAGE_SOONER_BY = 16
 # How many bytes a filter undone before an image's last may give per byte written, at most:
 # past that, a bomb would fill a worker's memory, so it's cut there, and may size nothing.

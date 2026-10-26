@@ -1,4 +1,4 @@
-"""Every span's room, worked out once from the original and kept beside its analysis.
+"""The free space after each span (its room), worked out once from the original and kept.
 
 No font moves a room, so a render, an export and attaching a copy read them, not the pages.
 """

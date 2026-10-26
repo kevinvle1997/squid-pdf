@@ -1,9 +1,8 @@
 """What the PDF says, and what we can promise about changing it.
 
-Imported by every feature, through this module only: nothing outside `core`
-imports one of its modules, so what a feature uses is exported here on purpose,
-and nothing outside names the PDF library (open a PDF with `open_pdf`). Nothing
-here may import a feature. tests/test_layers.py checks all three.
+The only way in from outside `core`, so what a feature uses is exported on purpose;
+nothing outside names the PDF library (open a PDF with `open_pdf`), and nothing here
+imports a feature. tests/test_layers.py checks all three.
 """
 
 from __future__ import annotations

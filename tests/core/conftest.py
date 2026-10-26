@@ -64,10 +64,9 @@ def _truetype(
 ) -> bytes:
     """A tiny made-up TrueType font, built fresh for the tests.
 
-    A and B are squares; space, C and .notdef have no shape. C is empty on
-    purpose, the way a trimmed-down font leaves out letters it didn't need.
-    `cmap` is its own letter lookup: a (3,0) symbol one, a Unicode one when
-    `symbol` is False, or none at all.
+    A and B are squares; space, C and .notdef have no shape, C as a trimmed font leaves a
+    letter it didn't need. `cmap` is its letter lookup: a (3,0) symbol one, a Unicode one when
+    `symbol` is False, or none.
     """
     builder = FontBuilder(_EM, isTTF=True)
     builder.setupGlyphOrder(_GLYPHS)
@@ -415,10 +414,9 @@ def type3_copies(tmp_path_factory) -> str:
 def gapped(tmp_path_factory) -> str:
     """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
 
-    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps:
-    - GAPPED_TEXT, word by word: each gap is a piece of its own.
-    - GAPPED_TEXT in one run (TJ): the gaps are spaces inside one piece.
-    - LONE_WORD: no gap but the page's.
+    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps: GAPPED_TEXT
+    word by word (a piece per gap), GAPPED_TEXT in one TJ run (spaces inside one piece), and
+    LONE_WORD (no gap but the page's).
     """
     path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
     doc = pymupdf.open()
@@ -472,9 +470,8 @@ def _merged(
 ) -> str:
     """Two one-page PDFs, each with its own trimmed copy of a font, joined into one.
 
-    As merging two documents leaves them: every page keeps the copy it came
-    with, trimmed (subset) to that page's letters, under the same name with a
-    different subset prefix. Page 0 draws texts[0] in fonts[0], page 1
+    As merging leaves them: each page keeps its copy, trimmed (subset) to its letters, under
+    the same name with another subset prefix. Page 0 draws texts[0] in fonts[0], page 1
     texts[1] in fonts[1].
     """
     merged = pymupdf.open()
@@ -507,10 +504,9 @@ def merged(tmp_path_factory) -> str:
 def merged_coded(tmp_path_factory) -> str:
     """Two pages, each with its own trimmed copy of Liberation Sans, reached only by code.
 
-    MuPDF drops a TrueType's letter table (cmap) when it trims one, so only
-    the letter list (ToUnicode) says which code draws each letter. Both copies
-    keep every glyph at its old number and empty the ones the page didn't use:
-    the same code draws Y in page 1's copy and nothing in page 0's.
+    MuPDF drops a TrueType's letter table (cmap) when it trims one, so only the letter list
+    (ToUnicode) says which code draws each letter. Both keep every glyph at its number, empty
+    if unused: the same code draws Y in page 1's copy and nothing in page 0's.
     """
     sans = face_bytes(FACES["Liberation Sans Regular"])
     return _merged(str(tmp_path_factory.mktemp("merged") / "codes.pdf"), (sans, sans))

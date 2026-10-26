@@ -571,10 +571,9 @@ class _MuPDFDriver:
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
-        Each run's font is one `add_font` added. `scale_x` narrows each run from its own
-        start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise about
-        its origin. Written as PyMuPDF's `insert_text` writes it, to the byte, but for
-        `letter_spacing`, the points past its width each letter is set apart.
+        Each run's font is one `add_font` added. `scale_x` narrows a run from its own start, and
+        `turn_ccw` turns it about its origin. Written to the byte as PyMuPDF's `insert_text`
+        writes it, but for `letter_spacing`.
         """
         written = [run for run in runs if run.text]
         # No letter written (empty new text): nothing to add.
@@ -585,33 +584,26 @@ class _MuPDFDriver:
         # from the paper's top. Not `to_pdf_space`, whose numbers differ in the last bit.
         paper_top, corner = pdf_page.mediabox.y1, pdf_page.cropbox_position
         xrefs = self._changed_page(page).named
-        # See-through: a graphics state that paints at `opacity`.
-        paint = (
-            f"/{self.file.additions.add_opacity_as_pymupdf(page, opacity)} gs\n"
-            if opacity < SOLID
-            else ""
-        )
-        turned = _written_turn(turn_ccw)
-        # Each number as PyMuPDF writes one (format_g): the fewest digits its float needs.
-        rgb = pymupdf.format_g(color)
-        # Its size, and its color for strokes and fills alike.
-        setting = (
-            f"{pymupdf.format_g(size)} Tf {rgb} RG {rgb} rg{_written_spacing(letter_spacing)}"
+        style = _RunStyle(
+            paint=self._paint_at(page, opacity),
+            scale_x=scale_x,
+            turn_ccw=turn_ccw,
+            setting=_written_setting(size, color, letter_spacing),
         )
         stream = ""
         for run in written:
             x, y = run.origin
             start = (x + corner.x, paper_top - y - corner.y)
-            placed = pymupdf.format_g(_turned_back(start, turn_ccw))
             glyphs = self._glyph_codes(xrefs[run.resource], run.text)
-            # Save the page's settings, paint, narrow and turn about the run's start, place
-            # it, write its glyphs in its font, size and color, then put the settings back.
-            stream += (
-                f"\nq\n{paint}BT\n{_written_narrowing(start, scale_x)}{turned}"
-                f"1 0 0 1 {placed} Tm\n{_written_name(run.resource)} {setting} [<{glyphs}>]TJ"
-                "\nET\nQ\n"
-            )
+            stream += _written_run(start, glyphs=glyphs, resource=run.resource, style=style)
         self._add_content(page, stream.encode())
+
+    def _paint_at(self, page: int, opacity: float) -> str:
+        """The graphics state that paints at `opacity`, as a drawing sets it; none if solid."""
+        # Solid: the page's own state paints it.
+        if opacity >= SOLID:
+            return ""
+        return f"/{self.file.additions.add_opacity_as_pymupdf(page, opacity)} gs\n"
 
     def _glyph_codes(self, xref: int, text: str) -> str:
         """`text` as codes in font `xref`, four hex digits a letter: each its glyph's number.
@@ -946,6 +938,40 @@ def _written_narrowing(start: tuple[float, float], scale_x: float) -> str:
 def _matrix_number(number: float) -> float:
     """One of a matrix's numbers, rounded as PyMuPDF rounds a matrix `insert_text` writes."""
     return round(number, _MATRIX_DP) if abs(number) >= _NEAR_ZERO else 0
+
+
+@dataclass(frozen=True, slots=True)
+class _RunStyle:
+    """What every run of one `write_text` is written with."""
+
+    paint: str  # the graphics state that paints it see-through, or nothing when solid
+    scale_x: float
+    turn_ccw: QuarterTurn
+    setting: str  # its size, colour and letter spacing, as a drawing writes them
+
+
+def _written_setting(
+    size: float, color: tuple[float, float, float], letter_spacing: float
+) -> str:
+    """A run's size, and its colour for strokes and fills alike, as PyMuPDF writes them."""
+    # Each number as PyMuPDF writes one (format_g): the fewest digits its float needs.
+    rgb = pymupdf.format_g(color)
+    return f"{pymupdf.format_g(size)} Tf {rgb} RG {rgb} rg{_written_spacing(letter_spacing)}"
+
+
+def _written_run(
+    start: tuple[float, float], *, glyphs: str, resource: str, style: _RunStyle
+) -> str:
+    """One run, written from `start` in the PDF's coordinates: its glyphs in `resource`."""
+    placed = pymupdf.format_g(_turned_back(start, style.turn_ccw))
+    narrowed = _written_narrowing(start, style.scale_x)
+    # Save the page's settings, paint, narrow and turn about the run's start, place it,
+    # write its glyphs in its font, size and colour, then put the settings back.
+    return (
+        f"\nq\n{style.paint}BT\n{narrowed}{_written_turn(style.turn_ccw)}"
+        f"1 0 0 1 {placed} Tm\n{_written_name(resource)} {style.setting} [<{glyphs}>]TJ"
+        "\nET\nQ\n"
+    )
 
 
 def _written_turn(turn_ccw: QuarterTurn) -> str:

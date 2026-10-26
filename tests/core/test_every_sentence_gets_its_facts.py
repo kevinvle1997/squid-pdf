@@ -1,15 +1,8 @@
 """Every Message and Problem in the code is given every fact its sentence's {placeholders} take.
 
-A placeholder with no fact raises KeyError when it's said, inside the error
-handler. Read from the code, not run, so it covers what no test reaches. A fact
-no placeholder takes is allowed: a Problem sends its facts to the browser as
-`params`, and one call gives every way out of an overflow the same facts.
-
-It reads only what is written out. A Message whose key or facts are a variable
-(`Message("chosen_unavailable", chosen)`), and a sentence sent unfilled for the
-browser to fill (`words.sentence("missing", said_in)`), are checked for their
-key alone. A Problem made by a function passed in, not called by name (a row's
-maker), is checked as its class's own `__init__` says.
+A missing fact raises KeyError when said, inside the error handler; read from the code, not
+run, so it covers what no test reaches. A spare fact is allowed. A key or facts held in a
+variable, or a sentence the browser fills, are checked for the key alone.
 """
 
 from __future__ import annotations

@@ -23,10 +23,8 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, table__g_l_y_f
 from squidpdf.core.constants import GLYPH_LIST_RANGES
 from squidpdf.core.types import Codepoint, GlyphId, GlyphName
 
-# Counted as drawable whether the font maps it or not: the plain space is one text
-# extraction adds between words a font never drew a space for. Any other space
-# (no-break, figure, thin...) draws nothing yet still needs the font to map it:
-# unmapped, it's drawn as .notdef. Line breaks and tabs aren't text on a line.
+# Drawable whether mapped or not: text extraction adds a plain space where a font drew none.
+# Any other space still needs mapping, or it's drawn as .notdef. A line break isn't text.
 _ALWAYS_DRAWABLE = frozenset({" "})
 
 
@@ -45,13 +43,9 @@ _OUTLINE_COUNT = struct.Struct(">h")
 class Coverage:
     """Which characters an embedded font program can really render. Made by `coverage_of`.
 
-    Built from the raw bytes as extracted from the PDF, which may be a bare CFF
-    (Adobe's compact outline format), a TrueType, or an OpenType wrapper. Bytes
-    it can't read (Type1, a font whose letter table has no Unicode) fall back to
-    `listed_letters`, the font engine's own list: the best word left. A TrueType with no
-    Unicode letter table can be given `glyph_ids` (letter -> glyph id) instead;
-    then only those letters count.
-    Results are cached per character because the check runs on every keystroke.
+    Read from the font's bytes: a bare CFF, a TrueType or an OpenType. Bytes it can't read
+    (Type1, no Unicode table) fall back to `listed_letters`; a TrueType may be given
+    `glyph_ids` instead, and only those count. Cached per letter: it runs on every keystroke.
     """
 
     usable: bool  # its bytes parsed: else only `listed_letters` says what it draws
@@ -168,12 +162,9 @@ def _bare_cff_coverage(
 ) -> Coverage:
     """A bare CFF, as CIDFontType0 subsets are embedded.
 
-    There is no cmap here, so each glyph's name says its letter: Adobe's
-    names ("eacute", "fi" for the ligature ﬁ) or "uni00E9". That only
-    works for name-keyed CFFs; a CID-keyed one carries CID glyph names
-    instead (`cid00034`, not `eacute`), which cannot be mapped back to
-    Unicode from the font bytes alone. Raised so the font is marked
-    unusable rather than silently reporting every character as missing.
+    With no cmap, each glyph's name says its letter ("eacute", "uni00E9"). A CID-keyed CFF
+    names glyphs by CID, which the bytes alone can't map to Unicode: raised, so the font is
+    marked unusable rather than reporting every letter missing.
     """
     cff = CFFFontSet()
     cff.decompile(io.BytesIO(buffer), None)

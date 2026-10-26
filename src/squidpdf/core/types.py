@@ -163,10 +163,8 @@ class TextRun:
 class CodeRun:
     """A run of a line as the driver writes it in codes: codes in one font, written in one go.
 
-    A code is what a page writes to pick a shape from a font: one or two bytes,
-    as many as that font's codes take, not a letter. Most fonts look up a
-    letter's code themselves; a font with no letters of its own can only be
-    written in its codes. A line's runs follow each other: each starts where the
+    A code is what a page writes to pick a shape: one or two bytes, as the font's codes take.
+    A font with no letters of its own can only be written in codes. Each run starts where the
     one before left the pen.
     """
 
@@ -210,13 +208,9 @@ class Fragment:
 class Span:
     """A run of text the user can edit, merged from one or more fragments.
 
-    `font` is the name as the file records it, subset prefix and all
-    (`ABCDEE+Calibri`). `origin` is the baseline start, not the top-left of the
-    box: two points out is visible.
-
-    `id` is stable for the life of a document because the index is built once
-    from the pristine file and never rebuilt from an edited one. See SpanIndex.
-    `color`, `opacity` and `direction` are its first fragment's.
+    `font` is as the file records it, subset prefix and all (`ABCDEE+Calibri`). `origin` is the
+    baseline start, not the box's top-left. `id` never changes: the index is built once from
+    the pristine file (SpanIndex). `color`, `opacity` and `direction` are its first fragment's.
     """
 
     id: str
@@ -364,10 +358,9 @@ def new_text(
 class SpanIndex:
     """Every editable span in a document, built once and never rebuilt. Made by `index_of`.
 
-    This is the invariant that keeps span ids stable: the index always describes
-    the *original* file. Edits are applied on top when rendering, but the index
-    itself is never re-extracted from a patched document. Rebuild it and every id
-    changes, and every reference the client holds dangles.
+    The index always describes the *original* file: edits are drawn on top when rendering,
+    never re-extracted. Rebuild it and every id changes, and every reference the client holds
+    dangles.
     """
 
     # Each span by its id, in the order it was extracted: a dict keeps the order it's

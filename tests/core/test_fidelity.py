@@ -626,8 +626,9 @@ def test_text_a_redraw_wouldnt_match_is_approximate_not_exact(tmp_path, line, st
 
 
 def test_a_line_an_export_redrew_is_still_exact_when_opened_again(pdf, tmp_path):
-    """Its text reads "NimbusRoman-Regular", the font file's own name; the page lists it
-    as "Nimbus Roman Regular". The same font either way, so the next edit keeps it.
+    """One font, whether read as "NimbusRoman-Regular" or listed as "Nimbus Roman Regular".
+
+    Its text reads the font file's name, and the page lists the other: the next edit keeps it.
     """
     out = str(tmp_path / "exported.pdf")
     with open_pdf(pdf) as engine:

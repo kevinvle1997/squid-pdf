@@ -368,10 +368,9 @@ def _download_checked_and_cut(file: GoogleFile, fetching: _Fetching) -> bytes | 
 def _read_cached_copy(cached_path: Path, file: GoogleFile) -> bytes | None:
     """The cached copy of `file` at `cached_path`; None when it's gone bad.
 
-    Raises FileNotFoundError when it isn't cached, so the caller can count the miss.
-    Checked on every read: a copy cut short (a crash before the disk caught up)
-    would otherwise be trusted for good. A bad one is deleted where the disk
-    allows, and fetched again.
+    Raises FileNotFoundError when it isn't cached, so the caller can count the miss. Checked
+    on every read: a copy cut short by a crash would otherwise be trusted for good. A bad one
+    is deleted where the disk allows, and fetched again.
     """
     font_file = cached_path.read_bytes()
     expected_hash = file.blob if file.weight is None else _hash_beside(cached_path).read_text()

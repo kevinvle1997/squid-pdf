@@ -45,13 +45,9 @@ _SOME_WIDTH_PT = 1.0
 class FitReport:
     """The answer to 'what happens if I type this'.
 
-    Carries facts and option *identifiers*. What's wrong comes out of
-    `describe()` as Messages, which the edge puts into the reader's words, so
-    the engine never learns about language. `strategy` is the one drawn: the
-    one asked for if it was offered, else as-is.
-
-    It describes what will really be drawn: `delta_pt` is measured without the
-    `left_out` letters, since they won't be there.
+    Facts and option identifiers: what's wrong comes out of `describe()` as Messages, so the
+    engine never learns about language. `strategy` is the one drawn: the one asked for if
+    offered, else as-is. `delta_pt` leaves out `left_out`, since those won't be drawn.
     """
 
     delta_pt: float

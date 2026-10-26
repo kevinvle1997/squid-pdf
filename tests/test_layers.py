@@ -175,10 +175,8 @@ def _past_core_door(name: str) -> bool:
 def test_outside_core_squidpdf_core_is_the_only_way_in():
     """A feature imports `from squidpdf.core import ...`, never one of core's modules.
 
-    So core can move its insides without touching a feature, what a feature uses
-    is exported on purpose, and nothing outside names the driver: `open_pdf` is
-    the way in. `from squidpdf.core import Span` reads as `squidpdf.core.Span`,
-    which is no module, so only an import past the door counts.
+    So core can move its insides, and nothing outside names the driver. `from squidpdf.core
+    import Span` reads as `squidpdf.core.Span`, which is no module, so only one past it counts.
     """
     breaking = [
         module
@@ -350,9 +348,8 @@ def test_only_a_holder_changes_its_fields_after_it_is_made():
     assert_equal(breaking, [], "fields changed after an object is made, outside a holder")
 
 
-# Where a table lives (rules/backend/python.md, Constants): several modules read it, so it's
-# in a constants.py, or one module does, so it's private to it. These live elsewhere on
-# purpose, by name, each with why.
+# Tables kept out of a constants.py and out of their one reader on purpose, each with why
+# (rules/backend/python.md, Constants).
 _TABLES_ELSEWHERE = {
     "QUARTER_TURNS": "type data several modules read, beside its type, QuarterTurn",
     "CATALOG": "the faces we ship: data about files, not tuning, in core/fonts/catalog.py",

@@ -564,9 +564,8 @@ def _inked(path: str, page: int, text: str) -> bool:
 
 
 def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
-    # Round two adds text in the face round one drew in, on the same page. It must
-    # not write into round one's copy, cut down to round one's letters, nor cut
-    # that copy again to its own.
+    # Round two adds text on the same page in round one's face: it must not write into
+    # round one's copy, cut to round one's letters, nor cut that copy again to its own.
     first, second = str(tmp_path / "first.pdf"), str(tmp_path / "second.pdf")
     with open_pdf(pdf) as engine:
         index = engine.index()

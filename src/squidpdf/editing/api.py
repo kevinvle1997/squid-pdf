@@ -81,11 +81,11 @@ async def render(
     render_controller: Annotated[
         RenderController, Depends(controller_with_workers(RenderController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
 ) -> Response:
     """Each region drawn with the edits on its page, a fit per edit, and what was skipped."""
     reply = await render_controller.render(
-        doc, edits=body.edits, regions=body.regions, scale=body.scale, said_in=said_in
+        doc, edits=body.edits, regions=body.regions, scale=body.scale, language=language
     )
     return response_of(reply, media_type="application/json")
 
@@ -114,10 +114,10 @@ async def export(
     export_controller: Annotated[
         ExportController, Depends(controller_with_workers(ExportController))
     ],
-    said_in: ReaderLanguage,
+    language: ReaderLanguage,
 ) -> Response:
     """The edited document as a PDF: every page, or `pages` in that order."""
     reply = await export_controller.export(
-        doc, edits=body.edits, pages=body.pages, said_in=said_in
+        doc, edits=body.edits, pages=body.pages, language=language
     )
     return response_of(reply, media_type="application/pdf")

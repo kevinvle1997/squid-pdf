@@ -2,12 +2,8 @@
 
     uv run python scripts/google_families.py
 
-Reads the commit from `GOOGLE_FONTS_COMMIT` in `core/constants.py`. Lists every
-path and its git blob hash with a blobless, one-commit git fetch (no API, so
-no rate limit), then fetches each family's METADATA.pb and licence from
-raw.githubusercontent.com in parallel, checking each against its blob hash.
-`--tree` and `--files` reuse a saved `git ls-tree -r` listing and files
-already fetched (still checked), to rebuild without the network.
+Lists each path's blob hash at `GOOGLE_FONTS_COMMIT` by a blobless fetch (no API rate limit),
+then each METADATA.pb and licence, checked against its hash, offline (`--tree`, `--files`) too.
 """
 
 from __future__ import annotations

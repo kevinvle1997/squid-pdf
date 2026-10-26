@@ -64,11 +64,9 @@ class DrawPlanner:
     def plan_for(self, span: Span, text: str) -> DrawPlan:
         """How `text` is drawn at this span: the one answer the fit and the draw share.
 
-        In the file's copies of the span's font if they draw every character;
-        otherwise the whole line in the substitute, less what even that can't
-        draw. When the only letters the own font lacks are ones no font we have
-        draws, switching would draw none of them, so the own font keeps the
-        line without them.
+        In the file's copies of the span's font if they draw every letter, else the whole line
+        in the substitute, less what even that can't draw. When the own font lacks only letters
+        no font we have draws, switching would draw none of them, so the own font keeps it.
         """
         own = self.fonts.own(span)
         spacing = self.fonts.letter_spacing(span, own)

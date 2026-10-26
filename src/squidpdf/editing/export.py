@@ -17,7 +17,7 @@ from pathlib import Path
 from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Workers, words
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
-from squidpdf.documents.rooms import kept_rooms
+from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
@@ -41,7 +41,7 @@ class ExportController:
     workers: Workers  # where it makes files, off the server's own thread
 
     async def export(
-        self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, said_in: str
+        self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, language: str
     ) -> Reply[bytes]:
         """The edited PDF, every page or `pages` in that order, and headers for the rest.
 
@@ -53,10 +53,8 @@ class ExportController:
             # Read and parsed from disk: off the server's thread.
             saved_pages = await asyncio.to_thread(store.load_pages, doc.folder)
             _check_pages(pages, len(saved_pages))
-        # The server's folder, not the worker's: a worker killed at its timeout
-        # runs no cleanup, and the edited file must not outlive the document.
-        # Made here on the loop, one mkdir: an await could be cancelled after it
-        # exists and before the `try` that removes it.
+        # The server's folder: a killed worker runs no cleanup, and the edit mustn't outlive the
+        # document. Made on the loop, not awaited, so no cancel lands between it and the `try`.
         scratch = Path(tempfile.mkdtemp())
         try:
             exported = await self._enqueue_make_pdf(
@@ -69,7 +67,7 @@ class ExportController:
             # In a thread: it may hold the whole file. The thread finishes even if the
             # request is cancelled again. Nothing to keep, so a failure is ignored.
             await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
-        return Reply(pdf, _reply_headers(exported, said_in))
+        return Reply(pdf, _reply_headers(exported, language))
 
     async def _enqueue_make_pdf(
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
@@ -133,14 +131,14 @@ def save_edited(
     return Saved(applied, notices)
 
 
-def _reply_headers(exported: Exported, said_in: str) -> dict[str, str]:
+def _reply_headers(exported: Exported, language: str) -> dict[str, str]:
     """What export says besides the file: edits left out, notices, and the language."""
-    notices = [notice_info(FileNotice(message), said_in) for message in exported.file_notices]
+    notices = [notice_info(FileNotice(message), language) for message in exported.file_notices]
     return {
         SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
         # ASCII only, so a header in any language stays valid.
         NOTICES_HEADER: json.dumps(notices, ensure_ascii=True),
-        **words.language_headers(said_in),
+        **words.language_headers(language),
     }
 
 

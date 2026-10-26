@@ -243,10 +243,9 @@ def drawn_with(
 def pdf(tmp_path_factory) -> str:
     """A two-page contract with one kind of font on each page.
 
-    Page 1 only names its fonts: "tibo" and "tiro" are MuPDF's short names for
-    Times Bold and Times Roman, which it never puts in the file. Page 2 puts
-    Times Roman in the file, uses it for two lines, then trims it to the
-    letters those lines use, so a letter like é is left with no shape.
+    Page 1 only names its fonts ("tibo", "tiro": MuPDF's Times, never put in the file). Page 2
+    puts Times Roman in the file for two lines, then trims it to their letters, so é has no
+    shape.
     """
     path = tmp_path_factory.mktemp("fx") / "sample.pdf"
     doc = pymupdf.open()
@@ -291,11 +290,9 @@ _TEXT_FIELD = 7  # PyMuPDF's PDF_WIDGET_TYPE_TEXT, set at import, so type checke
 def form() -> bytes:
     """One page: a line of the page's own text, a filled-in text field, and an empty one.
 
-    The filled field's value is drawn by the field itself (a widget), not by the
-    page, so it's read as a span like any other, but erasing the page's text
-    can't reach it. That's how a filled-in PDF form comes. Inside the empty
-    field the page prints a hint, as forms do: the page's own text, which an
-    edit reaches.
+    The filled field's value is drawn by the widget, not the page, so it's read as a span but
+    erasing the page's text can't reach it, as a filled-in form comes. The empty field holds a
+    hint the page prints, as forms do, which an edit reaches.
     """
     doc = pymupdf.open()
     page = doc.new_page()
@@ -388,10 +385,9 @@ POPPINS_TEXT = "Hello there"
 def poppins_subset(tmp_path_factory) -> str:
     """One line in a trimmed copy of Poppins, named as a real trimmed copy is.
 
-    Trimmed with fontTools, which keeps its letter table, so the engine writes
-    it by letter. MuPDF files an added font as "Poppins Regular"; a real file
-    names it `ABCDEF+Poppins-Regular`, so that's the name it's given, on the
-    font and the one inside it.
+    Trimmed with fontTools, which keeps its letter table, so the engine writes it by letter.
+    Named `ABCDEF+Poppins-Regular`, on the font and inside it, as a real file names it, not as
+    MuPDF files an added one ("Poppins Regular").
     """
     trimmer = Subsetter(Options())
     trimmer.populate(text=POPPINS_TEXT)

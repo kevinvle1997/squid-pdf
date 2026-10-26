@@ -20,7 +20,7 @@ import shutil
 import sys
 import tempfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
@@ -86,6 +86,12 @@ _SAMPLE = "fixtures/sample.pdf"
 def _opened(pdf: str) -> Engine:
     """`pdf`, open for editing, with Google's copies of its fonts to lend, downloaded."""
     return open_pdf(pdf, sources=FontSources(google=google_fonts()))
+
+
+def _spans_arguments(command: argparse.ArgumentParser) -> None:
+    """`spans`: the PDF, and a page to list alone."""
+    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("-p", "--page", type=int, default=None, help="only this page, from 1")
 
 
 def _cmd_spans(args: argparse.Namespace) -> int:
@@ -204,6 +210,13 @@ def _put_at(saved: Path, out: str) -> None:
         raise _NotSaved(out, failed.strerror or str(failed)) from None
 
 
+def _check_arguments(command: argparse.ArgumentParser) -> None:
+    """`check`: the PDF, the span, and the text it would become."""
+    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("span_id")
+    command.add_argument("text", type=_one_line)
+
+
 def _cmd_check(args: argparse.Namespace) -> int:
     """Show what would happen if this span became this text, without saving."""
     with _opened_at(args.pdf, args.span_id) as opened:
@@ -225,6 +238,19 @@ def _cmd_check(args: argparse.Namespace) -> int:
             print(f"    {_DIM}{option.name:<9}{_OFF} {label}{_DIM}: {detail}{_OFF}")
         print()
         return 0
+
+
+def _edit_arguments(command: argparse.ArgumentParser) -> None:
+    """`edit`: what `check` takes, where to save, and a way out to take."""
+    _check_arguments(command)
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
+    command.add_argument("--force", action="store_true", help="edit even if it will not fit")
+    command.add_argument(
+        "--strategy",
+        choices=get_args(Strategy.__value__),
+        default="as-is",
+        help="a way out `check` offers: shrink or condense, to fit",
+    )
 
 
 def _cmd_edit(args: argparse.Namespace) -> int:
@@ -260,6 +286,13 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
     print(f"  {_GREEN}saved{_OFF} {args.out}\n")
     return 0
+
+
+def _redact_arguments(command: argparse.ArgumentParser) -> None:
+    """`redact`: the PDF, the span, and where to save."""
+    command.add_argument("pdf", type=_existing_file)
+    command.add_argument("span_id")
+    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
 
 
 def _cmd_redact(args: argparse.Namespace) -> int:
@@ -298,6 +331,11 @@ class _Row:
     def rate(self) -> float | None:
         """Its green rate; None if it has no text or wasn't read."""
         return green_rate(self.reports)
+
+
+def _report_arguments(command: argparse.ArgumentParser) -> None:
+    """`report`: the PDFs, unchecked: one that won't open is a row, not the end of the run."""
+    command.add_argument("pdfs", nargs="+")
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
@@ -348,6 +386,12 @@ def _rate_color(rate: float) -> str:
     if rate >= GREEN_RATE_WARN:
         return _YELLOW
     return _RED
+
+
+def _fixture_arguments(command: argparse.ArgumentParser) -> None:
+    """`fixture`: where to write, and a page count for a long contract."""
+    command.add_argument("out", nargs="?", default=_SAMPLE, type=_new_file)
+    command.add_argument("--pages", type=int, help="a long contract of this many pages")
 
 
 def _cmd_fixture(args: argparse.Namespace) -> int:
@@ -410,64 +454,56 @@ def _same_file(pdf: str, out: str) -> bool:
     return Path(out).exists() and Path(out).samefile(pdf)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Parse arguments and run the chosen subcommand."""
+@dataclass(frozen=True, slots=True)
+class _Command:
+    """A subcommand: its name, its summary, the arguments it takes, and what runs it."""
+
+    name: str
+    summary: str  # its line in `--help`
+    arguments: Callable[[argparse.ArgumentParser], None]
+    run: Callable[[argparse.Namespace], int]
+
+
+# In the order `--help` lists them.
+_COMMANDS = (
+    _Command("spans", "list editable text and how it would edit", _spans_arguments, _cmd_spans),
+    _Command("check", "what would happen if you typed this", _check_arguments, _cmd_check),
+    _Command("edit", "replace a span and save", _edit_arguments, _cmd_edit),
+    _Command("redact", "remove a span and verify it is gone", _redact_arguments, _cmd_redact),
+    _Command("report", "green rate across a corpus", _report_arguments, _cmd_report),
+    _Command("fixture", "write a sample PDF to try", _fixture_arguments, _cmd_fixture),
+)
+
+
+def _parser() -> argparse.ArgumentParser:
+    """The command line's parser, a subparser per command."""
     parser = argparse.ArgumentParser(
         prog="squidpdf",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     commands = parser.add_subparsers(dest="cmd", required=True)
+    for each in _COMMANDS:
+        command = commands.add_parser(each.name, help=each.summary)
+        each.arguments(command)
+        command.set_defaults(fn=each.run)
+    return parser
 
-    command = commands.add_parser("spans", help="list editable text and how it would edit")
-    command.add_argument("pdf", type=_existing_file)
-    command.add_argument("-p", "--page", type=int, default=None, help="only this page, from 1")
-    command.set_defaults(fn=_cmd_spans)
 
-    command = commands.add_parser("check", help="what would happen if you typed this")
-    command.add_argument("pdf", type=_existing_file)
-    command.add_argument("span_id")
-    command.add_argument("text", type=_one_line)
-    command.set_defaults(fn=_cmd_check)
-
-    command = commands.add_parser("edit", help="replace a span and save")
-    command.add_argument("pdf", type=_existing_file)
-    command.add_argument("span_id")
-    command.add_argument("text", type=_one_line)
-    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
-    command.add_argument("--force", action="store_true", help="edit even if it will not fit")
-    command.add_argument(
-        "--strategy",
-        choices=get_args(Strategy.__value__),
-        default="as-is",
-        help="a way out `check` offers: shrink or condense, to fit",
-    )
-    command.set_defaults(fn=_cmd_edit)
-
-    command = commands.add_parser("redact", help="remove a span and verify it is gone")
-    command.add_argument("pdf", type=_existing_file)
-    command.add_argument("span_id")
-    command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
-    command.set_defaults(fn=_cmd_redact)
-
-    # No check here: one file that won't open is a row in the report, not the end of it.
-    command = commands.add_parser("report", help="green rate across a corpus")
-    command.add_argument("pdfs", nargs="+")
-    command.set_defaults(fn=_cmd_report)
-
-    command = commands.add_parser("fixture", help="write a sample PDF to try")
-    command.add_argument("out", nargs="?", default=_SAMPLE, type=_new_file)
-    command.add_argument("--pages", type=int, help="a long contract of this many pages")
-    command.set_defaults(fn=_cmd_fixture)
-
-    args = parser.parse_args(argv)
+def _refusal_of(args: argparse.Namespace) -> str | None:
+    """Why these arguments can't run together; None when they can."""
     # Saving over the PDF being read would lose the original if anything went wrong.
     overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
     if overwrites:
-        parser.error(f"-o {args.out} is the PDF being read; save to a new file")
+        return f"-o {args.out} is the PDF being read; save to a new file"
     # Others read `_SAMPLE`, so a long contract never replaces it.
     if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
-        parser.error(f"--pages would replace {_SAMPLE}; name another file")
+        return f"--pages would replace {_SAMPLE}; name another file"
+    return None
+
+
+def _run(args: argparse.Namespace) -> int:
+    """Run the chosen command, saying any failure in words; its exit code."""
     try:
         # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
         return result_of(partial(args.fn, args))
@@ -479,6 +515,17 @@ def main(argv: list[str] | None = None) -> int:
         )
     except Problem as exc:  # e.g. the one PDF a command was given won't open
         return _fail(exc.detail)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and run the chosen subcommand."""
+    parser = _parser()
+    args = parser.parse_args(argv)
+    refusal = _refusal_of(args)
+    # Arguments that can't run together: argparse says why, and exits.
+    if refusal is not None:
+        parser.error(refusal)
+    return _run(args)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,7 @@
 """Every job a controller sends to the pool pickles: a module function, never a lambda.
 
-The pool runs each job in another process, so the job crosses as a pickle,
-by its module and name. A lambda or a closure can't, and fails only when a
-request reaches it. Read from the source: each `_enqueue_<job>` method names
-its job, in a `functools.partial` or as it is.
+A job crosses to its worker as a pickle, by module and name; a lambda or closure fails only
+when a request reaches it. Read from the source: each `_enqueue_<job>` names its job.
 """
 
 from __future__ import annotations

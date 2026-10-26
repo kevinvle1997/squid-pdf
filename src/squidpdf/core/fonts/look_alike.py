@@ -1,9 +1,8 @@
 """A document font's look-alike: the face we ship we'd use when its own can't be.
 
-A PDF usually embeds only the glyphs the document actually used, so whether an
-edit is possible in the original face depends on what the user types. When it
-isn't, a face from the catalog draws instead: where we can, one whose letters
-are exactly as wide as the original's, so nothing on the page moves.
+A PDF embeds only the letters it used, so whether the original face can draw an edit
+depends on what's typed. Where we can, the look-alike's letters are exactly as wide as the
+original's, so nothing on the page moves.
 """
 
 from __future__ import annotations
@@ -91,11 +90,9 @@ def look_alike(
 ) -> LookAlike:
     """A document font's look-alike, in its style: the face we ship we'd use for it.
 
-    A face we ship by its exact name is itself, and so is one a document font's
-    name pins, cut and all (CMBX10). A family we know gets the face with the
-    same letter widths. Anything else gets a plain face of its kind, judged by
-    the PDF's own description of the font (`descriptor`), then by its file's
-    (`file_kind`, from `kind_in_file`), never by its name. The style comes from both.
+    A face we ship by its exact name is itself, as is one a document font's name pins (CMBX10).
+    A known family gets the face with the same letter widths; anything else a plain face of
+    its kind, by the PDF's `descriptor`, then its file's `file_kind`, never by its name.
     """
     # Asked for by name, as an insert does.
     if font in FACES:

@@ -1,9 +1,8 @@
 """Everything the user did, as one ordered list: the browser keeps it and sends it whole.
 
-One union rather than a list per kind, so undo in the browser is truncation
-whatever was undone. The server applies the list as its final state: each span
-once, as its last edit leaves it, except that a redaction is never undone by
-an edit after it (the whole list is refused).
+One union, not a list per kind, so undo in the browser is truncation. The server applies its
+final state, each span once as its last edit leaves it; an edit that would undo a redaction
+refuses the whole list.
 """
 
 from __future__ import annotations
@@ -66,10 +65,8 @@ class Replace:
 class Redact:
     """Remove a span's text and draw nothing in its place.
 
-    Mechanically the first half of a Replace. A covering rectangle would leave
-    the text extractable underneath, which is how documents get leaked, so this
-    deletes the text from the page itself and the result is checked by re-reading
-    the output.
+    A covering box would leave the text extractable underneath, so this deletes it from the
+    page itself, and the output is re-read to check.
     """
 
     span_id: str

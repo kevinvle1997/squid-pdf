@@ -116,9 +116,8 @@ class WorkerPool:
     app's lifespan makes it, in the server's one loop.
     """
 
-    # The loop its lock and semaphore work in. asyncio ties each to the first loop
-    # that waits on it, so a pool two loops share would fail only once it's busy;
-    # tied to the loop it's made in, another loop is refused on its first task.
+    # The loop its lock and semaphore work in: asyncio ties each to the first loop that waits
+    # on it, failing only once the pool is busy; checked here, another is refused at once.
     loop: asyncio.AbstractEventLoop
     slot: _ProcessSlot  # pebble's pool, which a worker dying between tasks breaks
     # Where each try of a task notes that a worker started it; removed with the pool.

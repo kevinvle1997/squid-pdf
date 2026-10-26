@@ -1,9 +1,8 @@
 """A part that forgets equals a fresh one afterwards, so nothing it read before is kept.
 
-Rebuilding a part was fresh by construction; forgetting is only as fresh as its
-`forget_` method. Each test fills every field the way the engine does, forgets,
-then compares with a new one, so a field added later and missed fails here. The
-engine's parts forget through `keep_pages`, the one place that renumbers pages.
+Each test fills every field the way the engine does, forgets, then compares with a new one,
+so a field added later and missed fails here. The engine's parts forget through
+`keep_pages`, the one place that renumbers pages.
 """
 
 from __future__ import annotations
