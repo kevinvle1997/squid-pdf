@@ -21,9 +21,10 @@ function isFontFile(file: { name: string; type: string }): boolean {
 }
 
 /** The name the reader knows `fontName` by, as the server says it: copies of one font share it. */
-export function shownNameOf(layout: Pick<Layout, "fonts">, fontName: string): string {
-  // .get: a font the document doesn't list goes by its own name.
-  return layout.fonts.get(fontName)?.shown_name ?? fontName;
+function shownNameOf(layout: Pick<Layout, "fonts">, fontName: string): string {
+  const named = [...layout.fonts.values()].find((font) => font.name === fontName);
+  // A font the document doesn't list goes by its own name.
+  return named?.shown_name ?? fontName;
 }
 
 /** The document's fonts shown under one name: the copies of one font, a row of the Fonts list. */
@@ -58,10 +59,12 @@ export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences):
   return { sentence: fill(substituteSentence, { font: font.substitute }), warn: true };
 }
 
-/** Every font listed under the name `fontName` is shown by: its copies, itself among them. */
+/** Every font listed under the name `fontName` is shown by: its copies, itself among them, each name once. */
 function copiesOf(layout: Layout, fontName: string): string[] {
   const shown = shownNameOf(layout, fontName);
-  return [...layout.fonts.values()].filter((font) => font.shown_name === shown).map((font) => font.name);
+  // Two fonts can share a name, and a copy goes in by the name: once is for both.
+  const copies = [...layout.fonts.values()].filter((font) => font.shown_name === shown).map((font) => font.name);
+  return [...new Set(copies)];
 }
 
 /**

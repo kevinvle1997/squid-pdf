@@ -7,6 +7,7 @@ import type { PageState } from "../page";
 import { differing } from "../project";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
+import { fontOf } from "../spanFonts";
 import { boxOf, cropOf, previewStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
@@ -62,7 +63,7 @@ export function Previews({
         key={span.id}
         span={span}
         info={info}
-        drawn={{ text, strategy, font: page.fonts.get(span.font), rules: page.rules }}
+        drawn={{ text, strategy, font: fontOf(page.fonts, span), rules: page.rules }}
       />
     );
   });

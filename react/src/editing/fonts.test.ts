@@ -287,6 +287,17 @@ describe("copies of one font, shown under one name", () => {
     expect(editor.attached.size).toBe(0);
     expect(editor.store.get().announcement.text).toBe("Your copy of Drawn-Regular is removed");
   });
+
+  test("listed under one name, as two fonts of a merged file are, take the user's copy in once", async () => {
+    const twoObjects = [aFont("Arial", { object: 5 }), aFont("Arial", { object: 9 })];
+    const doc = aDoc({ spans: DOC.spans, fonts: twoObjects });
+    editor = createEditor(new File(["%PDF-"], "letter.pdf"), doc, 2);
+    vi.mocked(putFont).mockResolvedValue(doc);
+
+    await attachFont(editor, "Arial", FONT_FILE);
+
+    expect(vi.mocked(putFont).mock.calls.map(([, fontName]) => fontName)).toEqual(["Arial"]);
+  });
 });
 
 describe("a font's name, as shown", () => {

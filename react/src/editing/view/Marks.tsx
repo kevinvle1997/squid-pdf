@@ -11,6 +11,7 @@ import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
 import { type PageState, spanIn } from "../page";
 import type { SpanReading } from "../project";
+import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf } from "./geometry";
 import styles from "./Marks.module.css";
@@ -36,7 +37,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             span={span}
             info={info}
             reading={readings.get(span.id)}
-            font={page.fonts.get(span.font)}
+            font={fontOf(page.fonts, span)}
             fit={page.fits[span.id]}
             redaction={page.redactions[span.id]}
             sentences={page.sentences}
@@ -121,7 +122,7 @@ function PageNote({
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
     span,
-    font: page.fonts.get(span.font),
+    font: fontOf(page.fonts, span),
     reading: readings.get(span.id),
     fit: page.fits[span.id],
     redaction: page.redactions[span.id],

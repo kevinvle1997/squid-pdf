@@ -1,6 +1,6 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitInfo, FitRules, FontInfo, SpanInfo } from "../api/types";
+import type { FitInfo, FitRules, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { announcing, change, changed, type Editor, type EditorState, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf } from "./fit";
@@ -8,6 +8,7 @@ import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
 import { differing, type Reading, textIn } from "./project";
+import { type FontsByObject, fontOf } from "./spanFonts";
 import { finish, typingEnd } from "./typing";
 import { counted } from "./words";
 
@@ -148,7 +149,7 @@ export function tintsOn(
     if (inSpan === undefined || span.id === page.typingIn) return [];
     const reading = readings.get(span.id);
     const text = reading?.text ?? span.text;
-    const font = page.fonts.get(span.font);
+    const font = fontOf(page.fonts, span);
     const glyphs = font?.glyphs;
     const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
     const fit = reading?.replaced && !previewed.has(span.id) ? page.fits[span.id] : undefined;
@@ -226,11 +227,11 @@ export interface FindCount {
 /** Whether changing the words found in a span leaves it set apart from the text around it. */
 function looksDifferent(
   { span, text, matches }: Found,
-  { fonts, replacement, rules }: { fonts: ReadonlyMap<string, FontInfo>; replacement: string; rules: FitRules },
+  { fonts, replacement, rules }: { fonts: FontsByObject; replacement: string; rules: FitRules },
 ): boolean {
   // Drawn in a similar font, or set so an edit won't match: whatever the words.
   if (wontMatch(span)) return true;
-  const font = fonts.get(span.font);
+  const font = fontOf(fonts, span);
   // Nothing to change to yet, or no widths to check it by.
   if (replacement === "" || font === undefined) return false;
   // The live check typing uses, on the words as they'd read changed.

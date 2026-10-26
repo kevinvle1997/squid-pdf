@@ -1,8 +1,9 @@
 // Where an edit won't match the text around it, grouped by why, as the bar's count opens it (quality.md, Rule 1).
-import type { FontInfo, Sentences, SpanInfo } from "../api/types";
+import type { Sentences, SpanInfo } from "../api/types";
 import { wontMatch } from "./marks";
 import type { SpanReading } from "./project";
 import type { PageFits } from "./render";
+import { type FontsByObject, fontOf, shownNameIn } from "./spanFonts";
 import { substituteOf } from "./substitutes";
 import { type Facts, fill, shownAs } from "./words";
 
@@ -41,7 +42,7 @@ export interface Mismatches {
 /** `places` grouped: a similar font's under its font, the rest under why the file's own won't match. */
 export function mismatchesOf(
   places: readonly MismatchPlace[],
-  { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
+  { fonts, sentences }: { fonts: FontsByObject; sentences: Sentences },
 ): Mismatches {
   const byFont = new Map<string, MismatchPlace[]>();
   const byReason = new Map<MismatchReason["code"], SpanInfo[]>();
@@ -66,7 +67,7 @@ export function mismatchesOf(
 }
 
 /** The row `place` is in, by its key: its font's when a similar one draws it, else why its own won't match. */
-export function mismatchKeyOf(place: MismatchPlace, fonts: ReadonlyMap<string, FontInfo>): string {
+export function mismatchKeyOf(place: MismatchPlace, fonts: FontsByObject): string {
   const reason = reasonOf(place);
   return reason === null ? fontKey(shownNameIn(fonts, place.span)) : reasonKey(reason);
 }
@@ -99,7 +100,7 @@ export function shownAmong(
     changed: boolean;
     readings: ReadonlyMap<string, SpanReading>;
     fits: PageFits;
-    fonts: ReadonlyMap<string, FontInfo>;
+    fonts: FontsByObject;
   },
 ): SpanInfo[] {
   // No span need be judged.
@@ -118,11 +119,6 @@ function reasonOf({ span, missing }: MismatchPlace): MismatchReason["code"] | nu
   return span.why.code;
 }
 
-/** The name the reader knows `span`'s font by. */
-function shownNameIn(fonts: ReadonlyMap<string, FontInfo>, span: SpanInfo): string {
-  return fonts.get(span.font)?.shown_name ?? span.font;
-}
-
 /** The key of the row for the font the reader knows as `name`. */
 function fontKey(name: string): string {
   return `font:${name}`;
@@ -136,10 +132,10 @@ function reasonKey(code: MismatchReason["code"]): string {
 /** Why a similar font draws a font's places: the font's own reason, else the letters it lacks, else what draws it. */
 function fontSentence(
   places: MismatchPlace[],
-  { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
+  { fonts, sentences }: { fonts: FontsByObject; sentences: Sentences },
 ): string {
   const [first] = places;
-  const font = first === undefined ? undefined : fonts.get(first.span.font);
+  const font = first === undefined ? undefined : fontOf(fonts, first.span);
   if (first === undefined || font === undefined) return "";
   if (font.why !== null) return font.why;
   const substitute = substituteOf(first.span, font);
