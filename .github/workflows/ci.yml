@@ -125,7 +125,8 @@ jobs:
           sparse-checkout: react/package-lock.json
           sparse-checkout-cone-mode: false
 
-      - id: version
+      - name: Playwright's version
+        id: version
         run: echo "version=$(jq -r '.packages["node_modules/playwright"].version' react/package-lock.json)" >> "$GITHUB_OUTPUT"
 
   # In Playwright's own image, which ships WebKit with its system libraries, so no apt runs for them.
@@ -139,6 +140,10 @@ jobs:
         working-directory: react
     steps:
       - uses: actions/checkout@v5
+
+      # git refuses a checkout another user owns, and the build would then link main, not this commit.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install the API
         uses: ./.github/actions/uv
