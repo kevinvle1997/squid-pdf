@@ -87,9 +87,8 @@ function Where() {
 /** The changes, and how many of them won't match, the count warned and pressed for where: every one of them, or so many. */
 function Changed({ changed, count, label }: { changed: number; count: number; label: string }) {
   const changes = formOf(changed, { one: "change", other: "changes" });
-  // Each matches the text around it.
   if (count === 0) return `${changed} ${changes}`;
-  // None does: the changes' own count is the warning.
+  // The changes' own count is the warning.
   if (count === changed) {
     return (
       <MismatchCount changed>

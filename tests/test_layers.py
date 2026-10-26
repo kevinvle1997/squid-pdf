@@ -188,13 +188,11 @@ def _opens_without_a_driver(tree: ast.Module) -> Iterator[int]:
     """The line of each `open_pdf(...)`, by any name, that names no driver of its own."""
     names = _names_for(tree, "open_pdf")
     for node in ast.walk(tree):
-        # Not a call.
         if not isinstance(node, ast.Call):
             continue
         called = node.func
         by_name = isinstance(called, ast.Name) and called.id in names
         by_attribute = isinstance(called, ast.Attribute) and called.attr == "open_pdf"
-        # A call of something else.
         if not (by_name or by_attribute):
             continue
         given = {keyword.arg: keyword.value for keyword in node.keywords}

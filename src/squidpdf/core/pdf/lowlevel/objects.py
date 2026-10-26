@@ -98,7 +98,6 @@ def string_of(held: bytes) -> pymupdf.mupdf.PdfObj:
 def put_text(holder: pymupdf.mupdf.PdfObj, key: str, text: str) -> None:
     """Put `text` in a dictionary under `key`: words left stay, and with none the key goes."""
     mu = pymupdf.mupdf
-    # Words of its own left: they stay.
     if text:
         mu.pdf_dict_puts(holder, key, mu.pdf_new_text_string(text))
         return

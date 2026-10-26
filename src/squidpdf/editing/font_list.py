@@ -97,7 +97,6 @@ def _log_if_failed(measuring: asyncio.Task[bytes]) -> None:
     if measuring.cancelled():
         return
     failure = measuring.exception()
-    # Measured.
     if failure is None:
         return
     _log.write(LogEvent.FONT_LIST_FAILED, failure)

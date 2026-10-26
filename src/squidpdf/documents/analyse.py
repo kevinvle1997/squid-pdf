@@ -64,7 +64,7 @@ def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
     with documents.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
-        # Nothing to take out: the original stays exactly as it was sent.
+        # The original stays exactly as it was sent.
         if not engine.drop_active_content():
             return
         # Nothing was added, so saving says nothing.

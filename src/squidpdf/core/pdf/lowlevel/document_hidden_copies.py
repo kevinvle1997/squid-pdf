@@ -187,7 +187,6 @@ class DocumentHiddenCopies:
         # A choice field's options: a list, each option rewritten in it.
         if writing == "options":
             return self._rewrite_options(entry.holder, rewritten)
-        # As it was: it stays as the file wrote it.
         if not _changes(self._texts_of(entry, partial(_is_changed_by, rewritten)), rewritten):
             return False
         # Words kept in a stream, which can't be written back in place: gone whole.
@@ -262,7 +261,7 @@ class DocumentHiddenCopies:
                 mu.pdf_array_push(kept, item)
                 continue
             words = rewritten(mu.pdf_to_text_string(item))
-            # Left blank: a blank line in a list says nothing.
+            # A blank line in a list says nothing.
             if not words:
                 continue
             mu.pdf_array_push(kept, mu.pdf_new_text_string(words))
@@ -279,7 +278,6 @@ class DocumentHiddenCopies:
         mu = pymupdf.mupdf
         written = [_option_words(option) for option in items_of(_options_of(field))]
         kept = [[rewritten(words) for words in option] for option in written]
-        # As they were: they stay as the file wrote them.
         if kept == written:
             return False
         options = mu.pdf_new_array(pdf_of(self.doc), len(kept))
@@ -334,7 +332,6 @@ class DocumentHiddenCopies:
     def _metadata_texts(self) -> list[str]:
         """The text in the document's metadata (XMP), each string apart; whole if not XML."""
         stream = self._metadata_stream()
-        # No metadata stream.
         if stream is None:
             return []
         written = bytes_of(stream)
@@ -348,7 +345,6 @@ class DocumentHiddenCopies:
         """Put `rewritten(text)` for each string in the metadata (XMP); it goes if not XML."""
         mu = pymupdf.mupdf
         stream = self._metadata_stream()
-        # No metadata stream.
         if stream is None:
             return
         written = bytes_of(stream)
@@ -367,7 +363,6 @@ class DocumentHiddenCopies:
             if kept != text:
                 piece.nodeValue = kept
                 changed = True
-        # Nothing changed: it stays as the file wrote it.
         if not changed:
             return
         # Without an XML declaration, as metadata is written: UTF-8 needs none.
@@ -458,7 +453,6 @@ def _option_words(option: pymupdf.mupdf.PdfObj) -> list[str]:
 def _new_option(pdf: pymupdf.mupdf.PdfDocument, option: list[str]) -> pymupdf.mupdf.PdfObj:
     """An option for a choice field: its words alone, or a pair of them, as it came."""
     mu = pymupdf.mupdf
-    # Its words alone.
     if len(option) == 1:
         return mu.pdf_new_text_string(option[0])
     pair = mu.pdf_new_array(pdf, len(option))

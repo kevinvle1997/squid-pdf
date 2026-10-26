@@ -38,7 +38,6 @@ def each_drawing(
         streams, resources = waiting.pop()
         yield [stream for stream in streams if mu.pdf_is_stream(stream)], resources
         for drawn, own_resources in _drawn_by(resources):
-            # Already waiting: nothing more to read.
             if mu.pdf_to_num(drawn) in seen:
                 continue
             seen.add(mu.pdf_to_num(drawn))

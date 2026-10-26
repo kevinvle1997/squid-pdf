@@ -66,7 +66,6 @@ def xml_of(written: bytes) -> minidom.Document | None:
     # A DOCTYPE: what it declares isn't read.
     if dom.doctype is not None:
         return None
-    # Nested too deep to read through.
     if _nests_deeper(dom, _XML_DEEPEST):
         return None
     return dom

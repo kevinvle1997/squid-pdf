@@ -146,7 +146,6 @@ def kind_in_file(file: bytes) -> Category | None:
     # Every letter as wide as the next.
     if text_face and os2[_PANOSE_PROPORTION] == _PANOSE_MONOSPACED:
         return "mono"
-    # A text face's serif style, when its PANOSE gives one.
     if text_face and serif_style in _PANOSE_SERIFS:
         return "serif"
     if text_face and serif_style in _PANOSE_SANS:

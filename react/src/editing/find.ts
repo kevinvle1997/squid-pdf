@@ -250,9 +250,7 @@ export function findCount(state: EditorState): FindCount {
 export function countShown({ places, mismatches }: FindCount): { plain: string; warned: string } {
   if (places === 0) return { plain: "Nothing matches", warned: "" };
   const where = counted(places, { one: "place", other: "places" });
-  // Every place will look like the text around it.
   if (mismatches === 0) return { plain: `${where} will look identical`, warned: "" };
-  // Not one will.
   if (mismatches === places) return { plain: "", warned: `${where} will look different` };
   return { plain: `${where}, `, warned: `${mismatches} of them will look different` };
 }
@@ -329,7 +327,6 @@ export function changeAll(editor: Editor): void {
   const find = searchingQuery(typing.find);
   // Nothing to change to, since emptying a span is redaction's job.
   const found = find.replacement === "" ? [] : foundIn(state.doc.spans, { reading: typing.reading, find });
-  // Nothing to change: only the typing ends.
   if (found.length === 0) {
     change(editor, typed, ended);
     return;

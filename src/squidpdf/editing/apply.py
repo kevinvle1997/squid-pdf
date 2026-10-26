@@ -156,7 +156,7 @@ class _EditList:
 
     def read(self, edit: Edit, *, index: SpanIndex, position: int) -> list[Message]:
         """Read one more edit; returns why it's left out, if it is."""
-        # A page op naming pages the document has: folded into the pages kept, in list order.
+        # Folded into the pages kept, in list order.
         if isinstance(edit, RotatePage | DeletePage | MovePage) and _names_pages(
             edit, self.page_count
         ):
@@ -164,7 +164,6 @@ class _EditList:
         # A page op naming a page it doesn't have.
         if isinstance(edit, RotatePage | DeletePage | MovePage):
             return [Message("no_page")]
-        # An insert on a page the document has.
         if isinstance(edit, Insert) and is_page(edit.page, self.page_count):
             self.inserts.append(_ListedInsert(position, edit))
             return []
@@ -186,7 +185,7 @@ class _SpanEdits:
 
     def add(self, edit: SpanEdit, span: Span | None, *, position: int) -> list[Message]:
         """Read one more edit of a span; returns why it's left out, if it is."""
-        # A redaction of text it doesn't have: skipping it would be a leak.
+        # Skipping it would be a leak.
         if isinstance(edit, Redact) and span is None:
             raise BadReference(edit.span_id)
         # A replace of text it doesn't have.
@@ -235,18 +234,17 @@ class _PageOps:
         # A page deleted earlier in the list: there's nothing left to turn or move.
         if op.page not in self.order:
             return []
-        # A turn: on top of any earlier ones, a whole turn coming back to none.
+        # On top of any earlier ones, a whole turn coming back to none.
         if isinstance(op, RotatePage):
             self.turns[op.page] = turn_added(self.turns.get(op.page, 0), op.degrees)
             return []
         # The last page left: a file can't have none.
         if isinstance(op, DeletePage) and len(self.order) == 1:
             return [Message("last_page")]
-        # A page left out.
         if isinstance(op, DeletePage):
             self.order.remove(op.page)
             return []
-        # A move: before another page, or to the end.
+        # Before another page, or to the end.
         if isinstance(op, MovePage):
             self._move(op.page, before=op.before)
             return []
@@ -309,11 +307,9 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
 def _fit_of(engine: Engine, edited_span: _EditedSpan, *, room_pt: float) -> Fitted | None:
     """What a span edit will look like, in its room; None for one that draws nothing to fit."""
     edit = edited_span.edit
-    # A replace: measured as it will be drawn.
     if isinstance(edit, Replace):
         span = edited_span.span
         return replace_fit(engine, span, edit.text, room_pt=room_pt, strategy=edit.strategy)
-    # A redaction: nothing is drawn.
     if isinstance(edit, Redact):
         return None
     assert_never(edit)
@@ -381,10 +377,8 @@ def _step_for(edited_span: _EditedSpan, fits: LogFits) -> Step:
     """What one span edit does to the page."""
     edit = edited_span.edit
     span = edited_span.span
-    # A redaction: its text goes, and nothing is drawn.
     if isinstance(edit, Redact):
         return _Erase(span)
-    # A replace: its text goes, and the new text is drawn as its fit says.
     if isinstance(edit, Replace):
         return _Redraw(span, edit.text, fits.replaces[span.id])
     assert_never(edit)
@@ -415,7 +409,6 @@ def redacted_by(steps: Sequence[Step]) -> list[Span]:
 
 def _erased_by(step: Step) -> Span | None:
     """The span whose text a step erases first; None for one that only draws."""
-    # A redaction or a replace: the span's own text goes first.
     if isinstance(step, _Erase | _Redraw):
         return step.span
     # An insert: there was no text there.
@@ -426,13 +419,10 @@ def _erased_by(step: Step) -> Span | None:
 
 def _drawn_by(step: Step) -> LineToDraw | None:
     """The line a step draws once the erasing is done; None for one that only erases."""
-    # A redaction: nothing drawn.
     if isinstance(step, _Erase):
         return None
-    # A replace: its new text, where the old was.
     if isinstance(step, _Redraw):
         return LineToDraw(step.span, step.text, step.fitted.plan)
-    # An insert: its text, where there was none.
     if isinstance(step, _Place):
         return LineToDraw(step.span, step.span.text, step.fitted.plan)
     assert_never(step)
@@ -443,13 +433,11 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
 
     `stuck` are the spans whose text the erase couldn't clear.
     """
-    # A redaction: nothing to draw.
     if isinstance(step, _Erase):
         return []
     # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
     if isinstance(step, _Redraw) and step.span.id in stuck:
         return [SpanNotice(step.span.id, Message("form_field_not_edited"))]
-    # A replace: the new text drawn where the old was.
     if isinstance(step, _Redraw):
         fitted = step.fitted
         drawn = engine.draw(
@@ -460,7 +448,6 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
             scale_x=fitted.scale_x,
         )
         return [SpanNotice(step.span.id, said) for said in drawn]
-    # An insert: new text drawn where there was none.
     if isinstance(step, _Place):
         drawn = engine.draw(
             step.span, step.span.text, plan=step.fitted.plan, turn_ccw=step.turn_ccw

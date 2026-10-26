@@ -52,7 +52,6 @@ class LineFit:
         # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
             return self.plans.substitute_for(span, text).face.name
-        # A face we ship draws it.
         if isinstance(drawn_in, Face):
             return drawn_in.name
         assert_never(drawn_in)

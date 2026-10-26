@@ -155,10 +155,8 @@ def check_edits(edits: list[Edit]) -> None:
 
 def _typed_in(edit: Edit) -> str:
     """The new text an edit carries: empty for a redaction or a page op, which draw none."""
-    # A replace or an insert: the text it draws.
     if isinstance(edit, Replace | Insert):
         return edit.text
-    # A redaction or a page op: it draws none.
     if isinstance(edit, Redact | RotatePage | DeletePage | MovePage):
         return ""
     assert_never(edit)

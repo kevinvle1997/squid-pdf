@@ -151,7 +151,6 @@ def weight_of(font: str, descriptor: FontDescriptor | None) -> int:
     _family_name, style_words = _family_and_style(font)
     style_text = style_words.replace(" ", "").lower()
     named = next((each.weight for each in _WEIGHT_WORDS if each.word in style_text), None)
-    # The name says it.
     if named is not None:
         return named
     # Nothing says it.

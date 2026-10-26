@@ -448,7 +448,6 @@ class DocumentFonts:
         A Type3 font's text names it by its object, so it goes by its copies' name.
         """
         page_font = self._page_font(span)
-        # A Type3 on the page: the name its copies share, from its description.
         if page_font is not None and page_font.kind == "type3":
             return self._copies_name(page_font)
         return strip_subset(span.font)

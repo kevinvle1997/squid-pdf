@@ -264,7 +264,6 @@ def _fetched(
         return None
     fetching = _Fetching(cached_path=cached_path, download=download, retries=retries)
     font_file = _waited_for(file, fetching)
-    # Had: nothing to hold back.
     if font_file is not None:
         tally(Tally.GOOGLE_FETCHED)
         return font_file

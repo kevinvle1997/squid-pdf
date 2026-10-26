@@ -48,7 +48,7 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
     for the whole line: two would look like a mistake.
     """
     in_look_alike = _try_face(look_alike, text)
-    # The look-alike draws every letter: no face could leave out fewer.
+    # No face could leave out fewer.
     if not in_look_alike.left_out:
         return in_look_alike
     candidates = [in_look_alike, _try_face(broadest(look_alike), text)]
@@ -59,7 +59,6 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
 def _try_face(face: Face, text: str) -> Substitute:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
-    # Every letter draws: the line as typed.
     if not left_out:
         return Substitute(face, text, left_out)
     kept = "".join(ch for ch in text if ch not in left_out)

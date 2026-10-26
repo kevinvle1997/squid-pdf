@@ -255,7 +255,6 @@ class _KeptWidths:
 
     def widths(self, digest: bytes, make: Callable[[], dict[str, float]]) -> dict[str, float]:
         """The widths of the copy `digest` names, measured on first use."""
-        # Kept already: this process has measured these bytes.
         if digest in self.by_digest:
             return self.by_digest[digest]
         # Full: forget the one kept longest.

@@ -86,7 +86,6 @@ class PageRedaction:
         # The list as it was, a copy that holds on to each entry while MuPDF drops some.
         before = mu.pdf_copy_array(listed) if mu.pdf_is_array(listed) else None
         yield
-        # No list before: nothing to put back.
         if before is None:
             return
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)

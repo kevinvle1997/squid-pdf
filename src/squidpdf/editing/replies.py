@@ -74,7 +74,6 @@ def notice_info(notice: Notice, language: str) -> NoticeInfo:
     # An insert, which has no span: named by its place in the list the browser sent.
     if isinstance(notice, InsertNotice):
         return {"kind": "insert", "edit": notice.edit, **said}
-    # The whole file: nothing to name.
     if isinstance(notice, FileNotice):
         return {"kind": "file", **said}
     assert_never(notice)

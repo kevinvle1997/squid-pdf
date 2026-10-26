@@ -175,7 +175,6 @@ class PageHiddenCopies:
             starts_image = may_hold_image and is_image_start(
                 token, drawing=drawing, start=start, reader=reader
             )
-            # Not an image written into the drawing.
             if not starts_image:
                 continue
             image = read_past_image(
@@ -235,7 +234,6 @@ def _rewrite_hidden_copies_in(
         if hidden_copy is None:
             continue
         kept = rewritten(hidden_copy)
-        # As it was: it stays as the file wrote it.
         if kept == hidden_copy:
             continue
         changed = True
