@@ -51,30 +51,9 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
-  # The frontend runs in Playwright's own image, whose tag must follow the lockfile's Playwright.
-  playwright:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Version in the lockfile
-        id: version
-        run: |
-          version=$(jq -er '.packages["node_modules/@playwright/test"].version' react/package-lock.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
   frontend:
-    needs: playwright
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Both browsers and their system libraries come in the image, so nothing waits on apt.
-    container:
-      image: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
-      # Chromium runs out of Docker's small shared memory without the host's.
-      options: --ipc=host
     defaults:
       run:
         working-directory: react
@@ -104,17 +83,61 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
+      # Before the tests: the view's tests run in Chromium too.
+      - name: Chromium
+        uses: ./.github/actions/browser
+        with:
+          browser: chromium
+
       - name: Unit and view tests
         run: npm test
 
-      - name: End to end
-        run: npm run e2e
+      - name: End to end in Chromium
+        run: npm run e2e -- --project=chromium
 
       - name: Traces
         if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-traces
+          path: react/test-results/
+
+  # Safari's, apart, so the frontend's checks don't wait on WebKit's system libraries.
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: react
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the API
+        uses: ./.github/actions/uv
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: react/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: WebKit
+        uses: ./.github/actions/browser
+        with:
+          browser: webkit
+
+      - name: End to end in WebKit
+        run: npm run e2e -- --project=webkit
+
+      - name: Traces
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-traces-webkit
           path: react/test-results/
 
   deploy:
@@ -243,7 +266,7 @@ jobs:
   # What a deploy pulls (compose.yaml): images from a commit every job above passed on.
   publish:
     if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend, image, frontend, deploy, report]
+    needs: [backend, image, frontend, webkit, deploy, report]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

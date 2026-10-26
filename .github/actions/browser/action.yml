@@ -1,0 +1,36 @@
+# One copy of the browser setup, so the frontend's two jobs can't drift.
+name: browser
+description: Install one of Playwright's browsers and its system libraries, the browser from the cache when it can.
+
+inputs:
+  browser:
+    description: The browser to install, as `npx playwright install` names it.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Playwright pins its browsers, so a bump of any other dependency keeps the cache.
+    - id: playwright
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        version=$(jq -er '.packages["node_modules/@playwright/test"].version' react/package-lock.json)
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - id: cache
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ inputs.browser }}-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/react
+      run: npx playwright install --with-deps ${{ inputs.browser }}
+
+    # The system libraries it needs live outside the cache, so a hit still installs them.
+    - if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/react
+      run: npx playwright install-deps ${{ inputs.browser }}
