@@ -6,9 +6,11 @@ import { type Also, announce, announcing, change, type Editor, type EditorState 
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import type { HistoryAction } from "./history";
 import { editNote } from "./marks";
-import type { Reading } from "./project";
+import type { Reading, SpanReading } from "./project";
+import { type Drawn, landedFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
+import { LOOKS_IDENTICAL, liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {
@@ -91,28 +93,47 @@ function troubleKindOf(fit: Fit, rules: FitRules): string {
 /** What the field says of the ways out as they're first offered: the keys that choose one are the field's own. */
 const WAYS_KEYS = "Up or Down chooses how it fits";
 
-/**
- * What the draft's span would get wrong reading `text`, in the server's words, nothing when it fits;
- * and whether there's a way out of a long line to choose, past leaving it long.
- */
-export function troublesIn(state: EditorState, text: string): { sentences: string[]; kind: string; offers: boolean } {
+/** What reading `text` comes to in the draft's span: what won't come out as typed, and the edit's verdict. */
+interface Troubles {
+  readonly sentences: string[]; // in the server's words, a trouble each; none when it fits
+  readonly kind: string; // the troubles and the verdict's kind, less their numbers: heard again when this changes
+  readonly offers: boolean; // there's a way out of a long line to choose, past leaving it long
+  readonly verdict: Verdict | null; // none while nothing's typed in, or its font is unknown
+}
+
+/** What the draft's span would get wrong reading `text`, the ways out it offers, and what it comes to. */
+export function troublesIn(state: EditorState, text: string): Troubles {
   const typing = draftSpanOf(state);
-  if (typing === undefined) return { sentences: [], kind: "", offers: false };
+  if (typing === undefined) return { sentences: [], kind: "", offers: false, verdict: null };
   const { draft, span, font } = typing;
   const { fit: rules, sentences } = state.doc;
+  // Neither is an edit: what the span's own words come to holds.
+  const unedited = { offers: false, verdict: span };
   // A form field draws it, not the page: whatever is typed, the edit is left out.
-  if (span.form_field) return { sentences: [sentences.form_field_not_edited], kind: "form field", offers: false };
+  if (span.form_field) return { sentences: [sentences.form_field_not_edited], kind: "form field", ...unedited };
   // Taking text out isn't a change: told while the field is empty.
-  if (isEmpty(text)) return { sentences: [sentences.empty], kind: "empty", offers: false };
+  if (isEmpty(text)) return { sentences: [sentences.empty], kind: "empty", ...unedited };
+  const verdict = draftVerdictOf(state.drawn, { draft, span, font, text });
   const fit = fitOf(span, { font, text, rules });
   const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
-  // That an edit here won't match is announced once, as typing starts (`editNote`), not with each letter.
+  // That an edit here won't match is announced in full once, as typing starts (`editNote`), not with each letter.
   return {
     sentences: troublesOf(fit, { rules, sentences, drawing, way }),
-    kind: `${troubleKindOf(fit, rules)} ${way}`,
+    kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""}`,
     offers: waysOffered(fit).length > 0,
+    verdict,
   };
+}
+
+/** What the draft's span reading `text` comes to: its render's, once one of these very words lands, else worked out here. */
+function draftVerdictOf(
+  drawn: Drawn,
+  { draft, span, font, text }: { draft: Draft; span: SpanInfo; font: FontInfo; text: string },
+): Verdict {
+  const now: SpanReading = { span, text, replaced: text !== span.text, strategy: draft.strategy, redacted: false };
+  const live = () => liveVerdictOf(span, { font, text });
+  return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }
 
 // A tab or any line break shows as a gap, so a space keeps the words apart.
@@ -128,10 +149,14 @@ export function typeInto(editor: Editor, typed: string): void {
   const text = typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
-  // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
+  // A trouble is heard as it appears or changes, the chip's short warning as it changes kind: never per letter.
   const offered = now.offers && !was.offers ? [WAYS_KEYS] : [];
-  const changedKind = now.kind !== was.kind && now.sentences.length > 0;
-  const announcement = changedKind ? announcing([...now.sentences, ...offered].join("; ")) : state.announcement;
+  const warning = now.verdict === null ? null : shortWarningOf(now.verdict);
+  const warnedBefore = was.verdict === null ? null : shortWarningOf(was.verdict);
+  const warningHeard = warning === warnedBefore ? [] : [warning ?? LOOKS_IDENTICAL];
+  const changedKind = now.kind !== was.kind && (now.sentences.length > 0 || warningHeard.length > 0);
+  const heard = [...now.sentences, ...warningHeard, ...offered].join("; ");
+  const announcement = changedKind ? announcing(heard) : state.announcement;
   store.set({ draft: { ...state.draft, text }, announcement });
 }
 

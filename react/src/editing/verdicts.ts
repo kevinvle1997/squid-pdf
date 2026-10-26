@@ -53,8 +53,11 @@ function setApartBy(span: SpanInfo, leftOut: readonly string[]): Verdict["why"] 
   return own?.code === "spaced_text" ? own : null;
 }
 
+/** What the chip says of an edit that will match, where it says the short warning of one that won't: Find's own words. */
+export const LOOKS_IDENTICAL = "looks identical";
+
 /** The chip's short warning on an edit of `verdict`: "a similar font", "will look different", or none when it matches. */
-export function shortWarningOf({ fidelity }: Verdict): string | null {
+export function shortWarningOf({ fidelity }: Pick<Verdict, "fidelity">): string | null {
   if (fidelity === "substitute") return "a similar font";
   return fidelity === "approximate" ? "will look different" : null;
 }
