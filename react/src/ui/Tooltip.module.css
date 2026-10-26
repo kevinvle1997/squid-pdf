@@ -26,6 +26,12 @@
 @media (forced-colors: active) {
   .shortcut { outline: 1px solid CanvasText; }
 }
+/* A control's name: the shortcut's shape, holding words in ink. */
+.name {
+  composes: shortcut;
+  padding: var(--s1) var(--s2);
+  font-size: var(--fs-sm); font-weight: 500; line-height: 1.5; color: var(--ink); white-space: nowrap;
+}
 @media (prefers-reduced-motion: reduce) {
   .note[data-entering] { animation: global(fade) var(--dur-quick) var(--ease-out); }
 }

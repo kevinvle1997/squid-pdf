@@ -1,0 +1,55 @@
+/* Over the sheet's cell, holding only the delete button, which sits on the mat beside the sheet: a press
+   anywhere else goes through to the page. */
+.spot {
+  composes: ground from "../../ui/Ground.module.css";
+  grid-row: 1; grid-column: 2; max-width: var(--shown-width);
+  position: relative; pointer-events: none;
+}
+/* To the sheet's right, level with its top, clear of the crop mark's arm (the room the pages leave for it:
+   --beside-sheet). As Split here, the other control on the mat: no border, no fill, the mat's quieter ink
+   at rest. Not red: a delete is undone as any edit is, and red is a warning. */
+.button {
+  position: absolute; inset-inline-start: calc(100% + var(--s6)); top: 0;
+  pointer-events: auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s1); border: 0; border-radius: var(--r-2); background: none;
+  color: var(--ink-lo); cursor: pointer;
+  transition: transform var(--dur-press) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+/* The hit area grows past the icon without moving it, as ui/Button's does. */
+.button::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: max(100%, var(--hit)); height: max(100%, var(--hit));
+  transform: translate(-50%, -50%);
+}
+.button[data-hovered], .button[data-pressed], .button[data-focus-visible] { color: var(--ink); }
+.button[data-pressed] { transform: scale(.97); }
+.button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* The last page left, which a download needs: a disabled mark. */
+.button[data-disabled] { color: var(--ink-faint); cursor: default; }
+
+/* In the page's place, on its columns: the slip in the sheet's, as wide, the margin's left empty. */
+.deleted { composes: page from "./Page.module.css"; }
+/* Paper, as the chip and the redaction prompt are, but lying in the column rather than over the page. */
+.slip { composes: slip from "../../ui/Slip.module.css"; }
+/* Two classes, so ui/Slip's own rules, emitted again by each stylesheet that composes them, never win. */
+.deleted .slip {
+  grid-row: 1; grid-column: 2; max-width: var(--shown-width);
+  position: relative;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
+  padding: var(--s3) var(--s4);
+}
+.said { flex: 1 1 20ch; margin: 0; line-height: 1.4; color: var(--ink); }
+
+@media (max-width: 820px) {
+  .spot, .deleted .slip { grid-column: 1; }
+  /* No room beside the sheet: above its top right corner, in the gap it shares with Split here, in from
+     the edge so the crop mark stays clear. */
+  .button { inset-inline-start: auto; inset-inline-end: var(--s3); top: auto; bottom: calc(100% + var(--s3)); }
+}
+@media (forced-colors: active) {
+  .button[data-disabled] { color: GrayText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button[data-pressed] { transform: none; }
+}

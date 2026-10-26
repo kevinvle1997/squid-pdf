@@ -67,6 +67,12 @@ export function upload(file: Blob, onProgress: (sent: number, total: number) => 
   });
 }
 
+/** The document as the server keeps it now, in the reader's language. Its `Squid-Expires-At` isn't read, as below. */
+export async function documentOf(docId: string): Promise<Document> {
+  const response = await send(`/api/documents/${docId}`, { method: "GET" });
+  return (await response.json()) as Document;
+}
+
 /**
  * Whether the server still has the document: false once its hour has run out, or a deploy retired it.
  * Its `Squid-Expires-At` isn't read: nothing shows the hour.

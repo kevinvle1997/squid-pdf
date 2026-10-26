@@ -1,6 +1,6 @@
 // A document persisted in this browser until the server's own hour runs out, so a reload or a closed tab
 // loses no work. Files are stored as bytes: Safari's private windows, as WebKit's tests run, won't store a Blob.
-import type { Document } from "../api/types";
+import type { Document, Sentences } from "../api/types";
 import { sentenceOf } from "../bugs";
 
 /** What's persisted of a document: the file, the server's reading of it, the work done to it, and until when. */
@@ -99,6 +99,32 @@ function renamed(doc: Document | (Omit<Document, "sentences"> & { copy: Document
   if ("sentences" in doc) return doc;
   const { copy, ...rest } = doc;
   return { ...rest, sentences: copy };
+}
+
+// Every sentence the browser reads: typed, so one the server adds must be listed here.
+const SENTENCES_READ: Record<keyof Sentences, true> = {
+  missing: true,
+  will_leave_out: true,
+  too_long: true,
+  substitute: true,
+  substitute_same_widths: true,
+  drawn_in_your_copy: true,
+  drawn_in_own_copy: true,
+  undo_redaction: true,
+  reopened: true,
+  export_left_out: true,
+  page_left_out: true,
+  page_put_back: true,
+  form_field_not_edited: true,
+  empty: true,
+  options: true,
+  approximate: true,
+  characters: true,
+};
+
+/** Whether a persisted reading of the document lacks a sentence this build reads: one persisted by an earlier build. */
+export function lacksSentences({ sentences }: Pick<Document, "sentences">): boolean {
+  return Object.keys(SENTENCES_READ).some((key) => !(key in sentences));
 }
 
 /** Forget the document persisted here, file and all. */

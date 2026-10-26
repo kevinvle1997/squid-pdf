@@ -47,13 +47,16 @@ interface Found {
   readonly matches: readonly Match[];
 }
 
-/** Every span that reads `find.searched` now, in the document's order. A redaction or a form field takes no replace. */
+/**
+ * Every span that reads `find.searched` now, in the order shown. None on a page left out of the download, which
+ * the file won't have; a redaction or a form field takes no replace.
+ */
 function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Reading; find: FindState }): Found[] {
   if (find.searched === "") return [];
   const found: Found[] = [];
   for (const span of spans) {
     const now = reading.spans.get(span.id);
-    if (span.form_field || now?.redacted) continue;
+    if (reading.deleted.has(span.page) || span.form_field || now?.redacted) continue;
     const text = textIn(reading, span);
     const matches = matchesIn(text, find.searched, find);
     if (matches.length > 0) found.push({ span, text, matches });

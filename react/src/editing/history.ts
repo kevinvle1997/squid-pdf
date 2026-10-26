@@ -68,3 +68,9 @@ export function spanOf(edit: Edit): string | undefined {
 export function touching(history: History, spanId: string): Set<number> {
   return new Set(entriesOf(history).flatMap((entry) => (spanOf(entry.edit) === spanId ? [entry.id] : [])));
 }
+
+/** The ids of every delete in effect of page `page`: what putting the page back takes out. */
+export function deleting(history: History, page: number): Set<number> {
+  const deletes = entriesOf(history).filter(({ edit }) => edit.kind === "delete_page" && edit.page === page);
+  return new Set(deletes.map((entry) => entry.id));
+}

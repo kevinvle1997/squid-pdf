@@ -159,6 +159,8 @@ export class RenderQueue {
     const stale = new Map<number, Region[]>();
     const bare: number[] = [];
     for (const page of stalePages(reading, this.#drawn.from)) {
+      // Left out of the download, it shows no sheet: still stale, it's drawn once it's put back.
+      if (reading.deleted.has(page)) continue;
       const edits = reading.pages.get(page);
       const info = reopener.doc.pages[page];
       // Nothing edited on the page any more: the original image beneath is already right.

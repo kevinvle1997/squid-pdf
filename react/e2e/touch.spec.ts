@@ -30,6 +30,22 @@ test.describe("on a touch screen", () => {
     await expect(keycap).toBeAttached();
     await expect(keycap).toBeHidden();
   });
+
+  test("a page's delete button is a finger wide, offers no key, and a tap deletes at once", async ({ page }) => {
+    await open(page);
+    const button = page.getByRole("button", { name: "Delete page 1", exact: true });
+    await expect(button).toBeVisible();
+    // The hit area grows past the icon drawn, so the hit area is what is measured.
+    const hit = await button.evaluate((drawn) => {
+      const area = getComputedStyle(drawn, "::before");
+      return Math.min(parseFloat(area.width), parseFloat(area.height));
+    });
+    expect(hit).toBeGreaterThanOrEqual(44);
+    await expect(button.locator("kbd")).toHaveCount(0);
+    await button.tap();
+    await expect(page.getByRole("main").getByText("This page is left out of the download")).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+  });
 });
 
 // The same names with a mouse: a control renamed away would be missed above, and prove nothing.

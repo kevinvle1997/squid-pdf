@@ -12,6 +12,7 @@ import { stillShows } from "../redrawRegions";
 import { shallowEqual } from "../store";
 import { pageInView, zoomShown } from "../zoom";
 import { useEditor, useEditorState } from "./context";
+import { DeletePage } from "./DeletePage";
 import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
@@ -75,15 +76,16 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
 }
 
 interface Props {
-  index: number;
+  index: number; // its number in the original, counting from 0
   info: PageInfo;
+  shownNumber: number; // its number among the pages shown, counting from 1: what its labels say
 }
 
 /**
  * One page: its box reserved from its size, the image when near, and a mark over every span.
  * It redraws only when something on it changes: its edits, its strips, or the span being typed in.
  */
-export const Page = memo(function Page({ index, info }: Props) {
+export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const editor = useEditor();
   const sheet = useSheet(index, info, { nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
@@ -94,7 +96,7 @@ export const Page = memo(function Page({ index, info }: Props) {
     () => page.strips?.filter((strip) => stillShows(strip, { edits: page.edits, info })),
     [page.strips, page.edits, info],
   );
-  const label = `Page ${index + 1}`;
+  const label = `Page ${shownNumber}`;
   const [focusedIn, setFocusedIn] = useState(false);
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
   // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
@@ -105,8 +107,17 @@ export const Page = memo(function Page({ index, info }: Props) {
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
-    <section {...focusWithinProps} className={styles.page} aria-label={label} style={sheetWidthOf(info)}>
-      <Margin info={info} changes={notes} noteHeightPt={sheet.noteHeightPt} pageNumber={index + 1} />
+    // `data-page`: a key pressed anywhere on it is on this page, for an undo that takes the page away (`pageOn`).
+    <section
+      {...focusWithinProps}
+      className={styles.page}
+      aria-label={label}
+      style={sheetWidthOf(info)}
+      data-page={index}
+    >
+      {/* First, so Tab reaches it after the page above and before this page's own notes and lines. */}
+      <DeletePage page={index} shownNumber={shownNumber} />
+      <Margin info={info} changes={notes} noteHeightPt={sheet.noteHeightPt} pageNumber={shownNumber} />
       <Sheet info={info} sheetRef={sheet.ref}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
@@ -145,7 +156,7 @@ export const Page = memo(function Page({ index, info }: Props) {
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
         {keepMarks && <Marks page={page} info={info} />}
       </Sheet>
-      <ChangeList changes={notes} pageNumber={index + 1} />
+      <ChangeList changes={notes} pageNumber={shownNumber} />
     </section>
   );
 });

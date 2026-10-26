@@ -61,6 +61,21 @@ export function Shortcut({ keys, children }: { keys: string; children: ReactElem
   );
 }
 
+/**
+ * The name of a control drawn as an icon alone, beside it on hover or focus, after it.
+ * A touch screen shows none: React Aria opens a tooltip only on hover and focus.
+ */
+export function NameTip({ name, children }: { name: string; children: ReactElement }) {
+  return (
+    <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
+      {children}
+      <AriaTooltip className={styles.name} placement="end" offset={8}>
+        {name}
+      </AriaTooltip>
+    </TooltipTrigger>
+  );
+}
+
 /** A note in full over what's pressed, on hover or focus: a heading, and a detail under it. */
 export function Tip({ heading, detail, children }: { heading: string; detail: string; children: ReactElement }) {
   return (

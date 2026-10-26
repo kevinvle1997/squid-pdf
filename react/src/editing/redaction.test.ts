@@ -25,7 +25,7 @@ const pressed = (keys: Partial<KeyboardEvent>, typing = false) =>
 
 describe("redacting", () => {
   test("Cmd+Delete on a span redacts the whole of it, says so, and keeps focus there", () => {
-    pressed({ key: "Backspace", metaKey: true })?.run(editor, "name");
+    pressed({ key: "Backspace", metaKey: true })?.run(editor, { spanId: "name", page: null });
     const state = editor.store.get();
     expect(state.reading.edits).toEqual([{ kind: "redact", span_id: "name" }]);
     expect(state.reading.spans.get("name")?.redacted).toBe(true);

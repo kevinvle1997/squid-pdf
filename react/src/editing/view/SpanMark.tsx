@@ -5,7 +5,7 @@ import { classes } from "../../ui/classes";
 import { type Press, pressOf } from "../caret";
 import { onEscape } from "../commands";
 import { DOUBLE_TAP_MS } from "../constants";
-import { type FocusTo, focusMoved } from "../editor";
+import { type FocusSpan, focusMoved } from "../editor";
 import { lookOf } from "../marks";
 import type { SpanReading } from "../project";
 import { edit } from "../typing";
@@ -22,7 +22,7 @@ interface Props {
   fit: FitInfo | undefined; // the server's verdict on its edit
   redaction: RedactionInfo | undefined; // the server's verdict on its redaction
   sentences: Sentences;
-  focusTo: FocusTo | null; // focus is sent here: back from its field, or put back from the margin
+  focusTo: FocusSpan | null; // focus is sent here: back from its field, or put back from the margin
   notes: Notes; // the page's one note, which this mark shows its own in
   noteId: string; // the page's note, for a screen reader to read with the mark
 }

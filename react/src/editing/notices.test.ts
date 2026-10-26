@@ -21,7 +21,7 @@ describe("the lines under the bar", () => {
       skipped: [aSkipped(2, "An edit points at nothing.")],
       failed: "Couldn't reach the server.",
     };
-    expect(noticeLines(notices, drawn)).toEqual([
+    expect(noticeLines(notices, drawn, { deleted: new Set() })).toEqual([
       warn("Signed."),
       warn("Couldn't reach the server."),
       warn("Drawn in Liberation Serif."),
@@ -31,7 +31,7 @@ describe("the lines under the bar", () => {
   });
 
   test("nothing to say is no lines", () => {
-    expect(noticeLines(NO_NOTICES, NOTHING_DRAWN)).toEqual([]);
+    expect(noticeLines(NO_NOTICES, NOTHING_DRAWN, { deleted: new Set() })).toEqual([]);
   });
 
   test("a change to the history clears every line but what opening found", () => {
@@ -42,6 +42,9 @@ describe("the lines under the bar", () => {
       font: { ...warn("Not this font."), font: "Times" },
       drop: warn("Not a PDF."),
     };
-    expect(noticesAfterChange(notices)).toEqual({ ...NO_NOTICES, document: [warn("Signed.")] });
+    expect(noticesAfterChange(notices, { stale: false })).toEqual({ ...NO_NOTICES, document: [warn("Signed.")] });
+    // Why a stale reading couldn't be read again stays, until it is.
+    const stale = noticesAfterChange(notices, { stale: true });
+    expect(stale).toEqual({ ...NO_NOTICES, document: [warn("Signed.")], reopen: plain("Opened again.") });
   });
 });

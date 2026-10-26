@@ -1,10 +1,13 @@
 // The work on the open document, persisted in this browser as it changes (documents/localPersistence.ts),
 // so a reload or a closed tab loses none of it; and the editor restored from work persisted before.
-import { type PersistedWork, persistFile, persistState } from "../documents/localPersistence";
-import type { Editor } from "./editor";
+
+import { sentenceOf } from "../bugs";
+import { lacksSentences, type PersistedWork, persistFile, persistState } from "../documents/localPersistence";
+import { announcing, type Editor, layoutOf } from "./editor";
 import { unexported } from "./export";
 import { addOwnFace } from "./faces";
 import { entriesOf, type History } from "./history";
+import { warn } from "./notices";
 import { project, UNEDITED } from "./project";
 
 /** A font copy as it's stored: its bytes, and their type, which goes with them to the server. */
@@ -92,9 +95,33 @@ export function restorePersisted(editor: Editor, { work, until }: PersistedWork<
   Object.assign(editor.persistence, { file: true, history: work.history, until });
 }
 
-/** The editor restored from persisted work: what it reads is drawn, and the user's copies of its fonts preview. */
+/** The editor restored from persisted work: what it reads is drawn, the user's copies of its fonts preview, and a stale reading is read again. */
 export function resumeWork(editor: Editor): void {
   const { reading } = editor.store.get();
+  readStoredAgain(editor);
   if (reading.edits.length > 0) editor.queue.draw(reading);
   for (const [fontName, file] of editor.attached) void addOwnFace(fontName, file);
+}
+
+/**
+ * A reading of the document persisted by an earlier build lacks a sentence this one reads: the server's is asked
+ * for, as the editor opens and again as the connection comes back, until it lands.
+ */
+export function readStoredAgain(editor: Editor): void {
+  if (lacksSentences(editor.store.get().doc)) void readAgain(editor);
+}
+
+/** The server's reading of the document asked for again, in place of the one persisted; why not, in the bar if it fails. */
+async function readAgain(editor: Editor): Promise<void> {
+  const { store, reopener } = editor;
+  try {
+    const doc = await reopener.readAgain();
+    // A failure said before, this one's or opening again's, is over: the document is there.
+    const { reopen } = store.get().notices;
+    const notices = { ...store.get().notices, reopen: reopen?.tone === "warn" ? null : reopen };
+    store.set({ doc, layout: layoutOf(doc), notices });
+  } catch (error) {
+    const said = sentenceOf(error);
+    store.set({ notices: { ...store.get().notices, reopen: warn(said) }, announcement: announcing(said) });
+  }
 }
