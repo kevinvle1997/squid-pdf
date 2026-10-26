@@ -19,6 +19,7 @@ import {
   typeQuery,
   typeReplacement,
 } from "./find";
+import type { LineScale } from "./fit";
 import { matchesIn } from "./matching";
 import { edit, typeInto } from "./typing";
 
@@ -26,6 +27,8 @@ vi.mock(import("../api/client"), async (original) => ({ ...(await original()), r
 
 // Every letter these tests type, as wide as each other, so "14 June" fits where "14 March" was.
 const glyphs = halfWideGlyphs(" 0123456789MarchJunewsoifdtly");
+// A line set as the span is: no way out taken.
+const AS_SET: LineScale = { size: 1, scaleX: 1 };
 const DATE = "14 March";
 const SPANS = [
   aSpan({ id: "first", text: `was ${DATE}`, room_pt: 50 }),
@@ -207,7 +210,32 @@ describe("find", () => {
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
     const glyphs = halfWideGlyphs("abcdefghij");
     const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
-    expect(matchesAcross(line, { text: line.text, matches, glyphs })).toEqual([{ x0: 110, x1: 130 }]);
+    expect(matchesAcross(line, { text: line.text, matches, glyphs, scale: AS_SET })).toEqual([{ x0: 110, x1: 130 }]);
+  });
+
+  describe("in an edited span, a match sits where the edit draws its words, not where the original's were", () => {
+    // Ten 5 pt letters across 50 pt, edited to other words of the same letters.
+    const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrst");
+    const across = (text: string, find: string, scale: LineScale) =>
+      matchesAcross(line, {
+        text,
+        matches: matchesIn(text, find, { matchCase: false, wholeWords: false }),
+        glyphs,
+        scale,
+      });
+
+    test("a shorter edit: the words found are as far in as their letters", () => {
+      expect(across("abcde", "cd", AS_SET)).toEqual([{ x0: 110, x1: 120 }]);
+    });
+
+    test("a longer edit left long: past where the original ended", () => {
+      expect(across("abcdefghijklmnopqrst", "klmn", AS_SET)).toEqual([{ x0: 150, x1: 170 }]);
+    });
+
+    test("a longer edit narrowed to end where the original did: narrowed with it", () => {
+      expect(across("abcdefghijklmnopqrst", "klmn", { size: 1, scaleX: 0.5 })).toEqual([{ x0: 125, x1: 135 }]);
+    });
   });
 });
 

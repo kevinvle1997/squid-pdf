@@ -7,6 +7,7 @@ import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
 import { matchesAcross } from "../find";
+import { settingOf } from "../fit";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { type PageState, spanIn } from "../page";
@@ -97,10 +98,14 @@ function Found({
   return page.spans.flatMap((span) => {
     const inSpan = matches.get(span.id);
     if (inSpan === undefined || span.id === page.typingIn) return [];
-    const text = readings.get(span.id)?.text ?? span.text;
-    const glyphs = page.fonts.get(span.font)?.glyphs ?? {};
+    const reading = readings.get(span.id);
+    const text = reading?.text ?? span.text;
+    const font = page.fonts.get(span.font);
+    const glyphs = font?.glyphs ?? {};
+    // Set as the edit is drawn: its way out narrows or shrinks the words found with it.
+    const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
     const gone = span.id === page.foundAt;
-    return matchesAcross(span, { text, matches: inSpan, glyphs }).map(({ x0, x1 }) => (
+    return matchesAcross(span, { text, matches: inSpan, glyphs, scale }).map(({ x0, x1 }) => (
       <span
         key={`${span.id}:${x0}`}
         className={classes(styles.found, gone && styles.foundAt)}
