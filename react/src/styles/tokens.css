@@ -6,12 +6,12 @@
      white page; in the dark lifted to a mid grey, since the page never dims and a near-black mat makes
      it glare. What's drawn on it reads as on it. */
   --ground: #E0DED3;
-  --ground-line: #DCDAD0;       /* the mat's grid, a line every step */
-  --ground-line-major: #D9D7CC; /* and a firmer one every fifth */
+  --ground-line: #DAD8CC;       /* the mat's grid, a line every step */
+  --ground-line-major: #D2D0C3; /* and a firmer one every fifth */
   --ground-ink: #23221B;
   --ground-ink-lo: #525046;
   --ground-ink-faint: #747266;  /* crop marks */
-  --ground-change: #0F5CB0;
+  --ground-change: #0E56A5;     /* blue pencil on the mat: a shade darker than the page's, so a note holds AA across a firmer grid line */
   --ground-warn: #B5361F;
   --strip: #FFFFFF;      /* a surface: notices, popovers, tooltips; a slip on the page is the sheet's */
   --field: #FFFFFF;      /* inside a text input in the chrome */
