@@ -60,7 +60,10 @@ export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget
             </p>
             <div className={styles.keptActions}>
               <Button onPress={onReopen}>Open it again</Button>
-              <Button onPress={onForget}>Delete it now</Button>
+              {/* Quiet beside it: opening is the likely press, and deleting can't be undone. */}
+              <Button variant="quiet" onPress={onForget}>
+                Delete it now
+              </Button>
             </div>
           </div>
         )}

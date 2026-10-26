@@ -33,7 +33,7 @@
 /* The hover lightens the fill, so the keycap lightens as far again to stay apart from it. */
 .primary[data-hovered] kbd { background: color-mix(in srgb, var(--strip) 28%, var(--ink)); }
 
-/* A tool in the bar: no box until it's pointed at, so the bar reads as words, not a row of boxes. */
+/* A tool in the bar, or the lesser of two actions: no box until it's pointed at, so it reads as words, not a box. */
 .quiet { background: transparent; border-color: transparent; color: var(--ink); }
 .quiet[data-hovered] { background: var(--rule-soft); }
 .quiet[data-disabled] { color: var(--ink-lo); }
