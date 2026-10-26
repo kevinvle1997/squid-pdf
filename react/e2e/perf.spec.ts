@@ -231,7 +231,7 @@ async function openField(page: Page) {
   await page.getByRole("button", { name: LINE }).focus();
   await page.keyboard.press("Enter");
   const field = page.getByRole("textbox", { name: `Change “${LINE}”` });
-  await field.press("End");
+  await field.press("ArrowRight");
   return field;
 }
 
@@ -363,7 +363,7 @@ test("change all, a burst of undos and export on a long contract", async ({ page
     await lines.nth(line).focus();
     await page.keyboard.press("Enter");
     field = page.getByRole("textbox", { name: /^Change “/ });
-    await field.press("End");
+    await field.press("ArrowRight");
     await field.pressSequentially(" too");
     await field.press("Enter");
   }

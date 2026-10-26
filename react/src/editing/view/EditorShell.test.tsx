@@ -433,7 +433,7 @@ describe("redaction", () => {
     const mark = screen.getByRole("button", { name: "was here" });
     await expect.element(mark).toBeInTheDocument();
     mark.element().focus();
-    await userEvent.keyboard("{Enter}{End} now");
+    await userEvent.keyboard("{Enter}{ArrowRight} now");
     await userEvent.keyboard("{Control>}{Backspace}{/Control}");
     await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
     await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).not.toBeInTheDocument();
