@@ -69,6 +69,15 @@ describe("where a render disagrees with its preview", () => {
     expect(pulsing(disagreementsAfter(NOTHING_DRAWN, after, judged()))).toEqual(["one"]);
   });
 
+  test("a verdict other than the one worked out as it was typed pulses, as the chip said otherwise", () => {
+    const reading = readingOf(aReplace(ONE.id));
+    // Its own font draws every letter typed, so the chip said it looks identical; the page refused the font.
+    const similar = aFit({ delta_pt: -12, fidelity: "substitute", substitute: "Liberation Serif Regular" });
+    const after = drawnOf(reading, [0], { fits: fitsOn(0, { one: similar }) });
+
+    expect(pulsing(disagreementsAfter(NOTHING_DRAWN, after, judged()))).toEqual(["one"]);
+  });
+
   test("a redaction never pulses: it previews bare, as it's drawn", () => {
     const reading = readingOf(aRedact(ONE.id));
     const after = drawnOf(reading, [0], { skipped: [aSkipped(0, "left out")] });
