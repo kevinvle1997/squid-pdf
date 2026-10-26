@@ -1,4 +1,4 @@
-"""A document's metadata (XMP) read as XML, for the words in it. Pure: no MuPDF.
+"""A document's metadata (XMP) read as XML, for its words and a save's mark. Pure: no MuPDF.
 
 What isn't XML, or can't be read through safely, is read whole, in each encoding XMP
 may use, so a word in it is still found.
@@ -7,6 +7,7 @@ may use, so a word in it is still found.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
@@ -50,6 +51,9 @@ _XMP_TYPED = {
 _XML_DEEPEST = 100
 # The encodings XMP may use; what isn't read as XML can't say which, so it's read in each.
 _XMP_ENCODINGS = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
+_PDF_PROPERTIES = "http://ns.adobe.com/pdf/1.3/"  # where XMP keeps the program that wrote it
+_XMP_PROPERTIES = "http://ns.adobe.com/xap/1.0/"  # where XMP keeps the dates of a change
+_XMP_DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # a date as XMP writes one (ISO 8601), here in UTC
 
 
 def xml_of(written: bytes) -> minidom.Document | None:
@@ -117,3 +121,45 @@ def _is_xml_text(attribute: minidom.Attr) -> bool:
 def readings_of(written: bytes) -> str:
     """Bytes in an encoding they don't name, read in each XMP may use, one after another."""
     return "\n".join(written.decode(encoding, "replace") for encoding in _XMP_ENCODINGS)
+
+
+def set_changed_by(dom: minidom.Document, producer: str, when: datetime) -> bool:
+    """Set XMP's producer and the dates of its last change to these; whether it has any.
+
+    Its pdf:Producer, xmp:ModifyDate and xmp:MetadataDate, each element or attribute it holds
+    of them. None it lacks is added.
+    """
+    changed_at = when.astimezone(UTC).strftime(_XMP_DATE_FORMAT)
+    marks = {
+        (_PDF_PROPERTIES, "Producer"): producer,
+        (_XMP_PROPERTIES, "ModifyDate"): changed_at,
+        (_XMP_PROPERTIES, "MetadataDate"): changed_at,
+    }
+    found = [_set_everywhere(dom, where, value) for where, value in marks.items()]
+    return any(found)
+
+
+def _set_everywhere(dom: minidom.Document, where: tuple[str, str], value: str) -> bool:
+    """Set a property, by namespace and name, in each element and attribute it's written as.
+
+    Returns whether it was written anywhere.
+    """
+    namespace, name = where
+    elements = dom.getElementsByTagNameNS(namespace, name)
+    for element in elements:
+        for child in list(element.childNodes):
+            element.removeChild(child)
+        element.appendChild(dom.createTextNode(value))
+    written_as = (
+        element.getAttributeNodeNS(namespace, name)
+        for element in dom.getElementsByTagNameNS("*", "*")
+    )
+    attributes = [attribute for attribute in written_as if attribute is not None]
+    for attribute in attributes:
+        attribute.value = value
+    return bool(elements) or bool(attributes)
+
+
+def xml_written(dom: minidom.Document) -> bytes:
+    """XML as metadata (XMP) is written: UTF-8, which needs no XML declaration, so none."""
+    return "".join(node.toxml() for node in dom.childNodes).encode()

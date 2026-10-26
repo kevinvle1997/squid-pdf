@@ -11,6 +11,7 @@ import math
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import cache
 from itertools import chain, count
 from typing import Any
@@ -630,6 +631,10 @@ class _MuPDFDriver:
     def drop_active_content(self) -> bool:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.file.active_content.drop()
+
+    def mark_changed_by(self, producer: str, when: datetime) -> None:
+        """Say in the file's metadata that `producer` changed it, at `when`."""
+        self.file.metadata.mark_changed_by(producer, when)
 
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""

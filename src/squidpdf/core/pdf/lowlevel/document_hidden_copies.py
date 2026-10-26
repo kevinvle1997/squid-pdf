@@ -23,13 +23,15 @@ from squidpdf.core.pdf.lowlevel.objects import (
     each_reached,
     items_of,
     keys_of,
+    metadata_stream,
     pdf_of,
+    put_stream,
     put_text,
     root_of,
     text_of,
     values_of,
 )
-from squidpdf.core.pdf.xmp import readings_of, xml_of, xml_strings
+from squidpdf.core.pdf.xmp import readings_of, xml_of, xml_strings, xml_written
 from squidpdf.core.types import CopyPlace, HiddenCopy
 
 # What the file says about itself (its Info) that says when, not what.
@@ -331,7 +333,7 @@ class DocumentHiddenCopies:
 
     def _metadata_texts(self) -> list[str]:
         """The text in the document's metadata (XMP), each string apart; whole if not XML."""
-        stream = self._metadata_stream()
+        stream = metadata_stream(self.doc)
         if stream is None:
             return []
         written = bytes_of(stream)
@@ -344,7 +346,7 @@ class DocumentHiddenCopies:
     def _rewrite_metadata(self, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(text)` for each string in the metadata (XMP); it goes if not XML."""
         mu = pymupdf.mupdf
-        stream = self._metadata_stream()
+        stream = metadata_stream(self.doc)
         if stream is None:
             return
         written = bytes_of(stream)
@@ -365,18 +367,7 @@ class DocumentHiddenCopies:
                 changed = True
         if not changed:
             return
-        # Without an XML declaration, as metadata is written: UTF-8 needs none.
-        new_xml = "".join(node.toxml() for node in dom.childNodes).encode()
-        mu.pdf_update_stream(
-            pdf_of(self.doc), stream, mu.fz_new_buffer_from_copied_data(new_xml), 0
-        )
-
-    def _metadata_stream(self) -> pymupdf.mupdf.PdfObj | None:
-        """The document's metadata (XMP), a stream the catalog names; None when it has none."""
-        mu = pymupdf.mupdf
-        root = root_of(self.doc)
-        stream = mu.pdf_dict_get(root, mu.PDF_ENUM_NAME_Metadata)
-        return stream if mu.pdf_is_stream(stream) else None
+        put_stream(self.doc, stream, xml_written(dom))
 
 
 def _texts_in(value: pymupdf.mupdf.PdfObj) -> list[str]:

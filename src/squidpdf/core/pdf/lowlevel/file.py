@@ -10,6 +10,7 @@ from squidpdf.core.pdf.lowlevel.active_content import ActiveContent
 from squidpdf.core.pdf.lowlevel.additions import PageAdditions
 from squidpdf.core.pdf.lowlevel.document_hidden_copies import DocumentHiddenCopies
 from squidpdf.core.pdf.lowlevel.fonts import FontRecords
+from squidpdf.core.pdf.lowlevel.metadata import Metadata
 from squidpdf.core.pdf.lowlevel.page_hidden_copies import PageHiddenCopies
 from squidpdf.core.pdf.lowlevel.redaction import PageRedaction
 from squidpdf.core.pdf.lowlevel.signatures import Signatures
@@ -26,6 +27,7 @@ class PdfFile:
     document_hidden_copies: DocumentHiddenCopies
     signatures: Signatures
     active_content: ActiveContent
+    metadata: Metadata
 
 
 def pdf_file(doc: pymupdf.Document) -> PdfFile:
@@ -38,4 +40,5 @@ def pdf_file(doc: pymupdf.Document) -> PdfFile:
         document_hidden_copies=DocumentHiddenCopies(doc),
         signatures=Signatures(doc),
         active_content=ActiveContent(doc),
+        metadata=Metadata(doc),
     )
