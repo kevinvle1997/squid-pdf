@@ -307,3 +307,7 @@ class PdfDriver(Protocol):
     def close(self) -> None:
         """Release the open document."""
         ...
+
+
+# What opens the PDF at a path as a driver: `core.pdf.mupdf.open_driver`, or a test's double.
+type DriverFactory = Callable[[str], PdfDriver]

@@ -27,9 +27,9 @@ from squidpdf.core.fonts.document import NO_SOURCES, DocumentFonts, FontSources
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import GoogleFontController
 from squidpdf.core.fonts.pool import PooledFont
-from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.driver import DriverFactory, PdfDriver
 
-# The one import that names the driver: another PDF library is swapped in here.
+# The one import that names the library: its driver is `open_pdf`'s default.
 from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.redaction import RedactionCheck, any_word_left, whole_words, without
@@ -367,9 +367,11 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     )
 
 
-def open_pdf(path: str, *, sources: FontSources = NO_SOURCES) -> Engine:
-    """The PDF at `path`, open for editing. Use it in a `with`, or close it."""
-    return open_engine(open_driver(path), sources=sources)
+def open_pdf(
+    path: str, *, sources: FontSources = NO_SOURCES, driver_factory: DriverFactory = open_driver
+) -> Engine:
+    """The PDF at `path`, open in `driver_factory`'s driver. Use it in a `with`, or close it."""
+    return open_engine(driver_factory(path), sources=sources)
 
 
 def result_of[T](task: Callable[[], T]) -> T:
