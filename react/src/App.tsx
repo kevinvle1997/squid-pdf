@@ -26,6 +26,7 @@ type Screen = Landing | { kind: "open"; opened: Opened; kept?: KeptWork<unknown>
 function Screens() {
   const [screen, setScreen] = useState<Screen>({ kind: "waiting" });
   const [kept, setKept] = useState<Kept<unknown> | null>(null);
+  const [deleteRefused, setDeleteRefused] = useState(false);
 
   // What this browser kept, read as the landing first shows: it's outside React, in the browser's storage.
   useEffect(() => {
@@ -44,10 +45,15 @@ function Screens() {
     setKept(null);
   }
 
-  function forget() {
-    setKept(null);
-    // Refused, there was nothing to delete.
-    forgetKept().catch(() => undefined);
+  async function forget() {
+    setDeleteRefused(false);
+    try {
+      await forgetKept();
+      setKept(null);
+    } catch {
+      // Refused by the browser's storage: still kept, so still offered, and said.
+      setDeleteRefused(true);
+    }
   }
 
   // From the landing, or a PDF dropped on the editor in place of the open one.
@@ -64,7 +70,14 @@ function Screens() {
 
   if (screen.kind !== "open") {
     return (
-      <Drop landing={screen} kept={kept} onChoose={(file) => void open(file)} onReopen={reopen} onForget={forget} />
+      <Drop
+        landing={screen}
+        kept={kept}
+        deleteRefused={deleteRefused}
+        onChoose={(file) => void open(file)}
+        onReopen={reopen}
+        onForget={() => void forget()}
+      />
     );
   }
   const { opened } = screen;
