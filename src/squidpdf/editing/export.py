@@ -18,11 +18,14 @@ from pathlib import Path
 from squidpdf.core import (
     DriverFactory,
     Engine,
+    Fidelity,
     InvalidRequest,
     Message,
     Reply,
     SpanIndex,
+    Tally,
     Workers,
+    tally,
     words,
 )
 from squidpdf.documents import store
@@ -36,7 +39,7 @@ from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionFailed
 from squidpdf.editing.redaction import RedactionController
 from squidpdf.editing.replies import notice_info
-from squidpdf.editing.types import Exported, FileNotice, Saved
+from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
 
 _EXPORTED = "export.pdf"  # the file saved and checked by the worker, then read by the server
 _PRODUCER = "squidpdf"  # the Producer an exported file names: the program that changed it last
@@ -44,6 +47,13 @@ _PRODUCER = "squidpdf"  # the Producer an exported file names: the program that 
 # The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
 SKIPPED_HEADER = "Squid-Skipped-Edits"
 NOTICES_HEADER = "Squid-Notices"
+
+# What each replace adds to on the export's line, by how it turned out.
+_TALLY_OF: dict[Fidelity, Tally] = {
+    "exact": Tally.EDITS_EXACT,
+    "substitute": Tally.EDITS_SUBSTITUTE,
+    "approximate": Tally.EDITS_APPROXIMATE,
+}
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -117,9 +127,19 @@ def _make_pdf(
             to=str(out),
             driver_factory=documents.driver_factory,
         )
-        skipped = [skip.edit for skip in saved.applied.skipped]
-        # Only the file's own notices: render already said apply's.
-        return Exported(skipped_edits=skipped, file_notices=saved.notices)
+    _count_fonts_kept(saved.applied.replaced)
+    skipped = [skip.edit for skip in saved.applied.skipped]
+    # Only the file's own notices: render already said apply's.
+    return Exported(skipped_edits=skipped, file_notices=saved.notices)
+
+
+def _count_fonts_kept(replaced: list[Replaced]) -> None:
+    """Tally each replace on the export's line by how it turned out.
+
+    At export, not render: a file downloaded is the edits made, each span's last edit once.
+    """
+    for each in replaced:
+        tally(_TALLY_OF[each.fidelity])
 
 
 def save_edited(

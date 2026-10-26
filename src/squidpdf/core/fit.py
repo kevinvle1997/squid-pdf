@@ -12,6 +12,7 @@ from typing import assert_never
 from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import PooledFont
 from squidpdf.core.plan import DrawPlan, DrawPlanner
+from squidpdf.core.text.fidelity import Fidelity
 from squidpdf.core.types import Face, Span
 
 
@@ -54,4 +55,17 @@ class LineFit:
             return self.plans.substitute_for(span, text).face.name
         if isinstance(drawn_in, Face):
             return drawn_in.name
+        assert_never(drawn_in)
+
+    def fidelity(self, span: Span, plan: DrawPlan) -> Fidelity:
+        """How an edit `plan` draws at the span turns out, as the span's own text is judged."""
+        drawn_in = plan.drawn_in
+        if isinstance(drawn_in, Face):
+            return "substitute"
+        # The own font draws it: approximate where it leaves letters out, or a redraw of the
+        # span's own text wouldn't look like the page.
+        if isinstance(drawn_in, PooledFont):
+            unlike = self.plans.unlike(span, self.plans.plan_for(span, span.text))
+            set_as_around = not plan.left_out and unlike is None
+            return "exact" if set_as_around else "approximate"
         assert_never(drawn_in)

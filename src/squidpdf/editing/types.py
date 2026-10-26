@@ -9,7 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
-from squidpdf.core import Category, HiddenPlace, Message, MessageInfo, Page, SaidInfo, Style
+from squidpdf.core import (
+    Category,
+    Fidelity,
+    HiddenPlace,
+    Message,
+    MessageInfo,
+    Page,
+    SaidInfo,
+    Style,
+)
 from squidpdf.editing.edits import Strategy
 from squidpdf.editing.fit import FitReport
 
@@ -60,11 +69,24 @@ Notice = SpanNotice | InsertNotice | FileNotice
 
 
 @dataclass(frozen=True, slots=True)
+class Replaced:
+    """How a replace turned out: in its span's own font or not, and its fit.
+
+    `font` is the span's font's shown name: a file's words, never logged as they are.
+    """
+
+    fidelity: Fidelity
+    font: str
+    fit: FitReport
+
+
+@dataclass(frozen=True, slots=True)
 class Applied:
-    """What applying the log left out, and what it drew other than asked."""
+    """What applying the log left out, what it drew other than asked, and how replaces did."""
 
     skipped: list[Skipped]
     notices: list[Notice]
+    replaced: list[Replaced]
 
 
 @dataclass(frozen=True, slots=True)

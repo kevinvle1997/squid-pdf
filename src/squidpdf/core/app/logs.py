@@ -53,7 +53,10 @@ _LEVEL_NAMES = {level.value: level.name for level in Level}
 
 
 class Tally(StrEnum):
-    """What a request did on the way, tallied onto its line: why a slow one was slow."""
+    """What a request did on the way, tallied onto its line: why a slow one was slow.
+
+    An export also counts its replaces by fidelity, so the share that keep their font is a sum.
+    """
 
     QUEUED_MS = "queued_ms"  # waiting for a free worker
     WORKER_MS = "worker_ms"  # at work in one
@@ -64,6 +67,9 @@ class Tally(StrEnum):
     # None came: failed, late, or held back after a recent failure.
     GOOGLE_FAILED = "google_failed"
     GOOGLE_MS = "google_ms"  # waiting on downloads
+    EDITS_EXACT = "edits_exact"  # drawn in the file's own font, set as the text around it
+    EDITS_SUBSTITUTE = "edits_substitute"  # drawn in a similar font we ship
+    EDITS_APPROXIMATE = "edits_approximate"  # the own font, but unlike the text around it
 
 
 class _Outcome(StrEnum):
