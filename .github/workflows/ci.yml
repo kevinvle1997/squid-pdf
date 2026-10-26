@@ -51,9 +51,30 @@ jobs:
       - name: Test inside the image
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
-  frontend:
+  # The frontend runs in Playwright's own image, whose tag must follow the lockfile's Playwright.
+  playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version in the lockfile
+        id: version
+        run: |
+          version=$(jq -er '.packages["node_modules/@playwright/test"].version' react/package-lock.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  frontend:
+    needs: playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Both browsers and their system libraries come in the image, so nothing waits on apt.
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
+      # Chromium runs out of Docker's small shared memory without the host's.
+      options: --ipc=host
     defaults:
       run:
         working-directory: react
@@ -82,31 +103,6 @@ jobs:
 
       - name: Types (tsc)
         run: npm run typecheck
-
-      # Playwright pins its browsers, so a bump of any other dependency keeps the cache.
-      - name: Playwright's version
-        id: playwright
-        run: |
-          version=$(jq -er '.packages["node_modules/@playwright/test"].version' package-lock.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # The key names the browsers, so a cache saved before one was added can't hit without it.
-      - name: Browser cache
-        id: browser
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-webkit-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
-      # Before the tests: the view's tests run in Chromium too. WebKit is for the end to end.
-      - name: Browsers
-        if: steps.browser.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
-
-      # The system libraries they need live outside the cache, so a hit still installs them.
-      - name: Browsers' system libraries
-        if: steps.browser.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
 
       - name: Unit and view tests
         run: npm test
