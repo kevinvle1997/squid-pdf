@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
-import type { Render } from "../api/types";
-import { aDoc, aFont, aRedact, aReplace, aSpan, halfWideGlyphs } from "../fixtures";
+import type { FitInfo, Render } from "../api/types";
+import { aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
 import { change, createEditor, type Editor, type EditorState, undo } from "./editor";
 import {
@@ -9,6 +9,7 @@ import {
   closeFind,
   countSaid,
   countShown,
+  drawnWidthOf,
   findCount,
   matchesAcross,
   openFind,
@@ -210,31 +211,50 @@ describe("find", () => {
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
     const glyphs = halfWideGlyphs("abcdefghij");
     const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
-    expect(matchesAcross(line, { text: line.text, matches, glyphs, scale: AS_SET })).toEqual([{ x0: 110, x1: 130 }]);
+    expect(matchesAcross(line, { text: line.text, matches, glyphs, widePt: 50 })).toEqual([{ x0: 110, x1: 130 }]);
   });
 
   describe("in an edited span, a match sits where the edit draws its words, not where the original's were", () => {
     // Ten 5 pt letters across 50 pt, edited to other words of the same letters.
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
     const glyphs = halfWideGlyphs("abcdefghijklmnopqrst");
-    const across = (text: string, find: string, scale: LineScale) =>
-      matchesAcross(line, {
-        text,
-        matches: matchesIn(text, find, { matchCase: false, wholeWords: false }),
-        glyphs,
-        scale,
-      });
+    const across = (text: string, find: string, drawn: { scale?: LineScale; fit?: FitInfo } = {}) => {
+      const { scale = AS_SET, fit } = drawn;
+      const widePt = drawnWidthOf(line, { text, glyphs, scale, fit });
+      const matches = matchesIn(text, find, { matchCase: false, wholeWords: false });
+      return matchesAcross(line, { text, matches, glyphs, widePt });
+    };
 
     test("a shorter edit: the words found are as far in as their letters", () => {
-      expect(across("abcde", "cd", AS_SET)).toEqual([{ x0: 110, x1: 120 }]);
+      expect(across("abcde", "cd")).toEqual([{ x0: 110, x1: 120 }]);
     });
 
     test("a longer edit left long: past where the original ended", () => {
-      expect(across("abcdefghijklmnopqrst", "klmn", AS_SET)).toEqual([{ x0: 150, x1: 170 }]);
+      expect(across("abcdefghijklmnopqrst", "klmn")).toEqual([{ x0: 150, x1: 170 }]);
     });
 
     test("a longer edit narrowed to end where the original did: narrowed with it", () => {
-      expect(across("abcdefghijklmnopqrst", "klmn", { size: 1, scaleX: 0.5 })).toEqual([{ x0: 125, x1: 135 }]);
+      expect(across("abcdefghijklmnopqrst", "klmn", { scale: { size: 1, scaleX: 0.5 } })).toEqual([
+        { x0: 125, x1: 135 },
+      ]);
+    });
+
+    test("once the server drew it, as long as its fit says: a similar font may draw it wider than the file's widths", () => {
+      const fit = aFit({ strategy: "as-is", delta_pt: 70 });
+      expect(across("abcdefghijklmnopqrst", "klmn", { fit })).toEqual([{ x0: 160, x1: 184 }]);
+    });
+
+    test("once the server drew it with a way out, ending where the original did, whatever the browser would have", () => {
+      const fit = aFit({ strategy: "condense", delta_pt: 50 });
+      expect(across("abcdefghijklmnopqrst", "klmn", { fit })).toEqual([{ x0: 125, x1: 135 }]);
+    });
+
+    test("without the font's widths, by letter count across its box", () => {
+      const widePt = drawnWidthOf(line, { text: "ab cd", glyphs: undefined, scale: AS_SET, fit: undefined });
+      const matches = matchesIn("ab cd", "cd", { matchCase: false, wholeWords: false });
+      expect(matchesAcross(line, { text: "ab cd", matches, glyphs: undefined, widePt })).toEqual([
+        { x0: 130, x1: 150 },
+      ]);
     });
   });
 });

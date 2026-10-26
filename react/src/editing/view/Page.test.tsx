@@ -584,6 +584,24 @@ describe("a page", () => {
     expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo((40 / A4.width) * 100, 3);
   });
 
+  test("find tints the words found in an edit where the server drew them, not where the original's letters were", async () => {
+    // The file's widths make "was here and more" 170 pt; the server drew it 30 pt past the original's 80.
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ delta_pt: 30 }) } }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "was here and more");
+    finish(editor, true);
+    await expect.poll(() => editor.store.get().drawn.fits.get(0)?.[span.id]?.delta_pt).toBe(30);
+    openFind(editor);
+    typeQuery(editor, "more");
+    const found = () => screen.container.querySelector<HTMLElement>("[data-found]");
+    await expect.poll(() => found()).not.toBeNull();
+    // "more" is the last 4 of 17 letters across the 110 pt drawn.
+    expect(parseFloat(found()?.style.left ?? "")).toBeCloseTo(((72 + (110 * 13) / 17) / A4.width) * 100, 3);
+    expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo(((110 * 4) / 17 / A4.width) * 100, 3);
+  });
+
   describe("undo, before the server's render lands", () => {
     const below = aSpan({ id: "below", text: WORDS, size: 20, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     const beside = aSpan({ id: "beside", text: WORDS, size: 20, bbox: { x0: 300, y0: 100, x1: 380, y1: 124 } });
