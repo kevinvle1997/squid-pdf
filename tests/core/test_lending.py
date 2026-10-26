@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import partial
+from typing import Any, cast
 
 import pymupdf
-import pytest
 
 from squidpdf.core import FontSources, Message, open_pdf
 from squidpdf.core.fonts import pool
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.google import GoogleFile
 from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
-from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
+from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.core.types import PageFont
 from tests.conftest import POPPINS
 from tests.helpers import assert_equal, assert_in
@@ -46,24 +48,34 @@ def _copy_per_page(path: str, texts: tuple[str, ...] = _TEXTS) -> str:
     return path
 
 
-@pytest.fixture
-def noted(monkeypatch) -> tuple[list[int], list[int]]:
-    """Each font object read out of the file, and each page whose fonts are listed, in order."""
-    read_out: list[int] = []
-    listed: list[int] = []
-    font_bytes, fonts = _MuPDFDriver.font_bytes, _MuPDFDriver.fonts
+@dataclass(frozen=True, slots=True, eq=False)
+class _NotingDriver:
+    """MuPDF's driver, noting each font object the engine reads out and each page it lists."""
 
-    def noted_font_bytes(self: _MuPDFDriver, xref: int) -> bytes | None:
-        read_out.append(xref)
-        return font_bytes(self, xref)
+    driver: PdfDriver
+    read_out: list[int]
+    listed: list[int]
 
-    def noted_fonts(self: _MuPDFDriver, page: int) -> list[PageFont]:
-        listed.append(page)
-        return fonts(self, page)
+    def font_bytes(self, xref: int) -> bytes:
+        """The real driver's answer, noted."""
+        self.read_out.append(xref)
+        return self.driver.font_bytes(xref)
 
-    monkeypatch.setattr(_MuPDFDriver, "font_bytes", noted_font_bytes)
-    monkeypatch.setattr(_MuPDFDriver, "fonts", noted_fonts)
-    return read_out, listed
+    def fonts(self, page: int) -> list[PageFont]:
+        """The real driver's answer, noted."""
+        self.listed.append(page)
+        return self.driver.fonts(page)
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _noting_driver(path: str, *, read_out: list[int], listed: list[int]) -> PdfDriver:
+    """A driver factory for `open_pdf`: MuPDF's driver, noting into `read_out` and `listed`."""
+    noting = _NotingDriver(open_driver(path), read_out=read_out, listed=listed)
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, noting)
 
 
 def _copies(path: str) -> list[int]:
@@ -72,12 +84,14 @@ def _copies(path: str) -> list[int]:
     return [xref for number in range(doc.page_count) for xref, *_ in doc[number].get_fonts()]
 
 
-def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path, noted):
+def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path):
     path = _copy_per_page(str(tmp_path / "copies.pdf"))
     first, second, third = _copies(path)
-    read_out, listed = noted
+    read_out: list[int] = []
+    listed: list[int] = []
+    noting = partial(_noting_driver, read_out=read_out, listed=listed)
 
-    with open_pdf(path) as engine:
+    with open_pdf(path, driver_factory=noting) as engine:
         span = next(span for span in engine.index() if span.page == 0)
         read_out.clear()
         listed.clear()

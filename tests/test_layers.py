@@ -36,7 +36,7 @@ def _imports(tree: ast.Module) -> set[str]:
 
 
 def _module(path: Path) -> str:
-    """`src/squidpdf/core/pdf/lowlevel.py` -> `squidpdf.core.pdf.lowlevel`."""
+    """`src/squidpdf/core/pdf/mupdf.py` -> `squidpdf.core.pdf.mupdf`."""
     parts = path.relative_to(_SRC).with_suffix("").parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 

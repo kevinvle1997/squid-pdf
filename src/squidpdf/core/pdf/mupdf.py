@@ -29,6 +29,7 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_TOO_HEAVY,
     PDF_NULL,
     PdfFile,
+    pdf_file,
 )
 from squidpdf.core.pdf.png import png_of
 from squidpdf.core.types import (
@@ -192,7 +193,7 @@ def open_driver(path: str) -> PdfDriver:
     if page_count == 0:  # no page to show or edit: not a document anyone made
         doc.close()
         raise Damaged(debug="no pages")
-    return _MuPDFDriver(doc, PdfFile(doc))
+    return _MuPDFDriver(doc, pdf_file(doc))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -375,7 +376,7 @@ class _MuPDFDriver:
         # A simple font describes itself.
         if value_type not in ("array", "xref"):
             return xref
-        return self.file.inner_font(xref)
+        return self.file.fonts.inner_font(xref)
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
@@ -391,7 +392,7 @@ class _MuPDFDriver:
         Read from MuPDF's own record of the font. Raises DriverError when MuPDF
         can't load it.
         """
-        return self.file.font_codes(xref, code_bytes)
+        return self.file.fonts.font_codes(xref, code_bytes)
 
     def listed_widths(self, xref: int) -> dict[str, float] | None:
         """Each letter the font's width list gives a width, per 1000 em; None without a list.
@@ -399,14 +400,14 @@ class _MuPDFDriver:
         Read from MuPDF's own record of the font. Raises DriverError when MuPDF
         can't load it.
         """
-        return self.file.listed_widths(xref)
+        return self.file.fonts.listed_widths(xref)
 
     def text_font_name(self, xref: int) -> str | None:
         """The name text in font `xref` reads, often the font file's own; None if unreadable.
 
         Read from MuPDF's own record of the font.
         """
-        return self.file.text_font_name(xref)
+        return self.file.fonts.text_font_name(xref)
 
     def open_font(self, font_file: bytes) -> _MuPDFFont:
         """Open a font file to measure with. Raises DriverError when it isn't one."""
@@ -450,46 +451,48 @@ class _MuPDFDriver:
         A box with letters left is then erased whole, so old text is never left under new.
         """
         letters = self._letters(page, near=boxes)
-        with self.file.links_kept(page):
+        with self.file.redaction.links_kept(page):
             # No letter's middle inside: erase the whole box, as nothing else would.
-            self.file.redact(page, [_strip_along(letters.inside(box)) or box for box in boxes])
+            self.file.redaction.redact(
+                page, [_strip_along(letters.inside(box)) or box for box in boxes]
+            )
             left = self.text_in(page, boxes)
             missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
             # Read again only after a second erase: most boxes are clear after the first.
             if missed:
-                self.file.redact(page, missed)
+                self.file.redaction.redact(page, missed)
                 left = self.text_in(page, boxes)
         for resource, xref in self._changed_page(page).named.items():
-            self.file.restore_font(page, resource, xref)
+            self.file.additions.restore_font(page, resource, xref)
         return left
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
         """Delete every link whose area overlaps one of `boxes`, whatever it does."""
-        self.file.drop_links(page, boxes)
+        self.file.redaction.drop_links(page, boxes)
 
     def hidden_copies(self, page: int) -> list[str]:
         """Every hidden copy on the page, as text, and each string MuPDF may miss."""
-        return self.file.hidden_copies(page)
+        return self.file.page_hidden_copies.read(page)
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
-        self.file.rewrite_hidden_copies(page, rewritten)
+        self.file.page_hidden_copies.rewrite(page, rewritten)
 
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
         """Each of the document's own hidden copies that `holding` is true of, and where."""
-        return self.file.document_hidden_copies(holding)
+        return self.file.document_hidden_copies.read(holding)
 
     def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(copy)` for the document's hidden copies; one left blank goes."""
-        self.file.rewrite_document_hidden_copies(rewritten)
+        self.file.document_hidden_copies.rewrite(rewritten)
 
     def is_signed(self) -> bool:
         """Whether the document holds a signature, or anything `drop_signatures` deletes."""
-        return self.file.is_signed()
+        return self.file.signatures.is_signed()
 
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
-        self.file.drop_signatures()
+        self.file.signatures.drop()
 
     def write_codes(
         self,
@@ -510,14 +513,16 @@ class _MuPDFDriver:
         that font's widths. PyMuPDF's writers only take letters, so it's written
         out here.
         """
-        x, y = self.file.to_pdf_space(page, origin)
+        x, y = self.file.additions.to_pdf_space(page, origin)
         resources = self._resources_of(page, {run.xref for run in runs})
         shown = " ".join(
             f"{_written_name(resources[run.xref])} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
-        paint = f" /{self.file.add_opacity(page, opacity)} gs" if opacity < SOLID else ""
+        paint = (
+            f" /{self.file.additions.add_opacity(page, opacity)} gs" if opacity < SOLID else ""
+        )
         # Where the text goes: narrowed along its line, turned, and placed.
         cos, sin = QUARTER_TURNS[turn_ccw]
         matrix = [scale_x * cos, scale_x * sin, -sin, cos, x, y]
@@ -541,7 +546,7 @@ class _MuPDFDriver:
                 named.setdefault(font.xref, font.resource)
         for xref in sorted(xrefs - named.keys()):
             resource = self._free_name(page, f"C{xref}")
-            self.file.restore_font(page, resource, xref)
+            self.file.additions.restore_font(page, resource, xref)
             self._changed_page(page).keep_named(resource, xref)
             named[xref] = resource
         return named
@@ -582,7 +587,7 @@ class _MuPDFDriver:
         xrefs = self._changed_page(page).named
         # See-through: a graphics state that paints at `opacity`.
         paint = (
-            f"/{self.file.add_opacity_as_pymupdf(page, opacity)} gs\n"
+            f"/{self.file.additions.add_opacity_as_pymupdf(page, opacity)} gs\n"
             if opacity < SOLID
             else ""
         )
@@ -632,7 +637,7 @@ class _MuPDFDriver:
 
     def drop_active_content(self) -> bool:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
-        return self.file.drop_active_content()
+        return self.file.active_content.drop()
 
     def save(self, path: str) -> None:
         """Write the document to `path`, as small as MuPDF makes it."""
@@ -687,7 +692,7 @@ class _MuPDFDriver:
         position) can't leak into ours.
         """
         self._changed_page(page).wrap(self.doc[page])
-        self.file.add_drawing(page, stream)
+        self.file.additions.add_drawing(page, stream)
 
 
 @dataclass(slots=True)
