@@ -64,6 +64,10 @@ _NOT_NARROWED = (
     "1 0 0 1 0 0 cm\n"  # the narrowing of a run at its own width, which moves nothing
 )
 _BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
+_KEEP_PROTECTION = 0  # pymupdf.PDF_ENCRYPT_KEEP, which its type stubs leave out
+_TRAILER = -1  # what PyMuPDF's object calls take for the file's trailer
+# A file's ID with both parts empty: MuPDF keeps the first part as it is and writes the second.
+_EMPTY_ID = "[<> <>]"
 # The bytes a PDF name holds as they are: printable, and none that ends a name or
 # starts an escape. Any other is written #xx.
 _PRINTABLE = range(0x21, 0x7F)
@@ -650,9 +654,25 @@ class _MuPDFDriver:
         self.file.metadata.mark_changed_by(producer, when)
 
     def save(self, path: str) -> None:
-        """Write the document to `path`, as small as MuPDF makes it."""
+        """Write the document to `path`, protected as the original was."""
+        self._fill_in_missing_id()
         # Object streams compress the plain objects too: a face's width list is most of it.
-        self.doc.save(path, garbage=GARBAGE_COLLECT, deflate=True, use_objstms=True)
+        self.doc.save(
+            path,
+            garbage=GARBAGE_COLLECT,
+            deflate=True,
+            use_objstms=True,
+            encryption=_KEEP_PROTECTION,
+        )
+
+    def _fill_in_missing_id(self) -> None:
+        """Give a protected file with no ID the empty one a reader takes it to have."""
+        protected = self.doc.xref_get_key(_TRAILER, "Encrypt")[0] != PDF_NULL
+        has_id = self.doc.xref_get_key(_TRAILER, "ID")[0] != PDF_NULL
+        if not protected or has_id:
+            return
+        # Its key was made from the empty first part: a fresh ID written whole would lock it.
+        self.doc.xref_set_key(_TRAILER, "ID", _EMPTY_ID)
 
     def close(self) -> None:
         """Release the open document."""

@@ -308,7 +308,7 @@ class PdfDriver(Protocol):
         ...
 
     def save(self, path: str) -> None:
-        """Write the document to `path`."""
+        """Write the document to `path`, protected as the original was."""
         ...
 
     def close(self) -> None:
