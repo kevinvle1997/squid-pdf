@@ -14,14 +14,14 @@ const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" 
 interface Props {
   landing: Landing;
   kept: Kept<unknown> | null; // what this browser kept, offered while the landing waits
-  deleteRefused: boolean; // the browser's storage refused "Delete it now", so it's still kept
+  forgetFailed: string | null; // why "Delete it now" left it kept, in words for the user
   onChoose: (file: File) => void;
   onReopen: () => void; // the document kept here opens again, with its changes
   onForget: () => void; // the document kept here is deleted from this browser
 }
 
 /** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is said under the sheet. No sign-in. */
-export function Drop({ landing, kept, deleteRefused, onChoose, onReopen, onForget }: Props) {
+export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget }: Props) {
   const offered = landing.kind === "waiting" ? kept : null;
   return (
     <DropZone
@@ -50,12 +50,7 @@ export function Drop({ landing, kept, deleteRefused, onChoose, onReopen, onForge
         <p className={styles.status} role="status">
           {landing.kind === "opening" && <Progress {...landing} />}
           {landing.kind === "failed" && <Warn mark>{landing.detail}</Warn>}
-          {offered !== null && deleteRefused && (
-            <Warn mark>
-              This browser wouldn't delete your changes to {offered.file.name}. Try again, or clear this site's data in
-              the browser's settings.
-            </Warn>
-          )}
+          {offered !== null && forgetFailed !== null && <Warn mark>{forgetFailed}</Warn>}
         </p>
         {offered !== null && (
           <div className={styles.kept}>

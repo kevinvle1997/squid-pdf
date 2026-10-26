@@ -1,6 +1,7 @@
 // A document kept in this browser until the server's own hour runs out, so a reload or a closed tab loses
 // no work. Files are kept as bytes: Safari's private windows, as WebKit's tests run, won't keep a Blob.
 import type { Document } from "../api/types";
+import { sentenceOf } from "../bugs";
 
 /** What's kept of a document: the file, the server's reading of it, the work done to it, and until when. */
 export interface Kept<Work> {
@@ -95,4 +96,18 @@ export async function keptDocument(): Promise<Kept<unknown> | null> {
 /** Forget the document kept here, file and all. */
 export async function forgetKept(): Promise<void> {
   await inStore("readwrite", (store) => store.clear());
+}
+
+/** Forget the document kept here: null once it's gone, else why it's still kept, in words for the user. */
+export async function forgetOrSayWhy(name: string): Promise<string | null> {
+  try {
+    await forgetKept();
+    return null;
+  } catch (error) {
+    // The browser's storage refused: a failure no server saw, so said in the browser's own words.
+    if (error instanceof DOMException) {
+      return `This browser wouldn't delete your changes to ${name}. Try again, or clear this site's data in the browser's settings.`;
+    }
+    return sentenceOf(error);
+  }
 }

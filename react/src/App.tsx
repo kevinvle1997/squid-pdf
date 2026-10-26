@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import styles from "./App.module.css";
-import { forgetKept, type Kept, type KeptWork, keptDocument } from "./documents/kept";
+import { forgetOrSayWhy, type Kept, type KeptWork, keptDocument } from "./documents/kept";
 import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
 import { Button } from "./ui/Button";
@@ -23,10 +23,13 @@ export function App() {
 /** The landing, or the document open in the editor: opened again from this browser, with its work kept. */
 type Screen = Landing | { kind: "open"; opened: Opened; kept?: KeptWork<unknown> };
 
+/** Deleting what this browser kept: under way, or why it's still kept. */
+type Forgetting = { kind: "under way" } | { kind: "failed"; detail: string };
+
 function Screens() {
   const [screen, setScreen] = useState<Screen>({ kind: "waiting" });
   const [kept, setKept] = useState<Kept<unknown> | null>(null);
-  const [deleteRefused, setDeleteRefused] = useState(false);
+  const [forgetting, setForgetting] = useState<Forgetting | null>(null);
 
   // What this browser kept, read as the landing first shows: it's outside React, in the browser's storage.
   useEffect(() => {
@@ -35,7 +38,8 @@ function Screens() {
   }, []);
 
   function reopen() {
-    if (kept === null) return;
+    // A delete under way would take the work from under the editor.
+    if (kept === null || forgetting?.kind === "under way") return;
     void loadEditor();
     setScreen({
       kind: "open",
@@ -46,14 +50,16 @@ function Screens() {
   }
 
   async function forget() {
-    setDeleteRefused(false);
-    try {
-      await forgetKept();
-      setKept(null);
-    } catch {
-      // Refused by the browser's storage: still kept, so still offered, and said.
-      setDeleteRefused(true);
+    if (kept === null) return;
+    setForgetting({ kind: "under way" });
+    const detail = await forgetOrSayWhy(kept.file.name);
+    // Still kept, so still offered, and said.
+    if (detail !== null) {
+      setForgetting({ kind: "failed", detail });
+      return;
     }
+    setKept(null);
+    setForgetting(null);
   }
 
   // From the landing, or a PDF dropped on the editor in place of the open one.
@@ -73,7 +79,7 @@ function Screens() {
       <Drop
         landing={screen}
         kept={kept}
-        deleteRefused={deleteRefused}
+        forgetFailed={forgetting?.kind === "failed" ? forgetting.detail : null}
         onChoose={(file) => void open(file)}
         onReopen={reopen}
         onForget={() => void forget()}

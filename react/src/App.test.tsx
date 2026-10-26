@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, onTestFinished, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -7,7 +7,7 @@ import { App } from "./App";
 import { upload } from "./api/client";
 import type { Render } from "./api/types";
 import { SOMETHING_WENT_WRONG } from "./bugs";
-import { forgetKept, keepFile, keepState, keptDocument } from "./documents/kept";
+import { forgetKept, forgetOrSayWhy, keepFile, keepState, keptDocument } from "./documents/kept";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
 import { aDoc, aFont, aSpan } from "./fixtures";
 
@@ -18,6 +18,11 @@ vi.mock(import("./api/client"), async (original) => ({
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
 }));
+// The browser's real storage, but a delete can be held under way.
+vi.mock(import("./documents/kept"), async (original) => {
+  const module = await original();
+  return { ...module, forgetOrSayWhy: vi.fn(module.forgetOrSayWhy) };
+});
 
 beforeEach(async () => {
   vi.mocked(upload).mockReset();
@@ -125,12 +130,19 @@ test("Delete it now forgets the document kept here, file and all", async () => {
   await expect.poll(() => keptDocument()).toBeNull();
 });
 
+/** The browser's storage throwing `error` as anything kept here is deleted, until the test ends. */
+function deleteThrows(error: Error) {
+  const throwing = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementation(() => {
+    throw error;
+  });
+  onTestFinished(() => throwing.mockRestore());
+  return throwing;
+}
+
 test("Delete it now refused by the browser's storage says so, keeps the offer, and can be pressed again", async () => {
   await keptHere(Date.now() + 60_000);
   const screen = await render(<App />);
-  const refusing = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementation(() => {
-    throw new DOMException("Refused", "UnknownError");
-  });
+  const refusing = deleteThrows(new DOMException("Refused", "UnknownError"));
   await screen.getByRole("button", { name: "Delete it now" }).click();
   const said =
     "This browser wouldn't delete your changes to contract.pdf. Try again, or clear this site's data in the browser's settings.";
@@ -141,6 +153,27 @@ test("Delete it now refused by the browser's storage says so, keeps the offer, a
   await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
   await expect.element(screen.getByRole("status")).not.toHaveTextContent(said);
   await expect.poll(() => keptDocument()).toBeNull();
+});
+
+test("a bug while deleting is said as a bug, not as the browser refusing", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  await keptHere(Date.now() + 60_000);
+  const screen = await render(<App />);
+  deleteThrows(new TypeError("store is undefined"));
+  await screen.getByRole("button", { name: "Delete it now" }).click();
+  await expect.element(screen.getByRole("status")).toHaveTextContent(SOMETHING_WENT_WRONG);
+  expect(logged).toHaveBeenCalledOnce();
+});
+
+test("Open it again waits while a delete is under way, so the delete can't take the work from the editor", async () => {
+  await keptHere(Date.now() + 60_000);
+  vi.mocked(forgetOrSayWhy).mockReturnValueOnce(new Promise(() => undefined));
+  const screen = await render(<App />);
+  await screen.getByRole("button", { name: "Delete it now" }).click();
+  await screen.getByRole("button", { name: "Open it again" }).click();
+  // Opened, the offer would go at once, in the same update.
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
+  await expect.poll(() => keptDocument()).not.toBeNull();
 });
 
 test("one past the server's hour isn't offered, and is forgotten", async () => {
