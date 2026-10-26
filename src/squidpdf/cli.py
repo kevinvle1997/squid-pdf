@@ -377,7 +377,7 @@ def _line_of(row: _Row) -> str:
     """A file's line in `report`: its green rate, its name, and a note."""
     name = posixpath.basename(row.path)[:_NAME_COL_WIDTH]
     name_and_note = f"{name:<{_NAME_COL_PAD}}{_DIM}{row.note}{_OFF}"
-    # The file couldn't be read: `note` says why.
+    # `note` says why.
     if not row.read:
         return f"  {_RED}failed{_OFF}   {name_and_note}"
     # No text, so no green rate.

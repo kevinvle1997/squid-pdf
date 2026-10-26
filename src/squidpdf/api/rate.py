@@ -174,7 +174,6 @@ def _counted_as(host: str) -> str:
         address = ip_address(host)
     except ValueError:  # raised for a name, not an address, as a test client may give
         return host
-    # An IPv4 address: itself.
     if not isinstance(address, IPv6Address):
         return str(address)
     # IPv4 written as IPv6, as a server listening on both sees it: itself, not the

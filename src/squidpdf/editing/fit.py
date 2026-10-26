@@ -142,7 +142,7 @@ def options_for(delta_pt: float, original_width: float, *, room_pt: float) -> li
     to the floor. Past that it is not a solution, it is a different-looking page.
     Each ends the line where the original did.
     """
-    # It fits in its room, or there's no width to compare against.
+    # No width to compare against: the ratios below divide by it.
     if not runs_past(delta_pt, room_pt) or original_width <= 0:
         return []
 
@@ -226,10 +226,10 @@ def replace_fit(
         substitute=engine.fit.substitute(span, text, plan=typed_plan),
         asked=strategy,
     )
-    # Drawn as typed: the span's size, no stretch.
+    # The span's size, no stretch.
     if drawn_strategy == "as-is":
         return Fitted(report, typed_plan)
-    # Smaller letters: width goes with size, so it ends where the original did.
+    # Width goes with size, so it ends where the original did.
     if drawn_strategy == "shrink":
         return Fitted(report, typed_plan, size=span.size * original_width / typed_width)
     # The same size, letters squeezed narrower, to the same end.

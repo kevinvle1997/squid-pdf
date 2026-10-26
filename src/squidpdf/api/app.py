@@ -92,10 +92,10 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     # Outside BodyLimit, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
+    # Its docstring is the schema's description, which the browser's types copy.
     @app.get("/api/health", responses=_PROBLEM_RESPONSES)
     async def health(pool: Annotated[WorkerPool, Depends(current)]) -> dict[str, str]:
         """Up and answering."""
-        # The docstring stays: it's the schema's description, which the browser's types copy.
         # Up: a worker can take a task. A broken pool is replaced first; none can start: 503.
         if not await pool.ready():
             raise NoWorkers()
