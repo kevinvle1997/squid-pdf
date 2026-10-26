@@ -24,6 +24,7 @@ runs:
       with:
         version: ${{ steps.uv.outputs.version }}
         enable-cache: true
+        cache-python: true
         cache-dependency-glob: uv.lock
 
     # From the root, even when the job's steps run in react/.
