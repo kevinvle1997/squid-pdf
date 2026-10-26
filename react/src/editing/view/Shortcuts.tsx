@@ -62,7 +62,7 @@ export function Shortcuts() {
   );
 }
 
-/** A keyboard, drawn at its own size so the stroke stays 1.2px, as the theme's sun and moon are. */
+/** A keyboard, drawn at its own size so the stroke stays 1.5px, as the wordmark's and the theme's are. */
 function KeyboardMark() {
   return (
     <svg
@@ -72,12 +72,12 @@ function KeyboardMark() {
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.2"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
       <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" />
-      <path d="M4 6.75h.01M6.67 6.75h.01M9.33 6.75h.01M12 6.75h.01M4 9.5h.01M12 9.5h.01M6 9.75h4" />
+      <path d="M4 6.75h.01M6.67 6.75h.01M9.33 6.75h.01M12 6.75h.01M4 9.5h.01M12 9.5h.01M6.5 9.75h3" />
     </svg>
   );
 }
