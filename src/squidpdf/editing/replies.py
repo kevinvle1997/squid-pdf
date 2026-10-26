@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import assert_never
 
-from squidpdf.core import COPY_PLACES, Message, words
-from squidpdf.editing.fit import FitReport
+from squidpdf.core import COPY_PLACES, Message, reason_of, words
+from squidpdf.documents.types import ApproximateInfo
+from squidpdf.editing.fit import FitReport, Verdict
 from squidpdf.editing.types import (
     FileNotice,
     FitInfo,
@@ -20,9 +21,10 @@ from squidpdf.editing.types import (
 )
 
 
-def fit_info(fit: FitReport, language: str) -> FitInfo:
-    """A fit as the browser gets it: option names, since it has their sentences."""
+def fit_info(fit: FitReport, verdict: Verdict, language: str) -> FitInfo:
+    """A fit and its edit's verdict, as the browser gets them: option names, not sentences."""
     parts = fit.describe()
+    substituted = verdict.fidelity == "substitute"
     return {
         "delta_pt": fit.delta_pt,
         "missing": fit.missing,
@@ -31,7 +33,18 @@ def fit_info(fit: FitReport, language: str) -> FitInfo:
         "strategy": fit.strategy,
         "message": words.render_all(parts, language),
         "message_parts": [part.as_info() for part in parts],
+        "fidelity": verdict.fidelity,
+        "why": _approximate_why(verdict),
+        "substitute": verdict.substitute.face.name if substituted else None,
+        "same_widths": substituted and verdict.substitute.same_widths,
     }
+
+
+def _approximate_why(verdict: Verdict) -> ApproximateInfo | None:
+    """How an approximate edit won't match the text around it, in no language; else None."""
+    if verdict.why is None:
+        return None
+    return {"code": reason_of(verdict.why), "params": verdict.why.params}
 
 
 def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:

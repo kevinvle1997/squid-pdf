@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import DriverFactory, Engine, open_pdf, words
+from squidpdf.core import DriverFactory, Engine, QuarterTurn, open_pdf, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents.attached import AttachedFiles
 from squidpdf.documents.store import FOLDER_STORE
@@ -282,6 +283,43 @@ def drawn_with(
     doc.subset_fonts(verbose=False)
     doc.save(path)
     return path
+
+
+_SERIF = "Liberation Serif Regular"  # the face `in_a_copy_lacking` stores a copy of
+
+
+def in_a_copy_lacking(
+    path: str, *, text: str, lacking: str = "", stored: bool = True, turn_ccw: QuarterTurn = 0
+) -> str:
+    """One line of `text` in a whole, stored Liberation Serif with no shape for `lacking`.
+
+    Each of `lacking` the face has is emptied, as a trimmed copy leaves a letter it didn't
+    need, though the page still draws it; whole, so any other letter can be typed. Not
+    `stored`, it's in MuPDF's Times, which the file only names, and `lacking` is moot.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    font_name = "tiro"
+    if stored:
+        font_name = "emb"
+        page.insert_font(fontname=font_name, fontbuffer=_emptied(_SERIF, lacking))
+    page.insert_text((72, 300), text, fontname=font_name, fontsize=12, rotate=turn_ccw)
+    doc.save(path)
+    return path
+
+
+def _emptied(face: str, letters: str) -> bytes:
+    """`face`'s file with no shape for each of `letters` it has."""
+    font = TTFont(io.BytesIO(face_bytes(FACES[face])))
+    glyph_names = font["cmap"].getBestCmap()
+    for letter in letters:
+        # .get: a letter the face never had is lacking already.
+        name = glyph_names.get(ord(letter))
+        if name is not None:
+            font["glyf"][name] = TTGlyphPen(None).glyph()
+    out = io.BytesIO()
+    font.save(out)
+    return out.getvalue()
 
 
 @pytest.fixture(scope="module")

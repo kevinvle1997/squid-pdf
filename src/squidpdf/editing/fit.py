@@ -8,7 +8,7 @@ learns why.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import assert_never
 
 from squidpdf.core import (
@@ -20,9 +20,11 @@ from squidpdf.core import (
     TOLERANCE_PT,
     DrawPlan,
     Engine,
+    Fidelity,
     Message,
     Param,
     Span,
+    SubstituteWidths,
     new_text,
 )
 from squidpdf.editing.edits import Insert, Strategy
@@ -39,6 +41,19 @@ class Option:
 
 # A line's width when it has none to speak of: what a share past its room is taken of.
 _SOME_WIDTH_PT = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Verdict:
+    """How an edit comes out: in its span's own font, set as the page sets the span, or not.
+
+    The same verdict a span gets at upload (`Engine.fidelity_of`), for the edit's own words.
+    """
+
+    fidelity: Fidelity
+    why: Message | None  # how an approximate edit won't match the text around it
+    # The face that draws it in its font's place, or would were the font refused.
+    substitute: SubstituteWidths
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,12 +127,14 @@ class FitReport:
 class Fitted:
     """A fit and the plan it measured, which `draw` then draws: one plan for both.
 
-    `plan` holds the fonts that draw the line, so it stays in the process that made
-    it. A None `size` keeps the span's own; `scale_x` narrows the line from its start.
+    `plan` holds the fonts that draw the line, so it stays in the process that made it.
+    `verdict` is the plan's (`verdicts_of` says it as drawn). A None `size` keeps the
+    span's own; `scale_x` narrows the line from its start.
     """
 
     report: FitReport
     plan: DrawPlan = field(repr=False)
+    verdict: Verdict
     size: float | None = None
     scale_x: float = 1.0
 
@@ -191,6 +208,7 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
     # A font that only lacks a letter is still usable: a substitute draws the line.
     unusable = not shipped and not engine.fit.has_own_font(span)
     typed_plan = engine.fit.plan_for(span, insert.text)
+    verdict = _verdict_of(engine, span, insert.text, plan=typed_plan)
     report = FitReport(
         delta_pt=0.0,
         missing=[] if unusable else typed_plan.missing,
@@ -198,7 +216,10 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
         substitute=engine.fit.substitute(span, insert.text, plan=typed_plan),
         unavailable=insert.font if unusable else "",
     )
-    return Fitted(report, typed_plan)
+    # No font of the document's to stand in for: in a face we ship, it's what was asked.
+    return Fitted(
+        report, typed_plan, replace(verdict, fidelity="exact") if shipped else verdict
+    )
 
 
 def replace_fit(
@@ -227,13 +248,24 @@ def replace_fit(
         substitute=engine.fit.substitute(span, text, plan=typed_plan),
         asked=strategy,
     )
+    verdict = _verdict_of(engine, span, text, plan=typed_plan)
     # The span's size, no stretch.
     if drawn_strategy == "as-is":
-        return Fitted(report, typed_plan)
+        return Fitted(report, typed_plan, verdict)
     # Width goes with size, so it ends where the original did.
     if drawn_strategy == "shrink":
-        return Fitted(report, typed_plan, size=span.size * original_width / typed_width)
+        return Fitted(
+            report, typed_plan, verdict, size=span.size * original_width / typed_width
+        )
     # The same size, letters squeezed narrower, to the same end.
     if drawn_strategy == "condense":
-        return Fitted(report, typed_plan, scale_x=original_width / typed_width)
+        return Fitted(report, typed_plan, verdict, scale_x=original_width / typed_width)
     assert_never(drawn_strategy)
+
+
+def _verdict_of(engine: Engine, span: Span, text: str, *, plan: DrawPlan) -> Verdict:
+    """How `text`, drawn at `span` as `plan` plans it, comes out, judged as upload judges."""
+    report = engine.fidelity_of(span, plan)
+    why = report.why if report.state == "approximate" else None
+    substitute = engine.fit.substitute_widths(span, text, plan=plan)
+    return Verdict(report.state, why=why, substitute=substitute)

@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from typing import assert_never
 
 from squidpdf.core import (
+    FACES,
     Engine,
     Face,
     InvalidRequest,
@@ -35,7 +36,14 @@ from squidpdf.editing.edits import (
     SpanEdit,
 )
 from squidpdf.editing.errors import BadReference, RedactionConflict
-from squidpdf.editing.fit import Fitted, LogFits, insert_fit, insert_span, replace_fit
+from squidpdf.editing.fit import (
+    Fitted,
+    LogFits,
+    Verdict,
+    insert_fit,
+    insert_span,
+    replace_fit,
+)
 from squidpdf.editing.types import Applied, InsertNotice, Notice, Replaced, Skipped, SpanNotice
 
 
@@ -387,18 +395,20 @@ def _step_for(edited_span: _EditedSpan, fits: LogFits) -> Step:
 
 @dataclass(frozen=True, slots=True)
 class Ran:
-    """What doing the steps came out with: what came out other than asked, and each redraw.
+    """What doing the steps came out with: what came out other than asked, and each draw.
 
-    `redrawn` is each replaced span drawn, by id, with the face we ship that drew it, None
-    for its own font. A replace the erase couldn't clear isn't drawn, so isn't there.
+    `redrawn` is each replace drawn, by span id, and `placed` each insert, by its place:
+    the face we ship that drew it, None for its own font (a face we ship is new text's own).
+    A replace the erase couldn't clear isn't drawn, so isn't there.
     """
 
     notices: list[Notice]
     redrawn: dict[str, Face | None]
+    placed: dict[int, Face | None]
 
 
 def run(engine: Engine, steps: Sequence[Step]) -> Ran:
-    """Do the steps; returns what came out other than asked, and what drew each replace.
+    """Do the steps; returns what came out other than asked, and what drew each edit.
 
     Every erase happens in one pass before any draw: PyMuPDF erases a page at a
     time, and an erase after a redraw would take the new text too.
@@ -416,6 +426,7 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
     return Ran(
         [notice for ran in finished for notice in ran.notices],
         redrawn={span_id: face for ran in finished for span_id, face in ran.redrawn.items()},
+        placed={position: face for ran in finished for position, face in ran.placed.items()},
     )
 
 
@@ -451,10 +462,11 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
     `stuck` are the spans whose text the erase couldn't clear.
     """
     if isinstance(step, _Erase):
-        return Ran([], redrawn={})
+        return Ran([], redrawn={}, placed={})
     # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
     if isinstance(step, _Redraw) and step.span.id in stuck:
-        return Ran([SpanNotice(step.span.id, Message("form_field_not_edited"))], redrawn={})
+        stuck_notice = SpanNotice(step.span.id, Message("form_field_not_edited"))
+        return Ran([stuck_notice], redrawn={}, placed={})
     if isinstance(step, _Redraw):
         fitted = step.fitted
         drawn = engine.draw(
@@ -465,52 +477,75 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
             scale_x=fitted.scale_x,
         )
         notices: list[Notice] = [SpanNotice(step.span.id, said) for said in drawn.notices]
-        return Ran(notices, redrawn={step.span.id: drawn.face})
+        return Ran(notices, redrawn={step.span.id: drawn.face}, placed={})
     if isinstance(step, _Place):
         drawn = engine.draw(
             step.span, step.span.text, plan=step.fitted.plan, turn_ccw=step.turn_ccw
         )
-        return Ran([InsertNotice(step.position, said) for said in drawn.notices], redrawn={})
+        # New text in a face we ship is in its own font, whichever of ours draws it.
+        face = None if step.span.font in FACES else drawn.face
+        insert_notices: list[Notice] = [
+            InsertNotice(step.position, said) for said in drawn.notices
+        ]
+        return Ran(insert_notices, redrawn={}, placed={step.position: face})
     assert_never(step)
 
 
 def apply_edits(engine: Engine, resolved: Resolved) -> Applied:
     """Apply every edit on every page, in memory. Nothing is written."""
     fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+    rewritten = _rewritten(resolved)
     # Before run too, for the same reason.
-    judged = {
-        span.id: _judged(engine, span, text=text, fitted=fits.replaces[span.id])
-        for span, text in _rewritten(resolved)
-    }
+    shown_names = {span.id: engine.shown_name(span) for span in rewritten}
     ran = run(engine, plan(engine, resolved, fits))
+    verdicts = verdicts_of(fits, ran)
     replaced = [
-        _as_drawn(judged[span_id], face)
-        for span_id, face in ran.redrawn.items()
-        if span_id in judged
+        Replaced(verdicts.replaces[span.id], shown_names[span.id])
+        for span in rewritten
+        if span.id in ran.redrawn
     ]
     return Applied(resolved.skipped, ran.notices, replaced)
 
 
-def _rewritten(resolved: Resolved) -> list[tuple[Span, str]]:
-    """Each span whose last edit replaces its words with others, and those words.
+def _rewritten(resolved: Resolved) -> list[Span]:
+    """Each span whose last edit replaces its words with others.
 
     A replace that types a span's own words back draws it as it was: no edit to count.
     """
     return [
-        (edited_span.span, edited_span.edit.text)
+        edited_span.span
         for edited_span in resolved.span_edits
         if isinstance(edited_span.edit, Replace)
         and edited_span.edit.text != edited_span.span.text
     ]
 
 
-def _judged(engine: Engine, span: Span, *, text: str, fitted: Fitted) -> Replaced:
-    """How a replace of `span` with `text` turns out if drawn as `fitted` plans it."""
-    report = engine.fidelity_of(span, fitted.plan)
-    substitute = engine.fit.substitute_widths(span, text, plan=fitted.plan)
-    return Replaced(report.state, engine.shown_name(span), substitute)
+@dataclass(frozen=True, slots=True)
+class Verdicts:
+    """How each edit came out: a replace by its span's id, an insert by its place in the log."""
+
+    replaces: dict[str, Verdict]
+    inserts: dict[int, Verdict]
 
 
-def _as_drawn(judged: Replaced, face: Face | None) -> Replaced:
-    """A replace as it was drawn: a face that drew it, the page having refused the font, too."""
-    return judged if face is None else replace(judged, fidelity="substitute")
+def verdicts_of(fits: LogFits, ran: Ran) -> Verdicts:
+    """How each edit came out: as drawn where `run` drew it, else as planned.
+
+    The one way render and export judge an edit, so the note and the export's log agree.
+    """
+    # .get: an edit on a page this run didn't draw has only its plan to go by.
+    return Verdicts(
+        replaces={
+            span_id: _as_drawn(fitted.verdict, ran.redrawn.get(span_id))
+            for span_id, fitted in fits.replaces.items()
+        },
+        inserts={
+            position: _as_drawn(fitted.verdict, ran.placed.get(position))
+            for position, fitted in fits.inserts.items()
+        },
+    )
+
+
+def _as_drawn(planned: Verdict, face: Face | None) -> Verdict:
+    """An edit as it was drawn: a face that drew it, the page having refused the font, too."""
+    return planned if face is None else replace(planned, fidelity="substitute", why=None)

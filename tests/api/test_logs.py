@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast, get_args
+from typing import get_args
 
 import pymupdf
 
-from squidpdf.core import FACES, Fidelity, Message
+from squidpdf.core import FACES, Fidelity
 from squidpdf.core.fonts.catalog import face_bytes
-from squidpdf.core.pdf.driver import DriverError, PdfDriver
-from squidpdf.core.pdf.mupdf import open_driver
-from squidpdf.core.types import FontResource
 from squidpdf.documents.store import FolderStore
 from squidpdf.editing.export import _TALLY_OF  # noqa: PLC2701 (every fidelity has a tally)
-from tests.api.conftest import InProcess, span_starting, upload
+from tests.api.conftest import (
+    InProcess,
+    edit_counts,
+    export_lines,
+    log_fields,
+    refusing_own_copies,
+    span_starting,
+    upload,
+)
 from tests.conftest import LOG_LINE, log_lines, named_with_widths
 from tests.helpers import (
     assert_all,
@@ -30,11 +34,6 @@ from tests.helpers import (
 _HEADER = "Squid-Request-Id"
 _UNLISTED = "WescottHouseSans"  # a company's own font: no list of ours names it
 _SANS = "Liberation Sans Regular"  # the face that draws a sans no list of ours names
-
-
-def _fields(line: str) -> dict[str, str]:
-    """A line's fields, by name."""
-    return dict(word.split("=", 1) for word in line.split() if "=" in word)
 
 
 def test_a_request_logs_one_line_by_its_route_naming_the_id_its_reply_carries(
@@ -65,28 +64,14 @@ def test_a_request_that_runs_pdf_work_tallies_its_wait_and_its_work_on_its_line(
     upload(mine, pdf_bytes)
 
     [line] = log_lines(capsys.readouterr().out)
-    fields = _fields(line)
+    fields = log_fields(line)
     assert_in("queued_ms", fields, "the wait for a worker, on the upload's line")
     assert_in("worker_ms", fields, "the work in it, on the upload's line")
 
 
-def _export_lines(mine, doc: dict, edits: list[dict], capsys) -> list[str]:
-    """Export `edits`, and the lines it logged."""
-    capsys.readouterr()
-    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
-    assert_equal(exported.status_code, 200, "exported")
-    return log_lines(capsys.readouterr().out)
-
-
-def _counts(lines: list[str]) -> dict[str, str]:
-    """The export's counts of its edits by fidelity, as its access line has them."""
-    [access] = [line for line in lines if " request_done " in line]
-    return {name: count for name, count in _fields(access).items() if name.startswith("edits_")}
-
-
 def _substitute_lines(lines: list[str]) -> list[dict[str, str]]:
     """The fields of each line for an edit a similar font drew."""
-    return [_fields(line) for line in lines if " edit_in_substitute " in line]
+    return [log_fields(line) for line in lines if " edit_in_substitute " in line]
 
 
 def _replaced(span: dict, text: str) -> dict:
@@ -109,14 +94,14 @@ def test_an_export_counts_its_edits_by_whether_they_kept_their_font_and_names_ea
         _replaced(invoices, invoices["text"]),
     ]
 
-    lines = _export_lines(mine, doc, edits, capsys)
+    lines = export_lines(mine, doc, edits, capsys)
 
     expected = {"edits_exact": "1", "edits_substitute": "1"}
-    assert_equal(_counts(lines), expected, "the export's counts")
+    assert_equal(edit_counts(lines), expected, "the export's counts")
     [substitute_line] = [line for line in lines if " edit_in_substitute " in line]
     assert_true(LOG_LINE.fullmatch(substitute_line) is not None, f"{substitute_line!r}'s shape")
     [request] = {line.split()[-1] for line in lines}
-    fields = _fields(substitute_line)
+    fields = log_fields(substitute_line)
     named = {name: fields[name] for name in ("font", "face", "same_widths", "width_delta_pct")}
     # Liberation Serif has Times's widths: nothing on the line moves, whatever was typed.
     widths = {"same_widths": "true", "width_delta_pct": "0.0"}
@@ -134,43 +119,20 @@ def test_a_replace_the_page_couldnt_take_counts_as_it_was_drawn(
     filled = upload(mine, form).json()
     value = span_starting(filled, 0, "SSN")
 
-    stuck = _export_lines(mine, filled, [_replaced(value, "SSN 000-00-0000")], capsys)
+    stuck = export_lines(mine, filled, [_replaced(value, "SSN 000-00-0000")], capsys)
 
-    assert_equal(_counts(stuck), {}, "the counts for an edit the field kept from the page")
+    assert_equal(edit_counts(stuck), {}, "the counts for an edit the field kept from the page")
     assert_equal(_substitute_lines(stuck), [], "lines for it")
 
-    monkeypatch.setattr(app.state, "documents", FolderStore(_refusing_own_copies))
+    monkeypatch.setattr(app.state, "documents", FolderStore(refusing_own_copies))
     doc = upload(mine, pdf_bytes).json()
     delivery = span_starting(doc, 1, "Delivery")
 
-    refused = _export_lines(mine, doc, [_replaced(delivery, "Delivery begins 2")], capsys)
+    refused = export_lines(mine, doc, [_replaced(delivery, "Delivery begins 2")], capsys)
 
-    assert_equal(_counts(refused), {"edits_substitute": "1"}, "the counts, as it was drawn")
+    assert_equal(edit_counts(refused), {"edits_substitute": "1"}, "the counts, as it was drawn")
     [fields] = _substitute_lines(refused)
     assert_equal(fields["face"], "LiberationSerif-Regular.ttf", "the face that drew it")
-
-
-@dataclass(frozen=True, slots=True)
-class _RefusingDriver:
-    """MuPDF's driver, on pages that refuse the file's own fonts' copies, as broken ones do."""
-
-    driver: PdfDriver
-
-    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
-        """Refused for the file's own copies, which the writer names "F…"; else added."""
-        if resource.startswith("F"):
-            raise DriverError(Message("font_not_added"))
-        return self.driver.add_font(page, font_file, resource=resource)
-
-    def __getattr__(self, name: str) -> Any:
-        """Every other call, as the real driver answers it."""
-        return getattr(self.driver, name)
-
-
-def _refusing_own_copies(path: str) -> PdfDriver:
-    """A driver factory for the store: MuPDF's, on pages that refuse the file's own copies."""
-    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
-    return cast(PdfDriver, _RefusingDriver(open_driver(path)))
 
 
 def _letters_width(face: str, text: str) -> float:
