@@ -9,8 +9,7 @@ import { type Drawn, RenderQueue } from "./render";
 const ONE = aSpan({ id: "one", page: 0 });
 const TWO = aSpan({ id: "two", page: 1 });
 const DOC = aDoc({ spans: [ONE, TWO] });
-const readingOf = (...edits: Edit[]) =>
-  project(DOC.spans, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
+const readingOf = (...edits: Edit[]) => project(DOC, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 const stripFor = (page: number): ImageInfo => ({ page, y: 98, image: `page ${page}` });
 
 /** The server, answering only when a test says so. */

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, FitInfo } from "../api/types";
-import { aFit, aFont, aRedact, aReplace, aSkipped, aSpan, aSpanNotice, halfWideGlyphs, RULES } from "../fixtures";
+import { aDoc, aFit, aFont, aRedact, aReplace, aSkipped, aSpan, aSpanNotice, halfWideGlyphs, RULES } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading } from "./project";
@@ -13,7 +13,7 @@ const TIMES = aFont("Times-Roman", { glyphs: halfWideGlyphs("wasonetu ") });
 const FONTS = new Map([[TIMES.name, TIMES]]);
 
 const readingOf = (...edits: Edit[]) =>
-  project([ONE, TWO], entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
+  project(aDoc({ spans: [ONE, TWO] }), entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 
 /** `reading` drawn on `pages`, with the server's reply for each span. */
 function drawnOf(reading: Reading, pages: number[], reply: Partial<Drawn> = {}): Drawn {

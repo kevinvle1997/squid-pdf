@@ -1,6 +1,6 @@
 // The one reading of the history that what's drawn, rendered and exported agree on. An object nothing
 // changed stays the same object from one reading to the next, so whatever draws it can skip it.
-import type { Edit, Insert, Replace, SpanInfo, Strategy } from "../api/types";
+import type { Document, Edit, Insert, PageInfo, Replace, SpanInfo, Strategy } from "../api/types";
 import type { Entry } from "./history";
 
 export interface SpanReading {
@@ -23,12 +23,54 @@ export interface PageEdits {
 }
 
 export interface Reading {
-  readonly spans: ReadonlyMap<string, SpanReading>; // only the spans an edit changes
+  readonly spans: ReadonlyMap<string, SpanReading>; // only the spans an edit changes, on every page, deleted or not
   readonly pages: ReadonlyMap<number, PageEdits>; // only the pages with an edit
   readonly edits: readonly Edit[]; // what the server is sent: only what changes the file
+  readonly order: readonly number[]; // the pages the download has, in order, by their numbers in the original
+  readonly deleted: ReadonlySet<number>; // the pages a delete leaves out of it
 }
 
-export const UNEDITED: Reading = { spans: new Map(), pages: new Map(), edits: [] };
+const NONE_DELETED: ReadonlySet<number> = new Set();
+
+/** No reading yet: what the first is compared with. */
+export const UNEDITED: Reading = { spans: new Map(), pages: new Map(), edits: [], order: [], deleted: NONE_DELETED };
+
+/**
+ * The pages a download of `pageCount` pages keeps after `edits`, in order, as the server folds them
+ * (`_PageOps` in editing/apply.py): a page it doesn't have, one deleted already, and the last page left are skipped.
+ */
+export function pageOrder(pageCount: number, edits: readonly Edit[]): number[] {
+  const order = Array.from({ length: pageCount }, (_, page) => page);
+  for (const edit of edits) {
+    // A download needs a page, and a page gone can't go again.
+    if (edit.kind !== "delete_page" || order.length === 1 || !order.includes(edit.page)) continue;
+    order.splice(order.indexOf(edit.page), 1);
+  }
+  return order;
+}
+
+/** Page `page`'s number among the pages shown, counting from 1: a deleted one's, as it would be put back. */
+export function shownNumberOf(order: readonly number[], page: number): number {
+  // Only a delete changes the order, so the pages kept stay in the original's.
+  return Math.min(order.filter((kept) => kept < page).length + 1, Math.max(order.length, 1));
+}
+
+/** One of the document's pages as the pages are shown. */
+export interface ShownPage {
+  readonly page: number; // its number in the original, counting from 0
+  readonly info: PageInfo;
+  readonly shownNumber: number | null; // its number among the pages shown, from 1; null while it's deleted
+  readonly splitAfter: boolean; // a page shown follows it, so Split here goes under it
+}
+
+/** Each of the document's `pages` as shown once `order` is kept: a deleted one has no number, and no Split here beside it. */
+export function pagesShown(order: readonly number[], pages: readonly PageInfo[]): ShownPage[] {
+  return pages.map((info, page) => {
+    const index = order.indexOf(page);
+    if (index < 0) return { page, info, shownNumber: null, splitAfter: false };
+    return { page, info, shownNumber: index + 1, splitAfter: index < order.length - 1 };
+  });
+}
 
 /** What `span` reads in `reading`: its edit's words, else the document's own. */
 export function textIn(reading: Reading, span: SpanInfo): string {
@@ -79,7 +121,12 @@ export function differing(now: PageEdits | undefined, then: PageEdits | undefine
  * The document's spans with `entries` made, in the order made. `previous` is the last reading:
  * whatever reads the same is taken from it as it was.
  */
-export function project(spans: readonly SpanInfo[], entries: readonly Entry[], previous = UNEDITED): Reading {
+export function project(
+  doc: Pick<Document, "spans" | "pages">,
+  entries: readonly Entry[],
+  previous = UNEDITED,
+): Reading {
+  const { spans } = doc;
   // The last replace to a span wins, as on the server; a redaction is for good.
   const replaces = new Map<string, Replace>();
   const redacted = new Set<string>();
@@ -94,6 +141,9 @@ export function project(spans: readonly SpanInfo[], entries: readonly Entry[], p
         break;
       case "insert":
         inserts.push({ id, edit });
+        break;
+      // Read whole below, in order.
+      case "delete_page":
         break;
       default:
         edit satisfies never;
@@ -131,5 +181,18 @@ export function project(spans: readonly SpanInfo[], entries: readonly Entry[], p
 
   // Sent: every edit but a replace a later one overrides, or one that puts back the original.
   const sent = entries.filter(({ edit }) => edit.kind !== "replace" || live.has(edit));
-  return { spans: readings, pages, edits: sent.map((entry) => entry.edit) };
+  const edits = sent.map((entry) => entry.edit);
+  return { spans: readings, pages, edits, ...pagesKept(doc.pages.length, { edits, previous }) };
+}
+
+/** The pages a download keeps after `edits`, and those it leaves out: `previous`'s own while they're the same. */
+function pagesKept(
+  pageCount: number,
+  { edits, previous }: { edits: readonly Edit[]; previous: Reading },
+): Pick<Reading, "order" | "deleted"> {
+  const order = pageOrder(pageCount, edits);
+  const same = order.length === previous.order.length && order.every((page, index) => page === previous.order[index]);
+  if (same) return { order: previous.order, deleted: previous.deleted };
+  const deleted = Array.from({ length: pageCount }, (_, page) => page).filter((page) => !order.includes(page));
+  return { order, deleted: deleted.length === 0 ? NONE_DELETED : new Set(deleted) };
 }

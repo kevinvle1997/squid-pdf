@@ -1,0 +1,56 @@
+{
+  "about": "A document's page count and its page edits, with the pages the download keeps, in order. Read by tests/editing/test_apply.py and react/src/editing/project.test.ts: the browser shows the pages the server keeps.",
+  "cases": [
+    {
+      "what": "no page edits: every page, in order",
+      "page_count": 3,
+      "edits": [],
+      "order": [0, 1, 2]
+    },
+    {
+      "what": "a page deleted",
+      "page_count": 4,
+      "edits": [{ "kind": "delete_page", "page": 2 }],
+      "order": [0, 1, 3]
+    },
+    {
+      "what": "two pages deleted, the later one first",
+      "page_count": 4,
+      "edits": [
+        { "kind": "delete_page", "page": 3 },
+        { "kind": "delete_page", "page": 0 }
+      ],
+      "order": [1, 2]
+    },
+    {
+      "what": "a page deleted twice: the second is moot",
+      "page_count": 3,
+      "edits": [
+        { "kind": "delete_page", "page": 1 },
+        { "kind": "delete_page", "page": 1 }
+      ],
+      "order": [0, 2]
+    },
+    {
+      "what": "the last page left is kept",
+      "page_count": 2,
+      "edits": [
+        { "kind": "delete_page", "page": 0 },
+        { "kind": "delete_page", "page": 1 }
+      ],
+      "order": [1]
+    },
+    {
+      "what": "a one-page document keeps its page",
+      "page_count": 1,
+      "edits": [{ "kind": "delete_page", "page": 0 }],
+      "order": [0]
+    },
+    {
+      "what": "a page the document doesn't have",
+      "page_count": 2,
+      "edits": [{ "kind": "delete_page", "page": 5 }],
+      "order": [0, 1]
+    }
+  ]
+}

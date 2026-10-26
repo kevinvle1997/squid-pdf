@@ -10,6 +10,7 @@ from squidpdf.editing.apply import (
     resolve as resolve,
 )
 from squidpdf.editing.edits import (
+    DeletePage as DeletePage,
     Edit as Edit,
     Insert as Insert,
     Redact as Redact,
