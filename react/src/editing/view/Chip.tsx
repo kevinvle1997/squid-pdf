@@ -13,7 +13,7 @@ import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
 import { chooseWayOut } from "../typing";
-import { shortWarningOf } from "../verdicts";
+import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import { pinnedUnder } from "./geometry";
@@ -24,11 +24,12 @@ interface Props {
   span: SpanInfo;
   info: PageInfo;
   trouble: string; // what won't come out as typed, a line each; empty when it fits
+  verdict: Pick<Verdict, "fidelity" | "substitute">; // what an edit of what's typed comes to, and in what face
   setting: Setting; // how the line is drawn, and the ways out to choose from
 }
 
 /** The slip under the span typed into. */
-export function Chip({ span, info, trouble, setting }: Props) {
+export function Chip({ span, info, trouble, verdict, setting }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
@@ -59,10 +60,10 @@ export function Chip({ span, info, trouble, setting }: Props) {
           </Button>
         </span>
       )}
-      <Verdict
-        span={span}
+      <Facts
         trouble={trouble}
-        drawnIn={span.substitute ?? readableName(shown)}
+        shortWarning={shortWarningOf(verdict)}
+        drawnIn={verdict.substitute ?? readableName(shown)}
         sizePt={span.size * setting.size}
       />
       {ways.length > 0 && (
@@ -109,15 +110,15 @@ export function Chip({ span, info, trouble, setting }: Props) {
   );
 }
 
-/** The edit's verdict before it's made: what won't come out as typed, else what draws it and whether it will match. */
-function Verdict({
-  span,
+/** The edit's facts before it's made: what won't come out as typed, else what draws it and whether it will match. */
+function Facts({
   trouble,
+  shortWarning,
   drawnIn,
   sizePt,
 }: {
-  span: SpanInfo;
   trouble: string;
+  shortWarning: string | null;
   drawnIn: string;
   sizePt: number;
 }) {
@@ -128,13 +129,16 @@ function Verdict({
       </span>
     );
   }
-  const shortWarning = shortWarningOf(span);
   return (
     <span className={styles.facts} aria-hidden="true">
       <span>{drawnIn}</span>
       <Num>{SIZE.format(sizePt)} pt</Num>
       {/* Find's own words when it will match. */}
-      {shortWarning === null ? <span className={styles.identical}>looks identical</span> : <Warn>{shortWarning}</Warn>}
+      {shortWarning === null ? (
+        <span className={styles.identical}>{LOOKS_IDENTICAL}</span>
+      ) : (
+        <Warn>{shortWarning}</Warn>
+      )}
     </span>
   );
 }

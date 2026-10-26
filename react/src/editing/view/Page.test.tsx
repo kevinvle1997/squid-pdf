@@ -311,6 +311,43 @@ describe("a page", () => {
     expect(getComputedStyle(similar.element()).color).toBe(colorOf("--warn"));
   });
 
+  test('typing out the letter its copy lacks turns the chip\'s short warning to "looks identical", heard once', async () => {
+    // Its copy of the font has no "€", so judged on its own words a similar font draws it; the copy draws every other letter.
+    const lacking = aSpan({
+      ...span,
+      id: "s4",
+      text: "Total 14 €",
+      font: "LiberationSerif",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+      same_widths: true,
+    });
+    const font = aFont("LiberationSerif", {
+      substitute: "Liberation Serif Regular",
+      same_widths: true,
+      glyphs: halfWideGlyphs("Total 0123456789"),
+    });
+    openDocument(aDoc({ spans: [lacking], fonts: [font] }));
+    const screen = await draw();
+    await editSpan(screen, "Total 14 €");
+    // What its own words lack is what the chip says first.
+    await expect
+      .element(screen.getByText(/in this font, so the line is drawn in our Liberation Serif Regular/))
+      .toBeVisible();
+
+    await userEvent.keyboard("{ArrowRight}{Backspace}");
+    await expect.element(screen.getByText("looks identical")).toBeVisible();
+    // Its own font draws it now, named as the reader knows it: no similar one beside "looks identical".
+    await expect.element(screen.getByText("Liberation Serif", { exact: true })).toBeVisible();
+    expect(screen.getByText("Liberation Serif Regular", { exact: true }).query()).toBeNull();
+    const heard = editor.store.get().announcement;
+    expect(heard.text).toBe("looks identical");
+    // The verdict's kind didn't change with this letter: nothing more is heard.
+    await userEvent.keyboard("{Backspace}");
+    await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14");
+    expect(editor.store.get().announcement).toBe(heard);
+  });
+
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
     const screen = await draw();
     await editSpan(screen);
