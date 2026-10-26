@@ -815,6 +815,8 @@ export interface components {
             substitute: string | null;
             /** Same Widths */
             same_widths: boolean;
+            /** In File */
+            in_file: boolean;
             /** Letter Spacing Em */
             letter_spacing_em: number;
             /** Room Pt */

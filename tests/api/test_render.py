@@ -431,9 +431,9 @@ def test_an_edits_fit_says_how_it_is_drawn_as_its_export_counts_it(
     fit = _render(mine, doc, edits, [around(span)]).json()["fits"][span["id"]]
     counts = edit_counts(export_lines(mine, doc, edits, capsys))
 
-    upload_verdict = (span["fidelity"], span["substitute"])
-    expected = ("substitute", "Liberation Serif Regular")
-    assert_equal(upload_verdict, expected, "the span, judged on its own text")
+    upload_verdict = (span["fidelity"], span["substitute"], span["in_file"])
+    expected = ("substitute", "Liberation Serif Regular", True)
+    assert_equal(upload_verdict, expected, "the span, judged on its own text, its copy usable")
     assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the edit, as render says it")
     assert_equal(counts, {counted: "1"}, "the edit, as its export counts it")
 

@@ -1,6 +1,6 @@
 // A document persisted in this browser until the server's own hour runs out, so a reload or a closed tab
 // loses no work. Files are stored as bytes: Safari's private windows, as WebKit's tests run, won't store a Blob.
-import type { Document, Sentences } from "../api/types";
+import type { Document, Sentences, SpanInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
 
 /** What's persisted of a document: the file, the server's reading of it, the work done to it, and until when. */
@@ -83,7 +83,7 @@ export async function persistedDocument(): Promise<Persisted<unknown> | null> {
     const { bytes, name, type, lastModified } = persistedFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
-      doc: renamed(state.doc),
+      doc: withInFile(renamed(state.doc)),
       work: state.work,
       until: state.until,
     };
@@ -125,6 +125,16 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
 /** Whether a persisted reading of the document lacks a sentence this build reads: one persisted by an earlier build. */
 export function lacksSentences({ sentences }: Pick<Document, "sentences">): boolean {
   return Object.keys(SENTENCES_READ).some((key) => !(key in sentences));
+}
+
+/** A persisted reading of the document, each span saying whether its file's copy draws it, though stored before they did. */
+// Nothing is stored past the server's hour, so this can go once spans have said so that long.
+function withInFile(
+  doc: Omit<Document, "spans"> & { spans: (Omit<SpanInfo, "in_file"> & Partial<Pick<SpanInfo, "in_file">>)[] },
+): Document {
+  // Taken as drawn by its own copy only where nothing stands in for its font, as was read before.
+  const spans = doc.spans.map((span) => ({ ...span, in_file: span.in_file ?? span.substitute === null }));
+  return { ...doc, spans };
 }
 
 /** Forget the document persisted here, file and all. */
