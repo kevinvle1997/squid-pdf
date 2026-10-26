@@ -21,6 +21,7 @@ import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
 import { isTyping, pageOn, spanOn } from "./keys";
 import { Page } from "./Page";
+import { PageList } from "./PageList";
 import { SplitHere } from "./SplitHere";
 import { ZoomControl } from "./Zoom";
 
@@ -104,6 +105,7 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
       <div className={styles.top}>
         <Bar />
         <FindBar />
+        <PageList />
         <div className={styles.notices}>
           <NoticeLine />
         </div>

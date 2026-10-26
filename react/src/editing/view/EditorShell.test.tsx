@@ -877,6 +877,30 @@ describe("deleting a page", () => {
     await screen.getByRole("button", { name: "Split after page 2" }).click();
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "delete_page", page: 2 }], { pages: [0, 1] });
   });
+
+  test("redone from its tick in the page list, the delete puts focus on Put back", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    const tick = screen.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Page 3", exact: true });
+    tick.element().focus();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
+  });
+
+  test("the page list goes to a page, and counts the download's pages", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    const list = screen.getByRole("navigation", { name: "Pages" });
+    await expect.element(list.getByText("1/4")).toBeVisible();
+    await expect
+      .element(list.getByRole("link", { name: "Page 1", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+    await list.getByRole("link", { name: "Page 3", exact: true }).click();
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    await deleteButton(screen, 2).click();
+    await expect.poll(() => list.getByRole("link").elements().length).toBe(3);
+  });
 });
 
 describe("a file dropped on the editor", () => {
