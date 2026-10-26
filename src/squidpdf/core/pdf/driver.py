@@ -95,7 +95,8 @@ class PdfDriver(Protocol):
     def text_lines(self, page: int) -> list[list[TextPiece]]:
         """Each line of text on the page, split into the pieces it is drawn in.
 
-        A piece's font name is whole wherever the page lists the font it was cut from.
+        Each piece names the font that draws it by its PDF object, one `fonts` lists, or None
+        when the page lists none for it; its font's name is only to show.
         """
         ...
 
@@ -124,10 +125,6 @@ class PdfDriver(Protocol):
 
     def fonts(self, page: int) -> list[PageFont]:
         """Every font the page uses, forms included; a Type3 by the name its text reads."""
-        ...
-
-    def text_font_name(self, xref: int) -> str | None:
-        """The name text in font `xref` reads, often the font file's own; None if unreadable."""
         ...
 
     def font_bytes(self, xref: int) -> bytes:

@@ -363,6 +363,8 @@ export interface components {
          *     `why_code` and `why_params` are `why` unsaid, both empty when `why` is None.
          */
         FontInfo: {
+            /** Object */
+            object: number | null;
             /** Name */
             name: string;
             /** Shown Name */
@@ -767,6 +769,8 @@ export interface components {
             text: string;
             /** Font */
             font: string;
+            /** Font Object */
+            font_object: number | null;
             /** Size */
             size: number;
             /** Color */

@@ -12,7 +12,7 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import cache
+from functools import cache, partial
 from itertools import chain, count
 from typing import Any
 
@@ -242,16 +242,34 @@ class _MuPDFDriver:
         ]
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
-        """Each line of text on the page, split into the pieces it is drawn in."""
+        """Each line of text on the page, split into the pieces it is drawn in.
+
+        MuPDF's text names a piece's font only by name, so the font is found by the name its
+        text reads: as the page lists it, else as its file names itself.
+        """
         blocks = self.doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
-        whole_by_cut = _whole_names([font.name for font in self.fonts(page)])
+        fonts = self.fonts(page)
+        by_name = _PageTextFonts(_by_listed_name(fonts))
+        named_inside = partial(self._by_name_inside, fonts)
         return [
             [
-                _text_piece(raw, direction=line["dir"], whole_by_cut=whole_by_cut)
+                _text_piece(
+                    raw, direction=line["dir"], font=by_name.font_of(raw["font"], named_inside)
+                )
                 for raw in line["spans"]
             ]
             for line in _each_line(blocks)
         ]
+
+    def _by_name_inside(self, fonts: list[PageFont]) -> dict[str, PageFont]:
+        """The stored ones of `fonts` by the name inside each file, as their text reads it."""
+        by_name: dict[str, PageFont] = {}
+        # The library's order: the first by a name wins.
+        for font in fonts:
+            inside = self.file.fonts.text_font_name(font.xref) if font.is_embedded else None
+            if inside is not None:
+                by_name.setdefault(_as_pymupdf_names(inside), font)
+        return by_name
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
         """The letters inside each box on the page, in reading order.
@@ -402,13 +420,6 @@ class _MuPDFDriver:
         can't load it.
         """
         return self.file.fonts.listed_widths(xref)
-
-    def text_font_name(self, xref: int) -> str | None:
-        """The name text in font `xref` reads, often the font file's own; None if unreadable.
-
-        Read from MuPDF's own record of the font.
-        """
-        return self.file.fonts.text_font_name(xref)
 
     def open_font(self, font_file: bytes) -> _MuPDFFont:
         """Open a font file to measure with. Raises DriverError when it isn't one."""
@@ -776,15 +787,43 @@ def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
                 yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
 
 
-def _whole_names(listed: list[str]) -> dict[str, str]:
-    """Each name the text reads for a font of `listed`, cut, to the whole name it was cut from.
+@dataclass(slots=True)
+class _PageTextFonts:
+    """A page's fonts by the name their text reads, to find the one that draws a piece."""
 
-    A cut two names share stays as it is, since nothing tells them apart.
-    """
-    by_cut: dict[str, set[str]] = {}
-    for name in listed:
-        by_cut.setdefault(_as_pymupdf_names(_cut_of(name)), set()).add(_as_pymupdf_names(name))
-    return {cut: whole for cut, (whole, *others) in by_cut.items() if not others}
+    listed: dict[str, PageFont]  # each by the name the page lists it under, as text reads that
+    # Each stored one by the name inside its file: None until a piece reads a name not listed.
+    inside: dict[str, PageFont] | None = None
+
+    def font_of(
+        self, read_as: str, named_inside: Callable[[], dict[str, PageFont]]
+    ) -> PageFont | None:
+        """The font whose text reads `read_as`, as listed or as named inside; None if none."""
+        # .get: a name the page doesn't list, as the one a font's own file gives.
+        listed = self.listed.get(read_as)
+        if listed is not None:
+            return listed
+        if self.inside is None:
+            self.inside = named_inside()
+        # .get: a font the page doesn't list, such as one only a form field's own drawing uses.
+        return self.inside.get(read_as)
+
+
+def _by_listed_name(fonts: list[PageFont]) -> dict[str, PageFont]:
+    """`fonts` by the name each is listed under, as text reads it: cut, no subset prefix."""
+    by_name: dict[str, PageFont] = {}
+    # The library's order: of two whose text reads one name, as cut alike, the first wins.
+    for font in fonts:
+        by_name.setdefault(_as_pymupdf_names(_cut_of(font.name)), font)
+    return by_name
+
+
+def _whole_name(read_as: str, font: PageFont | None) -> str:
+    """The name a piece's font is read as, whole where that's the page's listing of it, cut."""
+    # A font the page doesn't list, or one its text reads by the name inside its file.
+    if font is None or _as_pymupdf_names(_cut_of(font.name)) != read_as:
+        return read_as
+    return _as_pymupdf_names(font.name)
 
 
 def _cut_of(name: str) -> str:
@@ -802,13 +841,16 @@ def _as_pymupdf_names(name: str) -> str:
 
 
 def _text_piece(
-    raw: dict, *, direction: tuple[float, float], whole_by_cut: dict[str, str]
+    raw: dict, *, direction: tuple[float, float], font: PageFont | None
 ) -> TextPiece:
-    """One piece of text from get_text("dict"), its font's name whole, on a `direction` line."""
+    """One piece of text from get_text("dict"), drawn in `font`, on a `direction` line.
+
+    `font` is None for a font the page doesn't list.
+    """
     return TextPiece(
         text=raw["text"],
-        # .get: a font the page doesn't list, such as one only a form's appearance draws.
-        font=whole_by_cut.get(raw["font"], raw["font"]),
+        font=_whole_name(raw["font"], font),
+        font_object=None if font is None else font.xref,
         size=raw["size"],
         color=_rgb(raw["color"]),
         opacity=raw["alpha"] / _BYTE_MAX,

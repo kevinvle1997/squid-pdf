@@ -24,13 +24,14 @@ def _piece(
     x1: float,
     *,
     font: str = "Times-Roman",
+    font_object: int | None = 5,
     baseline: float = _BASELINE,
     color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     opacity: float = 1.0,
 ) -> TextPiece:
     """A piece of text from `x0` to `x1` on a baseline, boxed as a font of its size is."""
     box = Rect(x0, baseline - _SIZE * 0.8, x1, baseline + _SIZE * 0.2)
-    return TextPiece(text, font, _SIZE, color, opacity, box, (x0, baseline))
+    return TextPiece(text, font, font_object, _SIZE, color, opacity, box, (x0, baseline))
 
 
 def _texts(line: list[TextPiece]) -> list[str]:
@@ -49,7 +50,8 @@ def test_pieces_split_for_spacing_merge_back_into_one_span():
     [
         (_piece("b", _FIRST_ENDS + 1.0, 125), True),
         (_piece("b", _FIRST_ENDS + 10.0, 125), False),
-        (_piece("b", _FIRST_ENDS, 125, font="Times-Bold"), False),
+        (_piece("b", _FIRST_ENDS, 125, font="Times-Bold", font_object=7), False),
+        (_piece("b", _FIRST_ENDS, 125, font_object=9), False),
         (_piece("b", _FIRST_ENDS, 125, baseline=_BASELINE - 3), False),
         (_piece("b", _FIRST_ENDS, 125, color=(1.0, 0.0, 0.0)), False),
         (_piece("b", _FIRST_ENDS, 125, opacity=0.6), False),
@@ -58,6 +60,7 @@ def test_pieces_split_for_spacing_merge_back_into_one_span():
         "a small gap",
         "a gap of most of an em: the next column",
         "another font",
+        "another font of the same name, as a second subset of one face",
         "a raised baseline: a superscript",
         "another colour: a redraw paints a span in one",
         "another opacity",

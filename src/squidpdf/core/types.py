@@ -93,10 +93,14 @@ class Page:
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
-    """A bit of text the page draws in one go, as the driver reads it: often part of a word."""
+    """A bit of text the page draws in one go, as the driver reads it: often part of a word.
+
+    `font_object` is what says which font draws it; `font` is only that font's name, to show.
+    """
 
     text: str
-    font: str
+    font: str  # its font's name, subset prefix aside
+    font_object: int | None  # its font's PDF object; None when the page lists no font for it
     size: float
     color: tuple[float, float, float]  # r, g, b, each 0-1
     opacity: float  # 0 is see-through, 1 solid
@@ -208,15 +212,16 @@ class Fragment:
 class Span:
     """A run of text the user can edit, merged from one or more fragments.
 
-    `font` is as the file records it, subset prefix and all (`ABCDEE+Calibri`). `origin` is the
-    baseline start, not the box's top-left. `id` never changes: the index is built once from
+    `font_object` says which font draws it, and `font` is that font's name, to show. `origin` is
+    the baseline start, not the box's top-left. `id` never changes: the index is built once from
     the pristine file (SpanIndex). `color`, `opacity` and `direction` are its first fragment's.
     """
 
     id: str
     page: int
     text: str
-    font: str
+    font: str  # its font's name, subset prefix aside; for new text, the face or font asked for
+    font_object: int | None  # its font's PDF object; None when the page lists no font for it
     size: float
     color: tuple[float, float, float]
     opacity: float  # 0 is see-through, 1 solid
@@ -332,11 +337,13 @@ def new_text(
     text: str,
     size: float,
     font: str,
+    font_object: int | None = None,
     color: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> Span:
     """A span for text that isn't in the document yet, so it's judged and drawn like any other.
 
-    Its box is only nominal: nothing reads it for new text. It's painted solid.
+    `font_object` is the page's font it's written in, if it's one; else `font` names a face we
+    ship. Its box is only nominal: nothing reads it for new text. It's painted solid.
     """
     x, y = origin
     box = Rect(x, y - size, x, y)
@@ -345,6 +352,7 @@ def new_text(
         page=page,
         text=text,
         font=font,
+        font_object=font_object,
         size=size,
         color=color,
         opacity=SOLID,

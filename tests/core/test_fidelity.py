@@ -440,7 +440,14 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
     with open_pdf(path) as engine:
         span = _first_span(engine)
         missing = engine.fit.plan_for(span, _POOLED).missing
-        new = new_text(0, origin=(72, 200), text=_POOLED, size=span.size, font=span.font)
+        new = new_text(
+            0,
+            origin=(72, 200),
+            text=_POOLED,
+            size=span.size,
+            font=span.font,
+            font_object=span.font_object,
+        )
         [report] = engine.assess(index_of([new]))
         engine.remove([span], then_drawn=[LineToDraw(span, _POOLED)])
         engine.draw(span, _POOLED)
@@ -450,7 +457,14 @@ def _redraw(path: str, out: str) -> tuple[list[str], FidelityReport]:
 
 def _why_new(engine: Engine, span: Span, text: str) -> str | None:
     """Why new text in the span's font would be a substitute, by its sentence's key."""
-    new = new_text(0, origin=(72, 200), text=text, size=span.size, font=span.font)
+    new = new_text(
+        0,
+        origin=(72, 200),
+        text=text,
+        size=span.size,
+        font=span.font,
+        font_object=span.font_object,
+    )
     [report] = engine.assess(index_of([new]))
     return None if report.why is None else report.why.key
 
@@ -491,6 +505,19 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_equal(missing, ["Y", "a", "y"], "letters Times lacks")
     assert_not_in("Y", listed, "letters the browser is told Times draws")
     assert_equal(why, "copy_other_widths", "why new text in it is a substitute")
+
+
+def test_two_fonts_listed_under_one_name_are_each_their_own_spans_by_object(merged_unlike):
+    """Times on page 0 and a Helvetica listed under its name on page 1: neither is the other.
+
+    Each span names the font that draws it by its object, whatever name it's listed under.
+    """
+    doc = pymupdf.open(merged_unlike)
+    on_page = [xref for page in (0, 1) for xref, *_ in doc[page].get_fonts()]
+    with open_pdf(merged_unlike) as engine:
+        named_by = [span.font_object for span in engine.index()]
+
+    assert_equal(named_by, on_page, "the font each page's span names, by its object")
 
 
 def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):

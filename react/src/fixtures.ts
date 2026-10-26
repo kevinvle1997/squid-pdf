@@ -69,6 +69,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     page: 0,
     text: `was ${fields.id}`,
     font: "Times-Roman",
+    font_object: null, // no object: its font goes by its name alone, as aFont's does
     size: 10,
     color: [0, 0, 0],
     bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
@@ -87,6 +88,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
 /** A font the file's own copy of can draw with, unless `substitute` names what stands in. */
 export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
   return {
+    object: null, // no object: its spans name it by its name alone, as aSpan's do
     name,
     shown_name: name.replace(/^[A-Z]{6}\+/, ""), // as the server shows it: a trimmed copy's prefix aside
     substitute: null,

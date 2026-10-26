@@ -254,6 +254,7 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
         page=1,
         text="Total due",
         font="ABCDEE+Calibri",
+        font_object=12,
         size=11.5,
         color=(0.1, 0.2, 0.3),
         opacity=0.5,

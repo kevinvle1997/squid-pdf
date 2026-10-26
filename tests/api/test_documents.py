@@ -67,11 +67,14 @@ def _stored_then_named() -> bytes:
 def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mine):
     doc = upload(mine, _stored_then_named()).json()
     stored, named = doc["spans"]
-    [font] = doc["fonts"]
+    stored_font, named_font = doc["fonts"]
 
-    judged = [(span["font"], span["fidelity"]) for span in (stored, named)]
-    assert_equal(judged, [(font["name"], "exact"), (font["name"], "substitute")], "the spans")
-    assert_equal(font["substitute"], None, "the font, as its first span says it")
+    judged = [(span["font_object"], span["fidelity"]) for span in (stored, named)]
+    expected = [(stored_font["object"], "exact"), (named_font["object"], "substitute")]
+    assert_equal(judged, expected, "the spans, each in its own page's font")
+    shown = (stored_font["shown_name"], named_font["shown_name"])
+    assert_equal(shown, ("LiberationSerif",) * 2, "the name both fonts go by")
+    assert_equal(stored_font["substitute"], None, "the stored font, as its span says it")
     drawn_in = [(span["substitute"], span["same_widths"]) for span in (stored, named)]
     assert_equal(drawn_in, [(None, False), ("Liberation Serif Regular", True)], "each span's")
 

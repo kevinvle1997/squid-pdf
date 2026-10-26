@@ -51,7 +51,8 @@ class SpanInfo(TypedDict):
     id: str
     page: int
     text: str
-    font: str
+    font: str  # its font's name: the one a font in `fonts` goes by, where it has no object
+    font_object: int | None  # its font's PDF object, as a font in `fonts` has; None if unlisted
     size: float
     color: list[float]
     bbox: Box
@@ -76,8 +77,10 @@ class FontFacts(TypedDict):
     copy, or the substitute when that can't be used.
     """
 
-    name: str
-    # The name the reader knows it by: a Type3 font's copies share one, its text names none.
+    # Its PDF object, which its spans name it by; None for one its page doesn't list.
+    object: int | None
+    name: str  # its own, subset prefix aside: what a copy of it is attached by
+    # The name the reader knows it by: a Type3's copies share one, its own often its object's.
     shown_name: str
     substitute: str | None  # the face we ship that draws it instead, e.g. "Carlito Bold"
     why: MessageInfo | None  # why the file's own copy can't be used
@@ -93,7 +96,8 @@ class FontInfo(TypedDict):
     `why_code` and `why_params` are `why` unsaid, both empty when `why` is None.
     """
 
-    name: str
+    object: int | None  # its PDF object, which its spans name it by; None for one unlisted
+    name: str  # what a copy of it is attached by, and a span of a font unlisted names it by
     shown_name: str  # the name the reader knows it by; copies of one font share it
     substitute: str | None
     why: str | None  # why the file's own copy can't be used, in the reader's words
