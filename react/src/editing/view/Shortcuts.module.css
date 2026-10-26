@@ -1,8 +1,4 @@
 .button svg { display: block; }
-/* A touch screen has no keys to list. */
-@media (pointer: coarse) {
-  .button { display: none; }
-}
 .popover { composes: popover from "../../ui/Popover.module.css"; }
 .dialog { padding: var(--s4); outline: none; }
 .heading { margin: 0 0 var(--s3); font-size: var(--fs-base); font-weight: 600; }
