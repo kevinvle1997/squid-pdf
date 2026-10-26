@@ -2,7 +2,7 @@
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
 import { pageUrl } from "../api/client";
 import type { FitRules, Sentences, SpanInfo } from "../api/types";
-import type { EditorState, FocusTo, ScrollTo } from "./editor";
+import type { EditorState, FocusSpan, ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
 import type { PreviewDisagreement } from "./previewDisagreements";
@@ -31,7 +31,7 @@ export interface PageState {
   readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
   readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
-  readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
+  readonly focusTo: FocusSpan | null; // the span focus is sent to, when it's here
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
   readonly fonts: FontsByObject;
@@ -64,7 +64,7 @@ export function pageState(state: EditorState, index: number): PageState {
     image: state.images.get(index),
     typingIn: state.draft?.page === index ? state.draft.spanId : null,
     unredacting: here(state.unredacting)?.spanId ?? null,
-    focusTo: here(state.focusTo),
+    focusTo: here(state.focusTo !== null && "spanId" in state.focusTo ? state.focusTo : null),
     scrollTo: here(state.scrollTo),
     fonts: state.layout.fonts,
     sentences: state.doc.sentences,

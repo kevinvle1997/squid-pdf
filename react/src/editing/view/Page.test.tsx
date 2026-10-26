@@ -84,7 +84,7 @@ afterEach(async () => {
 async function draw(index = 0, info = A4) {
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={index} info={info} />
+      <Page index={index} info={info} shownNumber={index + 1} />
     </EditorContext.Provider>,
   );
 }
@@ -301,7 +301,7 @@ describe("a page", () => {
     openDocument(aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }));
     screen.rerender(
       <EditorContext.Provider value={editor}>
-        <Page index={0} info={A4} />
+        <Page index={0} info={A4} shownNumber={1} />
       </EditorContext.Provider>,
     );
     await editSpan(screen, "in arial");

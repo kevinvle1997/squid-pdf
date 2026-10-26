@@ -1,6 +1,6 @@
 // A view test though nothing's drawn: what a key was pressed on is an element, which only a browser has.
 import { describe, expect, test } from "vitest";
-import { isTyping, spanOn } from "./keys";
+import { isTyping, pageOn, spanOn } from "./keys";
 
 describe("where a key was pressed", () => {
   test("in a text field, whose keys are its own, or anywhere else", () => {
@@ -18,5 +18,15 @@ describe("where a key was pressed", () => {
     expect(spanOn(document.createElement("span"))).toBeNull();
     expect(spanOn(window)).toBeNull();
     expect(spanOn(null)).toBeNull();
+  });
+
+  test("on a page, anything in it, which names its page, or on nothing that does", () => {
+    const page = document.createElement("section");
+    page.dataset.page = "2";
+    const control = page.appendChild(document.createElement("button"));
+    expect(pageOn(control)).toBe(2);
+    expect(pageOn(page)).toBe(2);
+    expect(pageOn(document.createElement("button"))).toBeNull();
+    expect(pageOn(window)).toBeNull();
   });
 });

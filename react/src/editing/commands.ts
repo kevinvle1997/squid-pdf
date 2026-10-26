@@ -1,15 +1,20 @@
 // Keyboard shortcuts, wherever focus is: one table, read by one listener in EditorShell, so a
 // new binding is a row.
-import { type Editor, redo, undo } from "./editor";
+import { type Editor, type PressedOn, redo, undo } from "./editor";
 import { exportNow } from "./export";
 import { openFind, stepFind } from "./find";
 import { redact } from "./redaction";
 import { showShortcuts } from "./shortcuts";
 
+/** Where a key was pressed: on a span's mark, by its id, or on a page's own control, by its page. */
+export interface KeyAt extends PressedOn {
+  readonly spanId: string | null;
+}
+
 export interface Command {
   readonly keys: string; // as "mod+shift+z"; mod is Cmd or Ctrl, either on any platform
   readonly whileTyping: boolean; // in a text field too, rather than the field's own
-  readonly run: (editor: Editor, spanId: string | null) => void; // spanId: the span the key was pressed on
+  readonly run: (editor: Editor, at: KeyAt) => void;
 }
 
 const COMMANDS: readonly Command[] = [
@@ -26,8 +31,8 @@ const COMMANDS: readonly Command[] = [
   { keys: "mod+y", whileTyping: false, run: redo },
   // Redact the span: a Mac's Delete is Backspace, and a full keyboard's forward Delete works too. In a text
   // field they're the field's own, deleting a word or a line, as they do everywhere else; its chip has Redact.
-  { keys: "mod+backspace", whileTyping: false, run: redact },
-  { keys: "mod+delete", whileTyping: false, run: redact },
+  { keys: "mod+backspace", whileTyping: false, run: (editor, at) => redact(editor, at.spanId) },
+  { keys: "mod+delete", whileTyping: false, run: (editor, at) => redact(editor, at.spanId) },
   // The list of these keys: ? is shifted on most keyboards, and not on some.
   { keys: "shift+?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },
   { keys: "?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },

@@ -16,26 +16,33 @@ export interface FontNotice extends Notice {
 export interface Notices {
   readonly document: readonly Notice[]; // what opening the file found: for as long as it's open
   readonly export: readonly Notice[]; // what the last export said: until the next change
-  readonly reopen: Notice | null; // the document opened again, or couldn't: in the bar, until the next change
+  readonly reopen: Notice | null; // the document opened again, or couldn't: in the bar, until the next change, or while it's stale
   readonly font: FontNotice | null; // the user's copy of a font refused: until the next change
   readonly drop: Notice | null; // a file dropped on the editor that didn't open: until the next change
 }
 
 export const NO_NOTICES: Notices = { document: [], export: [], reopen: null, font: null, drop: null };
 
-/** The lines once the user changes the history: only what opening found outlasts it, the rest is stale. */
-export function noticesAfterChange(notices: Notices): Notices {
-  return { ...NO_NOTICES, document: notices.document };
+/**
+ * The lines once the user changes the history: only what opening found outlasts it, the rest is stale. While the
+ * document's reading is `stale`, persisted by an earlier build and not read again yet, what the bar says of it stays.
+ */
+export function noticesAfterChange(notices: Notices, { stale }: { stale: boolean }): Notices {
+  return { ...NO_NOTICES, document: notices.document, reopen: stale ? notices.reopen : null };
 }
 
 export const warn = (text: string): Notice => ({ tone: "warn", text });
 export const plain = (text: string): Notice => ({ tone: "plain", text });
 
-/** Everything to say under the bar now, warnings first, each sentence once; reopening is the bar's own. */
-export function noticeLines(notices: Notices, drawn: Drawn): Notice[] {
+/**
+ * Everything to say under the bar now, warnings first, each sentence once; reopening is the bar's own. A render's
+ * notices about a page `deleted` wait until it's put back: the download won't have it.
+ */
+export function noticeLines(notices: Notices, drawn: Drawn, { deleted }: { deleted: ReadonlySet<number> }): Notice[] {
+  const kept = [...drawn.notices].filter(([page]) => !deleted.has(page));
   const fromRender = [
     ...(drawn.failed === null ? [] : [drawn.failed]),
-    ...[...drawn.notices.values()].flat().map((notice) => notice.detail),
+    ...kept.flatMap(([, onPage]) => onPage).map((notice) => notice.detail),
     ...drawn.skipped.map((skipped) => skipped.detail),
   ].map(warn);
   const font = notices.font === null ? null : warn(notices.font.text);

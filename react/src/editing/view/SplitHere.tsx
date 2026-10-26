@@ -5,15 +5,18 @@ import { useEditor, useEditorState } from "./context";
 import { sheetWidthOf } from "./geometry";
 import styles from "./SplitHere.module.css";
 
-/** Between two pages: download the document as two files, split here. Under the sheet of `info`, the page above. */
-export function SplitHere({ after, info }: { after: number; info: PageInfo }) {
+/**
+ * Between two pages shown: download the document as two files, split here. Under the sheet of `info`, the page
+ * above, `after` by its number in the original and `shownNumber` among the pages shown.
+ */
+export function SplitHere({ after, shownNumber, info }: { after: number; shownNumber: number; info: PageInfo }) {
   const editor = useEditor();
   const exporting = useEditorState((state) => state.exporting);
   return (
     <div className={styles.split} style={sheetWidthOf(info)}>
       <Button
         className={styles.button}
-        aria-label={`Split after page ${after + 1}`}
+        aria-label={`Split after page ${shownNumber}`}
         isDisabled={exporting}
         onPress={() => void splitAfter(editor, after)}
       >

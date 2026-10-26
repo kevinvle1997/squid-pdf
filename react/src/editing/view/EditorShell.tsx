@@ -12,12 +12,14 @@ import { unexported } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { retryImages } from "../images";
 import { noticeLines } from "../notices";
-import { isWork, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
+import { pagesShown } from "../project";
+import { isWork, readStoredAgain, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
 import { Bar } from "./Bar";
 import { EditorContext, useEditor, useEditorState } from "./context";
+import { DeletedPage } from "./DeletePage";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
-import { isTyping, spanOn } from "./keys";
+import { isTyping, pageOn, spanOn } from "./keys";
 import { Page } from "./Page";
 import { SplitHere } from "./SplitHere";
 import { ZoomControl } from "./Zoom";
@@ -57,11 +59,12 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
       const command = commandFor(event, isTyping(event.target));
       if (command === undefined) return;
       event.preventDefault();
-      command.run(editor, spanOn(event.target));
+      command.run(editor, { spanId: spanOn(event.target), page: pageOn(event.target) });
     };
     const online = () => {
       editor.queue.retry();
       retryImages(editor);
+      readStoredAgain(editor);
     };
     // A file dragged anywhere drops here: the browser would open it in this tab, and the edits would go.
     const dragging = (event: DragEvent) => {
@@ -121,7 +124,8 @@ function Title() {
 function NoticeLine() {
   const notices = useEditorState((state) => state.notices);
   const drawn = useEditorState((state) => state.drawn);
-  const lines = useMemo(() => noticeLines(notices, drawn), [notices, drawn]);
+  const deleted = useEditorState((state) => state.reading.deleted);
+  const lines = useMemo(() => noticeLines(notices, drawn, { deleted }), [notices, drawn, deleted]);
   return lines.map((line) => (
     <Notice key={line.text} tone={line.tone}>
       {line.text}
@@ -129,8 +133,11 @@ function NoticeLine() {
   ));
 }
 
+/** Every page, each kept one labelled by its number as shown; a deleted one is a slip in its place, with no Split here beside it. */
 function Pages() {
   const pages = useEditorState((state) => state.doc.pages);
+  const order = useEditorState((state) => state.reading.order);
+  const shown = useMemo(() => pagesShown(order, pages), [order, pages]);
   const asked = useEditorState((state) => state.zoom.asked);
   // Zoomed to a share of the printed size: each page takes that much, and the pages scroll sideways past the window.
   const zoomed = asked === null ? undefined : { "--zoom": asked };
@@ -142,10 +149,14 @@ function Pages() {
       style={zoomed}
       data-zoomed={asked === null ? undefined : ""}
     >
-      {pages.map((info, index) => (
-        <Fragment key={index}>
-          <Page index={index} info={info} />
-          {index < pages.length - 1 && <SplitHere after={index} info={info} />}
+      {shown.map(({ page, info, shownNumber, splitAfter }) => (
+        <Fragment key={page}>
+          {shownNumber === null ? (
+            <DeletedPage page={page} info={info} />
+          ) : (
+            <Page index={page} info={info} shownNumber={shownNumber} />
+          )}
+          {shownNumber !== null && splitAfter && <SplitHere after={page} shownNumber={shownNumber} info={info} />}
         </Fragment>
       ))}
       <ZoomControl />

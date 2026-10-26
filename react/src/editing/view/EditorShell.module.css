@@ -6,6 +6,6 @@
 /* Zoomed past the window, the pages scroll sideways here, under the bar, which stays put. */
 .pages { container-type: inline-size; padding: var(--s7) var(--s5) var(--s8); outline: none; overflow-x: auto; }
 @media (max-width: 820px) {
-  /* Room above the first page for its crop marks, which reach --s4 out. */
-  .pages { padding: var(--s6) var(--s4) var(--s7); }
+  /* Room above the first page for its delete button, which sits over its top corner here, not beside it. */
+  .pages { padding: var(--s8) var(--s4) var(--s7); }
 }

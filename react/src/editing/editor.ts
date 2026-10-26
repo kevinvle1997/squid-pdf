@@ -1,6 +1,7 @@
 // One open document: its state, and the change every edit, undo and put-back goes through. Each action
 // is a function of the editor in the module named for it (typing, export).
 import type { Document, Edit, SpanInfo } from "../api/types";
+import { lacksSentences } from "../documents/localPersistence";
 import { Reopener } from "../documents/reopen";
 import type { Press } from "./caret";
 import type { ExportAhead } from "./export";
@@ -19,8 +20,9 @@ import {
 import type { FailedImage } from "./images";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
 import { heardIn, NO_NOTICES, type Notices, newlyHeard, noticeLines, noticesAfterChange, plain, warn } from "./notices";
+import { leftOutSentence, putBackSentence } from "./pageDeletion";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
-import { project, type Reading, textIn, UNEDITED } from "./project";
+import { project, type Reading, type SpanReading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
 import { type FontsByObject, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
@@ -32,9 +34,21 @@ import { FITTED, type Zoom } from "./zoom";
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
  * margin note. Its note stays shut until focus moves on, since it would cover the words.
  */
-export interface FocusTo {
+export interface FocusSpan {
   readonly spanId: string;
 }
+
+/**
+ * A page whose own control takes focus as soon as it's drawn: its delete button, or its deleted page's
+ * Put back, whichever is there. Brought into view at `block`.
+ */
+export interface FocusPage {
+  readonly page: number;
+  readonly block: ScrollLogicalPosition; // "nearest" where the control replaced the one pressed; "start" for a page gone to
+}
+
+/** Where focus is sent, to take as it's drawn. */
+export type FocusTo = FocusSpan | FocusPage;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
@@ -210,8 +224,9 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
  * and a line it adds under the bar is heard.
  */
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
-  const { notices, drawn: before, layout, doc, disagreements } = store.get();
-  const heard = newlyHeard(noticeLines(notices, before), noticeLines(notices, drawn));
+  const { notices, drawn: before, layout, doc, disagreements, reading } = store.get();
+  const shown = { deleted: reading.deleted };
+  const heard = newlyHeard(noticeLines(notices, before, shown), noticeLines(notices, drawn, shown));
   const after = disagreementsAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, disagreements });
   store.set({ drawn, disagreements: after, ...(heard !== "" && { announcement: announcing(heard) }) });
 }
@@ -234,7 +249,7 @@ export function changed(state: EditorState, actions: readonly HistoryAction[]): 
     ...state,
     history,
     reading,
-    notices: noticesAfterChange(state.notices),
+    notices: noticesAfterChange(state.notices, { stale: lacksSentences(state.doc) }),
     find: findAfterChange(state, reading),
   };
 }
@@ -268,19 +283,36 @@ export function putBack(editor: Editor, spanId: string): void {
   );
 }
 
-/** Take off the last thing done; announce what its span reads now and bring it into view. Focus stays. */
-export function undo(editor: Editor): void {
+/** Where a key was pressed: on a page, anything on it or its tick in the page list, by the page. */
+export interface PressedOn {
+  readonly page: number | null;
+}
+
+/**
+ * Take off the last thing done; announce what its span reads now and bring it into view. Focus stays, but on what
+ * a page's delete or its undo takes away with the page: focus goes to the page's control in its place.
+ */
+export function undo(editor: Editor, on: PressedOn = { page: null }): void {
   const step = editor.store.get().history.done.at(-1);
-  stepped(editor, { kind: "undo" }, { step, words: "Back to" });
+  stepped(editor, { kind: "undo" }, { step, words: "Back to", on });
 }
 
-/** Bring back the last thing undone, announced and brought into view as undo does. */
-export function redo(editor: Editor): void {
+/** Bring back the last thing undone, announced and brought into view as undo does, and focus moved as it moves it. */
+export function redo(editor: Editor, on: PressedOn = { page: null }): void {
   const step = editor.store.get().history.undone.at(-1);
-  stepped(editor, { kind: "redo" }, { step, words: "Changed to" });
+  stepped(editor, { kind: "redo" }, { step, words: "Changed to", on });
 }
 
-function stepped(editor: Editor, action: HistoryAction, { step, words }: { step: Step | undefined; words: string }) {
+function stepped(
+  editor: Editor,
+  action: HistoryAction,
+  { step, words, on }: { step: Step | undefined; words: string; on: PressedOn },
+) {
+  const pageDelete = step?.find(({ edit }) => edit.kind === "delete_page")?.edit;
+  if (pageDelete?.kind === "delete_page") {
+    pageStepped(editor, action, { page: pageDelete.page, on });
+    return;
+  }
   const spanId = step?.map((entry) => spanOf(entry.edit)).find((id) => id !== undefined);
   if (step === undefined || spanId === undefined) {
     change(editor, action);
@@ -293,7 +325,20 @@ function stepped(editor: Editor, action: HistoryAction, { step, words }: { step:
   }));
 }
 
-/** Focus has left the span it was sent to: the next visit is an ordinary one. */
+/**
+ * Undo or redo of a page's delete: said as the page now is, in or out. Focus on that page or its tick, which go
+ * with it, goes to its control in its place (Put back, or its delete button); anywhere else it stays.
+ */
+function pageStepped(editor: Editor, action: HistoryAction, { page, on }: { page: number; on: PressedOn }): void {
+  change(editor, action, ({ reading, doc }) => ({
+    announcement: announcing(
+      reading.deleted.has(page) ? leftOutSentence(doc) : putBackSentence(doc, { order: reading.order, page }),
+    ),
+    ...(on.page === page && { focusTo: { page, block: "nearest" } }),
+  }));
+}
+
+/** Focus has left the span or page control it was sent to: the next visit is an ordinary one. */
 export function focusMoved(editor: Editor): void {
   editor.store.set({ focusTo: null });
 }
@@ -313,9 +358,14 @@ export function announce(editor: Editor, text: string): void {
   editor.store.set({ announcement: announcing(text) });
 }
 
-/** How many spans an edit changes: replaced or redacted. */
+/** The changed spans on the pages the download keeps: a page left out takes its edits with it. */
+function keptChanges(reading: Reading): SpanReading[] {
+  return [...reading.spans.values()].filter(({ span }) => !reading.deleted.has(span.page));
+}
+
+/** How many changes the bar counts: each span an edit changes, replaced or redacted, and each page left out, but none on it. */
 export function changedCount(state: EditorState): number {
-  return state.reading.spans.size;
+  return keptChanges(state.reading).length + state.reading.deleted.size;
 }
 
 /** How many changed spans won't match, and the bar's words: once one is in its own font, all "will look different". */
@@ -327,7 +377,7 @@ export function warnedCount(state: EditorState): { count: number; label: string 
 
 /** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
 export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
-  return [...reading.spans.values()].filter(({ span, replaced }) => {
+  return keptChanges(reading).filter(({ span, replaced }) => {
     const fit = drawn.fits.get(span.page)?.[span.id];
     return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
   }).length;
@@ -335,7 +385,7 @@ export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "
 
 /** The changed spans that won't match: in a similar font, set apart from the text around them, or missing letters the server found. */
 export function changedMismatches({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): MismatchPlace[] {
-  return [...reading.spans.values()].flatMap((spanReading) => {
+  return keptChanges(reading).flatMap((spanReading) => {
     const { span } = spanReading;
     const missing = drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
     return placeOf(span, { changed: true, reading: spanReading, missing }) ?? [];

@@ -1,6 +1,6 @@
 // Once the server no longer has the document (its hour ran out, or a deploy retired it), it
 // answers 404, and this browser's file opens it again under the same span ids.
-import { isGone, stillThere, upload } from "../api/client";
+import { documentOf, isGone, stillThere, upload } from "../api/client";
 import type { Document } from "../api/types";
 
 export class Reopener {
@@ -36,6 +36,13 @@ export class Reopener {
       const again = tried === this.#doc ? await this.#reopen() : this.#doc;
       return use(again);
     }
+  }
+
+  /** The server's copy asked for again, as it keeps it now; gone, it opens again first. */
+  async readAgain(): Promise<Document> {
+    const fresh = await this.withDocument((doc) => documentOf(doc.id));
+    this.#doc = fresh;
+    return fresh;
   }
 
   /** A page image failed, which it can for any reason: only a document really gone opens again. */

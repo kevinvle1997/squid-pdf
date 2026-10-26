@@ -3,7 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { type Download, expect, type Locator, type Page } from "@playwright/test";
+import { type Download, expect, type FileChooser, type Locator, type Page } from "@playwright/test";
 import type { Document } from "../src/api/types";
 import { aProblem } from "../src/fixtures";
 import { test } from "./policy";
@@ -11,12 +11,64 @@ import { test } from "./policy";
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
 const LINE = "This agreement is made on 14 March 2026 between";
 
-async function open(page: Page) {
+/** A file to open: a path, or its bytes and name. */
+type Upload = Parameters<FileChooser["setFiles"]>[0];
+
+async function open(page: Page, file: Upload = SAMPLE) {
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Choose a PDF" }).click();
-  await (await chooser).setFiles(SAMPLE);
+  await (await chooser).setFiles(file);
   await expect(page.getByRole("region", { name: "Page 1" })).toBeVisible();
+}
+
+/**
+ * Three pages, each one line in Helvetica naming it: one more page than the sample, so a page
+ * deleted still leaves two to split. Written by hand, each object's place counted for the xref.
+ */
+function threePages(): Upload {
+  const lines = ["First page", "Second page", "Third page"];
+  const kids = lines.map((_, index) => `${4 + 2 * index} 0 R`).join(" ");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${kids}] /Count ${lines.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...lines.flatMap((line, index) => {
+      const content = `BT /F1 24 Tf 72 720 Td (${line}) Tj ET`;
+      return [
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + 2 * index} 0 R >>`,
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+      ];
+    }),
+  ];
+  let pdf = "%PDF-1.4\n";
+  const places = objects.map((object, index) => {
+    const place = pdf.length;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return place;
+  });
+  const xref = pdf.length;
+  const rows = places.map((place) => `${String(place).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${rows}`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return { name: "three.pdf", mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") };
+}
+
+/** A download read back as any upload is: how many pages it has, and their words. */
+async function reread(page: Page, download: Download): Promise<{ pages: number; text: string }> {
+  const bytes = await readFile(await download.path());
+  return page.evaluate(
+    async (pdf) => {
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "content-type": "application/pdf" },
+        body: new Uint8Array(pdf),
+      });
+      const doc = (await response.json()) as Document;
+      return { pages: doc.pages.length, text: doc.spans.map((span) => span.text).join(" ") };
+    },
+    [...bytes],
+  );
 }
 
 async function seriousProblems(page: Page) {
@@ -212,26 +264,44 @@ test("Split here downloads two files, each with only its pages, and the edit in 
   await expect.poll(() => downloads.length).toBe(2);
   const [first, second] = downloads as [Download, Download];
   expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["sample, page 1.pdf", "sample, page 2.pdf"]);
-  // Each read back as any upload is: one page apiece, and the edit only where its page went.
-  const reread = async (download: Download) => {
-    const bytes = await readFile(await download.path());
-    return page.evaluate(
-      async (pdf) => {
-        const response = await fetch("/api/documents", {
-          method: "POST",
-          headers: { "content-type": "application/pdf" },
-          body: new Uint8Array(pdf),
-        });
-        const doc = (await response.json()) as Document;
-        return { pages: doc.pages.length, text: doc.spans.map((span) => span.text).join(" ") };
-      },
-      [...bytes],
-    );
-  };
-  const [before, after] = [await reread(first), await reread(second)];
+  // One page apiece, and the edit only where its page went.
+  const [before, after] = [await reread(page, first), await reread(page, second)];
   expect([before.pages, after.pages]).toEqual([1, 1]);
   expect(before.text).toContain("9 June 2026");
   expect(after.text).not.toContain("9 June 2026");
+});
+
+test("a page deleted in the editor is missing from the download, and its slip passes an accessibility check", async ({
+  page,
+}) => {
+  await open(page);
+  await page.getByRole("button", { name: "Delete page 1", exact: true }).click();
+  await expect(page.getByRole("main").getByText("This page is left out of the download")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Put back" })).toBeFocused();
+  expect(await seriousProblems(page)).toEqual([]);
+
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const { pages, text } = await reread(page, await downloading);
+  expect(pages).toBe(1);
+  expect(text).toContain("Schedule 1");
+  expect(text).not.toContain("SERVICES AGREEMENT");
+});
+
+test("Split here after a page is deleted downloads the pages as shown, the deleted page in neither", async ({
+  page,
+}) => {
+  await open(page, threePages());
+  await page.getByRole("button", { name: "Delete page 2", exact: true }).click();
+  const downloads: Download[] = [];
+  page.on("download", (download) => downloads.push(download));
+  await page.getByRole("button", { name: "Split after page 1" }).click();
+  await expect.poll(() => downloads.length).toBe(2);
+  const [first, second] = downloads as [Download, Download];
+  expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["three, page 1.pdf", "three, page 3.pdf"]);
+  const [before, after] = [await reread(page, first), await reread(page, second)];
+  expect([before.pages, after.pages]).toEqual([1, 1]);
+  expect([before.text, after.text]).toEqual(["First page", "Third page"]);
 });
 
 test("find counts a date on both pages, Change all changes both, and one undo puts both back", async ({ page }) => {

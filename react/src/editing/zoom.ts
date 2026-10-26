@@ -2,6 +2,7 @@
 // zooms to a share of the printed size. Zoomed past the window, the pages scroll sideways.
 import { MAX_SCALE, PX_PER_PT, ZOOM_SKIP, ZOOM_STEPS } from "./constants";
 import type { Editor, EditorState } from "./editor";
+import { shownNumberOf } from "./project";
 
 /** The share of its printed size asked for, null to fit the window; and the share the first page shows at. */
 export interface Zoom {
@@ -50,8 +51,8 @@ export function pageInView(editor: Editor, page: number): void {
   if (editor.store.get().pageInView !== page) editor.store.set({ pageInView: page });
 }
 
-/** What the bar says of where the reader is: "Page 3 of 8", or a one-page document's "1 page". */
-export function whereSentence({ doc, pageInView: page }: Pick<EditorState, "doc" | "pageInView">): string {
-  const pages = doc.pages.length;
-  return pages === 1 ? "1 page" : `Page ${page + 1} of ${pages}`;
+/** What the bar says of where the reader is, among the pages the download has: "Page 3 of 8", or "1 page". */
+export function whereSentence({ reading, pageInView: page }: Pick<EditorState, "reading" | "pageInView">): string {
+  const pages = reading.order.length;
+  return pages === 1 ? "1 page" : `Page ${shownNumberOf(reading.order, page)} of ${pages}`;
 }

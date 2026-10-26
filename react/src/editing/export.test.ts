@@ -5,6 +5,7 @@ import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, SENTENCES } from "../fix
 import { createEditor, type Editor, undo } from "./editor";
 import { exportName, exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
+import { deletePage } from "./pageDeletion";
 import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
@@ -175,9 +176,26 @@ describe("export", () => {
 
 describe("a split's parts", () => {
   test("are the pages up to the split, and the rest", () => {
-    expect(splitPages(4, 1)).toEqual([
+    expect(splitPages([0, 1, 2, 3], 1)).toEqual([
       [0, 1],
       [2, 3],
+    ]);
+  });
+
+  test("after a delete, are the pages shown either side: the deleted page in neither, as export asks", () => {
+    expect(splitPages([0, 1, 3], 1)).toEqual([[0, 1], [3]]);
+  });
+
+  test("after a delete, are sent with the delete, the deleted page in neither", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    const four = createEditor(FILE, aDoc({ pages: [A4, A4, A4, A4] }), 2);
+    deletePage(four, 2);
+    await splitAfter(four, 1);
+    const asked = vi.mocked(exportPdf).mock.calls.map(([, edits, options]) => [edits, options?.pages]);
+    const deleted = [{ kind: "delete_page", page: 2 }];
+    expect(asked).toEqual([
+      [deleted, [0, 1]],
+      [deleted, [3]],
     ]);
   });
 

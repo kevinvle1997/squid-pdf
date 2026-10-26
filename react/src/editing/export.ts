@@ -107,20 +107,19 @@ export function exportName(fileName: string, { edited }: { edited: boolean }): s
   return `${fileName.replace(/\.pdf$/i, "")}, edited.pdf`;
 }
 
-/** Download the document as two files: its pages up to `page`, and the rest. Every edit goes to both. */
+/** Download the document as two files: its pages shown up to `page`, and the rest. Every edit goes to both. */
 export async function splitAfter(editor: Editor, page: number): Promise<void> {
-  const count = editor.store.get().doc.pages.length;
-  const [before, after] = splitPages(count, page);
+  const [before, after] = splitPages(editor.store.get().reading.order, page);
   await exportParts(
     editor,
     [before, after].map((pages) => ({ pages, name: () => partName(editor.file.name, pages) })),
   );
 }
 
-/** The pages either side of a split after `page`, of `count`. */
-export function splitPages(count: number, page: number): [number[], number[]] {
-  const all = Array.from({ length: count }, (_, index) => index);
-  return [all.slice(0, page + 1), all.slice(page + 1)];
+/** The pages either side of a split after `page`, of those shown, `order`: a page left out is in neither, as export asks. */
+export function splitPages(order: readonly number[], page: number): [number[], number[]] {
+  const after = order.indexOf(page) + 1;
+  return [order.slice(0, after), order.slice(after)];
 }
 
 /** A part's file name: the upload's, with the pages it holds, numbered from one as a reader counts them. */

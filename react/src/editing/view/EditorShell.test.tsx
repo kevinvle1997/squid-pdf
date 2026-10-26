@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
-import { exportPdf, ProblemError, putFont, renderStrips, stillThere, upload } from "../../api/client";
+import { documentOf, exportPdf, ProblemError, putFont, renderStrips, stillThere, upload } from "../../api/client";
 import type { Document, Render } from "../../api/types";
 import { type PersistedWork, persistFile, persistState } from "../../documents/localPersistence";
 import {
@@ -42,6 +42,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   putFont: vi.fn(),
   exportPdf: vi.fn(),
   upload: vi.fn(),
+  documentOf: vi.fn(),
 }));
 
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
@@ -669,6 +670,212 @@ describe("splitting the document", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [], { pages: [0] });
     // The second file waits for the first; meanwhile neither split asks again.
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
+  });
+});
+
+describe("deleting a page", () => {
+  // Four pages; the third has two lines, and "here" is on the first and the third.
+  const at = (y: number) => ({ x0: 72, y0: y, x1: 200, y1: y + 24 });
+  const FOUR = aDoc({
+    spans: [
+      aSpan({ id: "one", text: "here on one", size: 20, bbox: at(100) }),
+      aSpan({ id: "three", text: "here on three", size: 20, page: 2, bbox: at(100) }),
+      aSpan({ id: "also", text: "also on three", size: 20, page: 2, bbox: at(140) }),
+    ],
+    fonts: [aFont("Times-Roman")],
+    pages: [A4, A4, A4, A4],
+  });
+  const deleteButton = (screen: Awaited<ReturnType<typeof render>>, shownNumber: number) =>
+    screen.getByRole("button", { name: `Delete page ${shownNumber}`, exact: true });
+  // The slip in the third page's place: in the document, as the live region says it too.
+  const slip = (screen: Awaited<ReturnType<typeof render>>) =>
+    screen.getByRole("main").getByText("This page is left out of the download");
+
+  /** Change the line `name` on page `region`'s sheet to `text`, the page brought near so its marks are drawn. */
+  async function changeLine(screen: Awaited<ReturnType<typeof render>>, { region = "Page 3", name = "", text = "" }) {
+    screen.getByRole("region", { name: region, exact: true }).element().scrollIntoView();
+    const mark = screen.getByRole("button", { name, exact: true });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox", { name: `Change “${name}”` }).fill(text);
+    await userEvent.keyboard("{Enter}");
+  }
+
+  test("leaves a slip in the page's place with Put back focused, and the bar counts the download's pages", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    await expect.element(slip(screen)).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("This page is left out of the download");
+    // Read from the top: focus on Put back brought the slip into view.
+    window.scrollTo(0, 0);
+    await expect.element(screen.getByRole("banner").getByText("Page 1 of 3")).toBeVisible();
+    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+    // Labels count the pages as shown: the page after the slip is the third now.
+    expect(screen.getByRole("region", { name: /^Page \d$/ }).elements()).toHaveLength(3);
+    await expect.element(deleteButton(screen, 3)).toBeInTheDocument();
+    await expect.element(deleteButton(screen, 4)).not.toBeInTheDocument();
+  });
+
+  test("its button is named on hover, and Tab reaches it after the page above and before its own first line", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 1).hover();
+    await expect.element(screen.getByRole("tooltip")).toHaveTextContent("Delete page 1");
+    deleteButton(screen, 1).element().focus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(screen.getByRole("button", { name: "here on one" })).toHaveFocus();
+    deleteButton(screen, 2).element().focus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await expect.element(screen.getByRole("button", { name: "Split after page 1" })).toHaveFocus();
+  });
+
+  test("its edits leave the changes' count, and Cmd+Z puts it back with them, focus on its button", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await changeLine(screen, { name: "here on three", text: "now on three" });
+    await changeLine(screen, { name: "also on three", text: "now also on three" });
+    await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
+    await deleteButton(screen, 3).click();
+    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(slip(screen)).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "now on three", exact: true })).toBeInTheDocument();
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Page 3 is back in the download");
+  });
+
+  test("undone from anywhere but its own controls, the delete leaves focus where it is", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    screen.getByRole("region", { name: "Page 1", exact: true }).element().scrollIntoView();
+    const line = screen.getByRole("button", { name: "here on one", exact: true });
+    await expect.element(line).toBeInTheDocument();
+    line.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Page 3 is back in the download");
+    await expect.element(line).toHaveFocus();
+  });
+
+  test("a render's notice about it waits while it's deleted, and comes back with Put back", async () => {
+    const drewOtherwise = "This page wouldn't take Times, so the line is drawn in Liberation Serif.";
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ notices: [aSpanNotice(drewOtherwise, "three")] }));
+    const screen = await openEditor({ doc: FOUR });
+    await changeLine(screen, { name: "here on three", text: "now on three" });
+    const notice = screen.getByRole("paragraph").filter({ hasText: drewOtherwise });
+    await expect.element(notice).toBeVisible();
+    await deleteButton(screen, 3).click();
+    await expect.element(notice).not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Put back" }).click();
+    await expect.element(notice).toBeVisible();
+  });
+
+  test("redone from anywhere on its page, the delete puts focus on Put back", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    screen.getByRole("region", { name: "Page 3", exact: true }).element().scrollIntoView();
+    const line = screen.getByRole("button", { name: "here on three", exact: true });
+    await expect.element(line).toBeInTheDocument();
+    line.element().focus();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
+  });
+
+  // Persisted before the server had the sentences a deleted page takes.
+  const persistedEarlier = () => {
+    const older = { ...SENTENCES };
+    Reflect.deleteProperty(older, "page_left_out");
+    Reflect.deleteProperty(older, "page_put_back");
+    const persisted = { work: { history: EMPTY_HISTORY, fonts: [] }, until: Date.now() + 60_000 };
+    return openEditor({ doc: { ...FOUR, sentences: older }, persisted });
+  };
+
+  test("with a reply persisted by an earlier build not read again, delete, Put back and undo work, and why stays in the bar until the connection comes back", async () => {
+    const busy = "We can't work on files right now. Try again in a few minutes.";
+    vi.mocked(documentOf)
+      .mockReset()
+      .mockRejectedValue(new ProblemError(aProblem(503, busy)));
+    const screen = await persistedEarlier();
+    const said = screen.getByRole("banner").getByText(busy);
+    await expect.element(said).toBeVisible();
+
+    await deleteButton(screen, 3).click();
+    await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
+    await screen.getByRole("button", { name: "Put back" }).click();
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    await deleteButton(screen, 3).click();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+    await expect.element(said).toBeVisible();
+
+    vi.mocked(documentOf).mockResolvedValue(FOUR);
+    window.dispatchEvent(new Event("online"));
+    await expect.element(said).not.toBeInTheDocument();
+    await deleteButton(screen, 3).click();
+    await expect.element(slip(screen)).toBeVisible();
+  });
+
+  test("opened again from a reply persisted by an earlier build, its sentences are asked for again", async () => {
+    vi.mocked(documentOf).mockReset().mockResolvedValue(FOUR);
+    const screen = await persistedEarlier();
+    await vi.waitFor(() => expect(documentOf).toHaveBeenCalledWith("doc"));
+    await deleteButton(screen, 3).click();
+    await expect.element(slip(screen)).toBeVisible();
+    await screen.getByRole("button", { name: "Put back" }).click();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Page 3 is back in the download");
+  });
+
+  test("Put back brings the page back with its edits, focus on its button", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await changeLine(screen, { name: "here on three", text: "now on three" });
+    await deleteButton(screen, 3).click();
+    await screen.getByRole("button", { name: "Put back" }).click();
+    await expect.element(slip(screen)).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "now on three", exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+    await expect.element(deleteButton(screen, 3)).toHaveFocus();
+  });
+
+  test("find leaves it out of the count, and Change all leaves its words as they were", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("here");
+    const bar = screen.getByRole("search");
+    await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
+    await screen.getByRole("textbox", { name: "Change to" }).fill("there");
+    await screen.getByRole("button", { name: "Change all" }).click();
+    await expect.element(bar.getByText(/^Changed 1 place/)).toBeVisible();
+    screen.getByRole("region", { name: "Page 1", exact: true }).element().scrollIntoView();
+    await expect.element(screen.getByRole("button", { name: "there on one", exact: true })).toBeInTheDocument();
+
+    // Put back, the page's line reads as it did.
+    await screen.getByRole("button", { name: "Put back" }).click();
+    await changeLine(screen, { name: "here on three", text: "here on three, put back" });
+  });
+
+  test("the last page left can't be deleted", async () => {
+    const screen = await openEditor({ doc: { ...FOUR, pages: [A4, A4] } });
+    await expect.element(deleteButton(screen, 2)).toBeEnabled();
+    await deleteButton(screen, 1).click();
+    await expect.element(deleteButton(screen, 1)).toBeDisabled();
+  });
+
+  test("Split here keeps its place beside the slip, and splits the pages as shown", async () => {
+    vi.mocked(exportPdf)
+      .mockReset()
+      .mockReturnValue(new Promise(() => undefined));
+    const screen = await openEditor({ doc: FOUR });
+    await deleteButton(screen, 3).click();
+    const splits = screen.getByRole("button", { name: /^Split after/ });
+    await expect
+      .poll(() => splits.elements().map((split) => split.getAttribute("aria-label")))
+      .toEqual(["Split after page 1", "Split after page 2"]);
+    await screen.getByRole("button", { name: "Split after page 2" }).click();
+    expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "delete_page", page: 2 }], { pages: [0, 1] });
   });
 });
 

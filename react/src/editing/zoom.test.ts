@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { aDoc } from "../fixtures";
+import type { Edit } from "../api/types";
+import { A4, aDeletePage, aDoc } from "../fixtures";
+import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
+import { project } from "./project";
 import { scaleFor, whereSentence, zoomStep } from "./zoom";
 
 describe("a zoom step", () => {
@@ -25,13 +28,14 @@ test("zoomed in, pages are drawn sharp enough for it, and never blurrier than th
 });
 
 test("the bar says which page is being read, or a one-page document's length", () => {
-  const two = aDoc({
-    pages: [
-      { width: 595, height: 842, turn_cw: 0 },
-      { width: 595, height: 842, turn_cw: 0 },
-    ],
-  });
-  expect(whereSentence({ doc: two, pageInView: 1 })).toBe("Page 2 of 2");
-  const one = aDoc({ pages: [{ width: 595, height: 842, turn_cw: 0 }] });
-  expect(whereSentence({ doc: one, pageInView: 0 })).toBe("1 page");
+  const reading = (pages: number, ...edits: Edit[]) =>
+    project(
+      aDoc({ pages: Array.from({ length: pages }, () => A4) }),
+      entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })),
+    );
+  expect(whereSentence({ reading: reading(2), pageInView: 1 })).toBe("Page 2 of 2");
+  expect(whereSentence({ reading: reading(1), pageInView: 0 })).toBe("1 page");
+  // A page left out isn't counted, nor before the page in view.
+  expect(whereSentence({ reading: reading(4, aDeletePage(1)), pageInView: 3 })).toBe("Page 3 of 3");
+  expect(whereSentence({ reading: reading(2, aDeletePage(0)), pageInView: 1 })).toBe("1 page");
 });
