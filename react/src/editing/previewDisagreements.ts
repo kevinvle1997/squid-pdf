@@ -6,6 +6,7 @@ import { spanOf } from "./history";
 import { type Differing, differing, type Reading } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
+import { liveVerdictOf, type Verdict } from "./verdicts";
 
 /** The spans on one page whose render disagreed with their preview, as one render landed. */
 export interface PreviewDisagreement {
@@ -68,19 +69,29 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
   if (fit === undefined || font === undefined) return false;
   return !sameVerdict(fit, {
     live: fitOf(span, { font, text, rules }),
+    liveVerdict: liveVerdictOf(span, { font, text }),
     asked: reading.spans.get(span.id)?.strategy,
     rules,
   });
 }
 
-/** Whether the server's fit says what the live check did: the same letters lacking, as long, the way out asked. */
+/**
+ * Whether the server's fit says what the live check did: the same letters lacking, as long, the way out
+ * asked, and the same kind of verdict, as the chip said it.
+ */
 function sameVerdict(
   fit: FitInfo,
-  { live, asked, rules }: { live: Fit; asked: Strategy | undefined; rules: FitRules },
+  {
+    live,
+    liveVerdict,
+    asked,
+    rules,
+  }: { live: Fit; liveVerdict: Verdict; asked: Strategy | undefined; rules: FitRules },
 ): boolean {
   const lacking = new Set([...fit.missing, ...fit.left_out]);
   const sameLetters = lacking.size === live.missing.length && live.missing.every((letter) => lacking.has(letter));
   const sameLength = runsPast(fit.delta_pt, live.roomPt, rules) === runsPast(live.deltaPt, live.roomPt, rules);
   const sameWayOut = asked === undefined || fit.strategy === asked;
-  return sameLetters && sameLength && sameWayOut;
+  const sameKind = fit.fidelity === liveVerdict.fidelity;
+  return sameLetters && sameLength && sameWayOut && sameKind;
 }
