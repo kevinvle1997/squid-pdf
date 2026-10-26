@@ -257,6 +257,29 @@ jobs:
           [[ $status == "$let_in" ]] || { echo "$second answered $status, not $let_in: one count"; exit 1; }
           echo "$first used up its uploads; $second, in another /64, was still let in"
 
+      # Only a push to main publishes, so only it keeps what it checked, for publish to push.
+      # bash by name turns on pipefail, so a failed save isn't hidden by zstd.
+      - name: Save the checked images
+        if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          mapfile -t images < <(docker compose config --images)
+          docker save "${images[@]}" | zstd -T0 -o /tmp/images.tar.zst
+
+      - name: Upload the checked images
+        if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v6
+        with:
+          name: checked-images
+          path: /tmp/images.tar.zst
+          if-no-files-found: error
+          # Already zstd: zipping it again would cost time and win nothing.
+          compression-level: 0
+          # A re-run of this job replaces the last attempt's, rather than failing on its name.
+          overwrite: true
+          # Publish reads it minutes later; a day still leaves room to re-run publish.
+          retention-days: 1
+
       - name: Report
         run: |
           {
@@ -309,10 +332,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # Compose won't load its file without these; only the tag and the commit reach the images.
+    # Compose won't load its file without these; only the tag names the images.
     env:
       SQUIDPDF_TAG: ${{ github.sha }}
-      SQUIDPDF_COMMIT: ${{ github.sha }}
       SQUIDPDF_DOMAIN: unused
       SQUIDPDF_USER: unused
       SQUIDPDF_PASSWORD_HASH: unused
@@ -321,8 +343,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build
-        run: docker compose build
+      # Not a rebuild: that may pull a moved base tag, and its layers would be new bytes.
+      - name: Download the checked images
+        uses: actions/download-artifact@v7
+        with:
+          name: checked-images
+          path: /tmp
+
+      # Deploy built them under compose's default tag, latest; what this job pushes is the commit's.
+      - name: Load the checked images
+        shell: bash
+        run: |
+          zstd --decompress --stdout /tmp/images.tar.zst | docker load
+          mapfile -t images < <(docker compose config --images)
+          for image in "${images[@]}"; do
+            docker tag "${image%:*}:latest" "$image"
+          done
 
       - name: Sign in to the registry
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
@@ -337,7 +373,8 @@ jobs:
         run: |
           tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/main | cut -f1)
           [[ $tip == "$GITHUB_SHA" ]] || { echo "main has moved on to $tip; latest stays"; exit 0; }
-          for image in $(docker compose config --images); do
+          mapfile -t images < <(docker compose config --images)
+          for image in "${images[@]}"; do
             docker tag "$image" "${image%:*}:latest"
             docker push "${image%:*}:latest"
           done
