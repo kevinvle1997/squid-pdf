@@ -10,7 +10,6 @@ import time
 import zlib
 from collections.abc import Collection, Iterator
 from pathlib import Path
-from unittest import mock
 
 import pymupdf
 import pytest
@@ -19,9 +18,10 @@ from fontTools.subset import Subsetter
 
 from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Engine, words, write_dense
+from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
-from squidpdf.editing import Edit, constants as editing_constants, export
-from squidpdf.editing.types import Exported
+from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
     CHOSEN,
     NAME_COPIES,
@@ -35,7 +35,7 @@ from tests.api.conftest import (
     upload,
     with_hidden_copies,
 )
-from tests.conftest import cannot_cut
+from tests.conftest import StoreWith, cannot_cut
 from tests.helpers import (
     assert_equal,
     assert_false,
@@ -112,20 +112,12 @@ _HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
 
 _STALL_S = 60  # far past any export timeout here
 _STALLED_TIMEOUT_S = 3  # long enough to start the export, short enough to wait for
-_make_pdf = export._make_pdf  # the real one, kept before a test swaps it
 
 
-def _stall(*_args: object, **_kwargs: object) -> None:
-    """Hangs, as MuPDF can on a hostile file."""
+def _stalling_driver(path: str) -> PdfDriver:
+    """MuPDF's driver, after hanging as MuPDF can on a hostile file: the worker dies first."""
     time.sleep(_STALL_S)
-
-
-def _make_pdf_stalling_once_open(
-    folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
-) -> Exported:
-    """`_make_pdf`, hanging where it opens the original. Runs in a worker, the patch with it."""
-    with mock.patch.object(store, "open_original", _stall):
-        return _make_pdf(folder, scratch, edits=edits, pages=pages)
+    return open_driver(path)
 
 
 @pytest.fixture
@@ -842,14 +834,13 @@ def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc
     browser was told the file needs more memory.
     """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
-    opened = store.open_original
 
-    def deleted_once_open(folder: Path, *args, **kwargs) -> Engine:
-        engine = opened(folder, *args, **kwargs)
-        store.delete(folder)
+    def deleted_once_open(folder: Path) -> Engine:
+        engine = store.FOLDER_STORE.open_original(folder)
+        store.FOLDER_STORE.delete(folder)
         return engine
 
-    monkeypatch.setattr(store, "open_original", deleted_once_open)
+    monkeypatch.setattr(app.state, "documents", StoreWith(opens_original=deleted_once_open))
     span = span_starting(doc, 1, "Invoices")
     ninety = span["text"].replace("thirty", "ninety")
 
@@ -872,7 +863,8 @@ def test_an_export_killed_at_its_timeout_leaves_nothing_in_the_temp_folder(
     )  # the workers' temp folder, read when they start
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))  # and the server's
     monkeypatch.setattr(app.state, "pool", own_pool)
-    monkeypatch.setattr(export, "_make_pdf", _make_pdf_stalling_once_open)
+    # A store whose driver hangs as it opens the original, in the worker.
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_stalling_driver))
     monkeypatch.setattr(export, "EXPORT_TIMEOUT_S", _STALLED_TIMEOUT_S)
     span = span_starting(doc, 1, "Invoices")
 

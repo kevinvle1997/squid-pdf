@@ -6,6 +6,7 @@ import pytest
 
 from squidpdf.core import index_of
 from squidpdf.documents import attached, store
+from squidpdf.documents.store import FOLDER_STORE
 from tests.helpers import assert_equal
 
 
@@ -14,7 +15,7 @@ def test_a_copy_of_a_font_removed_after_it_was_listed_reads_as_no_copy_not_no_do
 
     Gone would answer 404, and the browser would open the whole document again.
     """
-    doc_id, folder = store.create("owner")
+    doc_id, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, index_of([]))  # found only when its index is kept
     arrived = attached.arriving_font(folder)
     arrived.write_bytes(b"a font")
@@ -24,7 +25,7 @@ def test_a_copy_of_a_font_removed_after_it_was_listed_reads_as_no_copy_not_no_do
 
     with pytest.raises(KeyError):
         listed["Arial"]
-    assert_equal(store.find(doc_id), (folder, "owner"), "the document, found")
+    assert_equal(FOLDER_STORE.find(doc_id), (folder, "owner"), "the document, found")
 
 
 def test_a_copy_replaced_again_and_again_then_removed_leaves_none(tmp_path):

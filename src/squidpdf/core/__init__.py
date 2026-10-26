@@ -58,6 +58,7 @@ from squidpdf.core.constants import (
 from squidpdf.core.engine import (
     BUILD as BUILD,
     CORE_ERRORS as CORE_ERRORS,
+    DEFAULT_DRIVER_FACTORY as DEFAULT_DRIVER_FACTORY,
     Engine as Engine,
     LineToDraw as LineToDraw,
     face_widths as face_widths,
@@ -70,6 +71,7 @@ from squidpdf.core.fonts.google import google_fonts as google_fonts
 from squidpdf.core.fonts.look_alike import broadest as broadest
 from squidpdf.core.fonts.names import strip_subset as strip_subset
 from squidpdf.core.fonts.substitute import face_coverage as face_coverage
+from squidpdf.core.pdf.driver import DriverFactory as DriverFactory
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
 from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.redaction import RedactionCheck as RedactionCheck

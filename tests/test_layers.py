@@ -128,18 +128,23 @@ def _in_body(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:
 
 # The modules that read and write a document's folder: the store, and the user's font copies.
 _DISK_MODULES = ("store", "attached")
+# What a controller or a job calls the store object by: `documents`, or `self.documents`.
+_STORE_OBJECT = "documents"
 
 
 def _disk_name_called(node: ast.AST) -> str | None:
-    """The `store.<name>` or `attached.<name>` a node calls; None when it calls neither's."""
+    """The disk module's or the store object's `<name>` a node calls; None if neither."""
     if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
         return None
     called = node.func
-    module = called.value
-    # Called on something other than a module named for the disk.
-    if not (isinstance(module, ast.Name) and module.id in _DISK_MODULES):
-        return None
-    return f"{module.id}.{called.attr}"
+    holder = called.value
+    # A module named for the disk, or the store object by name.
+    if isinstance(holder, ast.Name) and holder.id in (*_DISK_MODULES, _STORE_OBJECT):
+        return f"{holder.id}.{called.attr}"
+    # The store object as a field: `self.documents`.
+    if isinstance(holder, ast.Attribute) and holder.attr == _STORE_OBJECT:
+        return f"{_STORE_OBJECT}.{called.attr}"
+    return None
 
 
 def _disk_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
@@ -161,6 +166,93 @@ def test_a_coroutine_reaches_the_store_only_through_a_thread():
         for coroutine, name in _disk_calls(tree)
     ]
     assert_equal(breaking, [], "disk calls on the event loop, not through asyncio.to_thread")
+
+
+# The command line opens the files it's handed in core's default driver: it injects none.
+_OPENS_IN_THE_DEFAULT = ("squidpdf.core", "squidpdf.cli")
+
+
+def _names_for(tree: ast.Module, name: str) -> set[str]:
+    """`name`, and each name `tree` imports it as."""
+    imported_as = {
+        alias.asname
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+        if alias.name == name and alias.asname
+    }
+    return {name} | imported_as
+
+
+def _opens_without_a_driver(tree: ast.Module) -> Iterator[int]:
+    """The line of each `open_pdf(...)`, by any name, that names no driver of its own."""
+    names = _names_for(tree, "open_pdf")
+    for node in ast.walk(tree):
+        # Not a call.
+        if not isinstance(node, ast.Call):
+            continue
+        called = node.func
+        by_name = isinstance(called, ast.Name) and called.id in names
+        by_attribute = isinstance(called, ast.Attribute) and called.attr == "open_pdf"
+        # A call of something else.
+        if not (by_name or by_attribute):
+            continue
+        given = {keyword.arg: keyword.value for keyword in node.keywords}
+        factory = given.get("driver_factory")  # .get: a missing one is what's looked for
+        names_the_default = (
+            isinstance(factory, ast.Name) and factory.id == "DEFAULT_DRIVER_FACTORY"
+        )
+        if factory is None or names_the_default:
+            yield node.lineno
+
+
+def test_every_feature_opens_a_pdf_in_the_driver_it_was_given():
+    """The driver is injected once, in the app's store: an open naming none would skip it."""
+    breaking = [
+        f"{module}:{line}"
+        for module, tree in _TREES.items()
+        if not any(_within(module, default) for default in _OPENS_IN_THE_DEFAULT)
+        for line in _opens_without_a_driver(tree)
+    ]
+    assert_equal(breaking, [], "opens of a PDF that name no driver_factory of their own")
+
+
+def _names(tree: ast.Module) -> set[str]:
+    """Every name `tree` reads, imports or reaches as an attribute."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            found.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            found.add(node.attr)
+        elif isinstance(node, ast.ImportFrom):
+            found.update(alias.name for alias in node.names)
+    return found
+
+
+@pytest.mark.parametrize(
+    ("name", "allowed"),
+    [
+        ("FOLDER_STORE", ("squidpdf.documents.store", "squidpdf.api.app")),
+        ("FolderStore", ("squidpdf.documents.store",)),
+        (
+            "DEFAULT_DRIVER_FACTORY",
+            ("squidpdf.core", "squidpdf.cli", "squidpdf.documents.store"),
+        ),
+    ],
+    ids=[
+        "only the app picks the default store; a feature uses the one it's handed",
+        "only the store makes a folder store",
+        "only core, the CLI and the default store name the default driver",
+    ],
+)
+def test_only_the_edges_name_a_default(name, allowed):
+    breaking = [
+        module
+        for module, tree in _TREES.items()
+        if not any(_within(module, edge) for edge in allowed) and name in _names(tree)
+    ]
+    assert_equal(breaking, [], f"modules naming {name}")
 
 
 # Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.

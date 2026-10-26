@@ -17,6 +17,7 @@ from squidpdf.documents import constants, disk, store
 from squidpdf.documents.analyse import analyse_upload
 from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis
 
 _PDF_HEADER = b"%PDF-"
@@ -71,6 +72,7 @@ class UploadController:
     """Upload, from request to reply."""
 
     workers: Workers  # where it analyses, off the server's own thread
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def upload(
         self,
@@ -92,28 +94,36 @@ class UploadController:
             raise TooLarge(constants.MAX_FILE_MB)
         async with disk_held(declared, most=constants.MAX_FILE_BYTES):
             with disk.full_disk_refused():
-                doc_id, folder = await asyncio.to_thread(store.create, owner_digest)
-                await _deleted_if_it_fails(
+                doc_id, folder = await asyncio.to_thread(self.documents.create, owner_digest)
+                await self._deleted_if_it_fails(
                     folder, _save_original(chunks, to=folder / store.ORIGINAL)
                 )
-        kept = await _deleted_if_it_fails(folder, self._enqueue_analyse(folder))
+        kept = await self._deleted_if_it_fails(folder, self._enqueue_analyse(folder))
         # Deleted if it fails too: a browser that leaves first never gets the id.
+        expires_at = await self._deleted_if_it_fails(
+            folder, asyncio.to_thread(self.documents.touch, folder)
+        )
         # Off the server's thread: it reads every font's letters and writes them out again.
-        body = await _deleted_if_it_fails(
+        body = await self._deleted_if_it_fails(
             folder,
-            asyncio.to_thread(_reply_body, doc_id, folder=folder, kept=kept, language=language),
+            asyncio.to_thread(
+                document_json, doc_id, expires_at=expires_at, kept=kept, language=language
+            ),
         )
         return Reply(body, words.language_headers(language), HTTPStatus.CREATED)
 
+    async def _deleted_if_it_fails[T](self, folder: Path, step: Awaitable[T]) -> T:
+        """What `step` gives; if it fails, the document in `folder` is deleted first."""
+        try:
+            return await step
+        except BaseException:  # refused, damaged, or the browser left: keep nothing
+            await asyncio.to_thread(self.documents.delete, folder)
+            raise
+
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse_upload, folder, constants.MAX_PAGES)
+        task = partial(analyse_upload, self.documents, folder, constants.MAX_PAGES)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
-
-
-def _reply_body(doc_id: str, *, folder: Path, kept: KeptAnalysis, language: str) -> bytes:
-    """The reply's JSON: the new document's hour started, every span judged as kept."""
-    return document_json(doc_id, expires_at=store.touch(folder), kept=kept, language=language)
 
 
 def _documents_disk_free() -> int:
@@ -121,15 +131,6 @@ def _documents_disk_free() -> int:
     root = store.root()
     root.mkdir(parents=True, exist_ok=True)  # otherwise made by the first upload
     return shutil.disk_usage(root).free
-
-
-async def _deleted_if_it_fails[T](folder: Path, step: Awaitable[T]) -> T:
-    """What `step` gives; if it fails, the document in `folder` is deleted first."""
-    try:
-        return await step
-    except BaseException:  # refused, damaged, or the browser left: keep nothing
-        await asyncio.to_thread(store.delete, folder)
-        raise
 
 
 async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:

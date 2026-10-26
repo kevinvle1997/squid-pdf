@@ -15,8 +15,12 @@ from squidpdf.core import Fragment, Page, Rect, Span, index_as_json, index_of, n
 from squidpdf.documents import api as documents, attached, constants, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
-from squidpdf.documents.store import _KeptIndexes  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+from squidpdf.documents.store import (
+    FOLDER_STORE,
+    _KeptIndexes,  # noqa: PLC2701 (a holder's forget test needs a fresh one)
+)
 from squidpdf.documents.types import KeptAnalysis
+from tests.conftest import StoreWith
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -33,16 +37,16 @@ _WRITER_HEAD_START_S = 0.001  # lets the writer be mid-write when the delete sta
 
 def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
     """The router refuses a slash before the store sees it; this is the store's own guard."""
-    store.create("owner")  # the store's folder, where a climb would start
+    FOLDER_STORE.create("owner")  # the store's folder, where a climb would start
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "owner").write_text("anyone")  # shaped like a document
-    assert_equal(store.find("../outside"), None, "a lookup that climbs out of the store")
+    assert_equal(FOLDER_STORE.find("../outside"), None, "a lookup that climbs out of the store")
 
 
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
-    _, idle = store.create("owner")
-    _, fresh = store.create("owner")
+    _, idle = FOLDER_STORE.create("owner")
+    _, fresh = FOLDER_STORE.create("owner")
     # Not documents: folders of someone else's that share the data folder.
     other = store.root() / "backups"
     other.mkdir()
@@ -51,7 +55,7 @@ def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     past = time.time() - IDLE_S - 1
     for folder in (idle, other, others_trash):
         os.utime(folder, (past, past))
-    store.sweep()
+    FOLDER_STORE.sweep()
     assert_false(idle.exists(), "a document idle past the hour is still on disk")
     assert_true(fresh.exists(), "a document in use was swept")
     assert_true(other.exists(), "a folder that isn't a document was swept")
@@ -69,11 +73,12 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
             raise OSError("the disk said no")
 
     monkeypatch.setattr(documents, "SWEEP_EVERY_S", 0)
-    monkeypatch.setattr(store, "sweep", fails_the_first_time)
 
     async def sweep_until_a_second_pass() -> None:
         """Sweep until a pass runs after the failed one, or patience runs out."""
-        sweeping = asyncio.create_task(documents.sweep_forever())
+        sweeping = asyncio.create_task(
+            documents.sweep_forever(StoreWith(sweeps=fails_the_first_time))
+        )
         deadline = time.monotonic() + _PATIENCE_S
         # Waits on the passes themselves, not a fixed moment a slow runner can miss.
         while passes < 2 and not sweeping.done() and time.monotonic() < deadline:
@@ -96,7 +101,7 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
 )
 def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raised):
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
-    _, folder = store.create("owner")
+    _, folder = FOLDER_STORE.create("owner")
     first = KeptAnalysis(b'{"worked": "out"}', b"[]", "its-digest")
     store.save_analysis(folder, "a-build", first, attached=attached.attached_files(folder).key)
     whole = sorted(path.name for path in folder.iterdir())
@@ -118,10 +123,10 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
 
 def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
     """Found, then deleted by its owner or the sweep before its hour restarts."""
-    _, folder = store.create("owner")
-    store.delete(folder)
+    _, folder = FOLDER_STORE.create("owner")
+    FOLDER_STORE.delete(folder)
     with pytest.raises(Gone):
-        store.touch(folder)
+        FOLDER_STORE.touch(folder)
 
 
 def test_a_document_deleted_while_a_worker_writes_leaves_nothing_behind():
@@ -130,14 +135,14 @@ def test_a_document_deleted_while_a_worker_writes_leaves_nothing_behind():
     A file landing mid-delete used to keep the folder on disk, its owner file gone.
     """
     for _ in range(_RACES):
-        _, folder = store.create("owner")
+        _, folder = FOLDER_STORE.create("owner")
         writing = threading.Event()
         stop = threading.Event()
         writer = threading.Thread(target=_write_until_gone, args=(folder, writing, stop))
         writer.start()
         writing.wait()
         time.sleep(_WRITER_HEAD_START_S)
-        store.delete(folder)
+        FOLDER_STORE.delete(folder)
         stop.set()
         writer.join()
     assert_equal(sorted(store.root().iterdir()), [], "folders left in the store")
@@ -159,16 +164,16 @@ def test_the_sweeper_clears_what_a_delete_cut_short_left():
     So does a delete from before they were moved aside: a folder named like a
     document with no owner file, which the sweep takes once it is idle too.
     """
-    _, trashed = store.create("owner")
+    _, trashed = FOLDER_STORE.create("owner")
     cut_short = store.root() / f".trash-{trashed.name}"
     trashed.rename(cut_short)
-    _, emptied = store.create("owner")
+    _, emptied = FOLDER_STORE.create("owner")
     (emptied / "owner").unlink()
-    _, being_made = store.create("owner")
+    _, being_made = FOLDER_STORE.create("owner")
     (being_made / "owner").unlink()  # as create leaves it, before it writes the owner
     past = time.time() - IDLE_S - 1
     os.utime(emptied, (past, past))
-    store.sweep()
+    FOLDER_STORE.sweep()
     assert_false(cut_short.exists(), "a delete cut short is still on disk")
     assert_false(emptied.exists(), "a folder a delete emptied is still on disk")
     assert_true(being_made.exists(), "a document being made was swept")
@@ -176,8 +181,8 @@ def test_the_sweeper_clears_what_a_delete_cut_short_left():
 
 def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
     """A worker found it, then its owner deleted it: analysis ends Gone, not a 500."""
-    _, folder = store.create("owner")
-    store.delete(folder)
+    _, folder = FOLDER_STORE.create("owner")
+    FOLDER_STORE.delete(folder)
     with pytest.raises(Gone):
         store.save_index(folder, engine.index())
     with pytest.raises(Gone):
@@ -191,7 +196,7 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
 
 def test_a_worker_reads_an_index_once(engine):
     """Every render and export needs it, and parsing it was most of a render's time."""
-    _, folder = store.create("owner")
+    _, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, engine.index())
     store._kept_indexes.forget()  # as a worker that didn't save it: from its file
     first = store.require_index(folder)
@@ -206,9 +211,9 @@ def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
     The bound fits two files: a third drops the one used longest ago, and no more.
     """
     index = engine.index()
-    _, first = store.create("owner")
-    _, second = store.create("owner")
-    _, third = store.create("owner")
+    _, first = FOLDER_STORE.create("owner")
+    _, second = FOLDER_STORE.create("owner")
+    _, third = FOLDER_STORE.create("owner")
     for folder in (first, second, third):
         store.save_index(folder, index)  # the same index, so each file is the same size
     store._kept_indexes.forget()  # as a worker that saved none of them: each from its file
@@ -224,14 +229,14 @@ def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
 
 def test_a_kept_index_never_outlives_its_file(engine):
     """Saved again, the new one is read; deleted, there is none."""
-    _, folder = store.create("owner")
+    _, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, engine.index())
     store.require_index(folder)
     first_span = index_of(list(engine.index())[:1])
     store.save_index(folder, first_span)  # at once: the file's clock may not have moved
     read = [span.id for span in store.require_index(folder)]
     assert_equal(read, [span.id for span in first_span], "spans in the index read again")
-    store.delete(folder)
+    FOLDER_STORE.delete(folder)
     with pytest.raises(Gone):
         store.require_index(folder)
 
@@ -265,7 +270,7 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
     page = Page(width=612.0, height=792.0, turn_cw=90)
     blank_page = Page(0.0, 0.0, 0)
     assert_every_field_filled(page, blank_page, "the page kept")
-    _, folder = store.create("owner")
+    _, folder = FOLDER_STORE.create("owner")
 
     store.save_index(folder, index_of([span]))
     store._kept_indexes.forget()  # as a worker that didn't save it: from its file
@@ -277,7 +282,7 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
 
 def test_every_room_kept_reads_back_to_the_last_bit():
     """A render fits an edit in the room upload worked out, so it must read back exactly."""
-    _, folder = store.create("owner")
+    _, folder = FOLDER_STORE.create("owner")
     rooms = {"a1b2c3d4e5f6": 1 / 3, "b2c3d4e5f6a1": 0.1 + 0.2, "c3d4e5f6a1b2": 0.0}
 
     store.save_rooms(folder, "a-build", rooms)

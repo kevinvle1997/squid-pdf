@@ -9,23 +9,28 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 import orjson
-from fastapi import Depends, Response
+from fastapi import Depends, Request, Response
 
 from squidpdf.api import pool, rate
 from squidpdf.core import Reply, Workers
 
 
-def controller_with_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers], C]:
-    """A route's dependency: a new `cls` for each request, built with the app's workers.
+def controller_with_workers[C](
+    cls: Callable[[Workers, Any], C],
+) -> Callable[[Workers, Request], C]:
+    """A route's dependency: a new `cls` for each request, with the app's workers and store.
 
     Used as `Depends(controller_with_workers(RenderController))`. Made once, when
     the route is defined; FastAPI calls what it returns on every request. Each job
     the controller sends waits for one of its address's turns.
     """
 
-    def with_the_apps_workers(workers: Annotated[Workers, Depends(rate.workers_in_turn)]) -> C:
-        """The controller, built with the app's workers."""
-        return cls(workers)
+    def with_the_apps_workers(
+        workers: Annotated[Workers, Depends(rate.workers_in_turn)], request: Request
+    ) -> C:
+        """The controller, built with the app's workers and the store its documents are in."""
+        # The store `create_app` was given: a feature's type, which api/ doesn't name.
+        return cls(workers, request.app.state.documents)
 
     return with_the_apps_workers
 

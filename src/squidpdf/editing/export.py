@@ -14,10 +14,20 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
-from squidpdf.core import Engine, InvalidRequest, Message, Reply, SpanIndex, Workers, words
+from squidpdf.core import (
+    DriverFactory,
+    Engine,
+    InvalidRequest,
+    Message,
+    Reply,
+    SpanIndex,
+    Workers,
+    words,
+)
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.free_space import kept_rooms
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
@@ -39,6 +49,7 @@ class ExportController:
     """Export, from request to reply."""
 
     workers: Workers  # where it makes files, off the server's own thread
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def export(
         self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, language: str
@@ -73,24 +84,37 @@ class ExportController:
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
         """Make the PDF on a worker."""
-        task = partial(_make_pdf, folder, scratch, edits=edits, pages=pages)
+        task = partial(_make_pdf, self.documents, folder, scratch, edits=edits, pages=pages)
         return await self.workers.run(EXPORT_TIMEOUT_S, task)
 
 
 def _make_pdf(
-    folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
+    documents: DocumentStore,
+    folder: Path,
+    scratch: Path,
+    *,
+    edits: list[Edit],
+    pages: list[int] | None,
 ) -> Exported:
     """Save the document in `folder`, the edits applied and checked, into `scratch`.
 
     The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(folder, index)
+    rooms = kept_rooms(documents, folder, index)
 
-    with store.open_original(folder) as engine:
+    with documents.open_original(folder) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.
         out = scratch / _EXPORTED
-        saved = save_edited(engine, index, rooms=rooms, edits=edits, pages=pages, to=str(out))
+        saved = save_edited(
+            engine,
+            index,
+            rooms=rooms,
+            edits=edits,
+            pages=pages,
+            to=str(out),
+            driver_factory=documents.driver_factory,
+        )
         skipped = [skip.edit for skip in saved.applied.skipped]
         # Only the file's own notices: render already said apply's.
         return Exported(skipped_edits=skipped, file_notices=saved.notices)
@@ -104,6 +128,7 @@ def save_edited(
     edits: list[Edit],
     pages: list[int] | None = None,
     to: str,
+    driver_factory: DriverFactory,
 ) -> Saved:
     """Apply the edits, keep `pages`, save to `to`, and check the redactions there.
 
@@ -124,7 +149,7 @@ def save_edited(
         notices += engine.keep_pages(order)
     notices += engine.save(to)
     try:
-        redactions.check_saved(to, pages=order)
+        redactions.check_saved(to, pages=order, driver_factory=driver_factory)
     except RedactionFailed:  # the text is still in the file: never leave it lying around
         Path(to).unlink()
         raise

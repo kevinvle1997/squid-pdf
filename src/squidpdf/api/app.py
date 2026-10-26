@@ -22,8 +22,9 @@ from squidpdf.api.errors.http import BugBoundary, ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentUploads, Turns
 from squidpdf.core import LogController
-from squidpdf.documents import api as documents
-from squidpdf.editing import api as editing
+from squidpdf.documents import api as documents_api
+from squidpdf.documents.store import FOLDER_STORE, DocumentStore
+from squidpdf.editing import api as editing_api
 
 # Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
 # `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
@@ -47,9 +48,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.recent_uploads = RecentUploads()
     app.state.upload_turns = Turns()
     app.state.job_turns = Turns()
-    sweeper = asyncio.create_task(documents.sweep_forever())
+    sweeper = asyncio.create_task(documents_api.sweep_forever(app.state.documents))
     # Started now, not waited for: the first browser after a deploy finds it measured.
-    editing.measure_font_list_ahead(app.state.pool)
+    editing_api.measure_font_list_ahead(app.state.pool)
     try:
         yield
     finally:
@@ -60,8 +61,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.pool.close()
 
 
-def create_app() -> FastAPI:
-    """A fresh app, so each test gets its own."""
+def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
+    """A fresh app, so each test gets its own, keeping its documents in `documents`."""
     LogController.configure()
     app = FastAPI(
         title="squid-pdf",
@@ -71,15 +72,17 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url=None,
     )
+    # Every controller and job opens its document through it: the driver factory is chosen here.
+    app.state.documents = documents
     install(app)
-    app.include_router(documents.router, responses=_PROBLEM_RESPONSES)
-    app.include_router(editing.router, responses=_PROBLEM_RESPONSES)
-    app.include_router(editing.fonts_router, responses=_PROBLEM_RESPONSES)
+    app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(editing_api.fonts_router, responses=_PROBLEM_RESPONSES)
     # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
-    streamed = {documents.upload.__name__, documents.attach_font.__name__}
+    streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
     streamed_routes = tuple(
         route
-        for route in documents.router.routes
+        for route in documents_api.router.routes
         if isinstance(route, APIRoute) and route.name in streamed
     )
     # A name that no longer finds its route would hold that body to the edit list's limit.

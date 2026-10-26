@@ -25,6 +25,7 @@ from squidpdf.core import (
 from squidpdf.documents import attached, store
 from squidpdf.documents.errors import TooManyPages
 from squidpdf.documents.free_space import kept_rooms
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import (
     AnalysisFacts,
     ApproximateInfo,
@@ -36,15 +37,15 @@ from squidpdf.documents.types import (
 _SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
 
 
-def analyse_upload(folder: Path, max_pages: int) -> KeptAnalysis:
+def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> KeptAnalysis:
     """Take out what acts on its own, index the new upload, keep its pages, and analyse it.
 
     The one place an index is built, so no span id the browser holds ever moves.
     Raises TooManyPages past `max_pages`, before reading a page.
     """
-    _take_in(folder, max_pages)
+    _take_in(documents, folder, max_pages)
     files = attached.attached_files(folder)
-    with store.open_to_analyse(folder, files) as engine:
+    with documents.open_to_analyse(folder, files) as engine:
         index = engine.index()
         store.save_index(folder, index)
         store.save_pages(folder, engine.pages())
@@ -54,13 +55,13 @@ def analyse_upload(folder: Path, max_pages: int) -> KeptAnalysis:
         return _analysed(engine, folder, index, rooms=rooms, files=files)
 
 
-def _take_in(folder: Path, max_pages: int) -> None:
+def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
     """Refuse a file past `max_pages`; rewrite one with what acts on its own, without it.
 
     Before the index, so every span id is the rewritten file's. Nothing here needs what
     goes, and a viewer would run it from the file the user downloads.
     """
-    with store.open_original(folder) as engine:
+    with documents.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
         # Nothing to take out: the original stays exactly as it was sent.
@@ -71,15 +72,15 @@ def _take_in(folder: Path, max_pages: int) -> None:
     store.keep_active_content_dropped(folder)
 
 
-def analyse(folder: Path) -> KeptAnalysis:
+def analyse(documents: DocumentStore, folder: Path) -> KeptAnalysis:
     """Analyse a stored document again, under this build, over the index kept at upload.
 
     Raises Gone if that index was deleted or kept in another format.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(folder, index)
+    rooms = kept_rooms(documents, folder, index)
     files = attached.attached_files(folder)
-    with store.open_to_analyse(folder, files) as engine:
+    with documents.open_to_analyse(folder, files) as engine:
         return _analysed(engine, folder, index, rooms=rooms, files=files)
 
 

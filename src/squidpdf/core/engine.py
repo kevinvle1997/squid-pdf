@@ -358,8 +358,15 @@ def open_engine(driver: PdfDriver, *, sources: FontSources) -> Engine:
     )
 
 
+# What opens a PDF unless a caller injects another: the one library there is.
+DEFAULT_DRIVER_FACTORY: DriverFactory = open_driver
+
+
 def open_pdf(
-    path: str, *, sources: FontSources = NO_SOURCES, driver_factory: DriverFactory = open_driver
+    path: str,
+    *,
+    sources: FontSources = NO_SOURCES,
+    driver_factory: DriverFactory = DEFAULT_DRIVER_FACTORY,
 ) -> Engine:
     """The PDF at `path`, open in `driver_factory`'s driver. Use it in a `with`, or close it."""
     return open_engine(driver_factory(path), sources=sources)
