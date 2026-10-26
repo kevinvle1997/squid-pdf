@@ -111,7 +111,10 @@ function contrastOnWhite(line: CSSStyleDeclaration): number {
   return 1.05 / (luminance + 0.05);
 }
 
-/** Marks come once the page is near the viewport, which its observer says a moment after drawing. */
+/**
+ * Marks come once the page is near the viewport, which its observer says a moment after drawing.
+ * It leaves the field's words selected: a caller's {ArrowRight} puts the caret after them, where a Mac's {End} may scroll.
+ */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS) {
   const mark = screen.getByRole("button", { name: words });
   await expect.element(mark).toBeInTheDocument();
@@ -147,7 +150,7 @@ describe("a page", () => {
     await editSpan(screen);
     const field = screen.getByRole("textbox", { name: `Change “${WORDS}”` });
     await expect.element(field).toHaveFocus();
-    await userEvent.keyboard("{End}");
+    await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("xyz");
     // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance, said as a share of the line.
     const said = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
@@ -163,7 +166,7 @@ describe("a page", () => {
     const screen = await draw();
     await editSpan(screen, letters);
     const field = screen.getByRole("textbox");
-    await userEvent.keyboard("{End}u");
+    await userEvent.keyboard("{ArrowRight}u");
 
     const ways = screen.getByRole("radiogroup", { name: "How it fits" });
     await expect.element(ways).toBeVisible();
@@ -216,7 +219,7 @@ describe("a page", () => {
     await editSpan(screen);
     // As a reader writes it: "Lato-Bold" is PostScript's.
     await expect.element(screen.getByText("Lato Bold", { exact: true })).toBeVisible();
-    await userEvent.keyboard("{End}Q");
+    await userEvent.keyboard("{ArrowRight}Q");
     await expect.element(screen.getByText("no Q in this font, so the line is drawn in our Lato Bold")).toBeVisible();
   });
 
@@ -226,7 +229,7 @@ describe("a page", () => {
     openDocument(aDoc({ spans: [amount], fonts: DOC.fonts }));
     const screen = await draw();
     await editSpan(screen);
-    await userEvent.keyboard("{End}Q");
+    await userEvent.keyboard("{ArrowRight}Q");
     const redact = screen.getByRole("button", { name: "Redact" });
     await expect.element(redact).toBeVisible();
     const button = redact.element().getBoundingClientRect();
@@ -279,7 +282,7 @@ describe("a page", () => {
   test("a line typed past its span keeps its start in view, letters the file's font hasn't got included", async () => {
     const screen = await draw();
     await editSpan(screen);
-    await userEvent.keyboard("{End}");
+    await userEvent.keyboard("{ArrowRight}");
     // Capitals: the span's font has only lower case, so its widths count none of them.
     await userEvent.keyboard(" AND A GOOD DEAL MORE");
     const field = screen.getByRole("textbox").element() as HTMLInputElement;
@@ -292,7 +295,7 @@ describe("a page", () => {
   test("a line typed past the page's edge leaves the page where it is: the sheet never scrolls to the caret", async () => {
     const screen = await draw();
     await editSpan(screen);
-    await userEvent.keyboard("{End}");
+    await userEvent.keyboard("{ArrowRight}");
     // Far past the right edge of the page, as a long replacement runs.
     await userEvent.keyboard(" and a good deal more besides, running on past the edge of the page");
     expect(sheetOf(screen.getByRole("textbox").element()).scrollLeft).toBe(0);
@@ -304,7 +307,7 @@ describe("a page", () => {
     try {
       const screen = await draw();
       await editSpan(screen);
-      await userEvent.keyboard("{End} AND MORE");
+      await userEvent.keyboard("{ArrowRight} AND MORE");
       const field = screen.getByRole("textbox").element();
       const before = field.clientWidth;
       // As wide as the face that loaded draws it: the font's own widths count none of these capitals.
@@ -335,7 +338,7 @@ describe("a page", () => {
     await page.viewport(1400, 900);
     const screen = await draw();
     await editSpan(screen);
-    await userEvent.keyboard("{End} now");
+    await userEvent.keyboard("{ArrowRight} now");
     await screen.getByRole("button", { name: "Redact" }).click();
     await expect.element(screen.getByRole("textbox")).not.toBeInTheDocument();
     expect(editor.store.get().reading.edits).toEqual([aRedact(span.id)]);
@@ -487,7 +490,7 @@ describe("a page", () => {
     await expect.element(field).toHaveFocus();
     await settled();
     const before = drawn.margins;
-    await userEvent.keyboard("{End}abc");
+    await userEvent.keyboard("{ArrowRight}abc");
     await expect.element(field).toHaveValue(`${WORDS}abc`);
     expect(drawn.margins).toBe(before);
   });
