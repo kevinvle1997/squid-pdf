@@ -1,6 +1,7 @@
 // Made-up API replies for tests, whole and typed. A field the server adds breaks here, where
 // `npm run types` brings it in, instead of hiding behind a cast in every test. Tests only.
 import type {
+  DeletePage,
   Document,
   DocumentNoticeInfo,
   FileNoticeInfo,
@@ -185,6 +186,11 @@ export function aReplace(spanId: string, text = "now", fields: Partial<Replace> 
 /** An edit that takes a span's words out of the file. */
 export function aRedact(spanId: string): Redact {
   return { kind: "redact", span_id: spanId };
+}
+
+/** An edit that leaves page `page` out of the file, by its number in the original. */
+export function aDeletePage(page: number): DeletePage {
+  return { kind: "delete_page", page };
 }
 
 /** An edit that puts a new line on a page, set at its baseline. */

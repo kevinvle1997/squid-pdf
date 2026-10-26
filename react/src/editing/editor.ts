@@ -146,7 +146,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     zoom: FITTED,
     pageInView: 0,
     history: EMPTY_HISTORY,
-    reading: UNEDITED,
+    reading: project(opened, []),
     drawn: NOTHING_DRAWN,
     disagreements: NO_DISAGREEMENTS,
     draft: null,
@@ -229,7 +229,7 @@ export type Also = Partial<EditorState> | ((next: EditorState) => Partial<Editor
 export function changed(state: EditorState, actions: readonly HistoryAction[]): EditorState {
   const history = actions.reduce(historyReducer, state.history);
   if (history === state.history) return state;
-  const reading = project(state.doc.spans, entriesOf(history), state.reading);
+  const reading = project(state.doc, entriesOf(history), state.reading);
   return {
     ...state,
     history,

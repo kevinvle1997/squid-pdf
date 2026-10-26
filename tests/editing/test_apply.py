@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, assert_never, cast
 
 import pymupdf
@@ -28,6 +30,7 @@ from squidpdf.core.fonts.names import strip_subset
 from squidpdf.editing import (
     Applied,
     BadReference,
+    DeletePage,
     Edit,
     Insert,
     Notice,
@@ -850,3 +853,25 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         )
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)
     assert_equal(failed.value.detail, said, "what the user reads, naming its original page")
+
+
+# The cases the browser reads its pages shown from too (react/src/editing/project.test.ts).
+_PAGE_ORDER = json.loads(Path(__file__).with_name("page_order_cases.json").read_text())
+
+
+def _blank_pages(path: str, count: int) -> str:
+    """`count` empty pages: the order is all a case asks of them."""
+    doc = pymupdf.open()
+    for _ in range(count):
+        doc.new_page()
+    doc.save(path)
+    return path
+
+
+@pytest.mark.parametrize("case", _PAGE_ORDER["cases"], ids=lambda case: case["what"])
+def test_the_pages_kept_are_the_ones_the_browser_shows(case, tmp_path):
+    """A download needs a page: a delete of the last page left is skipped, as shown."""
+    edits = [DeletePage(edit["page"]) for edit in case["edits"]]
+    with open_pdf(_blank_pages(str(tmp_path / "pages.pdf"), case["page_count"])) as engine:
+        resolved = _resolved(engine, engine.index(), edits)
+    assert_equal(page_order(resolved, None), case["order"], "the pages the download keeps")

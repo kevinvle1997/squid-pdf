@@ -1,14 +1,26 @@
 import { describe, expect, test } from "vitest";
+import shared from "../../../tests/editing/page_order_cases.json";
 import type { Edit } from "../api/types";
-import { anInsert, aRedact, aReplace, aSpan } from "../fixtures";
+import { A4, aDeletePage, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
-import { differing, project, type Reading, samePage, sameSpan, textIn } from "./project";
+import {
+  differing,
+  pageOrder,
+  pagesShown,
+  project,
+  type Reading,
+  samePage,
+  sameSpan,
+  shownNumberOf,
+  textIn,
+} from "./project";
 
 const SPANS = [aSpan({ id: "a" }), aSpan({ id: "b" }), aSpan({ id: "c", page: 1 })];
 const insert = anInsert({ page: 1, origin: [72, 300], size: 12 });
 
 const add = (history: History, ...edits: Edit[]) => historyReducer(history, { kind: "add", edits });
-const read = (history: History, previous?: Reading) => project(SPANS, entriesOf(history), previous);
+const read = (history: History, previous?: Reading) =>
+  project({ spans: SPANS, pages: [A4, A4] }, entriesOf(history), previous);
 
 describe("what differs from a page's strips", () => {
   test("a redaction is a span to draw bare, and one put back reads as the original again", () => {
@@ -86,5 +98,41 @@ describe("what the document reads as", () => {
     const shrunk = read(add(EMPTY_HISTORY, aReplace("a", "one", { strategy: "shrink" })));
     expect(sameSpan(plain.spans.get("a"), shrunk.spans.get("a"))).toBe(false);
     expect(samePage(plain.pages.get(0), shrunk.pages.get(0))).toBe(false);
+  });
+});
+
+describe("the pages the download keeps", () => {
+  test.each(shared.cases)("$what, as the server keeps them", ({ page_count, edits, order }) => {
+    const deletes = edits.map(({ page }) => aDeletePage(page));
+    expect(pageOrder(page_count, deletes)).toEqual(order);
+  });
+
+  test("a page deleted is left out, its edits still read and sent; the same order stays the same object", () => {
+    const edited = add(EMPTY_HISTORY, aReplace("c", "one"));
+    const deleted = add(edited, aDeletePage(1));
+    const reading = read(deleted);
+    expect(reading.order).toEqual([0]);
+    expect([...reading.deleted]).toEqual([1]);
+    expect(reading.spans.get("c")?.text).toBe("one");
+    expect(reading.edits).toEqual([aReplace("c", "one"), aDeletePage(1)]);
+    expect(read(add(deleted, aReplace("a", "two")), reading).order).toBe(reading.order);
+    expect(read(edited).order).toEqual([0, 1]);
+  });
+});
+
+describe("the pages as shown", () => {
+  test("number the pages kept from one; a deleted page has none, and no Split here beside it or before it", () => {
+    expect(pagesShown([0, 1, 3], [A4, A4, A4, A4])).toEqual([
+      { page: 0, info: A4, shownNumber: 1, splitAfter: true },
+      { page: 1, info: A4, shownNumber: 2, splitAfter: true },
+      { page: 2, info: A4, shownNumber: null, splitAfter: false },
+      { page: 3, info: A4, shownNumber: 3, splitAfter: false },
+    ]);
+  });
+
+  test("give a page's number among them, and a deleted page's as it would be put back", () => {
+    expect(shownNumberOf([0, 1, 3], 3)).toBe(3);
+    expect(shownNumberOf([0, 1, 3], 2)).toBe(3);
+    expect(shownNumberOf([1], 0)).toBe(1);
   });
 });

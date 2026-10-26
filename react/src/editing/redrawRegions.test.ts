@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, SpanInfo } from "../api/types";
-import { A4, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
+import { A4, aDoc, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
 import {
@@ -19,7 +19,7 @@ const spanAt = (y0: number, y1: number, page = 0): SpanInfo =>
   aSpan({ id: `s${page}-${y0}`, page, bbox: { x0: 72, y0, x1: 100, y1 } });
 const SPANS = [spanAt(100, 112), spanAt(300, 312), spanAt(100, 112, 1)];
 const readingOf = (...edits: Edit[]) =>
-  project(SPANS, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
+  project(aDoc({ spans: SPANS }), entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 
 describe("strips to redraw", () => {
   test("a strip reaches just past its span, and never past the page", () => {

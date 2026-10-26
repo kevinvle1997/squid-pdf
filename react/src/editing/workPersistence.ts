@@ -85,7 +85,7 @@ export function restorePersisted(editor: Editor, { work, until }: PersistedWork<
   const { doc } = editor.store.get();
   editor.store.set({
     history: work.history,
-    reading: project(doc.spans, entriesOf(work.history), UNEDITED),
+    reading: project(doc, entriesOf(work.history), UNEDITED),
     mutedFonts: new Set(work.quietFonts),
   });
   for (const [fontName, { bytes, type }] of work.fonts) editor.attached.set(fontName, new Blob([bytes], { type }));
