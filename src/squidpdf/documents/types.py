@@ -62,6 +62,7 @@ class SpanInfo(TypedDict):
     # Its own, not its font's: one font can be stored on one page and only named on another.
     substitute: str | None  # the face we ship that draws an edit here, when its font can't
     same_widths: bool  # that face's letters are as wide as the original's
+    in_file: bool  # the file's own copy of its font can draw it, if only some of its letters
     letter_spacing_em: (
         float  # how far past its width each letter is set apart, per em of its size
     )

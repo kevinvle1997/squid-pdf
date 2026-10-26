@@ -203,6 +203,7 @@ def _span_info(
         "why": _approximate_why(report),
         "substitute": report.substitute,
         "same_widths": report.same_widths,
+        "in_file": report.in_file,
         "letter_spacing_em": round(report.letter_spacing, _SPACING_DP),
         "room_pt": round(room_pt, 2),
         "form_field": form_field,
