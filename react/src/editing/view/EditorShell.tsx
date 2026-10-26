@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useEffectEvent, useMemo, useState } from "react";
-import type { KeptWork } from "../../documents/kept";
+import type { PersistedWork } from "../../documents/localPersistence";
 import type { Opened } from "../../documents/open";
 import { Notice } from "../../ui/Notice";
 import { SkipLink } from "../../ui/SkipLink";
@@ -7,12 +7,12 @@ import { Status } from "../../ui/Status";
 import { commandFor } from "../commands";
 import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { carriesFiles, pdfDropped } from "../dropped";
-import { closeEditor, createEditor, sayOpening } from "../editor";
+import { announceOpening, closeEditor, createEditor } from "../editor";
 import { unexported } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { retryImages } from "../images";
-import { atRisk, isWork, resumeWork, takeUp } from "../keeping";
 import { noticeLines } from "../notices";
+import { isWork, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
 import { Bar } from "./Bar";
 import { EditorContext, useEditor, useEditorState } from "./context";
 import styles from "./EditorShell.module.css";
@@ -25,21 +25,22 @@ import { ZoomControl } from "./Zoom";
 // Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
 
-/** The props of the editor: the document opened, what opens a PDF dropped on it, and work kept here to take up. */
+/** The props of the editor: the document opened, what opens a PDF dropped on it, and work persisted here to restore. */
 interface Props {
   opened: Opened;
   onOpen: (file: File) => void;
-  kept?: KeptWork<unknown> | undefined;
+  persisted?: PersistedWork<unknown> | undefined;
 }
 
 /**
  * The open document: every page, every span marked, editable in place, under the bar. `onOpen`
- * opens a PDF dropped on it, in its place. Opened again from this browser, it takes up the work kept.
+ * opens a PDF dropped on it, in its place. Opened again from this browser, it restores the work persisted.
  */
-export function EditorShell({ opened, onOpen, kept }: Props) {
+export function EditorShell({ opened, onOpen, persisted }: Props) {
   const [editor] = useState(() => {
     const made = createEditor(opened.file, opened.doc, SCALE);
-    if (kept !== undefined && isWork(kept.work)) takeUp(made, { work: kept.work, until: kept.until });
+    if (persisted !== undefined && isWork(persisted.work))
+      restorePersisted(made, { work: persisted.work, until: persisted.until });
     return made;
   });
   const openDropped = useEffectEvent((files: readonly File[]) => {
@@ -51,7 +52,7 @@ export function EditorShell({ opened, onOpen, kept }: Props) {
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
     resumeWork(editor);
-    sayOpening(editor);
+    announceOpening(editor);
     const key = (event: KeyboardEvent) => {
       const command = commandFor(event, isTyping(event.target));
       if (command === undefined) return;
@@ -72,9 +73,9 @@ export function EditorShell({ opened, onOpen, kept }: Props) {
       event.preventDefault();
       openDropped([...(event.dataTransfer?.files ?? [])]);
     };
-    // The browser asks before leaving, in its own words, only when work would be lost: not kept here yet.
+    // The browser asks before leaving, in its own words, only when work would be lost: not persisted here yet.
     const leaving = (event: BeforeUnloadEvent) => {
-      if (atRisk(editor)) event.preventDefault();
+      if (wouldLoseWork(editor)) event.preventDefault();
     };
     window.addEventListener("keydown", key);
     window.addEventListener("online", online);
@@ -105,7 +106,7 @@ export function EditorShell({ opened, onOpen, kept }: Props) {
         </div>
       </div>
       <Pages />
-      <Said />
+      <Announcer />
     </EditorContext.Provider>
   );
 }
@@ -152,7 +153,7 @@ function Pages() {
   );
 }
 
-function Said() {
-  const said = useEditorState((state) => state.said);
-  return <Status count={said.count}>{said.text}</Status>;
+function Announcer() {
+  const announcement = useEditorState((state) => state.announcement);
+  return <Status count={announcement.count}>{announcement.text}</Status>;
 }

@@ -51,7 +51,7 @@ export interface NoteWords {
   readonly label: string;
   readonly struck: string; // the original's words it took out, struck through beside the page
   readonly inserted: string | null; // the words it only added, nothing taken out: shown with a caret instead
-  readonly was: string; // what the span read, whole, said with `now` on hover and focus
+  readonly was: string; // what the span read, whole, shown with `now` on hover and focus
   readonly now: string; // what the span reads now, in the list under the page
 }
 

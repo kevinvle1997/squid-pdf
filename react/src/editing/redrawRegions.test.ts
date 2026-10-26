@@ -13,7 +13,7 @@ import {
   stalePages,
   stillShows,
   stripBoxOf,
-} from "./strips";
+} from "./redrawRegions";
 
 const spanAt = (y0: number, y1: number, page = 0): SpanInfo =>
   aSpan({ id: `s${page}-${y0}`, page, bbox: { x0: 72, y0, x1: 100, y1 } });

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { aDoc, aFont, aSpan } from "../fixtures";
 import { createEditor } from "./editor";
-import { toggleShown } from "./shown";
+import { toggleShownMismatches } from "./shownMismatches";
 
 test("an eye turned on marks its row where its places are, moving nothing; pressed again, it stops", () => {
   const doc = aDoc({
@@ -10,10 +10,10 @@ test("an eye turned on marks its row where its places are, moving nothing; press
   });
   const editor = createEditor(new File(["%PDF-"], "contract.pdf"), doc, 2);
 
-  toggleShown(editor, { key: "font:Arial" });
-  expect([...editor.store.get().shownUnlike]).toEqual(["font:Arial"]);
+  toggleShownMismatches(editor, { key: "font:Arial" });
+  expect([...editor.store.get().shownMismatches]).toEqual(["font:Arial"]);
   expect(editor.store.get().scrollTo).toBeNull();
 
-  toggleShown(editor, { key: "font:Arial" });
-  expect(editor.store.get().shownUnlike.size).toBe(0);
+  toggleShownMismatches(editor, { key: "font:Arial" });
+  expect(editor.store.get().shownMismatches.size).toBe(0);
 });

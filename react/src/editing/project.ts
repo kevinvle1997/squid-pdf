@@ -1,6 +1,5 @@
-// What the document reads as with its edits made: the one reading of the history that what's
-// drawn, what's rendered and what's exported all agree on. An object nothing changed stays
-// the same object from one reading to the next, so whatever draws it can skip it.
+// The one reading of the history that what's drawn, rendered and exported agree on. An object nothing
+// changed stays the same object from one reading to the next, so whatever draws it can skip it.
 import type { Edit, Insert, Replace, SpanInfo, Strategy } from "../api/types";
 import type { Entry } from "./history";
 

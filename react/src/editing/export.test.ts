@@ -117,7 +117,7 @@ describe("export", () => {
     typed("own", "now");
     await exportNow(editor);
     expect(editor.store.get().notices.export).toEqual([warn(SENTENCES.export_left_out), warn(tags), warn(signed)]);
-    expect(editor.store.get().said.text).toBe(`${SENTENCES.export_left_out} ${tags} ${signed}`);
+    expect(editor.store.get().announcement.text).toBe(`${SENTENCES.export_left_out} ${tags} ${signed}`);
   });
 
   test("a bug in export is said and logged, not thrown, and export can be tried again", async () => {

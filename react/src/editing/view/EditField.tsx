@@ -47,7 +47,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
   const pastRoom = fit !== undefined && setting.way === "as-is" && runsPast(fit.deltaPt, fit.roomPt, rules);
   // One trouble a line: a sentence of the server's, then the fit's own.
-  const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").said.join("\n"));
+  const trouble = useEditorState((state) => troublesIn(state, state.draft?.text ?? "").sentences.join("\n"));
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);

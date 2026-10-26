@@ -1,6 +1,5 @@
-// What a page's spans are drawn as when it's near: a mark over each, the field where one is typed in,
-// the note their marks share, find's tint, where edits won't match when the bar's list shows them,
-// and the prompt before a redaction is undone.
+// What a page's spans are drawn as when it's near: a mark over each, the field, the note their marks share,
+// find's tint, the mismatches the bar's list shows, and the prompt before a redaction is undone.
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
@@ -9,9 +8,9 @@ import { Tooltip } from "../../ui/Tooltip";
 import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
+import { shownAmong } from "../mismatches";
 import { type PageState, spanIn } from "../page";
 import type { SpanReading } from "../project";
-import { shownAmong } from "../unlike";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf } from "./geometry";
 import styles from "./Marks.module.css";
@@ -65,7 +64,7 @@ function Shown({
   info: PageInfo;
   readings: ReadonlyMap<string, SpanReading>;
 }) {
-  const { shownUnlike: shown, changed, fits, fonts } = page;
+  const { shownMismatches: shown, changed, fits, fonts } = page;
   return shownAmong(page.spans, { shown, changed, readings, fits, fonts }).flatMap((span) => {
     // Being typed into: the field says how it won't match.
     if (span.id === page.typingIn) return [];
@@ -136,7 +135,7 @@ function PageNote({
       triggerRef={{ current: last.anchor }}
       isOpen={shown !== null && (shown.via !== "focus" || isFocusVisible)}
       onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
-      heading={note.said}
+      heading={note.sentence}
       warn={note.warn}
     >
       {note.why}

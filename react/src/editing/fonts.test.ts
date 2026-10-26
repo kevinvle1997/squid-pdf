@@ -82,7 +82,7 @@ describe("the user's own copy of a font", () => {
     const changed = editor.store.get();
 
     expect(noticeLines(refused.notices, refused.drawn)).toEqual([{ tone: "warn", text: MISMATCH }]);
-    expect(refused.said.text).toBe(MISMATCH);
+    expect(refused.announcement.text).toBe(MISMATCH);
     expect(refused.notices.font?.font).toBe("Arial");
     expect(refused.doc).toBe(DOC);
     expect(editor.attached.has("Arial")).toBe(false);
@@ -136,7 +136,7 @@ describe("the user's own copy of a font", () => {
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
-    expect(editor.store.get().said.text).toBe(`${SENTENCES.reopened} ${MISMATCH}`);
+    expect(editor.store.get().announcement.text).toBe(`${SENTENCES.reopened} ${MISMATCH}`);
     // The edited page is drawn again without the refused copy, on the document opened again.
     await vi.waitFor(() =>
       expect(vi.mocked(renderStrips).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2),
@@ -158,7 +158,7 @@ describe("the user's own copy of a font", () => {
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(putFont).toHaveBeenCalledWith("again", "Arial", FONT_FILE);
-    expect(editor.store.get().said.text).toBe(SENTENCES.reopened);
+    expect(editor.store.get().announcement.text).toBe(SENTENCES.reopened);
   });
 
   test("work that found the document gone runs again only once every copy is back", async () => {
@@ -240,15 +240,15 @@ describe("what draws a row of the Fonts list", () => {
 
   test("is said in the server's words, a similar font warned", () => {
     expect(drawnByOf(row, SENTENCES)).toEqual({
-      said: fill(SENTENCES.substitute_same_widths, { font: "Liberation Sans Regular" }),
+      sentence: fill(SENTENCES.substitute_same_widths, { font: "Liberation Sans Regular" }),
       warn: true,
     });
     expect(drawnByOf({ ...row, attached: true }, SENTENCES)).toEqual({
-      said: SENTENCES.drawn_in_your_copy,
+      sentence: SENTENCES.drawn_in_your_copy,
       warn: false,
     });
     expect(drawnByOf({ ...row, font: aFont("Arial") }, SENTENCES)).toEqual({
-      said: SENTENCES.drawn_in_own_copy,
+      sentence: SENTENCES.drawn_in_own_copy,
       warn: false,
     });
   });
@@ -277,15 +277,15 @@ describe("copies of one font, shown under one name", () => {
 
     await attachFont(editor, "Type3 (5 0 R)", FONT_FILE);
     const put = vi.mocked(putFont).mock.calls.map(([, fontName]) => fontName);
-    const kept = [...editor.attached.keys()];
+    const attached = [...editor.attached.keys()];
     await detachFont(editor, "Type3 (9 0 R)");
     const deleted = vi.mocked(deleteFont).mock.calls.map(([, fontName]) => fontName);
 
     expect(put).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
-    expect(kept).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
+    expect(attached).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
     expect(deleted).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
     expect(editor.attached.size).toBe(0);
-    expect(editor.store.get().said.text).toBe("Your copy of Drawn-Regular is removed");
+    expect(editor.store.get().announcement.text).toBe("Your copy of Drawn-Regular is removed");
   });
 });
 

@@ -1,7 +1,6 @@
-// A file dropped on the editor, outside the field a font goes on: a PDF opens in place of this one, as
-// on the landing, unless that would lose what this browser alone holds. The browser never gets the
-// drop, which would open the file in this tab instead.
-import { type Editor, spoken } from "./editor";
+// A PDF dropped on the editor opens in place of this one, unless that would lose what this browser alone
+// holds. The browser never gets the drop, which would open the file in this tab instead.
+import { announcing, type Editor } from "./editor";
 import { unexported } from "./export";
 import { warn } from "./notices";
 
@@ -34,6 +33,6 @@ export function pdfDropped(editor: Editor, files: readonly File[]): File | null 
 /** Nothing opens: why, shown under the bar and heard. */
 function refused(editor: Editor, why: string): null {
   const { notices } = editor.store.get();
-  editor.store.set({ notices: { ...notices, drop: warn(why) }, said: spoken(why) });
+  editor.store.set({ notices: { ...notices, drop: warn(why) }, announcement: announcing(why) });
   return null;
 }

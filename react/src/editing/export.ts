@@ -1,11 +1,10 @@
-// The edited document, downloaded under its own name marked edited, or split in two at a page. An edit still
-// being typed goes in first. The whole document's export starts on the way to pressing Export,
-// and the press takes it if the edits it was asked with still stand.
+// The edited document, downloaded whole or split in two at a page. The whole export starts on the way to
+// pressing Export, and the press takes it if the edits it was asked with still stand.
 import { type Exported, exportPdf } from "../api/client";
 import type { Edit } from "../api/types";
 import { sentenceOf } from "../bugs";
 import { EXPORT_INTENT_MS } from "./constants";
-import { type Editor, type EditorState, spoken } from "./editor";
+import { announcing, type Editor, type EditorState } from "./editor";
 import { heardIn, type Notice, plain, warn } from "./notices";
 import { textIn } from "./project";
 import { finish } from "./typing";
@@ -139,21 +138,21 @@ async function exportParts(editor: Editor, parts: readonly Part[]): Promise<void
   finish(editor, true, { also: { exporting: true } });
   // Read once the words being typed are in: they may be the first edit.
   const edits = store.get().reading.edits;
-  const said: Notice[] = [];
+  const notices: Notice[] = [];
   let went = true;
   for (const part of parts) {
     const result = await downloaded(editor, edits, { pages: part.pages, name: part.name(edits.length > 0) });
-    said.push(...result.said);
+    notices.push(...result.notices);
     went = result.went;
     if (!went) break;
   }
   // Two parts can say the same: an edit left out of both, say.
-  const once = [...new Map(said.map((notice) => [notice.text, notice])).values()];
+  const once = [...new Map(notices.map((notice) => [notice.text, notice])).values()];
   store.set({
     exporting: false,
     ...(went && { exported: edits }),
     notices: { ...store.get().notices, export: once },
-    said: spoken(heardIn(once)),
+    announcement: announcing(heardIn(once)),
   });
 }
 
@@ -162,7 +161,7 @@ async function downloaded(
   editor: Editor,
   edits: readonly Edit[],
   { pages, name }: { pages: Part["pages"]; name: string },
-): Promise<{ said: Notice[]; went: boolean }> {
+): Promise<{ notices: Notice[]; went: boolean }> {
   const { store, reopener } = editor;
   const asked = () => reopener.withDocument((doc) => exportPdf(doc.id, [...edits], { pages }));
   // One started ahead that failed is asked for again: the network may be back.
@@ -170,12 +169,12 @@ async function downloaded(
   try {
     const file = await (ahead ?? asked());
     download(file.pdf, name);
-    // What saving did to the whole file other than asked, each said: a split dropping its tags, say.
+    // What saving did to the whole file other than asked, each told: a split dropping its tags, say.
     const otherwise = file.notices.map((notice) => warn(notice.detail));
     const leftOut = file.skipped.length > 0 ? [warn(store.get().doc.sentences.export_left_out)] : [];
-    const said = [...leftOut, ...otherwise];
-    return { said: said.length > 0 ? said : [plain(`Downloaded ${name}.`)], went: true };
+    const notices = [...leftOut, ...otherwise];
+    return { notices: notices.length > 0 ? notices : [plain(`Downloaded ${name}.`)], went: true };
   } catch (error) {
-    return { said: [warn(sentenceOf(error))], went: false };
+    return { notices: [warn(sentenceOf(error))], went: false };
   }
 }

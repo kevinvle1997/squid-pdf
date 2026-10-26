@@ -52,7 +52,7 @@ test("an opened PDF shows its pages, with every span marked", async ({ page }) =
   expect(await seriousProblems(page)).toEqual([]);
 });
 
-test("a span in a similar font says so as its edit starts, until its font is quieted", async ({ page }) => {
+test("a span in a similar font says so as its edit starts, until its font's warning is muted", async ({ page }) => {
   await open(page);
   // At rest it says nothing: the bar's count speaks for the whole document.
   await page.mouse.move(0, 0);
@@ -89,7 +89,7 @@ test("an edit is drawn by the server, and undo puts the original back", async ({
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
 });
 
-test("a reload loses nothing: the landing offers the document kept here, and it opens again with its change", async ({
+test("a reload loses nothing: the landing offers the document persisted here, and it opens again with its change", async ({
   page,
 }) => {
   await open(page);
@@ -274,7 +274,7 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   });
   const field = await startEdit(page);
   await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
-  // Each letter makes it longer; the number on screen ticks, what's said doesn't.
+  // Each letter makes it longer; the number on screen ticks, what's announced doesn't.
   await field.pressSequentially("xxx");
   await expect(page.getByRole("status")).toHaveText(
     "about 3% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",

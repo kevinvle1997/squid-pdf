@@ -1,33 +1,32 @@
-// The settle: the server's render replacing the browser's preview. A render that says what the
-// preview did swaps in silently; one that says otherwise pulses (decisions/frontend.md, Motion).
-// What's compared is the verdict, not the pixels: the preview draws in a face we ship.
+// In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
+// Verdicts are compared, not pixels: the preview draws in a face we ship.
 import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
 import { type Fit, fitOf, runsPast } from "./fit";
 import { spanOf } from "./history";
 import { type Differing, differing, type Reading } from "./project";
 import type { Drawn } from "./render";
 
-/** The spans on one page whose render said other than their preview, as one render landed. */
-export interface Settling {
+/** The spans on one page whose render disagreed with their preview, as one render landed. */
+export interface PreviewDisagreement {
   readonly spanIds: ReadonlySet<string>;
   readonly count: number; // which landing it pulses for, so a span that disagrees again pulses again
 }
 
-export const NOTHING_SETTLING: ReadonlyMap<number, Settling> = new Map();
+export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Map();
 
 interface Judged {
   fonts: ReadonlyMap<string, FontInfo>;
   rules: FitRules;
-  settling: ReadonlyMap<number, Settling>; // what pulsed before, kept for the pages this landing didn't draw
+  disagreements: ReadonlyMap<number, PreviewDisagreement>; // what pulsed before, kept for the pages this landing didn't draw
 }
 
 /** What pulses once `after` lands over `before`: on each page it drew, the previewed spans its render disagrees with. */
-export function settlingAfter(
+export function disagreementsAfter(
   before: Drawn,
   after: Drawn,
-  { fonts, rules, settling }: Judged,
-): ReadonlyMap<number, Settling> {
-  let next: Map<number, Settling> | null = null;
+  { fonts, rules, disagreements }: Judged,
+): ReadonlyMap<number, PreviewDisagreement> {
+  let next: Map<number, PreviewDisagreement> | null = null;
   for (const [page, reading] of after.from) {
     const was = before.from.get(page);
     // Not drawn by this landing: whatever it showed stays.
@@ -35,11 +34,11 @@ export function settlingAfter(
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
     const landed = { reading, page, after, fonts, rules };
     const spanIds = new Set(previewed.filter((each) => disagrees(each, landed)).map(({ span }) => span.id));
-    next ??= new Map(settling);
+    next ??= new Map(disagreements);
     if (spanIds.size === 0) next.delete(page);
-    else next.set(page, { spanIds, count: (settling.get(page)?.count ?? 0) + 1 });
+    else next.set(page, { spanIds, count: (disagreements.get(page)?.count ?? 0) + 1 });
   }
-  return next ?? settling;
+  return next ?? disagreements;
 }
 
 /** One page of a landing: what it drew, and what the live check needs to judge it. */

@@ -29,7 +29,7 @@ describe("redacting", () => {
     const state = editor.store.get();
     expect(state.reading.edits).toEqual([{ kind: "redact", span_id: "name" }]);
     expect(state.reading.spans.get("name")?.redacted).toBe(true);
-    expect(state.said.text).toBe("Redacted John Smith");
+    expect(state.announcement.text).toBe("Redacted John Smith");
     expect(state.focusTo).toEqual({ spanId: "name" });
     expect(renderStrips).toHaveBeenCalledTimes(1);
   });
@@ -73,7 +73,7 @@ describe("editing a redacted span", () => {
     const state = editor.store.get();
     expect(state.unredacting).toEqual({ spanId: "name", press: { atPt: 12, selects: "caret" } });
     expect(state.draft).toBeNull();
-    expect(state.said.text).toBe(SENTENCES.undo_redaction);
+    expect(state.announcement.text).toBe(SENTENCES.undo_redaction);
   });
 
   test("Edit anyway takes the redaction out, and opens the span as it reads without it", () => {

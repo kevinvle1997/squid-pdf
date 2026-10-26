@@ -1,5 +1,4 @@
-// Where an edit won't match the text around it, grouped by why: each font a similar one draws for,
-// then each reason the file's own font won't match. The bar's count opens it (quality.md, Rule 1).
+// Where an edit won't match the text around it, grouped by why, as the bar's count opens it (quality.md, Rule 1).
 import type { FontInfo, Sentences, SpanInfo } from "../api/types";
 import { wontMatch } from "./marks";
 import type { SpanReading } from "./project";
@@ -8,44 +7,44 @@ import { substituteOf } from "./substitutes";
 import { type Facts, fill, shownAs } from "./words";
 
 /** A span an edit won't match at, and the letters its own font lacks for the words typed there, if those are why. */
-export interface UnlikePlace {
+export interface MismatchPlace {
   readonly span: SpanInfo;
   readonly missing: readonly string[];
 }
 
 /** A row of the list, as the page knows it: which group, by its key. */
-export interface UnlikeRow {
+export interface MismatchRow {
   readonly key: string;
 }
 
 /** One font a similar one draws for: its name as shown, how many places, and why, in the server's words. */
-export interface UnlikeFont extends UnlikeRow {
+export interface MismatchFont extends MismatchRow {
   readonly name: string;
   readonly places: number;
-  readonly said: string;
+  readonly sentence: string;
 }
 
 /** One reason the file's own font won't match the text around it: how many places, and the server's sentence. */
-export interface UnlikeReason extends UnlikeRow {
+export interface MismatchReason extends MismatchRow {
   readonly code: NonNullable<SpanInfo["why"]>["code"];
   readonly places: number;
-  readonly said: string;
+  readonly sentence: string;
 }
 
 /** Every place an edit won't match, grouped, each group most places first. */
-export interface Unlike {
+export interface Mismatches {
   readonly count: number;
-  readonly fonts: readonly UnlikeFont[];
-  readonly reasons: readonly UnlikeReason[];
+  readonly fonts: readonly MismatchFont[];
+  readonly reasons: readonly MismatchReason[];
 }
 
 /** `places` grouped: a similar font's under its font, the rest under why the file's own won't match. */
-export function unlikeOf(
-  places: readonly UnlikePlace[],
+export function mismatchesOf(
+  places: readonly MismatchPlace[],
   { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
-): Unlike {
-  const byFont = new Map<string, UnlikePlace[]>();
-  const byReason = new Map<UnlikeReason["code"], SpanInfo[]>();
+): Mismatches {
+  const byFont = new Map<string, MismatchPlace[]>();
+  const byReason = new Map<MismatchReason["code"], SpanInfo[]>();
   for (const place of places) {
     const reason = reasonOf(place);
     if (reason === null) groupOf(byFont, shownNameIn(fonts, place.span)).push(place);
@@ -55,19 +54,19 @@ export function unlikeOf(
     key: fontKey(name),
     name,
     places: inFont.length,
-    said: fontSaid(inFont, { fonts, sentences }),
+    sentence: fontSentence(inFont, { fonts, sentences }),
   }));
   const reasonRows = [...byReason].map(([code, spans]) => ({
     key: reasonKey(code),
     code,
     places: spans.length,
-    said: reasonSaid(spans, sentences),
+    sentence: reasonSentence(spans, sentences),
   }));
   return { count: places.length, fonts: mostFirst(fontRows), reasons: mostFirst(reasonRows) };
 }
 
 /** The row `place` is in, by its key: its font's when a similar one draws it, else why its own won't match. */
-export function unlikeKeyOf(place: UnlikePlace, fonts: ReadonlyMap<string, FontInfo>): string {
+export function mismatchKeyOf(place: MismatchPlace, fonts: ReadonlyMap<string, FontInfo>): string {
   const reason = reasonOf(place);
   return reason === null ? fontKey(shownNameIn(fonts, place.span)) : reasonKey(reason);
 }
@@ -80,7 +79,7 @@ export function unlikeKeyOf(place: UnlikePlace, fonts: ReadonlyMap<string, FontI
 export function placeOf(
   span: SpanInfo,
   { changed, reading, missing }: { changed: boolean; reading: SpanReading | undefined; missing: readonly string[] },
-): UnlikePlace | undefined {
+): MismatchPlace | undefined {
   // Before any change: the whole document, as the bar's count is.
   if (!changed) return wontMatch(span) ? { span, missing: [] } : undefined;
   const replaced = reading?.replaced ?? false;
@@ -109,13 +108,13 @@ export function shownAmong(
   return spans.filter((span) => {
     const missing = fits[span.id]?.missing ?? [];
     const place = placeOf(span, { changed, reading: readings.get(span.id), missing });
-    return place !== undefined && shown.has(unlikeKeyOf(place, fonts));
+    return place !== undefined && shown.has(mismatchKeyOf(place, fonts));
   });
 }
 
 /** Why the file's own font won't match at `place`, when that's its row; null when a similar font draws it. */
-function reasonOf({ span, missing }: UnlikePlace): UnlikeReason["code"] | null {
-  // Drawn in a similar font: whatever else is unlike, its font is what the reader can change.
+function reasonOf({ span, missing }: MismatchPlace): MismatchReason["code"] | null {
+  // Drawn in a similar font: whatever else won't match, its font is what the reader can change.
   if (span.substitute !== null || missing.length > 0 || span.why === null) return null;
   return span.why.code;
 }
@@ -131,13 +130,13 @@ function fontKey(name: string): string {
 }
 
 /** The key of the row for the reason `code`. */
-function reasonKey(code: UnlikeReason["code"]): string {
+function reasonKey(code: MismatchReason["code"]): string {
   return `reason:${code}`;
 }
 
 /** Why a similar font draws a font's places: the font's own reason, else the letters it lacks, else what draws it. */
-function fontSaid(
-  places: UnlikePlace[],
+function fontSentence(
+  places: MismatchPlace[],
   { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
 ): string {
   const [first] = places;
@@ -153,7 +152,7 @@ function fontSaid(
 }
 
 /** A reason's sentence, its facts gathered from every place: the letters no font can draw at any of them. */
-function reasonSaid(spans: SpanInfo[], sentences: Sentences): string {
+function reasonSentence(spans: SpanInfo[], sentences: Sentences): string {
   const whys = spans.flatMap((span) => (span.why === null ? [] : [span.why]));
   const [first] = whys;
   if (first === undefined) return "";

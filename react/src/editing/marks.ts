@@ -7,7 +7,7 @@ import { fill } from "./words";
 /** What hover, focus or a tap says of a span, or an edit in it as typing starts. */
 export interface Note {
   readonly warn: boolean;
-  readonly said: string; // the server's sentence
+  readonly sentence: string; // in the server's words
   readonly why: string | null; // why the file's own font can't be used
 }
 
@@ -46,19 +46,19 @@ export function lookOf({ span, font, reading, fit, redaction, sentences }: Marke
   };
   // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
   if (redacted) return { ...looks, note: redactionNote(redaction) };
-  if (verdict) return { ...looks, note: { warn: true, said: verdict, why: null } };
+  if (verdict) return { ...looks, note: { warn: true, sentence: verdict, why: null } };
   // Untouched, its font's warning waits for an edit; a form field's says an edit there is left out.
   if (!changed && !span.form_field) return { ...looks, note: null };
   return { ...looks, note: fidelityNote({ span, font, sentences }) };
 }
 
-/** What an edit in `span` warns of as typing starts: nothing when it keeps its look, or its font is quieted. */
+/** What an edit in `span` warns of as typing starts: nothing when it keeps its look, or its font's warning is muted. */
 export function editNote(
   span: SpanInfo,
-  { font, sentences, quiet }: { font: FontInfo | undefined; sentences: Sentences; quiet: boolean },
+  { font, sentences, muted }: { font: FontInfo | undefined; sentences: Sentences; muted: boolean },
 ): Note | null {
   // A form field's is a trouble of the field's own: whatever is typed, the edit is left out.
-  if (quiet || span.form_field) return null;
+  if (muted || span.form_field) return null;
   return fidelityNote({ span, font, sentences });
 }
 
@@ -66,10 +66,10 @@ export function editNote(
 function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   if (redaction?.message == null) return null;
   // Its words left in, a hidden copy taken out, or every signature gone: none is what was asked, so each warns.
-  return { warn: true, said: redaction.message, why: null };
+  return { warn: true, sentence: redaction.message, why: null };
 }
 
-/** Whether an edit here won't match the text around it, whatever the words: a similar font, or its own set unlike it. */
+/** Whether an edit here won't match the text around it, whatever the words: a similar font, or its own set apart from it. */
 export function wontMatch(span: SpanInfo): boolean {
   return span.substitute !== null || span.why !== null;
 }
@@ -80,21 +80,21 @@ export function shortWarningOf(span: SpanInfo): string | null {
   return span.why === null ? null : "will look different";
 }
 
-/** Why an edit here would come out unlike the text around it, in the server's words. */
-function approximateSaid(why: NonNullable<SpanInfo["why"]>, sentences: Sentences): string {
+/** Why an edit here won't match the text around it, in the server's words. */
+function approximateSentence(why: NonNullable<SpanInfo["why"]>, sentences: Sentences): string {
   return fill(sentences.approximate[why.code] ?? "", why.params);
 }
 
 /** What an edit here will come to, before one is made: kept as it was, or drawn in what font. */
 function fidelityNote({ span, font, sentences }: Pick<MarkedSpan, "span" | "font" | "sentences">): Note | null {
   // A form field draws it: no edit changes it yet, whatever its font.
-  if (span.form_field) return { warn: true, said: sentences.form_field_not_edited, why: null };
+  if (span.form_field) return { warn: true, sentence: sentences.form_field_not_edited, why: null };
   // Its own font draws it, but an edit won't match the text around it.
-  if (span.why !== null) return { warn: true, said: approximateSaid(span.why, sentences), why: null };
+  if (span.why !== null) return { warn: true, sentence: approximateSentence(span.why, sentences), why: null };
   if (span.substitute === null) return null;
-  const substituteSaid = span.same_widths ? sentences.substitute_same_widths : sentences.substitute;
+  const substituteSentence = span.same_widths ? sentences.substitute_same_widths : sentences.substitute;
   // The font's reason is its first span's: it holds here only if a similar face draws that one too.
   const why = font?.substitute == null ? null : font.why;
   // Warned whatever the widths: the file's own font doesn't draw it (`decisions/product.md`, The fidelity contract).
-  return { warn: true, said: fill(substituteSaid, { font: span.substitute }), why };
+  return { warn: true, sentence: fill(substituteSentence, { font: span.substitute }), why };
 }

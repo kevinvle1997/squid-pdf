@@ -7,7 +7,7 @@ import { change, createEditor, type Editor, type EditorState, undo } from "./edi
 import {
   changeAll,
   closeFind,
-  countSaid,
+  countSentence,
   countShown,
   drawnWidthOf,
   findCount,
@@ -74,37 +74,37 @@ describe("find", () => {
 
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(found()).toEqual([[0, ["first", "similar"]]]);
-    expect(editor.store.get().said.text).toBe("2 places, 1 of them will look different");
+    expect(editor.store.get().announcement.text).toBe("2 places, 1 of them will look different");
   });
 
   test("counts a place as looking different for its font, and for the words it would read", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    expect(findCount(editor.store.get())).toEqual({ places: 2, unlike: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1 });
 
     typeReplacement(editor, "14 June");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, unlike: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1 });
     // A letter the font hasn't got, and a line that runs past its room.
     typeReplacement(editor, "14 Juné");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, unlike: 2 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
     typeReplacement(editor, "14 June and the whole of the year that follows it");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, unlike: 2 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
   });
 
   test("says the count in whole words", () => {
-    expect(countSaid({ places: 0, unlike: 0 })).toBe("Nothing matches");
-    expect(countSaid({ places: 1, unlike: 0 })).toBe("1 place will look identical");
-    expect(countSaid({ places: 14, unlike: 3 })).toBe("14 places, 3 of them will look different");
-    expect(countSaid({ places: 2, unlike: 2 })).toBe("2 places will look different");
+    expect(countSentence({ places: 0, mismatches: 0 })).toBe("Nothing matches");
+    expect(countSentence({ places: 1, mismatches: 0 })).toBe("1 place will look identical");
+    expect(countSentence({ places: 14, mismatches: 3 })).toBe("14 places, 3 of them will look different");
+    expect(countSentence({ places: 2, mismatches: 2 })).toBe("2 places will look different");
   });
 
   test("keeps apart the part of the count that warns, for --warn, and nothing else", () => {
-    expect(countShown({ places: 14, unlike: 3 })).toEqual({
+    expect(countShown({ places: 14, mismatches: 3 })).toEqual({
       plain: "14 places, ",
       warned: "3 of them will look different",
     });
-    expect(countShown({ places: 2, unlike: 2 })).toEqual({ plain: "", warned: "2 places will look different" });
-    expect(countShown({ places: 1, unlike: 0 })).toEqual({ plain: "1 place will look identical", warned: "" });
+    expect(countShown({ places: 2, mismatches: 2 })).toEqual({ plain: "", warned: "2 places will look different" });
+    expect(countShown({ places: 1, mismatches: 0 })).toEqual({ plain: "1 place will look identical", warned: "" });
   });
 
   test("Change all is one step: every place changes together, and one undo puts them all back", () => {
@@ -112,12 +112,12 @@ describe("find", () => {
     typeReplacement(editor, "14 June");
     // Pressed before the find has run: it changes what "Find" shows.
     changeAll(editor);
-    const { reading, find, said } = editor.store.get();
+    const { reading, find, announcement } = editor.store.get();
     expect(reading.spans.get("first")?.text).toBe("was 14 June");
     expect(reading.spans.get("similar")?.text).toBe("14 June too");
     expect(find.changed).toBe(2);
     expect(found()).toEqual([]);
-    expect(said.text).toBe("Changed 2 places.");
+    expect(announcement.text).toBe("Changed 2 places.");
 
     undo(editor);
     expect(editor.store.get().reading.spans.get("first")).toBeUndefined();
@@ -150,7 +150,7 @@ describe("find", () => {
     expect(opened?.find.open).toBe(true);
   });
 
-  test("what Change all did stops being said once anything else changes: undo would take that, not the places", () => {
+  test("what Change all did stops being shown once anything else changes: undo would take that, not the places", () => {
     typeQuery(editor, DATE);
     typeReplacement(editor, "14 June");
     changeAll(editor);
@@ -199,7 +199,7 @@ describe("find", () => {
     setMatchCase(editor, true);
     expect(editor.store.get().find.matchCase).toBe(true);
     expect(found()).toEqual([]);
-    expect(editor.store.get().said.text).toBe("Nothing matches");
+    expect(editor.store.get().announcement.text).toBe("Nothing matches");
     setMatchCase(editor, false);
     setWholeWords(editor, true);
     typeQuery(editor, "14 Mar");
@@ -287,12 +287,12 @@ describe("find", () => {
 describe("stepping through the places found", () => {
   const current = () => editor.store.get().find.current;
 
-  test("Enter goes to each place in the document's order, round from the last, brought into the middle and said", () => {
+  test("Enter goes to each place in the document's order, round from the last, brought into the middle and announced", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
     stepFind(editor, 1);
     expect(current()).toBe("first");
-    expect(editor.store.get().said.text).toBe("1 of 2");
+    expect(editor.store.get().announcement.text).toBe("1 of 2");
     expect(editor.store.get().scrollTo).toMatchObject({ spanId: "first", block: "center" });
     stepFind(editor, 1);
     expect(current()).toBe("similar");

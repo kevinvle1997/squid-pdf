@@ -1,8 +1,7 @@
-// Redaction: a span's words taken out of the file, not covered, and checked by reading back what's
-// saved (Rule 4). A keyboard command, not a tool (Rule 5). The server takes a whole span, so a
-// selection inside one redacts all of it. Undo leaves a redaction out of the list, as it does any edit.
+// Redaction: a span's words taken out of the file and checked by reading back what's saved (Rule 4); a
+// keyboard command, not a tool (Rule 5). The server takes a whole span, so a selection inside one redacts it all.
 import type { Edit } from "../api/types";
-import { change, type Editor, spoken } from "./editor";
+import { announcing, change, type Editor } from "./editor";
 import { entriesOf } from "./history";
 import { textIn } from "./project";
 import { draftOf } from "./typing";
@@ -18,7 +17,7 @@ export function redact(editor: Editor, spanId: string | null): void {
     editor,
     { kind: "add", edits: [{ kind: "redact", span_id: span.id }] },
     // Typing into it ends unkept: redaction wins.
-    { draft: null, said: spoken(`Redacted ${words}`), focusTo: { spanId: span.id }, unredacting: null },
+    { draft: null, announcement: announcing(`Redacted ${words}`), focusTo: { spanId: span.id }, unredacting: null },
   );
 }
 

@@ -15,11 +15,11 @@ import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
 
-// What's kept in this browser is the App's to test, in the browser's real storage.
-vi.mock(import("../../documents/kept"), async (original) => ({
+// What's persisted in this browser is the App's to test, in the browser's real storage.
+vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
-  keepFile: vi.fn(async () => undefined),
-  keepState: vi.fn(async () => undefined),
+  persistFile: vi.fn(async () => undefined),
+  persistState: vi.fn(async () => undefined),
 }));
 
 vi.mock(import("../../api/client"), async (original) => ({
@@ -153,9 +153,9 @@ describe("a page", () => {
     await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("xyz");
     // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance, said as a share of the line.
-    const said = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
-    await expect.element(said).toBeVisible();
-    expect(getComputedStyle(said.element()).color).toBe(colorOf("--warn"));
+    const sentence = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
+    await expect.element(sentence).toBeVisible();
+    expect(getComputedStyle(sentence.element()).color).toBe(colorOf("--warn"));
   });
 
   test("the chip is paper in the dark theme too: the page's red on the sheet's white", async () => {
@@ -164,10 +164,12 @@ describe("a page", () => {
       const screen = await draw();
       await editSpan(screen);
       await userEvent.keyboard("{End}xyz");
-      const said = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
-      await expect.element(said).toBeVisible();
-      expect(getComputedStyle(said.element()).color).toBe(colorOf("--mark-warn"));
-      const chip = said.element().closest("div");
+      const sentence = screen.getByText(
+        "about 38% too long for its place: shorten it, or it runs into what's beside it",
+      );
+      await expect.element(sentence).toBeVisible();
+      expect(getComputedStyle(sentence.element()).color).toBe(colorOf("--mark-warn"));
+      const chip = sentence.element().closest("div");
       if (chip === null) throw new Error("no chip");
       expect(getComputedStyle(chip).backgroundColor).toBe(colorOf("--sheet"));
     } finally {
@@ -719,7 +721,7 @@ describe("a page", () => {
     await expect.element(screen.getByRole("textbox", { name: "Change “SSN 078”" })).toHaveFocus();
   });
 
-  test("untouched, a span in a similar font has no line; editing it warns in full until its font is quieted", async () => {
+  test("untouched, a span in a similar font has no line; editing it warns in full until its font's warning is muted", async () => {
     const substituted = aSpan({
       id: "s3",
       text: "in arial",
@@ -742,7 +744,7 @@ describe("a page", () => {
     await expect.element(screen.getByText("Not embedded.")).toBeVisible();
     await screen.getByRole("button", { name: "Don't show again for this font" }).click();
     await expect.element(note).not.toBeInTheDocument();
-    // Quieted, the chip still gives its short warning (Rule 1).
+    // Muted, the chip still gives its short warning (Rule 1).
     await expect.element(screen.getByText("a similar font", { exact: true })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await userEvent.keyboard("{Enter}");
@@ -764,7 +766,7 @@ describe("a page", () => {
     await expect.element(screen.getByText(SENTENCES.form_field_not_edited)).toBeVisible();
   });
 
-  test("a font quieted in one Type3 copy is quiet in its others: the chip names them as one", async () => {
+  test("a font muted in one Type3 copy is muted in its others: the chip names them as one", async () => {
     const turned = { fidelity: "approximate", why: { code: "turned_text", params: {} } } as const;
     const copyOf = (id: string, font: string, y0: number) =>
       aSpan({ id, text: "in drawn", font, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 }, ...turned });

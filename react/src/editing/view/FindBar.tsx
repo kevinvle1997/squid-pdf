@@ -7,7 +7,7 @@ import { Warn } from "../../ui/Warn";
 import { onEscape } from "../commands";
 import {
   changeAll,
-  changedSaid,
+  changedSentence,
   closeFind,
   countShown,
   type FindCount,
@@ -114,7 +114,7 @@ function FindFields() {
           <span className={styles.words}>
             {find.changed !== null ? (
               <>
-                {changedSaid(find.changed)}
+                {changedSentence(find.changed)}
                 <span className={styles.undoKey}>
                   {" "}
                   <kbd>{COMMAND}Z</kbd> puts {formOf(find.changed, { one: "it", other: "them all" })} back.

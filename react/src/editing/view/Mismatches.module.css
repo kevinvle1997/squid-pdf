@@ -12,8 +12,8 @@
   gap: var(--s1) var(--s2);
 }
 .row > :global(button) { grid-column: 3; grid-row: 1; }
-/* A line between rows, as inside any slip, with a step of space on either side of it. */
+/* A line between rows, as inside any slip. */
 .row + .row { padding-block-start: var(--s3); border-block-start: 1px solid var(--rule-soft); }
 .name { font-weight: 600; overflow-wrap: anywhere; }
 .places { grid-column: 2; grid-row: 1; font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.said { grid-column: 1; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.5; }
+.sentence { grid-column: 1; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.5; }

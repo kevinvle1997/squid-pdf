@@ -52,17 +52,17 @@ describe("a change to the history", () => {
     expect(renderStrips).toHaveBeenCalledTimes(1);
   });
 
-  test("a render that fails is heard as well as shown, and the same failure again isn't said twice", async () => {
+  test("a render that fails is heard as well as shown, and the same failure again isn't announced twice", async () => {
     const down = "We can't work on files right now. Try again in a few minutes.";
     vi.mocked(renderStrips).mockRejectedValue(new ProblemError(aProblem(503, down)));
     typed("own", "now");
-    await vi.waitFor(() => expect(editor.store.get().said.text).toBe(down));
+    await vi.waitFor(() => expect(editor.store.get().announcement.text).toBe(down));
 
     typed("own", "then");
     const failedOnce = editor.store.get().drawn;
     await vi.waitFor(() => expect(editor.store.get().drawn).not.toBe(failedOnce));
 
-    expect(editor.store.get().said.text).toBe("Changed to then");
+    expect(editor.store.get().announcement.text).toBe("Changed to then");
   });
 
   test("undo and redo say what the span reads now and bring it into view, and focus stays where it is", () => {
@@ -70,30 +70,30 @@ describe("a change to the history", () => {
     typed("own", "two");
     undo(editor);
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
-    expect(editor.store.get().said.text).toBe("Back to one");
+    expect(editor.store.get().announcement.text).toBe("Back to one");
     expect(editor.store.get().scrollTo?.spanId).toBe("own");
     expect(editor.store.get().focusTo).toBeNull();
     redo(editor);
-    expect(editor.store.get().said.text).toBe("Changed to two");
+    expect(editor.store.get().announcement.text).toBe("Changed to two");
     undo(editor);
     undo(editor);
-    expect(editor.store.get().said.text).toBe("Back to was own");
-    // Nothing left to undo: nothing said, nothing brought into view.
+    expect(editor.store.get().announcement.text).toBe("Back to was own");
+    // Nothing left to undo: nothing announced, nothing brought into view.
     const before = editor.store.get();
     undo(editor);
-    expect(editor.store.get().said).toBe(before.said);
+    expect(editor.store.get().announcement).toBe(before.announcement);
     expect(editor.store.get().scrollTo).toBe(before.scrollTo);
   });
 
-  test("the same words said again are heard again, and the same span brought into view again", () => {
+  test("the same words announced again are heard again, and the same span brought into view again", () => {
     typed("own", "one");
     undo(editor);
     const first = editor.store.get();
     redo(editor);
     undo(editor);
     const again = editor.store.get();
-    expect(again.said.text).toBe(first.said.text);
-    expect(again.said.count).not.toBe(first.said.count);
+    expect(again.announcement.text).toBe(first.announcement.text);
+    expect(again.announcement.count).not.toBe(first.announcement.count);
     expect(again.scrollTo?.count).not.toBe(first.scrollTo?.count);
   });
 
@@ -101,7 +101,7 @@ describe("a change to the history", () => {
     typed("own", "one");
     putBack(editor, "own");
     expect(editor.store.get().reading.spans.has("own")).toBe(false);
-    expect(editor.store.get().said.text).toBe("Put back was own");
+    expect(editor.store.get().announcement.text).toBe("Put back was own");
     expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 
@@ -127,21 +127,21 @@ describe("a change to the history", () => {
 });
 
 describe("before any change", () => {
-  test("the places an edit won't match are counted for the bar: in a similar font, or unlike the text around them", () => {
-    expect(layoutOf(DOC).unlikeAtRest).toMatchObject({ count: 1, reasons: [] });
+  test("the places an edit won't match are counted for the bar: in a similar font, or set apart from the text around them", () => {
+    expect(layoutOf(DOC).mismatchesAtRest).toMatchObject({ count: 1, reasons: [] });
     const turned = aSpan({
       id: "turned",
       font: "Kept",
       fidelity: "approximate",
       why: { code: "turned_text", params: {} },
     });
-    expect(layoutOf({ ...DOC, spans: [...DOC.spans, turned] }).unlikeAtRest).toMatchObject({
+    expect(layoutOf({ ...DOC, spans: [...DOC.spans, turned] }).mismatchesAtRest).toMatchObject({
       count: 2,
       reasons: [{ code: "turned_text", places: 1 }],
     });
     // Worked out once per document: the bar reads it on every change.
-    const before = editor.store.get().layout.unlikeAtRest;
+    const before = editor.store.get().layout.mismatchesAtRest;
     typed("own", "now");
-    expect(editor.store.get().layout.unlikeAtRest).toBe(before);
+    expect(editor.store.get().layout.mismatchesAtRest).toBe(before);
   });
 });

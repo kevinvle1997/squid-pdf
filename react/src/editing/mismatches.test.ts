@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aFont, aSpan, SENTENCES } from "../fixtures";
-import { shownAmong, unlikeOf } from "./unlike";
+import { mismatchesOf, shownAmong } from "./mismatches";
 
 const NOT_IN_FILE = "This font isn't stored in the file, so a similar font stands in for it.";
 const fonts = new Map([
@@ -23,36 +23,39 @@ const undrawable = (id: string, letters: string[]) => ({
 
 describe("where an edit won't match, grouped", () => {
   test("a similar font's places are under the font as shown, its copies together, with the server's why", () => {
-    const unlike = unlikeOf([similar("a"), similar("b", "ABCDEF+Arial"), turned("c")], { fonts, sentences: SENTENCES });
-    expect(unlike.count).toBe(3);
-    expect(unlike.fonts).toEqual([{ key: "font:Arial", name: "Arial", places: 2, said: NOT_IN_FILE }]);
+    const mismatches = mismatchesOf([similar("a"), similar("b", "ABCDEF+Arial"), turned("c")], {
+      fonts,
+      sentences: SENTENCES,
+    });
+    expect(mismatches.count).toBe(3);
+    expect(mismatches.fonts).toEqual([{ key: "font:Arial", name: "Arial", places: 2, sentence: NOT_IN_FILE }]);
   });
 
-  test("the rest are under why the file's own won't match, the letters of every place said once, most places first", () => {
+  test("the rest are under why the file's own won't match, the letters of every place named once, most places first", () => {
     const places = [undrawable("a", ["中"]), turned("b"), undrawable("c", ["中", "文"]), undrawable("d", [])];
-    const unlike = unlikeOf(places, { fonts, sentences: SENTENCES });
-    expect(unlike.fonts).toEqual([]);
-    expect(unlike.reasons).toEqual([
+    const mismatches = mismatchesOf(places, { fonts, sentences: SENTENCES });
+    expect(mismatches.fonts).toEqual([]);
+    expect(mismatches.reasons).toEqual([
       {
         key: "reason:undrawable_letters",
         code: "undrawable_letters",
         places: 3,
-        said: "No font we have can draw 中 文 here, so an edit here leaves them out.",
+        sentence: "No font we have can draw 中 文 here, so an edit here leaves them out.",
       },
-      { key: "reason:turned_text", code: "turned_text", places: 1, said: SENTENCES.approximate.turned_text },
+      { key: "reason:turned_text", code: "turned_text", places: 1, sentence: SENTENCES.approximate.turned_text },
     ]);
   });
 
   test("a change its own font lacks letters for is under its font, saying which", () => {
     const span = aSpan({ id: "a", why: { code: "turned_text", params: {} } });
-    const unlike = unlikeOf([{ span, missing: ["é", "ñ"] }], { fonts, sentences: SENTENCES });
-    expect(unlike.reasons).toEqual([]);
-    expect(unlike.fonts).toEqual([
+    const mismatches = mismatchesOf([{ span, missing: ["é", "ñ"] }], { fonts, sentences: SENTENCES });
+    expect(mismatches.reasons).toEqual([]);
+    expect(mismatches.fonts).toEqual([
       {
         key: "font:Times-Roman",
         name: "Times-Roman",
         places: 1,
-        said: "no é or ñ in this font, so the line is drawn in our Liberation Serif Regular",
+        sentence: "no é or ñ in this font, so the line is drawn in our Liberation Serif Regular",
       },
     ]);
   });

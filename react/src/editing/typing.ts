@@ -2,7 +2,7 @@
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import type { Press } from "./caret";
-import { type Also, change, type Editor, type EditorState, say, spoken } from "./editor";
+import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import { shownNameOf } from "./fonts";
 import type { HistoryAction } from "./history";
@@ -27,7 +27,7 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
   if (span === undefined) return;
   // Un-redacting by accident is a leak: the one edit that asks first (quality.md, Modals and prompts).
   if (reading.spans.get(spanId)?.redacted) {
-    store.set({ unredacting: { spanId, press }, said: spoken(doc.sentences.undo_redaction) });
+    store.set({ unredacting: { spanId, press }, announcement: announcing(doc.sentences.undo_redaction) });
     return;
   }
   store.set({ draft: draftOf(span, { reading, press }), focusTo: null, unredacting: null });
@@ -61,11 +61,14 @@ function wayIn(state: EditorState): Strategy {
   return fit === undefined ? "as-is" : wayDrawn(state.draft?.strategy, fit);
 }
 
-/** The user chose how a long line fits, in the chip or with the arrow keys: drawn in the field at once, and said. */
+/** The user chose how a long line fits, in the chip or with the arrow keys: drawn in the field at once, and announced. */
 export function chooseWayOut(editor: Editor, way: Strategy): void {
   const { draft, doc } = editor.store.get();
   if (draft === null) return;
-  editor.store.set({ draft: { ...draft, strategy: way }, said: spoken(doc.sentences.options[way]?.label ?? way) });
+  editor.store.set({
+    draft: { ...draft, strategy: way },
+    announcement: announcing(doc.sentences.options[way]?.label ?? way),
+  });
 }
 
 /** Up or Down in the field: the way out before or after the one drawn, round the list; false with none to choose. */
@@ -80,7 +83,7 @@ export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   return true;
 }
 
-/** A fit's troubles less their numbers: said again when this changes, not as the numbers tick by with each letter. */
+/** A fit's troubles less their numbers: announced again when this changes, not as the numbers tick by with each letter. */
 function troubleKindOf(fit: Fit, rules: FitRules): string {
   return `${fit.missing.join("")} ${runsPast(fit.deltaPt, fit.roomPt, rules)}`;
 }
@@ -92,21 +95,21 @@ const WAYS_KEYS = "Up or Down chooses how it fits";
  * What the draft's span would get wrong reading `text`, in the server's words, nothing when it fits;
  * and whether there's a way out of a long line to choose, past leaving it long.
  */
-export function troublesIn(state: EditorState, text: string): { said: string[]; kind: string; offers: boolean } {
+export function troublesIn(state: EditorState, text: string): { sentences: string[]; kind: string; offers: boolean } {
   const typing = draftSpanOf(state);
-  if (typing === undefined) return { said: [], kind: "", offers: false };
+  if (typing === undefined) return { sentences: [], kind: "", offers: false };
   const { draft, span, font } = typing;
   const { fit: rules, sentences } = state.doc;
   // A form field draws it, not the page: whatever is typed, the edit is left out.
-  if (span.form_field) return { said: [sentences.form_field_not_edited], kind: "form field", offers: false };
-  // Taking text out isn't a change: said while the field is empty.
-  if (isEmpty(text)) return { said: [sentences.empty], kind: "empty", offers: false };
+  if (span.form_field) return { sentences: [sentences.form_field_not_edited], kind: "form field", offers: false };
+  // Taking text out isn't a change: told while the field is empty.
+  if (isEmpty(text)) return { sentences: [sentences.empty], kind: "empty", offers: false };
   const fit = fitOf(span, { font, text, rules });
   const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
-  // That an edit here won't match the text around it is said once, as typing starts (`editNote`), not with each letter.
+  // That an edit here won't match is announced once, as typing starts (`editNote`), not with each letter.
   return {
-    said: troublesOf(fit, { rules, sentences, drawing, way }),
+    sentences: troublesOf(fit, { rules, sentences, drawing, way }),
     kind: `${troubleKindOf(fit, rules)} ${way}`,
     offers: waysOffered(fit).length > 0,
   };
@@ -125,30 +128,31 @@ export function typeInto(editor: Editor, typed: string): void {
   const text = typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
-  // A trouble is said as it appears or changes, not as its numbers tick by with each letter.
+  // A trouble is announced as it appears or changes, not as its numbers tick by with each letter.
   const offered = now.offers && !was.offers ? [WAYS_KEYS] : [];
-  const said = now.kind !== was.kind && now.said.length > 0 ? spoken([...now.said, ...offered].join("; ")) : state.said;
-  store.set({ draft: { ...state.draft, text }, said });
+  const changedKind = now.kind !== was.kind && now.sentences.length > 0;
+  const announcement = changedKind ? announcing([...now.sentences, ...offered].join("; ")) : state.announcement;
+  store.set({ draft: { ...state.draft, text }, announcement });
 }
 
 /** The field took focus as typing starts: what an edit here warns of, and what's wrong already, is heard once. */
 export function fieldFocused(editor: Editor): void {
   const state = editor.store.get();
-  const { draft, layout, doc, quietFonts } = state;
+  const { draft, layout, doc, mutedFonts } = state;
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
   if (draft === null || span === undefined) return;
-  const quiet = quietFonts.has(shownNameOf(layout, span.font));
-  const note = editNote(span, { font: layout.fonts.get(span.font), sentences: doc.sentences, quiet });
-  const trouble = troublesIn(state, draft.text).said.join("\n");
-  const heard = [note?.said, note?.why, trouble].filter(Boolean).join(" ");
-  if (heard !== "") say(editor, heard);
+  const muted = mutedFonts.has(shownNameOf(layout, span.font));
+  const note = editNote(span, { font: layout.fonts.get(span.font), sentences: doc.sentences, muted });
+  const trouble = troublesIn(state, draft.text).sentences.join("\n");
+  const heard = [note?.sentence, note?.why, trouble].filter(Boolean).join(" ");
+  if (heard !== "") announce(editor, heard);
 }
 
 /** Enter: what was typed goes in and focus goes back to the span, unless the field is empty, which stays open. */
 export function enter(editor: Editor): void {
   const { draft, doc } = editor.store.get();
   if (draft !== null && isEmpty(draft.text)) {
-    say(editor, doc.sentences.empty);
+    announce(editor, doc.sentences.empty);
     return;
   }
   finish(editor, true, { returnFocus: true });
@@ -181,7 +185,10 @@ export function typingEnd(
   // Emptying a span isn't a replacement: taking text out is redaction's job.
   if (!keep || unchanged || isEmpty(draft.text)) return { typed: nothing, ended };
   const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
-  return { typed: { kind: "add", edits: [replace] }, ended: { ...ended, said: spoken(`Changed to ${draft.text}`) } };
+  return {
+    typed: { kind: "add", edits: [replace] },
+    ended: { ...ended, announcement: announcing(`Changed to ${draft.text}`) },
+  };
 }
 
 /**

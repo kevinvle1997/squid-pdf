@@ -36,19 +36,19 @@ describe("a page image that fails while the server still has the document", () =
   test("says why on its page, heard once, and is asked for again after a wait that doubles", async () => {
     await imageFailed(editor, 0);
     expect(editor.store.get().images.get(0)).toEqual({ tries: 0, failed: BUSY });
-    expect(editor.store.get().said.text).toBe(BUSY);
+    expect(editor.store.get().announcement.text).toBe(BUSY);
 
     vi.advanceTimersByTime(IMAGE_RETRY_FIRST_MS);
     expect(editor.store.get().images.get(0)?.tries).toBe(1);
 
-    const { said } = editor.store.get();
+    const { announcement } = editor.store.get();
     await imageFailed(editor, 0);
     vi.advanceTimersByTime(IMAGE_RETRY_FIRST_MS);
     expect(editor.store.get().images.get(0)?.tries).toBe(1);
     vi.advanceTimersByTime(IMAGE_RETRY_FIRST_MS);
     expect(editor.store.get().images.get(0)?.tries).toBe(2);
-    // The same reason again isn't said again.
-    expect(editor.store.get().said).toBe(said);
+    // The same reason again isn't announced again.
+    expect(editor.store.get().announcement).toBe(announcement);
   });
 
   test("loaded at last, it says nothing more and isn't asked for again", async () => {
@@ -67,9 +67,9 @@ describe("a page image that fails while the server still has the document", () =
 
   test("a second page failing for the same reason isn't heard twice", async () => {
     await imageFailed(editor, 0);
-    const { said } = editor.store.get();
+    const { announcement } = editor.store.get();
     await imageFailed(editor, 1);
     expect(editor.store.get().images.get(1)?.failed).toBe(BUSY);
-    expect(editor.store.get().said).toBe(said);
+    expect(editor.store.get().announcement).toBe(announcement);
   });
 });

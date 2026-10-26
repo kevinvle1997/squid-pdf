@@ -2,7 +2,7 @@
 // looking like the text around them (Rule 1), and Change all, one step in the history.
 import type { FitInfo, FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { change, changed, type Editor, type EditorState, scrollingTo, spoken } from "./editor";
+import { announcing, change, changed, type Editor, type EditorState, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf } from "./fit";
 import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
@@ -184,7 +184,7 @@ function placeAfter(places: readonly string[], current: string | null, step: 1 |
   return places[(index + step + places.length) % places.length];
 }
 
-/** Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and said. */
+/** Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and announced. */
 export function stepFind(editor: Editor, step: 1 | -1): void {
   const { find: before } = editor.store.get();
   if (!before.open) return;
@@ -201,7 +201,7 @@ export function stepFind(editor: Editor, step: 1 | -1): void {
   editor.store.set({
     find: { ...find, current },
     scrollTo: scrollingTo(current, "center"),
-    said: spoken(`${at} of ${places.length}`),
+    announcement: announcing(`${at} of ${places.length}`),
   });
 }
 
@@ -210,20 +210,20 @@ function searchingQuery(find: FindState): FindState {
   return { ...find, searched: find.query };
 }
 
-/** The find bar once the history changes: found again while it's open, and what Change all did no longer said. */
+/** The find bar once the history changes: found again while it's open, and what Change all did no longer shown. */
 export function findAfterChange(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
   const found = state.find.open ? refound(state, reading) : state.find;
-  // What Change all did is said until anything else changes the history: undo would take that instead.
+  // What Change all did shows until anything else changes the history: undo would take that instead.
   return found.changed === null ? found : { ...found, changed: null };
 }
 
 /** How many places are found, and how many of them a change won't keep looking like the text around them. */
 export interface FindCount {
   readonly places: number;
-  readonly unlike: number;
+  readonly mismatches: number;
 }
 
-/** Whether changing the words found in a span leaves it unlike the text around it. */
+/** Whether changing the words found in a span leaves it set apart from the text around it. */
 function looksDifferent(
   { span, text, matches }: Found,
   { fonts, replacement, rules }: { fonts: ReadonlyMap<string, FontInfo>; replacement: string; rules: FitRules },
@@ -243,28 +243,28 @@ export function findCount(state: EditorState): FindCount {
   const { find, doc, reading, layout } = state;
   const found = foundIn(doc.spans, { reading, find });
   const judging = { fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
-  return { places: found.length, unlike: found.filter((each) => looksDifferent(each, judging)).length };
+  return { places: found.length, mismatches: found.filter((each) => looksDifferent(each, judging)).length };
 }
 
 /** The count before a change, as the find bar shows it: one phrase, the part that warns kept apart for --warn. */
-export function countShown({ places, unlike }: FindCount): { plain: string; warned: string } {
+export function countShown({ places, mismatches }: FindCount): { plain: string; warned: string } {
   if (places === 0) return { plain: "Nothing matches", warned: "" };
   const where = counted(places, { one: "place", other: "places" });
   // Every place will look like the text around it.
-  if (unlike === 0) return { plain: `${where} will look identical`, warned: "" };
+  if (mismatches === 0) return { plain: `${where} will look identical`, warned: "" };
   // Not one will.
-  if (unlike === places) return { plain: "", warned: `${where} will look different` };
-  return { plain: `${where}, `, warned: `${unlike} of them will look different` };
+  if (mismatches === places) return { plain: "", warned: `${where} will look different` };
+  return { plain: `${where}, `, warned: `${mismatches} of them will look different` };
 }
 
-/** The count as said, in the words shown: "14 places, 3 of them will look different". */
-export function countSaid(count: FindCount): string {
+/** The count as announced, in the words shown: "14 places, 3 of them will look different". */
+export function countSentence(count: FindCount): string {
   const { plain, warned } = countShown(count);
   return `${plain}${warned}`;
 }
 
-/** What Change all did, as shown and as said: "Changed 3 places." */
-export function changedSaid(changed: number): string {
+/** What Change all did, as shown and as announced: "Changed 3 places." */
+export function changedSentence(changed: number): string {
   return `Changed ${counted(changed, { one: "place", other: "places" })}.`;
 }
 
@@ -310,12 +310,12 @@ export function setWholeWords(editor: Editor, wholeWords: boolean): void {
   search(editor, { wholeWords });
 }
 
-/** Find what "Find" shows, matched as `asked` says: marked, and the count said, in one update. */
+/** Find what "Find" shows, matched as `asked` says: marked, and the count announced, in one update. */
 function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   const state = editor.store.get();
   const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null, current: null };
   const find = refound({ ...state, find: searching }, state.reading);
-  const heard = find.searched !== "" && { said: spoken(countSaid(findCount({ ...state, find }))) };
+  const heard = find.searched !== "" && { announcement: announcing(countSentence(findCount({ ...state, find }))) };
   editor.store.set({ find, ...heard });
 }
 
@@ -342,7 +342,7 @@ export function changeAll(editor: Editor): void {
   }));
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
-    said: spoken(changedSaid(found.length)),
+    announcement: announcing(changedSentence(found.length)),
     find: { ...refound({ ...next, find }, next.reading), changed: found.length },
   }));
 }

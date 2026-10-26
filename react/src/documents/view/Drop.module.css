@@ -16,10 +16,10 @@
   margin: var(--s3) 0 0; min-height: 1.5em;
   font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; text-wrap: balance;
 }
-/* A document this browser kept, offered back: under the call to act, not in its place. */
-.kept { display: flex; flex-direction: column; align-items: center; gap: var(--s3); margin-block-start: var(--s3); }
-.keptSaid { margin: 0; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
-.keptActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+/* A document this browser persisted, offered back: under the call to act, not in its place. */
+.persisted { display: flex; flex-direction: column; align-items: center; gap: var(--s3); margin-block-start: var(--s3); }
+.persistedSentence { margin: 0; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
+.persistedActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
 /* The heading's verb: a file is seldom dropped on a touch screen, so there it asks for one opened. */
 .byTouch { display: none; }
 @media (pointer: coarse) {
@@ -47,7 +47,7 @@
   padding-inline: var(--s1); background: var(--highlighter); color: var(--sheet-ink);
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-.promiseSaid { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
+.promiseSentence { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
 /* The code that keeps the promise: a link in the line's own colour, underlined, as a document's link is. */
 .source { color: inherit; text-underline-offset: 0.2em; }
 .source:hover { text-decoration-thickness: 2px; }
@@ -57,7 +57,7 @@
 }
 .fact { display: flex; flex-direction: column; gap: var(--s1); }
 .factTitle { font-size: var(--fs-lg); font-weight: 600; color: var(--ink); }
-.factSaid { font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
+.factSentence { font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
 @media (max-width: 820px) {
   .factList { grid-template-columns: minmax(0, 1fr); }
 }

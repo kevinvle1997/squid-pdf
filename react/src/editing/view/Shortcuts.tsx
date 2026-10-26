@@ -1,6 +1,5 @@
-// Every key the editor answers to, listed from the bar, as editors list theirs: the keyboard path whole
-// (decisions/frontend.md, The keyboard path is complete), opened with ? too. A pointer's list: a touch screen has no
-// keys, so there it isn't drawn, and ? opens nothing.
+// Every key the editor answers to, opened from the bar or with ? (decisions/frontend.md, The keyboard
+// path is complete). Not drawn on a touch screen, which has no keys.
 import { useSyncExternalStore } from "react";
 import { Dialog, DialogTrigger, Heading, Popover } from "react-aria-components";
 import { Button } from "../../ui/Button";

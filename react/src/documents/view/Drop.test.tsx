@@ -5,12 +5,12 @@ import { aDoc } from "../../fixtures";
 import { emulateTouchScreen } from "../../testing";
 import { Drop } from "./Drop";
 
-/** The landing as it waits for a file, with nothing kept in this browser. */
+/** The landing as it waits for a file, with nothing persisted in this browser. */
 function waiting() {
   return render(
     <Drop
       landing={{ kind: "waiting" }}
-      kept={null}
+      persisted={null}
       forgetFailed={null}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
@@ -39,12 +39,12 @@ test("on a touch screen, where a file is seldom dropped, the heading asks for on
   await expect.element(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName("Open a PDF here");
 });
 
-test("a document kept here is offered to open again, with deleting it quiet beside that", async () => {
-  const kept = { file: new File(["%PDF-"], "contract.pdf"), doc: aDoc(), work: null, until: Date.now() + 60_000 };
+test("a document persisted here is offered to open again, with deleting it quiet beside that", async () => {
+  const persisted = { file: new File(["%PDF-"], "contract.pdf"), doc: aDoc(), work: null, until: Date.now() + 60_000 };
   const screen = await render(
     <Drop
       landing={{ kind: "waiting" }}
-      kept={kept}
+      persisted={persisted}
       forgetFailed={null}
       onChoose={vi.fn()}
       onReopen={vi.fn()}

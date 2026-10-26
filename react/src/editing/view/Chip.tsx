@@ -9,7 +9,7 @@ import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
 import { attachFont, FONT_FILES, offersCopy, readableName, shownNameOf } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
-import { quietFont } from "../quiet";
+import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { chooseWayOut } from "../typing";
 import styles from "./Chip.module.css";
@@ -32,26 +32,26 @@ export function Chip({ span, info, trouble, setting }: Props) {
   const sentences = useEditorState((state) => state.doc.sentences);
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
   const shown = useEditorState((state) => shownNameOf(state.layout, span.font));
-  // What an edit here warns of, in full, as typing starts: until the user quiets its font.
-  const quiet = useEditorState((state) => state.quietFonts.has(shown));
+  // What an edit here warns of, in full, as typing starts: until the user mutes its font's warning.
+  const muted = useEditorState((state) => state.mutedFonts.has(shown));
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
-  const note = editNote(span, { font, sentences, quiet });
+  const note = editNote(span, { font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   return (
     <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
       {note !== null && (
-        // Said as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
+        // Announced as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
         <span className={styles.note}>
           <span className={styles.noteWords} aria-hidden="true">
-            <Warn mark>{note.said}</Warn>
+            <Warn mark>{note.sentence}</Warn>
             {note.why !== null && <span>{note.why}</span>}
           </span>
           <Button
             variant="quiet"
-            className={styles.quietFont}
+            className={styles.muteWarning}
             keepFocus
-            onPress={() => quietFont(editor, shown, { quiet: true })}
+            onPress={() => setWarningMuted(editor, shown, { muted: true })}
           >
             Don't show again for this font
           </Button>
