@@ -1,15 +1,17 @@
 # The app behind Caddy, as deployed, with a .env beside this file, filled in from
 # env.example and never committed.
 #
-# A deploy moves the checkout and the images to one commit on main together, since the
-# Caddyfile and this file come from the checkout: `git switch --detach <commit>`, then
-# SQUIDPDF_TAG set to it in .env, as env.example says, then the images CI built:
+# A deploy or a rollback is one tag: SQUIDPDF_TAG in .env set to a commit on main, as
+# env.example says, then the images CI built and checked for it:
 #   docker compose pull && docker compose up -d --no-build
+# The Caddyfile is built into the proxy image, so its policy moves with the app it allows.
+# The checkout moves only when this file or env.example changed, which the release says.
 # --no-build: a missing image fails, rather than building on the server beside the app.
-# To roll back, do the same with an earlier commit the package pages list: not every one has images.
+# To roll back, name an earlier commit the package pages list: not every one has images.
 # Once, after the first publish, make both packages public on ghcr.io; until then a pull is
 # denied, unless the server signs in (`docker login ghcr.io`) with a read:packages token.
-# Or build from source, tagged apart from the registry's, naming the commit the landing links:
+# Or build from source, tagged apart from the registry's, naming the commit the landing links.
+# The Caddyfile is then built in too, so a change to it needs this again:
 #   SQUIDPDF_TAG=local SQUIDPDF_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
 # The published images are linux/amd64; another architecture builds from source.
 #
@@ -84,7 +86,6 @@ services:
         ipv4_address: 172.31.255.2
         ipv6_address: fd52:74a:91b1::2
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Its certificates. Kept, so a restart doesn't ask the CA for new ones.
       - caddy-data:/data
       - caddy-config:/config

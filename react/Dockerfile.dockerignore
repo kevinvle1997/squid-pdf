@@ -1,4 +1,4 @@
-# The web image needs the app's source, the script that compresses its build, and the fonts it previews in, nothing else.
+# The web image needs the app's source, its compress script, its fonts and the Caddyfile, nothing else.
 *
 !react/package.json
 !react/package-lock.json
@@ -9,3 +9,4 @@
 !react/scripts/compress.mjs
 !react/src/
 !src/squidpdf/fonts/
+!Caddyfile

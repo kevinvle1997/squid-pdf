@@ -14,4 +14,6 @@ ARG SQUIDPDF_COMMIT
 RUN npm run build && node scripts/compress.mjs dist
 
 FROM caddy:2.11.4
+# Where Caddy reads it by default. Its policy allows this build's style by hash, so the two ship as one.
+COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /repo/react/dist /srv
