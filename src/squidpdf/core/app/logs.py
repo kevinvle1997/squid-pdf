@@ -53,10 +53,7 @@ _LEVEL_NAMES = {level.value: level.name for level in Level}
 
 
 class Tally(StrEnum):
-    """What a request did on the way, tallied onto its line: why a slow one was slow.
-
-    An export also counts its replaces by fidelity, so the share that keep their font is a sum.
-    """
+    """What a request did, tallied onto its line: why a slow one was slow, how its edits did."""
 
     QUEUED_MS = "queued_ms"  # waiting for a free worker
     WORKER_MS = "worker_ms"  # at work in one
@@ -118,7 +115,7 @@ class LogEvent(Enum):
     GOOGLE_CACHE_DAMAGED = _EventFacts("google_cache_damaged", SKIPPED, WARN)
     GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
     GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
-    EDIT_IN_SIMILAR_FONT = _EventFacts("edit_in_similar_font", NOTED, INFO)
+    EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", NOTED, INFO)
 
 
 @dataclass(frozen=True, slots=True)

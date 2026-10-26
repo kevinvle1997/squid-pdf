@@ -16,7 +16,6 @@ from functools import partial
 from pathlib import Path
 
 from squidpdf.core import (
-    FACES,
     DriverFactory,
     Engine,
     Fidelity,
@@ -29,7 +28,7 @@ from squidpdf.core import (
     SpanIndex,
     Tally,
     Workers,
-    listed_family,
+    loggable_family,
     tally,
     words,
 )
@@ -135,31 +134,40 @@ def _make_pdf(
             to=str(out),
             driver_factory=documents.driver_factory,
         )
-    _count_fonts_kept(saved.applied.replaced)
+    _tally_by_fidelity(saved.applied.replaced)
     skipped = [skip.edit for skip in saved.applied.skipped]
     # Only the file's own notices: render already said apply's.
     return Exported(skipped_edits=skipped, file_notices=saved.notices)
 
 
-def _count_fonts_kept(replaced: list[Replaced]) -> None:
-    """Tally each replace on the export's line by how it turned out; log each in a similar font.
+def _tally_by_fidelity(replaced: list[Replaced]) -> None:
+    """Tally each replace drawn on the export's line by how it turned out; log each substitute.
 
     At export, not render: a file downloaded is the edits made, each span's last edit once.
     """
-    for each in replaced:
-        tally(_TALLY_OF[each.fidelity])
-        if each.fidelity == "substitute":
-            _log_similar_font(each)
+    for outcome in replaced:
+        tally(_TALLY_OF[outcome.fidelity])
+        if outcome.fidelity == "substitute":
+            _log_substitute(outcome)
 
 
-def _log_similar_font(replaced: Replaced) -> None:
-    """A replace a similar font drew: that face, the font where our lists name it, the width."""
-    listed = listed_family(replaced.font)
+def _log_substitute(outcome: Replaced) -> None:
+    """A replace a similar font drew: the face, its widths, the font if our lists name it."""
+    loggable = loggable_family(outcome.shown_name)
+    font = OwnText(_UNLISTED if loggable is None else loggable)
+    substitute = outcome.substitute
+    face = OwnText(substitute.face.file)
+    same_widths = substitute.same_widths
+    # The font gives a letter typed no width: no number, rather than a wrong one.
+    if substitute.width_delta_pct is None:
+        _log.write(LogEvent.EDIT_IN_SUBSTITUTE, font=font, face=face, same_widths=same_widths)
+        return
     _log.write(
-        LogEvent.EDIT_IN_SIMILAR_FONT,
-        font=OwnText(_UNLISTED if listed is None else listed),
-        face=OwnText(FACES[replaced.fit.substitute].file),
-        width_delta_pct=replaced.fit.delta_pct,
+        LogEvent.EDIT_IN_SUBSTITUTE,
+        font=font,
+        face=face,
+        same_widths=same_widths,
+        width_delta_pct=substitute.width_delta_pct,
     )
 
 

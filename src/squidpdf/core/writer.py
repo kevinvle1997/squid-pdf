@@ -105,6 +105,17 @@ class _OffsetRun:
     resource: str  # the resource name of the font they're drawn in
 
 
+@dataclass(frozen=True, slots=True)
+class DrawnLine:
+    """A line drawn: the face we ship that drew it, None for the file's own font, and its notes.
+
+    `notices` are what came out other than asked.
+    """
+
+    face: Face | None
+    notices: list[Message]
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class PageWriter:
     """Draws lines onto a document's pages, adding each font a page needs once.
@@ -120,18 +131,18 @@ class PageWriter:
     # By the face's file, or Google's source for its copy: one font file each.
     added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
-    def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> list[Message]:
-        """Draw `text` at the span's baseline as `plan` says; says what came out otherwise."""
+    def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> DrawnLine:
+        """Draw `text` at the span's baseline as `plan` says, in a face if the page refuses."""
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
         # The whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             self._write_in_face(span, drawn_in, text=plan.text, setting=setting)
-            return _said_left_out(plan.left_out)
+            return DrawnLine(drawn_in, _said_left_out(plan.left_out))
         # The file's own font, written by code as the original was.
         if isinstance(drawn_in, PooledFont) and by_code is not None:
             self._write_codes(span, by_code, setting=setting)
-            return _said_left_out(plan.left_out)
+            return DrawnLine(None, _said_left_out(plan.left_out))
         # The file's own copies of the font, by letter, once the page has them.
         if isinstance(drawn_in, PooledFont):
             try:
@@ -141,10 +152,11 @@ class PageWriter:
                 self._write_in_face(
                     span, substitute.face, text=substitute.text, setting=setting
                 )
-                return [problem.reason, *_said_left_out(substitute.left_out)]
+                notices = [problem.reason, *_said_left_out(substitute.left_out)]
+                return DrawnLine(substitute.face, notices)
             self._note_lent_letters(drawn_in, plan.text)
             self._write(span, plan.text, font=drawn_in, resources=resources, setting=setting)
-            return _said_left_out(plan.left_out)
+            return DrawnLine(None, _said_left_out(plan.left_out))
         assert_never(drawn_in)
 
     def forget_pages(self) -> None:

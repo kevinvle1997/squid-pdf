@@ -11,9 +11,22 @@ from typing import assert_never
 
 from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import PooledFont
-from squidpdf.core.plan import DrawPlan, DrawPlanner
-from squidpdf.core.text.fidelity import Fidelity
+from squidpdf.core.pdf.driver import DriverError
+from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.types import Face, Span
+
+_PERCENT = 100
+
+
+@dataclass(frozen=True, slots=True)
+class SubstituteWidths:
+    """A face that draws in a span's font's place, and how its letters' widths compare."""
+
+    face: Face
+    same_widths: bool  # its letters are as wide as the font's, by its look-alike's match
+    # How much wider it sets the line's letters than the font would; None where the font
+    # gives no width for one of them.
+    width_delta_pct: float | None
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -57,15 +70,47 @@ class LineFit:
             return drawn_in.name
         assert_never(drawn_in)
 
-    def fidelity(self, span: Span, plan: DrawPlan) -> Fidelity:
-        """How an edit `plan` draws at the span turns out, as the span's own text is judged."""
+    def substitute_widths(self, span: Span, text: str, *, plan: DrawPlan) -> SubstituteWidths:
+        """The face that draws `text` in the span's font's place, or would if the page refused.
+
+        `plan` is `text`'s, from `plan_for`.
+        """
         drawn_in = plan.drawn_in
-        if isinstance(drawn_in, Face):
-            return "substitute"
-        # The own font draws it: approximate where it leaves letters out, or a redraw of the
-        # span's own text wouldn't look like the page.
+        # The own font draws it: the face that would if the page wouldn't take the font.
         if isinstance(drawn_in, PooledFont):
-            unlike = self.plans.unlike(span, self.plans.plan_for(span, span.text))
-            set_as_around = not plan.left_out and unlike is None
-            return "exact" if set_as_around else "approximate"
+            substitute = self.plans.substitute_for(span, text)
+            return self._against_own(span, substitute.face, drawn=substitute.text)
+        if isinstance(drawn_in, Face):
+            return self._against_own(span, drawn_in, drawn=plan.text)
         assert_never(drawn_in)
+
+    def _against_own(self, span: Span, face: Face, *, drawn: str) -> SubstituteWidths:
+        """`face` drawing `drawn` at the span, its letters' widths against the span's font's."""
+        if self.fonts.same_widths(span, face):
+            return SubstituteWidths(face, same_widths=True, width_delta_pct=0.0)
+        # Letters only: a space is set by the page's gaps as much as by the font.
+        letters = [ch for ch in drawn if not ch.isspace()]
+        own = self._own_widths(span)
+        unknown = SubstituteWidths(face, same_widths=False, width_delta_pct=None)
+        # A letter the font gives no width, so how it would set the line isn't known.
+        if any(ch not in own for ch in letters):
+            return unknown
+        own_width = sum(own[ch] for ch in letters)
+        # No letter with a width, as a line of spaces: nothing to take a share of.
+        if own_width <= 0:
+            return unknown
+        face_widths = letter_widths(self.plans.driver.face_font(face), letters)
+        face_width = sum(face_widths[ch] for ch in letters)
+        delta = round((face_width - own_width) / own_width * _PERCENT, 2)
+        return SubstituteWidths(face, same_widths=False, width_delta_pct=delta)
+
+    def _own_widths(self, span: Span) -> dict[str, float]:
+        """Each letter's width in the span's font, per 1000 em: its copies', else its list's."""
+        pooled = self.fonts.own(span)
+        letters = {} if pooled is None else pooled.every_letter()
+        copies = {ch: copy.widths[ch] for ch, copy in letters.items()}
+        try:
+            listed = self.fonts.listed_widths(span)
+        except DriverError:  # the library can't load the font, so its list can't be read
+            listed = None
+        return ({} if listed is None else listed) | copies

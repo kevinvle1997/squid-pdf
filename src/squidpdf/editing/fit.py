@@ -84,11 +84,6 @@ class FitReport:
         share = round(past_pt / max(self.original_pt, _SOME_WIDTH_PT) * 100, 6)
         return max(1, math.ceil(share))
 
-    @property
-    def delta_pct(self) -> float:
-        """`delta_pt` as a percent of the original's width: below 0 when narrower."""
-        return round(self.delta_pt / max(self.original_pt, _SOME_WIDTH_PT) * 100, 2)
-
     def describe(self) -> list[Message]:
         """Everything that won't come out as typed, in the order it's told; empty if nothing."""
         parts: list[Message] = []

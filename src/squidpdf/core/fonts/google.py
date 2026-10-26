@@ -196,7 +196,7 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     return _file_in(family, weight=weight, italic=style in ("italic", "bold-italic"))
 
 
-def google_key(font: str) -> str | None:
+def google_family_key(font: str) -> str | None:
     """The key Google's pinned list files a document font's family under; None if not there."""
     listed = _family_list()
     key = bare_name(font)
@@ -206,7 +206,7 @@ def google_key(font: str) -> str | None:
 
 def _family_of(font: str) -> _Family:
     """Google's family of a document's font. Raises FontUnusable when it has none."""
-    key = google_key(font)
+    key = google_family_key(font)
     # Not one of Google's families: Arial, Calibri, a TeX font.
     if key is None:
         raise FontUnusable(Message("google_not_listed"))

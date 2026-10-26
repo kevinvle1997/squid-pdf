@@ -36,6 +36,7 @@ from squidpdf.core.text.spacing import lacks_space, usual_gap
 from squidpdf.core.types import (
     EM,
     DrawnGlyph,
+    Face,
     FontCode,
     LookAlike,
     PageFont,
@@ -243,6 +244,22 @@ class DocumentFonts:
     def keep_text_lines(self, page: int, lines: list[list[TextPiece]]) -> None:
         """Keep the page's text as the index read it."""
         self.cache.keep_text_lines(page, lines)
+
+    def same_widths(self, span: Span, face: Face) -> bool:
+        """Whether `face` sets the span's font's letters as wide as it does: a look-alike so."""
+        match = self.look_alike(span)
+        return match.same_widths and face == match.face
+
+    def listed_widths(self, span: Span) -> dict[str, float] | None:
+        """Each letter the page's width list gives the span's font, per 1000 em; None without.
+
+        Raises DriverError when the library can't load the font.
+        """
+        page_font = self._page_font(span)
+        # New text, or a font the page doesn't list: no list to read.
+        if page_font is None:
+            return None
+        return self.driver.listed_widths(page_font.xref)
 
     def read_before_erasing(self, span: Span) -> None:
         """Read what a draw over `span` asks of its font, while its page still has the font."""
