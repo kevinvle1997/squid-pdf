@@ -18,12 +18,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import cache, partial
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Protocol
 
 import orjson
 
 from squidpdf.core import (
     ANALYSIS_TUNING,
+    DEFAULT_DRIVER_FACTORY,
+    DriverFactory,
     Engine,
     FontSources,
     Page,
@@ -65,110 +67,161 @@ def root() -> Path:
     return Path(os.environ.get("SQUIDPDF_DATA", "data")).resolve()  # unset in development
 
 
-def create(owner_digest: str) -> tuple[str, Path]:
-    """A new, empty document folder that answers to this owner; none is left if it fails."""
-    # One disk on one box is the only copy: at a second box, this moves to S3.
-    doc_id = secrets.token_urlsafe(_ID_BYTES)
-    folder = root() / doc_id
-    folder.mkdir(parents=True)
-    try:
-        (folder / _OWNER).write_text(owner_digest)
-    except BaseException:  # a full disk, say: no reply names it, only the sweep clears it
-        delete(folder)
-        raise
-    return doc_id, folder
+class DocumentStore(Protocol):
+    """Where documents are kept: made and found by id, opened, kept alive and deleted.
 
-
-def find(doc_id: str) -> tuple[Path, str] | None:
-    """The document's folder and its owner's hash, or None if there's no such document."""
-    if not _DOCUMENT_ID_PATTERN.fullmatch(doc_id):
-        return None
-    folder = root() / doc_id
-    try:
-        owner_digest = (folder / _OWNER).read_text()
-    except FileNotFoundError:  # unknown, or swept a moment ago
-        return None
-    # Its index is kept in another format: it reads as gone, so the browser opens it again.
-    if not (folder / _index_file()).exists():
-        return None
-    return folder, owner_digest
-
-
-def open_to_analyse(folder: Path, attached: AttachedFiles) -> Engine:
-    """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
-
-    The one open that downloads Google's copies of its fonts, into the cache
-    beside the documents (the sweep passes over it). Every other open reads
-    that cache alone, so it lends what the analysis fetched and never waits.
+    It crosses to the workers with each job, so it pickles. A document deleted meanwhile
+    raises Gone from an open or a touch, which a route answers as not found.
     """
-    google = google_fonts(folder=root() / _GOOGLE_FONTS)
-    sources = FontSources(google=google, attached=attached)
-    try:
-        return open_pdf(str(folder / ORIGINAL), sources=sources)
-    except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
-        raise Gone from exc
+
+    @property
+    def driver_factory(self) -> DriverFactory:
+        """What opens each document's PDF, and the files saved from it."""
+        ...
+
+    def create(self, owner_digest: str) -> tuple[str, Path]:
+        """A new, empty document that answers to this owner: its id and its folder."""
+        ...
+
+    def find(self, doc_id: str) -> tuple[Path, str] | None:
+        """The document's folder and its owner's hash, or None if there's no such document."""
+        ...
+
+    def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
+        """The document's original, open to be judged, fetching what it lends; or Gone."""
+        ...
+
+    def open_original(self, folder: Path) -> Engine:
+        """The document's original, open for editing, lending only what's fetched; or Gone."""
+        ...
+
+    def touch(self, folder: Path) -> float:
+        """Restart the idle clock: when the document now expires, as epoch seconds; or Gone."""
+        ...
+
+    def delete(self, folder: Path) -> None:
+        """The document and everything worked out from it, gone for every request at once."""
+        ...
+
+    def sweep(self) -> None:
+        """Delete every document left idle past the hour, and nothing else."""
+        ...
 
 
-def open_original(folder: Path) -> Engine:
-    """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
+@dataclass(frozen=True, slots=True)
+class FolderStore:
+    """Documents kept one folder each under `root()`, opened in `driver_factory`'s driver."""
 
-    Google's copy of a font lends the letters its copies in the file lack, from
-    the cache the analysis filled: a render never waits on the network.
-    """
-    google = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
-    sources = FontSources(google=google, attached=attached_files(folder))
-    try:
-        return open_pdf(str(folder / ORIGINAL), sources=sources)
-    except FileNotFoundError as exc:  # deleted since it was found: by its owner or the sweep
-        raise Gone from exc
+    driver_factory: DriverFactory
+
+    def create(self, owner_digest: str) -> tuple[str, Path]:
+        """A new, empty document folder that answers to this owner; none is left if it fails."""
+        # One disk on one box is the only copy: at a second box, this moves to S3.
+        doc_id = secrets.token_urlsafe(_ID_BYTES)
+        folder = root() / doc_id
+        folder.mkdir(parents=True)
+        try:
+            (folder / _OWNER).write_text(owner_digest)
+        except BaseException:  # a full disk, say: no reply names it, only the sweep clears it
+            self.delete(folder)
+            raise
+        return doc_id, folder
+
+    def find(self, doc_id: str) -> tuple[Path, str] | None:
+        """The document's folder and its owner's hash, or None if there's no such document."""
+        if not _DOCUMENT_ID_PATTERN.fullmatch(doc_id):
+            return None
+        folder = root() / doc_id
+        try:
+            owner_digest = (folder / _OWNER).read_text()
+        except FileNotFoundError:  # unknown, or swept a moment ago
+            return None
+        # Its index is kept in another format: it reads as gone, so the browser opens it again.
+        if not (folder / _index_file()).exists():
+            return None
+        return folder, owner_digest
+
+    def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
+        """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
+
+        The one open that downloads Google's copies of its fonts, into the cache
+        beside the documents (the sweep passes over it). Every other open reads
+        that cache alone, so it lends what the analysis fetched and never waits.
+        """
+        google = google_fonts(folder=root() / _GOOGLE_FONTS)
+        sources = FontSources(google=google, attached=attached)
+        try:
+            return open_pdf(
+                str(folder / ORIGINAL), sources=sources, driver_factory=self.driver_factory
+            )
+        # Deleted since it was found: by its owner or the sweep.
+        except FileNotFoundError as exc:
+            raise Gone from exc
+
+    def open_original(self, folder: Path) -> Engine:
+        """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
+
+        Google's copy of a font lends the letters its copies in the file lack, from
+        the cache the analysis filled: a render never waits on the network.
+        """
+        google = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
+        sources = FontSources(google=google, attached=attached_files(folder))
+        try:
+            return open_pdf(
+                str(folder / ORIGINAL), sources=sources, driver_factory=self.driver_factory
+            )
+        # Deleted since it was found: by its owner or the sweep.
+        except FileNotFoundError as exc:
+            raise Gone from exc
+
+    def touch(self, folder: Path) -> float:
+        """Restart the idle clock; returns when the document now expires, as epoch seconds.
+
+        Raises Gone if it was deleted since it was found, by its owner or the sweeper.
+        """
+        try:
+            os.utime(folder)
+            return folder.stat().st_mtime + constants.IDLE_S
+        except FileNotFoundError as exc:  # deleted between find() and here
+            raise Gone from exc
+
+    def delete(self, folder: Path) -> None:
+        """The document and everything worked out from it, gone for every request at once.
+
+        Moved aside first, in one step, so its id stops resolving before any file
+        goes: a worker still writing finds it Gone, instead of adding a file to a
+        folder being emptied, which would stop the folder going.
+        """
+        trash = folder.with_name(f"{_TRASH}{folder.name}")
+        try:
+            folder.rename(trash)
+        except FileNotFoundError:  # the sweep or another delete got there first
+            return
+        # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
+        shutil.rmtree(trash, ignore_errors=True)
+        # Once more: a writer that found the folder before the move can still drop a piece in it
+        # after the first pass, which stops the folder going; its next write finds it Gone.
+        shutil.rmtree(trash, ignore_errors=True)
+
+    def sweep(self) -> None:
+        """Delete every document left untouched for longer than the idle hour, and nothing else.
+
+        Only a folder named like a document, or one a delete moved aside: the data
+        folder can be shared. A request that loses the race with a delete says Gone.
+        """
+        for folder in root().glob("*"):
+            # A delete cut short: nothing reads it now.
+            if _TRASHED_FOLDER_PATTERN.fullmatch(folder.name):
+                shutil.rmtree(folder, ignore_errors=True)  # its delete may be emptying it too
+                continue
+            # With or without its owner: one emptied by a delete from before they moved aside.
+            is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
+            if is_document and _idle(folder):
+                self.delete(folder)
 
 
-def touch(folder: Path) -> float:
-    """Restart the idle clock; returns when the document now expires, as epoch seconds.
-
-    Raises Gone if it was deleted since it was found, by its owner or the sweeper.
-    """
-    try:
-        os.utime(folder)
-        return folder.stat().st_mtime + constants.IDLE_S
-    except FileNotFoundError as exc:  # deleted between find() and here
-        raise Gone from exc
-
-
-def delete(folder: Path) -> None:
-    """The document and everything worked out from it, gone for every request at once.
-
-    Moved aside first, in one step, so its id stops resolving before any file
-    goes: a worker still writing finds it Gone, instead of adding a file to a
-    folder being emptied, which would stop the folder going.
-    """
-    trash = folder.with_name(f"{_TRASH}{folder.name}")
-    try:
-        folder.rename(trash)
-    except FileNotFoundError:  # the sweep or another delete got there first
-        return
-    # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
-    shutil.rmtree(trash, ignore_errors=True)
-    # Once more: a writer that found the folder just before the move can still drop a piece in
-    # it after the first pass, which stops the folder going; its next write finds it Gone.
-    shutil.rmtree(trash, ignore_errors=True)
-
-
-def sweep() -> None:
-    """Delete every document left untouched for longer than the idle hour, and nothing else.
-
-    Only a folder named like a document, or one a delete moved aside: the data
-    folder can be shared. A request that loses the race with a delete says Gone.
-    """
-    for folder in root().glob("*"):
-        # A delete cut short: nothing reads it now.
-        if _TRASHED_FOLDER_PATTERN.fullmatch(folder.name):
-            shutil.rmtree(folder, ignore_errors=True)  # its delete may be emptying it too
-            continue
-        # With or without its owner: one emptied by a delete from before they moved aside.
-        is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
-        if is_document and _idle(folder):
-            delete(folder)
+# The store the app keeps documents in unless it's given another: folders, opened in MuPDF.
+FOLDER_STORE = FolderStore(DEFAULT_DRIVER_FACTORY)
 
 
 def _idle(folder: Path) -> bool:

@@ -12,7 +12,16 @@ import pytest
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import Engine, QuarterTurn, Span, SpanIndex, new_text, open_pdf, words
+from squidpdf.core import (
+    DEFAULT_DRIVER_FACTORY,
+    Engine,
+    QuarterTurn,
+    Span,
+    SpanIndex,
+    new_text,
+    open_pdf,
+    words,
+)
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.names import strip_subset
@@ -746,7 +755,14 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, 
         turns = [] if edit_turn is None else [RotatePage(0, edit_turn)]
         index = engine.index()
         rooms = engine.rooms(index, index)
-        save_edited(engine, index, rooms=rooms, edits=[signed, *turns], to=out)
+        save_edited(
+            engine,
+            index,
+            rooms=rooms,
+            edits=[signed, *turns],
+            to=out,
+            driver_factory=DEFAULT_DRIVER_FACTORY,
+        )
 
     page = pymupdf.open(out)[0]
     [line] = [line for block in page.get_text("dict")["blocks"] for line in block["lines"]]
@@ -805,6 +821,8 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         engine.save(out)
 
     with pytest.raises(RedactionFailed) as failed:
-        RedactionController(redacted_in(resolved)).check_saved(out, pages=order)
+        RedactionController(redacted_in(resolved)).check_saved(
+            out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY
+        )
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)
     assert_equal(failed.value.detail, said, "what the user reads, naming its original page")

@@ -29,7 +29,7 @@ from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import BASE_URL, InProcess, upload
-from tests.conftest import log_lines
+from tests.conftest import StoreWith, log_lines
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -403,6 +403,16 @@ def test_a_body_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes,
     assert_equal(_kept(), before, "documents on disk after a refusal")
 
 
+def _touch_then_lose(folder: Path, *, deleted: str) -> float:
+    """The folder store's touch, then the folder, or only its original, gone: a sweep midway."""
+    expires = store.FOLDER_STORE.touch(folder)
+    if deleted == "the whole folder":
+        shutil.rmtree(folder)
+    else:
+        (folder / store.ORIGINAL).unlink()
+    return expires
+
+
 @pytest.mark.parametrize(
     ("path", "deleted"),
     [
@@ -415,20 +425,12 @@ def test_a_body_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes,
     ids=["read", "a page"],
 )
 def test_a_document_deleted_while_its_request_runs_is_not_found(
-    mine, doc, monkeypatch, path, deleted
+    app, mine, doc, monkeypatch, path, deleted
 ):
     """The browser uploads again on not_found; a server error would leave it stuck."""
-    touch = store.touch
-
-    def touch_then_lose(folder: Path) -> float:
-        expires = touch(folder)
-        if deleted == "the whole folder":
-            shutil.rmtree(folder)
-        else:
-            (folder / store.ORIGINAL).unlink()
-        return expires
-
-    monkeypatch.setattr(store, "touch", touch_then_lose)
+    # A module function: the store crosses to the workers with the request's job.
+    losing = StoreWith(touches=partial(_touch_then_lose, deleted=deleted))
+    monkeypatch.setattr(app.state, "documents", losing)
     assert_problem(mine.get(f"/api/documents/{doc['id']}{path}"), "not_found", 404)
 
 

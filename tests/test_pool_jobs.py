@@ -12,6 +12,7 @@ import pickle
 from collections.abc import Iterator
 from pathlib import Path
 
+from squidpdf.documents.store import FOLDER_STORE
 from tests.helpers import assert_equal, assert_true
 
 _SRC = Path(__file__).parents[1] / "src"
@@ -54,3 +55,10 @@ def test_every_pool_job_is_a_module_function_that_pickles():
         assert_true(name is not None, f"{where} sends no job by name")
         job = getattr(importlib.import_module(module_name), str(name))
         assert_equal(pickle.loads(pickle.dumps(job)), job, f"{where}'s job after a pickle")
+
+
+def test_the_apps_store_pickles():
+    """Every job takes the store with it, so a store that won't pickle fails every request."""
+    assert_equal(
+        pickle.loads(pickle.dumps(FOLDER_STORE)), FOLDER_STORE, "the store after a pickle"
+    )

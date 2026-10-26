@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 
-from squidpdf.core import Engine, HiddenPlace, Span, open_pdf
+from squidpdf.core import DriverFactory, Engine, HiddenPlace, Span, open_pdf
 from squidpdf.editing.errors import RedactionFailed
 
 
@@ -34,14 +34,17 @@ class RedactionController:
         left = {span.id for span in _words_left(engine, redacted, redacted=redacted)}
         return {span.id: span.id not in left for span in self.redacted}
 
-    def check_saved(self, path: str, *, pages: Sequence[int]) -> None:
+    def check_saved(
+        self, path: str, *, pages: Sequence[int], driver_factory: DriverFactory
+    ) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
-        `pages` is the saved file's page order, by original number. Raises
-        RedactionFailed naming the first span still there, by its original page.
+        Read in `driver_factory`'s driver, which drew the edits. `pages` is the saved file's
+        page order, by original number. Raises RedactionFailed naming the first span still
+        there, by its original page.
         """
         as_saved = list(_as_saved(self.redacted, pages))
-        with open_pdf(path) as saved:
+        with open_pdf(path, driver_factory=driver_factory) as saved:
             left = _words_left(saved, as_saved, redacted=self.redacted)
         if left:
             first = next(span for span in self.redacted if span.id == left[0].id)

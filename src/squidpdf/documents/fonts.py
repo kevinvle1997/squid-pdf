@@ -25,6 +25,7 @@ from squidpdf.documents.errors import (
     TooManyFonts,
 )
 from squidpdf.documents.replies import document_json
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis, Loaded
 from squidpdf.documents.upload import disk_held
 
@@ -41,6 +42,7 @@ class AttachController:
     """Attaching the user's copy of a font, from request to reply."""
 
     workers: Workers  # where it's checked and the document judged again
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def attach(
         self,
@@ -79,7 +81,7 @@ class AttachController:
         self, folder: Path, *, name: str, arrived: Path
     ) -> KeptAnalysis:
         """Check and keep the copy, and judge the document again, on a worker."""
-        task = partial(_attach_font, folder, name=name, arrived=arrived)
+        task = partial(_attach_font, self.documents, folder, name=name, arrived=arrived)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
@@ -88,6 +90,7 @@ class DetachController:
     """Removing the user's copy of a font, from request to reply."""
 
     workers: Workers  # where the document is judged again
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def detach(self, doc: Loaded, *, font_name: str, language: str) -> Reply[bytes]:
         """Remove the copy of `font_name`, if there is one, and judge every span again."""
@@ -96,11 +99,13 @@ class DetachController:
 
     async def _enqueue_detach_font(self, folder: Path, *, name: str) -> KeptAnalysis:
         """Remove the copy, and judge the document again, on a worker."""
-        task = partial(_detach_font, folder, name=name)
+        task = partial(_detach_font, self.documents, folder, name=name)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
-def _attach_font(folder: Path, *, name: str, arrived: Path) -> KeptAnalysis:
+def _attach_font(
+    documents: DocumentStore, folder: Path, *, name: str, arrived: Path
+) -> KeptAnalysis:
     """Check the copy that `arrived` is the font `name`, keep it, and judge again. In a worker.
 
     Raises NoSuchFont for a font the document doesn't use, and FontMismatch for a
@@ -116,19 +121,19 @@ def _attach_font(folder: Path, *, name: str, arrived: Path) -> KeptAnalysis:
         # Counted again under the lock: two attaches at once each passed the count before it.
         if not attached.attached_files(folder).can_keep(name):
             raise TooManyFonts(constants.MAX_FONTS)
-        with store.open_original(folder) as engine:
+        with documents.open_original(folder) as engine:
             why = engine.why_not_its_font(span, font_file)
         if why is not None:
             raise _REFUSALS.get(why.key, FontMismatch)(debug=why.key)
         attached.keep_font(folder, name, arrived)
-        return analyse(folder)
+        return analyse(documents, folder)
 
 
-def _detach_font(folder: Path, *, name: str) -> KeptAnalysis:
+def _detach_font(documents: DocumentStore, folder: Path, *, name: str) -> KeptAnalysis:
     """Remove the user's copy of the font `name`, and judge the document again. In a worker."""
     with attached.fonts_locked(folder):
         attached.drop_font(folder, name)
-        return analyse(folder)
+        return analyse(documents, folder)
 
 
 async def _document_reply(doc: Loaded, *, kept: KeptAnalysis, language: str) -> Reply[bytes]:

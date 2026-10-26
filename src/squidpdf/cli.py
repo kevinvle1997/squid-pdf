@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TextIO, get_args
 
 from squidpdf.core import (
+    DEFAULT_DRIVER_FACTORY,
     GREEN_RATE_TARGET,
     GREEN_RATE_WARN,
     Engine,
@@ -279,7 +280,12 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         # The same save a download gets.
         with _saved_apart(args.out) as to:
             saved = save_edited(
-                opened.engine, opened.index, rooms=opened.rooms, edits=[replace], to=to
+                opened.engine,
+                opened.index,
+                rooms=opened.rooms,
+                edits=[replace],
+                to=to,
+                driver_factory=DEFAULT_DRIVER_FACTORY,
             )
     print(f"\n  {span.text!r} -> {args.text!r}")
     for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
@@ -308,6 +314,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                     rooms=opened.rooms,
                     edits=[Redact(span.id)],
                     to=to,
+                    driver_factory=DEFAULT_DRIVER_FACTORY,
                 )
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             return _fail(failed.detail)

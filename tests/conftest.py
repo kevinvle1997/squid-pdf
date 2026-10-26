@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import io
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
@@ -12,8 +13,10 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import open_pdf, words
+from squidpdf.core import DriverFactory, Engine, open_pdf, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.documents.attached import AttachedFiles
+from squidpdf.documents.store import FOLDER_STORE
 
 # pytest only explains the asserts in test modules; this has it explain the helpers' too,
 # so a failing assert_equal shows a diff, not two whole values. Before any test imports them.
@@ -28,6 +31,48 @@ _POPPINS_SIZE = 14.0
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
+
+
+@dataclass(frozen=True, slots=True)
+class StoreWith:
+    """The folder store, with a test's own open, touch or sweep: a race it sets up."""
+
+    opens_original: Callable[[Path], Engine] = FOLDER_STORE.open_original
+    touches: Callable[[Path], float] = FOLDER_STORE.touch
+    sweeps: Callable[[], None] = FOLDER_STORE.sweep
+
+    @property
+    def driver_factory(self) -> DriverFactory:
+        """The folder store's."""
+        return FOLDER_STORE.driver_factory
+
+    def create(self, owner_digest: str) -> tuple[str, Path]:
+        """The folder store's."""
+        return FOLDER_STORE.create(owner_digest)
+
+    def find(self, doc_id: str) -> tuple[Path, str] | None:
+        """The folder store's."""
+        return FOLDER_STORE.find(doc_id)
+
+    def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
+        """The folder store's."""
+        return FOLDER_STORE.open_to_analyse(folder, attached)
+
+    def delete(self, folder: Path) -> None:
+        """The folder store's."""
+        FOLDER_STORE.delete(folder)
+
+    def open_original(self, folder: Path) -> Engine:
+        """The test's, or the folder store's."""
+        return self.opens_original(folder)
+
+    def touch(self, folder: Path) -> float:
+        """The test's, or the folder store's."""
+        return self.touches(folder)
+
+    def sweep(self) -> None:
+        """The test's, or the folder store's."""
+        self.sweeps()
 
 
 # A log line's fixed shape: time (UTC), level, outcome, module, event, then key=value fields.

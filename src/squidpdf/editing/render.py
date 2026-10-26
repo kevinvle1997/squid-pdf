@@ -29,6 +29,7 @@ from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
 from squidpdf.editing.apply import is_page, log_fits, plan, redacted_by, resolve, run
@@ -52,6 +53,7 @@ class RenderController:
     """Render, from request to reply."""
 
     workers: Workers  # where it draws, off the server's own thread
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def render(
         self,
@@ -96,6 +98,7 @@ class RenderController:
         """Draw the regions on a worker."""
         task = partial(
             _draw_regions,
+            self.documents,
             folder,
             edits=edits,
             regions=regions,
@@ -106,6 +109,7 @@ class RenderController:
 
 
 def _draw_regions(
+    documents: DocumentStore,
     folder: Path,
     *,
     edits: list[Edit],
@@ -118,8 +122,8 @@ def _draw_regions(
     `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(folder, index)
-    with store.open_original(folder) as engine:
+    rooms = kept_rooms(documents, folder, index)
+    with documents.open_original(folder) as engine:
         resolved = resolve(engine, index, rooms=rooms, edits=edits)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)

@@ -17,12 +17,12 @@ from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
 from squidpdf.core import LogController, LogEvent, NotFound
-from squidpdf.documents import store
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
 from squidpdf.documents.fonts import AttachController, DetachController
 from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import EXPIRES_HEADER, ReadController
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Document, Loaded
 from squidpdf.documents.upload import UploadController
 
@@ -34,14 +34,20 @@ _JSON = "application/json"
 _PDF = "application/pdf"  # the type the browser sends an upload as
 
 
+def documents_of(request: Request) -> DocumentStore:
+    """The store the app keeps its documents in."""
+    return request.app.state.documents
+
+
 def load(doc_id: str, request: Request) -> Loaded:
     """This browser's document, or not_found for any other: missing, expired or not theirs."""
-    found = store.find(doc_id)
+    documents = documents_of(request)
+    found = documents.find(doc_id)
     if found is None:
         raise NotFound()
     folder, digest = found
     owner.check(request, digest)
-    return Loaded(doc_id, folder, store.touch(folder))
+    return Loaded(doc_id, folder, documents.touch(folder))
 
 
 async def _admit_pdf_only(request: Request) -> None:
@@ -117,9 +123,12 @@ async def read(
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete(doc: Annotated[Loaded, Depends(load)]) -> None:
+def delete(
+    doc: Annotated[Loaded, Depends(load)],
+    documents: Annotated[DocumentStore, Depends(documents_of)],
+) -> None:
     """The document and everything worked out from it, now rather than in an hour."""
-    store.delete(doc.folder)
+    documents.delete(doc.folder)
 
 
 # Under way as an upload is: it streams to disk, however slowly it's sent.
@@ -184,7 +193,7 @@ async def page(
     return response_of(reply, media_type="image/png")
 
 
-async def sweep_forever() -> None:
+async def sweep_forever(documents: DocumentStore) -> None:
     """Every minute, delete documents idle past the hour. Runs for the app's life.
 
     A pass that fails is logged and the next one runs as usual: stopping would
@@ -193,6 +202,6 @@ async def sweep_forever() -> None:
     while True:
         await asyncio.sleep(SWEEP_EVERY_S)
         try:
-            await asyncio.to_thread(store.sweep)
+            await asyncio.to_thread(documents.sweep)
         except Exception as failure:  # noqa: BLE001 (one bad pass must not end expiry)
             _log.write(LogEvent.SWEEP_FAILED, failure, next_in_s=SWEEP_EVERY_S)

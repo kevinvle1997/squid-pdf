@@ -15,6 +15,7 @@ from squidpdf.documents import store
 from squidpdf.documents.analyse import analyse
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE
 from squidpdf.documents.replies import document_json, reply_digest, time_of
+from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis, Loaded
 
 # When the document now expires: a 304 carries no body, and reading restarted the hour.
@@ -27,6 +28,7 @@ class ReadController:
     """Read, from request to reply."""
 
     workers: Workers  # where it analyses, off the server's own thread
+    documents: DocumentStore  # where its document is kept, and what opens it
 
     async def read(
         self, doc: Loaded, *, language: str, if_none_match: str | None
@@ -58,7 +60,7 @@ class ReadController:
 
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
-        task = partial(analyse, folder)
+        task = partial(analyse, self.documents, folder)
         return await self.workers.run(ANALYSE_TIMEOUT_S, task)
 
 
