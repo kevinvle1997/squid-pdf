@@ -1141,6 +1141,139 @@ def test_an_info_kept_oddly_still_exports_and_names_squidpdf(mine, shape, title)
     assert_equal(said, ["squidpdf", title], "what the Info holds")
 
 
+_OWNER_PASSWORD = "owner"
+_AES_256 = 5  # pymupdf.PDF_ENCRYPT_AES_256, which its type stubs leave out
+# PyMuPDF's PDF_PERM_PRINT and PDF_PERM_ACCESSIBILITY: print it, and read it aloud.
+_MAY_PRINT_AND_READ_ALOUD = 4 | 512
+_AS_OWNER = 4  # what `authenticate` answers for the owner's password
+# The file's Encrypt dictionary, as its trailer keeps it: the method, then the permissions (P).
+_PROTECTION_KEYS = ("Filter", "V", "R", "Length", "P")
+
+
+def _owner_only(doc: pymupdf.Document) -> bytes:
+    """`doc` behind an owner password alone, asking a viewer not to change or copy it.
+
+    No user password, so anyone opens it, squidpdf included. Some permissions are off,
+    so a download that came out with every one on would show.
+    """
+    allowed = _MAY_PRINT_AND_READ_ALOUD
+    return doc.tobytes(encryption=_AES_256, owner_pw=_OWNER_PASSWORD, permissions=allowed)
+
+
+@pytest.fixture(scope="module")
+def owner_only(three_pages) -> bytes:
+    """The three pages, behind an owner password alone."""
+    return _owner_only(pymupdf.open(stream=three_pages, filetype="pdf"))
+
+
+def _protection_of(pdf_bytes: bytes) -> tuple[list[str], bool]:
+    """How a file is protected, and whether the owner password still opens it as owner."""
+    pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    encrypt_entries = [pdf.xref_get_key(-1, f"Encrypt/{key}")[1] for key in _PROTECTION_KEYS]
+    return encrypt_entries, pdf.authenticate(_OWNER_PASSWORD) == _AS_OWNER
+
+
+@pytest.mark.parametrize("pages", [None, [1, 2]], ids=["every page", "a split's part"])
+def test_a_file_with_only_an_owner_password_downloads_protected_as_it_came(
+    mine, owner_only, pages
+):
+    """The download keeps the file's method, its permissions and its owner password.
+
+    Though it asks not to be changed, it is edited: the request goes on to the next reader.
+    """
+    doc = upload(mine, owner_only).json()
+    second = span_starting(doc, 1, "Second")
+    edits = [{"kind": "replace", "span_id": second["id"], "text": "Page two"}]
+
+    response = _export(mine, doc, edits, pages)
+
+    lines = [line for page in _lines(_opened(response)) for line in page]
+    assert_in("Page two", lines, "the download's lines")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(owner_only), "how the download is protected")
+
+
+def test_a_redaction_in_a_file_with_only_an_owner_password_is_checked_and_kept_protected(
+    mine, owner_only
+):
+    """The check reads the download as any viewer opens it, without the password."""
+    doc = upload(mine, owner_only).json()
+
+    response = _export(mine, doc, [_redact(span_starting(doc, 0, "First"))])
+
+    assert_not_in("First page", _lines(_opened(response))[0], "the first page's lines")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(owner_only), "how the download is protected")
+
+
+_AES_128 = 4  # pymupdf.PDF_ENCRYPT_AES_128: its key, as RC4's, is made from the file's ID
+_FILE_ID = re.compile(rb"/ID\s*\[[^\]]*\]")  # the trailer's ID, both its parts
+
+
+@pytest.fixture(scope="module")
+def owner_only_without_an_id(three_pages) -> bytes:
+    """The three pages, behind an owner password alone, with no ID in the trailer.
+
+    As some programs write one: its key made from an empty first ID, the ID then left out,
+    so a reader takes the missing ID as that empty one. Saved without object streams, the
+    trailer is plain text, and taking the ID out of it moves no object.
+    """
+    doc = pymupdf.open(stream=three_pages, filetype="pdf")
+    doc.xref_set_key(-1, "ID", "[<> <>]")  # -1: the trailer; MuPDF keeps the empty first part
+    protected = doc.tobytes(
+        encryption=_AES_128,
+        owner_pw=_OWNER_PASSWORD,
+        permissions=_MAY_PRINT_AND_READ_ALOUD,
+        use_objstms=False,
+    )
+    return _FILE_ID.sub(b"", protected, count=1)
+
+
+def test_a_file_with_only_an_owner_password_and_no_id_downloads_protected_as_it_came(
+    mine, owner_only_without_an_id
+):
+    """Its key comes from the missing ID: a fresh ID written whole would lock it for good."""
+    doc = upload(mine, owner_only_without_an_id).json()
+    first = span_starting(doc, 0, "First")
+    edits = [{"kind": "replace", "span_id": first["id"], "text": "Page one"}]
+
+    response = _export(mine, doc, edits)
+
+    assert_in("Page one", _lines(_opened(response))[0], "the first page's lines")
+    said = _protection_of(response.content)
+    assert_equal(
+        said, _protection_of(owner_only_without_an_id), "how the download is protected"
+    )
+
+
+@pytest.fixture(scope="module")
+def owner_only_with_a_script(three_pages) -> bytes:
+    """The three pages, running a script as they open, behind an owner password alone.
+
+    The upload drops the script, so its stored original is the file written again.
+    """
+    doc = pymupdf.open(stream=three_pages, filetype="pdf")
+    script = doc.get_new_xref()
+    doc.update_object(script, "<</S/JavaScript/JS(app.alert('opened'))>>")
+    doc.xref_set_key(doc.pdf_catalog(), "OpenAction", f"{script} 0 R")
+    return _owner_only(doc)
+
+
+def test_a_file_with_only_an_owner_password_keeps_its_protection_when_its_upload_drops_a_script(
+    mine, owner_only_with_a_script
+):
+    """The upload's rewrite keeps the protection, so a download with no edit has it too."""
+    doc = upload(mine, owner_only_with_a_script).json()
+
+    response = _export(mine, doc, [])
+
+    notices = [notice["type"] for notice in doc["notices"]]
+    assert_in("active_content_dropped", notices, "what the upload said")
+    said = _protection_of(response.content)
+    expected = _protection_of(owner_only_with_a_script)
+    assert_equal(said, expected, "how the download is protected")
+
+
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
     """The body is the file, so what was left out travels beside it, by place in the list."""
     span = span_starting(doc, 1, "Invoices")
