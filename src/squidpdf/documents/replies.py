@@ -88,6 +88,7 @@ def _font_info(font: FontFacts, language: str) -> FontInfo:
     """A font as the browser gets it: why its own copy can't be used, in `language`."""
     why = None if font["why"] is None else Message.from_info(font["why"])
     return {
+        "object": font["object"],
         "name": font["name"],
         "shown_name": font["shown_name"],
         "substitute": font["substitute"],

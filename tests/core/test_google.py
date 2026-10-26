@@ -92,7 +92,14 @@ def _why_substitute(path: str, fetch: Fetch) -> str | None:
     """Why new text reading _WANTED in the first span's font is a substitute, by its key."""
     with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
-        new = new_text(0, origin=(72, 200), text=_WANTED, size=span.size, font=span.font)
+        new = new_text(
+            0,
+            origin=(72, 200),
+            text=_WANTED,
+            size=span.size,
+            font=span.font,
+            font_object=span.font_object,
+        )
         [report] = engine.assess(index_of([new]))
     return None if report.why is None else report.why.key
 
@@ -196,7 +203,14 @@ def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(poppins_
     unreadable, asked = _google(b"not a font")
     with open_pdf(poppins_subset, sources=FontSources(google=unreadable)) as engine:
         span = next(iter(engine.index()))
-        new = new_text(0, origin=(72, 200), text=_WANTED, size=span.size, font=span.font)
+        new = new_text(
+            0,
+            origin=(72, 200),
+            text=_WANTED,
+            size=span.size,
+            font=span.font,
+            font_object=span.font_object,
+        )
         engine.assess(index_of([new]))
         engine.assess(index_of([new]))
         google_copies = engine.fonts.google

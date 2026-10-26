@@ -200,6 +200,10 @@ class Engine:
         """Each letter the span's font really draws, and its width per 1000 em."""
         return self.plans.widths(span)
 
+    def font_named(self, page: int, name: str) -> int | None:
+        """The object of the page's font listed as `name`, for new text in it; None if none."""
+        return self.fonts.font_named(page, name)
+
     def shown_name(self, span: Span) -> str:
         """The name the reader knows the span's font by: a Type3 by its copies' name."""
         return self.fonts.shown_name(span)

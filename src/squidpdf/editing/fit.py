@@ -171,7 +171,7 @@ def _strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
     return asked if offered else "as-is"
 
 
-def insert_span(insert: Insert) -> Span:
+def insert_span(engine: Engine, insert: Insert) -> Span:
     """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
     return new_text(
         insert.page,
@@ -179,13 +179,14 @@ def insert_span(insert: Insert) -> Span:
         text=insert.text,
         size=insert.size,
         font=insert.font,
+        font_object=engine.font_named(insert.page, insert.font),
         color=insert.color,
     )
 
 
 def insert_fit(engine: Engine, insert: Insert) -> Fitted:
     """What new text will look like: its font and letters, as there's no width to fit."""
-    span = insert_span(insert)
+    span = insert_span(engine, insert)
     shipped = insert.font in FACES
     # A font that only lacks a letter is still usable: a substitute draws the line.
     unusable = not shipped and not engine.fit.has_own_font(span)

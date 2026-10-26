@@ -74,23 +74,17 @@ class _PageFacts:
 
     # The page's fonts, in the library's order, read before an edit can drop one.
     fonts: list[PageFont]
-    # The same fonts by the name the page lists them under, subset prefix aside.
-    listed: dict[str, PageFont]
-    # Its stored fonts by the name their text reads, where that's another: None until needed.
-    read_as: dict[str, PageFont] | None = None
-    # The page's usual gap for a space, by the font's name and the font it's measured in.
-    usual_gaps: dict[tuple[str, FontProgram], float] = field(default_factory=dict)
+    # The same fonts by their PDF object, which is how text names the font that draws it.
+    by_object: dict[int, PageFont]
+    # The page's usual gap for a space, by the font's object and the font it's measured in.
+    usual_gaps: dict[tuple[int | None, FontProgram], float] = field(default_factory=dict)
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
     pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
 
-    def fonts_read_as(self, make: Callable[[], dict[str, PageFont]]) -> dict[str, PageFont]:
-        """Its stored fonts by the name their text reads, found on first use."""
-        if self.read_as is None:
-            self.read_as = make()
-        return self.read_as
-
-    def usual_gap(self, key: tuple[str, FontProgram], make: Callable[[], float]) -> float:
-        """The usual gap for a space, by font name and the font measured in, on first use."""
+    def usual_gap(
+        self, key: tuple[int | None, FontProgram], make: Callable[[], float]
+    ) -> float:
+        """The usual gap for a space, by font object and the font measured in, on first use."""
         return made_once(self.usual_gaps, key, make)
 
     def pool(self, font: PageFont, make: Callable[[], PooledFont]) -> PooledFont | FontUnusable:
@@ -258,48 +252,34 @@ class DocumentFonts:
             self.usual_gap(span, own)
 
     def _page_font(self, span: Span) -> PageFont | None:
-        """The page's font by the span's font name, subset prefix aside; None when it has none.
-
-        By the name the page lists it under, else by the name inside it, which its text reads
-        (as ours, once an export redraws with them). The first by a name, in the library's
-        order; any other is pooled with it.
-        """
-        name = strip_subset(span.font)
-        # .get: new text can name a font the page doesn't have.
-        listed = self._listed(span.page).get(name)
-        return listed if listed is not None else self._read_as(span.page).get(name)
+        """The page's font that draws the span, by its object; None when the page has none."""
+        # A font the page doesn't list, or new text in a face we ship.
+        if span.font_object is None:
+            return None
+        # .get: new text can name a font of another page's.
+        return self._facts(span.page).by_object.get(span.font_object)
 
     def _facts(self, page: int) -> _PageFacts:
         """What the page says, its fonts read the first time it's asked about."""
         return self.cache.page(page, partial(self._read_facts, page))
 
     def _read_facts(self, page: int) -> _PageFacts:
-        """Read the page's fonts, and list each under its name."""
+        """Read the page's fonts, and list each by its object."""
         fonts = self.driver.fonts(page)
-        listed: dict[str, PageFont] = {}
-        # The library's order: the first by a name wins.
+        by_object: dict[int, PageFont] = {}
+        # The library's order: a font listed twice, under two resource names, is its first.
         for font in fonts:
-            listed.setdefault(strip_subset(font.name), font)
-        return _PageFacts(fonts, listed)
+            by_object.setdefault(font.xref, font)
+        return _PageFacts(fonts, by_object)
 
-    def _listed(self, page: int) -> dict[str, PageFont]:
-        """The page's fonts by the name it lists each under."""
-        return self._facts(page).listed
+    def font_named(self, page: int, name: str) -> int | None:
+        """The object of the page's font listed as `name`, subset prefix aside; None if none.
 
-    def _read_as(self, page: int) -> dict[str, PageFont]:
-        """The page's stored fonts by the name their text reads, found when first needed."""
-        facts = self._facts(page)
-        return facts.fonts_read_as(partial(self._by_text_name, facts.fonts))
-
-    def _by_text_name(self, fonts: list[PageFont]) -> dict[str, PageFont]:
-        """The stored ones of `fonts` by the name their text reads."""
-        by_name: dict[str, PageFont] = {}
-        # The library's order again: the first by a name wins.
-        for font in fonts:
-            read_as = self.driver.text_font_name(font.xref) if font.is_embedded else None
-            if read_as is not None:
-                by_name.setdefault(strip_subset(read_as), font)
-        return by_name
+        For new text, which names its font. The first by the name, in the library's order.
+        """
+        wanted = strip_subset(name)
+        listed = (font for font in self._facts(page).fonts if strip_subset(font.name) == wanted)
+        return next((font.xref for font in listed), None)
 
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
         """Open the page's copy of the font, then pool the copies that lend it letters with it.
@@ -445,7 +425,7 @@ class DocumentFonts:
     def shown_name(self, span: Span) -> str:
         """The name the reader knows the span's font by, subset prefix aside.
 
-        A Type3 font's text names it by its object, so it goes by its copies' name.
+        A Type3 font's own name is often its object's, so it goes by its copies' name.
         """
         page_font = self._page_font(span)
         if page_font is not None and page_font.kind == "type3":
@@ -456,7 +436,7 @@ class DocumentFonts:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self._page_font(span)
         xref = None if page_font is None else page_font.xref
-        key = (strip_subset(span.font), xref)
+        key = (span.font, xref)
         return self.cache.look_alike(key, partial(self._look_alike_of, span, xref))
 
     def _look_alike_of(self, span: Span, xref: int | None) -> LookAlike:
@@ -520,19 +500,17 @@ class DocumentFonts:
     def usual_gap(self, span: Span, font: FontProgram) -> float:
         """The page's usual gap for a space in the span's font, measured in `font`.
 
-        Kept by the font's name and the font measured in, what it's worked out
+        Kept by the font's object and the font measured in, what it's worked out
         from; the page's text is read once, before any edit.
         """
-        font_name = strip_subset(span.font)
-        measure = partial(self._usual_gap_on, span.page, font_name=font_name, font=font)
-        return self._facts(span.page).usual_gap((font_name, font), measure)
+        font_object = span.font_object
+        measure = partial(self._usual_gap_on, span.page, font_object=font_object, font=font)
+        return self._facts(span.page).usual_gap((font_object, font), measure)
 
-    def _usual_gap_on(self, page: int, *, font_name: str, font: FontProgram) -> float:
-        """The page's usual gap for a space in `font_name`, subset prefix aside, in `font`."""
+    def _usual_gap_on(self, page: int, *, font_object: int | None, font: FontProgram) -> float:
+        """The page's usual gap for a space in the font `font_object`, measured in `font`."""
         lines = self._page_lines(page)
-        in_font = [
-            piece for piece in _each_piece(lines) if strip_subset(piece.font) == font_name
-        ]
+        in_font = [piece for piece in _each_piece(lines) if piece.font_object == font_object]
         return usual_gap(in_font, font=font)
 
     def _page_lines(self, page: int) -> list[list[TextPiece]]:

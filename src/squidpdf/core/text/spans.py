@@ -62,7 +62,9 @@ def _merge(pieces: list[TextPiece]) -> list[list[TextPiece]]:
 
 def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     """Whether `piece` carries on the span that `previous` ends."""
-    if previous.font != piece.font:
+    # The same font object, or for a font the page doesn't list, the same name.
+    same_font = (previous.font_object, previous.font) == (piece.font_object, piece.font)
+    if not same_font:
         return False
     if abs(previous.size - piece.size) > SIZE_EPS:
         return False
@@ -95,6 +97,7 @@ def _span_from(page: int, group: list[TextPiece], ordinal: int) -> Span:
         page=page,
         text=text,
         font=first.font,
+        font_object=first.font_object,
         size=round(first.size, _POSITION_DP),
         color=first.color,
         opacity=first.opacity,

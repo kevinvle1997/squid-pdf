@@ -351,7 +351,7 @@ def plan(
         *(
             _Place(
                 listed.position,
-                insert_span(listed.insert),
+                insert_span(engine, listed.insert),
                 fits.inserts[listed.position],
                 turn_ccw=turns_cw[listed.insert.page],
             )
