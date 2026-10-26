@@ -1,7 +1,17 @@
-# The app behind Caddy, as deployed: `docker compose up -d`, with a .env beside
-# this file, filled in from env.example and never committed. A build names the
-# commit it's from, whose code the landing links:
-#   SQUIDPDF_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
+# The app behind Caddy, as deployed, with a .env beside this file, filled in from
+# env.example and never committed.
+#
+# A deploy moves the checkout and the images to one commit on main together, since the
+# Caddyfile and this file come from the checkout: `git switch --detach <commit>`, then
+# SQUIDPDF_TAG set to it in .env, as env.example says, then the images CI built:
+#   docker compose pull && docker compose up -d --no-build
+# --no-build: a missing image fails, rather than building on the server beside the app.
+# To roll back, do the same with an earlier commit the package pages list: not every one has images.
+# Once, after the first publish, make both packages public on ghcr.io; until then a pull is
+# denied, unless the server signs in (`docker login ghcr.io`) with a read:packages token.
+# Or build from source, tagged apart from the registry's, naming the commit the landing links:
+#   SQUIDPDF_TAG=local SQUIDPDF_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
+# The published images are linux/amd64; another architecture builds from source.
 #
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
@@ -18,7 +28,7 @@ x-logging: &logging
 services:
   app:
     build: .
-    image: squidpdf
+    image: ghcr.io/kevinvle1997/squidpdf:${SQUIDPDF_TAG:-latest}
     restart: unless-stopped
     logging: *logging
     # Reaps the pool's exited helper processes and passes stop signals on.
@@ -54,7 +64,7 @@ services:
       # Unset, the landing links the repository's main branch, and the build says so.
       args:
         SQUIDPDF_COMMIT: ${SQUIDPDF_COMMIT:-}
-    image: squidpdf-proxy
+    image: ghcr.io/kevinvle1997/squidpdf-proxy:${SQUIDPDF_TAG:-latest}
     restart: unless-stopped
     logging: *logging
     depends_on:
