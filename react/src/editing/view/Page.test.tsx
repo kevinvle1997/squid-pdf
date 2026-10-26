@@ -90,8 +90,8 @@ async function draw(index = 0, info = A4) {
 }
 
 /**
- * Wait until the page has stopped drawing. Its observers report a frame or more after layout, later
- * on a busy machine, and the page draws again for each: a count taken before then counts them too.
+ * Wait until the page has stopped drawing. Its observers report a frame or more after layout, and a page
+ * coming near draws its marks in a transition: a count taken before then counts those draws too.
  */
 async function settled() {
   let count: number;
@@ -100,6 +100,13 @@ async function settled() {
     await new Promise(requestAnimationFrame);
     await new Promise(requestAnimationFrame);
   } while (drawn.margins !== count);
+}
+
+/** Wait until page `index`'s own image has its size, so a count starts with nothing pending. */
+async function imageLoadedOn(screen: Awaited<ReturnType<typeof draw>>, index = 0) {
+  const region = screen.getByRole("region", { name: `Page ${index + 1}` });
+  // Its size is known, not only done: a broken image is `complete` too.
+  await expect.poll(() => region.element().querySelector("img")?.naturalWidth).toBeGreaterThan(0);
 }
 
 /** WCAG contrast against the white page of a line drawn in its gradient's colour at its opacity. */
@@ -503,6 +510,7 @@ describe("a page", () => {
     await editSpan(screen);
     const field = screen.getByRole("textbox", { name: `Change “${WORDS}”` });
     await expect.element(field).toHaveFocus();
+    await imageLoadedOn(screen);
     await settled();
     const before = drawn.margins;
     await userEvent.keyboard("{ArrowRight}abc");
@@ -518,6 +526,7 @@ describe("a page", () => {
     edit(editor, span.id, null);
     typeInto(editor, "is here");
     finish(editor, true);
+    await imageLoadedOn(screen, 1);
     await settled();
     const before = drawn.margins;
     land(aReply({ fits: { [span.id]: aFit() } }));
