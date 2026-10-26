@@ -6,12 +6,11 @@ import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
-import { drawnWidthOf, matchesAcross } from "../find";
-import { settingOf } from "../fit";
+import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { type PageState, spanIn } from "../page";
-import { differing, type SpanReading } from "../project";
+import type { SpanReading } from "../project";
 import { shownAmong } from "../unlike";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf } from "./geometry";
@@ -27,7 +26,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
   return (
     <>
-      {page.matches !== undefined && <Found page={page} info={info} readings={readings} matches={page.matches} />}
+      {page.matches !== undefined && <Found page={page} info={info} matches={page.matches} />}
       <Shown page={page} info={info} readings={readings} />
       {page.spans.map((span) =>
         span.id === page.typingIn ? (
@@ -87,37 +86,21 @@ function Shown({
 function Found({
   page,
   info,
-  readings,
   matches,
 }: {
   page: PageState;
   info: PageInfo;
-  readings: ReadonlyMap<string, SpanReading>;
   matches: ReadonlyMap<string, readonly Match[]>;
 }) {
-  // Drawn by the browser until the server's render has these words: its fit is for words it drew before.
-  const previewed = new Set(differing(page.edits, page.drawnFrom).map(({ span }) => span.id));
-  return page.spans.flatMap((span) => {
-    const inSpan = matches.get(span.id);
-    if (inSpan === undefined || span.id === page.typingIn) return [];
-    const reading = readings.get(span.id);
-    const text = reading?.text ?? span.text;
-    const font = page.fonts.get(span.font);
-    const glyphs = font?.glyphs;
-    const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
-    const fit = reading?.replaced && !previewed.has(span.id) ? page.fits[span.id] : undefined;
-    const widePt = drawnWidthOf(span, { text, glyphs, scale, fit });
-    const gone = span.id === page.foundAt;
-    return matchesAcross(span, { text, matches: inSpan, glyphs, widePt }).map(({ x0, x1 }) => (
-      <span
-        key={`${span.id}:${x0}`}
-        className={classes(styles.found, gone && styles.foundAt)}
-        aria-hidden="true"
-        data-found=""
-        style={boxOf({ ...span.bbox, x0, x1 }, info)}
-      />
-    ));
-  });
+  return tintsOn(page, matches).map(({ span, x0, x1 }) => (
+    <span
+      key={`${span.id}:${x0}`}
+      className={classes(styles.found, span.id === page.foundAt && styles.foundAt)}
+      aria-hidden="true"
+      data-found=""
+      style={boxOf({ ...span.bbox, x0, x1 }, info)}
+    />
+  ));
 }
 
 /** The note of the span the page's marks say, over its mark; kept while it closes, for its animation. */

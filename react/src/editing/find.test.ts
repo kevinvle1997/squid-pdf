@@ -17,6 +17,7 @@ import {
   setMatchCase,
   setWholeWords,
   stepFind,
+  tintsOn,
   typeQuery,
   typeReplacement,
 } from "./find";
@@ -247,6 +248,30 @@ describe("find", () => {
     test("once the server drew it with a way out, ending where the original did, whatever the browser would have", () => {
       const fit = aFit({ strategy: "condense", delta_pt: 50 });
       expect(across("abcdefghijklmnopqrst", "klmn", { fit })).toEqual([{ x0: 125, x1: 135 }]);
+    });
+
+    test("a page takes the server's fit only while its strips show these words: the browser's preview, until then", () => {
+      const reading = {
+        span: line,
+        text: "abcdefghijklmnopqrst",
+        replaced: true,
+        strategy: undefined,
+        redacted: false,
+      };
+      const edits = { spans: [reading], inserts: [] };
+      const page = {
+        spans: [line],
+        edits,
+        fits: { [line.id]: aFit({ delta_pt: 70 }) },
+        fonts: new Map([[line.font, aFont(line.font, { glyphs })]]),
+        rules: aDoc().fit,
+        typingIn: null,
+      };
+      const matches = new Map([[line.id, matchesIn(reading.text, "klmn", { matchCase: false, wholeWords: false })]]);
+      const tints = (drawnFrom: typeof edits | undefined) =>
+        tintsOn({ ...page, drawnFrom }, matches).map(({ x0, x1 }) => ({ x0, x1 }));
+      expect(tints(edits)).toEqual([{ x0: 160, x1: 184 }]);
+      expect(tints(undefined)).toEqual([{ x0: 150, x1: 170 }]);
     });
 
     test("without the font's widths, by letter count across its box", () => {
