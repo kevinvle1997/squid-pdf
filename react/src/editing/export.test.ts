@@ -19,7 +19,13 @@ vi.mock(import("../api/client"), async (original) => ({
 const DOC = aDoc({
   spans: [
     aSpan({ id: "own", font: "Kept" }),
-    aSpan({ id: "substituted", font: "Named", fidelity: "substitute", substitute: "Liberation Serif Regular" }),
+    aSpan({
+      id: "substituted",
+      font: "Named",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+      in_file: false,
+    }),
   ],
   fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
 });

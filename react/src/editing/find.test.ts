@@ -34,7 +34,14 @@ const AS_SET: LineScale = { size: 1, scaleX: 1 };
 const DATE = "14 March";
 const SPANS = [
   aSpan({ id: "first", text: `was ${DATE}`, room_pt: 50 }),
-  aSpan({ id: "similar", text: `${DATE} too`, font: "Named", fidelity: "substitute", substitute: "Liberation Serif" }),
+  aSpan({
+    id: "similar",
+    text: `${DATE} too`,
+    font: "Named",
+    fidelity: "substitute",
+    substitute: "Liberation Serif",
+    in_file: false,
+  }),
   aSpan({ id: "field", text: `${DATE} filled`, form_field: true }),
   aSpan({ id: "redacted", text: `${DATE} secret`, page: 1 }),
   aSpan({ id: "other", text: "nothing to find", page: 1 }),

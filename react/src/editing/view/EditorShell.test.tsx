@@ -51,7 +51,14 @@ const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman")] });
 // Arial only named: a similar font stands in, and its letters are the ones the page lists.
 const LETTERS = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 const NAMED = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs: LETTERS });
-const ARIAL_SPAN = aSpan({ ...span, font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" });
+// Arial is only named in the file: a similar font draws any edit of it.
+const ARIAL_SPAN = aSpan({
+  ...span,
+  font: "Arial",
+  fidelity: "substitute",
+  substitute: "Liberation Sans Regular",
+  in_file: false,
+});
 const ARIAL_DOC = aDoc({ spans: [ARIAL_SPAN], fonts: [NAMED] });
 const USERS_COPY = aDoc({
   spans: [{ ...ARIAL_SPAN, fidelity: "exact", substitute: null }],
@@ -696,7 +703,8 @@ describe("deleting a page", () => {
       aSpan({ id: "three", text: "here on three", size: 20, page: 2, bbox: at(100) }),
       aSpan({ id: "also", text: "also on three", size: 20, page: 2, bbox: at(140) }),
     ],
-    fonts: [aFont("Times-Roman")],
+    // Stored in the file, with every letter these tests type.
+    fonts: [aFont("Times-Roman", { glyphs: LETTERS })],
     pages: [A4, A4, A4, A4],
   });
   const deleteButton = (screen: Awaited<ReturnType<typeof render>>, shownNumber: number) =>

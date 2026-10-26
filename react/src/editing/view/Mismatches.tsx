@@ -86,18 +86,18 @@ function AtRestGroups({ shown }: { shown: () => void }) {
 
 /** The changed places, grouped while the list is open. */
 function ChangedGroups({ shown }: { shown: () => void }) {
-  const { reading, drawn, fonts, sentences } = useEditorState(
+  const { reading, drawn, layout, sentences } = useEditorState(
     (state) => ({
       reading: state.reading,
       drawn: state.drawn,
-      fonts: state.layout.fonts,
+      layout: state.layout,
       sentences: state.doc.sentences,
     }),
     shallowEqual,
   );
   const mismatches = useMemo(
-    () => mismatchesOf(changedMismatches({ reading, drawn }), { fonts, sentences }),
-    [reading, drawn, fonts, sentences],
+    () => mismatchesOf(changedMismatches({ reading, drawn, layout }), { fonts: layout.fonts, sentences }),
+    [reading, drawn, layout, sentences],
   );
   return <Groups mismatches={mismatches} shown={shown} />;
 }

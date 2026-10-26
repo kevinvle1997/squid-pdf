@@ -23,8 +23,8 @@ import { heardIn, NO_NOTICES, type Notices, newlyHeard, noticeLines, noticesAfte
 import { leftOutSentence, putBackSentence } from "./pageDeletion";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, type SpanReading, textIn, UNEDITED } from "./project";
-import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
-import { type FontsByObject, fontsByObject, shownNameIn } from "./spanFonts";
+import { type Drawn, landedFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
+import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { type Persistence, persistUntil, persistWork } from "./workPersistence";
@@ -141,7 +141,7 @@ export function layoutOf(doc: Document): Layout {
     else onPage.push(span);
   }
   const fonts = fontsByObject(doc.fonts);
-  const atRest = { changed: false, reading: undefined, missing: [] };
+  const atRest = { changed: false, reading: undefined, fit: undefined, font: undefined };
   const mismatches = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
@@ -376,7 +376,7 @@ export function changedCount(state: EditorState): number {
 /** How many changed spans won't match, and the bar's words: once one is in its own font, all "will look different". */
 export function warnedCount(state: EditorState): { count: number; label: string } {
   const places = changedMismatches(state);
-  const approximate = places.some(({ span }) => span.why !== null);
+  const approximate = places.some(({ verdict }) => verdict.fidelity === "approximate");
   return { count: places.length, label: approximate ? "will look different" : "in a similar font" };
 }
 
@@ -388,11 +388,15 @@ export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "
   }).length;
 }
 
-/** The changed spans that won't match: in a similar font, set apart from the text around them, or missing letters the server found. */
-export function changedMismatches({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): MismatchPlace[] {
+/** The changed spans whose edit won't match: in a similar font, or set apart from the text around them. */
+export function changedMismatches({
+  reading,
+  drawn,
+  layout,
+}: Pick<EditorState, "reading" | "drawn" | "layout">): MismatchPlace[] {
   return keptChanges(reading).flatMap((spanReading) => {
     const { span } = spanReading;
-    const missing = drawn.fits.get(span.page)?.[span.id]?.missing ?? [];
-    return placeOf(span, { changed: true, reading: spanReading, missing }) ?? [];
+    const fit = landedFitOf(drawn, spanReading);
+    return placeOf(span, { changed: true, reading: spanReading, fit, font: fontOf(layout.fonts, span) }) ?? [];
   });
 }

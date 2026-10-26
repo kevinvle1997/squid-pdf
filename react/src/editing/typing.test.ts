@@ -12,7 +12,13 @@ vi.mock(import("../api/client"), async (original) => ({ ...(await original()), r
 const DOC = aDoc({
   spans: [
     aSpan({ id: "own", font: "Kept" }),
-    aSpan({ id: "substituted", font: "Named", fidelity: "substitute", substitute: "Liberation Serif Regular" }),
+    aSpan({
+      id: "substituted",
+      font: "Named",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+      in_file: false,
+    }),
   ],
   fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
 });
@@ -42,6 +48,7 @@ describe("an edit", () => {
       font: "Named",
       fidelity: "substitute",
       substitute: "Liberation Serif Regular",
+      in_file: false,
     });
     const fonts = [aFont("Named", { substitute: "Liberation Serif Regular", glyphs })];
     editor = createEditor(FILE, aDoc({ spans: [similar], fonts }), 2);

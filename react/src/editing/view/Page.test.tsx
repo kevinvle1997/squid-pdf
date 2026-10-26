@@ -297,6 +297,7 @@ describe("a page", () => {
       font: "Arial",
       fidelity: "substitute",
       substitute: "Liberation Sans Regular",
+      in_file: false,
     });
     openDocument(aDoc({ spans: [arial], fonts: [aFont("Arial", { substitute: "Liberation Sans Regular", glyphs })] }));
     screen.rerender(
@@ -744,6 +745,7 @@ describe("a page", () => {
       bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
       fidelity: "substitute",
       substitute: "Liberation Sans Regular",
+      in_file: false,
     });
     const substitutedFont = aFont("Arial", { substitute: "Liberation Sans Regular", why: "Not embedded.", glyphs });
     openDocument(aDoc({ spans: [substituted], fonts: [substitutedFont] }));

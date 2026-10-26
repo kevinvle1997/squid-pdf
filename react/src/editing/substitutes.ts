@@ -84,9 +84,8 @@ export function drawingOf(
   const lookAlike = substituteOf(span, font);
   if (missing.length === 0) return { face: lookAlike, switched: [], leftOut: [] };
   const substitute = substituteFor(lookAlike, text);
-  // Drawn in its own font, and nothing we have draws what that lacks: switching would gain nothing.
-  const ownDraws = span.substitute === null;
-  if (ownDraws && missing.every((letter) => substitute.leftOut.includes(letter))) {
+  // Its file's own copy draws the rest, and nothing we have draws what that lacks: switching would gain nothing.
+  if (span.in_file && missing.every((letter) => substitute.leftOut.includes(letter))) {
     return { face: lookAlike, switched: [], leftOut: missing };
   }
   const switched = missing.filter((letter) => !substitute.leftOut.includes(letter));

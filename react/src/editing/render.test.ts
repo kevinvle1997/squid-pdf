@@ -4,7 +4,7 @@ import type { Edit, ImageInfo, Render, RenderBody } from "../api/types";
 import { aDoc, aFit, aProblem, aRedact, aRedaction, aReplace, aReply, aSkipped, aSpan, aSpanNotice } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { project, UNEDITED } from "./project";
-import { type Drawn, RenderQueue } from "./render";
+import { type Drawn, landedFitOf, landedFits, NOTHING_DRAWN, RenderQueue } from "./render";
 
 const ONE = aSpan({ id: "one", page: 0 });
 const TWO = aSpan({ id: "two", page: 1 });
@@ -237,5 +237,26 @@ describe("the render queue", () => {
     queue.retry();
     await settle();
     expect(fake.asked).toHaveLength(2);
+  });
+});
+
+describe("a fit for the words a span reads now", () => {
+  const drawnFrom = readingOf(aReplace(ONE.id, "is one"));
+  const fit = aFit({ fidelity: "substitute", substitute: "Liberation Serif Regular" });
+  const drawnHere: Drawn = { ...NOTHING_DRAWN, from: new Map([[0, drawnFrom]]), fits: new Map([[0, { one: fit }]]) };
+
+  test("counts once a render of those very words has landed", () => {
+    const now = drawnFrom.spans.get(ONE.id);
+    expect(now === undefined ? undefined : landedFitOf(drawnHere, now)).toBe(fit);
+    const fits = { one: fit };
+    expect(landedFits(fits, { now: drawnFrom.pages.get(0), drawnFrom: drawnFrom.pages.get(0) })).toBe(fits);
+  });
+
+  test("says nothing of other words typed since, until their render lands", () => {
+    const typedSince = readingOf(aReplace(ONE.id, "was one, now"));
+    const now = typedSince.spans.get(ONE.id);
+    expect(now === undefined ? fit : landedFitOf(drawnHere, now)).toBeUndefined();
+    const fits = { one: fit };
+    expect(landedFits(fits, { now: typedSince.pages.get(0), drawnFrom: drawnFrom.pages.get(0) })).toEqual({});
   });
 });

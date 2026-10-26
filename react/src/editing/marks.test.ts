@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { aFit, aFont, aRedaction, aSpan, SENTENCES as sentences } from "../fixtures";
-import { editNote, lookOf, shortWarningOf } from "./marks";
+import { aFit, aFont, aRedaction, aSpan, halfWideGlyphs, SENTENCES as sentences } from "../fixtures";
+import { editNote, lookOf } from "./marks";
+import { shortWarningOf } from "./verdicts";
 
 const span = aSpan({ id: "s1" });
 const changed = { span, text: "is s1", replaced: true, strategy: undefined, redacted: false };
@@ -10,7 +11,13 @@ const substitutedFont = aFont("Arial", {
   same_widths: false,
   why: "Not embedded.",
 });
-const substituted = aSpan({ id: "s2", font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" });
+const substituted = aSpan({
+  id: "s2",
+  font: "Arial",
+  fidelity: "substitute",
+  substitute: "Liberation Sans Regular",
+  in_file: false,
+});
 
 type Marked = Parameters<typeof lookOf>[0];
 /** What a mark shows, with all it isn't given unknown: a span's font, its reading, the server's verdicts. */
@@ -116,5 +123,43 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
     const look = lookAt({ span, font: ownFont, reading: redacted, redaction: left });
     expect(look).toMatchObject({ redacted: true, unredacted: true });
     expect(look.note).toEqual({ warn: true, sentence: "This text couldn't be removed.", why: null });
+  });
+});
+
+describe("an edit's own verdict, after the edit", () => {
+  // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
+  const lacking = aSpan({
+    id: "s4",
+    text: "Total 14 €",
+    fidelity: "substitute",
+    substitute: "Liberation Serif Regular",
+    same_widths: true,
+  });
+  const lackingFont = aFont("LiberationSerif", {
+    substitute: "Liberation Serif Regular",
+    same_widths: true,
+    glyphs: halfWideGlyphs("Total 0123456789"),
+  });
+  const typed = (text: string) => ({ span: lacking, text, replaced: true, strategy: undefined, redacted: false });
+  const similar = "Edits here use Liberation Serif Regular, whose letters are the same width as the original's.";
+
+  test("a span a similar font drew at upload, changed into words its own copy draws, has no note once its render says so", () => {
+    const look = lookAt({ span: lacking, font: lackingFont, reading: typed("Total 2"), fit: aFit() });
+    expect(look).toMatchObject({ changed: true, trouble: false, note: null });
+  });
+
+  test("an edit its render says a similar font draws says so, though the span's own font drew its words", () => {
+    const fit = aFit({ fidelity: "substitute", substitute: "Liberation Serif Regular" });
+    expect(lookAt({ span, font: ownFont, reading: changed, fit }).note).toEqual({
+      warn: true,
+      sentence: "Edits here use Liberation Serif Regular, which may be a different width from the original.",
+      why: null,
+    });
+  });
+
+  test("until its render lands, it's worked out from the words typed", () => {
+    expect(lookAt({ span: lacking, font: lackingFont, reading: typed("Total 2") }).note).toBeNull();
+    const withTheLetter = lookAt({ span: lacking, font: lackingFont, reading: typed("Total 2 €") });
+    expect(withTheLetter.note).toEqual({ warn: true, sentence: similar, why: null });
   });
 });

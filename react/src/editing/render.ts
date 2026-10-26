@@ -4,7 +4,7 @@ import { renderStrips } from "../api/client";
 import type { FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
-import type { Reading } from "./project";
+import { differing, type PageEdits, type Reading, type SpanReading, sameSpan } from "./project";
 import { bottomOf, regionsFor, stalePages } from "./redrawRegions";
 
 /** A strip of a page the server drew, ready to paint: its top and bottom in points, and its image's address. */
@@ -41,6 +41,23 @@ export const NOTHING_DRAWN: Drawn = {
   skipped: [],
   failed: null,
 };
+
+/** The server's fit for a span as `now` reads it, once a render of it reading so has landed; none before. */
+export function landedFitOf(drawn: Drawn, now: SpanReading): FitInfo | undefined {
+  const { page, id } = now.span;
+  const drawnAs = drawn.from.get(page)?.spans.get(id);
+  return sameSpan(now, drawnAs) ? drawn.fits.get(page)?.[id] : undefined;
+}
+
+/** A page's fits, less those of spans its strips were drawn from other words for: those say nothing of the words now. */
+export function landedFits(
+  fits: PageFits,
+  { now, drawnFrom }: { now: PageEdits | undefined; drawnFrom: PageEdits | undefined },
+): PageFits {
+  const stale = new Set(differing(now, drawnFrom).map(({ span }) => span.id));
+  if (!Object.keys(fits).some((spanId) => stale.has(spanId))) return fits;
+  return Object.fromEntries(Object.entries(fits).filter(([spanId]) => !stale.has(spanId)));
+}
 
 /**
  * What a reply says, less the images and `expires_at`, which goes to `persistUntil`. Not read: `insert_fits`,

@@ -1,15 +1,16 @@
 // Where an edit won't match the text around it, grouped by why, as the bar's count opens it (quality.md, Rule 1).
-import type { Sentences, SpanInfo } from "../api/types";
-import { wontMatch } from "./marks";
+import type { FitInfo, FontInfo, Sentences, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
 import type { PageFits } from "./render";
 import { type FontsByObject, fontOf, shownNameIn } from "./spanFonts";
 import { substituteOf } from "./substitutes";
+import { liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
 import { type Facts, fill, shownAs } from "./words";
 
-/** A span an edit won't match at, and the letters its own font lacks for the words typed there, if those are why. */
+/** A span an edit won't match at, how, and the letters its own font lacks for the words typed there, if those are why. */
 export interface MismatchPlace {
   readonly span: SpanInfo;
+  readonly verdict: Verdict; // the span's own before any change, its edit's after
   readonly missing: readonly string[];
 }
 
@@ -45,11 +46,11 @@ export function mismatchesOf(
   { fonts, sentences }: { fonts: FontsByObject; sentences: Sentences },
 ): Mismatches {
   const byFont = new Map<string, MismatchPlace[]>();
-  const byReason = new Map<MismatchReason["code"], SpanInfo[]>();
+  const byReason = new Map<MismatchReason["code"], Verdict[]>();
   for (const place of places) {
     const reason = reasonOf(place);
     if (reason === null) groupOf(byFont, shownNameIn(fonts, place.span)).push(place);
-    else groupOf(byReason, reason).push(place.span);
+    else groupOf(byReason, reason).push(place.verdict);
   }
   const fontRows = [...byFont].map(([name, inFont]) => ({
     key: fontKey(name),
@@ -57,11 +58,11 @@ export function mismatchesOf(
     places: inFont.length,
     sentence: fontSentence(inFont, { fonts, sentences }),
   }));
-  const reasonRows = [...byReason].map(([code, spans]) => ({
+  const reasonRows = [...byReason].map(([code, verdicts]) => ({
     key: reasonKey(code),
     code,
-    places: spans.length,
-    sentence: reasonSentence(spans, sentences),
+    places: verdicts.length,
+    sentence: reasonSentence(verdicts, sentences),
   }));
   return { count: places.length, fonts: mostFirst(fontRows), reasons: mostFirst(reasonRows) };
 }
@@ -73,17 +74,24 @@ export function mismatchKeyOf(place: MismatchPlace, fonts: FontsByObject): strin
 }
 
 /**
- * `span` as a place an edit won't match, as the bar counts places now; none where it will match.
- * Before any change, every such span in the document; after, only those changed, letters the server
- * found missing included.
+ * `span` as a place an edit won't match, as the bar counts places now; none where it will match. Before
+ * any change, every such span in the document, by its own verdict; after, only those changed, by their edit's
+ * (`verdictOf`): `fit` is the server's once a render of it as it reads now landed, and its letters missing.
  */
 export function placeOf(
   span: SpanInfo,
-  { changed, reading, missing }: { changed: boolean; reading: SpanReading | undefined; missing: readonly string[] },
+  {
+    changed,
+    reading,
+    fit,
+    font,
+  }: { changed: boolean; reading: SpanReading | undefined; fit: FitInfo | undefined; font: FontInfo | undefined },
 ): MismatchPlace | undefined {
-  if (!changed) return wontMatch(span) ? { span, missing: [] } : undefined;
-  const replaced = reading?.replaced ?? false;
-  return replaced && (wontMatch(span) || missing.length > 0) ? { span, missing } : undefined;
+  if (!changed) return span.fidelity === "exact" ? undefined : { span, verdict: span, missing: [] };
+  if (reading === undefined || !reading.replaced) return undefined;
+  const live = () => liveVerdictOf(span, { font, text: reading.text });
+  const verdict = verdictOf(span, { reading, fit, live });
+  return verdict.fidelity === "exact" ? undefined : { span, verdict, missing: fit?.missing ?? [] };
 }
 
 /** The spans of `spans` in a row that's shown, as the list counts places now. */
@@ -106,17 +114,16 @@ export function shownAmong(
   // No span need be judged.
   if (shown.size === 0) return [];
   return spans.filter((span) => {
-    const missing = fits[span.id]?.missing ?? [];
-    const place = placeOf(span, { changed, reading: readings.get(span.id), missing });
+    const facts = { changed, reading: readings.get(span.id), fit: fits[span.id], font: fontOf(fonts, span) };
+    const place = placeOf(span, facts);
     return place !== undefined && shown.has(mismatchKeyOf(place, fonts));
   });
 }
 
 /** Why the file's own font won't match at `place`, when that's its row; null when a similar font draws it. */
-function reasonOf({ span, missing }: MismatchPlace): MismatchReason["code"] | null {
+function reasonOf({ verdict }: MismatchPlace): MismatchReason["code"] | null {
   // Drawn in a similar font: whatever else won't match, its font is what the reader can change.
-  if (span.substitute !== null || missing.length > 0 || span.why === null) return null;
-  return span.why.code;
+  return verdict.fidelity === "approximate" && verdict.why !== null ? verdict.why.code : null;
 }
 
 /** The key of the row for the font the reader knows as `name`. */
@@ -147,8 +154,8 @@ function fontSentence(
 }
 
 /** A reason's sentence, its facts gathered from every place: the letters no font can draw at any of them. */
-function reasonSentence(spans: SpanInfo[], sentences: Sentences): string {
-  const whys = spans.flatMap((span) => (span.why === null ? [] : [span.why]));
+function reasonSentence(verdicts: Verdict[], sentences: Sentences): string {
+  const whys = verdicts.flatMap((verdict) => (verdict.why === null ? [] : [verdict.why]));
   const [first] = whys;
   if (first === undefined) return "";
   const facts: Facts = { ...first.params };
