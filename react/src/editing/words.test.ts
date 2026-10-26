@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { COPY } from "../fixtures";
+import { SENTENCES } from "../fixtures";
 import { counted, fill, shownAs } from "./words";
 
 describe("filling the server's sentences", () => {
@@ -28,17 +28,17 @@ describe("filling the server's sentences", () => {
     ["\x01", "U+0001"],
     ["\u0301", "acute accent"],
   ])("a character that draws nothing is named: %j is %s", (character, said) => {
-    expect(shownAs(character, COPY.characters)).toBe(said);
+    expect(shownAs(character, SENTENCES.characters)).toBe(said);
   });
 
   // The server's own case, test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_letter_isnt.
   test("punctuation or a symbol is quoted, so it reads as a character, and a letter isn't", () => {
-    expect(["(", "Z", "€"].map((character) => shownAs(character, COPY.characters))).toEqual(["“(”", "Z", "“€”"]);
+    expect(["(", "Z", "€"].map((character) => shownAs(character, SENTENCES.characters))).toEqual(["“(”", "Z", "“€”"]);
   });
 
   // The server's own case, test_a_letter_that_looks_like_another_is_named_so_the_two_read_apart.
   test("a letter that looks like another is named, so the two read apart", () => {
-    expect(["I", "l", "O", "0", "1"].map((character) => shownAs(character, COPY.characters))).toEqual([
+    expect(["I", "l", "O", "0", "1"].map((character) => shownAs(character, SENTENCES.characters))).toEqual([
       "capital I",
       "lowercase l",
       "capital O",
@@ -48,9 +48,9 @@ describe("filling the server's sentences", () => {
   });
 
   test("a letter that draws is itself, and one only Unicode names is said by its code point", () => {
-    expect(shownAs("é", COPY.characters)).toBe("é");
+    expect(shownAs("é", SENTENCES.characters)).toBe("é");
     // The server says "three-per-em space": the browser has no table of Unicode's names.
-    expect(shownAs("\u2004", COPY.characters)).toBe("U+2004");
+    expect(shownAs("\u2004", SENTENCES.characters)).toBe("U+2004");
   });
 
   test("a count takes its plural from the language's rules, not an added s", () => {

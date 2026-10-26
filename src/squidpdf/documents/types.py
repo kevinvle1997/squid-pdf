@@ -34,7 +34,7 @@ class PageInfo(TypedDict):
 class ApproximateInfo(TypedDict):
     """How an approximate span would come back unlike itself, in no language.
 
-    `code` names the reason, and its sentence: `copy.approximate[code]`. `params` fill it.
+    `code` names the reason, and its sentence: `sentences.approximate[code]`. `params` fill it.
     """
 
     code: ApproximateReason
@@ -44,10 +44,8 @@ class ApproximateInfo(TypedDict):
 class SpanInfo(TypedDict):
     """One editable span and whether it keeps its own font.
 
-    `why` says how an approximate span would come back unlike itself, in no
-    language: its sentence is in the reply's `copy`, under `approximate`.
-    `form_field` is true when a form field draws the text, not the page: an
-    edit to it is left out, and `copy`'s `form_field_not_edited` says so.
+    `why` names how an approximate span comes back unlike itself (`sentences.approximate`);
+    `form_field`, text a form field draws, which an edit leaves alone (`form_field_not_edited`).
     """
 
     id: str
@@ -140,8 +138,8 @@ class FitRules(TypedDict):
     shrink_floor: float
 
 
-class Copy(TypedDict):
-    """The sentences the browser fills in as the user types, in the reader's language."""
+class Sentences(TypedDict):
+    """The sentences the browser says about the document, unfilled, in the reader's language."""
 
     missing: str
     will_leave_out: (
@@ -186,7 +184,7 @@ class Document(TypedDict):
     id: str
     expires_at: str
     fit: FitRules
-    copy: Copy
+    sentences: Sentences
     notices: list[DocumentNoticeInfo]
 
 

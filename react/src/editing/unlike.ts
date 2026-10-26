@@ -1,6 +1,6 @@
 // Where an edit won't match the text around it, grouped by why: each font a similar one draws for,
 // then each reason the file's own font won't match. The bar's count opens it (quality.md, Rule 1).
-import type { Copy, FontInfo, SpanInfo } from "../api/types";
+import type { FontInfo, Sentences, SpanInfo } from "../api/types";
 import { wontMatch } from "./marks";
 import type { SpanReading } from "./project";
 import type { PageFits } from "./render";
@@ -42,7 +42,7 @@ export interface Unlike {
 /** `places` grouped: a similar font's under its font, the rest under why the file's own won't match. */
 export function unlikeOf(
   places: readonly UnlikePlace[],
-  { fonts, copy }: { fonts: ReadonlyMap<string, FontInfo>; copy: Copy },
+  { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
 ): Unlike {
   const byFont = new Map<string, UnlikePlace[]>();
   const byReason = new Map<UnlikeReason["code"], SpanInfo[]>();
@@ -55,13 +55,13 @@ export function unlikeOf(
     key: fontKey(name),
     name,
     places: inFont.length,
-    said: fontSaid(inFont, { fonts, copy }),
+    said: fontSaid(inFont, { fonts, sentences }),
   }));
   const reasonRows = [...byReason].map(([code, spans]) => ({
     key: reasonKey(code),
     code,
     places: spans.length,
-    said: reasonSaid(spans, copy),
+    said: reasonSaid(spans, sentences),
   }));
   return { count: places.length, fonts: mostFirst(fontRows), reasons: mostFirst(reasonRows) };
 }
@@ -138,7 +138,7 @@ function reasonKey(code: UnlikeReason["code"]): string {
 /** Why a similar font draws a font's places: the font's own reason, else the letters it lacks, else what draws it. */
 function fontSaid(
   places: UnlikePlace[],
-  { fonts, copy }: { fonts: ReadonlyMap<string, FontInfo>; copy: Copy },
+  { fonts, sentences }: { fonts: ReadonlyMap<string, FontInfo>; sentences: Sentences },
 ): string {
   const [first] = places;
   const font = first === undefined ? undefined : fonts.get(first.span.font);
@@ -146,14 +146,14 @@ function fontSaid(
   if (font.why !== null) return font.why;
   const substitute = substituteOf(first.span, font);
   const chars = [...new Set(places.flatMap((place) => place.missing))].map((letter) =>
-    shownAs(letter, copy.characters),
+    shownAs(letter, sentences.characters),
   );
-  if (chars.length > 0) return fill(copy.missing, { chars, font: substitute });
-  return fill(font.same_widths ? copy.substitute_same_widths : copy.substitute, { font: substitute });
+  if (chars.length > 0) return fill(sentences.missing, { chars, font: substitute });
+  return fill(font.same_widths ? sentences.substitute_same_widths : sentences.substitute, { font: substitute });
 }
 
 /** A reason's sentence, its facts gathered from every place: the letters no font can draw at any of them. */
-function reasonSaid(spans: SpanInfo[], copy: Copy): string {
+function reasonSaid(spans: SpanInfo[], sentences: Sentences): string {
   const whys = spans.flatMap((span) => (span.why === null ? [] : [span.why]));
   const [first] = whys;
   if (first === undefined) return "";
@@ -162,7 +162,7 @@ function reasonSaid(spans: SpanInfo[], copy: Copy): string {
     // A list, such as the letters left out, is every place's together, each once.
     if (Array.isArray(value)) facts[key] = [...new Set(whys.flatMap((why) => listIn(why.params[key])))];
   }
-  return fill(copy.approximate[first.code] ?? "", facts);
+  return fill(sentences.approximate[first.code] ?? "", facts);
 }
 
 /** A fact as a list: itself if it is one, else nothing. */

@@ -472,7 +472,7 @@ _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
         (
             lambda patch, now: patch.setitem(words.CATALOGS[words.ENGLISH], "missing", now),
             _REWORDED,
-            ("copy", "missing"),
+            ("sentences", "missing"),
         ),
         (
             lambda patch, now: patch.setattr(constants, "REPLY_VERSION", now),

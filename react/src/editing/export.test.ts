@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, SENTENCES } from "../fixtures";
 import { createEditor, type Editor, undo } from "./editor";
 import { exportName, exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
@@ -116,8 +116,8 @@ describe("export", () => {
     vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [0], notices });
     typed("own", "now");
     await exportNow(editor);
-    expect(editor.store.get().notices.export).toEqual([warn(COPY.export_left_out), warn(tags), warn(signed)]);
-    expect(editor.store.get().said.text).toBe(`${COPY.export_left_out} ${tags} ${signed}`);
+    expect(editor.store.get().notices.export).toEqual([warn(SENTENCES.export_left_out), warn(tags), warn(signed)]);
+    expect(editor.store.get().said.text).toBe(`${SENTENCES.export_left_out} ${tags} ${signed}`);
   });
 
   test("a bug in export is said and logged, not thrown, and export can be tried again", async () => {

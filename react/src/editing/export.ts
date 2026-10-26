@@ -172,7 +172,7 @@ async function downloaded(
     download(file.pdf, name);
     // What saving did to the whole file other than asked, each said: a split dropping its tags, say.
     const otherwise = file.notices.map((notice) => warn(notice.detail));
-    const leftOut = file.skipped.length > 0 ? [warn(store.get().doc.copy.export_left_out)] : [];
+    const leftOut = file.skipped.length > 0 ? [warn(store.get().doc.sentences.export_left_out)] : [];
     const said = [...leftOut, ...otherwise];
     return { said: said.length > 0 ? said : [plain(`Downloaded ${name}.`)], went: true };
   } catch (error) {

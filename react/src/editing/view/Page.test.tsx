@@ -6,7 +6,7 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { ProblemError, pageImage, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
-import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, COPY, halfWideGlyphs } from "../../fixtures";
+import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
@@ -692,9 +692,9 @@ describe("a page", () => {
     // Focus from the keyboard: a key pressed first, as Tab would be.
     await userEvent.keyboard("{Shift}");
     mark.element().focus();
-    const note = screen.getByText(COPY.form_field_not_edited, { exact: false });
+    const note = screen.getByText(SENTENCES.form_field_not_edited, { exact: false });
     await expect.element(note).toBeVisible();
-    await expect.element(mark).toHaveAccessibleDescription(COPY.form_field_not_edited);
+    await expect.element(mark).toHaveAccessibleDescription(SENTENCES.form_field_not_edited);
 
     await userEvent.keyboard("{Escape}");
     await expect.element(note).not.toBeInTheDocument();
@@ -744,7 +744,7 @@ describe("a page", () => {
     // At rest, before anything is touched, it's the Rule 1 signal: a mark's 3:1 on the white page.
     expect(contrastOnWhite(line)).toBeGreaterThanOrEqual(3);
     await mark.hover();
-    await expect.element(screen.getByText(COPY.form_field_not_edited)).toBeVisible();
+    await expect.element(screen.getByText(SENTENCES.form_field_not_edited)).toBeVisible();
   });
 
   test("a font quieted in one Type3 copy is quiet in its others: the chip names them as one", async () => {
@@ -771,7 +771,7 @@ describe("a page", () => {
     marks.nth(1).element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(screen.getByRole("textbox", { name: "Change “in drawn”" })).toHaveFocus();
-    await expect.element(screen.getByText(COPY.approximate.turned_text ?? "")).not.toBeInTheDocument();
+    await expect.element(screen.getByText(SENTENCES.approximate.turned_text ?? "")).not.toBeInTheDocument();
     await expect.element(screen.getByText("will look different", { exact: true })).toBeVisible();
   });
 
@@ -790,7 +790,7 @@ describe("a page", () => {
     expect(getComputedStyle(mark.element(), "::after").backgroundImage).toBe("none");
     mark.element().focus();
     await userEvent.keyboard("{Enter}");
-    const note = screen.getByText(COPY.approximate.turned_text ?? "");
+    const note = screen.getByText(SENTENCES.approximate.turned_text ?? "");
     await expect.element(note).toBeVisible();
     await expect.element(screen.getByText("will look different", { exact: true })).toBeVisible();
     expect(getComputedStyle(note.element()).color).toBe(colorOf("--warn"));
@@ -803,7 +803,7 @@ describe("a page", () => {
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
-    const note = screen.getByText(COPY.form_field_not_edited);
+    const note = screen.getByText(SENTENCES.form_field_not_edited);
     // A pointer was used last: focus that comes without a press is a click's, not the keyboard's.
     await userEvent.click(screen.getByRole("region", { name: "Page 1" }), { position: { x: 1, y: 1 } });
     mark.element().focus();

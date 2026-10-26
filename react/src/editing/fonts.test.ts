@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/client";
 import type { Document, Render } from "../api/types";
-import { aDoc, aFont, aProblem, aSpan, COPY } from "../fixtures";
+import { aDoc, aFont, aProblem, aSpan, SENTENCES } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
 import {
   attachDropped,
@@ -136,7 +136,7 @@ describe("the user's own copy of a font", () => {
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
-    expect(editor.store.get().said.text).toBe(`${COPY.reopened} ${MISMATCH}`);
+    expect(editor.store.get().said.text).toBe(`${SENTENCES.reopened} ${MISMATCH}`);
     // The edited page is drawn again without the refused copy, on the document opened again.
     await vi.waitFor(() =>
       expect(vi.mocked(renderStrips).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2),
@@ -158,7 +158,7 @@ describe("the user's own copy of a font", () => {
     await vi.waitFor(() => expect(editor.store.get().layout.fonts.get("Arial")?.attached).toBe(true));
 
     expect(putFont).toHaveBeenCalledWith("again", "Arial", FONT_FILE);
-    expect(editor.store.get().said.text).toBe(COPY.reopened);
+    expect(editor.store.get().said.text).toBe(SENTENCES.reopened);
   });
 
   test("work that found the document gone runs again only once every copy is back", async () => {
@@ -239,12 +239,18 @@ describe("what draws a row of the Fonts list", () => {
   const row: FontCopies = { shownName: "Arial", names: ["Arial"], font, attached: false };
 
   test("is said in the server's words, a similar font warned", () => {
-    expect(drawnByOf(row, COPY)).toEqual({
-      said: fill(COPY.substitute_same_widths, { font: "Liberation Sans Regular" }),
+    expect(drawnByOf(row, SENTENCES)).toEqual({
+      said: fill(SENTENCES.substitute_same_widths, { font: "Liberation Sans Regular" }),
       warn: true,
     });
-    expect(drawnByOf({ ...row, attached: true }, COPY)).toEqual({ said: COPY.drawn_in_your_copy, warn: false });
-    expect(drawnByOf({ ...row, font: aFont("Arial") }, COPY)).toEqual({ said: COPY.drawn_in_own_copy, warn: false });
+    expect(drawnByOf({ ...row, attached: true }, SENTENCES)).toEqual({
+      said: SENTENCES.drawn_in_your_copy,
+      warn: false,
+    });
+    expect(drawnByOf({ ...row, font: aFont("Arial") }, SENTENCES)).toEqual({
+      said: SENTENCES.drawn_in_own_copy,
+      warn: false,
+    });
   });
 });
 

@@ -1,7 +1,7 @@
 // The user's own copies of the document's fonts, attached through the reopener and kept beside the PDF.
 // The document comes back judged again, so marks and fits change in place, with no line under the bar (Rule 6).
 import { deleteFont, isGone, putFont } from "../api/client";
-import type { Copy, Document, FontInfo } from "../api/types";
+import type { Document, FontInfo, Sentences } from "../api/types";
 import { sentenceOf } from "../bugs";
 import { type Editor, type EditorState, type Layout, layoutOf, spoken } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
@@ -51,11 +51,11 @@ export function copiesByName(fonts: readonly FontInfo[]): FontCopies[] {
 }
 
 /** What draws a row's font, in the server's words: the user's copy, the file's own, or a similar font, warned. */
-export function drawnByOf({ attached, font }: FontCopies, copy: Copy): { said: string; warn: boolean } {
-  if (attached) return { said: copy.drawn_in_your_copy, warn: false };
-  if (font.substitute === null) return { said: copy.drawn_in_own_copy, warn: false };
-  const sentence = font.same_widths ? copy.substitute_same_widths : copy.substitute;
-  return { said: fill(sentence, { font: font.substitute }), warn: true };
+export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences): { said: string; warn: boolean } {
+  if (attached) return { said: sentences.drawn_in_your_copy, warn: false };
+  if (font.substitute === null) return { said: sentences.drawn_in_own_copy, warn: false };
+  const substituteSaid = font.same_widths ? sentences.substitute_same_widths : sentences.substitute;
+  return { said: fill(substituteSaid, { font: font.substitute }), warn: true };
 }
 
 /** Every font listed under the name `fontName` is shown by: its copies, itself among them. */

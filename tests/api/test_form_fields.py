@@ -27,7 +27,7 @@ def test_text_a_form_field_shows_is_marked_at_upload_before_any_edit(mine, form)
     expected = {FORM_LINE: False, FORM_FIELD_VALUE: True, FORM_HINT: False}
     assert_equal(marked, expected, "spans a form field draws")
     key = "form_field_not_edited"
-    assert_equal(doc["copy"][key], words.sentence(key), "what the browser says of one")
+    assert_equal(doc["sentences"][key], words.sentence(key), "what the browser says of one")
 
 
 def test_a_replace_in_a_form_field_is_left_out_and_said_and_the_pages_own_text_is_not(

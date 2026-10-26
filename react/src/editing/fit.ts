@@ -2,7 +2,7 @@
 // It mirrors editing/fit.py with the server's own thresholds and letter widths, so the two
 // agree; where they can't (a missing letter switches the line to another font), the
 // server's fit arrives with the render and wins.
-import type { Copy, FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
+import type { FitRules, FontInfo, Sentences, SpanInfo, Strategy } from "../api/types";
 import { MISSING_SPACE_EM } from "./constants";
 import type { Drawing } from "./substitutes";
 import { fill, shownAs } from "./words";
@@ -178,19 +178,24 @@ export function percentPastRoom({
 /** Everything that won't come out as typed, in the server's words and order (`FitReport.describe`); empty when it fits. */
 export function troublesOf(
   fit: Fit,
-  { rules, copy, drawing, way = "as-is" }: { rules: FitRules; copy: Copy; drawing: Drawing; way?: Strategy },
+  {
+    rules,
+    sentences,
+    drawing,
+    way = "as-is",
+  }: { rules: FitRules; sentences: Sentences; drawing: Drawing; way?: Strategy },
 ): string[] {
   const troubles: string[] = [];
-  const named = (letters: readonly string[]) => letters.map((letter) => shownAs(letter, copy.characters));
+  const named = (letters: readonly string[]) => letters.map((letter) => shownAs(letter, sentences.characters));
   // Letters its own font lacks but the face it goes to has: the whole line switches.
   if (drawing.switched.length > 0) {
-    troubles.push(fill(copy.missing, { chars: named(drawing.switched), font: drawing.face }));
+    troubles.push(fill(sentences.missing, { chars: named(drawing.switched), font: drawing.face }));
   }
   // Letters nothing we have draws.
-  if (drawing.leftOut.length > 0) troubles.push(fill(copy.will_leave_out, { letters: named(drawing.leftOut) }));
+  if (drawing.leftOut.length > 0) troubles.push(fill(sentences.will_leave_out, { letters: named(drawing.leftOut) }));
   // The part past its room collides, unless a way out ends it where the original did.
   if (runsPast(fit.deltaPt, fit.roomPt, rules) && way === "as-is") {
-    troubles.push(fill(copy.too_long, { percent: String(percentPastRoom(fit)) }));
+    troubles.push(fill(sentences.too_long, { percent: String(percentPastRoom(fit)) }));
   }
   return troubles;
 }

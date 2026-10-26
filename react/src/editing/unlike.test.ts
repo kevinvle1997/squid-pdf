@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { aFont, aSpan, COPY } from "../fixtures";
+import { aFont, aSpan, SENTENCES } from "../fixtures";
 import { shownAmong, unlikeOf } from "./unlike";
 
 const NOT_IN_FILE = "This font isn't stored in the file, so a similar font stands in for it.";
@@ -23,14 +23,14 @@ const undrawable = (id: string, letters: string[]) => ({
 
 describe("where an edit won't match, grouped", () => {
   test("a similar font's places are under the font as shown, its copies together, with the server's why", () => {
-    const unlike = unlikeOf([similar("a"), similar("b", "ABCDEF+Arial"), turned("c")], { fonts, copy: COPY });
+    const unlike = unlikeOf([similar("a"), similar("b", "ABCDEF+Arial"), turned("c")], { fonts, sentences: SENTENCES });
     expect(unlike.count).toBe(3);
     expect(unlike.fonts).toEqual([{ key: "font:Arial", name: "Arial", places: 2, said: NOT_IN_FILE }]);
   });
 
   test("the rest are under why the file's own won't match, the letters of every place said once, most places first", () => {
     const places = [undrawable("a", ["中"]), turned("b"), undrawable("c", ["中", "文"]), undrawable("d", [])];
-    const unlike = unlikeOf(places, { fonts, copy: COPY });
+    const unlike = unlikeOf(places, { fonts, sentences: SENTENCES });
     expect(unlike.fonts).toEqual([]);
     expect(unlike.reasons).toEqual([
       {
@@ -39,13 +39,13 @@ describe("where an edit won't match, grouped", () => {
         places: 3,
         said: "No font we have can draw 中 文 here, so an edit here leaves them out.",
       },
-      { key: "reason:turned_text", code: "turned_text", places: 1, said: COPY.approximate.turned_text },
+      { key: "reason:turned_text", code: "turned_text", places: 1, said: SENTENCES.approximate.turned_text },
     ]);
   });
 
   test("a change its own font lacks letters for is under its font, saying which", () => {
     const span = aSpan({ id: "a", why: { code: "turned_text", params: {} } });
-    const unlike = unlikeOf([{ span, missing: ["é", "ñ"] }], { fonts, copy: COPY });
+    const unlike = unlikeOf([{ span, missing: ["é", "ñ"] }], { fonts, sentences: SENTENCES });
     expect(unlike.reasons).toEqual([]);
     expect(unlike.fonts).toEqual([
       {

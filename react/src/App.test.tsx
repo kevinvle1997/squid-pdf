@@ -122,6 +122,15 @@ test("a document kept here opens again with its changes, without sending the fil
   expect(upload).not.toHaveBeenCalled();
 });
 
+test("a document kept before the server's sentences were renamed comes back with them under their new name", async () => {
+  await keptHere(Date.now() + 60_000);
+  const { sentences, ...rest } = KEPT_DOC;
+  // The shape a browser kept it in before, which no type names now.
+  const before = { ...rest, copy: sentences } as unknown as typeof KEPT_DOC;
+  await keepState({ doc: before, work: (await keptDocument())?.work, until: Date.now() + 60_000 });
+  expect((await keptDocument())?.doc.sentences).toEqual(KEPT_DOC.sentences);
+});
+
 test("Delete it now forgets the document kept here, file and all", async () => {
   await keptHere(Date.now() + 60_000);
   const screen = await render(<App />);

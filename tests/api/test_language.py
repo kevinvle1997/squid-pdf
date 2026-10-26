@@ -48,17 +48,17 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     response = mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO))
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
-    copy = response.json()["copy"]
+    sentences = response.json()["sentences"]
     assert_equal(
-        copy["missing"], pseudo_sentence(words.sentence("missing")), "a sentence to fill"
+        sentences["missing"], pseudo_sentence(words.sentence("missing")), "a sentence to fill"
     )
-    empty = copy["empty"]
+    empty = sentences["empty"]
     assert_equal(empty, pseudo_sentence(words.sentence("empty")), "a sentence said as typed")
-    shrink = copy["options"]["shrink"]["label"]
+    shrink = sentences["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
-    turned = copy["approximate"]["turned_text"]
+    turned = sentences["approximate"]["turned_text"]
     assert_equal(turned, pseudo_sentence(words.sentence("turned_text")), "why text won't match")
-    hyphen = copy["characters"]["\u00ad"]
+    hyphen = sentences["characters"]["\u00ad"]
     assert_equal(
         hyphen, pseudo_sentence(words.sentence("char_u00ad")), "a letter that draws nothing"
     )
@@ -83,7 +83,7 @@ def test_one_language_s_etag_never_answers_for_another(pseudo, mine, doc):
     assert_in("Accept-Language", same.headers["vary"], "what the 304 varies by")
     other = mine.get(url, headers={**asked_again, **_in(PSEUDO)})
     assert_equal(other.status_code, 200, "another language, with English's ETag")
-    missing = other.json()["copy"]["missing"]
+    missing = other.json()["sentences"]["missing"]
     assert_equal(
         missing, pseudo_sentence(words.sentence("missing")), "the body it answered with"
     )

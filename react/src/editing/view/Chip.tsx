@@ -29,15 +29,15 @@ interface Props {
 export function Chip({ span, info, trouble, setting }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => state.layout.fonts.get(span.font));
-  const copy = useEditorState((state) => state.doc.copy);
+  const sentences = useEditorState((state) => state.doc.sentences);
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
   const shown = useEditorState((state) => shownNameOf(state.layout, span.font));
   // What an edit here warns of, in full, as typing starts: until the user quiets its font.
   const quiet = useEditorState((state) => state.quietFonts.has(shown));
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
-  const note = editNote(span, { font, copy, quiet });
-  const ways = setting.offered.map((id) => ({ id, label: copy.options[id]?.label ?? id }));
+  const note = editNote(span, { font, sentences, quiet });
+  const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   return (
     <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
       {note !== null && (

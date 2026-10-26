@@ -1,7 +1,7 @@
 // What one page draws from the editor's state, selected as parts so the page redraws only when one
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
 import { pageUrl } from "../api/client";
-import type { Copy, FitRules, FontInfo, SpanInfo } from "../api/types";
+import type { FitRules, FontInfo, Sentences, SpanInfo } from "../api/types";
 import type { EditorState, FocusTo, ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
@@ -34,7 +34,7 @@ export interface PageState {
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
   readonly fonts: ReadonlyMap<string, FontInfo>;
-  readonly copy: Copy;
+  readonly sentences: Sentences;
   readonly rules: FitRules; // for the way out a preview is drawn in
 }
 
@@ -66,7 +66,7 @@ export function pageState(state: EditorState, index: number): PageState {
     focusTo: here(state.focusTo),
     scrollTo: here(state.scrollTo),
     fonts: state.layout.fonts,
-    copy: state.doc.copy,
+    sentences: state.doc.sentences,
     rules: state.doc.fit,
   };
 }

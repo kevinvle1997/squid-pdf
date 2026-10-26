@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, useSyncExternalStore } from "react";
 import { Button, type PressEvent } from "react-aria-components";
-import type { Copy, FitInfo, FontInfo, PageInfo, RedactionInfo, SpanInfo } from "../../api/types";
+import type { FitInfo, FontInfo, PageInfo, RedactionInfo, Sentences, SpanInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { type Press, pressOf } from "../caret";
 import { onEscape } from "../commands";
@@ -21,7 +21,7 @@ interface Props {
   font: FontInfo | undefined;
   fit: FitInfo | undefined; // the server's verdict on its edit
   redaction: RedactionInfo | undefined; // the server's verdict on its redaction
-  copy: Copy;
+  sentences: Sentences;
   focusTo: FocusTo | null; // focus is sent here: back from its field, or put back from the margin
   notes: Notes; // the page's one note, which this mark shows its own in
   noteId: string; // the page's note, for a screen reader to read with the mark
@@ -35,9 +35,9 @@ interface Props {
  * near; it redraws only when what it's handed changes. A font's warning waits for an edit (`editNote`).
  */
 export const SpanMark = memo(function SpanMark(props: Props) {
-  const { span, info, reading, font, fit, redaction, copy, focusTo, notes, noteId } = props;
+  const { span, info, reading, font, fit, redaction, sentences, focusTo, notes, noteId } = props;
   const editor = useEditor();
-  const look = lookOf({ span, font, reading, fit, redaction, copy });
+  const look = lookOf({ span, font, reading, fit, redaction, sentences });
   const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
   const lastTap = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.

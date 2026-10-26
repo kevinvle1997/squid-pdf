@@ -86,13 +86,18 @@ function AtRestGroups({ shown }: { shown: () => void }) {
 
 /** The changed places, grouped while the list is open. */
 function ChangedGroups({ shown }: { shown: () => void }) {
-  const { reading, drawn, fonts, copy } = useEditorState(
-    (state) => ({ reading: state.reading, drawn: state.drawn, fonts: state.layout.fonts, copy: state.doc.copy }),
+  const { reading, drawn, fonts, sentences } = useEditorState(
+    (state) => ({
+      reading: state.reading,
+      drawn: state.drawn,
+      fonts: state.layout.fonts,
+      sentences: state.doc.sentences,
+    }),
     shallowEqual,
   );
   const unlike = useMemo(
-    () => unlikeOf(changedUnlike({ reading, drawn }), { fonts, copy }),
-    [reading, drawn, fonts, copy],
+    () => unlikeOf(changedUnlike({ reading, drawn }), { fonts, sentences }),
+    [reading, drawn, fonts, sentences],
   );
   return <Groups unlike={unlike} shown={shown} />;
 }
