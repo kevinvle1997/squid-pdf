@@ -158,6 +158,23 @@ describe("a page", () => {
     expect(getComputedStyle(said.element()).color).toBe(colorOf("--warn"));
   });
 
+  test("the chip is paper in the dark theme too: the page's red on the sheet's white", async () => {
+    document.documentElement.dataset.theme = "dark";
+    try {
+      const screen = await draw();
+      await editSpan(screen);
+      await userEvent.keyboard("{End}xyz");
+      const said = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
+      await expect.element(said).toBeVisible();
+      expect(getComputedStyle(said.element()).color).toBe(colorOf("--mark-warn"));
+      const chip = said.element().closest("div");
+      if (chip === null) throw new Error("no chip");
+      expect(getComputedStyle(chip).backgroundColor).toBe(colorOf("--sheet"));
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
+  });
+
   test("a line a little past its room offers the ways out; one pressed is drawn in the field at once, focus staying", async () => {
     // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
     const letters = "abcdefghijklmnopqrst";
