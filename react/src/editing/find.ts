@@ -3,10 +3,11 @@
 import type { FitInfo, FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, changed, type Editor, type EditorState, scrollingTo, spoken } from "./editor";
-import { fitOf, type LineScale, lineWidthPt, runsPast } from "./fit";
+import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf } from "./fit";
 import { wontMatch } from "./marks";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
-import { type Reading, textIn } from "./project";
+import type { PageState } from "./page";
+import { differing, type Reading, textIn } from "./project";
 import { finish, typingEnd } from "./typing";
 import { counted } from "./words";
 
@@ -132,6 +133,28 @@ export function matchesAcross(
       : index / Math.max(text.length, 1);
   const at = (index: number) => span.bbox.x0 + share(index) * widePt;
   return matches.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
+}
+
+/** Where find's tints sit on a page: each match across its line as drawn, with its span; none on the span typed in. */
+export function tintsOn(
+  page: Pick<PageState, "spans" | "edits" | "drawnFrom" | "fits" | "fonts" | "rules" | "typingIn">,
+  matches: ReadonlyMap<string, readonly Match[]>,
+): { span: SpanInfo; x0: number; x1: number }[] {
+  const readings = new Map(page.edits?.spans.map((reading) => [reading.span.id, reading]));
+  // Drawn by the browser until the server's render has these words: its fit is for words it drew before.
+  const previewed = new Set(differing(page.edits, page.drawnFrom).map(({ span }) => span.id));
+  return page.spans.flatMap((span) => {
+    const inSpan = matches.get(span.id);
+    if (inSpan === undefined || span.id === page.typingIn) return [];
+    const reading = readings.get(span.id);
+    const text = reading?.text ?? span.text;
+    const font = page.fonts.get(span.font);
+    const glyphs = font?.glyphs;
+    const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
+    const fit = reading?.replaced && !previewed.has(span.id) ? page.fits[span.id] : undefined;
+    const widePt = drawnWidthOf(span, { text, glyphs, scale, fit });
+    return matchesAcross(span, { text, matches: inSpan, glyphs, widePt }).map(({ x0, x1 }) => ({ span, x0, x1 }));
+  });
 }
 
 /** The find bar's matches found again in `reading`; the place gone to stays while it's still found. */
