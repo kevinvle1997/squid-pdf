@@ -221,6 +221,11 @@ jobs:
             [[ $driver == local ]] || { echo "the $service's log goes to $driver, not the rotating local driver"; exit 1; }
           done
 
+      - name: The proxy's Caddyfile is its own
+        run: |
+          caddy_mounts=$(docker inspect "$(docker compose ps -q proxy)" --format '{{range .Mounts}}{{println .Destination}}{{end}}' | grep '^/etc/caddy' || true)
+          [[ -z $caddy_mounts ]] || { echo "the proxy reads $caddy_mounts from the host, not the Caddyfile built into it"; exit 1; }
+
       # In different /64s, which the rate limit counts apart.
       - name: IPv6 clients count apart
         run: |
