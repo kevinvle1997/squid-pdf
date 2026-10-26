@@ -70,7 +70,10 @@ def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mi
     stored_font, named_font = doc["fonts"]
 
     judged = [(span["font_object"], span["fidelity"]) for span in (stored, named)]
-    expected = [(stored_font["object"], "exact"), (named_font["object"], "substitute")]
+    expected = [
+        (stored_font["font_object"], "exact"),
+        (named_font["font_object"], "substitute"),
+    ]
     assert_equal(judged, expected, "the spans, each in its own page's font")
     shown = (stored_font["shown_name"], named_font["shown_name"])
     assert_equal(shown, ("LiberationSerif",) * 2, "the name both fonts go by")

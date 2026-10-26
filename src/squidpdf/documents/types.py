@@ -78,7 +78,7 @@ class FontFacts(TypedDict):
     """
 
     # Its PDF object, which its spans name it by; None for one its page doesn't list.
-    object: int | None
+    font_object: int | None
     name: str  # its own, subset prefix aside: what a copy of it is attached by
     # The name the reader knows it by: a Type3's copies share one, its own often its object's.
     shown_name: str
@@ -96,7 +96,7 @@ class FontInfo(TypedDict):
     `why_code` and `why_params` are `why` unsaid, both empty when `why` is None.
     """
 
-    object: int | None  # its PDF object, which its spans name it by; None for one unlisted
+    font_object: int | None  # its PDF object, which its spans name it by; None if unlisted
     name: str  # what a copy of it is attached by, and a span of a font unlisted names it by
     shown_name: str  # the name the reader knows it by; copies of one font share it
     substitute: str | None

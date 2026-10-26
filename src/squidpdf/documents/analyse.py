@@ -122,14 +122,14 @@ def _fonts_of(
     reports: Mapping[str, FidelityReport],
     files: attached.AttachedFiles,
 ) -> list[FontFacts]:
-    """Each font's facts, from the first span in it: by its object, else by its name."""
+    """Each font's facts, from the first span in it: by its object and its name."""
     # Index order: the first span in each font speaks for it.
     first_span_of_font: dict[tuple[int | None, str], Span] = {}
     for span in index:
         first_span_of_font.setdefault((span.font_object, span.font), span)
     return [
         {
-            "object": span.font_object,
+            "font_object": span.font_object,
             "name": span.font,
             "shown_name": engine.shown_name(span),
             "substitute": reports[span.id].substitute,

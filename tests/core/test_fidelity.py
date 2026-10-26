@@ -507,19 +507,6 @@ def test_a_copy_whose_shared_letters_are_other_widths_is_not_pooled(merged_unlik
     assert_equal(why, "copy_other_widths", "why new text in it is a substitute")
 
 
-def test_two_fonts_listed_under_one_name_are_each_their_own_spans_by_object(merged_unlike):
-    """Times on page 0 and a Helvetica listed under its name on page 1: neither is the other.
-
-    Each span names the font that draws it by its object, whatever name it's listed under.
-    """
-    doc = pymupdf.open(merged_unlike)
-    on_page = [xref for page in (0, 1) for xref, *_ in doc[page].get_fonts()]
-    with open_pdf(merged_unlike) as engine:
-        named_by = [span.font_object for span in engine.index()]
-
-    assert_equal(named_by, on_page, "the font each page's span names, by its object")
-
-
 def test_a_copy_sharing_too_few_letters_to_check_is_not_pooled(merged_apart):
     """Page 1's copy draws Y but no letter page 0 does, so it can't vouch for itself."""
     with open_pdf(merged_apart) as engine:

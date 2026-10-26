@@ -96,7 +96,7 @@ class PdfDriver(Protocol):
         """Each line of text on the page, split into the pieces it is drawn in.
 
         Each piece names the font that draws it by its PDF object, one `fonts` lists, or None
-        when the page lists none for it; its font's name is only to show.
+        when the page lists none for it.
         """
         ...
 
@@ -124,7 +124,7 @@ class PdfDriver(Protocol):
         ...
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, forms included; a Type3 by the name its text reads."""
+        """Every font the page uses, forms included."""
         ...
 
     def font_bytes(self, xref: int) -> bytes:
