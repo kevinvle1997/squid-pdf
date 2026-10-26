@@ -1,5 +1,5 @@
 {
-  "about": "One span and edit each, read by tests/editing/test_fit.py and react/src/editing/fit.test.ts: the server and the browser must give the same verdict. The rules are the server's own.",
+  "about": "One span and edit each, read by tests/editing/test_fit.py and react/src/editing/fit.test.ts: the server and the browser must give the same verdict. The rules are the server's own. Each of `verdicts` is a line in a stored copy of a font with no shape for `lacking`, or one the file only names, judged at upload as `span` says, then typed into.",
   "rules": {
     "tolerance_pt": 4,
     "room_slack_pt": 0.1,
@@ -102,6 +102,86 @@
       "options": [
         "as-is"
       ]
+    }
+  ],
+  "verdicts": [
+    {
+      "what": "its copy lacks a letter of its words: typed out, its own font draws the edit",
+      "text": "Total 14 €",
+      "lacking": "€",
+      "stored": true,
+      "turned": false,
+      "span": {
+        "fidelity": "substitute",
+        "why": null
+      },
+      "typed": "Total 2",
+      "fidelity": "exact"
+    },
+    {
+      "what": "typed with the letter its copy lacks: a similar font draws the line",
+      "text": "Total 14 €",
+      "lacking": "€",
+      "stored": true,
+      "turned": false,
+      "span": {
+        "fidelity": "substitute",
+        "why": null
+      },
+      "typed": "Total 2 €",
+      "fidelity": "substitute"
+    },
+    {
+      "what": "nothing its copy lacks: exact",
+      "text": "Total 14",
+      "lacking": "",
+      "stored": true,
+      "turned": false,
+      "span": {
+        "fidelity": "exact",
+        "why": null
+      },
+      "typed": "Total 2",
+      "fidelity": "exact"
+    },
+    {
+      "what": "a letter no font we have draws: its own font leaves it out, so it will look different",
+      "text": "Total 14",
+      "lacking": "中",
+      "stored": true,
+      "turned": false,
+      "span": {
+        "fidelity": "exact",
+        "why": null
+      },
+      "typed": "Total 中",
+      "fidelity": "approximate"
+    },
+    {
+      "what": "turned on the page: will look different, whatever is typed",
+      "text": "Total 14",
+      "lacking": "",
+      "stored": true,
+      "turned": true,
+      "span": {
+        "fidelity": "approximate",
+        "why": "turned_text"
+      },
+      "typed": "Total 2",
+      "fidelity": "approximate"
+    },
+    {
+      "what": "a font the file only names: a similar font, whatever is typed",
+      "text": "Total 14",
+      "lacking": "",
+      "stored": false,
+      "turned": false,
+      "span": {
+        "fidelity": "substitute",
+        "why": null
+      },
+      "typed": "Total 2",
+      "fidelity": "substitute"
     }
   ]
 }

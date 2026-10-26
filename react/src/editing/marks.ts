@@ -2,6 +2,7 @@
 // edit (`editNote`), the bar's count saying it before (Rule 1). A new kind of span is a case here and a class.
 import type { FitInfo, FontInfo, RedactionInfo, Sentences, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
+import { liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
 import { fill } from "./words";
 
 /** What hover, focus or a tap says of a span, or an edit in it as typing starts. */
@@ -26,7 +27,7 @@ interface MarkedSpan {
   readonly span: SpanInfo; // its fidelity and the face an edit here is drawn in, as the server judged it
   readonly font: FontInfo | undefined; // for why its own copy can't be used, which the server says per font
   readonly reading: SpanReading | undefined; // what it reads now, if an edit changed it
-  readonly fit: FitInfo | undefined; // the server's verdict on its last drawn edit
+  readonly fit: FitInfo | undefined; // the server's verdict on its edit, once a render of it as it reads now landed
   readonly redaction: RedactionInfo | undefined; // the server's verdict on its redaction, once drawn
   readonly sentences: Sentences;
 }
@@ -35,21 +36,22 @@ interface MarkedSpan {
 export function lookOf({ span, font, reading, fit, redaction, sentences }: MarkedSpan): Look {
   const redacted = reading?.redacted ?? false;
   const changed = reading?.replaced ?? false;
-  // A verdict counts only while the span is changed: put back, it may linger until its page is drawn again.
-  const verdict = changed ? fit?.message : null;
+  // A fit counts only while the span is changed: put back, it may linger until its page is drawn again.
+  const trouble = changed ? fit?.message : null;
   const looks = {
     formField: span.form_field,
     changed,
-    trouble: Boolean(verdict),
+    trouble: Boolean(trouble),
     redacted,
     unredacted: redacted && redaction?.verified === false,
   };
   // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
   if (redacted) return { ...looks, note: redactionNote(redaction) };
-  if (verdict) return { ...looks, note: { warn: true, sentence: verdict, why: null } };
+  if (trouble) return { ...looks, note: { warn: true, sentence: trouble, why: null } };
   // Untouched, its font's warning waits for an edit; a form field's says an edit there is left out.
   if (!changed && !span.form_field) return { ...looks, note: null };
-  return { ...looks, note: fidelityNote({ span, font, sentences }) };
+  const live = () => liveVerdictOf(span, { font, text: reading?.text ?? span.text });
+  return { ...looks, note: fidelityNote(verdictOf(span, { reading, fit, live }), { span, font, sentences }) };
 }
 
 /** What an edit in `span` warns of as typing starts: nothing when it keeps its look, or its font's warning is muted. */
@@ -59,7 +61,7 @@ export function editNote(
 ): Note | null {
   // A form field's is a trouble of the field's own: whatever is typed, the edit is left out.
   if (muted || span.form_field) return null;
-  return fidelityNote({ span, font, sentences });
+  return fidelityNote(span, { span, font, sentences });
 }
 
 /** What a redaction's render found, in the server's words: nothing to say until it's drawn, or when it all went. */
@@ -74,27 +76,24 @@ export function wontMatch(span: SpanInfo): boolean {
   return span.substitute !== null || span.why !== null;
 }
 
-/** The chip's short warning on an edit here: "a similar font", "will look different", or none when it matches. */
-export function shortWarningOf(span: SpanInfo): string | null {
-  if (span.substitute !== null) return "a similar font";
-  return span.why === null ? null : "will look different";
-}
-
 /** Why an edit here won't match the text around it, in the server's words. */
 function approximateSentence(why: NonNullable<SpanInfo["why"]>, sentences: Sentences): string {
   return fill(sentences.approximate[why.code] ?? "", why.params);
 }
 
-/** What an edit here will come to, before one is made: kept as it was, or drawn in what font. */
-function fidelityNote({ span, font, sentences }: Pick<MarkedSpan, "span" | "font" | "sentences">): Note | null {
+/** What an edit here comes to, as `verdict` says: kept as it was, or drawn in what font. Nothing when it matches. */
+function fidelityNote(
+  verdict: Verdict,
+  { span, font, sentences }: Pick<MarkedSpan, "span" | "font" | "sentences">,
+): Note | null {
   // A form field draws it: no edit changes it yet, whatever its font.
   if (span.form_field) return { warn: true, sentence: sentences.form_field_not_edited, why: null };
   // Its own font draws it, but an edit won't match the text around it.
-  if (span.why !== null) return { warn: true, sentence: approximateSentence(span.why, sentences), why: null };
-  if (span.substitute === null) return null;
-  const substituteSentence = span.same_widths ? sentences.substitute_same_widths : sentences.substitute;
+  if (verdict.why !== null) return { warn: true, sentence: approximateSentence(verdict.why, sentences), why: null };
+  if (verdict.substitute === null) return null;
+  const substituteSentence = verdict.same_widths ? sentences.substitute_same_widths : sentences.substitute;
   // The font's reason is its first span's: it holds here only if a similar face draws that one too.
   const why = font?.substitute == null ? null : font.why;
   // Warned whatever the widths: the file's own font doesn't draw it (`decisions/product.md`, The fidelity contract).
-  return { warn: true, sentence: fill(substituteSentence, { font: span.substitute }), why };
+  return { warn: true, sentence: fill(substituteSentence, { font: verdict.substitute }), why };
 }

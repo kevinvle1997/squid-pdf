@@ -11,6 +11,7 @@ import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
 import { type PageState, spanIn } from "../page";
 import type { SpanReading } from "../project";
+import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf } from "./geometry";
@@ -24,10 +25,15 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   const [notes] = useState(createNotes);
   const noteId = useId();
   const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
+  // A fit for words the span no longer reads says nothing of these: until its render lands, they're worked out here.
+  const fits = useMemo(
+    () => landedFits(page.fits, { now: page.edits, drawnFrom: page.drawnFrom }),
+    [page.fits, page.edits, page.drawnFrom],
+  );
   return (
     <>
       {page.matches !== undefined && <Found page={page} info={info} matches={page.matches} />}
-      <Shown page={page} info={info} readings={readings} />
+      <Shown page={page} info={info} readings={readings} fits={fits} />
       {page.spans.map((span) =>
         span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -38,7 +44,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             info={info}
             reading={readings.get(span.id)}
             font={fontOf(page.fonts, span)}
-            fit={page.fits[span.id]}
+            fit={fits[span.id]}
             redaction={page.redactions[span.id]}
             sentences={page.sentences}
             focusTo={page.focusTo?.spanId === span.id ? page.focusTo : null}
@@ -47,7 +53,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
           />
         ),
       )}
-      <PageNote notes={notes} id={noteId} page={page} readings={readings} />
+      <PageNote notes={notes} id={noteId} page={page} readings={readings} fits={fits} />
       {page.unredacting !== null && (
         <UndoRedactionAt spanId={page.unredacting} page={page} info={info} readings={readings} />
       )}
@@ -60,12 +66,14 @@ function Shown({
   page,
   info,
   readings,
+  fits,
 }: {
   page: PageState;
   info: PageInfo;
   readings: ReadonlyMap<string, SpanReading>;
+  fits: PageFits; // each as its span reads now, once drawn so
 }) {
-  const { shownMismatches: shown, changed, fits, fonts } = page;
+  const { shownMismatches: shown, changed, fonts } = page;
   return shownAmong(page.spans, { shown, changed, readings, fits, fonts }).flatMap((span) => {
     // Being typed into: the field says how it won't match.
     if (span.id === page.typingIn) return [];
@@ -109,11 +117,13 @@ function PageNote({
   id,
   page,
   readings,
+  fits,
 }: {
   notes: Notes;
   id: string;
   page: PageState;
   readings: ReadonlyMap<string, SpanReading>;
+  fits: PageFits; // each as its span reads now, once drawn so
 }) {
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
   // Focus shows the note only when it's the keyboard's: a click's focus leaves it to the click.
@@ -124,7 +134,7 @@ function PageNote({
     span,
     font: fontOf(page.fonts, span),
     reading: readings.get(span.id),
-    fit: page.fits[span.id],
+    fit: fits[span.id],
     redaction: page.redactions[span.id],
     sentences: page.sentences,
   });

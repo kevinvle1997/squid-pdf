@@ -15,10 +15,13 @@ from squidpdf.core import (
     SHRINK_FLOOR,
     TOLERANCE_PT,
     Message,
+    QuarterTurn,
+    open_pdf,
+    reason_of,
     words,
 )
 from squidpdf.editing import FitReport, Strategy, options_for, replace_fit
-from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
+from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, in_a_copy_lacking
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
 
 
@@ -106,3 +109,32 @@ def test_a_line_is_too_long_only_past_its_room_as_the_browser_says(case):
     assert_equal(report.describe(), said, "what's said of the length")
     assert_equal(report.ok, percent is None, "whether it fits")
     assert_equal([option.name for option in options], case["options"], "the ways out")
+
+
+_TURNED: QuarterTurn = 90  # a `turned` case's line, turned counterclockwise: up the page
+
+
+@pytest.mark.parametrize("case", _SHARED["verdicts"], ids=lambda case: case["what"])
+def test_an_edits_verdict_is_the_one_the_browser_works_out_as_it_is_typed(case, tmp_path):
+    """Upload judges a span on its own words; an edit is judged on the words typed."""
+    path = in_a_copy_lacking(
+        str(tmp_path / "case.pdf"),
+        text=case["text"],
+        lacking=case["lacking"],
+        stored=case["stored"],
+        turn_ccw=_TURNED if case["turned"] else 0,
+    )
+    with open_pdf(path) as engine:
+        [span] = engine.index()
+        [report] = engine.assess(engine.index())
+        verdict = replace_fit(engine, span, case["typed"], room_pt=0.0).verdict
+
+    # As the browser gets it: a reason only where its own font draws it unlike the page.
+    approximate_why = report.why if report.state == "approximate" else None
+    why = None if approximate_why is None else reason_of(approximate_why)
+    judged = {"fidelity": report.state, "why": why}
+    assert_equal(
+        judged, case["span"], "the span, judged on its own words, as the browser gets it"
+    )
+    assert_equal(report.in_file, case["stored"], "whether the file's own copy can draw it")
+    assert_equal(verdict.fidelity, case["fidelity"], "the edit's verdict")

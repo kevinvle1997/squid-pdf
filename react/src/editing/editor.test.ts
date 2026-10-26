@@ -1,19 +1,29 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aDocumentNotice, aFont, aProblem, aSpan } from "../fixtures";
+import { aDoc, aDocumentNotice, aFont, aProblem, aSpan, halfWideGlyphs } from "../fixtures";
 import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
+// "Kept" is stored in the file and draws every letter typed here; "Named" is only named, so a similar font draws it.
 const DOC = aDoc({
   spans: [
     aSpan({ id: "own", font: "Kept" }),
-    aSpan({ id: "substituted", font: "Named", fidelity: "substitute", substitute: "Liberation Serif Regular" }),
+    aSpan({
+      id: "substituted",
+      font: "Named",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+      in_file: false,
+    }),
   ],
-  fonts: [aFont("Kept"), aFont("Named", { substitute: "Liberation Serif Regular" })],
+  fonts: [
+    aFont("Kept", { glyphs: halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ") }),
+    aFont("Named", { substitute: "Liberation Serif Regular" }),
+  ],
 });
 const FILE = new File(["%PDF-"], "contract.pdf");
 
@@ -117,6 +127,7 @@ describe("a change to the history", () => {
       font: "Kept",
       fidelity: "substitute",
       substitute: "Liberation Serif Regular",
+      in_file: false,
     });
     editor = createEditor(FILE, aDoc({ spans: [...DOC.spans, turned, elsewhere], fonts: DOC.fonts }), 2);
     typed("substituted", "now");
