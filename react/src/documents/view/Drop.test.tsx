@@ -8,7 +8,7 @@ test("under the sheet, the landing promises the file is deleted, and only the to
     <Drop
       landing={{ kind: "waiting" }}
       kept={null}
-      deleteRefused={false}
+      forgetFailed={null}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
       onForget={vi.fn()}
@@ -26,7 +26,7 @@ test("the promise's line links the code this page was built from", async () => {
     <Drop
       landing={{ kind: "waiting" }}
       kept={null}
-      deleteRefused={false}
+      forgetFailed={null}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
       onForget={vi.fn()}
