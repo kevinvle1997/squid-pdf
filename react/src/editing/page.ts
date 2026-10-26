@@ -1,13 +1,14 @@
 // What one page draws from the editor's state, selected as parts so the page redraws only when one
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
 import { pageUrl } from "../api/client";
-import type { FitRules, FontInfo, Sentences, SpanInfo } from "../api/types";
+import type { FitRules, Sentences, SpanInfo } from "../api/types";
 import type { EditorState, FocusTo, ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
 import type { PreviewDisagreement } from "./previewDisagreements";
 import type { PageEdits } from "./project";
 import type { PageFits, PageRedactions, Strip } from "./render";
+import type { FontsByObject } from "./spanFonts";
 
 const NO_SPANS: readonly SpanInfo[] = [];
 const NO_FITS: PageFits = {};
@@ -33,7 +34,7 @@ export interface PageState {
   readonly focusTo: FocusTo | null; // the span focus is sent to, when it's here
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
-  readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly fonts: FontsByObject;
   readonly sentences: Sentences;
   readonly rules: FitRules; // for the way out a preview is drawn in
 }

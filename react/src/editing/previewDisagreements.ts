@@ -1,10 +1,11 @@
 // In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
 // Verdicts are compared, not pixels: the preview draws in a face we ship.
-import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
+import type { FitInfo, FitRules, Strategy } from "../api/types";
 import { type Fit, fitOf, runsPast } from "./fit";
 import { spanOf } from "./history";
 import { type Differing, differing, type Reading } from "./project";
 import type { Drawn } from "./render";
+import { type FontsByObject, fontOf } from "./spanFonts";
 
 /** The spans on one page whose render disagreed with their preview, as one render landed. */
 export interface PreviewDisagreement {
@@ -15,7 +16,7 @@ export interface PreviewDisagreement {
 export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Map();
 
 interface Judged {
-  fonts: ReadonlyMap<string, FontInfo>;
+  fonts: FontsByObject;
   rules: FitRules;
   disagreements: ReadonlyMap<number, PreviewDisagreement>; // what pulsed before, kept for the pages this landing didn't draw
 }
@@ -46,7 +47,7 @@ interface PageLanded {
   readonly reading: Reading; // what the landing drew
   readonly page: number;
   readonly after: Drawn;
-  readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly fonts: FontsByObject;
   readonly rules: FitRules;
 }
 
@@ -62,7 +63,7 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
   });
   if (noticed || skipped) return true;
   const fit = after.fits.get(page)?.[span.id];
-  const font = fonts.get(span.font);
+  const font = fontOf(fonts, span);
   // Put back, or a font the browser can't measure: nothing was foreseen.
   if (fit === undefined || font === undefined) return false;
   return !sameVerdict(fit, {

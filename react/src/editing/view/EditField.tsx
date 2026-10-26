@@ -18,6 +18,7 @@ import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, runsPast, settingOf } from "../fit";
 import { attachDropped } from "../fonts";
 import { textIn } from "../project";
+import { fontOf } from "../spanFonts";
 import { enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { Chip } from "./Chip";
 import { useEditor, useEditorState } from "./context";
@@ -32,7 +33,7 @@ import { boxOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geom
 export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
   const text = useEditorState((state) => state.draft?.text ?? "");
-  const font = useEditorState((state) => state.layout.fonts.get(span.font));
+  const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const start = useEditorState((state) => textIn(state.reading, span));
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
   // A letter the look-alike lacks sends the line to its broadest face, put on the page only once one does.

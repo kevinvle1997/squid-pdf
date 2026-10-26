@@ -1,11 +1,11 @@
 // One open document: its state, and the change every edit, undo and put-back goes through. Each action
 // is a function of the editor in the module named for it (typing, export).
-import type { Document, Edit, FontInfo, SpanInfo } from "../api/types";
+import type { Document, Edit, SpanInfo } from "../api/types";
 import { Reopener } from "../documents/reopen";
 import type { Press } from "./caret";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
-import { reattach, shownNameOf } from "./fonts";
+import { reattach } from "./fonts";
 import {
   EMPTY_HISTORY,
   entriesOf,
@@ -22,6 +22,7 @@ import { heardIn, NO_NOTICES, type Notices, newlyHeard, noticeLines, noticesAfte
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, textIn, UNEDITED } from "./project";
 import { type Drawn, NOTHING_DRAWN, RenderQueue } from "./render";
+import { type FontsByObject, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { type Persistence, persistUntil, persistWork } from "./workPersistence";
@@ -73,7 +74,7 @@ export function scrollingTo(spanId: string, block: ScrollLogicalPosition = "near
 export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
-  readonly fonts: ReadonlyMap<string, FontInfo>;
+  readonly fonts: FontsByObject;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
   readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
 }
@@ -125,14 +126,14 @@ export function layoutOf(doc: Document): Layout {
     if (onPage === undefined) pages.set(span.page, [span]);
     else onPage.push(span);
   }
-  const fonts = new Map(doc.fonts.map((font) => [font.name, font]));
+  const fonts = fontsByObject(doc.fonts);
   const atRest = { changed: false, reading: undefined, missing: [] };
   const mismatches = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
     fonts,
-    warnedFonts: new Set(mismatches.map(({ span }) => shownNameOf({ fonts }, span.font))),
+    warnedFonts: new Set(mismatches.map(({ span }) => shownNameIn(fonts, span))),
     mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
   };
 }

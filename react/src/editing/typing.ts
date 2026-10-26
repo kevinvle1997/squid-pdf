@@ -4,10 +4,10 @@ import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import type { Press } from "./caret";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
-import { shownNameOf } from "./fonts";
 import type { HistoryAction } from "./history";
 import { editNote } from "./marks";
 import type { Reading } from "./project";
+import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
 
 /** The text being typed into a span, not yet in the history. */
@@ -43,7 +43,7 @@ export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; 
 export function draftSpanOf(state: EditorState): { draft: Draft; span: SpanInfo; font: FontInfo } | undefined {
   const { draft, layout } = state;
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
-  const font = span === undefined ? undefined : layout.fonts.get(span.font);
+  const font = span === undefined ? undefined : fontOf(layout.fonts, span);
   if (draft === null || span === undefined || font === undefined) return undefined;
   return { draft, span, font };
 }
@@ -141,8 +141,8 @@ export function fieldFocused(editor: Editor): void {
   const { draft, layout, doc, mutedFonts } = state;
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
   if (draft === null || span === undefined) return;
-  const muted = mutedFonts.has(shownNameOf(layout, span.font));
-  const note = editNote(span, { font: layout.fonts.get(span.font), sentences: doc.sentences, muted });
+  const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
+  const note = editNote(span, { font: fontOf(layout.fonts, span), sentences: doc.sentences, muted });
   const trouble = troublesIn(state, draft.text).sentences.join("\n");
   const heard = [note?.sentence, note?.why, trouble].filter(Boolean).join(" ");
   if (heard !== "") announce(editor, heard);

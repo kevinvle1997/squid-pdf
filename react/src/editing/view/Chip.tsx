@@ -7,10 +7,11 @@ import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
-import { attachFont, FONT_FILES, offersCopy, readableName, shownNameOf } from "../fonts";
+import { attachFont, FONT_FILES, offersCopy, readableName } from "../fonts";
 import { editNote, shortWarningOf } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
+import { fontOf, shownNameIn } from "../spanFonts";
 import { chooseWayOut } from "../typing";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
@@ -28,10 +29,10 @@ interface Props {
 /** The slip under the span typed into. */
 export function Chip({ span, info, trouble, setting }: Props) {
   const editor = useEditor();
-  const font = useEditorState((state) => state.layout.fonts.get(span.font));
+  const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
   // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
-  const shown = useEditorState((state) => shownNameOf(state.layout, span.font));
+  const shown = useEditorState((state) => shownNameIn(state.layout.fonts, span));
   // What an edit here warns of, in full, as typing starts: until the user mutes its font's warning.
   const muted = useEditorState((state) => state.mutedFonts.has(shown));
   const offered = useEditorState(offersCopy);
