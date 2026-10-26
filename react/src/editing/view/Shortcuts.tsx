@@ -1,7 +1,10 @@
 // Every key the editor answers to, listed from the bar, as editors list theirs: the keyboard path whole
-// (decisions/frontend.md, The keyboard path is complete), opened with ? too. A pointer's list; a touch screen has no keys.
+// (decisions/frontend.md, The keyboard path is complete), opened with ? too. A pointer's list: a touch screen has no
+// keys, so there it isn't drawn, and ? opens nothing.
+import { useSyncExternalStore } from "react";
 import { Dialog, DialogTrigger, Heading, Popover } from "react-aria-components";
 import { Button } from "../../ui/Button";
+import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Shortcut } from "../../ui/Tooltip";
 import { BELOW_BAR_PX } from "../constants";
 import { showShortcuts } from "../shortcuts";
@@ -27,6 +30,8 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
 export function Shortcuts() {
   const editor = useEditor();
   const open = useEditorState((state) => state.shortcutsOpen);
+  const coarse = useSyncExternalStore(onPointerChange, coarsePointer);
+  if (coarse) return null;
   return (
     <DialogTrigger isOpen={open} onOpenChange={(isOpen) => showShortcuts(editor, isOpen)}>
       <Shortcut keys="?">
