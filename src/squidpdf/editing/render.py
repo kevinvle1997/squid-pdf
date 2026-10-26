@@ -129,7 +129,7 @@ def _draw_regions(
         steps = plan(engine, resolved, fits, strips=strips)
         redactions = RedactionController(tuple(redacted_by(steps)))
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
-        notices = run(engine, steps)
+        notices = run(engine, steps).notices
         verdicts = redactions.verdicts(engine)
         images = _draw(engine, regions, drawn_pages=drawn_pages)
 

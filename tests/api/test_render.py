@@ -396,7 +396,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
     redrawn: list[str] = []
     draw = Engine.draw
 
-    def noting_what(engine: Engine, span, text: str, **setting) -> list:
+    def noting_what(engine: Engine, span, text: str, **setting) -> object:
         redrawn.append(text)
         return draw(engine, span, text, **setting)
 

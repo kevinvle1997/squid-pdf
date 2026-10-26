@@ -45,7 +45,7 @@ from squidpdf.core.types import (
     by_page,
     turn_added,
 )
-from squidpdf.core.writer import PageWriter, Setting
+from squidpdf.core.writer import DrawnLine, PageWriter, Setting
 
 # Core's own: every failure below the API, said as the Problem it means.
 CORE_ERRORS = ErrorController(MUPDF_FAILURES)
@@ -162,14 +162,22 @@ class Engine:
     def _assess_one(self, span: Span) -> FidelityReport:
         """Exact, approximate or substitute, for one span."""
         plan = self.plans.plan_for(span, span.text)
-        return replace(self._judged(span, plan), letter_spacing=plan.letter_spacing)
+        judged = self.fidelity_of(span, plan, own_text=plan)
+        return replace(judged, letter_spacing=plan.letter_spacing)
 
-    def _judged(self, span: Span, plan: DrawPlan) -> FidelityReport:
-        """Exact, approximate or substitute, for one span, as `plan` draws its own text."""
+    def fidelity_of(
+        self, span: Span, plan: DrawPlan, *, own_text: DrawPlan | None = None
+    ) -> FidelityReport:
+        """Exact, approximate or substitute, for `plan` drawn at the span: its text, or an edit.
+
+        `own_text` is the plan of the span's own text, which says how the page sets it;
+        None plans it here.
+        """
         drawn_in = plan.drawn_in
-        # The file's own font redraws its own text, as it is or not quite.
+        # The file's own font draws it, as the page sets the span or not quite.
         if isinstance(drawn_in, PooledFont):
-            unlike = self.plans.unlike(span, plan)
+            own = self.plans.plan_for(span, span.text) if own_text is None else own_text
+            unlike = self.plans.unlike(span, plan, own_text=own)
             if unlike is None:
                 return FidelityReport(span.id, "exact", span.font, in_file=True)
             return FidelityReport(span.id, "approximate", span.font, in_file=True, why=unlike)
@@ -181,7 +189,6 @@ class Engine:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
         found = self.fonts.lookup(span)
         why = found.reason if isinstance(found, FontUnusable) else found.why_missing(span.text)
-        match = self.fonts.look_alike(span)
         return FidelityReport(
             span.id,
             "substitute",
@@ -189,7 +196,7 @@ class Engine:
             in_file=isinstance(found, PooledFont),
             substitute=drawn_in.name,
             why=why,
-            same_widths=match.same_widths and drawn_in == match.face,
+            same_widths=self.fonts.same_widths(span, drawn_in),
         )
 
     def why_not_its_font(self, span: Span, font_file: bytes) -> Message | None:
@@ -271,12 +278,12 @@ class Engine:
         size: float | None = None,
         scale_x: float = 1.0,
         turn_ccw: QuarterTurn = 0,
-    ) -> list[Message]:
+    ) -> DrawnLine:
         """Redraw `text` at the span's baseline, in the font `LineFit.plan_for` names.
 
         `plan` is `LineFit.plan_for`'s answer from before the erase; None plans it here.
         `scale_x` narrows the run from its start; `turn_ccw` turns it on the page
-        unrotated. Returns what came out other than asked.
+        unrotated. Returns the face that drew it, if one did, and what came out unasked.
         """
         planned = self.plans.plan_for(span, text) if plan is None else plan
         drawn_size = span.size if size is None else size

@@ -104,10 +104,11 @@ class DrawPlanner:
         """The face that draws `text` if the page won't take the span's own font after all."""
         return self.fonts.substitute(span, unicodedata.normalize("NFC", text))
 
-    def unlike(self, span: Span, plan: DrawPlan) -> Message | None:
-        """How a redraw of the span's own text in its own font looks unlike it; None if not.
+    def unlike(self, span: Span, plan: DrawPlan, *, own_text: DrawPlan) -> Message | None:
+        """How `plan`, drawn at the span in its own font, looks unlike the page; None if not.
 
-        Said as one of the `ApproximateReason`s.
+        Said as one of the `ApproximateReason`s. `own_text` is the plan of the span's own
+        text, whose width says how the page sets it.
         """
         # Turned on the page: redraws are level.
         if span.turned:
@@ -121,8 +122,11 @@ class DrawPlanner:
         # New text: its box is only nominal, so there's no spacing of its own to keep.
         if not span.fragments:
             return None
+        # The own font can't draw the span's own text: how the page spaces it can't be measured.
+        if not isinstance(own_text.drawn_in, PooledFont):
+            return None
         # Spaced or stretched (letter spacing, scaling, a justified line): redraws close it up.
-        redrawn = self.width_of(span, plan, size=span.size)
+        redrawn = self.width_of(span, own_text, size=span.size)
         if abs(span.bbox.width - redrawn) > TOLERANCE_PT:
             return why_approximate("spaced_text")
         return None

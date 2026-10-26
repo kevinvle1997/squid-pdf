@@ -18,6 +18,7 @@ from squidpdf.core import (
     Page,
     SaidInfo,
     Style,
+    SubstituteWidths,
 )
 from squidpdf.editing.edits import Strategy
 from squidpdf.editing.fit import FitReport
@@ -70,14 +71,11 @@ Notice = SpanNotice | InsertNotice | FileNotice
 
 @dataclass(frozen=True, slots=True)
 class Replaced:
-    """How a replace turned out: in its span's own font or not, and its fit.
-
-    `font` is the span's font's shown name: a file's words, never logged as they are.
-    """
+    """A replace as drawn: in its span's own font or not, and the face that drew it or would."""
 
     fidelity: Fidelity
-    font: str
-    fit: FitReport
+    shown_name: str  # a file's words: logged only through loggable_family
+    substitute: SubstituteWidths  # drew it in its font's place, if `fidelity` says so
 
 
 @dataclass(frozen=True, slots=True)
