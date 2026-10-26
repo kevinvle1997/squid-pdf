@@ -83,36 +83,84 @@ jobs:
       - name: Types (tsc)
         run: npm run typecheck
 
-      # The lockfile pins Playwright, and Playwright pins its browsers. The key names them,
-      # so a cache saved before one was added can't hit without it.
+      - name: Playwright's version
+        id: playwright
+        run: echo "version=$(jq -r '.packages["node_modules/playwright"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
+
+      # Playwright pins its browsers, so its version alone decides what the cache holds.
       - name: Browser cache
         id: browser
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-webkit-${{ runner.os }}-${{ hashFiles('react/package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # Before the tests: the view's tests run in Chromium too. WebKit is for the end to end.
-      - name: Browsers
+      # No --with-deps: the runner ships Chrome, and with it Chromium's system libraries.
+      - name: Chromium
         if: steps.browser.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
-
-      # The system libraries they need live outside the cache, so a hit still installs them.
-      - name: Browsers' system libraries
-        if: steps.browser.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
+        run: npx playwright install chromium
 
       - name: Unit and view tests
         run: npm test
 
       - name: End to end
-        run: npm run e2e
+        run: npm run e2e -- --project=chromium
 
       - name: Traces
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-traces
+          name: playwright-traces-chromium
+          path: react/test-results/
+
+  # The tag a job's container runs is fixed before its steps, so it's read here.
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: react/package-lock.json
+          sparse-checkout-cone-mode: false
+
+      - id: version
+        run: echo "version=$(jq -r '.packages["node_modules/playwright"].version' react/package-lock.json)" >> "$GITHUB_OUTPUT"
+
+  # In Playwright's own image, which ships WebKit with its system libraries, so no apt runs for them.
+  webkit:
+    needs: playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
+    defaults:
+      run:
+        working-directory: react
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the API
+        uses: ./.github/actions/uv
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: react/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: End to end
+        run: npm run e2e -- --project=webkit
+
+      - name: Traces
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-traces-webkit
           path: react/test-results/
 
   deploy:
