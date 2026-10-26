@@ -85,6 +85,10 @@ pass "the browser app is served: $status in ${seconds}s"
 [[ -n $(header referrer-policy) && -n $(header permissions-policy) ]] ||
   fail "the page has no Referrer-Policy or Permissions-Policy"
 pass "the page carries a Content-Security-Policy that refuses framing"
+# Whether it's React Aria's own hash is react/src/policy.test.ts's to say; with none, its style is refused.
+style_src=$(header content-security-policy | tr ';' '\n' | grep '^style-src' || true)
+[[ $style_src == *"'sha256-"* ]] || fail "the page's policy allows no style by its hash: '$style_src'"
+pass "the page's policy allows a style by its hash, as React Aria's needs"
 [[ $(header cache-control) == no-cache ]] || fail "the page's Cache-Control is '$(header cache-control)'"
 pass "the page is checked again on each visit"
 
