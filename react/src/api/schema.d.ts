@@ -714,6 +714,10 @@ export interface components {
             reopened: string;
             /** Export Left Out */
             export_left_out: string;
+            /** Page Left Out */
+            page_left_out: string;
+            /** Page Put Back */
+            page_put_back: string;
             /** Form Field Not Edited */
             form_field_not_edited: string;
             /** Empty */

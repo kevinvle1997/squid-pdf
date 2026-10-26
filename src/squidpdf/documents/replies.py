@@ -122,6 +122,8 @@ def _sentences_in(language: str) -> Sentences:
         "undo_redaction": words.sentence("undo_redaction", language),
         "reopened": words.sentence("reopened", language),
         "export_left_out": words.sentence("export_left_out", language),
+        "page_left_out": words.sentence("page_left_out", language),
+        "page_put_back": words.sentence("page_put_back", language),
         "form_field_not_edited": words.sentence("form_field_not_edited", language),
         "empty": words.sentence("empty", language),
         "options": options,
