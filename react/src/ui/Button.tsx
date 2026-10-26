@@ -10,7 +10,7 @@ export function Button({
   keepFocus = false,
   ...props
 }: ButtonProps & {
-  variant?: "secondary" | "primary" | "quiet"; // primary: filled, the one action a screen asks for; quiet: a tool in the bar
+  variant?: "secondary" | "primary" | "quiet"; // primary: filled, the one action a screen asks for; quiet: a tool in the bar, or the lesser of two actions
   className?: string;
   keepFocus?: boolean; // a press leaves focus where it is, so a field being typed in keeps it
   ref?: Ref<HTMLButtonElement>;
