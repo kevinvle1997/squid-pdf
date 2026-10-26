@@ -39,7 +39,7 @@ async function edit(page: Page, text: string) {
 
 test("the landing takes a PDF anywhere, and nothing on it fails an accessibility check", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Drop a PDF here");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName("Drop a PDF here");
   expect(await seriousProblems(page)).toEqual([]);
 });
 

@@ -35,7 +35,8 @@ export function Drop({ landing, kept, forgetFailed, onChoose, onReopen, onForget
       <SheetScreen
         title={
           <>
-            Drop a PDF <mark className={styles.typed}>here</mark>
+            <span className={styles.byPointer}>Drop</span>
+            <span className={styles.byTouch}>Open</span> a PDF <mark className={styles.typed}>here</mark>
           </>
         }
         sheetClassName={styles.sheet}

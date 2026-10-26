@@ -20,6 +20,12 @@
 .kept { display: flex; flex-direction: column; align-items: center; gap: var(--s3); margin-block-start: var(--s3); }
 .keptSaid { margin: 0; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
 .keptActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+/* The heading's verb: a file is seldom dropped on a touch screen, so there it asks for one opened. */
+.byTouch { display: none; }
+@media (pointer: coarse) {
+  .byPointer { display: none; }
+  .byTouch { display: inline; }
+}
 /* Typed into, as the editor shows a word being typed: the caret after it, which blinks and then rests. */
 .typed { composes: caret from "../../ui/Caret.module.css"; }
 /* Under the sheet, on the mat: what becomes of the file, then two facts beside each other, one above the other
