@@ -118,6 +118,7 @@ class LogEvent(Enum):
     GOOGLE_CACHE_DAMAGED = _EventFacts("google_cache_damaged", SKIPPED, WARN)
     GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
     GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
+    EDIT_IN_SIMILAR_FONT = _EventFacts("edit_in_similar_font", NOTED, INFO)
 
 
 @dataclass(frozen=True, slots=True)

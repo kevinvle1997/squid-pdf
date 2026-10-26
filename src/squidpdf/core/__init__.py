@@ -68,6 +68,7 @@ from squidpdf.core.engine import (
 from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
 from squidpdf.core.fonts.document import FontSources as FontSources
 from squidpdf.core.fonts.google import google_fonts as google_fonts
+from squidpdf.core.fonts.listed import listed_family as listed_family
 from squidpdf.core.fonts.look_alike import broadest as broadest
 from squidpdf.core.fonts.names import strip_subset as strip_subset
 from squidpdf.core.fonts.substitute import face_coverage as face_coverage

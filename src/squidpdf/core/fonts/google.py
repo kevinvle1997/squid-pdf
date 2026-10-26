@@ -196,15 +196,21 @@ def _google_file(font: str, descriptor: FontDescriptor | None) -> GoogleFile:
     return _file_in(family, weight=weight, italic=style in ("italic", "bold-italic"))
 
 
-def _family_of(font: str) -> _Family:
-    """Google's family of a document's font. Raises FontUnusable when it has none."""
+def google_key(font: str) -> str | None:
+    """The key Google's pinned list files a document font's family under; None if not there."""
     listed = _family_list()
     key = bare_name(font)
     key = listed["aliases"].get(key, key)  # .get: most families were never renamed
-    family = listed["families"].get(key)  # .get: most fonts aren't Google's
+    return key if key in listed["families"] else None
+
+
+def _family_of(font: str) -> _Family:
+    """Google's family of a document's font. Raises FontUnusable when it has none."""
+    key = google_key(font)
     # Not one of Google's families: Arial, Calibri, a TeX font.
-    if family is None:
+    if key is None:
         raise FontUnusable(Message("google_not_listed"))
+    family = _family_list()["families"][key]
     files = tuple(_ListedFile(*row) for row in family["files"])  # rows keep the fields' order
     return _Family(family["folder"], family["reserved_name"], files)
 

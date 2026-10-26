@@ -16,15 +16,20 @@ from functools import partial
 from pathlib import Path
 
 from squidpdf.core import (
+    FACES,
     DriverFactory,
     Engine,
     Fidelity,
     InvalidRequest,
+    LogController,
+    LogEvent,
     Message,
+    OwnText,
     Reply,
     SpanIndex,
     Tally,
     Workers,
+    listed_family,
     tally,
     words,
 )
@@ -43,10 +48,13 @@ from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
 
 _EXPORTED = "export.pdf"  # the file saved and checked by the worker, then read by the server
 _PRODUCER = "squidpdf"  # the Producer an exported file names: the program that changed it last
+_UNLISTED = "unlisted"  # the font logged for one none of our lists name: its name is the file's
 
 # The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
 SKIPPED_HEADER = "Squid-Skipped-Edits"
 NOTICES_HEADER = "Squid-Notices"
+
+_log = LogController.for_module(__name__)
 
 # What each replace adds to on the export's line, by how it turned out.
 _TALLY_OF: dict[Fidelity, Tally] = {
@@ -134,12 +142,25 @@ def _make_pdf(
 
 
 def _count_fonts_kept(replaced: list[Replaced]) -> None:
-    """Tally each replace on the export's line by how it turned out.
+    """Tally each replace on the export's line by how it turned out; log each in a similar font.
 
     At export, not render: a file downloaded is the edits made, each span's last edit once.
     """
     for each in replaced:
         tally(_TALLY_OF[each.fidelity])
+        if each.fidelity == "substitute":
+            _log_similar_font(each)
+
+
+def _log_similar_font(replaced: Replaced) -> None:
+    """A replace a similar font drew: that face, the font where our lists name it, the width."""
+    listed = listed_family(replaced.font)
+    _log.write(
+        LogEvent.EDIT_IN_SIMILAR_FONT,
+        font=OwnText(_UNLISTED if listed is None else listed),
+        face=OwnText(FACES[replaced.fit.substitute].file),
+        width_delta_pct=replaced.fit.delta_pct,
+    )
 
 
 def save_edited(
