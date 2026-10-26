@@ -35,7 +35,7 @@ from squidpdf.editing.edits import (
 )
 from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import Fitted, LogFits, insert_fit, insert_span, replace_fit
-from squidpdf.editing.types import Applied, InsertNotice, Notice, Skipped, SpanNotice
+from squidpdf.editing.types import Applied, InsertNotice, Notice, Replaced, Skipped, SpanNotice
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,4 +459,16 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> list[Notice]
 def apply_edits(engine: Engine, resolved: Resolved) -> Applied:
     """Apply every edit on every page, in memory. Nothing is written."""
     fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
-    return Applied(resolved.skipped, run(engine, plan(engine, resolved, fits)))
+    # Before run too: it judges each replace by its span's own font.
+    replaced = [
+        _replaced(engine, edited_span.span, fits.replaces[edited_span.span.id])
+        for edited_span in resolved.span_edits
+        if isinstance(edited_span.edit, Replace)
+    ]
+    return Applied(resolved.skipped, run(engine, plan(engine, resolved, fits)), replaced)
+
+
+def _replaced(engine: Engine, span: Span, fitted: Fitted) -> Replaced:
+    """How a replace of `span` turns out, as `fitted` draws it."""
+    fidelity = engine.fit.fidelity(span, fitted.plan)
+    return Replaced(fidelity, engine.shown_name(span), fitted.report)

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from typing import get_args
 
+from squidpdf.core import Fidelity
+from squidpdf.editing.export import _TALLY_OF  # noqa: PLC2701 (every fidelity has a tally)
 from tests.api.conftest import span_starting, upload
 from tests.conftest import LOG_LINE, log_lines
 from tests.helpers import assert_all, assert_equal, assert_in, assert_not_in
@@ -42,6 +45,40 @@ def test_a_request_that_runs_pdf_work_tallies_its_wait_and_its_work_on_its_line(
     fields = dict(word.split("=") for word in line.split() if "=" in word)
     assert_in("queued_ms", fields, "the wait for a worker, on the upload's line")
     assert_in("worker_ms", fields, "the work in it, on the upload's line")
+
+
+def _fields(line: str) -> dict[str, str]:
+    """A line's fields, by name."""
+    return dict(word.split("=", 1) for word in line.split() if "=" in word)
+
+
+def test_an_export_counts_its_edits_by_whether_they_kept_their_font_on_its_line(
+    browser, pdf_bytes, capsys
+):
+    """The share of edits that keep their font is a sum over export lines: no join."""
+    mine = browser()
+    doc = upload(mine, pdf_bytes).json()
+    delivery, made = span_starting(doc, 1, "Delivery"), span_starting(doc, 0, "Made")
+    # The file's own font, and a font it only names, which a similar one draws.
+    edits = [
+        {"kind": "replace", "span_id": span["id"], "text": span["text"].replace("14", "2")}
+        for span in (delivery, made)
+    ]
+    capsys.readouterr()
+
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+
+    assert_equal(exported.status_code, 200, "exported")
+    [access] = [line for line in log_lines(capsys.readouterr().out) if "request_done" in line]
+    fields = _fields(access)
+    counted = {name: fields.get(name) for name in ("edits_exact", "edits_substitute")}
+    assert_equal(counted, {"edits_exact": "1", "edits_substitute": "1"}, "the export's counts")
+    assert_not_in("edits_approximate", fields, "a count of none")
+
+
+def test_every_fidelity_has_a_tally_on_the_exports_line():
+    """One without would fail the export of the first edit that turned out so."""
+    assert_equal(sorted(_TALLY_OF), sorted(get_args(Fidelity)), "the fidelities export counts")
 
 
 def test_the_health_check_logs_nothing(server, capsys):
