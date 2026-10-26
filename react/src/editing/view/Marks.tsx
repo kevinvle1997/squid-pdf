@@ -6,12 +6,12 @@ import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
-import { matchesAcross } from "../find";
+import { drawnWidthOf, matchesAcross } from "../find";
 import { settingOf } from "../fit";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { type PageState, spanIn } from "../page";
-import type { SpanReading } from "../project";
+import { differing, type SpanReading } from "../project";
 import { shownAmong } from "../unlike";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf } from "./geometry";
@@ -95,17 +95,20 @@ function Found({
   readings: ReadonlyMap<string, SpanReading>;
   matches: ReadonlyMap<string, readonly Match[]>;
 }) {
+  // Drawn by the browser until the server's render has these words: its fit is for words it drew before.
+  const previewed = new Set(differing(page.edits, page.drawnFrom).map(({ span }) => span.id));
   return page.spans.flatMap((span) => {
     const inSpan = matches.get(span.id);
     if (inSpan === undefined || span.id === page.typingIn) return [];
     const reading = readings.get(span.id);
     const text = reading?.text ?? span.text;
     const font = page.fonts.get(span.font);
-    const glyphs = font?.glyphs ?? {};
-    // Set as the edit is drawn: its way out narrows or shrinks the words found with it.
+    const glyphs = font?.glyphs;
     const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
+    const fit = reading?.replaced && !previewed.has(span.id) ? page.fits[span.id] : undefined;
+    const widePt = drawnWidthOf(span, { text, glyphs, scale, fit });
     const gone = span.id === page.foundAt;
-    return matchesAcross(span, { text, matches: inSpan, glyphs, scale }).map(({ x0, x1 }) => (
+    return matchesAcross(span, { text, matches: inSpan, glyphs, widePt }).map(({ x0, x1 }) => (
       <span
         key={`${span.id}:${x0}`}
         className={classes(styles.found, gone && styles.foundAt)}

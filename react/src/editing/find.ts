@@ -1,6 +1,6 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitRules, FontInfo, SpanInfo } from "../api/types";
+import type { FitInfo, FitRules, FontInfo, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { change, changed, type Editor, type EditorState, scrollingTo, spoken } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast } from "./fit";
@@ -89,9 +89,31 @@ function matchesOf(found: readonly Found[], before: FindState["matches"]): FindS
 }
 
 /**
- * Where each match sits across its span, in points: its share of the line as drawn by the widths
- * of the letters before and in it, so the words found are marked, not the whole line. An edit's
- * line is as wide as its own words, set at `scale`, its way out.
+ * How wide a span's line is drawn, in points: by the server's fit once its render drew these words, else as the
+ * browser previews them, its own words set at `scale`, its way out. Without the font's widths, as wide as its box.
+ */
+export function drawnWidthOf(
+  span: SpanInfo,
+  {
+    text,
+    glyphs,
+    scale,
+    fit,
+  }: { text: string; glyphs: Record<string, number> | undefined; scale: LineScale; fit: FitInfo | undefined },
+): number {
+  const boxPt = span.bbox.x1 - span.bbox.x0;
+  // The server's render: a way out ends the line where the original did, as typed it runs on by the fit's difference.
+  if (fit !== undefined) return fit.strategy === "as-is" ? boxPt + fit.delta_pt : boxPt;
+  const typedPt = glyphs === undefined ? 0 : lineWidthPt(span, text, glyphs);
+  const originalPt = glyphs === undefined ? 0 : lineWidthPt(span, span.text, glyphs);
+  if (typedPt <= 0 || originalPt <= 0) return boxPt;
+  // The original's box, grown or shrunk as the words drawn in it are: measured against the box, not the widths alone.
+  return (boxPt * typedPt * scale.size * scale.scaleX) / originalPt;
+}
+
+/**
+ * Where each match sits across a line `widePt` wide, in points: its share by the widths of the letters
+ * before and in it, so the words found are marked, not the whole line.
  */
 export function matchesAcross(
   span: SpanInfo,
@@ -99,18 +121,16 @@ export function matchesAcross(
     text,
     matches,
     glyphs,
-    scale,
-  }: { text: string; matches: readonly Match[]; glyphs: Record<string, number>; scale: LineScale },
+    widePt,
+  }: { text: string; matches: readonly Match[]; glyphs: Record<string, number> | undefined; widePt: number },
 ): { x0: number; x1: number }[] {
-  const whole = lineWidthPt(span, text, glyphs);
-  const originalPt = lineWidthPt(span, span.text, glyphs);
-  // The original's box, grown or shrunk as the words drawn in it are: measured against the box, not the widths alone.
-  const drawnShare = whole > 0 && originalPt > 0 ? (whole * scale.size * scale.scaleX) / originalPt : 1;
-  const wide = (span.bbox.x1 - span.bbox.x0) * drawnShare;
+  const whole = glyphs === undefined ? 0 : lineWidthPt(span, text, glyphs);
   // Measured where the font has widths; else by letter count, the best guess without them.
-  const at = (index: number) =>
-    span.bbox.x0 +
-    (whole > 0 ? lineWidthPt(span, text.slice(0, index), glyphs) / whole : index / Math.max(text.length, 1)) * wide;
+  const share = (index: number) =>
+    glyphs !== undefined && whole > 0
+      ? lineWidthPt(span, text.slice(0, index), glyphs) / whole
+      : index / Math.max(text.length, 1);
+  const at = (index: number) => span.bbox.x0 + share(index) * widePt;
   return matches.map(({ start, end }) => ({ x0: at(start), x1: at(end) }));
 }
 
