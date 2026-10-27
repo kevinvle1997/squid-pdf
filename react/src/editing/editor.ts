@@ -363,9 +363,14 @@ function keptChanges(reading: Reading): SpanReading[] {
   return [...reading.spans.values()].filter(({ span }) => !reading.deleted.has(span.page));
 }
 
+/** How many spans an edit changes on the pages the download keeps: until one does, the bar forecasts, a page's delete or not. */
+export function changedWordsCount(state: EditorState): number {
+  return keptChanges(state.reading).length;
+}
+
 /** How many changes the bar counts: each span an edit changes, replaced or redacted, and each page left out, but none on it. */
 export function changedCount(state: EditorState): number {
-  return keptChanges(state.reading).length + state.reading.deleted.size;
+  return changedWordsCount(state) + state.reading.deleted.size;
 }
 
 /** How many changed spans won't match, and the bar's words: once one is in its own font, all "will look different". */

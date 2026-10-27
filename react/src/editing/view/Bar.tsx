@@ -7,7 +7,7 @@ import { ThemeToggle } from "../../ui/ThemeToggle";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
-import { changedCount, runLongCount, warnedCount } from "../editor";
+import { changedCount, changedWordsCount, runLongCount, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { openFind } from "../find";
 import type { Mismatches } from "../mismatches";
@@ -25,6 +25,8 @@ import { Shortcuts } from "./Shortcuts";
 export function Bar() {
   const editor = useEditor();
   const changed = useEditorState(changedCount);
+  // A page's delete changes no words, so the whole document's forecast stays until a word changes.
+  const wordsChanged = useEditorState(changedWordsCount);
   const warned = useEditorState(warnedCount, shallowEqual);
   const runLong = useEditorState(runLongCount);
   const atRest = useEditorState((state) => state.layout.mismatchesAtRest);
@@ -44,7 +46,7 @@ export function Bar() {
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
         )}
         <span className={styles.status}>
-          {changed === 0 ? <AtRest mismatches={atRest} /> : <Changed changed={changed} {...warned} />}
+          {wordsChanged === 0 ? <AtRest mismatches={atRest} /> : <Changed changed={changed} {...warned} />}
           {/* Left long past its room: each change says so on its mark, and the bar counts them. */}
           {changed > 0 && runLong > 0 && (
             <span className={styles.runLong}>
