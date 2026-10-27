@@ -3,6 +3,7 @@
 import { type Editor, type PressedOn, redo, undo } from "./editor";
 import { exportNow } from "./export";
 import { openFind, stepFind } from "./find";
+import { writeBelow, writeOnBarePage } from "./newText";
 import { redact } from "./redaction";
 import { showShortcuts } from "./shortcuts";
 
@@ -33,10 +34,22 @@ const COMMANDS: readonly Command[] = [
   // field they're the field's own, deleting a word or a line, as they do everywhere else; its chip has Redact.
   { keys: "mod+backspace", whileTyping: false, run: (editor, at) => redact(editor, at.spanId) },
   { keys: "mod+delete", whileTyping: false, run: (editor, at) => redact(editor, at.spanId) },
+  // New text on the line below the span, or on a page with no text, at its top left. In a field, Enter is the field's.
+  { keys: "mod+enter", whileTyping: false, run: newTextFrom },
   // The list of these keys: ? is shifted on most keyboards, and not on some.
   { keys: "shift+?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },
   { keys: "?", whileTyping: false, run: (editor) => showShortcuts(editor, true) },
 ];
+
+/** New text from the keyboard: below the span the key was pressed on, or at the top of a page with no text. */
+function newTextFrom(editor: Editor, at: KeyAt): void {
+  if (at.spanId !== null) {
+    writeBelow(editor, at.spanId);
+    return;
+  }
+  const bare = at.page !== null && (editor.store.get().layout.pages.get(at.page) ?? []).length === 0;
+  if (bare && at.page !== null) writeOnBarePage(editor, at.page);
+}
 
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;
 
@@ -52,6 +65,15 @@ export function keysOf(press: KeyPress): string {
 export function commandFor(press: KeyPress, typing: boolean): Command | undefined {
   const keys = keysOf(press);
   return COMMANDS.find((command) => command.keys === keys && (command.whileTyping || !typing));
+}
+
+/**
+ * Whether a key press is undo or redo, as the window's shortcuts have them. In a slip, neither is the window's, nor the
+ * browser's: its own would undo the typing in the field, out of sight of it.
+ */
+export function isUndoOrRedo(press: KeyPress): boolean {
+  const run = commandFor(press, false)?.run;
+  return run === undo || run === redo;
 }
 
 /** A React Aria key handler where Escape runs `run`: every other key goes on, so the window's shortcuts hear it. */

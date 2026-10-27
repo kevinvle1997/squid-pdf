@@ -1,23 +1,28 @@
 // What a page's spans are drawn as when it's near: a mark over each, the field, the note their marks share,
 // find's tint, the mismatches the bar's list shows, and the prompt before a redaction is undone.
-import { useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useReducer, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
+import { INSERT_ASCENT_EM } from "../constants";
+import { addFaces } from "../faces";
 import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
-import { type PageState, spanIn } from "../page";
-import type { SpanReading } from "../project";
+import { fontOfText, textFaceOf } from "../newText";
+import { inPageOrder, type PageState, spanIn } from "../page";
+import type { InsertReading, SpanReading } from "../project";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
-import { boxOf, markBoxOf } from "./geometry";
+import { boxOf, markBoxOf, textWidthPt } from "./geometry";
 import styles from "./Marks.module.css";
+import { NewTextField } from "./NewTextField";
 import { createNotes, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
+import { TextMark } from "./TextMark";
 import { UndoRedaction } from "./UndoRedaction";
 
 /** A mark over every span, or the field where one is being typed into, and the one note they share. */
@@ -34,8 +39,12 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
     <>
       {page.matches !== undefined && <Found page={page} info={info} matches={page.matches} />}
       <Shown page={page} info={info} readings={readings} fits={fits} />
-      {page.spans.map((span) =>
-        span.id === page.typingIn ? (
+      {inPageOrder(page.spans, placedOn(page)).map(({ span, placed }) => {
+        if (placed === "field") return <NewTextField key="field" info={info} />;
+        if (placed !== undefined) {
+          return <RestingText key={placed.textId} text={placed} page={page} info={info} />;
+        }
+        return span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
         ) : (
           <SpanMark
@@ -51,14 +60,38 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
             notes={notes}
             noteId={noteId}
           />
-        ),
-      )}
+        );
+      })}
       <PageNote notes={notes} id={noteId} page={page} readings={readings} fits={fits} />
       {page.unredacting !== null && (
         <UndoRedactionAt spanId={page.unredacting} page={page} info={info} readings={readings} />
       )}
     </>
   );
+}
+
+/** What's put on the page among its spans: each piece of new text at rest, and the field new text is typed in. */
+function placedOn(page: PageState): { item: InsertReading | "field"; at: readonly [number, number] }[] {
+  const resting = (page.edits?.inserts ?? []).filter((text) => text.textId !== page.writingAgain);
+  const texts = resting.map((text) => {
+    const [x, y] = text.edit.origin;
+    return { item: text, at: [x, y - text.edit.size * INSERT_ASCENT_EM] as const };
+  });
+  return page.writing === null ? texts : [...texts, { item: "field" as const, at: page.writing }];
+}
+
+/** New text at rest, measured in the face that previews it, again as that face loads. */
+function RestingText({ text, page, info }: { text: InsertReading; page: PageState; info: PageInfo }) {
+  const [, measureAgain] = useReducer((times: number) => times + 1, 0);
+  const face = textFaceOf(page.layout, text.edit);
+  useEffect(() => {
+    addFaces([face]);
+    document.fonts.addEventListener("loadingdone", measureAgain);
+    return () => document.fonts.removeEventListener("loadingdone", measureAgain);
+  }, [face]);
+  const glyphs = fontOfText(page.layout, text.edit)?.glyphs ?? {};
+  const widthPt = textWidthPt(text.edit, { face, glyphs });
+  return <TextMark text={text} info={info} face={face} widthPt={widthPt} takesFocus={page.focusText === text.textId} />;
 }
 
 /** Where an edit won't match, in the rows of the bar's list whose eye is on: each place, as long as it's drawn. */

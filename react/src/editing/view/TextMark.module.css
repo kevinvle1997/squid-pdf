@@ -1,0 +1,21 @@
+/* New text at rest: a transparent button over its words, which the page's strip or the preview draws. It's a
+   change, so the pencil's solid line runs under it, as a changed line has; it moves, so it shows the move pointer. */
+.text {
+  position: absolute;
+  padding: 0; margin: 0; border: 0; border-radius: calc(var(--r-1) - 1px);
+  background: transparent;
+  cursor: move;
+  /* A finger drags it, rather than scrolling the page. */
+  touch-action: none;
+  outline: none;
+}
+.text::after { content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; background: var(--mark-change); }
+/* The pencil's non-repro wash, multiplied over the words, as a span pointed at has. */
+.hovered { background: var(--mark-change-soft); mix-blend-mode: multiply; }
+/* On the page the ring is the page's own blue pencil, in both themes. */
+.focused { outline: 2px solid var(--mark-change); outline-offset: 1px; }
+.words { position: absolute; inset-inline-start: 0; top: 0; white-space: pre; pointer-events: none; }
+@media (forced-colors: active) {
+  .text::after { background: Highlight; }
+  .focused { outline-color: Highlight; }
+}

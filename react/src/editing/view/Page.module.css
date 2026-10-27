@@ -57,6 +57,8 @@
 .layer {
   position: absolute; left: 50%; top: 50%;
   container-type: inline-size;
+  /* A double tap on bare paper opens new text, so the browser mustn't take it to zoom. */
+  touch-action: manipulation;
 }
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }

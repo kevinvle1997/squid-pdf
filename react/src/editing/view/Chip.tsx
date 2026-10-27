@@ -14,7 +14,7 @@ import { editNote } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
-import { chooseWayOut, signatureWarningOf } from "../typing";
+import { chooseWayOut, signatureWarningOf, spanDraftOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
@@ -52,7 +52,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   // Whole on the page and off the line, as what it holds grows, or the page is shown another size; on the side
   // it was while a value's editor is open in it.
-  const valueEditorOpen = useEditorState((state) => state.draft?.valueEditorOpen ?? false);
+  const valueEditorOpen = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
   const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt, holdSide: valueEditorOpen });
   const placed = useCallback(
     (element: HTMLDivElement | null) => {
@@ -144,7 +144,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
 }
 
 /** The edit's facts before it's made: what won't come out as typed, else what draws it and whether it will match. */
-function Facts({
+export function Facts({
   trouble,
   shortWarning,
   drawnIn,

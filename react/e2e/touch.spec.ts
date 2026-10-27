@@ -77,6 +77,27 @@ test.describe("on a touch screen", () => {
   });
 });
 
+test.describe("new text on a touch screen", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test("a double tap on bare paper opens new text there, and a single tap opens none", async ({ page }) => {
+    await open(page);
+    // The sheet, first: the layer its slips hang from, after it, has its shape too.
+    const shape = page.getByRole("region", { name: "Page 1" }).locator("[style*='aspect-ratio']");
+    const sheet = await shape.first().boundingBox();
+    if (sheet === null) throw new Error("the first page is drawn");
+    // Bare paper, under the page's last line.
+    const [x, y] = [sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.6];
+    await page.touchscreen.tap(x, y);
+    await expect(page.getByRole("textbox", { name: "New text" })).toHaveCount(0);
+    await page.touchscreen.tap(x, y);
+    const field = page.getByRole("textbox", { name: "New text" });
+    await expect(field).toBeFocused();
+    const shown = await field.boundingBox();
+    expect(Math.abs((shown?.x ?? 0) - x)).toBeLessThan(2);
+  });
+});
+
 // The same names with a mouse: a control renamed away would be missed above, and prove nothing.
 test.describe("with a mouse", () => {
   test("the bar lists the shortcuts, ? opens them, and Export carries its key", async ({ page }) => {

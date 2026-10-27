@@ -271,6 +271,29 @@ test("a date changed through the calendar downloads in the file's own font, and 
   expect(edited?.fidelity).toBe("exact");
 });
 
+test("a typed signature in Caveat Bold exports, and the reopened file draws it in that face", async ({ page }) => {
+  await open(page);
+  // The sheet, first: the layer its slips hang from, after it, has its shape too.
+  const shape = page.getByRole("region", { name: "Page 1" }).locator("[style*='aspect-ratio']");
+  const sheet = await shape.first().boundingBox();
+  if (sheet === null) throw new Error("the first page is drawn");
+  // Bare paper, under the page's last line.
+  await page.mouse.dblclick(sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.4);
+  const field = page.getByRole("textbox", { name: "New text" });
+  await expect(field).toBeFocused();
+  await page.keyboard.type("M. Halvorsen");
+  await page.getByRole("option", { name: "Caveat Bold" }).click();
+  await expect(field).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "M. Halvorsen", exact: true })).toBeVisible();
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("Control+s");
+  const { spans } = await reread(page, await bytesOf(await downloading));
+  expect(spans.map(({ text, font }) => ({ text, font }))).toContainEqual({ text: "M. Halvorsen", font: "Caveat-Bold" });
+});
+
 test("Cmd+Delete redacts a line, and the file downloaded no longer has its words", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: LINE }).focus();

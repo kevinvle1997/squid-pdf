@@ -1,25 +1,28 @@
-import { memo, type ReactNode, type Ref, startTransition, useCallback, useMemo, useState } from "react";
+import { memo, type ReactNode, type Ref, startTransition, useCallback, useMemo, useRef, useState } from "react";
 import { useFocusWithin } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
-import { LAZY_MARGIN } from "../constants";
+import { DOUBLE_TAP_MS, DOUBLE_TAP_REACH_PX, LAZY_MARGIN } from "../constants";
 import { imageFailed, imageLoaded } from "../images";
+import { pointOnPage, writeAt } from "../newText";
 import { type PageState, pageState, spanIn } from "../page";
-import type { SpanReading } from "../project";
+import type { InsertReading, SpanReading } from "../project";
 import { stillShows } from "../redrawRegions";
 import { shallowEqual } from "../store";
 import { pageInView, zoomShown } from "../zoom";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { DeletePage } from "./DeletePage";
 import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf, uprightOf } from "./geometry";
+import { onBarePaper } from "./keys";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
-import { Previews, Settles } from "./Previews";
+import { Previews, Settles, TextPreviews } from "./Previews";
 
 const NO_CHANGES: readonly SpanReading[] = [];
+const NO_TEXTS: readonly InsertReading[] = [];
 
 /**
  * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points;
@@ -90,6 +93,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const sheet = useSheet(index, info, { nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans ?? NO_CHANGES;
+  const texts = page.edits?.inserts ?? NO_TEXTS;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
   // undo needs no render to show it.
   const strips = useMemo(
@@ -105,6 +109,8 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
   // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
   const notes = keepMarks ? changes : NO_CHANGES;
+  const textNotes = keepMarks ? texts : NO_TEXTS;
+  const paper = useBarePaper(index, info);
 
   return (
     // The sheet's printed width, which the page's own column and max width are built from.
@@ -118,8 +124,14 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
     >
       {/* First, so Tab reaches it after the page above and before this page's own notes and lines. */}
       <DeletePage page={index} shownNumber={shownNumber} />
-      <Margin info={info} changes={notes} noteHeightPt={sheet.noteHeightPt} pageNumber={shownNumber} />
-      <Sheet info={info} sheetRef={sheet.ref} slipLayerRef={setSlipLayer}>
+      <Margin
+        info={info}
+        changes={notes}
+        texts={textNotes}
+        noteHeightPt={sheet.noteHeightPt}
+        pageNumber={shownNumber}
+      />
+      <Sheet info={info} sheetRef={sheet.ref} paperRef={paper} slipLayerRef={setSlipLayer}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
           <img
@@ -152,6 +164,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
             ))}
             <Settles page={page} info={info} />
             <Previews page={page} info={info} strips={strips} />
+            <TextPreviews page={page} info={info} strips={strips} />
           </>
         )}
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
@@ -161,10 +174,52 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
           </SlipLayerContext.Provider>
         )}
       </Sheet>
-      <ChangeList changes={notes} pageNumber={shownNumber} />
+      <ChangeList changes={notes} texts={textNotes} pageNumber={shownNumber} />
     </section>
   );
 });
+
+/**
+ * Watch the page's layer for new text: a double-click on bare paper opens it at the press, and so does a finger's
+ * double tap. A single press there still only ends an edit, as leaving its field does.
+ */
+function useBarePaper(index: number, info: PageInfo) {
+  const editor = useEditor();
+  const lastTap = useRef<{ at: number; x: number; y: number } | null>(null);
+  return useCallback(
+    (layer: HTMLDivElement) => {
+      let pointer = "mouse";
+      const pressAt = (event: MouseEvent) =>
+        pointOnPage([event.clientX, event.clientY], { shown: layer.getBoundingClientRect(), info });
+      const pressed = (event: PointerEvent) => {
+        pointer = event.pointerType;
+      };
+      const tapped = (event: PointerEvent) => {
+        if (event.pointerType !== "touch" || !onBarePaper(event.target, layer)) return;
+        const at = performance.now();
+        const was = lastTap.current;
+        const reach = was === null ? Infinity : Math.hypot(event.clientX - was.x, event.clientY - was.y);
+        const twice = was !== null && at - was.at < DOUBLE_TAP_MS && reach < DOUBLE_TAP_REACH_PX;
+        lastTap.current = twice ? null : { at, x: event.clientX, y: event.clientY };
+        if (twice) writeAt(editor, index, pressAt(event));
+      };
+      const doubleClicked = (event: MouseEvent) => {
+        // A finger's double tap is the taps' own, above: a browser that says it as a double click too would say it twice.
+        if (pointer === "touch" || !onBarePaper(event.target, layer)) return;
+        writeAt(editor, index, pressAt(event));
+      };
+      layer.addEventListener("pointerdown", pressed);
+      layer.addEventListener("pointerup", tapped);
+      layer.addEventListener("dblclick", doubleClicked);
+      return () => {
+        layer.removeEventListener("pointerdown", pressed);
+        layer.removeEventListener("pointerup", tapped);
+        layer.removeEventListener("dblclick", doubleClicked);
+      };
+    },
+    [editor, index, info],
+  );
+}
 
 /**
  * The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated
@@ -173,18 +228,20 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
 function Sheet({
   info,
   sheetRef,
+  paperRef,
   slipLayerRef,
   children,
 }: {
   info: PageInfo;
   sheetRef: Ref<HTMLDivElement>;
+  paperRef: Ref<HTMLDivElement>; // the page's own layer, where a double-click on bare paper opens new text
   slipLayerRef: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   return (
     <>
       <div ref={sheetRef} className={styles.sheet} style={sheetShapeOf(info)}>
-        <div className={styles.layer} style={layerOf(info)}>
+        <div ref={paperRef} className={styles.layer} style={layerOf(info)}>
           {children}
         </div>
       </div>

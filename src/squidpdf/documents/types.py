@@ -178,6 +178,10 @@ class Sentences(TypedDict):
     changed_to: str  # typed and kept, or done again
     put_back: str  # put back as the document had it, from its margin note
     redacted: str
+    new_text_added: str  # new text put on a page
+    new_text_moved: str
+    new_text_taken_out: str  # from its note, emptied, or undone
+    new_text_set_in: str  # set in another face, by its name in the slip's list
     your_copy_in_use: str  # the user's copy of a font, by its shown name, taken in
     your_copy_removed: str
     warning_muted: str  # a font's warning muted, by its shown name

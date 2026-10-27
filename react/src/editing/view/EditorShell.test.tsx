@@ -4,7 +4,16 @@ import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import SOME_FONT from "../../../../src/squidpdf/fonts/LiberationSans-Regular.ttf?url";
-import { documentOf, exportPdf, ProblemError, putFont, renderStrips, stillThere, upload } from "../../api/client";
+import {
+  documentOf,
+  exportPdf,
+  fontList,
+  ProblemError,
+  putFont,
+  renderStrips,
+  stillThere,
+  upload,
+} from "../../api/client";
 import type { Document, Render } from "../../api/types";
 import { type PersistedWork, persistFile, persistState } from "../../documents/localPersistence";
 import {
@@ -13,6 +22,7 @@ import {
   aDocumentNotice,
   aFit,
   aFont,
+  aFontList,
   aProblem,
   aReplace,
   aReply,
@@ -23,7 +33,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
-import { EXPORT_INTENT_MS } from "../constants";
+import { EXPORT_INTENT_MS, LINE_BELOW_EM } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
@@ -45,6 +55,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   exportPdf: vi.fn(),
   upload: vi.fn(),
   documentOf: vi.fn(),
+  fontList: vi.fn(),
 }));
 
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
@@ -75,6 +86,7 @@ beforeEach(() => {
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
   vi.mocked(putFont).mockReset();
+  vi.mocked(fontList).mockReset().mockResolvedValue(aFontList());
 });
 
 /** The editor on `doc`, opened from a file named `name`, restoring `persisted` when given. */
@@ -1177,5 +1189,187 @@ describe("find and replace", () => {
     await expect.element(bar.getByText("Nothing matches")).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(bar).not.toBeInTheDocument();
+  });
+});
+
+/** Double-click the first page's bare paper at `at`, in its own points; where that is on screen. */
+async function doubleClickPaper(screen: Awaited<ReturnType<typeof render>>, [x, y]: [number, number]) {
+  const pageOne = screen.getByRole("region", { name: "Page 1" }).element();
+  await expect.poll(() => pageOne.querySelector("img")).not.toBeNull();
+  const layer = pageOne.querySelector("img")?.parentElement;
+  if (layer == null) throw new Error("the page's layer holds its image");
+  const shown = layer.getBoundingClientRect();
+  const position = { x: (x / A4.width) * shown.width, y: (y / A4.height) * shown.height };
+  await userEvent.dblClick(page.elementLocator(layer), { position });
+  return { x: shown.left + position.x, y: shown.top + position.y };
+}
+
+/** The edits the last render asked for. */
+function lastRendered() {
+  return vi.mocked(renderStrips).mock.lastCall?.[1].edits ?? [];
+}
+
+describe("new text", () => {
+  // Red text: new text near it takes its colour. Its font's own copy draws every letter typed here.
+  const red = aSpan({ ...span, color: [0.8, 0, 0] });
+  const RED_DOC = aDoc({
+    spans: [red],
+    fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs("SignedMH. alvorsn") })],
+  });
+
+  test("a double-click on bare paper opens a field at the press, in the nearest span's font, size and colour", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const pressed = await doubleClickPaper(screen, [300, 300]);
+
+    const field = screen.getByRole("textbox", { name: "New text" });
+    await expect.element(field).toHaveFocus();
+    const shown = field.element().getBoundingClientRect();
+    expect(Math.abs(shown.left - pressed.x)).toBeLessThan(1);
+    // The line's middle sits at the press.
+    expect(Math.abs((shown.top + shown.bottom) / 2 - pressed.y)).toBeLessThan(3);
+    expect(getComputedStyle(field.element()).color).toBe("rgb(204, 0, 0)");
+    // The chip says what draws it, and at what size: the span's own font, which draws it as it is.
+    const size = screen.getByText("20 pt");
+    await expect.element(size).toBeVisible();
+    expect(size.element().parentElement?.textContent).toBe("Times Roman20 ptlooks identical");
+    // The faces: the page's own first, then the handwriting ones we ship, each named in its own face.
+    const faces = screen.getByRole("listbox", { name: "Font" });
+    await expect.element(faces.getByRole("option", { name: "Times Roman", selected: true })).toBeVisible();
+    await expect.element(faces.getByRole("option", { name: "Caveat Bold" })).toBeVisible();
+  });
+
+  test("Enter adds one insert to the render's edits, in the nearest span's style", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed");
+    await userEvent.keyboard("{Enter}");
+
+    await expect.poll(lastRendered).toHaveLength(1);
+    const [inserted] = lastRendered();
+    expect(inserted).toMatchObject({ kind: "insert", page: 0, text: "Signed", size: 20, font: "Times-Roman" });
+    expect(inserted?.kind === "insert" && inserted.color).toEqual([0.8, 0, 0]);
+    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+  });
+
+  test("Escape with nothing typed adds none", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).not.toBeInTheDocument();
+    expect(renderStrips).not.toHaveBeenCalled();
+  });
+
+  test("on a touch screen its field is set at 16 px, so iOS doesn't zoom, and drawn as a mouse's is", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    const field = screen.getByRole("textbox", { name: "New text" });
+    await expect.element(field).toHaveFocus();
+    // Where it sits on its page: a touch screen's bar is taller, so the page is lower.
+    const onPage = () => {
+      const box = field.element().getBoundingClientRect();
+      const sheet = field.element().closest("section")?.querySelector("img")?.getBoundingClientRect();
+      return { top: box.top - (sheet?.top ?? 0), height: box.height };
+    };
+    const atDesk = { ...onPage(), fontPx: getComputedStyle(field.element()).fontSize };
+    await userEvent.keyboard("{Escape}");
+    await expect.element(field).not.toBeInTheDocument();
+
+    await emulateTouchScreen();
+    await doubleClickPaper(screen, [300, 300]);
+    await expect.element(field).toHaveFocus();
+    expect(getComputedStyle(field.element()).fontSize).toBe("16px");
+    // Its letters drawn at the text's size, once the page's is known: 16 px, scaled down.
+    const scale = () => new DOMMatrix(getComputedStyle(field.element()).transform).a;
+    await expect.poll(scale).toBeLessThan(1);
+    expect(16 * scale()).toBeCloseTo(parseFloat(atDesk.fontPx), 1);
+    // As tall as its line, so a press on the line's middle lands on it.
+    expect(onPage().height).toBeCloseTo(atDesk.height, 0);
+    expect(onPage().top).toBeCloseTo(atDesk.top, 0);
+  });
+
+  test("a double-click on a span still edits the span", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    await mark.dblClick();
+
+    await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "New text" }).query()).toBeNull();
+  });
+
+  test('in a page font a similar one draws, "a similar font" shows in full as the field opens, heard once', async () => {
+    const screen = await openEditor({ doc: ARIAL_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    const warning = fill(SENTENCES.substitute, { font: "Liberation Sans Regular" });
+    const slip = screen.getByRole("group", { name: "New text and its font" });
+    await expect.element(slip.getByText(warning)).toBeVisible();
+    await expect.element(slip.getByText("a similar font", { exact: true })).toBeVisible();
+    const status = screen.getByRole("status");
+    await expect.element(status).toHaveTextContent(warning);
+    const heard = status.element().firstElementChild;
+    // Typing a letter it draws changes nothing it warns of: nothing is heard again.
+    await userEvent.keyboard("a");
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveValue("a");
+    expect(status.element().firstElementChild).toBe(heard);
+  });
+
+  test("Cmd+Enter on a span opens new text on the line below it; arrows nudge it a point, Shift+arrows ten", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+
+    const field = screen.getByRole("textbox", { name: "New text" });
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("Signed{Enter}");
+    await expect.poll(lastRendered).toHaveLength(1);
+    const [placed] = lastRendered();
+    const [x = 0, y = 0] = placed?.kind === "insert" ? placed.origin : [];
+    // Lined up with the span's left edge, its baseline a line below the span's.
+    expect([x, y]).toEqual([red.bbox.x0, (red.origin[1] ?? 0) + red.size * LINE_BELOW_EM]);
+
+    await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.poll(() => lastRendered()[0]).toMatchObject({ origin: [x + 1, y] });
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
+    await expect.poll(() => lastRendered()[0]).toMatchObject({ origin: [x + 1, y + 10] });
+    await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+  });
+
+  test("a typed signature is in a handwriting face a step larger, chosen from the chip, and its margin note takes it out", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("M. Halvorsen");
+    await screen.getByRole("option", { name: "Caveat Bold" }).click();
+    // A pointer's choice leaves the typing in the field.
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await expect.element(screen.getByText("26 pt")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.poll(() => lastRendered()[0]).toMatchObject({ font: "Caveat Bold", size: 26 });
+    expect(lastRendered()[0]).not.toHaveProperty("font_object");
+    await screen.getByRole("button", { name: "Undo: take out “M. Halvorsen”" }).click();
+    await expect.element(screen.getByRole("button", { name: "M. Halvorsen" })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("banner").getByText(/change/)).not.toBeInTheDocument();
+  });
+
+  test("in its fonts, undo and redo are the typing's, not the window's or the browser's: nothing is undone", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await changeSpan(screen, "is done");
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Tab}");
+    const chosen = screen.getByRole("option", { name: "Times Roman" });
+    await expect.element(chosen).toHaveFocus();
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.element(chosen).toHaveFocus();
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveValue("Signed");
+    expect(screen.getByRole("button", { name: "is done" }).query()).not.toBeNull();
   });
 });

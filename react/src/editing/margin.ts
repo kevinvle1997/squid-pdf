@@ -1,13 +1,13 @@
-// The margin's notes, one per changed span, placed as a proof has them: level with the line
-// they're about, and nudged down just enough that no two overlap.
-import type { SpanReading } from "./project";
+// The margin's notes, one per changed span and piece of new text, placed as a proof has them: level with
+// the line they're about, and nudged down just enough that no two overlap.
+import type { InsertReading, SpanReading } from "./project";
 
-/** Where each note's middle sits, in points from the page's top, in the order `changes` come, a note's height apart. */
-export function notePlaces(changes: readonly SpanReading[], noteHeightPt: number): number[] {
-  const byHeight = changes
-    .map(({ span }, index) => ({ index, wantPt: (span.bbox.y0 + span.bbox.y1) / 2 }))
+/** Where each note's middle sits, in points from the page's top, in the order its lines come, a note's height apart. */
+export function notePlaces(lines: readonly { y0: number; y1: number }[], noteHeightPt: number): number[] {
+  const byHeight = lines
+    .map(({ y0, y1 }, index) => ({ index, wantPt: (y0 + y1) / 2 }))
     .sort((a, b) => a.wantPt - b.wantPt);
-  const places = changes.map(() => 0);
+  const places = lines.map(() => 0);
   let lastPt = -Infinity;
   for (const { index, wantPt } of byHeight) {
     lastPt = Math.max(wantPt, lastPt + noteHeightPt);
@@ -73,4 +73,9 @@ function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], 
   let count = 0;
   while (count < limit && words[count]?.[0] === now[count]) count++;
   return count;
+}
+
+/** What new text's note says: its name, for what pressing it undoes, and the words added, marked as a proof marks an insertion. */
+export function textNoteOf({ edit }: InsertReading): NoteWords {
+  return { label: `Undo: take out “${edit.text}”`, struck: "", inserted: edit.text, was: "", now: edit.text };
 }

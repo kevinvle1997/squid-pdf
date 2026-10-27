@@ -1,6 +1,18 @@
 import { describe, expect, test } from "vitest";
 import type { Edit, FitInfo } from "../api/types";
-import { aDoc, aFit, aFont, aRedact, aReplace, aSkipped, aSpan, aSpanNotice, halfWideGlyphs, RULES } from "../fixtures";
+import {
+  aDoc,
+  aFit,
+  aFont,
+  anInsert,
+  aRedact,
+  aReplace,
+  aSkipped,
+  aSpan,
+  aSpanNotice,
+  halfWideGlyphs,
+  RULES,
+} from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading } from "./project";
@@ -22,7 +34,7 @@ function drawnOf(reading: Reading, pages: number[], reply: Partial<Drawn> = {}):
 const fitsOn = (page: number, fits: Record<string, FitInfo>) => new Map([[page, fits]]);
 
 const judged = (disagreements: ReadonlyMap<number, PreviewDisagreement> = NO_DISAGREEMENTS) => ({
-  fonts: FONTS,
+  layout: { fonts: FONTS, spans: new Map() },
   rules: RULES,
   disagreements,
 });
@@ -120,5 +132,22 @@ describe("where a render disagrees with its preview", () => {
     expect(once.get(0)?.count).toBe(1);
     expect(twice.get(0)?.count).toBe(2);
     expect(twice.get(1)).toBe(once.get(1));
+  });
+});
+
+describe("where a render of new text disagrees with its preview", () => {
+  const signed = anInsert({ font: "Caveat Bold", text: "Signed" });
+  const textPulsing = (disagreements: ReadonlyMap<number, PreviewDisagreement>) => [
+    ...(disagreements.get(0)?.textIds ?? []),
+  ];
+
+  test("in a face we ship, drawn as asked, it swaps in silently; a letter left out the live check drew pulses", () => {
+    const reading = readingOf(signed);
+    const [text] = reading.pages.get(0)?.inserts ?? [];
+    const drewAs = (fit: FitInfo) => drawnOf(reading, [0], { insertFits: new Map([[0, { [text?.id ?? 0]: fit }]]) });
+
+    expect(textPulsing(disagreementsAfter(NOTHING_DRAWN, drewAs(aFit()), judged()))).toEqual([]);
+    const leftOut = drewAs(aFit({ left_out: ["S"] }));
+    expect(textPulsing(disagreementsAfter(NOTHING_DRAWN, leftOut, judged()))).toEqual([text?.textId]);
   });
 });

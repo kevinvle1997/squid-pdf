@@ -7,7 +7,7 @@ import { learnDateLanguages } from "./dateNames";
 import { dateReadingOf, datesIn } from "./dates";
 import { createEditor } from "./editor";
 import { editableValueIn } from "./formattedValues";
-import { edit, typeInto } from "./typing";
+import { edit, spanDraftOf, typeInto } from "./typing";
 import { amountFormatOptions, markedDays, openValueEditor, reasonsAnyDayGives, shownDayAfter } from "./valueEditor";
 import { fill } from "./words";
 
@@ -166,13 +166,13 @@ describe("the value its editor is open on", () => {
     const { dates } = editor.store.get();
     /** The value its control is offered for, as the field shows it. */
     const offered = (text: string) =>
-      editableValueIn(text, { dates, at: undefined, held: editor.store.get().draft?.value ?? null });
+      editableValueIn(text, { dates, at: undefined, held: spanDraftOf(editor.store.get())?.value ?? null });
     expect(openValueEditor(editor, offered(words))).toBe(true);
     expect(offered(words)?.kind).toBe("date");
 
     // The year retyped by hand: "2026" is "202" a moment, then "2027".
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
-    expect(editor.store.get().draft?.valueEditorOpen).toBe(false);
+    expect(spanDraftOf(editor.store.get())?.valueEditorOpen).toBe(false);
     typeInto(editor, "Due 14 March 20, total 1.250,00 €");
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
     const retyped = "Due 14 March 2027, total 1.250,00 €";

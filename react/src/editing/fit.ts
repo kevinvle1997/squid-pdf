@@ -183,6 +183,16 @@ export function troublesOf(
     way = "as-is",
   }: { rules: FitRules; sentences: Sentences; drawing: Drawing; way?: Strategy },
 ): string[] {
+  const troubles = letterTroublesOf(drawing, sentences);
+  // The part past its room collides, unless a way out ends it where the original did.
+  if (runsPast(fit.deltaPt, fit.roomPt, rules) && way === "as-is") {
+    troubles.push(fill(sentences.too_long, { percent: String(percentPastRoom(fit)) }));
+  }
+  return troubles;
+}
+
+/** The letters that won't come out as typed, in the server's words: those that send the line to another face, then those left out. */
+export function letterTroublesOf(drawing: Drawing, sentences: Sentences): string[] {
   const troubles: string[] = [];
   const named = (letters: readonly string[]) => letters.map((letter) => shownAs(letter, sentences.characters));
   // Letters its own font lacks but the face it goes to has: the whole line switches.
@@ -191,10 +201,6 @@ export function troublesOf(
   }
   // Letters nothing we have draws.
   if (drawing.leftOut.length > 0) troubles.push(fill(sentences.will_leave_out, { letters: named(drawing.leftOut) }));
-  // The part past its room collides, unless a way out ends it where the original did.
-  if (runsPast(fit.deltaPt, fit.roomPt, rules) && way === "as-is") {
-    troubles.push(fill(sentences.too_long, { percent: String(percentPastRoom(fit)) }));
-  }
   return troubles;
 }
 

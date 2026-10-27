@@ -84,12 +84,12 @@ export function stillShows(
   return spans || inserts;
 }
 
-/** Whether any of `strips` is drawn over the span's row, so the page beneath it doesn't show there. */
+/** Whether any of `strips` is drawn over the row of a span's box, or new text's, so the page beneath it doesn't show there. */
 export function isUnderStrip(
-  span: SpanInfo,
+  box: Row,
   { strips, info }: { strips: readonly { y: number; y1: number }[] | undefined; info: PageInfo },
 ): boolean {
-  const row = rowOf(span, info);
+  const row = rowWithin(info, box.y0, box.y1);
   return strips?.some((strip) => crosses(strip, row)) ?? false;
 }
 

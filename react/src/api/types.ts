@@ -40,3 +40,5 @@ export type ProblemInfo = Schemas["ProblemInfo"];
 /** What went wrong: a Problem the server sent, or the browser's own when nothing answered. */
 export type Problem = Omit<ProblemInfo, "type"> & { type: ProblemInfo["type"] | "unreachable" };
 export type Strategy = Schemas["Strategy"];
+// Not read: `build`, `license`, `same_widths_as`, and each face's `style` and `glyphs`: the browser asks only which faces are handwriting.
+export type FontList = Schemas["FontList"];

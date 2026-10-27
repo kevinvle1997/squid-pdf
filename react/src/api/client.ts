@@ -1,5 +1,5 @@
 // Every call the browser makes. Routes are in decisions/api.md; shapes come from schema.d.ts.
-import type { Document, Edit, FileNoticeInfo, Problem, ProblemInfo, Render, RenderBody } from "./types";
+import type { Document, Edit, FileNoticeInfo, FontList, Problem, ProblemInfo, Render, RenderBody } from "./types";
 
 /** What the server said went wrong. `detail` is shown to the user as it is. */
 export class ProblemError extends Error {
@@ -102,6 +102,12 @@ export async function deleteFont(docId: string, fontName: string): Promise<Docum
     method: "DELETE",
   });
   return (await response.json()) as Document;
+}
+
+/** Every face we ship, by family, under `build`: the same for every document, and kept by the browser as long as the build. */
+export async function fontList(build: string): Promise<FontList> {
+  const response = await send(`/api/fonts?${new URLSearchParams({ build })}`, { method: "GET" });
+  return (await response.json()) as FontList;
 }
 
 /** A page of the original, unrotated, `scale` pixels per point. Cached for the hour. */

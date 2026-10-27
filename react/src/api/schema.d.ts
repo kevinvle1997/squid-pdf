@@ -773,6 +773,14 @@ export interface components {
             put_back: string;
             /** Redacted */
             redacted: string;
+            /** New Text Added */
+            new_text_added: string;
+            /** New Text Moved */
+            new_text_moved: string;
+            /** New Text Taken Out */
+            new_text_taken_out: string;
+            /** New Text Set In */
+            new_text_set_in: string;
             /** Your Copy In Use */
             your_copy_in_use: string;
             /** Your Copy Removed */

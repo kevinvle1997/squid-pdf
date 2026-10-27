@@ -2,85 +2,125 @@ import type { ReactNode } from "react";
 import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Tip } from "../../ui/Tooltip";
-import { putBack } from "../editor";
-import { noteOf, notePlaces } from "../margin";
-import type { SpanReading } from "../project";
+import { type Editor, putBack } from "../editor";
+import { type NoteWords, noteOf, notePlaces, textNoteOf } from "../margin";
+import { takeOut } from "../newText";
+import type { InsertReading, SpanReading } from "../project";
 import { useEditor } from "./context";
-import { topOf } from "./geometry";
+import { textBoxOf, topOf } from "./geometry";
 import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
   changes: readonly SpanReading[]; // the spans replaced or redacted on this page
+  texts: readonly InsertReading[]; // the new text on it
   noteHeightPt: number; // a note's height in page points, to keep notes a hit area apart
   pageNumber: number;
 }
 
+/** One note in the margin: what it says, the line it's about, and what pressing it undoes. */
+interface MarginNote {
+  readonly key: string;
+  readonly note: NoteWords;
+  readonly line: { y0: number; y1: number };
+  readonly undo: (editor: Editor) => void;
+}
+
+/** The page's notes: each changed span's, then each piece of new text's, which a press takes out. */
+function notesOf(changes: readonly SpanReading[], texts: readonly InsertReading[]): MarginNote[] {
+  const spans = changes.map((change) => ({
+    key: change.span.id,
+    note: noteOf(change),
+    line: change.span.bbox,
+    undo: (editor: Editor) => putBack(editor, change.span.id),
+  }));
+  const added = texts.map((text) => ({
+    key: `text ${text.textId}`,
+    note: textNoteOf(text),
+    line: textBoxOf(text.edit, 0),
+    undo: (editor: Editor) => takeOut(editor, text.textId),
+  }));
+  return [...spans, ...added];
+}
+
 /**
- * The user's own changes beside the page, each a button that puts the original back, level with its
- * line. On a narrow screen CSS shows the list under the page instead (`ChangeList`).
+ * The user's own changes beside the page, each a button that puts the original back, or takes new text out,
+ * level with its line. On a narrow screen CSS shows the list under the page instead (`ChangeList`).
  */
-export function Margin({ info, changes, noteHeightPt, pageNumber }: Props) {
+export function Margin({ info, changes, texts, noteHeightPt, pageNumber }: Props) {
   // Its grid cell stays, so a page with no changes keeps its column.
-  if (changes.length === 0) return <div className={styles.margin} />;
-  const places = notePlaces(changes, noteHeightPt);
+  if (changes.length === 0 && texts.length === 0) return <div className={styles.margin} />;
+  const notes = notesOf(changes, texts);
+  const places = notePlaces(
+    notes.map(({ line }) => line),
+    noteHeightPt,
+  );
   return (
     <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
-      {changes.map((change, index) => {
-        const note = noteOf(change);
-        return (
-          <div key={change.span.id} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-            <Tip heading={`Was “${note.was}”`} detail={`Now “${note.now}”`}>
-              <UndoNote spanId={change.span.id} label={note.label}>
-                {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
-                <UndoMark />
-                {note.inserted === null ? (
-                  <span className={styles.old}>{note.struck}</span>
-                ) : (
-                  // Words only added: they're marked as a proof marks an insertion, not one kept struck.
-                  <span className={styles.added}>
-                    <InsertMark />
-                    {note.inserted}
-                  </span>
-                )}
-              </UndoNote>
-            </Tip>
-          </div>
-        );
-      })}
+      {notes.map(({ key, note, undo }, index) => (
+        <div key={key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
+          <Tip heading={note.was === "" ? "New text" : `Was “${note.was}”`} detail={`Now “${note.now}”`}>
+            <UndoNote label={note.label} undo={undo}>
+              {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
+              <UndoMark />
+              {note.inserted === null ? (
+                <span className={styles.old}>{note.struck}</span>
+              ) : (
+                // Words only added: they're marked as a proof marks an insertion, not one kept struck.
+                <span className={styles.added}>
+                  <InsertMark />
+                  {note.inserted}
+                </span>
+              )}
+            </UndoNote>
+          </Tip>
+        </div>
+      ))}
     </Group>
   );
 }
 
 /** The user's own changes in a list under the page, on a narrow screen: a phone's per-change undo. */
-export function ChangeList({ changes, pageNumber }: { changes: readonly SpanReading[]; pageNumber: number }) {
-  if (changes.length === 0) return null;
+export function ChangeList({
+  changes,
+  texts,
+  pageNumber,
+}: {
+  changes: readonly SpanReading[];
+  texts: readonly InsertReading[];
+  pageNumber: number;
+}) {
+  if (changes.length === 0 && texts.length === 0) return null;
   return (
     <section className={styles.list} aria-label={`Your changes on page ${pageNumber}`}>
       <ul>
-        {changes.map((change) => {
-          const note = noteOf(change);
-          return (
-            <li key={change.span.id}>
-              <UndoNote spanId={change.span.id} label={note.label}>
-                <span className={styles.old}>{change.span.text}</span>
-                <span className={styles.now}>{note.now}</span>
-                {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}
-                <span className={styles.undo}>Undo</span>
-              </UndoNote>
-            </li>
-          );
-        })}
+        {notesOf(changes, texts).map(({ key, note, undo }) => (
+          <li key={key}>
+            <UndoNote label={note.label} undo={undo}>
+              {note.was === "" ? (
+                <span className={styles.added}>
+                  <InsertMark />
+                  Added
+                </span>
+              ) : (
+                <span className={styles.old}>{note.was}</span>
+              )}
+              <span className={styles.now}>{note.now}</span>
+              {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}
+              <span className={styles.undo}>Undo</span>
+            </UndoNote>
+          </li>
+        ))}
       </ul>
     </section>
   );
 }
 
-/** One change's note: a button that puts the span's original back, named for what it undoes. */
-function UndoNote({ spanId, label, children }: { spanId: string; label: string; children: ReactNode }) {
+/** One change's note: a button that undoes it, named for what it undoes. */
+function UndoNote({ label, undo, children }: { label: string; undo: (editor: Editor) => void; children: ReactNode }) {
   const editor = useEditor();
   return (
-    <Button className={styles.note} aria-label={label} onPress={() => putBack(editor, spanId)}>
+    <Button className={styles.note} aria-label={label} onPress={() => undo(editor)}>
       {children}
       <i className={styles.bar} aria-hidden="true" />
     </Button>

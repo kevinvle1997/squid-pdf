@@ -5,7 +5,7 @@ import { aDoc, aFont, aSpan } from "../fixtures";
 import { learnDateLanguages } from "./dateNames";
 import { createEditor, type Editor } from "./editor";
 import { editableValueIn } from "./formattedValues";
-import { edit } from "./typing";
+import { edit, spanDraftOf } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
@@ -22,7 +22,7 @@ test("the first edit opens at once: no language is learnt on the spot, and no da
   edit(editor, "due", null);
   expect(asked).not.toHaveBeenCalled();
   asked.mockRestore();
-  expect(editor.store.get().draft?.spanId).toBe("due");
+  expect(spanDraftOf(editor.store.get())?.spanId).toBe("due");
   expect(editor.store.get().dates).toBeNull();
 });
 

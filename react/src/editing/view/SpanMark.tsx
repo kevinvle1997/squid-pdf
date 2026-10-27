@@ -60,6 +60,8 @@ export const SpanMark = memo(function SpanMark(props: Props) {
   }
 
   function pressed(event: PressEvent) {
+    // Cmd+Enter is new text on the line below, the window's shortcut: it doesn't edit the span.
+    if (event.pointerType === "keyboard" && (event.metaKey || event.ctrlKey)) return;
     // Enter, Space, or a screen reader's activation: edit at once, the whole span selected.
     if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
       notes.hide(span.id);
@@ -107,6 +109,10 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}
+      // Cmd+Enter goes on to the window's shortcuts, which open new text below: the mark would keep it.
+      onPressStart={(event) => {
+        if (event.pointerType === "keyboard" && (event.metaKey || event.ctrlKey)) event.continuePropagation();
+      }}
       onHoverStart={(event) => showNote(event.target, "hover")}
       onHoverEnd={(event) => {
         notes.hide(span.id);

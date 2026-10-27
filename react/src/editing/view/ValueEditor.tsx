@@ -33,7 +33,7 @@ import type { AmountValue } from "../amounts";
 import type { DateValue } from "../dates";
 import { announce } from "../editor";
 import type { EditableValue } from "../formattedValues";
-import { finish } from "../typing";
+import { finish, spanDraftOf } from "../typing";
 import {
   amountFormatOptions,
   chooseAmount,
@@ -57,7 +57,7 @@ const MOST_WEEKS = 6;
 /** The value's control in the slip, and its editor under it while open. */
 export function ValueEditor({ value, field }: { value: EditableValue; field: RefObject<HTMLInputElement | null> }) {
   const editor = useEditor();
-  const open = useEditorState((state) => state.draft?.valueEditorOpen ?? false);
+  const open = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
   const coarse = useSyncExternalStore(onPointerChange, coarsePointer);
   // Leaving the editor for anywhere but the field ends the typing, as leaving the field does.
   const { focusWithinProps } = useFocusWithin({

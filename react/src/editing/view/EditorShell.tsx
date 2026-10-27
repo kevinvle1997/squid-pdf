@@ -13,6 +13,7 @@ import { addFaces, facesOf } from "../faces";
 import { retryImages } from "../images";
 import { noticeLines } from "../notices";
 import { pagesShown } from "../project";
+import { loadShippedFaces } from "../shippedFaces";
 import { isWork, readStoredAgain, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
 import { Bar } from "./Bar";
 import { EditorContext, useEditor, useEditorState } from "./context";
@@ -54,6 +55,7 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
   // The one effect, for what happens outside React; each listener says what it's for.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
+    void loadShippedFaces(editor);
     resumeWork(editor);
     announceOpening(editor);
     const key = (event: KeyboardEvent) => {

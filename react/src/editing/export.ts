@@ -7,7 +7,7 @@ import { EXPORT_INTENT_MS } from "./constants";
 import { announcing, type Editor, type EditorState } from "./editor";
 import { heardIn, type Notice, plain, warn } from "./notices";
 import { textIn } from "./project";
-import { finish } from "./typing";
+import { type Draft, finish } from "./typing";
 import { fill } from "./words";
 
 /** The export started before Export was pressed, and when it starts: the pointer has rested on it a moment. */
@@ -24,12 +24,18 @@ export interface ExportAhead {
 /** Whether the edits, or words still being typed, differ from what the last export took: leaving would lose them. */
 export function unexported(state: EditorState): boolean {
   const { draft, layout, exported, reading } = state;
-  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
-  const reads = span === undefined ? undefined : textIn(reading, span);
+  const reads = draft === null ? undefined : readsNow(draft, { layout, reading });
   // Closing the tab ends no typing: what's in the field never reaches the history.
   if (draft !== null && draft.text !== reads) return true;
   const { edits } = reading;
   return edits.length !== exported.length || edits.some((edit, index) => edit !== exported[index]);
+}
+
+/** What `draft` types into reads now: new text reads nothing until it's in. */
+function readsNow(draft: Draft, { layout, reading }: Pick<EditorState, "layout" | "reading">): string | undefined {
+  if (draft.kind === "text") return draft.of?.edit.text ?? "";
+  const span = layout.spans.get(draft.spanId);
+  return span === undefined ? undefined : textIn(reading, span);
 }
 
 /** The pointer rests on Export, or focus does: once it has a moment, the export starts, for the press to take. */

@@ -66,6 +66,18 @@ export function substituteFor(lookAlike: string, text: string): Substitute {
   return inBroadest.leftOut.length < inLookAlike.leftOut.length ? inBroadest : inLookAlike;
 }
 
+/** How `text` is drawn in `face`, a face we ship: in it, or, for a letter it lacks, the face `substituteFor` sends the line to. */
+export function drawingIn(face: string, text: string): Drawing {
+  const missing = lackedBy(face, text.normalize("NFC"));
+  if (missing.length === 0) return { face, switched: [], leftOut: [] };
+  const substitute = substituteFor(face, text);
+  return {
+    face: substitute.face,
+    switched: missing.filter((letter) => !substitute.leftOut.includes(letter)),
+    leftOut: substitute.leftOut,
+  };
+}
+
 /** How a line its font can't draw whole is drawn: in what face, the letters that sent it there, and those left out. */
 export interface Drawing {
   readonly face: string;

@@ -1,10 +1,26 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError } from "../api/client";
 import type { Edit, ImageInfo, Render, RenderBody } from "../api/types";
-import { aDoc, aFit, aProblem, aRedact, aRedaction, aReplace, aReply, aSkipped, aSpan, aSpanNotice } from "../fixtures";
+import {
+  aDoc,
+  aFit,
+  aFont,
+  anInsert,
+  aProblem,
+  aRedact,
+  aRedaction,
+  aReplace,
+  aReply,
+  aSkipped,
+  aSpan,
+  aSpanNotice,
+  halfWideGlyphs,
+} from "../fixtures";
+import { layoutOf } from "./editor";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
+import { restingVerdictOf, textVerdictOf } from "./newText";
 import { project, UNEDITED } from "./project";
-import { type Drawn, landedFitOf, landedFits, NOTHING_DRAWN, RenderQueue } from "./render";
+import { type Drawn, landedFitOf, landedFits, landedInsertFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 
 const ONE = aSpan({ id: "one", page: 0 });
 const TWO = aSpan({ id: "two", page: 1 });
@@ -258,5 +274,25 @@ describe("a fit for the words a span reads now", () => {
     expect(now === undefined ? fit : landedFitOf(drawnHere, now)).toBeUndefined();
     const fits = { one: fit };
     expect(landedFits(fits, { now: typedSince.pages.get(0), drawnFrom: drawnFrom.pages.get(0) })).toEqual({});
+  });
+});
+
+describe("new text's fit", () => {
+  test("lands under the version it was drawn from, and its verdict replaces the one worked out live", async () => {
+    // The page's font draws it, as the browser works it out: its render says a similar font drew it after all.
+    const text = anInsert({ font: ONE.font, text: "Paid €" });
+    const reading = readingOf(aReplace(ONE.id), text);
+    queue.draw(reading);
+    await settle();
+    const drew = aFit({ fidelity: "substitute", substitute: "Liberation Serif Regular", missing: ["€"] });
+    fake.asked[0]?.answer(aReply({ images: [stripFor(0)], insert_fits: [{ ...drew, edit: 1 }] }));
+    await settle();
+
+    const [now] = reading.pages.get(0)?.inserts ?? [];
+    if (now === undefined) throw new Error("the new text reads on its page");
+    expect(landedInsertFitOf(queue.drawn, now)).toEqual(drew);
+    const layout = layoutOf(aDoc({ spans: [ONE], fonts: [aFont(ONE.font, { glyphs: halfWideGlyphs("Paid €") })] }));
+    expect(textVerdictOf(layout, { insert: text, fit: undefined }).fidelity).toBe("exact");
+    expect(restingVerdictOf({ layout, drawn: queue.drawn }, now)).toEqual(drew);
   });
 });

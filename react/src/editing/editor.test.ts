@@ -26,6 +26,7 @@ import {
   warnedCount,
 } from "./editor";
 import type { Mismatches } from "./mismatches";
+import { chooseFace, keptTexts, moveText, writeAgain, writeAt } from "./newText";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
@@ -234,5 +235,55 @@ describe("before any change", () => {
     const before = editor.store.get().layout.mismatchesAtRest;
     typed("own", "now");
     expect(editor.store.get().layout.mismatchesAtRest).toBe(before);
+  });
+});
+
+describe("new text", () => {
+  const heard = () => editor.store.get().announcement.text;
+  const onlyText = () => {
+    const [text] = keptTexts(editor.store.get().reading);
+    if (text === undefined) throw new Error("new text is on the page");
+    return text;
+  };
+
+  test("put on a page, set in a face, moved, typed into again, undone and taken out, it says the server's sentences", () => {
+    writeAt(editor, 0, [100, 300]);
+    chooseFace(editor, "page:Named");
+    expect(heard()).toBe("SET IN Named.");
+    typeInto(editor, "Signed");
+    finish(editor, true);
+    expect(heard()).toBe("ADDED “Signed”.");
+    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false });
+    expect(heard()).toBe("MOVED “Signed”.");
+    writeAgain(editor, onlyText().textId);
+    typeInto(editor, "Signed again");
+    finish(editor, true);
+    expect(heard()).toBe("CHANGED TO “Signed again”.");
+    undo(editor);
+    expect(heard()).toBe("BACK TO “Signed”.");
+    writeAgain(editor, onlyText().textId);
+    typeInto(editor, "");
+    finish(editor, true);
+    expect(heard()).toBe("TOOK OUT “Signed”.");
+    undo(editor);
+    redo(editor);
+    expect(heard()).toBe("TOOK OUT “Signed”.");
+  });
+
+  test("a reading persisted before new text's sentences were sent still adds and moves it, and says nothing of it", () => {
+    const stale = structuredClone(DOC);
+    for (const key of ["new_text_added", "new_text_moved", "new_text_set_in"] as const) {
+      Reflect.deleteProperty(stale.sentences, key);
+    }
+    editor = createEditor(FILE, stale, 2);
+    writeAt(editor, 0, [100, 300]);
+    chooseFace(editor, "page:Named");
+    expect(heard()).toBe("");
+    typeInto(editor, "Signed");
+    finish(editor, true);
+    expect(heard()).toBe("");
+    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false });
+    expect(onlyText().edit.origin[0]).toBeGreaterThan(100);
+    expect(heard()).toBe("");
   });
 });

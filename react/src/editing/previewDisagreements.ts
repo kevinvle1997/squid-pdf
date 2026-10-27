@@ -1,9 +1,11 @@
 // In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
 // Verdicts are compared, not pixels: the preview draws in a face we ship.
 import type { FitInfo, FitRules, Strategy } from "../api/types";
+import type { Layout } from "./editor";
 import { type Fit, fitOf, runsPast } from "./fit";
 import { spanOf } from "./history";
-import { type Differing, differing, type Reading } from "./project";
+import { textDrawingOf, textVerdictOf } from "./newText";
+import { type Differing, differing, type InsertReading, type Reading } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { liveVerdictOf, type Verdict } from "./verdicts";
@@ -11,13 +13,14 @@ import { liveVerdictOf, type Verdict } from "./verdicts";
 /** The spans on one page whose render disagreed with their preview, as one render landed. */
 export interface PreviewDisagreement {
   readonly spanIds: ReadonlySet<string>;
+  readonly textIds: ReadonlySet<number>; // the new text, by its first version's id
   readonly count: number; // which landing it pulses for, so a span that disagrees again pulses again
 }
 
 export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Map();
 
 interface Judged {
-  fonts: FontsByObject;
+  layout: Pick<Layout, "fonts" | "spans">;
   rules: FitRules;
   disagreements: ReadonlyMap<number, PreviewDisagreement>; // what pulsed before, kept for the pages this landing didn't draw
 }
@@ -26,7 +29,7 @@ interface Judged {
 export function disagreementsAfter(
   before: Drawn,
   after: Drawn,
-  { fonts, rules, disagreements }: Judged,
+  { layout, rules, disagreements }: Judged,
 ): ReadonlyMap<number, PreviewDisagreement> {
   let next: Map<number, PreviewDisagreement> | null = null;
   for (const [page, reading] of after.from) {
@@ -34,11 +37,15 @@ export function disagreementsAfter(
     // Not drawn by this landing: whatever it showed stays.
     if (was === reading) continue;
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
-    const landed = { reading, page, after, fonts, rules };
+    const landed = { reading, page, after, fonts: layout.fonts, rules };
     const spanIds = new Set(previewed.filter((each) => disagrees(each, landed)).map(({ span }) => span.id));
+    const drawnBefore = new Set(was?.pages.get(page)?.inserts.map((text) => text.id));
+    const textsPreviewed = (reading.pages.get(page)?.inserts ?? []).filter((text) => !drawnBefore.has(text.id));
+    const texts = textsPreviewed.filter((text) => textDisagrees(text, { ...landed, layout }));
+    const textIds = new Set(texts.map((text) => text.textId));
     next ??= new Map(disagreements);
-    if (spanIds.size === 0) next.delete(page);
-    else next.set(page, { spanIds, count: (disagreements.get(page)?.count ?? 0) + 1 });
+    if (spanIds.size === 0 && textIds.size === 0) next.delete(page);
+    else next.set(page, { spanIds, textIds, count: (disagreements.get(page)?.count ?? 0) + 1 });
   }
   return next ?? disagreements;
 }
@@ -73,6 +80,25 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
     asked: reading.spans.get(span.id)?.strategy,
     rules,
   });
+}
+
+/** Whether the render of new text previewed says something its live check didn't: the letters lacking, or the verdict's kind. */
+function textDisagrees(
+  text: InsertReading,
+  { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans"> },
+): boolean {
+  const sentAt = reading.edits.indexOf(text.edit);
+  // The browser never foresees a notice or a skip.
+  const noticed = after.notices.get(page)?.some((notice) => notice.kind === "insert" && notice.edit === sentAt);
+  const skipped = after.skipped.some(({ edit }) => edit === sentAt);
+  if (noticed || skipped) return true;
+  const fit = after.insertFits.get(page)?.[text.id];
+  if (fit === undefined) return false;
+  const drawing = textDrawingOf(layout, text.edit);
+  const live = new Set([...drawing.switched, ...drawing.leftOut]);
+  const lacking = new Set([...fit.missing, ...fit.left_out]);
+  const sameLetters = lacking.size === live.size && [...live].every((letter) => lacking.has(letter));
+  return !sameLetters || fit.fidelity !== textVerdictOf(layout, { insert: text.edit, fit: undefined }).fidelity;
 }
 
 /**
