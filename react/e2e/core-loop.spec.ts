@@ -226,6 +226,55 @@ test("Cmd+S downloads the edited PDF under its own name, marked edited", async (
   await expect(page.getByRole("status")).toHaveText("Downloaded sample, edited.pdf.");
 });
 
+test("a date changed through the calendar downloads in the file's own font, and nothing fails an accessibility check", async ({
+  page,
+}) => {
+  await open(page);
+  // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
+  const line = "Delivery begins 14 March 2026 and runs eighteen months.";
+  const field = await startEdit(page, { line });
+  await field.press("Alt+ArrowDown");
+  await expect(page.getByRole("button", { name: /March 14, 2026/ })).toBeFocused();
+  // Before the pick, a day it can't write says why.
+  await page.getByRole("button", { name: /March 17, 2026/ }).hover();
+  await expect(page.getByRole("tooltip")).toContainText("no 7 in this font");
+  expect(await seriousProblems(page)).toEqual([]);
+
+  await page.getByRole("button", { name: /March 16, 2026/ }).click();
+  const changed = "Delivery begins 16 March 2026 and runs eighteen months.";
+  await expect(field).toHaveValue(changed);
+  await expect(field).toBeFocused();
+  await field.press("Enter");
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const bytes = await readFile(await (await downloading).path());
+  const [before, after] = [await spansOf(page, await readFile(SAMPLE)), await spansOf(page, bytes)];
+  const original = before.find((span) => span.text === line);
+  const edited = after.find((span) => span.text === changed);
+  // Drawn again from the file's own program, which names itself as PostScript does: NimbusRoman-Regular.
+  const letters = (name = "") => name.replace(/^[A-Z]{6}\+/, "").replace(/[^A-Za-z]/g, "");
+  expect(letters(edited?.font)).toBe(letters(original?.font));
+  expect(edited?.fidelity).toBe("exact");
+});
+
+/** The spans a PDF reads as, uploaded as any file is. */
+async function spansOf(page: Page, pdf: Uint8Array) {
+  return page.evaluate(
+    async (sent) => {
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "content-type": "application/pdf" },
+        body: new Uint8Array(sent),
+      });
+      const doc = (await response.json()) as Document;
+      return doc.spans.map(({ text, font, fidelity }) => ({ text, font, fidelity }));
+    },
+    [...pdf],
+  );
+}
+
 test("Cmd+Delete redacts a line, and the file downloaded no longer has its words", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: LINE }).focus();

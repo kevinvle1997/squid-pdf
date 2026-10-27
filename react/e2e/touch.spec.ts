@@ -4,6 +4,8 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./policy";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
+// The first page's line with a date in it.
+const DATED = "This agreement is made on 14 March 2026 between";
 
 async function open(page: Page) {
   await page.goto("/");
@@ -46,6 +48,33 @@ test.describe("on a touch screen", () => {
     await expect(page.getByRole("main").getByText("This page is left out of the download")).toBeVisible();
     await expect(page.getByRole("tooltip")).toHaveCount(0);
   });
+
+  test("a date's control in the slip shows no key, and its calendar's days are a finger's size", async ({ page }) => {
+    await open(page);
+    await editTheDate(page);
+    await page.getByRole("button", { name: "Date" }).tap();
+    const day = page.getByRole("button", { name: /March 14, 2026/ });
+    await expect(day).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await expect(page.getByText(/Alt|⌥/)).toHaveCount(0);
+    expect((await day.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("a tap on a day the font can't write says why, and a second tap chooses it", async ({ page }) => {
+    await open(page);
+    // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
+    const line = "Delivery begins 14 March 2026 and runs eighteen months.";
+    await page.getByRole("button", { name: line }).focus();
+    await page.keyboard.press("Enter");
+    const field = page.getByRole("textbox", { name: `Change “${line}”` });
+    await page.getByRole("button", { name: "Date" }).tap();
+    const seventeenth = page.getByRole("button", { name: /March 17, 2026/ });
+    await seventeenth.tap();
+    await expect(page.getByRole("tooltip")).toContainText("no 7 in this font");
+    await expect(field).toHaveValue(line);
+    await seventeenth.tap();
+    await expect(field).toHaveValue("Delivery begins 17 March 2026 and runs eighteen months.");
+  });
 });
 
 // The same names with a mouse: a control renamed away would be missed above, and prove nothing.
@@ -57,4 +86,19 @@ test.describe("with a mouse", () => {
     await page.keyboard.press("?");
     await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
   });
+
+  test("a date's control in the slip shows its key on hover", async ({ page }) => {
+    await open(page);
+    // A click opens the field, as a mouse does: after a key, hover shows no tooltip, as React Aria has it.
+    await page.getByRole("button", { name: DATED }).click();
+    await page.getByRole("button", { name: "Date" }).hover();
+    await expect(page.getByRole("tooltip")).toHaveText(/Alt ↓|⌥↓/);
+  });
 });
+
+/** Open the field on the first page's line with a date in it, from the keyboard. */
+async function editTheDate(page: Page) {
+  await page.getByRole("button", { name: DATED }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("textbox", { name: `Change “${DATED}”` })).toBeFocused();
+}
