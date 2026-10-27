@@ -2,12 +2,14 @@
 .editor {
   /* A day of the calendar: a button's size on a pointer, a finger's on a touch screen. */
   --cell: 32px;
-  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
   pointer-events: auto;
 }
 @media (pointer: coarse) {
   .editor { --cell: var(--hit); }
 }
+.disclosure, .panel { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); }
+/* An empty panel takes no room: the gap under the control is the open editor's. */
+.panel:empty { display: none; }
 /* Named for its kind, bordered as the slip's other edit actions are, its chevron turning up while it's open. */
 .control { gap: var(--s1); }
 .chevron { display: block; flex: none; color: var(--ink-lo); }
@@ -38,6 +40,13 @@
 .day[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
 /* Other months' days are left out: the grid keeps their place. */
 .day[data-outside-month] { visibility: hidden; }
+/* A marked day's reason, under the month: each the month has in one cell, shown one at a time. */
+.reasons { display: grid; }
+.reason {
+  grid-area: 1 / 1; margin: 0; visibility: hidden;
+  font-size: var(--fs-sm); line-height: 1.4; white-space: normal;
+}
+.reason[data-shown] { visibility: visible; }
 
 /* The amount's own field, typed into: no step buttons, named by the Amount control over it. */
 .amountField { display: flex; }
