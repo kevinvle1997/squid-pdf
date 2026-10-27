@@ -4,7 +4,7 @@ import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import type { Press } from "./caret";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
-import { addressCountIn } from "./formattedValues";
+import { emailCountIn } from "./formattedValues";
 import type { HistoryAction } from "./history";
 import { editNote, type Note } from "./marks";
 import { type Reading, type SpanReading, textIn } from "./project";
@@ -121,11 +121,11 @@ export function troublesIn(state: EditorState, text: string): Troubles {
   const fit = fitOf(span, { font, text, rules });
   const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
-  const address = addressLost(textIn(state.reading, span), text) ? [ADDRESS_LOST] : [];
+  const email = emailBroken(textIn(state.reading, span), text) ? [sentenceOrNothing(sentences.email_broken)] : [];
   // That an edit here won't match is announced in full once, as typing starts (`editNote`), not with each letter.
   return {
-    sentences: [...troublesOf(fit, { rules, sentences, drawing, way }), ...address],
-    kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""} ${address.length}`,
+    sentences: [...troublesOf(fit, { rules, sentences, drawing, way }), ...email],
+    kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""} ${email.length}`,
     offers: waysOffered(fit).length > 0,
     verdict,
   };
@@ -141,13 +141,10 @@ function draftVerdictOf(
   return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }
 
-// The browser's own check, which the server never makes: an address it can't read as one is still drawn.
-const ADDRESS_LOST = "the email address here no longer reads as one address";
-
-/** Whether `typed` reads as other than the email addresses `before` held: one broken, or run into another. */
-function addressLost(before: string, typed: string): boolean {
-  const addresses = addressCountIn(before);
-  return addresses > 0 && addressCountIn(typed) !== addresses;
+/** Whether `typed` reads as other than the emails `before` held: one broken, or run into another. */
+function emailBroken(before: string, typed: string): boolean {
+  const emails = emailCountIn(before);
+  return emails > 0 && emailCountIn(typed) !== emails;
 }
 
 // A tab or any line break shows as a gap, so a space keeps the words apart.

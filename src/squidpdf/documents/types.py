@@ -171,6 +171,7 @@ class Sentences(TypedDict):
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
     edit_breaks_signature: str  # said as the first edit of a signed document starts
+    email_broken: str  # said while an email address in a span no longer reads as one
     # Said to a screen reader as a span's words change, filled with its words now.
     back_to: str  # undone
     changed_to: str  # typed and kept, or done again

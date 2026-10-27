@@ -43,6 +43,7 @@ export const SENTENCES: Sentences = {
   page_left_out: "This page is left out of the download",
   page_put_back: "Page {page} is back in the download",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
+  email_broken: "the email address here no longer reads as one",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",
   edit_breaks_signature: "This PDF is signed, so this change breaks its signature.",
   back_to: "Back to \u201c{text}\u201d.",

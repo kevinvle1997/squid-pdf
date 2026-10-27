@@ -130,6 +130,7 @@ def _sentences_in(language: str) -> Sentences:
         "form_field_not_edited": words.sentence("form_field_not_edited", language),
         "empty": words.sentence("empty", language),
         "edit_breaks_signature": words.sentence("edit_breaks_signature", language),
+        "email_broken": words.sentence("email_broken", language),
         "back_to": words.sentence("back_to", language),
         "changed_to": words.sentence("changed_to", language),
         "put_back": words.sentence("put_back", language),

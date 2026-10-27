@@ -188,7 +188,7 @@ describe("an edit", () => {
     const doc = aDoc({ spans: [aSpan({ id: "mail", text, room_pt: 100 })], fonts: [aFont("Times-Roman", { glyphs })] });
     editor = createEditor(FILE, doc, 2);
     edit(editor, "mail", null);
-    const lost = ["the email address here no longer reads as one address"];
+    const lost = [SENTENCES.email_broken];
     expect(troublesIn(editor.store.get(), "Write to anna@halde.de").sentences).toEqual([]);
     expect(troublesIn(editor.store.get(), "Write to anna@halde de").sentences).toEqual(lost);
     expect(troublesIn(editor.store.get(), "Write to anna@halde.de, bob@halde.de").sentences).toEqual(lost);

@@ -58,6 +58,9 @@ font_not_added = "The file's own font couldn't be used for this edit, so a simil
 left_out = "Left out {letters}, which no font we have can draw."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
+# Said by the browser as an email address in a span is typed so it no longer reads as one: the
+# file draws whatever is typed, so it's a warning, not a refusal.
+email_broken = "the email address here no longer reads as one"
 # Said by the browser while the field it's typed in is empty: taking text out isn't a change.
 empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
 # A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
