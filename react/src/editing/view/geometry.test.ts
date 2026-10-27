@@ -1,11 +1,23 @@
 import { describe, expect, test } from "vitest";
 import { A4, aFit, aSpan } from "../../fixtures";
-import { PX_PER_PT, SLIP_GAP_PT } from "../constants";
+import {
+  FIELD_SPARE_EM,
+  HANDWRITING_STEP,
+  NEW_TEXT_ASCENT_EM,
+  NEW_TEXT_DESCENT_EM,
+  NEW_TEXT_FIELD_MIN_EM,
+  PX_PER_PT,
+  SLIP_GAP_PT,
+  STRIP_PAD_PT,
+} from "../constants";
 import {
   cropOf,
   fieldScaleOf,
   layerOf,
   markBoxOf,
+  newTextFieldWidthPt,
+  newTextSlipLineOf,
+  paddedBoxOf,
   pinnedUnder,
   points,
   previewStyleOf,
@@ -223,5 +235,28 @@ describe("a preview of a span's words", () => {
     const span = aSpan({ id: "s", letter_spacing_em: 0.05 });
     const style = previewStyleOf(span, A4, { face: "Liberation Serif Regular", scale: { size: 1, scaleX: 1 } });
     expect(style.letterSpacing).toBe("0.05em");
+  });
+});
+
+describe("new text's place", () => {
+  test("its field is as wide as it draws, never narrower than a couple of letters, with room for the caret", () => {
+    expect(newTextFieldWidthPt({ size: 10 }, 100)).toBe(100 + 10 * FIELD_SPARE_EM);
+    expect(newTextFieldWidthPt({ size: 10 }, 0)).toBe(10 * NEW_TEXT_FIELD_MIN_EM + 10 * FIELD_SPARE_EM);
+  });
+
+  test("its slip hangs under the line as a handwriting face would set it, so choosing one doesn't move it", () => {
+    const line = newTextSlipLineOf({ origin: [72, 400], size: 10 }, { nearSize: 10, fieldWidthPt: 50 });
+    const handwritten = 10 * HANDWRITING_STEP;
+    expect(line).toEqual({
+      x0: 72,
+      y0: 400 - handwritten * NEW_TEXT_ASCENT_EM,
+      x1: 122,
+      y1: 400 + handwritten * NEW_TEXT_DESCENT_EM,
+    });
+  });
+
+  test("what the server redraws round it reaches as far as a strip does, and stops at the page's edges", () => {
+    const padded = paddedBoxOf({ x0: 1, y0: 100, x1: A4.width - 1, y1: 120 }, A4);
+    expect(padded).toEqual({ x0: 0, y0: 100 - STRIP_PAD_PT, x1: A4.width, y1: 120 + STRIP_PAD_PT });
   });
 });

@@ -3,15 +3,8 @@ import type { Render } from "../api/types";
 import { A4, aDoc, aFit, aFont, anInsert, aSpan, halfWideGlyphs } from "../fixtures";
 import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM, NEW_TEXT_SIZE_PT } from "./constants";
 import { change, createEditor, layoutOf } from "./editor";
-import {
-  chooseFont,
-  keptNewTexts,
-  moveNewText,
-  openNewTextAt,
-  openNewTextOnBarePage,
-  shownNewTextsAmong,
-} from "./newText";
-import { typeInto, typeIntoNewText } from "./typing";
+import { keptNewTexts, moveNewText, openNewTextAt, shownNewTextsAmong } from "./newText";
+import { typeIntoNewText } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
   ...(await original()),
@@ -72,22 +65,6 @@ describe("new text kept on its page", () => {
     expect(originOf(editor)).toEqual([72, A4.height - 10 * NEW_TEXT_DESCENT_EM]);
     moveNewText(editor, newTextId, { by: [0, -A4.height], nudge: true, widthPt: 40 });
     expect(originOf(editor)).toEqual([72, 10 * NEW_TEXT_ASCENT_EM]);
-  });
-
-  test("set in a handwriting face a step larger, it moves in from the edge it would now run past", () => {
-    const editor = createEditor(new File(["%PDF-"], "a.pdf"), aDoc(), 2);
-    editor.store.set({ shippedFaces: { handwriting: ["Caveat Bold"], failed: null } });
-    openNewTextOnBarePage(editor, 0);
-    typeInto(editor, "M. Halvorsen");
-    const draft = editor.store.get().draft;
-    if (draft?.kind !== "newText") throw new Error("new text is being typed");
-    editor.store.set({ draft: { ...draft, origin: [A4.width - 100, 12] } });
-
-    chooseFont(editor, "face:Caveat Bold", { widthOf: () => 150 });
-    const chosen = editor.store.get().draft;
-    expect(chosen?.kind === "newText" && chosen.style.font).toBe("Caveat Bold");
-    const size = chosen?.kind === "newText" ? chosen.style.size : 0;
-    expect(chosen?.kind === "newText" && chosen.origin).toEqual([A4.width - 150, size * NEW_TEXT_ASCENT_EM]);
   });
 
   /** An editor on a page with no text, its new text's field opened by a press at `at`. */

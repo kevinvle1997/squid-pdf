@@ -1,26 +1,24 @@
 // What a page's spans are drawn as when it's near: a mark over each, the field, the note their marks share,
 // find's tint, the mismatches the bar's list shows, and the prompt before a redaction is undone.
-import { useEffect, useId, useMemo, useReducer, useState, useSyncExternalStore } from "react";
+import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
-import { NEW_TEXT_ASCENT_EM } from "../constants";
-import { addFaces } from "../faces";
 import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
-import { newTextFaceOf, shownNewTextsAmong } from "../newText";
-import { inPageOrder, type PageState, spanIn } from "../page";
-import type { NewTextReading, SpanReading } from "../project";
+import { shownNewTextsAmong } from "../newText";
+import { inPageOrder, type PageState, placedOnPage, spanIn } from "../page";
+import type { SpanReading } from "../project";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
-import { boxOf, markBoxOf, newTextBoxIn, newTextWidthIn } from "./geometry";
+import { boxOf, markBoxOf, newTextBoxIn } from "./geometry";
 import styles from "./Marks.module.css";
 import { NewTextField } from "./NewTextField";
-import { NewTextMark } from "./NewTextMark";
+import { RestingNewText } from "./NewTextMark";
 import { createNotes, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
@@ -39,7 +37,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
     <>
       {page.matches !== undefined && <Found page={page} info={info} matches={page.matches} />}
       <Shown page={page} info={info} readings={readings} fits={fits} />
-      {inPageOrder(page.spans, placedOn(page)).map(({ span, placed }) => {
+      {inPageOrder(page.spans, placedOnPage(page)).map(({ span, placed }) => {
         if (placed === "field") return <NewTextField key="field" info={info} />;
         if (placed !== undefined) {
           return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} />;
@@ -67,39 +65,6 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
         <UndoRedactionAt spanId={page.unredacting} page={page} info={info} readings={readings} />
       )}
     </>
-  );
-}
-
-/** What's put on the page among its spans: each piece of new text at rest, and the field new text is typed in. */
-function placedOn(page: PageState): { item: NewTextReading | "field"; at: readonly [number, number] }[] {
-  const resting = (page.edits?.newTexts ?? []).filter((text) => text.newTextId !== page.newTextTypedAgain);
-  const texts = resting.map((text) => {
-    const [x, y] = text.edit.origin;
-    return { item: text, at: [x, y - text.edit.size * NEW_TEXT_ASCENT_EM] as const };
-  });
-  return page.newTextAt === null ? texts : [...texts, { item: "field" as const, at: page.newTextAt }];
-}
-
-/** New text at rest, measured in the face that previews it, again as that face loads. */
-function RestingNewText({ text, page, info }: { text: NewTextReading; page: PageState; info: PageInfo }) {
-  const [, measureAgain] = useReducer((times: number) => times + 1, 0);
-  const face = newTextFaceOf(page.layout, text.edit);
-  useEffect(() => {
-    addFaces([face]);
-    document.fonts.addEventListener("loadingdone", measureAgain);
-    return () => document.fonts.removeEventListener("loadingdone", measureAgain);
-  }, [face]);
-  const widthPt = newTextWidthIn(page.layout, text.edit);
-  const takesFocus = page.focusNewText === text.newTextId;
-  return (
-    <NewTextMark
-      text={text}
-      info={info}
-      face={face}
-      widthPt={widthPt}
-      takesFocus={takesFocus}
-      sentences={page.sentences}
-    />
   );
 }
 

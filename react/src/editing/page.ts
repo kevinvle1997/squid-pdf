@@ -2,12 +2,13 @@
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
 import { pageUrl } from "../api/client";
 import type { FitRules, Sentences, SpanInfo } from "../api/types";
+import { NEW_TEXT_ASCENT_EM } from "./constants";
 import { changedWordsCount, type EditorState, type FocusSpan, type Layout, type ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
 import { keptNewTexts, type NewTextDraft, type PagePoint } from "./newText";
 import type { PreviewDisagreement } from "./previewDisagreements";
-import type { PageEdits } from "./project";
+import type { NewTextReading, PageEdits } from "./project";
 import type { PageFits, PageNewTextFits, PageRedactions, Strip } from "./render";
 import type { FontsByObject } from "./spanFonts";
 
@@ -131,4 +132,20 @@ export function inPageOrder<T>(
     marks.push({ span });
   }
   return [...marks, ...waiting.map(({ item }) => ({ placed: item }))];
+}
+
+/** What's put on page `page` among its spans: each piece of new text at rest by the top of its line, and the field new text is typed in. */
+export function placedOnPage(page: Pick<PageState, "edits" | "newTextAt" | "newTextTypedAgain">): PlacedOnPage[] {
+  const resting = (page.edits?.newTexts ?? []).filter((text) => text.newTextId !== page.newTextTypedAgain);
+  const texts = resting.map((text): PlacedOnPage => {
+    const [x, y] = text.edit.origin;
+    return { item: text, at: [x, y - text.edit.size * NEW_TEXT_ASCENT_EM] };
+  });
+  return page.newTextAt === null ? texts : [...texts, { item: "field", at: page.newTextAt }];
+}
+
+/** A piece of new text, or the field new text is typed in, where it's put on a page. */
+export interface PlacedOnPage {
+  readonly item: NewTextReading | "field";
+  readonly at: PagePoint;
 }

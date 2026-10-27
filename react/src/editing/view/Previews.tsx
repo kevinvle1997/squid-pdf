@@ -1,7 +1,6 @@
 // What the browser draws over a page until the server's render shows it: a span's new words, a
 // redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
 import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
-import { STRIP_PAD_PT } from "../constants";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
 import { newTextFaceOf } from "../newText";
@@ -10,7 +9,7 @@ import { differing } from "../project";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
 import { fontOf } from "../spanFonts";
-import { boxOf, cropOf, newTextBoxIn, newTextStyleOf, previewStyleOf } from "./geometry";
+import { boxOf, cropOf, newTextBoxIn, newTextStyleOf, paddedBoxOf, previewStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
 /** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
@@ -61,7 +60,7 @@ export function NewTextPreviews({
       {covered.map((text) => (
         <Original
           key={`was ${text.id}`}
-          box={padded(newTextBoxIn(page.layout, text.edit), info)}
+          box={paddedBoxOf(newTextBoxIn(page.layout, text.edit), info)}
           info={info}
           src={page.src}
         />
@@ -79,16 +78,6 @@ export function NewTextPreviews({
       ))}
     </>
   );
-}
-
-/** A box as far past its edges as a strip reaches, inside the page: what the server redraws round new text. */
-function padded(box: { x0: number; y0: number; x1: number; y1: number }, info: PageInfo) {
-  return {
-    x0: Math.max(0, box.x0 - STRIP_PAD_PT),
-    y0: Math.max(0, box.y0 - STRIP_PAD_PT),
-    x1: Math.min(info.width, box.x1 + STRIP_PAD_PT),
-    y1: Math.min(info.height, box.y1 + STRIP_PAD_PT),
-  };
 }
 
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */

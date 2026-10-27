@@ -4,19 +4,18 @@ import type { CSSProperties } from "react";
 import type { FitInfo, Insert, PageInfo, SpanInfo } from "../../api/types";
 import {
   FIELD_SPARE_EM,
+  HANDWRITING_STEP,
   NEW_TEXT_ASCENT_EM,
   NEW_TEXT_DESCENT_EM,
   NEW_TEXT_FIELD_MIN_EM,
   PX_PER_PT,
   SLIP_GAP_PT,
+  STRIP_PAD_PT,
 } from "../constants";
 import type { Layout } from "../editor";
 import { familyOf } from "../faces";
 import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
-import { fontOfNewText, newTextFaceOf } from "../newText";
-
-/** A box on a page, in its own points from its top left. */
-type Box = { x0: number; y0: number; x1: number; y1: number };
+import { type Box, fontOfNewText, newTextFaceOf, newTextLineOf } from "../newText";
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
@@ -409,9 +408,37 @@ export function newTextFieldWidthPt({ size }: Pick<Insert, "size">, widthPt: num
   return Math.max(widthPt, size * NEW_TEXT_FIELD_MIN_EM) + size * FIELD_SPARE_EM;
 }
 
+/** As far past `box`'s edges as a strip reaches, inside the page: what the server redraws round new text. */
+export function paddedBoxOf(box: Box, info: PageInfo): Box {
+  return {
+    x0: Math.max(0, box.x0 - STRIP_PAD_PT),
+    y0: Math.max(0, box.y0 - STRIP_PAD_PT),
+    x1: Math.min(info.width, box.x1 + STRIP_PAD_PT),
+    y1: Math.min(info.height, box.y1 + STRIP_PAD_PT),
+  };
+}
+
+/**
+ * The line the slip of new text being typed hangs under, `fieldWidthPt` across: as tall as a handwriting face sets
+ * it, the larger, so choosing a face never moves the slip from under the pointer.
+ */
+export function newTextSlipLineOf(
+  insert: Pick<Insert, "origin" | "size">,
+  { nearSize, fieldWidthPt }: { nearSize: number; fieldWidthPt: number },
+): Box {
+  return newTextBoxOf({ ...insert, size: Math.max(insert.size, nearSize * HANDWRITING_STEP) }, fieldWidthPt);
+}
+
+/** New text's words as they're set, wherever the box they're drawn in is: dragged, they go with the pointer. */
+export function newTextWordsStyleOf(insert: Pick<Insert, "origin" | "size" | "color">, page: PageInfo, face: string) {
+  const { left: _left, top: _top, height: _height, ...words } = newTextStyleOf(insert, page, face);
+  return words;
+}
+
 /** The box new text is drawn in, from its baseline's start: `widthPt` across, an em above its baseline and a little below. */
-export function newTextBoxOf({ origin: [x, y], size }: Pick<Insert, "origin" | "size">, widthPt: number): Box {
-  return { x0: x, y0: y - size * NEW_TEXT_ASCENT_EM, x1: x + widthPt, y1: y + size * NEW_TEXT_DESCENT_EM };
+export function newTextBoxOf(insert: Pick<Insert, "origin" | "size">, widthPt: number): Box {
+  const line = newTextLineOf(insert);
+  return { ...line, x1: line.x0 + widthPt };
 }
 
 /** The box new text is drawn in on its page, as wide as the face that previews it sets it. */

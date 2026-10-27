@@ -94,7 +94,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const sheet = useSheet(index, info, { nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans ?? NO_CHANGES;
-  const texts = page.edits?.newTexts ?? NO_NEW_TEXTS;
+  const newTexts = page.edits?.newTexts ?? NO_NEW_TEXTS;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
   // undo needs no render to show it.
   const strips = useMemo(
@@ -110,7 +110,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
   // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
   const notes = keepMarks ? changes : NO_CHANGES;
-  const newTextNotes = keepMarks ? texts : NO_NEW_TEXTS;
+  const newTextNotes = keepMarks ? newTexts : NO_NEW_TEXTS;
   const paper = useBarePaper(index, info);
 
   return (
@@ -129,7 +129,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
       <Margin
         info={info}
         changes={notes}
-        texts={newTextNotes}
+        newTexts={newTextNotes}
         noteHeightPt={sheet.noteHeightPt}
         pageNumber={shownNumber}
       />
@@ -176,7 +176,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
           </SlipLayerContext.Provider>
         )}
       </Sheet>
-      <ChangeList changes={notes} texts={newTextNotes} pageNumber={shownNumber} />
+      <ChangeList changes={notes} newTexts={newTextNotes} pageNumber={shownNumber} />
     </section>
   );
 });
