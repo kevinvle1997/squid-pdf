@@ -44,6 +44,15 @@ def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
     assert_equal(FOLDER_STORE.find("../outside"), None, "a lookup that climbs out of the store")
 
 
+def test_the_hour_a_document_is_kept_idle_is_the_one_the_landing_promises():
+    """The landing says it in words, before there's a document to send the hour with."""
+    promise = (
+        "seconds a document is kept idle: the landing (react/src/documents/view/Drop.tsx)"
+        " promises an hour, in words decisions/frontend.md (The look) chose, so change them too"
+    )
+    assert_equal(IDLE_S, 60 * 60, promise)
+
+
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = FOLDER_STORE.create("owner")
     _, fresh = FOLDER_STORE.create("owner")
