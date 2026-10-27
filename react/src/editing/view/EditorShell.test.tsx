@@ -239,6 +239,26 @@ describe("finding your way", () => {
     await expect.element(list).not.toBeInTheDocument();
   });
 
+  test("in an open calendar, undo and ? are the edit's, not the window's: nothing else is undone, no list opens", async () => {
+    const due = aSpan({ id: "due", text: "Due 14 March 2026", bbox: { x0: 72, y0: 200, x1: 242, y1: 224 }, size: 20 });
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyzDM0123456789 ");
+    const doc = aDoc({ spans: [span, due], fonts: [aFont("Times-Roman", { glyphs })] });
+    const screen = await openEditor({ doc });
+    await changeSpan(screen, "is here");
+    const mark = screen.getByRole("button", { name: "Due 14 March 2026" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await userEvent.keyboard("?");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "is here" }).query()).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" }).query()).toBeNull();
+  });
+
   test("the tab names the document, starred while it has changes no export took", async () => {
     const screen = await openEditor();
     await expect.poll(() => document.title).toBe("contract.pdf · squid-pdf");

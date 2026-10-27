@@ -4,9 +4,13 @@ const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
 export const COMMAND = APPLE ? "⌘" : "Ctrl ";
 export const ALT = APPLE ? "⌥" : "Alt ";
 
-/** Whether a key was pressed in a text field, whose own keys come before a shortcut's. */
+/**
+ * Whether a key was pressed in a text field, or in the slip of the span being typed into (its calendar), whose
+ * own keys come before a shortcut's: undo there would undo another edit with this one still open.
+ */
 export function isTyping(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
+  return target instanceof Element && target.closest("[data-slip]") !== null;
 }
 
 /** The page a key was pressed on, anything on it or its tick in the page list: each says which, as `data-page`. */
