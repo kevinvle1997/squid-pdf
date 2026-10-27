@@ -229,6 +229,47 @@ describe("finding your way", () => {
     }
   });
 
+  test.each([
+    ["at its printed size, from the keyboard", 0],
+    ["zoomed past the window and scrolled to its far side", 3],
+  ])("on a phone, a receipt's slip opens its calendar inside the window, the gutter in, %s", async (_, zoomIns) => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(390, 844);
+    try {
+      await emulateTouchScreen();
+      await learnDateLanguages();
+      const words = "Due 14 March 2026";
+      const due = aSpan({ id: "due", text: words, size: 10, bbox: { x0: 20, y0: 20, x1: 110, y1: 32 } });
+      const glyphs = halfWideGlyphs(`${words}0123456789`);
+      const receipt = { width: 200, height: 120, turn_cw: 0 } as const;
+      const screen = await openEditor({
+        doc: aDoc({ pages: [receipt], spans: [due], fonts: [aFont("Times-Roman", { glyphs })] }),
+      });
+      const mark = screen.getByRole("button", { name: words });
+      await expect.element(mark).toBeInTheDocument();
+      for (let times = 0; times < zoomIns; times++) await screen.getByRole("button", { name: "Zoom in" }).click();
+      const pages = document.getElementById("pages");
+      if (pages === null) throw new Error("no pages");
+      await expect.poll(() => zoomIns === 0 || pages.scrollWidth > pages.clientWidth).toBe(true);
+      pages.scrollLeft = pages.scrollWidth;
+
+      mark.element().focus();
+      await userEvent.keyboard("{Enter}");
+      const control = screen.getByRole("button", { name: "Date" });
+      await expect.element(control).toBeVisible();
+      await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+      await expect.element(control).toHaveAttribute("aria-expanded", "true");
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      const slip = control.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
+      expect(slip.left).toBeGreaterThanOrEqual(16 - 1);
+      expect(slip.right).toBeLessThanOrEqual(390 - 16 + 1);
+    } finally {
+      await page.viewport(wide, tall);
+    }
+  });
+
   test("? lists every key the editor answers to, and Escape shuts the list", async () => {
     const screen = await openEditor();
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();

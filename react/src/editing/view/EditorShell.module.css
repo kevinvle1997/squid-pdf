@@ -3,8 +3,12 @@
 .notices { position: absolute; inset-inline: 0; top: 100%; box-shadow: var(--lift-1); }
 .notices:empty { display: none; }
 /* A size container: each page centres in what room the ground leaves. */
-/* Zoomed past the window, the pages scroll sideways here, under the bar, which stays put. */
-.pages { container-type: inline-size; padding: var(--s7) var(--s5) var(--s8); outline: none; overflow-x: auto; }
+/* Zoomed past the window, the pages scroll sideways here, under the bar, which stays put. What focus scrolls into
+   view, a span or a calendar's day, keeps the gutter from the window's edge. */
+.pages {
+  container-type: inline-size; padding: var(--s7) var(--s5) var(--s8); outline: none;
+  overflow-x: auto; scroll-padding-inline: var(--s4);
+}
 @media (max-width: 820px) {
   /* Room above the first page for its delete button, which sits over its top corner here, not beside it. */
   .pages { padding: var(--s8) var(--s4) var(--s7); }

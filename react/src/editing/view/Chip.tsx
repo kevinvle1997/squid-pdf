@@ -1,6 +1,6 @@
 // The proof slip under the field: what an edit here will come to before it's made (Rule 1), the ways
 // out of a long line, and what a pointer can press there; the keyboard's ways are the field's keys and Fonts.
-import { type RefObject, useCallback, useState } from "react";
+import { type RefObject, useCallback } from "react";
 import { FileTrigger } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
@@ -18,7 +18,7 @@ import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
-import { type SlipSize, slipPlaceOf, uprightOf } from "./geometry";
+import { useSlipPlace } from "./slipPlace";
 import { ValueEditor } from "./ValueEditor";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
@@ -50,28 +50,16 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const signature = useEditorState(signatureWarningOf);
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
-  // Whole on the page and off the line, as what it holds grows, or the page is shown another size: an open
-  // calendar is wider than a verdict.
-  const [size, setSize] = useState<SlipSize>();
-  const shownWidthPt = uprightOf(info).width;
+  // Whole on the page and off the line, as what it holds grows, or the page is shown another size; on the side
+  // it was while a value's editor is open in it.
+  const valueEditorOpen = useEditorState((state) => state.draft?.valueEditorOpen ?? false);
+  const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt, holdSide: valueEditorOpen });
   const placed = useCallback(
     (element: HTMLDivElement | null) => {
       chip.current = element;
-      const layer = element?.offsetParent;
-      if (element == null || !(layer instanceof HTMLElement)) return;
-      const resized = new ResizeObserver(() => {
-        // Not laid out yet: there's nothing to measure by.
-        if (layer.clientWidth === 0) return;
-        const ptPerPx = shownWidthPt / layer.clientWidth;
-        // To the fraction of a pixel, as `offsetWidth` isn't: rounded down, it would wrap at the page's edge.
-        const { width, height } = element.getBoundingClientRect();
-        setSize({ width: width * ptPerPx, height: height * ptPerPx });
-      });
-      resized.observe(element);
-      resized.observe(layer);
-      return () => resized.disconnect();
+      return slipRef(element);
     },
-    [chip, shownWidthPt],
+    [chip, slipRef],
   );
   return (
     <div
@@ -79,7 +67,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
       className={styles.chip}
       // A key pressed in it is the edit's own, as one in the field is (`isTyping`).
       data-slip=""
-      style={slipPlaceOf(span.bbox, info, { size, endPt: fieldEndPt })}
+      style={style}
     >
       {signature !== null && (
         // Announced as the field takes focus, before the font's note.

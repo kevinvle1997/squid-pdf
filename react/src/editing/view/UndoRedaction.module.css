@@ -3,6 +3,8 @@
   composes: slip from "../../ui/Slip.module.css";
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
   max-width: 44ch;
+  /* Its layer takes no presses: only what's on a slip does. */
+  pointer-events: auto;
 }
 .asked { flex: 1 1 24ch; line-height: 1.4; }
 .choices { display: flex; gap: var(--s2); }

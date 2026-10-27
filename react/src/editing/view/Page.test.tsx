@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -9,9 +10,11 @@ import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { PX_PER_PT } from "../constants";
+import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
 import { setWarningMuted } from "../mutedWarnings";
+import { redact } from "../redaction";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -82,10 +85,12 @@ afterEach(async () => {
   await page.viewport(VIEWPORT.width, VIEWPORT.height);
 });
 
-async function draw(index = 0, info = A4) {
+/** The page, in the window, or in a box that scrolls sideways as the editor's pages do (`scrolledIn`). */
+async function draw(index = 0, info = A4, { scrolledIn = false } = {}) {
+  const drawn = <Page index={index} info={info} shownNumber={index + 1} />;
   return render(
     <EditorContext.Provider value={editor}>
-      <Page index={index} info={info} shownNumber={index + 1} />
+      {scrolledIn ? <div style={{ overflowX: "auto", paddingInline: 16 }}>{drawn}</div> : drawn}
     </EditorContext.Provider>,
   );
 }
@@ -803,6 +808,25 @@ describe("a page", () => {
       expect(slip.top).toBeCloseTo(sheet.top + (span.bbox.x0 / A4.width) * sheet.height, 0);
     });
 
+    test("lets the prompt before un-redacting a line at its foot hang past it, whole, and pressed", async () => {
+      await page.viewport(1400, 900);
+      const foot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 820, x1: 152, y1: 834 } });
+      openDocument(aDoc({ spans: [foot], fonts: DOC.fonts }));
+      redact(editor, "foot");
+      const screen = await draw();
+      await editSpan(screen, "at the foot (redacted)");
+      const editAnyway = screen.getByRole("button", { name: "Edit anyway" });
+      await expect.element(editAnyway).toBeVisible();
+      editAnyway.element().scrollIntoView({ block: "center" });
+      const mark = screen.getByRole("button", { name: "at the foot (redacted)" }).element();
+      const sheet = sheetOf(mark).getBoundingClientRect();
+      const box = editAnyway.element().getBoundingClientRect();
+      expect(box.top).toBeGreaterThan(sheet.bottom);
+      expect(editAnyway.element().contains(pressedAt(box))).toBe(true);
+      await editAnyway.click();
+      await expect.element(screen.getByRole("textbox")).toHaveFocus();
+    });
+
     /** Whether two boxes on screen share any of their area. */
     const overlap = (one: DOMRect, other: DOMRect) =>
       one.left < other.right && other.left < one.right && one.top < other.bottom && other.top < one.bottom;
@@ -825,6 +849,124 @@ describe("a page", () => {
         const sheet = sheetOf(field).getBoundingClientRect();
         expect(slip().left).toBeGreaterThanOrEqual(sheet.left - 1);
         expect(slip().right).toBeLessThanOrEqual(sheet.right + 1);
+      },
+    );
+
+    test.each([90, 180, 270] as const)(
+      "keeps the prompt before un-redacting whole on a phone, off its line, turned %i°",
+      async (turn) => {
+        await page.viewport(390, 800);
+        openDocument(aDoc({ spans: [nearFoot], fonts: DOC.fonts }));
+        redact(editor, "foot");
+        const screen = await draw(0, { ...A4, turn_cw: turn });
+        await editSpan(screen, "at the foot (redacted)");
+        const keep = screen.getByRole("button", { name: "Keep redaction" });
+        await expect.element(keep).toHaveFocus();
+        await Promise.all(document.getAnimations().map((animation) => animation.finished));
+        const mark = screen.getByRole("button", { name: "at the foot (redacted)" }).element();
+        const prompt = () => keep.element().closest("[role=group]")?.getBoundingClientRect() ?? new DOMRect();
+        const sheet = () => sheetOf(mark).getBoundingClientRect();
+        await expect.poll(() => prompt().left >= sheet().left - 1 && prompt().right <= sheet().right + 1).toBe(true);
+        expect(prompt().top).toBeGreaterThanOrEqual(sheet().top - 1);
+        expect(overlap(prompt(), mark.getBoundingClientRect())).toBe(false);
+        keep.element().scrollIntoView({ block: "center" });
+        expect(keep.element().contains(pressedAt(keep.element().getBoundingClientRect()))).toBe(true);
+      },
+    );
+
+    // A date low on the page, which a half turn shows high up: the slip sits over it, on screen.
+    const DATED = "Due 14 March 2026";
+    const dated = aSpan({ ...span, id: "dated", text: DATED, bbox: { x0: 72, y0: 600, x1: 242, y1: 624 } });
+
+    /** The field on `line` on page `info`, its slip's Date showing, at rest; `scrolledIn` is `draw`'s. */
+    async function editTheDate(info: PageInfo, line = dated, { scrolledIn = false } = {}) {
+      await learnDateLanguages();
+      const font = aFont("Times-Roman", { glyphs: halfWideGlyphs(`${DATED}0123456789`) });
+      openDocument(aDoc({ spans: [line], fonts: [font] }));
+      const screen = await draw(0, info, { scrolledIn });
+      await editSpan(screen, DATED);
+      const control = screen.getByRole("button", { name: "Date" });
+      await expect.element(control).toBeVisible();
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      const slip = () => control.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
+      return { screen, control, slip };
+    }
+
+    /** Which side of `field` a slip is on, on screen, or "over" it. */
+    function sideOf(slip: DOMRect, field: DOMRect): string {
+      if (slip.bottom <= field.top + 1) return "above";
+      if (slip.top >= field.bottom - 1) return "below";
+      if (slip.right <= field.left + 1) return "left";
+      if (slip.left >= field.right - 1) return "right";
+      return "over";
+    }
+
+    test.each([
+      [180, 1400],
+      [270, 1400],
+      [180, 390],
+      [270, 390],
+    ] as const)(
+      "opening the calendar turned %i°, %i wide, never draws the slip over its line, nor moves it to another side",
+      async (turn, width) => {
+        await page.viewport(width, 900);
+        const { screen, control, slip } = await editTheDate({ ...A4, turn_cw: turn });
+        const field = () => screen.getByRole("textbox").element().getBoundingClientRect();
+        const side = sideOf(slip(), field());
+        expect(side).not.toBe("over");
+        // Opened, and read, in one task: what the next frame paints, before the slip has measured itself again.
+        const pressed = control.element();
+        if (!(pressed instanceof HTMLElement)) throw new Error("no button");
+        flushSync(() => pressed.click());
+        expect(screen.getByRole("grid").query()).not.toBeNull();
+        expect(sideOf(slip(), field())).toBe(side);
+        // And once it has.
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        expect(sideOf(slip(), field())).toBe(side);
+      },
+    );
+
+    test("places the slip as it grows before that frame is painted: whatever observes it next sees it placed", async () => {
+      await page.viewport(1400, 900);
+      // A line ending by the page's right edge: as the calendar widens the slip, it moves left to stay on the page.
+      const right = { ...dated, bbox: { x0: 400, y0: 300, x1: 570, y1: 324 } };
+      const { control, slip } = await editTheDate(A4, right);
+      // Told after the slip's own observer, in the same round, before the frame is painted. The calendar may grow
+      // in more than one round as it lays out, each placed in its own: the last is where the slip settles.
+      const seen: number[] = [];
+      const after = new ResizeObserver(() => seen.push(slip().left));
+      const element = control.element().closest("[data-slip]");
+      if (element === null) throw new Error("no slip");
+      after.observe(element);
+      await new Promise(requestAnimationFrame);
+      seen.length = 0;
+
+      await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+      await expect.element(control).toHaveAttribute("aria-expanded", "true");
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      after.disconnect();
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.at(-1)).toBe(slip().left);
+    });
+
+    test.each([false, true])(
+      "keeps the slip of a page narrower than its calendar inside a phone's window, the gutter in, in a box that scrolls: %s",
+      async (scrolledIn) => {
+        await page.viewport(390, 800);
+        // A finger's days, which make the calendar wider than this page shows.
+        await emulateTouchScreen();
+        const line = { ...dated, bbox: { x0: 20, y0: 20, x1: 110, y1: 32 }, size: 10 };
+        const receipt = { width: 200, height: 120, turn_cw: 0 } as const;
+        const { control, slip } = await editTheDate(receipt, line, { scrolledIn });
+        // From the keyboard: the day it focuses is scrolled into view before the slip has measured itself again.
+        await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+        await expect.element(control).toHaveAttribute("aria-expanded", "true");
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        expect(slip().left).toBeGreaterThanOrEqual(16 - 1);
+        expect(slip().right).toBeLessThanOrEqual(390 - 16 + 1);
       },
     );
 
