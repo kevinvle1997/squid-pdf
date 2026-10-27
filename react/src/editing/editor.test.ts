@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aDocumentNotice, aFont, aProblem, aSpan, halfWideGlyphs } from "../fixtures";
+import { aDoc, aDocumentNotice, aFont, aProblem, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
 import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
@@ -9,7 +9,9 @@ import { edit, finish, typeInto } from "./typing";
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
 // "Kept" is stored in the file and draws every letter typed here; "Named" is only named, so a similar font draws it.
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
   spans: [
     aSpan({ id: "own", font: "Kept" }),
     aSpan({
@@ -72,7 +74,7 @@ describe("a change to the history", () => {
     const failedOnce = editor.store.get().drawn;
     await vi.waitFor(() => expect(editor.store.get().drawn).not.toBe(failedOnce));
 
-    expect(editor.store.get().announcement.text).toBe("Changed to then");
+    expect(editor.store.get().announcement.text).toBe("CHANGED TO “then”.");
   });
 
   test("undo and redo say what the span reads now and bring it into view, and focus stays where it is", () => {
@@ -80,19 +82,29 @@ describe("a change to the history", () => {
     typed("own", "two");
     undo(editor);
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("one");
-    expect(editor.store.get().announcement.text).toBe("Back to one");
+    expect(editor.store.get().announcement.text).toBe("BACK TO “one”.");
     expect(editor.store.get().scrollTo?.spanId).toBe("own");
     expect(editor.store.get().focusTo).toBeNull();
     redo(editor);
-    expect(editor.store.get().announcement.text).toBe("Changed to two");
+    expect(editor.store.get().announcement.text).toBe("CHANGED TO “two”.");
     undo(editor);
     undo(editor);
-    expect(editor.store.get().announcement.text).toBe("Back to was own");
+    expect(editor.store.get().announcement.text).toBe("BACK TO “was own”.");
     // Nothing left to undo: nothing announced, nothing brought into view.
     const before = editor.store.get();
     undo(editor);
     expect(editor.store.get().announcement).toBe(before.announcement);
     expect(editor.store.get().scrollTo).toBe(before.scrollTo);
+  });
+
+  test("a reading persisted before undo's sentence was sent still undoes, and says nothing until the server's lands", () => {
+    const stale = structuredClone(DOC);
+    Reflect.deleteProperty(stale.sentences, "back_to");
+    editor = createEditor(FILE, stale, 2);
+    typed("own", "one");
+    undo(editor);
+    expect(editor.store.get().reading.spans.has("own")).toBe(false);
+    expect(editor.store.get().announcement.text).toBe("");
   });
 
   test("the same words announced again are heard again, and the same span brought into view again", () => {
@@ -111,7 +123,7 @@ describe("a change to the history", () => {
     typed("own", "one");
     putBack(editor, "own");
     expect(editor.store.get().reading.spans.has("own")).toBe(false);
-    expect(editor.store.get().announcement.text).toBe("Put back was own");
+    expect(editor.store.get().announcement.text).toBe("PUT BACK “was own”.");
     expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
   });
 

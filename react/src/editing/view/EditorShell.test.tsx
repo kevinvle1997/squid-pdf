@@ -152,7 +152,7 @@ describe("the editor", () => {
     await expect.element(screen.getByRole("status")).toHaveTextContent(SENTENCES.edit_breaks_signature);
     await screen.getByRole("textbox").fill("is here");
     await userEvent.keyboard("{Enter}");
-    await expect.element(screen.getByRole("status")).toHaveTextContent("Changed to is here");
+    await expect.element(screen.getByRole("status")).toHaveTextContent(fill(SENTENCES.changed_to, { text: "is here" }));
     await expect.element(screen.getByRole("status")).not.toHaveTextContent(said);
     await expect.element(line).toBeVisible();
   });
@@ -471,7 +471,7 @@ describe("redaction", () => {
     await userEvent.keyboard("{Control>}{Backspace}{/Control}");
     const redacted = screen.getByRole("button", { name: "was here (redacted)" });
     await expect.element(redacted).toHaveFocus();
-    await expect.element(screen.getByRole("status")).toHaveTextContent("Redacted was here");
+    await expect.element(screen.getByRole("status")).toHaveTextContent(fill(SENTENCES.redacted, { text: "was here" }));
 
     await userEvent.keyboard("{Enter}");
     const asked = screen.getByRole("group", { name: SENTENCES.undo_redaction });
@@ -588,16 +588,16 @@ describe("undo and redo", () => {
     await changeSpan(screen, "is here");
     await userEvent.keyboard("{Control>}z{/Control}");
     const status = screen.getByRole("status");
-    await expect.element(status).toHaveTextContent("Back to was here");
+    await expect.element(status).toHaveTextContent(fill(SENTENCES.back_to, { text: "was here" }));
     const firstAnnouncement = status.element().firstElementChild;
 
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
-    await expect.element(status).toHaveTextContent("Changed to is here");
+    await expect.element(status).toHaveTextContent(fill(SENTENCES.changed_to, { text: "is here" }));
     const focused = document.activeElement;
     window.scrollTo(0, 0);
     await userEvent.keyboard("{Control>}z{/Control}");
 
-    await expect.element(status).toHaveTextContent("Back to was here");
+    await expect.element(status).toHaveTextContent(fill(SENTENCES.back_to, { text: "was here" }));
     expect(status.element().firstElementChild).not.toBe(firstAnnouncement);
     await vi.waitFor(() => expect(window.scrollY).toBeGreaterThan(0));
     expect(document.activeElement).toBe(focused);

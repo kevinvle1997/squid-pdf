@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aSpan, SENTENCES } from "../fixtures";
+import { aDoc, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { commandFor } from "./commands";
 import { createEditor, type Editor, undo } from "./editor";
 import { editAnyway, keepRedaction, redact } from "./redaction";
@@ -9,7 +9,11 @@ import { edit, finish, typeInto } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-const DOC = aDoc({ spans: [aSpan({ id: "name", text: "John Smith" }), aSpan({ id: "other", text: "Acme" })] });
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
+const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
+  spans: [aSpan({ id: "name", text: "John Smith" }), aSpan({ id: "other", text: "Acme" })],
+});
 
 let editor: Editor;
 
@@ -29,7 +33,7 @@ describe("redacting", () => {
     const state = editor.store.get();
     expect(state.reading.edits).toEqual([{ kind: "redact", span_id: "name" }]);
     expect(state.reading.spans.get("name")?.redacted).toBe(true);
-    expect(state.announcement.text).toBe("Redacted John Smith");
+    expect(state.announcement.text).toBe("REDACTED “John Smith”.");
     expect(state.focusTo).toEqual({ spanId: "name" });
     expect(renderStrips).toHaveBeenCalledTimes(1);
   });

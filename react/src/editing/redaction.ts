@@ -5,19 +5,20 @@ import { announcing, change, type Editor } from "./editor";
 import { entriesOf } from "./history";
 import { textIn } from "./project";
 import { draftOf } from "./typing";
+import { fill } from "./words";
 
 /** Redact the span typed in, or else `spanId`: the whole of it, whatever part was selected. Words typed there go. */
 export function redact(editor: Editor, spanId: string | null): void {
-  const { draft, reading, layout } = editor.store.get();
+  const { draft, reading, layout, doc } = editor.store.get();
   const target = draft?.spanId ?? spanId;
   const span = target === null ? undefined : layout.spans.get(target);
   if (span === undefined || reading.spans.get(span.id)?.redacted) return;
-  const words = textIn(reading, span);
+  const redacted = fill(doc.sentences.redacted, { text: textIn(reading, span) });
   change(
     editor,
     { kind: "add", edits: [{ kind: "redact", span_id: span.id }] },
     // Typing into it ends unkept: redaction wins.
-    { draft: null, announcement: announcing(`Redacted ${words}`), focusTo: { spanId: span.id }, unredacting: null },
+    { draft: null, announcement: announcing(redacted), focusTo: { spanId: span.id }, unredacting: null },
   );
 }
 

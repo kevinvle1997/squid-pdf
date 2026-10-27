@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
+import { aDoc, aFont, aSpan, halfWideGlyphs, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { createEditor, type Editor, undo } from "./editor";
 import { setWarningMuted } from "./mutedWarnings";
 import { deletePage } from "./pageDeletion";
@@ -10,7 +10,9 @@ import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
   spans: [
     aSpan({ id: "own", font: "Kept" }),
     aSpan({
@@ -72,7 +74,7 @@ describe("an edit", () => {
     finish(editor, true);
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
-    expect(editor.store.get().announcement.text).toBe("Changed to now");
+    expect(editor.store.get().announcement.text).toBe("CHANGED TO “now”.");
   });
 
   test("a trouble is announced as it appears or changes, not as its numbers tick by with each letter", () => {
