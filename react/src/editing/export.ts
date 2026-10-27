@@ -8,6 +8,7 @@ import { announcing, type Editor, type EditorState } from "./editor";
 import { heardIn, type Notice, plain, warn } from "./notices";
 import { textIn } from "./project";
 import { finish } from "./typing";
+import { fill } from "./words";
 
 /** The export started before Export was pressed, and when it starts: the pointer has rested on it a moment. */
 export interface ExportAhead {
@@ -170,9 +171,13 @@ async function downloaded(
     download(file.pdf, name);
     // What saving did to the whole file other than asked, each told: a split dropping its tags, say.
     const otherwise = file.notices.map((notice) => warn(notice.detail));
-    const leftOut = file.skipped.length > 0 ? [warn(store.get().doc.sentences.export_left_out)] : [];
+    const { sentences } = store.get().doc;
+    const leftOut = file.skipped.length > 0 ? [warn(sentences.export_left_out)] : [];
     const notices = [...leftOut, ...otherwise];
-    return { notices: notices.length > 0 ? notices : [plain(`Downloaded ${name}.`)], went: true };
+    const sentence = fill(sentences.downloaded, { name });
+    // Lacked by a reading persisted by an earlier build: the file still goes, with no notice of it.
+    const downloadedNotices = sentence === "" ? [] : [plain(sentence)];
+    return { notices: notices.length > 0 ? notices : downloadedNotices, went: true };
   } catch (error) {
     return { notices: [warn(sentenceOf(error))], went: false };
   }
