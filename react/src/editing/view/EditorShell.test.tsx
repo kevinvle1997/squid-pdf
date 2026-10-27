@@ -486,6 +486,24 @@ describe("redaction", () => {
     await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
   });
 
+  test("in a signed document the bar doesn't say a change breaks the signature while a redaction takes it away", async () => {
+    const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
+    const signed = aDoc({ spans: [span], signed: true, notices: [aDocumentNotice(said, "signed_file")] });
+    const screen = await openEditor({ doc: signed });
+    // The first is the line under the bar; the live region, heard as it opens, comes after.
+    const line = screen.getByText(said, { exact: true }).first();
+    await expect.element(line).toBeVisible();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).toHaveFocus();
+    await expect.element(line).not.toBeInTheDocument();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await expect.element(line).toBeVisible();
+  });
+
   test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
     const screen = await openEditor();
     const mark = screen.getByRole("button", { name: "was here" });

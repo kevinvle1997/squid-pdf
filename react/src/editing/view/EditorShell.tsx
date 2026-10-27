@@ -127,7 +127,8 @@ function NoticeLine() {
   const notices = useEditorState((state) => state.notices);
   const drawn = useEditorState((state) => state.drawn);
   const deleted = useEditorState((state) => state.reading.deleted);
-  const lines = useMemo(() => noticeLines(notices, drawn, { deleted }), [notices, drawn, deleted]);
+  const edits = useEditorState((state) => state.reading.edits);
+  const lines = useMemo(() => noticeLines(notices, drawn, { deleted, edits }), [notices, drawn, deleted, edits]);
   return lines.map((line) => (
     <Notice key={line.text} tone={line.tone}>
       {line.text}

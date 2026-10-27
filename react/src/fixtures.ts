@@ -210,7 +210,7 @@ export function aRedaction(fields: Partial<RedactionInfo> = {}): RedactionInfo {
   return { verified: true, hidden_copies: [], message: null, ...fields };
 }
 
-/** What opening the file found, in the server's words. */
-export function aDocumentNotice(detail: string, code = "notice"): DocumentNoticeInfo {
-  return { code, params: {}, type: "t", detail };
+/** What opening the file found, in the server's words, its type its sentence's key as the server sends it. */
+export function aDocumentNotice(detail: string, type = "notice"): DocumentNoticeInfo {
+  return { code: type, params: {}, type, detail };
 }
