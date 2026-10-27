@@ -2,13 +2,21 @@ import { describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
+import { type AmountValue, amountsIn } from "./amounts";
 import { dateReadingOf, datesIn } from "./dates";
 import { createEditor } from "./editor";
 import { edit } from "./typing";
-import { markedDays } from "./valueEditor";
+import { amountFormatOptions, markedDays, shownDayAfter } from "./valueEditor";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
+
+/** The one amount `text` holds. */
+function amountIn(text: string): AmountValue {
+  const [amount] = amountsIn(text);
+  if (amount === undefined) throw new Error(`no amount: ${text}`);
+  return amount;
+}
 
 describe("a day in the calendar", () => {
   test("is marked when its date needs a digit or letter the span's font lacks, with the server's sentence", () => {
@@ -29,5 +37,24 @@ describe("a day in the calendar", () => {
     // The days it can write are left unmarked.
     expect(marked.has(14)).toBe(false);
     expect(marked.has(16)).toBe(false);
+  });
+
+  test("shows one reason at a time: a day's shown, then hidden only if it's still the one shown", () => {
+    expect(shownDayAfter(null, { day: 17, isShown: true })).toBe(17);
+    expect(shownDayAfter(17, { day: 19, isShown: true })).toBe(19);
+    expect(shownDayAfter(19, { day: 17, isShown: false })).toBe(19);
+    expect(shownDayAfter(19, { day: 19, isShown: false })).toBeNull();
+  });
+});
+
+describe("the amount's field", () => {
+  test("shows the amount in its currency, where Intl knows it, to the page's decimals", () => {
+    expect(amountFormatOptions(amountIn("1.250,00 €"))).toEqual({
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    expect(amountFormatOptions(amountIn("KWD 1.250"))).toMatchObject({ currency: "KWD", maximumFractionDigits: 3 });
   });
 });

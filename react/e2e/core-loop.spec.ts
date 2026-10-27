@@ -237,7 +237,7 @@ test("a date changed through the calendar downloads in the file's own font, and 
   await expect(page.getByRole("button", { name: /March 14, 2026/ })).toBeFocused();
   // Before the pick, a day it can't write says why.
   await page.getByRole("button", { name: /March 17, 2026/ }).hover();
-  await expect(page.getByRole("tooltip")).toContainText("no 7 in this font");
+  await expect(page.locator("[data-slip]").getByText(/^no 7 in this font/)).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
   await page.getByRole("button", { name: /March 16, 2026/ }).click();

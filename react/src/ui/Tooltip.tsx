@@ -39,6 +39,8 @@ export function Tooltip({ heading, warn = false, children, triggerRef, isOpen, o
         className={styles.note}
         placement="top"
         offset={8}
+        // Kept off the window's edge by the body's gutter, as every line of words is.
+        containerPadding={GUTTER_PX}
       >
         <span id={id} className={styles.words}>
           <span className={styles.heading}>{warn ? <Warn mark>{heading}</Warn> : heading}</span>
@@ -101,6 +103,9 @@ export function Tip({ heading, detail, children }: { heading: string; detail: st
     </TooltipTrigger>
   );
 }
+
+// --s4, the gutter text keeps from the window's edge (design.md, Space and layout).
+const GUTTER_PX = 16;
 
 // Long enough that passing over the bar shows nothing; short enough that a pause on a button does.
 const SHORTCUT_DELAY_MS = 600;

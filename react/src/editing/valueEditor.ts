@@ -63,3 +63,17 @@ export function markedDays(
   }
   return marked;
 }
+
+/** The marked day whose reason shows, once `day`'s is shown or hidden: one at a time. */
+export function shownDayAfter(was: number | null, { day, isShown }: { day: number; isShown: boolean }): number | null {
+  if (isShown) return day;
+  return was === day ? null : was;
+}
+
+/** How the amount's field shows `value`, the reader's way: in its currency, where Intl knows it, to its decimals. */
+export function amountFormatOptions({ format }: AmountValue): Intl.NumberFormatOptions {
+  const { code, decimals } = format;
+  const style: Intl.NumberFormatOptions =
+    code === undefined ? { style: "decimal" } : { style: "currency", currency: code };
+  return { ...style, minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+}

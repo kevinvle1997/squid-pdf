@@ -10,7 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useFocusVisible } from "react-aria";
+import { useFocusVisible, useFocusWithin } from "react-aria";
 import {
   Calendar,
   CalendarCell,
@@ -18,19 +18,30 @@ import {
   CalendarGridBody,
   CalendarGridHeader,
   CalendarHeaderCell,
+  Disclosure,
+  DisclosurePanel,
   Heading,
   Input,
   NumberField,
 } from "react-aria-components";
 import { Button } from "../../ui/Button";
 import { coarsePointer, onPointerChange } from "../../ui/pointer";
-import { Shortcut, Tooltip } from "../../ui/Tooltip";
+import { Shortcut } from "../../ui/Tooltip";
+import { Warn } from "../../ui/Warn";
 import type { AmountValue } from "../amounts";
 import type { DateValue } from "../dates";
 import { announce } from "../editor";
 import type { EditableValue } from "../formattedValues";
 import { finish } from "../typing";
-import { chooseAmount, chooseDate, closeValueEditor, markedDays, openValueEditor } from "../valueEditor";
+import {
+  amountFormatOptions,
+  chooseAmount,
+  chooseDate,
+  closeValueEditor,
+  markedDays,
+  openValueEditor,
+  shownDayAfter,
+} from "../valueEditor";
 import { useEditor, useEditorState } from "./context";
 import { ALT } from "./keys";
 import styles from "./ValueEditor.module.css";
@@ -43,28 +54,22 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   const editor = useEditor();
   const open = useEditorState((state) => state.draft?.valueEditorOpen ?? false);
   const coarse = useSyncExternalStore(onPointerChange, coarsePointer);
+  // Leaving the editor for anywhere but the field ends the typing, as leaving the field does.
+  const { focusWithinProps } = useFocusWithin({
+    onBlurWithin: (event: FocusEvent) => {
+      if (event.relatedTarget === field.current) return;
+      // On its way back to the field, from a choice or Escape.
+      if (editor.store.get().focusTo !== null) return;
+      if (document.hasFocus()) finish(editor, true);
+    },
+  });
   const controlId = useId();
   const control = (
-    <Button
-      id={controlId}
-      keepFocus
-      aria-expanded={open}
-      className={styles.control}
-      onPress={() => (open ? closeValueEditor(editor) : openValueEditor(editor, value))}
-    >
+    <Button id={controlId} slot="trigger" keepFocus className={styles.control}>
       {KIND[value.kind]}
       <Chevron open={open} />
     </Button>
   );
-
-  // Leaving the editor for anywhere but the field ends the typing, as leaving the field does.
-  function leave(event: FocusEvent<HTMLDivElement>) {
-    const to = event.relatedTarget;
-    if (to instanceof Node && (event.currentTarget.contains(to) || to === field.current)) return;
-    // On its way back to the field, from a choice or Escape.
-    if (editor.store.get().focusTo !== null) return;
-    if (document.hasFocus()) finish(editor, true);
-  }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Escape") return;
@@ -73,43 +78,62 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   }
 
   return (
-    // The keys are the calendar's and the number field's own; Escape, from either, closes it.
+    // Escape, from the calendar or the number field, closes it: their other keys are their own.
     // biome-ignore lint/a11y/noStaticElementInteractions: it hears what its controls don't handle
-    <div className={styles.editor} onBlur={leave} onKeyDown={onKeyDown}>
-      {/* A touch screen has no keys to hint at. */}
-      {coarse ? (
-        control
-      ) : (
-        <Shortcut keys={`${ALT}↓`} placement="end">
-          {control}
-        </Shortcut>
-      )}
-      {open && value.kind === "date" && <DateEditor value={value} labelledBy={controlId} />}
-      {open && value.kind === "amount" && <AmountEditor value={value} labelledBy={controlId} />}
+    <div {...focusWithinProps} className={styles.editor} onKeyDown={onKeyDown}>
+      <Disclosure
+        isExpanded={open}
+        onExpandedChange={(expanded) => (expanded ? openValueEditor(editor, value) : closeValueEditor(editor))}
+        className={styles.disclosure}
+      >
+        {/* The key is a date's, as a picker's is; a touch screen has none to hint at. */}
+        {value.kind === "date" && !coarse ? (
+          <Shortcut keys={`${ALT}↓`} placement="end">
+            {control}
+          </Shortcut>
+        ) : (
+          control
+        )}
+        <DisclosurePanel className={styles.panel}>
+          {open && <EditorFor value={value} labelledBy={controlId} />}
+        </DisclosurePanel>
+      </Disclosure>
     </div>
   );
+}
+
+/** The editor made for the value's kind, named by its control. */
+function EditorFor({ value, labelledBy }: { value: EditableValue; labelledBy: string }) {
+  switch (value.kind) {
+    case "date":
+      return <DateEditor value={value} labelledBy={labelledBy} />;
+    case "amount":
+      return <AmountEditor value={value} labelledBy={labelledBy} />;
+    default:
+      return value satisfies never;
+  }
 }
 
 /** The calendar, on the date's own day: each day whose date the line can't take marked, with why. */
 function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: string }) {
   const editor = useEditor();
-  const state = useEditorState((current) => current);
+  const text = useEditorState((state) => state.draft?.text ?? "");
   const { year, month, day } = value.date;
   const chosen = new CalendarDate(year, month, day);
   const [focused, setFocused] = useState(chosen);
   const [shown, setShown] = useState<number | null>(null);
   const { isFocusVisible } = useFocusVisible();
-  const text = state.draft?.text ?? "";
   const reasonsIn = (date: CalendarDate) =>
     markedDays(editor.store.get(), { value, text, year: date.year, month: date.month });
-  const marked = markedDays(state, { value, text, year: focused.year, month: focused.month });
+  const marked = reasonsIn(focused);
+  const reason = shown === null ? undefined : marked.get(shown);
 
   function focusOn(date: CalendarDate) {
     setFocused(date);
-    const reason = reasonsIn(date).get(date.day);
+    const why = reasonsIn(date).get(date.day);
     // A key's focus shows the day's reason; a press's leaves it to the press, which comes after.
-    if (isFocusVisible) setShown(reason === undefined ? null : date.day);
-    if (reason !== undefined) announce(editor, reason);
+    if (isFocusVisible) setShown(why === undefined ? null : date.day);
+    if (why !== undefined) announce(editor, why);
   }
 
   function choose(date: CalendarDate) {
@@ -146,59 +170,29 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
         </CalendarGridHeader>
         <CalendarGridBody>
           {(date) => (
-            <Day
+            <CalendarCell
               date={date}
-              reason={date.month === focused.month ? marked.get(date.day) : undefined}
-              shown={shown === date.day && date.month === focused.month}
-              onShow={(isShown) => setShown((was) => shownAfter(was, { day: date.day, isShown }))}
-            />
+              className={styles.day}
+              data-warned={date.month === focused.month && marked.has(date.day) ? "" : undefined}
+              onHoverStart={() => date.month === focused.month && marked.has(date.day) && setShown(date.day)}
+              onHoverEnd={() => setShown((was) => shownDayAfter(was, { day: date.day, isShown: false }))}
+            >
+              {({ formattedDate, isOutsideMonth }) => (isOutsideMonth ? null : formattedDate)}
+            </CalendarCell>
           )}
         </CalendarGridBody>
       </CalendarGrid>
+      {/* A row of its own under the month: it covers no day and no button of the slip's. Every reason the month
+          has is laid out in it, one shown, so it's as tall as the longest and nothing moves as one shows. Heard
+          as focus reaches the day, so not read again. */}
+      <div className={styles.reasons} aria-hidden="true">
+        {[...new Set(marked.values())].map((why) => (
+          <p key={why} className={styles.reason} data-shown={why === reason ? "" : undefined}>
+            <Warn mark>{why}</Warn>
+          </p>
+        ))}
+      </div>
     </Calendar>
-  );
-}
-
-/** The marked day whose reason shows, once `day`'s is shown or hidden. */
-function shownAfter(was: number | null, { day, isShown }: { day: number; isShown: boolean }): number | null {
-  if (isShown) return day;
-  return was === day ? null : was;
-}
-
-/** One day of the month, and, where the line can't take its date, the warning's dashed line and why. */
-function Day({
-  date,
-  reason,
-  shown,
-  onShow,
-}: {
-  date: CalendarDate;
-  reason: string | undefined;
-  shown: boolean;
-  onShow: (shown: boolean) => void;
-}) {
-  const cell = useRef<HTMLTableCellElement>(null);
-  const id = useId();
-  return (
-    <CalendarCell
-      ref={cell}
-      date={date}
-      className={styles.day}
-      data-warned={reason === undefined ? undefined : ""}
-      onHoverStart={() => reason !== undefined && onShow(true)}
-      onHoverEnd={() => onShow(false)}
-    >
-      {({ formattedDate, isOutsideMonth }) =>
-        isOutsideMonth ? null : (
-          <>
-            {formattedDate}
-            {reason !== undefined && (
-              <Tooltip heading={reason} warn triggerRef={cell} isOpen={shown} onOpenChange={onShow} id={id} />
-            )}
-          </>
-        )
-      }
-    </CalendarCell>
   );
 }
 
@@ -206,17 +200,11 @@ function Day({
 function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: string }) {
   const editor = useEditor();
   const input = useRef<HTMLInputElement>(null);
-  const { code, decimals } = value.format;
-  const formatOptions: Intl.NumberFormatOptions = {
-    ...(code === undefined ? { style: "decimal" } : { style: "currency", currency: code }),
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  };
   return (
     <NumberField
       aria-labelledby={labelledBy}
       defaultValue={value.amount}
-      formatOptions={formatOptions}
+      formatOptions={amountFormatOptions(value)}
       autoFocus
       className={styles.amountField}
       onChange={(amount) => {
