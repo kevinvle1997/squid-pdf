@@ -847,6 +847,25 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
   });
 
+  test("on a signed document the chip says in full that a change breaks its signature, above the font's note, until an edit is in", async () => {
+    const similar = { ...span, font: "Arial", fidelity: "substitute" as const, substitute: "Liberation Sans Regular" };
+    const similarFont = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs });
+    openDocument(aDoc({ spans: [{ ...similar, in_file: false }], fonts: [similarFont], signed: true }));
+    const screen = await draw();
+    await editSpan(screen);
+    const signature = screen.getByText(SENTENCES.edit_breaks_signature);
+    const fontNote = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
+    await expect.element(signature).toBeVisible();
+    await expect.element(fontNote).toBeVisible();
+    const following = signature.element().compareDocumentPosition(fontNote.element());
+    expect(following & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    await editSpan(screen, "is here");
+    await expect.element(fontNote).toBeVisible();
+    await expect.element(signature).not.toBeInTheDocument();
+  });
+
   test("text a form field draws has the dashed warning line, and its note says an edit is left out", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));

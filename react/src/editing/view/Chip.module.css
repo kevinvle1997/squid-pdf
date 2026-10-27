@@ -14,6 +14,11 @@
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
   pointer-events: auto;
 }
+/* That a change breaks a signed document's signature, until its first edit: above the font's note, ruled off and wrapped as that note is. */
+.signature {
+  padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
+  white-space: normal; line-height: 1.4;
+}
 .noteWords {
   display: flex; flex-direction: column; gap: var(--s1);
   white-space: normal; line-height: 1.4;

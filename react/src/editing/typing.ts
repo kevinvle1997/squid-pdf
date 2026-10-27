@@ -176,6 +176,13 @@ function heardOf(state: EditorState, verdict: Verdict): string {
   return shortWarningOf(verdict) ?? LOOKS_IDENTICAL;
 }
 
+/** What a signed document's first edit says in full as it starts, in the server's words: nothing once an edit is in. */
+export function signatureWarningOf({ doc, reading }: Pick<EditorState, "doc" | "reading">): string | null {
+  // The signature is broken from the first edit on, and the line under the bar says so.
+  if (!doc.signed || reading.edits.length > 0) return null;
+  return doc.sentences.edit_breaks_signature;
+}
+
 /** The field took focus as typing starts: what an edit here warns of, and what's wrong already, is heard once. */
 export function fieldFocused(editor: Editor): void {
   const state = editor.store.get();
@@ -185,7 +192,7 @@ export function fieldFocused(editor: Editor): void {
   const { sentences, verdict } = troublesIn(state, draft.text);
   const note = draftNoteOf(state, verdict ?? span);
   const trouble = sentences.join("\n");
-  const heard = [note?.sentence, note?.why, trouble].filter(Boolean).join(" ");
+  const heard = [signatureWarningOf(state), note?.sentence, note?.why, trouble].filter(Boolean).join(" ");
   if (heard !== "") announce(editor, heard);
 }
 

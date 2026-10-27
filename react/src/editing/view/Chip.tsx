@@ -12,7 +12,7 @@ import { editNote } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
-import { chooseWayOut } from "../typing";
+import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
@@ -39,10 +39,18 @@ export function Chip({ span, info, trouble, verdict, setting }: Props) {
   const muted = useEditorState((state) => state.mutedFonts.has(shown));
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
+  // A signed document's, until its first edit: no mute, since that edit ends it.
+  const signature = useEditorState(signatureWarningOf);
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   return (
     <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
+      {signature !== null && (
+        // Announced as the field takes focus, before the font's note.
+        <span className={styles.signature} aria-hidden="true">
+          <Warn mark>{signature}</Warn>
+        </span>
+      )}
       {note !== null && (
         // Announced as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
         <span className={styles.note}>
