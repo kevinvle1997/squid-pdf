@@ -240,6 +240,20 @@ describe("the bar", () => {
     await expect.element(bar.getByText("will use a similar font", { exact: false })).not.toBeInTheDocument();
   });
 
+  test("after a page's delete, it still counts the places an edit will use a similar font; after a word's change, the changes", async () => {
+    const pageTwo = { ...ARIAL_SPAN, id: "s2", page: 1 };
+    const screen = await openEditor({ doc: aDoc({ spans: [ARIAL_SPAN, pageTwo], fonts: [NAMED], pages: [A4, A4] }) });
+    const bar = screen.getByRole("banner");
+    const forecast = bar.getByRole("button", { name: "Edits in 2 places will use a similar font" });
+    await expect.element(forecast).toBeVisible();
+    await screen.getByRole("button", { name: "Delete page 2", exact: true }).click();
+    await expect.element(forecast).toBeVisible();
+    await changeSpan(screen, "was there");
+    // The delete counts among the changes.
+    await expect.element(bar.getByText("2 changes", { exact: false })).toBeVisible();
+    await expect.element(forecast).not.toBeInTheDocument();
+  });
+
   test("the count opens where an edit won't match, grouped by font; Escape shuts it, focus back on the count", async () => {
     const screen = await openEditor({ doc: ARIAL_DOC });
     const count = screen.getByRole("button", { name: "Edits in 1 place will use a similar font" });
@@ -711,7 +725,8 @@ describe("deleting a page", () => {
     // Read from the top: focus on Put back brought the slip into view.
     window.scrollTo(0, 0);
     await expect.element(screen.getByRole("banner").getByText("Page 1 of 3")).toBeVisible();
-    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+    // A delete changes no words: the bar keeps its forecast, here of nothing, until one changes.
+    await expect.element(screen.getByRole("banner").getByText("1 change")).not.toBeInTheDocument();
     // Labels count the pages as shown: the page after the slip is the third now.
     expect(screen.getByRole("region", { name: /^Page \d$/ }).elements()).toHaveLength(3);
     await expect.element(deleteButton(screen, 3)).toBeInTheDocument();
@@ -732,15 +747,17 @@ describe("deleting a page", () => {
 
   test("its edits leave the changes' count, and Cmd+Z puts it back with them, focus on its button", async () => {
     const screen = await openEditor({ doc: FOUR });
+    await changeLine(screen, { region: "Page 1", name: "here on one", text: "now on one" });
     await changeLine(screen, { name: "here on three", text: "now on three" });
     await changeLine(screen, { name: "also on three", text: "now also on three" });
-    await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
+    await expect.element(screen.getByRole("banner").getByText("3 changes")).toBeVisible();
     await deleteButton(screen, 3).click();
-    await expect.element(screen.getByRole("banner").getByText("1 change")).toBeVisible();
+    // The first page's edit and the delete.
+    await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
 
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(slip(screen)).not.toBeInTheDocument();
-    await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
+    await expect.element(screen.getByRole("banner").getByText("3 changes")).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "now on three", exact: true })).toBeInTheDocument();
     await expect.element(deleteButton(screen, 3)).toHaveFocus();
     await expect.element(screen.getByRole("status")).toHaveTextContent("Page 3 is back in the download");

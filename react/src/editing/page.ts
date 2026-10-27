@@ -2,7 +2,7 @@
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
 import { pageUrl } from "../api/client";
 import type { FitRules, Sentences, SpanInfo } from "../api/types";
-import type { EditorState, FocusSpan, ScrollTo } from "./editor";
+import { changedWordsCount, type EditorState, type FocusSpan, type ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
 import type { PreviewDisagreement } from "./previewDisagreements";
@@ -25,7 +25,7 @@ export interface PageState {
   readonly matches: ReadonlyMap<string, readonly Match[]> | undefined; // what find found here, by span, while it's open
   readonly foundAt: string | null; // the place find went to, when it's here
   readonly shownMismatches: ReadonlySet<string>; // the rows of the mismatch list shown, by key
-  readonly changed: boolean; // whether anything in the document is changed: what those rows count
+  readonly changed: boolean; // whether any words the download keeps are changed: what those rows count
   readonly disagreement: PreviewDisagreement | undefined; // the spans its last render disagreed with, to pulse
   readonly src: string; // the page image
   readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
@@ -58,7 +58,7 @@ export function pageState(state: EditorState, index: number): PageState {
         : null,
     shownMismatches: state.shownMismatches,
     // Read only for the rows shown: with none, a first change elsewhere redraws no page.
-    changed: state.shownMismatches.size > 0 && state.reading.spans.size > 0,
+    changed: state.shownMismatches.size > 0 && changedWordsCount(state) > 0,
     disagreement: state.disagreements.get(index),
     src: pageUrl(state.doc, index, state.scale),
     image: state.images.get(index),
