@@ -24,6 +24,12 @@ export function pageOn(target: EventTarget | null): number | null {
   return on?.dataset.page === undefined ? null : Number(on.dataset.page);
 }
 
+/** The new text a key was pressed on: its mark says which, as `data-text`. */
+export function newTextOn(target: EventTarget | null): number | null {
+  const id = target instanceof HTMLElement ? target.dataset.text : undefined;
+  return id === undefined ? null : Number(id);
+}
+
 /** The span a key was pressed on: its mark says which, as `data-span`. */
 export function spanOn(target: EventTarget | null): string | null {
   return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;

@@ -17,6 +17,7 @@ import { letterTroublesOf, missingIn } from "./fit";
 import { readableName } from "./fonts";
 import { versionsOf } from "./history";
 import type { MismatchPlace } from "./mismatches";
+import { pageControlOf } from "./pageList";
 import type { InsertReading, Reading } from "./project";
 import type { Drawn } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
@@ -308,13 +309,22 @@ export function chooseFace(editor: Editor, key: string): void {
   editor.store.set({ draft: { ...draft, style }, announcement: announcing(setIn) });
 }
 
+/** Where focus goes when new text at `insert`'s place goes, or its field: the text nearest it, else its page's control. */
+export function focusAfterText(
+  { layout, reading }: { layout: Pick<Layout, "pages">; reading: Pick<Reading, "order"> },
+  { page, origin: [x, y] }: Pick<Insert, "page" | "origin">,
+): FocusTo {
+  const near = nearestSpan(layout.pages.get(page) ?? [], [x, y]);
+  return near === undefined ? pageControlOf(reading, page) : { spanId: near.id };
+}
+
 /** Open new text where `at` was pressed on bare paper, styled as the text nearest it. */
 export function writeAt(editor: Editor, page: number, at: PagePoint): void {
-  const { layout } = editor.store.get();
+  const { layout, reading } = editor.store.get();
   const near = nearestSpan(layout.pages.get(page) ?? [], at);
   const style = styleOf(near);
   const origin = originAt(at, style.size);
-  const back = { page, block: "nearest" } as const;
+  const back = focusAfterText({ layout, reading }, { page, origin: [origin[0], origin[1]] });
   open(editor, { kind: "text", page, of: null, origin, text: "", style, nearId: near?.id ?? null, back });
 }
 
@@ -328,8 +338,9 @@ export function writeBelow(editor: Editor, spanId: string): void {
   open(editor, { kind: "text", ...draft, back: { spanId } });
 }
 
-/** Open new text at the top left of a page with no text, inside its margin. */
+/** Open new text at the top left of a page with no text, inside its margin; focus comes back to its control with Escape. */
 export function writeOnBarePage(editor: Editor, page: number): void {
+  const { reading } = editor.store.get();
   const style = styleOf(undefined);
   const origin: PagePoint = [NEW_TEXT_MARGIN_PT, NEW_TEXT_MARGIN_PT + style.size];
   open(editor, {
@@ -340,7 +351,7 @@ export function writeOnBarePage(editor: Editor, page: number): void {
     text: "",
     style,
     nearId: null,
-    back: { page, block: "nearest" },
+    back: pageControlOf(reading, page),
   });
 }
 
@@ -364,7 +375,7 @@ export function writeAgain(editor: Editor, textId: number): void {
     text: text.edit.text,
     style,
     nearId: near?.id ?? null,
-    back: { page, block: "nearest" },
+    back: focusAfterText({ layout, reading }, text.edit),
   });
 }
 
@@ -399,12 +410,12 @@ function within(info: PageInfo, { origin: [x, y], size }: Insert, [dx, dy]: Page
   return [clamp(x + dx, 0, info.width - size), clamp(y + dy, size * INSERT_ASCENT_EM, info.height)];
 }
 
-/** Take new text out, every version of it, from its margin note: focus goes to its page's own control. */
+/** Take new text out, every version of it, from its margin note: focus goes to the text nearest it. */
 export function takeOut(editor: Editor, textId: number): void {
-  const { history, reading, doc } = editor.store.get();
+  const { history, reading, layout, doc } = editor.store.get();
   const text = keptTexts(reading).find((insert) => insert.textId === textId);
   if (text === undefined) return;
-  const focusTo = { page: text.edit.page, block: "nearest" } as const;
+  const focusTo = focusAfterText({ layout, reading }, text.edit);
   change(
     editor,
     { kind: "remove", ids: versionsOf(history, textId) },

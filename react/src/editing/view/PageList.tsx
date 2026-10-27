@@ -1,5 +1,7 @@
+import { useCallback } from "react";
 import { Link } from "react-aria-components";
 import { isShortcutPress, passShortcut } from "../commands";
+import { type Editor, focusMoved } from "../editor";
 import { goToPage } from "../pageList";
 import { shownNumberOf } from "../project";
 import { useEditor, useEditorState } from "./context";
@@ -36,8 +38,10 @@ export function PageList() {
 function Tick({ page, shownNumber }: { page: number; shownNumber: number }) {
   const editor = useEditor();
   const current = useEditorState((state) => shownNumberOf(state.reading.order, state.pageInView) === shownNumber);
+  const takeFocus = useFocusSent(editor, page);
   return (
     <Link
+      ref={takeFocus}
       className={styles.tick}
       aria-label={`Page ${shownNumber}`}
       aria-current={current ? "page" : undefined}
@@ -48,6 +52,22 @@ function Tick({ page, shownNumber }: { page: number; shownNumber: number }) {
         if (!isShortcutPress(event)) goToPage(editor, page);
       }}
     />
+  );
+}
+
+/** A ref for page `page`'s tick: sent focus, as the only page's control, it takes it as it's drawn. */
+function useFocusSent(editor: Editor, page: number) {
+  const sent = useEditorState(
+    (state) => state.focusTo !== null && "tick" in state.focusTo && state.focusTo.tick === page,
+  );
+  return useCallback(
+    (tick: HTMLAnchorElement | null) => {
+      if (!sent || tick === null) return;
+      // The list is held under the bar, in view: the page stays where it is.
+      tick.focus({ preventScroll: true });
+      focusMoved(editor);
+    },
+    [sent, editor],
   );
 }
 

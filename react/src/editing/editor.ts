@@ -22,7 +22,7 @@ import {
 } from "./history";
 import type { FailedImage } from "./images";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
-import { keptTexts, textPlaceOf } from "./newText";
+import { focusAfterText, keptTexts, textPlaceOf } from "./newText";
 import {
   heardIn,
   NO_NOTICES,
@@ -64,13 +64,18 @@ export interface FocusPage {
   readonly block: ScrollLogicalPosition; // "nearest" where the control replaced the one pressed; "start" for a page gone to
 }
 
+/** A page's tick in the page list, taking focus as soon as it's drawn: the only page left, whose delete button can't be pressed. */
+export interface FocusTick {
+  readonly tick: number; // the page, by its number in the original
+}
+
 /** New text whose mark takes focus as soon as it's drawn: back from its field, or moved. */
 export interface FocusText {
   readonly textId: number;
 }
 
 /** Where focus is sent, to take as it's drawn. */
-export type FocusTo = FocusSpan | FocusPage | FocusText;
+export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusText;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
@@ -314,22 +319,25 @@ export function putBack(editor: Editor, spanId: string): void {
   );
 }
 
-/** Where a key was pressed: on a page, anything on it or its tick in the page list, by the page. */
+/** Where a key was pressed: on a page, anything on it or its tick in the page list, by the page; on new text, by its id. */
 export interface PressedOn {
   readonly page: number | null;
+  readonly textId: number | null;
 }
+
+const PRESSED_NOWHERE: PressedOn = { page: null, textId: null };
 
 /**
  * Take off the last thing done; announce what its span reads now and bring it into view. Focus stays, but on what
  * a page's delete or its undo takes away with the page: focus goes to the page's control in its place.
  */
-export function undo(editor: Editor, on: PressedOn = { page: null }): void {
+export function undo(editor: Editor, on: PressedOn = PRESSED_NOWHERE): void {
   const step = editor.store.get().history.done.at(-1);
   stepped(editor, { kind: "undo" }, { step, key: "back_to", on });
 }
 
 /** Bring back the last thing undone, announced and brought into view as undo does, and focus moved as it moves it. */
-export function redo(editor: Editor, on: PressedOn = { page: null }): void {
+export function redo(editor: Editor, on: PressedOn = PRESSED_NOWHERE): void {
   const step = editor.store.get().history.undone.at(-1);
   stepped(editor, { kind: "redo" }, { step, key: "changed_to", on });
 }
@@ -346,7 +354,7 @@ function stepped(
   }
   const newText = step?.find(({ edit }) => edit.kind === "insert");
   if (step !== undefined && newText !== undefined) {
-    textStepped(editor, action, { step, entry: newText, key });
+    textStepped(editor, action, { step, entry: newText, key, on });
     return;
   }
   const spanId = step?.map((entry) => spanOf(entry.edit)).find((id) => id !== undefined);
@@ -361,23 +369,27 @@ function stepped(
   }));
 }
 
-/** Undo or redo of new text: said as it reads now, or that it's out. */
+/**
+ * Undo or redo of new text: said as it reads now, or that it's out. Focus on its mark, gone with it, goes to the
+ * text nearest it; anywhere else, or on a mark that stays, it stays.
+ */
 function textStepped(
   editor: Editor,
   action: HistoryAction,
-  { step, entry, key }: { step: Step; entry: Entry; key: "back_to" | "changed_to" },
+  { step, entry, key, on }: { step: Step; entry: Entry; key: "back_to" | "changed_to"; on: PressedOn },
 ): void {
   const { history, reading: before } = editor.store.get();
   const textId = textIdsOf([...entriesOf(history), ...step]).get(entry.id);
   // Taken out, it's said by the words it had, not an emptied version's none.
   const had = keptTexts(before).find((text) => text.textId === textId)?.edit.text ?? "";
-  change(editor, action, ({ reading, doc }) => {
+  change(editor, action, ({ reading, layout, doc }) => {
     const now = keptTexts(reading).find((text) => text.textId === textId);
-    const said =
-      now === undefined
-        ? fill(doc.sentences.new_text_taken_out, { text: had })
-        : fill(doc.sentences[key], { text: now.edit.text });
-    return { announcement: announcing(said) };
+    if (now !== undefined) return { announcement: announcing(fill(doc.sentences[key], { text: now.edit.text })) };
+    const gone = entry.edit.kind === "insert" ? entry.edit : undefined;
+    return {
+      announcement: announcing(fill(doc.sentences.new_text_taken_out, { text: had })),
+      ...(gone !== undefined && on.textId === textId && { focusTo: focusAfterText({ layout, reading }, gone) }),
+    };
   });
 }
 

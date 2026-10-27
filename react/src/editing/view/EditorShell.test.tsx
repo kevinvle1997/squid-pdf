@@ -1341,6 +1341,24 @@ describe("new text", () => {
     await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
   });
 
+  test("undone with focus on it, new text sends focus to the text nearest it; moved back, it keeps focus", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.poll(() => lastRendered()[0]).toMatchObject({ kind: "insert" });
+
+    // Its move undone, the mark stays where focus is.
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(mark).toHaveFocus();
+    // Its adding undone, the mark goes, and focus goes to the line it was set below.
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(mark).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
   // Each way a drag is cut short: the browser taking the pointer back, the mark losing it, the window losing focus.
   const CANCELS: [string, (mark: Element, at: PointerEventInit) => void][] = [
     ["the browser cancels", (mark, at) => mark.dispatchEvent(new PointerEvent("pointercancel", at))],
@@ -1489,6 +1507,62 @@ describe("new text on a page with no text", () => {
     await userEvent.keyboard("{Control>}{Enter}{/Control}");
     await expect.element(field).toHaveFocus();
     expect(screen.getByRole("main").getByText("This page is left out of the download").query()).toBeNull();
+  });
+
+  // The only page left can't be deleted, so its delete button can't take focus: its tick does.
+  const BARE = aDoc({ spans: [], fonts: [] });
+  const tickOne = (screen: Awaited<ReturnType<typeof render>>) =>
+    screen.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Page 1" });
+
+  test("on the only page, put away with Escape, new text sends focus to the page's tick", async () => {
+    const screen = await openEditor({ doc: BARE });
+    await doubleClickPaper(screen, [300, 300]);
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+
+    await expect.element(tickOne(screen)).toHaveFocus();
+  });
+
+  test("on the only page, undone with focus on it, new text sends focus to the page's tick", async () => {
+    const screen = await openEditor({ doc: BARE });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(mark).not.toBeInTheDocument();
+    await expect.element(tickOne(screen)).toHaveFocus();
+  });
+
+  test("on the only page, taken out from its margin note, new text sends focus to the page's tick", async () => {
+    const screen = await openEditor({ doc: BARE });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const note = screen.getByRole("button", { name: "Undo: take out “Signed”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(screen.getByRole("button", { name: "Signed" })).not.toBeInTheDocument();
+    await expect.element(tickOne(screen)).toHaveFocus();
+  });
+
+  test("on the only page, opened from its tick, new text gives focus back to the tick, put away or undone", async () => {
+    const screen = await openEditor({ doc: BARE });
+    const tick = tickOne(screen);
+    await expect.element(tick).toBeInTheDocument();
+    tick.element().focus();
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(tick).toHaveFocus();
+
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    await userEvent.keyboard("Signed{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(tick).toHaveFocus();
   });
 });
 
