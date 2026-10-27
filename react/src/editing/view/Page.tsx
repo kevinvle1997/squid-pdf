@@ -168,7 +168,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
 
 /**
  * The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated
- * points. Over it, a layer of the same shape, upright and unclipped, for the slip of the span typed into.
+ * points. Over it, a layer of the same shape, upright and unclipped, for its slips: the chip, the redaction prompt.
  */
 function Sheet({
   info,

@@ -44,8 +44,8 @@
      typed past the page's edge in view, sliding the page out from under the field. */
   overflow: clip;
 }
-/* Over the sheet, the same shape, unclipped: the slip of the span typed into hangs past the page's foot,
-   whole, and over the next page. Only what's on the slip takes a press. */
+/* Over the sheet, the same shape, unclipped: a slip, the chip or the redaction prompt, hangs past the page's
+   foot, over the next page. Only what's on a slip takes a press. */
 .slips { position: relative; z-index: var(--z-chip); width: 100%; pointer-events: none; }
 /* Drawn over the sheet, so a press goes through it to the page. */
 .trim { pointer-events: none; }
