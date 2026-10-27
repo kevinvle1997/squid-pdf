@@ -147,6 +147,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
 
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
+  const widthPt = fieldWidthPt(span, { text, face, glyphs });
   return (
     <>
       <TextField
@@ -178,7 +179,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           style={{
             ...where,
             "--field-size": fontSize,
-            "--field-width": points(fieldWidthPt(span, { text, face, glyphs }), info),
+            "--field-width": points(widthPt, info),
             "--field-height": height,
             "--field-scale": scale,
             "--field-shrink": setting.size,
@@ -206,6 +207,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           <Chip
             chip={chip}
             span={span}
+            fieldEndPt={span.bbox.x0 + widthPt}
             info={info}
             trouble={trouble}
             verdict={verdict}

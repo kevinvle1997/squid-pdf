@@ -18,13 +18,14 @@ import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
-import { pinnedUnder, slipShiftPx } from "./geometry";
+import { type SlipSize, slipPlaceOf, uprightOf } from "./geometry";
 import { ValueEditor } from "./ValueEditor";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
 interface Props {
   span: SpanInfo;
+  fieldEndPt: number; // where the field ends across the page, longer as it's typed: the slip keeps off it
   info: PageInfo;
   trouble: string; // what won't come out as typed, a line each; empty when it fits
   verdict: Verdict; // what an edit of what's typed comes to, and in what face
@@ -35,7 +36,7 @@ interface Props {
 }
 
 /** The slip under the span typed into. */
-export function Chip({ span, info, trouble, verdict, setting, value, field, chip }: Props) {
+export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value, field, chip }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
@@ -49,29 +50,36 @@ export function Chip({ span, info, trouble, verdict, setting, value, field, chip
   const signature = useEditorState(signatureWarningOf);
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
-  // Kept on the page's width as what it holds grows, or the page is shown another size: an open calendar is the widest.
-  const [shiftPx, setShiftPx] = useState(0);
-  const keepOnPage = useCallback(
+  // Whole on the page and off the line, as what it holds grows, or the page is shown another size: an open
+  // calendar is wider than a verdict.
+  const [size, setSize] = useState<SlipSize>();
+  const shownWidthPt = uprightOf(info).width;
+  const placed = useCallback(
     (element: HTMLDivElement | null) => {
       chip.current = element;
       const layer = element?.offsetParent;
       if (element == null || !(layer instanceof HTMLElement)) return;
       const resized = new ResizeObserver(() => {
-        setShiftPx(slipShiftPx(span.bbox, info, { slipWidthPx: element.offsetWidth, pageWidthPx: layer.clientWidth }));
+        // Not laid out yet: there's nothing to measure by.
+        if (layer.clientWidth === 0) return;
+        const ptPerPx = shownWidthPt / layer.clientWidth;
+        // To the fraction of a pixel, as `offsetWidth` isn't: rounded down, it would wrap at the page's edge.
+        const { width, height } = element.getBoundingClientRect();
+        setSize({ width: width * ptPerPx, height: height * ptPerPx });
       });
       resized.observe(element);
       resized.observe(layer);
       return () => resized.disconnect();
     },
-    [chip, span.bbox, info],
+    [chip, shownWidthPt],
   );
   return (
     <div
-      ref={keepOnPage}
+      ref={placed}
       className={styles.chip}
       // A key pressed in it is the edit's own, as one in the field is (`isTyping`).
       data-slip=""
-      style={{ ...pinnedUnder(span.bbox, info), translate: shiftPx === 0 ? undefined : `${shiftPx}px 0` }}
+      style={slipPlaceOf(span.bbox, info, { size, endPt: fieldEndPt })}
     >
       {signature !== null && (
         // Announced as the field takes focus, before the font's note.

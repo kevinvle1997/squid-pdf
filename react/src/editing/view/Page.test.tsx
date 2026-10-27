@@ -782,6 +782,52 @@ describe("a page", () => {
       expect(redact.element().contains(pressedAt(box))).toBe(true);
     });
 
+    test("keeps the slip upright on a turned page, on the side under its line, level with where the line starts", async () => {
+      await page.viewport(1400, 900);
+      const screen = await draw(0, { ...A4, turn_cw: 90 });
+      await editSpan(screen);
+      const redact = screen.getByRole("button", { name: "Redact" });
+      await expect.element(redact).toBeVisible();
+      // Where it rests: it arrives moving up.
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      // Upright, a button's words run across it.
+      const button = redact.element().getBoundingClientRect();
+      expect(button.width).toBeGreaterThan(button.height);
+      // Turned a quarter clockwise, the line runs down the screen, and what's under it is to its left.
+      const field = screen.getByRole("textbox").element().getBoundingClientRect();
+      const slip = redact.element().closest("[data-slip]")?.getBoundingClientRect();
+      if (slip === undefined) throw new Error("no slip");
+      expect(slip.right).toBeLessThanOrEqual(field.left + 1);
+      // Level with the line's start, 72 pt along it: down the sheet, which shows the page's 595 pt width as its height.
+      const sheet = sheetOf(screen.getByRole("textbox").element()).getBoundingClientRect();
+      expect(slip.top).toBeCloseTo(sheet.top + (span.bbox.x0 / A4.width) * sheet.height, 0);
+    });
+
+    /** Whether two boxes on screen share any of their area. */
+    const overlap = (one: DOMRect, other: DOMRect) =>
+      one.left < other.right && other.left < one.right && one.top < other.bottom && other.top < one.bottom;
+    // A line near the page's foot, which a quarter turn shows by a side of the screen, and a half turn at its top.
+    const nearFoot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 800, x1: 152, y1: 820 } });
+
+    test.each([90, 270] as const)(
+      "keeps the slip off its line turned %i°, where the side under it has no room",
+      async (turn) => {
+        await page.viewport(1400, 900);
+        openDocument(aDoc({ spans: [nearFoot], fonts: DOC.fonts }));
+        const screen = await draw(0, { ...A4, turn_cw: turn });
+        await editSpan(screen, "at the foot");
+        const redact = screen.getByRole("button", { name: "Redact" });
+        await expect.element(redact).toBeVisible();
+        await Promise.all(document.getAnimations().map((animation) => animation.finished));
+        const field = screen.getByRole("textbox").element();
+        const slip = () => redact.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
+        await expect.poll(() => overlap(slip(), field.getBoundingClientRect())).toBe(false);
+        const sheet = sheetOf(field).getBoundingClientRect();
+        expect(slip().left).toBeGreaterThanOrEqual(sheet.left - 1);
+        expect(slip().right).toBeLessThanOrEqual(sheet.right + 1);
+      },
+    );
+
     test("clips a field typed past it on a turned page", async () => {
       const turned: PageInfo = { ...A4, turn_cw: 90 };
       const edge = aSpan({ ...span, id: "edge", text: "was here", bbox: { x0: 500, y0: 100, x1: 580, y1: 124 } });
