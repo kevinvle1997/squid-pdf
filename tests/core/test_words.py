@@ -7,6 +7,7 @@ from string import Formatter
 import pytest
 
 from squidpdf.core import Message, words
+from squidpdf.documents.types import CountedSentence
 from tests.conftest import pseudo_sentence
 from tests.core.conftest import placeholders
 from tests.helpers import assert_equal
@@ -19,15 +20,27 @@ def _sentences_unlike_english() -> list[tuple[str, str, str]]:
     for language, catalog in words.CATALOGS.items():
         unlike += [(language, key, "missing") for key in english.keys() - catalog.keys()]
         unlike += [(language, key, "not in English") for key in catalog.keys() - english.keys()]
+        both = catalog.keys() & english.keys()
         unlike += [
             (language, key, "other placeholders")
-            for key in catalog.keys() & english.keys()
+            for key in both
             if placeholders(catalog[key]) != placeholders(english[key])
+        ]
+        unlike += [
+            (language, key, "other kind")
+            for key in both
+            if _is_counted(catalog[key]) != _is_counted(english[key])
         ]
     return sorted(unlike)
 
 
-def test_every_language_has_every_sentence_with_the_same_placeholders():
+def _is_counted(entry: words.CatalogEntry) -> bool:
+    """Whether a sentence is said with a count, a form for each, rather than in one form."""
+    return not isinstance(entry, str)
+
+
+def test_every_language_has_every_sentence_with_the_same_placeholders_and_kind():
+    """A sentence counted in one language and not in another would break every reply in it."""
     assert_equal(_sentences_unlike_english(), [], "sentences a language says unlike English")
 
 
@@ -38,8 +51,17 @@ def test_every_language_has_every_sentence_with_the_same_placeholders():
         ("too_long", "TOO LONG", "other placeholders"),
         ("too_long", "{share}% TOO LONG", "other placeholders"),
         ("not_a_sentence", "NOT A SENTENCE", "not in English"),
+        ("back_to", {"one": "BACK TO “{text}”.", "other": "BACK TO “{text}”."}, "other kind"),
+        ("find_places", "{count} PLACES, ", "other kind"),
     ],
-    ids=["a sentence left out", "a placeholder left out", "a placeholder renamed", "an extra"],
+    ids=[
+        "a sentence left out",
+        "a placeholder left out",
+        "a placeholder renamed",
+        "an extra",
+        "a sentence counted",
+        "a count in one form",
+    ],
 )
 def test_a_language_unlike_english_is_found(pseudo, monkeypatch, key, said, how):
     """The check above finds the one thing changed in a language made from English."""
@@ -50,10 +72,47 @@ def test_a_language_unlike_english_is_found(pseudo, monkeypatch, key, said, how)
     assert_equal(_sentences_unlike_english(), [(pseudo, key, how)], "what the check finds")
 
 
+def _counted_unlike_the_wire() -> list[tuple[str, str]]:
+    """Each sentence with a count a language gives other forms than the reply sends."""
+    return sorted(
+        (language, key)
+        for language, catalog in words.CATALOGS.items()
+        for key, entry in catalog.items()
+        if not isinstance(entry, str) and entry.keys() != CountedSentence.__required_keys__
+    )
+
+
+def test_every_sentence_with_a_count_has_the_forms_the_reply_sends_in_every_language():
+    """The reply sends each as `CountedSentence`: a form left out, or one more, has no place."""
+    assert_equal(_counted_unlike_the_wire(), [], "sentences with a count, by language")
+
+
+@pytest.mark.parametrize(
+    "forms",
+    [
+        {"other": "{count} PLACES, "},
+        {"one": "{count} PLACE, ", "few": "{count} PLACES, ", "other": "{count} PLACES, "},
+    ],
+    ids=["a form left out", "a form the reply hasn't"],
+)
+def test_a_sentence_with_a_count_unlike_the_reply_is_found(pseudo, monkeypatch, forms):
+    """The check above finds the one sentence changed in a language made from English."""
+    monkeypatch.setitem(words.CATALOGS[pseudo], "find_places", forms)
+    found = _counted_unlike_the_wire()
+    assert_equal(found, [(pseudo, "find_places")], "what the check finds")
+
+
 def test_every_placeholder_is_bare_so_the_browser_can_fill_it_too():
     for language, catalog in words.CATALOGS.items():
-        dressed = [key for key, said in catalog.items() if _dressed(said)]
+        dressed = [
+            key for key, entry in catalog.items() if any(map(_dressed, _forms_of(entry)))
+        ]
         assert_equal(dressed, [], f"{language!r} sentences the browser can't fill")
+
+
+def _forms_of(entry: words.CatalogEntry) -> list[str]:
+    """A sentence's forms: itself alone, unless it takes a count."""
+    return [entry] if isinstance(entry, str) else list(entry.values())
 
 
 def _dressed(sentence: str) -> bool:

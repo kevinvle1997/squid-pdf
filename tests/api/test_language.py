@@ -43,8 +43,10 @@ def test_the_language_answered_in_is_the_most_wanted_one_we_have(
     )
 
 
-def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc):
+def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc, monkeypatch):
     """Uploaded in English, read in another: the analysis keeps codes, not sentences."""
+    # English's joiner has no letters to shout, so the test language is given its own.
+    monkeypatch.setitem(words.CATALOGS[pseudo], "join_parts", " / ")
     response = mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO))
     assert_equal(response.headers["content-language"], PSEUDO, "the language it's in")
     assert_in("Accept-Language", response.headers["vary"], "what the answer varies by")
@@ -58,6 +60,14 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(left_out, pseudo_sentence(words.sentence("page_left_out")), "a page deleted")
     put_back = sentences["page_put_back"]
     assert_equal(put_back, pseudo_sentence(words.sentence("page_put_back")), "a page put back")
+    back_to = sentences["back_to"]
+    assert_equal(back_to, pseudo_sentence(words.sentence("back_to")), "a span's words undone")
+    changed = sentences["changed_places"]
+    each_form = {
+        form: pseudo_sentence(each) for form, each in words.forms("changed_places").items()
+    }
+    assert_equal(changed, each_form, "a sentence with a count, in each form")
+    assert_equal(sentences["join_parts"], " / ", "what joins sentences said at once")
     shrink = sentences["options"]["shrink"]["label"]
     assert_equal(shrink, pseudo_sentence(words.sentence("shrink_label")), "a way out's name")
     turned = sentences["approximate"]["turned_text"]

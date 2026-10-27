@@ -14,6 +14,7 @@ export type SpanInfo = Schemas["SpanInfo"];
 // Not read: `why_code` and `why_params`. The note says `why`, the server's sentence, as it is.
 export type FontInfo = Schemas["FontInfo"];
 export type Sentences = Schemas["Sentences"];
+export type CountedSentence = Schemas["CountedSentence"];
 export type FitRules = Schemas["FitRules"];
 export type Replace = Schemas["Replace"];
 export type Redact = Schemas["Redact"];

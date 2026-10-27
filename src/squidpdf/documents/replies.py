@@ -20,6 +20,7 @@ from squidpdf.core import (
 from squidpdf.documents import constants
 from squidpdf.documents.types import (
     AnalysisFacts,
+    CountedSentence,
     Document,
     DocumentNoticeInfo,
     FitRules,
@@ -129,6 +130,22 @@ def _sentences_in(language: str) -> Sentences:
         "form_field_not_edited": words.sentence("form_field_not_edited", language),
         "empty": words.sentence("empty", language),
         "edit_breaks_signature": words.sentence("edit_breaks_signature", language),
+        "back_to": words.sentence("back_to", language),
+        "changed_to": words.sentence("changed_to", language),
+        "put_back": words.sentence("put_back", language),
+        "redacted": words.sentence("redacted", language),
+        "your_copy_in_use": words.sentence("your_copy_in_use", language),
+        "your_copy_removed": words.sentence("your_copy_removed", language),
+        "warning_muted": words.sentence("warning_muted", language),
+        "warning_unmuted": words.sentence("warning_unmuted", language),
+        "downloaded": words.sentence("downloaded", language),
+        "find_nothing": words.sentence("find_nothing", language),
+        "find_identical": _counted_in("find_identical", language),
+        "find_different": _counted_in("find_different", language),
+        "find_places": _counted_in("find_places", language),
+        "find_some_different": _counted_in("find_some_different", language),
+        "changed_places": _counted_in("changed_places", language),
+        "join_parts": words.sentence("join_parts", language),
         "options": options,
         # Every way a span can be approximate: the sentences behind a span's `why` code.
         "approximate": {
@@ -136,6 +153,12 @@ def _sentences_in(language: str) -> Sentences:
         },
         "characters": words.character_names(language),
     }
+
+
+def _counted_in(key: str, language: str) -> CountedSentence:
+    """The sentence under `key`, said with a count, in each form, in `language`."""
+    forms = words.forms(key, language)
+    return {"one": forms["one"], "other": forms["other"]}
 
 
 def _notices_in(

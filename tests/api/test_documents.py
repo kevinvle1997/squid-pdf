@@ -506,6 +506,35 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
 
 
+# What the browser says of an edit, a font, a download and Find's count, filled in there, and
+# what joins two sentences it says at once.
+_FILLED_BY_THE_BROWSER = (
+    "back_to",
+    "changed_to",
+    "put_back",
+    "redacted",
+    "your_copy_in_use",
+    "your_copy_removed",
+    "warning_muted",
+    "warning_unmuted",
+    "downloaded",
+    "find_nothing",
+    "find_identical",
+    "find_different",
+    "find_places",
+    "find_some_different",
+    "changed_places",
+    "join_parts",
+)
+
+
+def test_a_document_sends_what_the_browser_says_of_it_a_count_in_each_form(mine, doc):
+    sentences = mine.get(f"/api/documents/{doc['id']}").json()["sentences"]
+    sent = {key: sentences.get(key) for key in _FILLED_BY_THE_BROWSER}
+    english = {key: words.CATALOGS[words.ENGLISH][key] for key in _FILLED_BY_THE_BROWSER}
+    assert_equal(sent, english, "the sentences sent, a form each per count")
+
+
 _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
 
 
