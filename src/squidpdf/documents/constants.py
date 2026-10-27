@@ -32,11 +32,11 @@ PAGE_CACHE = f"private, max-age={IDLE_S}, immutable"
 DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unchanged
 
 # The shape of a document's reply: bump it when that changes, so an old copy gets no 304.
-REPLY_VERSION = 10
+REPLY_VERSION = 11
 # How an original, its span index and page list are kept: bump it when one changes. One kept
 # in another reads as gone, never indexed again, and the browser opens it again from its copy.
 DOCUMENT_FORMAT = 4
 # How an analysis is kept and judged: bump it when either changes; an old one is redone.
-ANALYSIS_FORMAT = 10
+ANALYSIS_FORMAT = 11
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

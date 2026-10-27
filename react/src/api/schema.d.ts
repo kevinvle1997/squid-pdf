@@ -235,6 +235,8 @@ export interface components {
             spans: components["schemas"]["SpanInfo"][];
             /** Fonts */
             fonts: components["schemas"]["FontInfo"][];
+            /** Signed */
+            signed: boolean;
             /** Id */
             id: string;
             /** Expires At */
@@ -745,6 +747,8 @@ export interface components {
             form_field_not_edited: string;
             /** Empty */
             empty: string;
+            /** Edit Breaks Signature */
+            edit_breaks_signature: string;
             /** Options */
             options: {
                 [key: string]: {

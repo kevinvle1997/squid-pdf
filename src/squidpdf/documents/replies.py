@@ -46,6 +46,7 @@ def document_json(
         "pages": facts["pages"],
         "spans": [],  # sent as kept, below
         "fonts": [_font_info(font, language) for font in facts["fonts"]],
+        "signed": facts["signed"],
         "id": doc_id,
         "expires_at": time_of(expires_at),
         "fit": _fit_rules(),
@@ -53,6 +54,7 @@ def document_json(
         "notices": _notices_in(
             has_text=kept.spans != _NO_SPANS,
             active_content_dropped=facts["active_content_dropped"],
+            signed=facts["signed"],
             language=language,
         ),
     }
@@ -126,6 +128,7 @@ def _sentences_in(language: str) -> Sentences:
         "page_put_back": words.sentence("page_put_back", language),
         "form_field_not_edited": words.sentence("form_field_not_edited", language),
         "empty": words.sentence("empty", language),
+        "edit_breaks_signature": words.sentence("edit_breaks_signature", language),
         "options": options,
         # Every way a span can be approximate: the sentences behind a span's `why` code.
         "approximate": {
@@ -136,7 +139,7 @@ def _sentences_in(language: str) -> Sentences:
 
 
 def _notices_in(
-    *, has_text: bool, active_content_dropped: bool, language: str
+    *, has_text: bool, active_content_dropped: bool, signed: bool, language: str
 ) -> list[DocumentNoticeInfo]:
     """What may not be what the user expected of this document, in `language`."""
     said: list[Message] = []
@@ -146,4 +149,7 @@ def _notices_in(
     # Taken out when it came in: the file downloaded lacks what the user's had.
     if active_content_dropped:
         said.append(Message("active_content_dropped"))
+    # Any download from here is a new file, so no signature in it holds: said before the edit.
+    if signed:
+        said.append(Message("signed_file"))
     return [{"type": message.key, **words.said(message, language)} for message in said]

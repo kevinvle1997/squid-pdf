@@ -29,7 +29,7 @@ from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import BASE_URL, InProcess, upload
-from tests.conftest import StoreWith, log_lines
+from tests.conftest import SIGNED, StoreWith, log_lines, with_hidden_copies
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -80,6 +80,56 @@ def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mi
     assert_equal(stored_font["substitute"], None, "the stored font, as its span says it")
     drawn_in = [(span["substitute"], span["same_widths"]) for span in (stored, named)]
     assert_equal(drawn_in, [(None, False), ("Liberation Serif Regular", True)], "each span's")
+
+
+@pytest.mark.parametrize("signed", SIGNED)
+def test_a_signed_upload_says_as_it_opens_that_a_change_breaks_its_signature(mine, signed):
+    """Signed, certified or kept checkable: each says so before the first edit, never after."""
+    doc = upload(mine, with_hidden_copies([signed])).json()
+
+    assert_true(doc["signed"], "whether the document is signed")
+    signed_file = {
+        "type": "signed_file",
+        "code": "signed_file",
+        "params": {},
+        "detail": words.sentence("signed_file"),
+    }
+    assert_equal(doc["notices"], [signed_file], "what it says as it opens")
+
+
+def _no_field_signed(kept: dict[str, str]) -> bytes:
+    """`with_hidden_copies`' page, no form field signed, its catalog keeping `kept`.
+
+    What checks a signature for years (DSS) can outlive the signatures it checked, and a
+    file's permissions (Perms) can name none, or be a signature with no field of its own.
+    """
+    doc = pymupdf.open(stream=with_hidden_copies([]))
+    for key, value in kept.items():
+        doc.xref_set_key(doc.pdf_catalog(), key, value)
+    return doc.tobytes()
+
+
+# A signature's dictionary, its value left out: nothing reads it.
+_SIGNATURE = "<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached>>"
+
+
+@pytest.mark.parametrize(
+    ("kept", "signed"),
+    [
+        pytest.param({}, False, id="plain"),
+        pytest.param({"DSS": "<<>>"}, False, id="dss_left"),
+        pytest.param({"Perms": "<<>>"}, False, id="empty_perms"),
+        pytest.param({"Perms": "<</DocMDP null>>"}, False, id="perms_naming_none"),
+        pytest.param({"Perms": f"<</UR3 {_SIGNATURE}>>"}, True, id="rights_signed"),
+    ],
+)
+def test_only_a_signature_makes_a_file_signed_not_what_a_signed_file_keeps(mine, kept, signed):
+    """A signature in its permissions counts, with no field signed; what checks one doesn't."""
+    doc = upload(mine, _no_field_signed(kept)).json()
+
+    assert_equal(doc["signed"], signed, "whether the document is signed")
+    said = [notice["type"] for notice in doc["notices"]]
+    assert_equal("signed_file" in said, signed, "whether it says so as it opens")
 
 
 def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine, doc):

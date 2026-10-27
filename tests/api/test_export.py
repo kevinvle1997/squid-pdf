@@ -721,15 +721,20 @@ def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signe
 
 
 def test_a_signed_document_exported_with_no_redaction_keeps_its_signatures(mine):
-    """Only a redaction takes them away: a replace leaves each as the export writes it."""
+    """Only a redaction takes them away: a replace, or no edit, leaves each as export writes it.
+
+    Broken, since export rewrites the file, so a reader says it changed after it was signed.
+    """
     doc = upload(mine, with_hidden_copies(SIGNED)).json()
     line = span_starting(doc, 0, OTHER_LINE)
     edits = [{"kind": "replace", "span_id": line["id"], "text": "Other lane"}]
 
-    response = _export(mine, doc, edits)
+    edited = _export(mine, doc, edits)
+    downloaded = _export(mine, doc, [])
 
     expected = (["xref"] * 3, "dict", "dict")
-    assert_equal(_signatures_in(_opened(response)), expected, "the signatures, Perms and DSS")
+    assert_equal(_signatures_in(_opened(edited)), expected, "the edited file's signatures")
+    assert_equal(_signatures_in(_opened(downloaded)), expected, "the downloaded file's")
 
 
 def _signatures_in(pdf: pymupdf.Document) -> tuple[list[str], str, str]:

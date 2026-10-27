@@ -100,7 +100,8 @@ def _analysed(
     reports = {report.span_id: report for report in engine.assess(index)}
     # Text a form field draws: said before any edit, since an edit to it is left out.
     form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
-    facts = _document_facts(folder, _fonts_of(engine, index, reports=reports, files=files))
+    fonts = _fonts_of(engine, index, reports=reports, files=files)
+    facts = _document_facts(folder, signed=engine.holds_signature(), fonts=fonts)
     spans = [
         _span_info(
             span,
@@ -143,11 +144,12 @@ def _fonts_of(
     ]
 
 
-def _document_facts(folder: Path, fonts: list[FontFacts]) -> AnalysisFacts:
-    """What the analysis says of the whole document: its build, pages and fonts."""
+def _document_facts(folder: Path, *, signed: bool, fonts: list[FontFacts]) -> AnalysisFacts:
+    """What the analysis says of the whole document: its build, signature, pages and fonts."""
     return {
         "build": BUILD,
         "active_content_dropped": store.active_content_dropped(folder),
+        "signed": signed,
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
             for page in store.load_pages(folder)
