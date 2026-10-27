@@ -1,5 +1,5 @@
-import { type KeyboardEvent, useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { useFocusWithin } from "react-aria";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { mergeRefs, useFocusWithin } from "react-aria";
 import { Group, Input, TextField } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
@@ -7,10 +7,12 @@ import { ChoiceList } from "../../ui/ChoiceList";
 import { Warn } from "../../ui/Warn";
 import { isUndoOrRedo } from "../commands";
 import { HANDWRITING_STEP, SLIP_GAP_PT } from "../constants";
+import { focusMoved } from "../editor";
 import { addFaces, familyOf } from "../faces";
 import { readableName } from "../fonts";
 import { setWarningMuted } from "../mutedWarnings";
 import {
+  backToField,
   chooseFace,
   chosenFaceOf,
   faceChoicesOf,
@@ -30,7 +32,7 @@ import { Facts } from "./Chip";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import fieldStyles from "./EditField.module.css";
-import { fieldScaleOf, points, textBoxOf, textStyleOf, textWidthIn, textWidthPt } from "./geometry";
+import { fieldScaleOf, points, textBoxOf, textFieldWidthPt, textStyleOf, textWidthIn, textWidthPt } from "./geometry";
 
 /**
  * New text being typed, where it will be drawn, in the face that will draw it, and its slip under it: what it
@@ -60,6 +62,17 @@ export function NewTextField({ info }: { info: PageInfo }) {
     },
     [size, info.width],
   );
+  // Sent back from the slip, the field takes focus as it's drawn again.
+  const sentBack = useEditorState((state) => state.focusTo !== null && "field" in state.focusTo);
+  const takeFocus = useCallback(
+    (input: HTMLInputElement | null) => {
+      if (!sentBack || input === null) return;
+      input.focus();
+      focusMoved(editor);
+    },
+    [sentBack, editor],
+  );
+  const fieldRef = useMemo(() => mergeRefs(watchPage, takeFocus), [watchPage, takeFocus]);
   const insert = draft === null ? null : insertOf(draft);
   const face = insert === null ? null : textFaceOf(layout, insert);
   // A letter the face lacks sends the line to its broadest, put on the page only once one does.
@@ -99,8 +112,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
 
   const font = fontOfText(layout, insert);
   const widthPt = textWidthPt(insert, { face, glyphs: font?.glyphs ?? {} });
-  // Never narrower than a few letters, with room past what's typed for the caret.
-  const fieldWidthPt = Math.max(widthPt, insert.size * 2) + insert.size * 0.5;
+  const fieldWidthPt = textFieldWidthPt(insert, widthPt);
   // The slip hangs under the line as a handwriting face sets it, the larger: choosing a face never moves it from under the pointer.
   const box = textBoxOf(
     { ...insert, size: Math.max(insert.size, draft.style.nearSize * HANDWRITING_STEP) },
@@ -125,7 +137,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
         className={fieldStyles.field}
       >
         <Input
-          ref={watchPage}
+          ref={fieldRef}
           autoFocus
           onFocus={place}
           className={fieldStyles.input}
@@ -140,7 +152,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
           }}
         />
       </TextField>
-      <TextChip draft={draft} info={info} box={box} onPointerChoice={() => field.current?.focus()} />
+      <TextChip draft={draft} info={info} box={box} />
     </Group>
   );
 }
@@ -150,12 +162,10 @@ function TextChip({
   draft,
   info,
   box,
-  onPointerChoice,
 }: {
   draft: TextDraft;
   info: PageInfo;
   box: { x0: number; y0: number; x1: number; y1: number };
-  onPointerChoice: () => void;
 }) {
   const editor = useEditor();
   const kept = useKeptOnPage(box, info);
@@ -218,7 +228,7 @@ function TextChip({
           chosen={chosen}
           onChoose={(key) => chooseFace(editor, key, { widthOf: (insert) => textWidthIn(layout, insert) })}
           onEnter={() => enter(editor)}
-          onPointerChoice={onPointerChoice}
+          onPointerChoice={() => backToField(editor)}
         />
         {failed !== null && <span className={styles.facesFailed}>{failed}</span>}
       </span>

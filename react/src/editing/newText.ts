@@ -338,6 +338,11 @@ export function focusAfterText(
   return near === undefined ? pageControlOf(reading, page) : { spanId: near.id };
 }
 
+/** A face chosen in the slip with a pointer: focus goes back to the field, where the typing is. */
+export function backToField(editor: Editor): void {
+  editor.store.set({ focusTo: { field: true } });
+}
+
 /** Open new text where `at` was pressed on bare paper, styled as the text nearest it. */
 export function writeAt(editor: Editor, page: number, at: PagePoint): void {
   const { layout, reading } = editor.store.get();

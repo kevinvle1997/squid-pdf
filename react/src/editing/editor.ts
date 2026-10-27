@@ -74,8 +74,13 @@ export interface FocusText {
   readonly textId: number;
 }
 
+/** The field new text is typed in, taking focus back from its slip: a face chosen with a pointer leaves the typing there. */
+export interface FocusField {
+  readonly field: true;
+}
+
 /** Where focus is sent, to take as it's drawn. */
-export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusText;
+export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusText | FocusField;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
