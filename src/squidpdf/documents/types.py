@@ -189,6 +189,22 @@ class Sentences(TypedDict):
     find_places: CountedSentence
     find_some_different: CountedSentence  # shown as a warning
     changed_places: CountedSentence
+    # The bar's count of the changes: all of them warned, or some, as Find's is.
+    changes: CountedSentence
+    changes_different: CountedSentence  # shown as a warning
+    changes_similar: CountedSentence  # shown as a warning
+    # When some changes won't match: then changes_some_different or changes_some_similar.
+    changes_some: CountedSentence
+    changes_some_different: CountedSentence  # shown as a warning
+    changes_some_similar: CountedSentence  # shown as a warning
+    # The bar's count before any change, shown as a warning.
+    at_rest_different: CountedSentence
+    at_rest_similar: CountedSentence
+    changes_too_long: CountedSentence  # shown as a warning, after any change
+    # Heard as typing comes to a verdict, where its full warning isn't.
+    typed_identical: str
+    typed_different: str
+    typed_similar: str
     join_parts: str  # what joins sentences said at once
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.

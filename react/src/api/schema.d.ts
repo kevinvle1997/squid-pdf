@@ -784,6 +784,21 @@ export interface components {
             find_places: components["schemas"]["CountedSentence"];
             find_some_different: components["schemas"]["CountedSentence"];
             changed_places: components["schemas"]["CountedSentence"];
+            changes: components["schemas"]["CountedSentence"];
+            changes_different: components["schemas"]["CountedSentence"];
+            changes_similar: components["schemas"]["CountedSentence"];
+            changes_some: components["schemas"]["CountedSentence"];
+            changes_some_different: components["schemas"]["CountedSentence"];
+            changes_some_similar: components["schemas"]["CountedSentence"];
+            at_rest_different: components["schemas"]["CountedSentence"];
+            at_rest_similar: components["schemas"]["CountedSentence"];
+            changes_too_long: components["schemas"]["CountedSentence"];
+            /** Typed Identical */
+            typed_identical: string;
+            /** Typed Different */
+            typed_different: string;
+            /** Typed Similar */
+            typed_similar: string;
             /** Join Parts */
             join_parts: string;
             /** Options */

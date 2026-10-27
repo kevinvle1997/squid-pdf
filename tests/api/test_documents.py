@@ -506,8 +506,8 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
 
 
-# What the browser says of an edit, a font, a download and Find's count, filled in there, and
-# what joins two sentences it says at once.
+# What the browser says of an edit, a font, a download, Find's count and the bar's, filled in
+# there, and what joins two sentences it says at once.
 _FILLED_BY_THE_BROWSER = (
     "back_to",
     "changed_to",
@@ -524,6 +524,18 @@ _FILLED_BY_THE_BROWSER = (
     "find_places",
     "find_some_different",
     "changed_places",
+    "changes",
+    "changes_different",
+    "changes_similar",
+    "changes_some",
+    "changes_some_different",
+    "changes_some_similar",
+    "at_rest_different",
+    "at_rest_similar",
+    "changes_too_long",
+    "typed_identical",
+    "typed_different",
+    "typed_similar",
     "join_parts",
 )
 
