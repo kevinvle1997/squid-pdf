@@ -4,13 +4,13 @@ import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api
 import { STRIP_PAD_PT } from "../constants";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
-import { textFaceOf } from "../newText";
+import { newTextFaceOf } from "../newText";
 import type { PageState } from "../page";
 import { differing } from "../project";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
 import { fontOf } from "../spanFonts";
-import { boxOf, cropOf, previewStyleOf, textBoxIn, textStyleOf } from "./geometry";
+import { boxOf, cropOf, newTextBoxIn, newTextStyleOf, previewStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
 /** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
@@ -20,9 +20,9 @@ export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
   const spans = page.spans
     .filter((span) => disagreement.spanIds.has(span.id))
     .map((span) => ({ key: span.id, box: span.bbox }));
-  const texts = (page.edits?.inserts ?? [])
-    .filter((text) => disagreement.textIds.has(text.textId))
-    .map((text) => ({ key: `text ${text.textId}`, box: textBoxIn(page.layout, text.edit) }));
+  const texts = (page.edits?.newTexts ?? [])
+    .filter((text) => disagreement.newTextIds.has(text.newTextId))
+    .map((text) => ({ key: `text ${text.newTextId}`, box: newTextBoxIn(page.layout, text.edit) }));
   return [...spans, ...texts].map(({ key, box }) => (
     <span
       key={`${key}:${disagreement.count}`}
@@ -39,7 +39,7 @@ export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
  * over whatever the page has there, as it exports. Where a strip still shows an earlier version, moved or retyped
  * since, the page's own pixels cover it until the render lands.
  */
-export function TextPreviews({
+export function NewTextPreviews({
   page,
   info,
   strips,
@@ -48,31 +48,31 @@ export function TextPreviews({
   info: PageInfo;
   strips: readonly Strip[] | undefined;
 }) {
-  const now = page.edits?.inserts ?? [];
-  const drawn = page.drawnFrom?.inserts ?? [];
+  const now = page.edits?.newTexts ?? [];
+  const drawn = page.drawnFrom?.newTexts ?? [];
   const drawnIds = new Set(drawn.map((text) => text.id));
   const nowIds = new Set(now.map((text) => text.id));
   const covered = drawn.filter(
-    (text) => !nowIds.has(text.id) && isUnderStrip(textBoxIn(page.layout, text.edit), { strips, info }),
+    (text) => !nowIds.has(text.id) && isUnderStrip(newTextBoxIn(page.layout, text.edit), { strips, info }),
   );
-  const previewed = now.filter((text) => !drawnIds.has(text.id) && text.textId !== page.writingAgain);
+  const previewed = now.filter((text) => !drawnIds.has(text.id) && text.newTextId !== page.newTextTypedAgain);
   return (
     <>
       {covered.map((text) => (
         <Original
           key={`was ${text.id}`}
-          box={padded(textBoxIn(page.layout, text.edit), info)}
+          box={padded(newTextBoxIn(page.layout, text.edit), info)}
           info={info}
           src={page.src}
         />
       ))}
       {previewed.map((text) => (
         <span
-          key={text.textId}
-          className={styles.textPreview}
+          key={text.newTextId}
+          className={styles.newTextPreview}
           aria-hidden="true"
           data-preview=""
-          style={textStyleOf(text.edit, info, textFaceOf(page.layout, text.edit))}
+          style={newTextStyleOf(text.edit, info, newTextFaceOf(page.layout, text.edit))}
         >
           {text.edit.text}
         </span>

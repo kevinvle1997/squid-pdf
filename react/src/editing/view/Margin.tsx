@@ -3,18 +3,18 @@ import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Tip } from "../../ui/Tooltip";
 import { type Editor, putBack } from "../editor";
-import { type NoteWords, noteOf, notePlaces, textNoteOf } from "../margin";
-import { takeOut } from "../newText";
-import type { InsertReading, SpanReading } from "../project";
+import { type NoteWords, newTextNoteOf, noteOf, notePlaces } from "../margin";
+import { takeOutNewText } from "../newText";
+import type { NewTextReading, SpanReading } from "../project";
 import { sentenceOrNothing } from "../words";
 import { useEditor, useEditorState } from "./context";
-import { textBoxOf, topOf } from "./geometry";
+import { newTextBoxOf, topOf } from "./geometry";
 import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
   changes: readonly SpanReading[]; // the spans replaced or redacted on this page
-  texts: readonly InsertReading[]; // the new text on it
+  texts: readonly NewTextReading[]; // the new text on it
   noteHeightPt: number; // a note's height in page points, to keep notes a hit area apart
   pageNumber: number;
 }
@@ -28,7 +28,7 @@ interface MarginNote {
 }
 
 /** The page's notes: each changed span's, then each piece of new text's, which a press takes out. */
-function notesOf(changes: readonly SpanReading[], texts: readonly InsertReading[]): MarginNote[] {
+function notesOf(changes: readonly SpanReading[], texts: readonly NewTextReading[]): MarginNote[] {
   const spans = changes.map((change) => ({
     key: change.span.id,
     note: noteOf(change),
@@ -36,10 +36,10 @@ function notesOf(changes: readonly SpanReading[], texts: readonly InsertReading[
     undo: (editor: Editor) => putBack(editor, change.span.id),
   }));
   const added = texts.map((text) => ({
-    key: `text ${text.textId}`,
-    note: textNoteOf(text),
-    line: textBoxOf(text.edit, 0),
-    undo: (editor: Editor) => takeOut(editor, text.textId),
+    key: `text ${text.newTextId}`,
+    note: newTextNoteOf(text),
+    line: newTextBoxOf(text.edit, 0),
+    undo: (editor: Editor) => takeOutNewText(editor, text.newTextId),
   }));
   return [...spans, ...added];
 }
@@ -89,7 +89,7 @@ export function ChangeList({
   pageNumber,
 }: {
   changes: readonly SpanReading[];
-  texts: readonly InsertReading[];
+  texts: readonly NewTextReading[];
   pageNumber: number;
 }) {
   const newText = useEditorState((state) => sentenceOrNothing(state.doc.sentences.new_text));

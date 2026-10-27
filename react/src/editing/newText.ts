@@ -1,25 +1,25 @@
 // New text on a page: where a press or a key puts it, the text it takes its style from, the faces it can be set
 // in, how it comes out (Rule 1, as an edit of a span does), and moving it. A typed signature is new text in a
 // handwriting face, drawn a step larger: no kind of its own.
-import type { FitInfo, FontInfo, Insert, PageInfo, Sentences, SpanInfo } from "../api/types";
+import type { FitInfo, FontInfo, Insert, PageInfo, SpanInfo } from "../api/types";
 import {
   HANDWRITING_STEP,
-  INSERT_ASCENT_EM,
-  INSERT_DESCENT_EM,
   LINE_BELOW_EM,
+  NEW_TEXT_ASCENT_EM,
+  NEW_TEXT_DESCENT_EM,
   NEW_TEXT_FACE,
   NEW_TEXT_MARGIN_PT,
   NEW_TEXT_SIZE_PT,
 } from "./constants";
 import { announcing, change, type Editor, type EditorState, type FocusTo, type Layout } from "./editor";
 import { DEFAULT_FACE, isShippedFace, previewFaceOf } from "./faces";
-import { letterTroublesOf, missingIn } from "./fit";
+import { missingIn } from "./fit";
 import { readableName } from "./fonts";
 import { versionsOf } from "./history";
 import { type MismatchPlace, mismatchKeyOf } from "./mismatches";
 import { pageControlOf } from "./pageList";
-import type { InsertReading, Reading } from "./project";
-import type { Drawn, PageInsertFits } from "./render";
+import type { NewTextReading, Reading } from "./project";
+import type { PageNewTextFits } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { type Drawing, drawingIn, drawingOf } from "./substitutes";
 import { EXACT, liveVerdictOf, type Verdict } from "./verdicts";
@@ -32,7 +32,7 @@ type Color = NonNullable<Insert["color"]>;
 const BLACK: Color = [0, 0, 0];
 
 /** What new text is set in, as the insert sends it. */
-export interface TextStyle {
+export interface NewTextStyle {
   readonly font: string; // a page font's name, as its text reads it, or a face we ship
   readonly fontObject: number | null; // the page font's object, from the span the style came from
   readonly size: number;
@@ -41,13 +41,13 @@ export interface TextStyle {
 }
 
 /** New text being typed, not yet in the history: on a page, at its baseline's start. */
-export interface TextDraft {
-  readonly kind: "text";
+export interface NewTextDraft {
+  readonly kind: "newText";
   readonly page: number;
-  readonly of: InsertReading | null; // the text typed into again, as it reads now; none for new text
+  readonly of: NewTextReading | null; // the text typed into again, as it reads now; none for new text
   readonly origin: PagePoint;
   readonly text: string;
-  readonly style: TextStyle;
+  readonly style: NewTextStyle;
   readonly nearId: string | null; // the span its style came from, whose font the face list names first
   readonly back: FocusTo | null; // where focus goes when it's put away with Escape
 }
@@ -72,7 +72,7 @@ function closest(spans: readonly SpanInfo[], distance: (span: SpanInfo) => numbe
 }
 
 /** The style of `span`'s text, for new text near it; with none, a plain face we ship (`NEW_TEXT_FACE`). */
-export function styleOf(span: SpanInfo | undefined): TextStyle {
+export function styleOf(span: SpanInfo | undefined): NewTextStyle {
   if (span === undefined) {
     return { font: NEW_TEXT_FACE, fontObject: null, size: NEW_TEXT_SIZE_PT, nearSize: NEW_TEXT_SIZE_PT, color: BLACK };
   }
@@ -83,11 +83,16 @@ export function styleOf(span: SpanInfo | undefined): TextStyle {
 
 /** Where a line of `size` starts so its middle sits at `at`, as a press there asks: its box, an em up and a little down. */
 export function originAt([x, y]: PagePoint, size: number): PagePoint {
-  return [x, y + (size * (INSERT_ASCENT_EM - INSERT_DESCENT_EM)) / 2];
+  return [x, y + (size * (NEW_TEXT_ASCENT_EM - NEW_TEXT_DESCENT_EM)) / 2];
 }
 
 /** The insert `draft` sends as it is now. */
-export function insertOf({ page, origin, text, style }: Pick<TextDraft, "page" | "origin" | "text" | "style">): Insert {
+export function insertOf({
+  page,
+  origin,
+  text,
+  style,
+}: Pick<NewTextDraft, "page" | "origin" | "text" | "style">): Insert {
   const [x, y] = origin;
   const named = style.fontObject === null ? {} : { font_object: style.fontObject };
   return {
@@ -102,7 +107,7 @@ export function insertOf({ page, origin, text, style }: Pick<TextDraft, "page" |
   };
 }
 
-/** Whether two inserts draw the same: the same words, place and style. */
+/** Whether two pieces of new text draw the same: the same words, place and style. */
 export function sameInsert(a: Insert, b: Insert): boolean {
   const same = (x: readonly number[] | undefined, y: readonly number[] | undefined) =>
     (x ?? []).length === (y ?? []).length && (x ?? []).every((value, index) => value === y?.[index]);
@@ -128,7 +133,7 @@ export function inShippedFace(insert: Pick<Insert, "font" | "font_object">): boo
 }
 
 /** The page's font new text is in, as the document lists it; none in a face we ship. */
-export function fontOfText(layout: Pick<Layout, "fonts">, insert: Insert): FontInfo | undefined {
+export function fontOfNewText(layout: Pick<Layout, "fonts">, insert: Insert): FontInfo | undefined {
   if (inShippedFace(insert)) return undefined;
   return fontOf(layout.fonts, { font: fontNameOf(insert), font_object: insert.font_object ?? null });
 }
@@ -148,7 +153,7 @@ export function asSpanOf(insert: Insert, { font, inFile }: { font: FontInfo | un
     font_object: insert.font_object ?? null,
     size,
     color: [...(insert.color ?? BLACK)],
-    bbox: { x0: x, y0: y - size * INSERT_ASCENT_EM, x1: x, y1: y + size * INSERT_DESCENT_EM },
+    bbox: { x0: x, y0: y - size * NEW_TEXT_ASCENT_EM, x1: x, y1: y + size * NEW_TEXT_DESCENT_EM },
     origin: [x, y],
     fidelity: "exact",
     why: null,
@@ -162,8 +167,8 @@ export function asSpanOf(insert: Insert, { font, inFile }: { font: FontInfo | un
 }
 
 /** New text as the span its page's font judges it as: the font's own copy draws it where any span of that font says so. */
-export function textSpanOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): SpanInfo {
-  const font = fontOfText(layout, insert);
+export function newTextSpanOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): SpanInfo {
+  const font = fontOfNewText(layout, insert);
   const key = insert.font_object ?? fontNameOf(insert);
   const inFont = [...layout.spans.values()].find((span) => (span.font_object ?? span.font) === key);
   return asSpanOf(insert, { font, inFile: inFont?.in_file ?? font?.substitute == null });
@@ -174,13 +179,13 @@ export function textSpanOf(layout: Pick<Layout, "fonts" | "spans">, insert: Inse
  * landed (`fit`); in a face we ship, exact where that face draws it, else the face a letter it lacks sends the line
  * to; in a page's font, as an edit of that font is worked out.
  */
-export function textVerdictOf(
+export function newTextVerdictOf(
   layout: Pick<Layout, "fonts" | "spans">,
   { insert, fit }: { insert: Insert; fit: FitInfo | undefined },
 ): Verdict {
   if (fit !== undefined) return fit;
   if (inShippedFace(insert)) return shippedVerdictOf(insert);
-  return liveVerdictOf(textSpanOf(layout, insert), { font: fontOfText(layout, insert), text: insert.text });
+  return liveVerdictOf(newTextSpanOf(layout, insert), { font: fontOfNewText(layout, insert), text: insert.text });
 }
 
 /** New text in a face we ship: exact where it draws the line, else in the similar face a letter it lacks sends it to. */
@@ -191,63 +196,54 @@ function shippedVerdictOf(insert: Insert): Verdict {
 }
 
 /** How new text is drawn: in what face, and the letters that send it there or are left out. */
-export function textDrawingOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Drawing {
+export function newTextDrawingOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Drawing {
   if (inShippedFace(insert)) return drawingIn(fontNameOf(insert), insert.text);
-  const font = fontOfText(layout, insert);
+  const font = fontOfNewText(layout, insert);
   if (font === undefined) return { face: DEFAULT_FACE, switched: [], leftOut: [] };
-  const span = textSpanOf(layout, insert);
+  const span = newTextSpanOf(layout, insert);
   return drawingOf(span, { font, text: insert.text, missing: missingIn(insert.text, font.glyphs) });
 }
 
 /** The face new text previews in: a face we ship is the very file; a page font's, as an edit of it previews. */
-export function textFaceOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): string {
+export function newTextFaceOf(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): string {
   if (inShippedFace(insert)) return drawingIn(fontNameOf(insert), insert.text).face;
-  const font = fontOfText(layout, insert);
-  return font === undefined ? DEFAULT_FACE : previewFaceOf(textSpanOf(layout, insert), { font, text: insert.text });
-}
-
-/** What won't come out of new text as typed, in the server's words: only letters, as it has no width to fit. */
-export function textTroublesOf(
-  layout: Pick<Layout, "fonts" | "spans">,
-  insert: Insert,
-  sentences: Sentences,
-): string[] {
-  return letterTroublesOf(textDrawingOf(layout, insert), sentences);
+  const font = fontOfNewText(layout, insert);
+  return font === undefined ? DEFAULT_FACE : previewFaceOf(newTextSpanOf(layout, insert), { font, text: insert.text });
 }
 
 /** New text as a place an edit won't match, as the bar counts places: none where it will. */
-export function textPlaceOf(
+export function newTextPlaceOf(
   layout: Pick<Layout, "fonts" | "spans">,
-  { text, fit }: { text: InsertReading; fit: FitInfo | undefined },
+  { text, fit }: { text: NewTextReading; fit: FitInfo | undefined },
 ): MismatchPlace | undefined {
-  const verdict = textVerdictOf(layout, { insert: text.edit, fit });
+  const verdict = newTextVerdictOf(layout, { insert: text.edit, fit });
   if (verdict.fidelity === "exact") return undefined;
-  const missing = fit?.missing ?? textDrawingOf(layout, text.edit).switched;
-  return { span: textSpanOf(layout, text.edit), verdict, missing };
+  const missing = fit?.missing ?? newTextDrawingOf(layout, text.edit).switched;
+  return { span: newTextSpanOf(layout, text.edit), verdict, missing };
 }
 
 /** The new text of `texts` in a row of the bar's list that's shown, as the list counts places now. */
-export function shownTextsAmong(
-  texts: readonly InsertReading[],
+export function shownNewTextsAmong(
+  texts: readonly NewTextReading[],
   {
     shown,
     layout,
     fits,
-  }: { shown: ReadonlySet<string>; layout: Pick<Layout, "fonts" | "spans">; fits: PageInsertFits },
-): InsertReading[] {
+  }: { shown: ReadonlySet<string>; layout: Pick<Layout, "fonts" | "spans">; fits: PageNewTextFits },
+): NewTextReading[] {
   return texts.filter((text) => {
-    const place = textPlaceOf(layout, { text, fit: fits[text.id] });
+    const place = newTextPlaceOf(layout, { text, fit: fits[text.id] });
     return place !== undefined && shown.has(mismatchKeyOf(place, layout.fonts));
   });
 }
 
 /** The pieces of new text on the pages the download keeps. */
-export function keptTexts(reading: Reading): InsertReading[] {
-  return [...reading.pages].flatMap(([page, edits]) => (reading.deleted.has(page) ? [] : edits.inserts));
+export function keptNewTexts(reading: Reading): NewTextReading[] {
+  return [...reading.pages].flatMap(([page, edits]) => (reading.deleted.has(page) ? [] : edits.newTexts));
 }
 
 /** One face the slip offers new text: a font of the page's, by its shown name, or a face we ship. */
-export interface FaceChoice {
+export interface FontChoice {
   readonly key: string;
   readonly label: string; // its name, as the reader knows it
   readonly face: string; // the face its name is set in
@@ -255,15 +251,15 @@ export interface FaceChoice {
 }
 
 /** The faces the slip offers: the page's own fonts, else the face it opened in; then the handwriting faces we ship. */
-export function faceChoicesOf(
+export function fontChoicesOf(
   state: Pick<EditorState, "layout" | "shippedFaces">,
-  draft: TextDraft,
-): { page: FaceChoice[]; handwriting: FaceChoice[] } {
+  draft: NewTextDraft,
+): { page: FontChoice[]; handwriting: FontChoice[] } {
   const { layout, shippedFaces } = state;
   const handwriting = shippedFaces.handwriting.map((name) => shippedChoice(name, true));
   const page = [...pageFonts(layout, draft)].map(([shown, span]) => {
     const insert = { ...insertOf({ ...draft, style: styleOf(span) }), text: readableName(shown) };
-    return { key: pageKey(shown), label: readableName(shown), face: textFaceOf(layout, insert), handwriting: false };
+    return { key: pageKey(shown), label: readableName(shown), face: newTextFaceOf(layout, insert), handwriting: false };
   });
   // A page with no text of its own offers the face new text opened in, so the one chosen is listed.
   if (page.length === 0) return { page: [shippedChoice(NEW_TEXT_FACE, false)], handwriting };
@@ -271,7 +267,7 @@ export function faceChoicesOf(
 }
 
 /** The page's fonts by their shown names, in the order their text comes, each with a span set in it: the nearest's, for its own. */
-function pageFonts(layout: Layout, draft: TextDraft): Map<string, SpanInfo> {
+function pageFonts(layout: Layout, draft: NewTextDraft): Map<string, SpanInfo> {
   const near = draft.nearId === null ? undefined : layout.spans.get(draft.nearId);
   const spans = (layout.pages.get(draft.page) ?? []).filter((span) => !span.form_field);
   const fonts = new Map<string, SpanInfo>();
@@ -287,21 +283,25 @@ const pageKey = (shown: string) => `page:${shown}`;
 const shippedKey = (face: string) => `face:${face}`;
 
 /** A face we ship, as the slip lists it: by its name, "Regular" aside. */
-function shippedChoice(face: string, handwriting: boolean): FaceChoice {
+function shippedChoice(face: string, handwriting: boolean): FontChoice {
   return { key: shippedKey(face), label: face.replace(/ Regular$/, ""), face, handwriting };
 }
 
 /** The face the slip shows chosen for `draft`. */
-export function chosenFaceOf(layout: Pick<Layout, "fonts">, draft: TextDraft): string {
+export function chosenFontOf(layout: Pick<Layout, "fonts">, draft: NewTextDraft): string {
   const { font, fontObject } = draft.style;
   if (inShippedFace({ font, font_object: fontObject })) return shippedKey(font);
   return pageKey(shownNameIn(layout.fonts, { font, font_object: fontObject }));
 }
 
 /** The style `draft` takes in the face `key` names: a handwriting face a step larger than the text it's styled from. */
-function styleIn(state: Pick<EditorState, "layout" | "shippedFaces">, draft: TextDraft, key: string): TextStyle | null {
+function styleIn(
+  state: Pick<EditorState, "layout" | "shippedFaces">,
+  draft: NewTextDraft,
+  key: string,
+): NewTextStyle | null {
   const { nearSize, color } = draft.style;
-  const choices = faceChoicesOf(state, draft);
+  const choices = fontChoicesOf(state, draft);
   const chosen = [...choices.page, ...choices.handwriting].find((choice) => choice.key === key);
   if (chosen === undefined) return null;
   if (key.startsWith("face:")) {
@@ -316,21 +316,21 @@ function styleIn(state: Pick<EditorState, "layout" | "shippedFaces">, draft: Tex
  * Set the new text being typed in the face `key` names, from the slip's list: drawn in it at once, and announced.
  * Larger in a handwriting face, it stays on its page as wide as `widthOf` measures it.
  */
-export function chooseFace(editor: Editor, key: string, { widthOf }: { widthOf: (insert: Insert) => number }): void {
+export function chooseFont(editor: Editor, key: string, { widthOf }: { widthOf: (insert: Insert) => number }): void {
   const state = editor.store.get();
   const { draft, doc } = state;
   const info = draft === null ? undefined : doc.pages[draft.page];
-  if (draft?.kind !== "text" || info === undefined) return;
+  if (draft?.kind !== "newText" || info === undefined) return;
   const style = styleIn(state, draft, key);
   if (style === null) return;
-  const label = [...Object.values(faceChoicesOf(state, draft)).flat()].find((choice) => choice.key === key)?.label;
+  const label = [...Object.values(fontChoicesOf(state, draft)).flat()].find((choice) => choice.key === key)?.label;
   const origin = keptOnPage(info, { origin: draft.origin, size: style.size }, widthOf(insertOf({ ...draft, style })));
   const setIn = fill(state.doc.sentences.new_text_set_in, { font: label ?? style.font });
   editor.store.set({ draft: { ...draft, style, origin }, announcement: announcing(setIn) });
 }
 
 /** Where focus goes when new text at `insert`'s place goes, or its field: the text nearest it, else its page's control. */
-export function focusAfterText(
+export function focusAfterNewText(
   { layout, reading }: { layout: Pick<Layout, "pages">; reading: Pick<Reading, "order"> },
   { page, origin: [x, y] }: Pick<Insert, "page" | "origin">,
 ): FocusTo {
@@ -344,32 +344,32 @@ export function backToField(editor: Editor): void {
 }
 
 /** Open new text where `at` was pressed on bare paper, styled as the text nearest it. */
-export function writeAt(editor: Editor, page: number, at: PagePoint): void {
+export function openNewTextAt(editor: Editor, page: number, at: PagePoint): void {
   const { layout, reading } = editor.store.get();
   const near = nearestSpan(layout.pages.get(page) ?? [], at);
   const style = styleOf(near);
   const origin = originAt(at, style.size);
-  const back = focusAfterText({ layout, reading }, { page, origin: [origin[0], origin[1]] });
-  open(editor, { kind: "text", page, of: null, origin, text: "", style, nearId: near?.id ?? null, back });
+  const back = focusAfterNewText({ layout, reading }, { page, origin: [origin[0], origin[1]] });
+  open(editor, { kind: "newText", page, of: null, origin, text: "", style, nearId: near?.id ?? null, back });
 }
 
 /** Open new text on the line below a span, at its left edge, in its style; focus comes back to it with Escape. */
-export function writeBelow(editor: Editor, spanId: string): void {
+export function openNewTextBelow(editor: Editor, spanId: string): void {
   const span = editor.store.get().layout.spans.get(spanId);
   if (span === undefined) return;
   const [, baseline] = span.origin;
   const origin: PagePoint = [span.bbox.x0, (baseline ?? span.bbox.y1) + span.size * LINE_BELOW_EM];
   const draft = { page: span.page, of: null, origin, text: "", style: styleOf(span), nearId: span.id };
-  open(editor, { kind: "text", ...draft, back: { spanId } });
+  open(editor, { kind: "newText", ...draft, back: { spanId } });
 }
 
 /** Open new text at the top left of a page with no text, inside its margin; focus comes back to its control with Escape. */
-export function writeOnBarePage(editor: Editor, page: number): void {
+export function openNewTextOnBarePage(editor: Editor, page: number): void {
   const { reading } = editor.store.get();
   const style = styleOf(undefined);
   const origin: PagePoint = [NEW_TEXT_MARGIN_PT, NEW_TEXT_MARGIN_PT + style.size];
   open(editor, {
-    kind: "text",
+    kind: "newText",
     page,
     of: null,
     origin,
@@ -381,9 +381,9 @@ export function writeOnBarePage(editor: Editor, page: number): void {
 }
 
 /** Type into new text again, from its mark: Enter, or a click. */
-export function writeAgain(editor: Editor, textId: number): void {
+export function openNewTextAgain(editor: Editor, newTextId: number): void {
   const { reading, layout, shippedFaces } = editor.store.get();
-  const text = keptTexts(reading).find((insert) => insert.textId === textId);
+  const text = keptNewTexts(reading).find((insert) => insert.newTextId === newTextId);
   if (text === undefined) return;
   const { page, origin, font_object: fontObject = null, size, color = BLACK } = text.edit;
   const font = fontNameOf(text.edit);
@@ -393,19 +393,19 @@ export function writeAgain(editor: Editor, textId: number): void {
   const near = nearestSpan(layout.pages.get(page) ?? [], [x, y]);
   const style = { font, fontObject, size, nearSize, color };
   open(editor, {
-    kind: "text",
+    kind: "newText",
     page,
     of: text,
     origin,
     text: text.edit.text,
     style,
     nearId: near?.id ?? null,
-    back: focusAfterText({ layout, reading }, text.edit),
+    back: focusAfterNewText({ layout, reading }, text.edit),
   });
 }
 
 /** Open `draft`'s field, its line's start on its page: an empty one has no width yet. */
-function open(editor: Editor, draft: TextDraft): void {
+function open(editor: Editor, draft: NewTextDraft): void {
   const info = editor.store.get().doc.pages[draft.page];
   const origin =
     info === undefined ? draft.origin : keptOnPage(info, { origin: draft.origin, size: draft.style.size }, 0);
@@ -416,13 +416,13 @@ function open(editor: Editor, draft: TextDraft): void {
  * Move new text by `by` points, its whole line kept on its page as wide as it draws (`widthPt`): a drag, a step of
  * its own; a nudge, one with the nudges just before it.
  */
-export function moveText(
+export function moveNewText(
   editor: Editor,
-  textId: number,
+  newTextId: number,
   { by: [dx, dy], nudge, widthPt }: { by: PagePoint; nudge: boolean; widthPt: number },
 ): void {
   const { reading, doc, nudged } = editor.store.get();
-  const text = keptTexts(reading).find((insert) => insert.textId === textId);
+  const text = keptNewTexts(reading).find((insert) => insert.newTextId === newTextId);
   const info = text === undefined ? undefined : doc.pages[text.edit.page];
   if (text === undefined || info === undefined) return;
   const [x, y] = text.edit.origin;
@@ -435,7 +435,7 @@ export function moveText(
     { kind: "revise", replaces: text.id, edit, folds },
     {
       nudged: nudge ? next : null,
-      focusTo: { textId },
+      focusTo: { newTextId },
       announcement: announcing(fill(doc.sentences.new_text_moved, { text: text.edit.text })),
     },
   );
@@ -449,19 +449,19 @@ export function keptOnPage(
 ): PagePoint {
   // Wider than the page, it starts at its left edge.
   const clamp = (value: number, low: number, high: number) => Math.max(Math.min(value, high), low);
-  const top = size * INSERT_ASCENT_EM;
-  return [clamp(x, 0, info.width - widthPt), clamp(y, top, info.height - size * INSERT_DESCENT_EM)];
+  const top = size * NEW_TEXT_ASCENT_EM;
+  return [clamp(x, 0, info.width - widthPt), clamp(y, top, info.height - size * NEW_TEXT_DESCENT_EM)];
 }
 
 /** Take new text out, every version of it, from its margin note: focus goes to the text nearest it. */
-export function takeOut(editor: Editor, textId: number): void {
+export function takeOutNewText(editor: Editor, newTextId: number): void {
   const { history, reading, layout, doc } = editor.store.get();
-  const text = keptTexts(reading).find((insert) => insert.textId === textId);
+  const text = keptNewTexts(reading).find((insert) => insert.newTextId === newTextId);
   if (text === undefined) return;
-  const focusTo = focusAfterText({ layout, reading }, text.edit);
+  const focusTo = focusAfterNewText({ layout, reading }, text.edit);
   change(
     editor,
-    { kind: "remove", ids: versionsOf(history, textId) },
+    { kind: "remove", ids: versionsOf(history, newTextId) },
     { announcement: announcing(fill(doc.sentences.new_text_taken_out, { text: text.edit.text })), focusTo },
   );
 }
@@ -488,14 +488,4 @@ function unturned([dx, dy]: PagePoint, info: PageInfo): PagePoint {
   const angle = (-info.turn_cw * Math.PI) / 180;
   const [cos, sin] = [Math.round(Math.cos(angle)), Math.round(Math.sin(angle))];
   return [dx * cos - dy * sin, dx * sin + dy * cos];
-}
-
-/** Whether the latest render of new text is of its words now: its strips show it, so nothing previews it. */
-export function drawnAs(drawn: Drawn, text: InsertReading): boolean {
-  return (
-    drawn.from
-      .get(text.edit.page)
-      ?.pages.get(text.edit.page)
-      ?.inserts.some((was) => was.id === text.id) ?? false
-  );
 }

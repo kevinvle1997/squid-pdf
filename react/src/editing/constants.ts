@@ -20,8 +20,8 @@ export const FIELD_SPARE_EM = 0.5;
 export const NEW_TEXT_FIELD_MIN_EM = 2;
 
 /** A new line has no box until it's drawn: an em above its baseline and this far below covers any face we ship. */
-export const INSERT_ASCENT_EM = 1;
-export const INSERT_DESCENT_EM = 0.3;
+export const NEW_TEXT_ASCENT_EM = 1;
+export const NEW_TEXT_DESCENT_EM = 0.3;
 
 /** New text on a page with none to take its style from: a plain face we ship, at a usual size for a document's body, in black. */
 export const NEW_TEXT_FACE = "Liberation Sans Regular";

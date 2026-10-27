@@ -6,19 +6,19 @@ import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_TAP_MS, NOTE_DELAY_MS } from "../constants";
 import { focusMoved } from "../editor";
-import { moveOnPage, moveText, type PagePoint, writeAgain } from "../newText";
-import type { InsertReading } from "../project";
+import { moveNewText, moveOnPage, openNewTextAgain, type PagePoint } from "../newText";
+import type { NewTextReading } from "../project";
 import { sentenceOrNothing } from "../words";
 import { useEditor } from "./context";
-import { boxOf, textBoxOf, textStyleOf } from "./geometry";
-import styles from "./TextMark.module.css";
+import { boxOf, newTextBoxOf, newTextStyleOf } from "./geometry";
+import styles from "./NewTextMark.module.css";
 
 /** A nudge of new text from the keyboard, in points: Shift takes the larger step. */
 const NUDGE_PT = 1;
 const SHIFT_NUDGE_PT = 10;
 
 interface Props {
-  text: InsertReading;
+  text: NewTextReading;
   info: PageInfo;
   face: string; // the face it previews in, for its words while it's dragged
   widthPt: number; // how wide it draws
@@ -31,7 +31,7 @@ interface Props {
  * nudge it, a point a press or ten with Shift; Enter or a click types into it again. Its note says so, on hover,
  * focus and a tap; on a touch screen, a second tap types into it.
  */
-export const TextMark = memo(function TextMark({ text, info, face, widthPt, takesFocus, sentences }: Props) {
+export const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takesFocus, sentences }: Props) {
   const editor = useEditor();
   const mark = useRef<HTMLButtonElement | null>(null);
   const noteId = useId();
@@ -45,7 +45,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
   const lastTap = useRef(0);
   // A finger has no keys: its note says how to move it without them.
   const touch = useSyncExternalStore(onPointerChange, coarsePointer);
-  const { textId } = text;
+  const { newTextId } = text;
 
   const { buttonProps } = useButton(
     {
@@ -63,7 +63,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
           return;
         }
         lastTap.current = 0;
-        writeAgain(editor, textId);
+        openNewTextAgain(editor, newTextId);
       },
     },
     mark,
@@ -79,7 +79,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
     onMove: ({ pointerType, deltaX, deltaY, shiftKey }) => {
       if (pointerType === "keyboard") {
         const step = shiftKey ? SHIFT_NUDGE_PT : NUDGE_PT;
-        moveText(editor, textId, { by: [deltaX * step, deltaY * step], nudge: true, widthPt });
+        moveNewText(editor, newTextId, { by: [deltaX * step, deltaY * step], nudge: true, widthPt });
         return;
       }
       const shownWidthPx =
@@ -98,7 +98,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
         cancelled.current = false;
         return;
       }
-      if (pointerType !== "keyboard" && by !== null) moveText(editor, textId, { by, nudge: false, widthPt });
+      if (pointerType !== "keyboard" && by !== null) moveNewText(editor, newTextId, { by, nudge: false, widthPt });
     },
   });
   /** Cut the drag short as the browser cancels one, so every hook on the mark ends it and the next press starts afresh. */
@@ -167,9 +167,9 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
         ref={takeFocus}
         type="button"
         className={classes(styles.text, isHovered && styles.hovered, isFocusVisible && styles.focused)}
-        style={boxOf(textBoxOf(where, widthPt), info)}
+        style={boxOf(newTextBoxOf(where, widthPt), info)}
         aria-describedby={showsNote ? noteId : undefined}
-        data-text={textId}
+        data-new-text={newTextId}
       >
         {/* Dragged, its words go with the pointer, over the ink left where it was until it's put down. */}
         {dragged === null ? (
@@ -194,7 +194,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
 });
 
 /** New text's words as they're set, wherever the box they're drawn in is. */
-function wordsStyleOf(insert: InsertReading["edit"], info: PageInfo, face: string) {
-  const { left: _left, top: _top, height: _height, ...words } = textStyleOf(insert, info, face);
+function wordsStyleOf(insert: NewTextReading["edit"], info: PageInfo, face: string) {
+  const { left: _left, top: _top, height: _height, ...words } = newTextStyleOf(insert, info, face);
   return words;
 }

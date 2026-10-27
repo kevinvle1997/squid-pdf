@@ -13,26 +13,34 @@ import { readableName } from "../fonts";
 import { setWarningMuted } from "../mutedWarnings";
 import {
   backToField,
-  chooseFace,
-  chosenFaceOf,
-  faceChoicesOf,
+  chooseFont,
+  chosenFontOf,
+  fontChoicesOf,
   fontNameOf,
-  fontOfText,
+  fontOfNewText,
   inShippedFace,
   insertOf,
-  type TextDraft,
-  textFaceOf,
-  textSpanOf,
+  type NewTextDraft,
+  newTextFaceOf,
+  newTextSpanOf,
 } from "../newText";
 import { shownNameIn } from "../spanFonts";
 import { shallowEqual } from "../store";
-import { draftNoteOf, enter, fieldFocused, finish, troublesIn, typeIntoText } from "../typing";
+import { draftNoteOf, enter, fieldFocused, finish, troublesIn, typeIntoNewText } from "../typing";
 import { shortWarningOf } from "../verdicts";
 import { Facts } from "./Chip";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import fieldStyles from "./EditField.module.css";
-import { fieldScaleOf, points, textBoxOf, textFieldWidthPt, textStyleOf, textWidthIn, textWidthPt } from "./geometry";
+import {
+  fieldScaleOf,
+  newTextBoxOf,
+  newTextFieldWidthPt,
+  newTextStyleOf,
+  newTextWidthIn,
+  newTextWidthPt,
+  points,
+} from "./geometry";
 
 /**
  * New text being typed, where it will be drawn, in the face that will draw it, and its slip under it: what it
@@ -40,7 +48,7 @@ import { fieldScaleOf, points, textBoxOf, textFieldWidthPt, textStyleOf, textWid
  */
 export function NewTextField({ info }: { info: PageInfo }) {
   const editor = useEditor();
-  const draft = useEditorState((state) => (state.draft?.kind === "text" ? state.draft : null));
+  const draft = useEditorState((state) => (state.draft?.kind === "newText" ? state.draft : null));
   const layout = useEditorState((state) => state.layout);
   const field = useRef<HTMLInputElement>(null);
   const placed = useRef(false);
@@ -74,7 +82,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
   );
   const fieldRef = useMemo(() => mergeRefs(watchPage, takeFocus), [watchPage, takeFocus]);
   const insert = draft === null ? null : insertOf(draft);
-  const face = insert === null ? null : textFaceOf(layout, insert);
+  const face = insert === null ? null : newTextFaceOf(layout, insert);
   // A letter the face lacks sends the line to its broadest, put on the page only once one does.
   useEffect(() => {
     if (face === null) return;
@@ -110,16 +118,16 @@ export function NewTextField({ info }: { info: PageInfo }) {
     else finish(editor, false, { returnFocus: true });
   }
 
-  const font = fontOfText(layout, insert);
-  const widthPt = textWidthPt(insert, { face, glyphs: font?.glyphs ?? {} });
-  const fieldWidthPt = textFieldWidthPt(insert, widthPt);
+  const font = fontOfNewText(layout, insert);
+  const widthPt = newTextWidthPt(insert, { face, glyphs: font?.glyphs ?? {} });
+  const fieldWidthPt = newTextFieldWidthPt(insert, widthPt);
   // The slip hangs under the line as a handwriting face sets it, the larger: choosing a face never moves it from under the pointer.
-  const box = textBoxOf(
+  const box = newTextBoxOf(
     { ...insert, size: Math.max(insert.size, draft.style.nearSize * HANDWRITING_STEP) },
     fieldWidthPt,
   );
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
-  const { fontSize, height, ...where } = textStyleOf(insert, info, face);
+  const { fontSize, height, ...where } = newTextStyleOf(insert, info, face);
   return (
     // `data-slip`: a key pressed in the slip is the slip's, as one in the field is the field's (`isTyping`).
     <Group
@@ -133,7 +141,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
       <TextField
         aria-label={draft.of === null ? "New text" : `Change “${draft.of.edit.text}”`}
         value={draft.text}
-        onChange={(next) => typeIntoText(editor, next, { widthOf: (typed) => textWidthIn(layout, typed) })}
+        onChange={(next) => typeIntoNewText(editor, next, { widthOf: (typed) => newTextWidthIn(layout, typed) })}
         className={fieldStyles.field}
       >
         <Input
@@ -152,18 +160,18 @@ export function NewTextField({ info }: { info: PageInfo }) {
           }}
         />
       </TextField>
-      <TextChip draft={draft} info={info} box={box} />
+      <NewTextChip draft={draft} info={info} box={box} />
     </Group>
   );
 }
 
 /** The slip under new text: what it comes to, the full warning as it opens, and the faces it can be set in. */
-function TextChip({
+function NewTextChip({
   draft,
   info,
   box,
 }: {
-  draft: TextDraft;
+  draft: NewTextDraft;
   info: PageInfo;
   box: { x0: number; y0: number; x1: number; y1: number };
 }) {
@@ -173,7 +181,7 @@ function TextChip({
     const { sentences, verdict } = troublesIn(state, draft.text);
     const insert = insertOf(draft);
     const said = verdict === null ? null : draftNoteOf(state, verdict);
-    const shown = readableName(shownNameIn(state.layout.fonts, textSpanOf(state.layout, insert)));
+    const shown = readableName(shownNameIn(state.layout.fonts, newTextSpanOf(state.layout, insert)));
     const named = inShippedFace(insert) ? fontNameOf(insert).replace(/ Regular$/, "") : shown;
     return {
       trouble: sentences.join("\n"),
@@ -183,9 +191,11 @@ function TextChip({
       drawnIn: verdict?.substitute ?? named,
     };
   }, shallowEqual);
-  const shown = useEditorState((state) => shownNameIn(state.layout.fonts, textSpanOf(state.layout, insertOf(draft))));
-  const choices = useEditorState((state) => faceChoicesOf(state, draft), sameChoices);
-  const chosen = useEditorState((state) => chosenFaceOf(state.layout, draft));
+  const shown = useEditorState((state) =>
+    shownNameIn(state.layout.fonts, newTextSpanOf(state.layout, insertOf(draft))),
+  );
+  const choices = useEditorState((state) => fontChoicesOf(state, draft), sameChoices);
+  const chosen = useEditorState((state) => chosenFontOf(state.layout, draft));
   const failed = useEditorState((state) => state.shippedFaces.failed);
   const layout = useEditorState((state) => state.layout);
   // Each name is set in its own face: put on the page as the list shows.
@@ -226,7 +236,7 @@ function TextChip({
           label="Font"
           groups={groups}
           chosen={chosen}
-          onChoose={(key) => chooseFace(editor, key, { widthOf: (insert) => textWidthIn(layout, insert) })}
+          onChoose={(key) => chooseFont(editor, key, { widthOf: (insert) => newTextWidthIn(layout, insert) })}
           onEnter={() => enter(editor)}
           onPointerChoice={() => backToField(editor)}
         />
@@ -285,7 +295,7 @@ function useKeptOnPage(box: { x0: number; y0: number; x1: number; y1: number }, 
 }
 
 /** Whether two lists of faces offer the same, by key and face: each is built fresh from the state. */
-function sameChoices(a: ReturnType<typeof faceChoicesOf>, b: ReturnType<typeof faceChoicesOf>): boolean {
+function sameChoices(a: ReturnType<typeof fontChoicesOf>, b: ReturnType<typeof fontChoicesOf>): boolean {
   const same = (x: readonly { key: string; face: string }[], y: readonly { key: string; face: string }[]) =>
     x.length === y.length && x.every((choice, index) => choice.key === y[index]?.key && choice.face === y[index]?.face);
   return same(a.page, b.page) && same(a.handwriting, b.handwriting);

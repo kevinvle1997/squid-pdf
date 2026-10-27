@@ -18,9 +18,9 @@ import {
 } from "../fixtures";
 import { layoutOf } from "./editor";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
-import { textVerdictOf } from "./newText";
+import { newTextVerdictOf } from "./newText";
 import { project, UNEDITED } from "./project";
-import { type Drawn, landedFitOf, landedFits, landedInsertFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
+import { type Drawn, landedFitOf, landedFits, landedNewTextFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 
 const ONE = aSpan({ id: "one", page: 0 });
 const TWO = aSpan({ id: "two", page: 1 });
@@ -288,11 +288,11 @@ describe("new text's fit", () => {
     fake.asked[0]?.answer(aReply({ images: [stripFor(0)], insert_fits: [{ ...drew, edit: 1 }] }));
     await settle();
 
-    const [now] = reading.pages.get(0)?.inserts ?? [];
+    const [now] = reading.pages.get(0)?.newTexts ?? [];
     if (now === undefined) throw new Error("the new text reads on its page");
-    expect(landedInsertFitOf(queue.drawn, now)).toEqual(drew);
+    expect(landedNewTextFitOf(queue.drawn, now)).toEqual(drew);
     const layout = layoutOf(aDoc({ spans: [ONE], fonts: [aFont(ONE.font, { glyphs: halfWideGlyphs("Paid €") })] }));
-    expect(textVerdictOf(layout, { insert: text, fit: undefined }).fidelity).toBe("exact");
-    expect(textVerdictOf(layout, { insert: text, fit: landedInsertFitOf(queue.drawn, now) })).toEqual(drew);
+    expect(newTextVerdictOf(layout, { insert: text, fit: undefined }).fidelity).toBe("exact");
+    expect(newTextVerdictOf(layout, { insert: text, fit: landedNewTextFitOf(queue.drawn, now) })).toEqual(drew);
   });
 });

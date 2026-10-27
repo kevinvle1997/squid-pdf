@@ -4,8 +4,8 @@ import type { CSSProperties } from "react";
 import type { FitInfo, Insert, PageInfo, SpanInfo } from "../../api/types";
 import {
   FIELD_SPARE_EM,
-  INSERT_ASCENT_EM,
-  INSERT_DESCENT_EM,
+  NEW_TEXT_ASCENT_EM,
+  NEW_TEXT_DESCENT_EM,
   NEW_TEXT_FIELD_MIN_EM,
   PX_PER_PT,
   SLIP_GAP_PT,
@@ -13,7 +13,7 @@ import {
 import type { Layout } from "../editor";
 import { familyOf } from "../faces";
 import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
-import { fontOfText, textFaceOf } from "../newText";
+import { fontOfNewText, newTextFaceOf } from "../newText";
 
 /** A box on a page, in its own points from its top left. */
 type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -405,28 +405,28 @@ export function fieldPartOf(
 }
 
 /** How wide new text's field is, in points: as wide as it draws, never narrower than a couple of letters, and room for the caret. */
-export function textFieldWidthPt({ size }: Pick<Insert, "size">, widthPt: number): number {
+export function newTextFieldWidthPt({ size }: Pick<Insert, "size">, widthPt: number): number {
   return Math.max(widthPt, size * NEW_TEXT_FIELD_MIN_EM) + size * FIELD_SPARE_EM;
 }
 
 /** The box new text is drawn in, from its baseline's start: `widthPt` across, an em above its baseline and a little below. */
-export function textBoxOf({ origin: [x, y], size }: Pick<Insert, "origin" | "size">, widthPt: number): Box {
-  return { x0: x, y0: y - size * INSERT_ASCENT_EM, x1: x + widthPt, y1: y + size * INSERT_DESCENT_EM };
+export function newTextBoxOf({ origin: [x, y], size }: Pick<Insert, "origin" | "size">, widthPt: number): Box {
+  return { x0: x, y0: y - size * NEW_TEXT_ASCENT_EM, x1: x + widthPt, y1: y + size * NEW_TEXT_DESCENT_EM };
 }
 
 /** The box new text is drawn in on its page, as wide as the face that previews it sets it. */
-export function textBoxIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Box {
-  return textBoxOf(insert, textWidthIn(layout, insert));
+export function newTextBoxIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Box {
+  return newTextBoxOf(insert, newTextWidthIn(layout, insert));
 }
 
 /** How wide new text draws on its page, in points: in the face that previews it, by its page font's widths if it has one. */
-export function textWidthIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): number {
-  const glyphs = fontOfText(layout, insert)?.glyphs ?? {};
-  return textWidthPt(insert, { face: textFaceOf(layout, insert), glyphs });
+export function newTextWidthIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): number {
+  const glyphs = fontOfNewText(layout, insert)?.glyphs ?? {};
+  return newTextWidthPt(insert, { face: newTextFaceOf(layout, insert), glyphs });
 }
 
 /** How wide new text draws, in points: by its font's widths where the browser has them, else as `face` sets it here. */
-export function textWidthPt(
+export function newTextWidthPt(
   { text, size }: Pick<Insert, "text" | "size">,
   { face, glyphs }: { face: string; glyphs: Record<string, number> },
 ): number {
@@ -434,18 +434,18 @@ export function textWidthPt(
 }
 
 /** New text where it's drawn, as the page will draw it: from its baseline's start, at its size and colour, in `face`. */
-export function textStyleOf(
+export function newTextStyleOf(
   insert: Pick<Insert, "origin" | "size" | "color">,
   page: PageInfo,
   face: string,
 ): CSSProperties {
-  const box = boxOf(textBoxOf(insert, 0), page);
+  const box = boxOf(newTextBoxOf(insert, 0), page);
   return {
     left: box.left,
     top: box.top,
     height: box.height,
     fontSize: points(insert.size, page),
-    lineHeight: points(insert.size * (INSERT_ASCENT_EM + INSERT_DESCENT_EM), page),
+    lineHeight: points(insert.size * (NEW_TEXT_ASCENT_EM + NEW_TEXT_DESCENT_EM), page),
     fontFamily: familyOf(face),
     color: rgbOf(insert.color ?? [0, 0, 0]),
   };

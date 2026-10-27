@@ -4,8 +4,8 @@ import type { FitInfo, FitRules, Strategy } from "../api/types";
 import type { Layout } from "./editor";
 import { type Fit, fitOf, runsPast } from "./fit";
 import { spanOf } from "./history";
-import { textDrawingOf, textVerdictOf } from "./newText";
-import { type Differing, differing, type InsertReading, type Reading } from "./project";
+import { newTextDrawingOf, newTextVerdictOf } from "./newText";
+import { type Differing, differing, type NewTextReading, type Reading } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { liveVerdictOf, type Verdict } from "./verdicts";
@@ -13,7 +13,7 @@ import { liveVerdictOf, type Verdict } from "./verdicts";
 /** The spans on one page whose render disagreed with their preview, as one render landed. */
 export interface PreviewDisagreement {
   readonly spanIds: ReadonlySet<string>;
-  readonly textIds: ReadonlySet<number>; // the new text, by its first version's id
+  readonly newTextIds: ReadonlySet<number>; // the new text, by its first version's id
   readonly count: number; // which landing it pulses for, so a span that disagrees again pulses again
 }
 
@@ -39,13 +39,13 @@ export function disagreementsAfter(
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
     const landed = { reading, page, after, fonts: layout.fonts, rules };
     const spanIds = new Set(previewed.filter((each) => disagrees(each, landed)).map(({ span }) => span.id));
-    const drawnBefore = new Set(was?.pages.get(page)?.inserts.map((text) => text.id));
-    const textsPreviewed = (reading.pages.get(page)?.inserts ?? []).filter((text) => !drawnBefore.has(text.id));
-    const texts = textsPreviewed.filter((text) => textDisagrees(text, { ...landed, layout }));
-    const textIds = new Set(texts.map((text) => text.textId));
+    const drawnBefore = new Set(was?.pages.get(page)?.newTexts.map((text) => text.id));
+    const textsPreviewed = (reading.pages.get(page)?.newTexts ?? []).filter((text) => !drawnBefore.has(text.id));
+    const texts = textsPreviewed.filter((text) => newTextDisagrees(text, { ...landed, layout }));
+    const newTextIds = new Set(texts.map((text) => text.newTextId));
     next ??= new Map(disagreements);
-    if (spanIds.size === 0 && textIds.size === 0) next.delete(page);
-    else next.set(page, { spanIds, textIds, count: (disagreements.get(page)?.count ?? 0) + 1 });
+    if (spanIds.size === 0 && newTextIds.size === 0) next.delete(page);
+    else next.set(page, { spanIds, newTextIds, count: (disagreements.get(page)?.count ?? 0) + 1 });
   }
   return next ?? disagreements;
 }
@@ -83,8 +83,8 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
 }
 
 /** Whether the render of new text previewed says something its live check didn't: the letters lacking, or the verdict's kind. */
-function textDisagrees(
-  text: InsertReading,
+function newTextDisagrees(
+  text: NewTextReading,
   { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans"> },
 ): boolean {
   const sentAt = reading.edits.indexOf(text.edit);
@@ -92,13 +92,13 @@ function textDisagrees(
   const noticed = after.notices.get(page)?.some((notice) => notice.kind === "insert" && notice.edit === sentAt);
   const skipped = after.skipped.some(({ edit }) => edit === sentAt);
   if (noticed || skipped) return true;
-  const fit = after.insertFits.get(page)?.[text.id];
+  const fit = after.newTextFits.get(page)?.[text.id];
   if (fit === undefined) return false;
-  const drawing = textDrawingOf(layout, text.edit);
+  const drawing = newTextDrawingOf(layout, text.edit);
   const live = new Set([...drawing.switched, ...drawing.leftOut]);
   const lacking = new Set([...fit.missing, ...fit.left_out]);
   const sameLetters = lacking.size === live.size && [...live].every((letter) => lacking.has(letter));
-  return !sameLetters || fit.fidelity !== textVerdictOf(layout, { insert: text.edit, fit: undefined }).fidelity;
+  return !sameLetters || fit.fidelity !== newTextVerdictOf(layout, { insert: text.edit, fit: undefined }).fidelity;
 }
 
 /**

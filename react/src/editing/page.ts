@@ -5,15 +5,15 @@ import type { FitRules, Sentences, SpanInfo } from "../api/types";
 import { changedWordsCount, type EditorState, type FocusSpan, type Layout, type ScrollTo } from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
-import { keptTexts, type PagePoint, type TextDraft } from "./newText";
+import { keptNewTexts, type NewTextDraft, type PagePoint } from "./newText";
 import type { PreviewDisagreement } from "./previewDisagreements";
 import type { PageEdits } from "./project";
-import type { PageFits, PageInsertFits, PageRedactions, Strip } from "./render";
+import type { PageFits, PageNewTextFits, PageRedactions, Strip } from "./render";
 import type { FontsByObject } from "./spanFonts";
 
 const NO_SPANS: readonly SpanInfo[] = [];
 const NO_FITS: PageFits = {};
-const NO_INSERT_FITS: PageInsertFits = {};
+const NO_NEW_TEXT_FITS: PageNewTextFits = {};
 const NO_REDACTIONS: PageRedactions = {};
 
 /** Everything a page draws from the editor's state: it redraws when one of these changes. */
@@ -23,7 +23,7 @@ export interface PageState {
   readonly drawnFrom: PageEdits | undefined; // what its strips were drawn from
   readonly strips: readonly Strip[] | undefined;
   readonly fits: PageFits;
-  readonly insertFits: PageInsertFits; // the server's fit for each piece of new text here, by its version
+  readonly newTextFits: PageNewTextFits; // the server's fit for each piece of new text here, by its version
   readonly redactions: PageRedactions; // the server's verdict on each redaction drawn here
   readonly matches: ReadonlyMap<string, readonly Match[]> | undefined; // what find found here, by span, while it's open
   readonly foundAt: string | null; // the place find went to, when it's here
@@ -33,11 +33,11 @@ export interface PageState {
   readonly src: string; // the page image
   readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
-  readonly writing: PagePoint | null; // where new text is being typed, when it's here
-  readonly writingAgain: number | null; // the new text typed into again, if that's what's typed here
+  readonly newTextAt: PagePoint | null; // where new text is being typed, when it's here
+  readonly newTextTypedAgain: number | null; // the new text typed into again, if that's what's typed here
   readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
   readonly focusTo: FocusSpan | null; // the span focus is sent to, when it's here
-  readonly focusText: number | null; // the new text focus is sent to, when it's here
+  readonly focusNewText: number | null; // the new text focus is sent to, when it's here
   readonly howToStart: boolean; // the first page, before any edit: its margin says how to start
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
@@ -58,7 +58,7 @@ export function pageState(state: EditorState, index: number): PageState {
     drawnFrom: state.drawn.from.get(index)?.pages.get(index),
     strips: state.drawn.strips.get(index),
     fits: state.drawn.fits.get(index) ?? NO_FITS,
-    insertFits: state.drawn.insertFits.get(index) ?? NO_INSERT_FITS,
+    newTextFits: state.drawn.newTextFits.get(index) ?? NO_NEW_TEXT_FITS,
     redactions: state.drawn.redactions.get(index) ?? NO_REDACTIONS,
     matches: state.find.matches.get(index),
     foundAt:
@@ -72,11 +72,11 @@ export function pageState(state: EditorState, index: number): PageState {
     src: pageUrl(state.doc, index, state.scale),
     image: state.images.get(index),
     typingIn: state.draft?.kind === "span" && state.draft.page === index ? state.draft.spanId : null,
-    writing: textDraftOn(state, index)?.origin ?? null,
-    writingAgain: textDraftOn(state, index)?.of?.textId ?? null,
+    newTextAt: newTextDraftOn(state, index)?.origin ?? null,
+    newTextTypedAgain: newTextDraftOn(state, index)?.of?.newTextId ?? null,
     unredacting: here(state.unredacting)?.spanId ?? null,
     focusTo: here(state.focusTo !== null && "spanId" in state.focusTo ? state.focusTo : null),
-    focusText: focusTextOn(state, index),
+    focusNewText: focusNewTextOn(state, index),
     howToStart: index === 0 && neverEdited(state),
     scrollTo: here(state.scrollTo),
     fonts: state.layout.fonts,
@@ -87,14 +87,14 @@ export function pageState(state: EditorState, index: number): PageState {
 }
 
 /** The new text being typed on page `index`, if it's there. */
-function textDraftOn(state: EditorState, index: number): TextDraft | null {
-  return state.draft?.kind === "text" && state.draft.page === index ? state.draft : null;
+function newTextDraftOn(state: EditorState, index: number): NewTextDraft | null {
+  return state.draft?.kind === "newText" && state.draft.page === index ? state.draft : null;
 }
 
 /** The new text on page `index` focus is sent to, if any. */
-function focusTextOn(state: EditorState, index: number): number | null {
-  const sent = state.focusTo !== null && "textId" in state.focusTo ? state.focusTo.textId : null;
-  const text = sent === null ? undefined : keptTexts(state.reading).find((each) => each.textId === sent);
+function focusNewTextOn(state: EditorState, index: number): number | null {
+  const sent = state.focusTo !== null && "newTextId" in state.focusTo ? state.focusTo.newTextId : null;
+  const text = sent === null ? undefined : keptNewTexts(state.reading).find((each) => each.newTextId === sent);
   return text?.edit.page === index ? sent : null;
 }
 

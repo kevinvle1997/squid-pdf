@@ -33,7 +33,7 @@ export function unexported(state: EditorState): boolean {
 
 /** What `draft` types into reads now: new text reads nothing until it's in. */
 function readsNow(draft: Draft, { layout, reading }: Pick<EditorState, "layout" | "reading">): string | undefined {
-  if (draft.kind === "text") return draft.of?.edit.text ?? "";
+  if (draft.kind === "newText") return draft.of?.edit.text ?? "";
   const span = layout.spans.get(draft.spanId);
   return span === undefined ? undefined : textIn(reading, span);
 }

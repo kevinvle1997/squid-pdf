@@ -65,7 +65,7 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
       if (command === undefined) return;
       event.preventDefault();
       const { target } = event;
-      command.run(editor, { spanId: spanOn(target), page: pageOn(target), textId: newTextOn(target) });
+      command.run(editor, { spanId: spanOn(target), page: pageOn(target), newTextId: newTextOn(target) });
     };
     const online = () => {
       editor.queue.retry();

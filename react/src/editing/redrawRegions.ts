@@ -1,7 +1,7 @@
 // Which regions of a page to redraw, each a full-width strip: edits stay in their row, so a strip
 // around each changed line is byte-identical to the page around it.
 import type { Insert, PageInfo, Region, SpanInfo } from "../api/types";
-import { INSERT_ASCENT_EM, INSERT_DESCENT_EM, STRIP_PAD_PT } from "./constants";
+import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM, STRIP_PAD_PT } from "./constants";
 import { type PageEdits, type Reading, samePage } from "./project";
 
 export interface Row {
@@ -22,7 +22,7 @@ export function rowOf(span: SpanInfo, info: PageInfo): Row {
 /** The strip a new line is drawn in, from its baseline. */
 export function insertRowOf(insert: Insert, info: PageInfo): Row {
   const [, baseline] = insert.origin;
-  return rowWithin(info, baseline - insert.size * INSERT_ASCENT_EM, baseline + insert.size * INSERT_DESCENT_EM);
+  return rowWithin(info, baseline - insert.size * NEW_TEXT_ASCENT_EM, baseline + insert.size * NEW_TEXT_DESCENT_EM);
 }
 
 /** What the server would redraw of a span's row: across the span, as far past either end as a strip reaches. */
@@ -52,7 +52,7 @@ export function merged(rows: readonly Row[]): Row[] {
 export function regionsFor(page: number, info: PageInfo, edits: PageEdits): Region[] {
   const rows = [
     ...edits.spans.map((reading) => rowOf(reading.span, info)),
-    ...edits.inserts.map((insert) => insertRowOf(insert.edit, info)),
+    ...edits.newTexts.map((insert) => insertRowOf(insert.edit, info)),
   ];
   return merged(rows).map((row) => ({ page, ...row }));
 }
@@ -80,8 +80,8 @@ export function stillShows(
   { edits, info }: { edits: PageEdits | undefined; info: PageInfo },
 ): boolean {
   const spans = edits?.spans.some(({ span }) => crosses(strip, rowOf(span, info))) ?? false;
-  const inserts = edits?.inserts.some(({ edit }) => crosses(strip, insertRowOf(edit, info))) ?? false;
-  return spans || inserts;
+  const newTexts = edits?.newTexts.some(({ edit }) => crosses(strip, insertRowOf(edit, info))) ?? false;
+  return spans || newTexts;
 }
 
 /** Whether any of `strips` is drawn over the row of a span's box, or new text's, so the page beneath it doesn't show there. */
