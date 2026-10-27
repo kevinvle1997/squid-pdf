@@ -48,6 +48,10 @@ export const SENTENCES: Sentences = {
   how_to_fix_touch: "Tap any word to fix it.",
   how_to_add: "Double-click any blank spot to add text.",
   how_to_add_touch: "Double-tap any blank spot to add text.",
+  new_text: "New text",
+  new_text_moves:
+    "Drag it to move it, or nudge it with the arrow keys, Shift for a bigger step. Enter types in it again.",
+  new_text_moves_touch: "Drag it to move it. Double-tap to type in it again.",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   email_broken: "the email address here no longer reads as one",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",

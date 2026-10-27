@@ -6,7 +6,8 @@ import { type Editor, putBack } from "../editor";
 import { type NoteWords, noteOf, notePlaces, textNoteOf } from "../margin";
 import { takeOut } from "../newText";
 import type { InsertReading, SpanReading } from "../project";
-import { useEditor } from "./context";
+import { sentenceOrNothing } from "../words";
+import { useEditor, useEditorState } from "./context";
 import { textBoxOf, topOf } from "./geometry";
 import styles from "./Margin.module.css";
 
@@ -49,6 +50,7 @@ function notesOf(changes: readonly SpanReading[], texts: readonly InsertReading[
  */
 export function Margin({ info, changes, texts, noteHeightPt, pageNumber }: Props) {
   // Its grid cell stays, so a page with no changes keeps its column.
+  const newText = useEditorState((state) => sentenceOrNothing(state.doc.sentences.new_text));
   if (changes.length === 0 && texts.length === 0) return <div className={styles.margin} />;
   const notes = notesOf(changes, texts);
   const places = notePlaces(
@@ -59,7 +61,7 @@ export function Margin({ info, changes, texts, noteHeightPt, pageNumber }: Props
     <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
       {notes.map(({ key, note, undo }, index) => (
         <div key={key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-          <Tip heading={note.was === "" ? "New text" : `Was “${note.was}”`} detail={`Now “${note.now}”`}>
+          <Tip heading={note.was === "" ? newText : `Was “${note.was}”`} detail={`Now “${note.now}”`}>
             <UndoNote label={note.label} undo={undo}>
               {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
               <UndoMark />
@@ -90,6 +92,7 @@ export function ChangeList({
   texts: readonly InsertReading[];
   pageNumber: number;
 }) {
+  const newText = useEditorState((state) => sentenceOrNothing(state.doc.sentences.new_text));
   if (changes.length === 0 && texts.length === 0) return null;
   return (
     <section className={styles.list} aria-label={`Your changes on page ${pageNumber}`}>
@@ -100,7 +103,7 @@ export function ChangeList({
               {note.was === "" ? (
                 <span className={styles.added}>
                   <InsertMark />
-                  Added
+                  {newText}
                 </span>
               ) : (
                 <span className={styles.old}>{note.was}</span>

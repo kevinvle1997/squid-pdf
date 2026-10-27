@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -1408,6 +1408,56 @@ describe("new text", () => {
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(mark).not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("pointed at, new text's note says what it is and how to move it, in the server's words", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toHaveTextContent(`${SENTENCES.new_text}${SENTENCES.new_text_moves}`);
+  });
+
+  test("with a reading persisted before new text's sentences were sent, its note and its margin note say nothing of it", async () => {
+    const older = { ...RED_DOC.sentences };
+    for (const key of ["new_text", "new_text_moves", "new_text_moves_touch"] as const) {
+      Reflect.deleteProperty(older, key);
+    }
+    vi.mocked(documentOf)
+      .mockReset()
+      .mockReturnValue(new Promise(() => undefined));
+    const persisted = { work: { history: EMPTY_HISTORY, fonts: [] }, until: Date.now() + 60_000 };
+    const screen = await openEditor({ doc: { ...RED_DOC, sentences: older }, persisted });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+    expect(screen.getByRole("tooltip").query()).toBeNull();
+    expect(document.body.textContent).not.toContain(SENTENCES.new_text);
+  });
+
+  test("on a touch screen, a tap on new text shows its note in a finger's words, and a second tap types in it", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    mark.element().blur();
+    await emulateTouchScreen();
+    const box = mark.element().getBoundingClientRect();
+    const at = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    const tap = async () => {
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+
+    await tap();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toHaveTextContent(`${SENTENCES.new_text}${SENTENCES.new_text_moves_touch}`);
+    expect(screen.getByRole("textbox", { name: "Change “Signed”" }).query()).toBeNull();
+    await tap();
+    await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
   });
 
   // Each way a drag is cut short: the browser taking the pointer back, the mark losing it, the window losing focus.

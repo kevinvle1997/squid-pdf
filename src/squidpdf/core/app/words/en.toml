@@ -102,6 +102,11 @@ how_to_fix = "Click any word to fix it."
 how_to_fix_touch = "Tap any word to fix it."
 how_to_add = "Double-click any blank spot to add text."
 how_to_add_touch = "Double-tap any blank spot to add text."
+# The note on text the user put on a page: what it is, then how to move it or type in it again, which a
+# touch screen says its own way, with no keys.
+new_text = "New text"
+new_text_moves = "Drag it to move it, or nudge it with the arrow keys, Shift for a bigger step. Enter types in it again."
+new_text_moves_touch = "Drag it to move it. Double-tap to type in it again."
 # Said to a screen reader as a span changes: its words now, quoted as `quoted` quotes a character.
 # Undone, and done again or typed and kept.
 back_to = "Back to “{text}”."

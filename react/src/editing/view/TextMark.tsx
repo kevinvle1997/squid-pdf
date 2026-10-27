@@ -1,12 +1,14 @@
-import { memo, useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore } from "react";
 import { mergeProps, useButton, useFocusRing, useHover, useMove } from "react-aria";
-import type { PageInfo } from "../../api/types";
+import type { PageInfo, Sentences } from "../../api/types";
 import { classes } from "../../ui/classes";
+import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Tooltip } from "../../ui/Tooltip";
-import { NOTE_DELAY_MS } from "../constants";
+import { DOUBLE_TAP_MS, NOTE_DELAY_MS } from "../constants";
 import { focusMoved } from "../editor";
 import { moveOnPage, moveText, type PagePoint, writeAgain } from "../newText";
 import type { InsertReading } from "../project";
+import { sentenceOrNothing } from "../words";
 import { useEditor } from "./context";
 import { boxOf, textBoxOf, textStyleOf } from "./geometry";
 import styles from "./TextMark.module.css";
@@ -21,13 +23,15 @@ interface Props {
   face: string; // the face it previews in, for its words while it's dragged
   widthPt: number; // how wide it draws
   takesFocus: boolean; // focus is sent here: back from its field, or moved
+  sentences: Sentences;
 }
 
 /**
  * New text at rest: a change, marked as one, reached by Tab in page order. Dragged, it moves; focused, the arrows
- * nudge it, a point a press or ten with Shift; Enter or a click types into it again. Its note says so.
+ * nudge it, a point a press or ten with Shift; Enter or a click types into it again. Its note says so, on hover,
+ * focus and a tap; on a touch screen, a second tap types into it.
  */
-export const TextMark = memo(function TextMark({ text, info, face, widthPt, takesFocus }: Props) {
+export const TextMark = memo(function TextMark({ text, info, face, widthPt, takesFocus, sentences }: Props) {
   const editor = useEditor();
   const mark = useRef<HTMLButtonElement | null>(null);
   const noteId = useId();
@@ -38,6 +42,9 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
   const pointer = useRef<number | null>(null); // the pointer pressed on the mark, whose drag React Aria tracks
   const [noted, setNoted] = useState(false);
   const waiting = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const lastTap = useRef(0);
+  // A finger has no keys: its note says how to move it without them.
+  const touch = useSyncExternalStore(onPointerChange, coarsePointer);
   const { textId } = text;
 
   const { buttonProps } = useButton(
@@ -46,6 +53,16 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
         // A drag ends with a press: it moved the text, and types into nothing. Keys and a screen reader's press never
         // drag it.
         if (moved.current && pointerType !== "keyboard" && pointerType !== "virtual") return;
+        const at = performance.now();
+        // A touch screen has no hover: a tap shows the note, and a second tap types into it.
+        if (pointerType === "touch" && at - lastTap.current >= DOUBLE_TAP_MS) {
+          lastTap.current = at;
+          setNoted(true);
+          // Nothing hovers off on a touch screen, so the next press anywhere closes it.
+          window.addEventListener("pointerdown", () => setNoted(false), { once: true, capture: true });
+          return;
+        }
+        lastTap.current = 0;
         writeAgain(editor, textId);
       },
     },
@@ -126,7 +143,10 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
 
   const [dx, dy] = dragged ?? [0, 0];
   const where = { ...text.edit, origin: [text.edit.origin[0] + dx, text.edit.origin[1] + dy] as [number, number] };
-  const showsNote = (noted || isFocusVisible) && dragged === null;
+  // A reading persisted before the note's sentences were sent has none to show.
+  const heading = sentenceOrNothing(sentences.new_text);
+  const detail = sentenceOrNothing(touch ? sentences.new_text_moves_touch : sentences.new_text_moves);
+  const showsNote = (noted || isFocusVisible) && dragged === null && (heading !== "" || detail !== "");
   return (
     <>
       <button
@@ -165,9 +185,9 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
         triggerRef={mark}
         isOpen={showsNote}
         onOpenChange={(isOpen) => isOpen || setNoted(false)}
-        heading="Text you added"
+        heading={heading}
       >
-        Drag it to move it, or nudge it with the arrow keys, Shift for a bigger step. Enter types in it again.
+        {detail}
       </Tooltip>
     </>
   );
