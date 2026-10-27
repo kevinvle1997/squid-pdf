@@ -27,6 +27,11 @@ const FILES = import.meta.glob<string>("../../../src/squidpdf/fonts/*.{ttf,otf}"
   eager: true,
 });
 
+/** Whether `name` is a face we ship, as the catalog names it. */
+export function isShippedFace(name: string): boolean {
+  return FACE_FILES[name] !== undefined;
+}
+
 /** The face a span previews in when its font isn't known. */
 export const DEFAULT_FACE = "Liberation Serif Regular";
 

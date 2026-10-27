@@ -20,8 +20,27 @@ export const FIELD_SPARE_EM = 0.5;
 export const INSERT_ASCENT_EM = 1;
 export const INSERT_DESCENT_EM = 0.3;
 
-/** A second tap on the same span within this is a double tap: it edits. A mouse click edits at once. */
+/** New text on a page with none to take its style from: a plain face we ship, at a usual size for a document's body, in black. */
+export const NEW_TEXT_FACE = "Liberation Sans Regular";
+export const NEW_TEXT_SIZE_PT = 11;
+
+/**
+ * New text in a handwriting face is drawn this much larger than the text it's styled from: those faces draw
+ * small for their size, and a hand signs larger than print, so a signature at the text's own size reads as a note.
+ */
+export const HANDWRITING_STEP = 1.3;
+
+/** New text on the line below a span starts this far under its baseline, in its size: the usual leading of set type. */
+export const LINE_BELOW_EM = 1.2;
+
+/** New text on a page with no text opens this far in from its top left: an inch, a page's usual margin. */
+export const NEW_TEXT_MARGIN_PT = 72;
+
+/** A second tap on the same span, or bare paper, within this is a double tap: it edits, or opens new text. A mouse click edits at once. */
 export const DOUBLE_TAP_MS = 400;
+
+/** A second tap on bare paper this near the first, in CSS pixels, is on the same spot: a finger's width. */
+export const DOUBLE_TAP_REACH_PX = 24;
 
 /** How long a pointer rests on a span before its note shows. Focus shows it at once. */
 export const NOTE_DELAY_MS = 250;

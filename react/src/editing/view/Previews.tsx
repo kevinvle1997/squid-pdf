@@ -1,31 +1,96 @@
 // What the browser draws over a page until the server's render shows it: a span's new words, a
 // redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
-import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
+import type { FitRules, FontInfo, Insert, PageInfo, SpanInfo, Strategy } from "../../api/types";
+import { STRIP_PAD_PT } from "../constants";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
+import { fontOfText, textFaceOf } from "../newText";
 import type { PageState } from "../page";
 import { differing } from "../project";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
 import { fontOf } from "../spanFonts";
-import { boxOf, cropOf, previewStyleOf } from "./geometry";
+import { boxOf, cropOf, previewStyleOf, textBoxOf, textStyleOf, textWidthPt } from "./geometry";
 import styles from "./Previews.module.css";
 
 /** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
 export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
   const { disagreement } = page;
   if (disagreement === undefined) return null;
-  return page.spans
+  const spans = page.spans
     .filter((span) => disagreement.spanIds.has(span.id))
-    .map((span) => (
-      <span
-        key={`${span.id}:${disagreement.count}`}
-        className={styles.settle}
-        aria-hidden="true"
-        data-settle=""
-        style={boxOf(span.bbox, info)}
-      />
-    ));
+    .map((span) => ({ key: span.id, box: span.bbox }));
+  const texts = (page.edits?.inserts ?? [])
+    .filter((text) => disagreement.textIds.has(text.textId))
+    .map((text) => ({ key: `text ${text.textId}`, box: textBox(page, text.edit) }));
+  return [...spans, ...texts].map(({ key, box }) => (
+    <span
+      key={`${key}:${disagreement.count}`}
+      className={styles.settle}
+      aria-hidden="true"
+      data-settle=""
+      style={boxOf(box, info)}
+    />
+  ));
+}
+
+/** Where new text is drawn, as wide as its preview's face sets it. */
+function textBox(page: PageState, insert: Insert) {
+  const face = textFaceOf(page.layout, insert);
+  const glyphs = fontOfText(page.layout, insert)?.glyphs ?? {};
+  return textBoxOf(insert, textWidthPt(insert, { face, glyphs }));
+}
+
+/**
+ * New text the page's strips don't show as it is now: drawn by the browser in the face the server will draw it in,
+ * over whatever the page has there, as it exports. Where a strip still shows an earlier version, moved or retyped
+ * since, the page's own pixels cover it until the render lands.
+ */
+export function TextPreviews({
+  page,
+  info,
+  strips,
+}: {
+  page: PageState;
+  info: PageInfo;
+  strips: readonly Strip[] | undefined;
+}) {
+  const now = page.edits?.inserts ?? [];
+  const drawn = page.drawnFrom?.inserts ?? [];
+  const drawnIds = new Set(drawn.map((text) => text.id));
+  const nowIds = new Set(now.map((text) => text.id));
+  const covered = drawn.filter(
+    (text) => !nowIds.has(text.id) && isUnderStrip(textBox(page, text.edit), { strips, info }),
+  );
+  const previewed = now.filter((text) => !drawnIds.has(text.id) && text.textId !== page.writingAgain);
+  return (
+    <>
+      {covered.map((text) => (
+        <Original key={`was ${text.id}`} box={padded(textBox(page, text.edit), info)} info={info} src={page.src} />
+      ))}
+      {previewed.map((text) => (
+        <span
+          key={text.textId}
+          className={styles.textPreview}
+          aria-hidden="true"
+          data-preview=""
+          style={textStyleOf(text.edit, info, textFaceOf(page.layout, text.edit))}
+        >
+          {text.edit.text}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** A box as far past its edges as a strip reaches, inside the page: what the server redraws round new text. */
+function padded(box: { x0: number; y0: number; x1: number; y1: number }, info: PageInfo) {
+  return {
+    x0: Math.max(0, box.x0 - STRIP_PAD_PT),
+    y0: Math.max(0, box.y0 - STRIP_PAD_PT),
+    x1: Math.min(info.width, box.x1 + STRIP_PAD_PT),
+    y1: Math.min(info.height, box.y1 + STRIP_PAD_PT),
+  };
 }
 
 /** Where a span reads other than its strip shows, the browser draws it until the server has. */
@@ -54,8 +119,8 @@ export function Previews({
     }
     // Put back: the page's own pixels are exactly right, under any strip still drawn over its row.
     if (text === span.text) {
-      return isUnderStrip(span, { strips, info }) ? (
-        <Original key={span.id} span={span} info={info} src={page.src} />
+      return isUnderStrip(span.bbox, { strips, info }) ? (
+        <Original key={span.id} box={stripBoxOf(span, info)} info={info} src={page.src} />
       ) : null;
     }
     return (
@@ -69,10 +134,19 @@ export function Previews({
   });
 }
 
-/** The original page's pixels over a span put back, where a strip of its row still shows another edit. */
-function Original({ span, info, src }: { span: SpanInfo; info: PageInfo; src: string }) {
-  // As far as the server would redraw, so the old edit's ink goes too.
-  const box = stripBoxOf(span, info);
+/**
+ * The original page's pixels over `box`, where a strip of its row still shows an edit gone since: a span put back,
+ * or new text moved. As far as the server would redraw, so the old edit's ink goes too.
+ */
+function Original({
+  box,
+  info,
+  src,
+}: {
+  box: { x0: number; y0: number; x1: number; y1: number };
+  info: PageInfo;
+  src: string;
+}) {
   return (
     <span className={styles.original} aria-hidden="true" data-original="" style={boxOf(box, info)}>
       <img src={src} alt="" decoding="async" style={cropOf(box, info)} />

@@ -47,3 +47,6 @@
 @media (pointer: coarse) {
   .wayKeys { display: none; }
 }
+/* New text's faces, listed open under its facts, and why the handwriting ones are missing if the list didn't come. */
+.faces { display: flex; flex-direction: column; gap: var(--s2); pointer-events: auto; }
+.facesFailed { white-space: normal; line-height: 1.4; }

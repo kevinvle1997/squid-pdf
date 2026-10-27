@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { commandFor, keysOf, onEscape } from "./commands";
+import { commandFor, isUndoOrRedo, keysOf, onEscape } from "./commands";
 
 const press = (key: string, held: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
   key,
@@ -27,6 +27,14 @@ describe("shortcuts", () => {
     expect(commandFor(press("y", { ctrl: true }), false)?.keys).toBe("mod+y");
     expect(commandFor(press("s"), false)).toBeUndefined();
     expect(commandFor(press("z", { meta: true, alt: true }), false)).toBeUndefined();
+  });
+
+  test("undo and redo are known by every key either goes by, and nothing else is either", () => {
+    expect(isUndoOrRedo(press("z", { meta: true }))).toBe(true);
+    expect(isUndoOrRedo(press("Z", { ctrl: true, shift: true }))).toBe(true);
+    expect(isUndoOrRedo(press("y", { ctrl: true }))).toBe(true);
+    expect(isUndoOrRedo(press("z"))).toBe(false);
+    expect(isUndoOrRedo(press("s", { meta: true }))).toBe(false);
   });
 });
 

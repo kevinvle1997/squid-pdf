@@ -18,3 +18,5 @@
   animation: settle var(--dur-settle) var(--ease-out);
 }
 @keyframes settle { from { opacity: .65; } }
+/* New text, drawn over whatever the page has there, as it exports: no paper under it. */
+.textPreview { position: absolute; white-space: pre; pointer-events: none; }

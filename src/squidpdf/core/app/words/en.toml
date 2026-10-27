@@ -103,6 +103,13 @@ changed_to = "Changed to “{text}”."
 # Put back as the document had it, from its margin note.
 put_back = "Put back “{text}”."
 redacted = "Redacted “{text}”."
+# Said to a screen reader as new text changes: put on a page, moved, or taken out, its words quoted
+# as above; set in another face, by the name the slip's list shows it by. Typed into again, it's
+# `changed_to`.
+new_text_added = "Added “{text}”."
+new_text_moved = "Moved “{text}”."
+new_text_taken_out = "Took out “{text}”."
+new_text_set_in = "Set in {font}."
 # The user's own copy of a font taken in, or removed. `{font}` is the name the font is shown by.
 your_copy_in_use = "Your copy of {font} is in use."
 your_copy_removed = "Your copy of {font} is removed."

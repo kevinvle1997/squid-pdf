@@ -1,10 +1,10 @@
 // Where things sit on a page, as CSS, and how wide text draws there. Everything inside the page's layer
 // is in the page's own points, turned into shares of its size, so it scales with the page however wide it's shown.
 import type { CSSProperties } from "react";
-import type { FitInfo, PageInfo, SpanInfo } from "../../api/types";
-import { FIELD_SPARE_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
+import type { FitInfo, Insert, PageInfo, SpanInfo } from "../../api/types";
+import { FIELD_SPARE_EM, INSERT_ASCENT_EM, INSERT_DESCENT_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
 import { familyOf } from "../faces";
-import { type LineScale, letterSpacingPt, lineWidthPt } from "../fit";
+import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
@@ -390,4 +390,38 @@ export function fieldPartOf(
     return (shownWidthPt(before, face, setAt.size) + letterSpacingPt(setAt, before)) * scale.scaleX;
   };
   return { ...span.bbox, x0: span.bbox.x0 + widthTo(start), x1: span.bbox.x0 + widthTo(end) };
+}
+
+/** The box new text is drawn in, from its baseline's start: `widthPt` across, an em above its baseline and a little below. */
+export function textBoxOf(
+  { origin: [x, y], size }: Pick<Insert, "origin" | "size">,
+  widthPt: number,
+): { x0: number; y0: number; x1: number; y1: number } {
+  return { x0: x, y0: y - size * INSERT_ASCENT_EM, x1: x + widthPt, y1: y + size * INSERT_DESCENT_EM };
+}
+
+/** How wide new text draws, in points: by its font's widths where the browser has them, else as `face` sets it here. */
+export function textWidthPt(
+  { text, size }: Pick<Insert, "text" | "size">,
+  { face, glyphs }: { face: string; glyphs: Record<string, number> },
+): number {
+  return Math.max(widthPt(text, glyphs, size), shownWidthPt(text, face, size));
+}
+
+/** New text where it's drawn, as the page will draw it: from its baseline's start, at its size and colour, in `face`. */
+export function textStyleOf(
+  insert: Pick<Insert, "origin" | "size" | "color">,
+  page: PageInfo,
+  face: string,
+): CSSProperties {
+  const box = boxOf(textBoxOf(insert, 0), page);
+  return {
+    left: box.left,
+    top: box.top,
+    height: box.height,
+    fontSize: points(insert.size, page),
+    lineHeight: points(insert.size * (INSERT_ASCENT_EM + INSERT_DESCENT_EM), page),
+    fontFamily: familyOf(face),
+    color: rgbOf(insert.color ?? [0, 0, 0]),
+  };
 }

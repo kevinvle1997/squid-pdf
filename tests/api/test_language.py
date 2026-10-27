@@ -70,6 +70,9 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(put_back, pseudo_sentence(words.sentence("page_put_back")), "a page put back")
     back_to = sentences["back_to"]
     assert_equal(back_to, pseudo_sentence(words.sentence("back_to")), "a span's words undone")
+    for key in ("new_text_added", "new_text_moved", "new_text_taken_out", "new_text_set_in"):
+        in_pseudo = pseudo_sentence(words.sentence(key))
+        assert_equal(sentences[key], in_pseudo, f"what's heard of new text, {key}")
     changed = sentences["changed_places"]
     each_form = {
         form: pseudo_sentence(each) for form, each in words.forms("changed_places").items()

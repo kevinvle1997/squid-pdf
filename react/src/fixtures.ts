@@ -9,6 +9,7 @@ import type {
   FitInfo,
   FitRules,
   FontInfo,
+  FontList,
   Insert,
   PageInfo,
   ProblemInfo,
@@ -51,6 +52,10 @@ export const SENTENCES: Sentences = {
   changed_to: "Changed to \u201c{text}\u201d.",
   put_back: "Put back \u201c{text}\u201d.",
   redacted: "Redacted \u201c{text}\u201d.",
+  new_text_added: "Added \u201c{text}\u201d.",
+  new_text_moved: "Moved \u201c{text}\u201d.",
+  new_text_taken_out: "Took out \u201c{text}\u201d.",
+  new_text_set_in: "Set in {font}.",
   your_copy_in_use: "Your copy of {font} is in use.",
   your_copy_removed: "Your copy of {font} is removed.",
   warning_muted: "Edits in {font} won't warn again.",
@@ -132,6 +137,10 @@ export const PSEUDO_SENTENCES: Sentences = {
   changed_to: shouted(SENTENCES.changed_to),
   put_back: shouted(SENTENCES.put_back),
   redacted: shouted(SENTENCES.redacted),
+  new_text_added: shouted(SENTENCES.new_text_added),
+  new_text_moved: shouted(SENTENCES.new_text_moved),
+  new_text_taken_out: shouted(SENTENCES.new_text_taken_out),
+  new_text_set_in: shouted(SENTENCES.new_text_set_in),
   your_copy_in_use: shouted(SENTENCES.your_copy_in_use),
   your_copy_removed: shouted(SENTENCES.your_copy_removed),
   warning_muted: shouted(SENTENCES.warning_muted),
@@ -304,4 +313,24 @@ export function aRedaction(fields: Partial<RedactionInfo> = {}): RedactionInfo {
 /** What opening the file found, in the server's words, its type its sentence's key as the server sends it. */
 export function aDocumentNotice(detail: string, type = "notice"): DocumentNoticeInfo {
   return { code: type, params: {}, type, detail };
+}
+
+/** The server's font list, cut to a face of each kind: the handwriting faces we ship, and a plain one. */
+export function aFontList(): FontList {
+  const face = (name: string, style: "regular" | "bold" = "regular") => ({ name, style, glyphs: {} });
+  const family = (name: string, category: "sans" | "handwriting", faces: FontList["families"][number]["faces"]) => ({
+    family: name,
+    category,
+    license: "OFL-1.1",
+    same_widths_as: [],
+    faces,
+  });
+  return {
+    build: "build",
+    families: [
+      family("Liberation Sans", "sans", [face("Liberation Sans Regular")]),
+      family("Caveat", "handwriting", [face("Caveat Regular"), face("Caveat Bold", "bold")]),
+      family("Great Vibes", "handwriting", [face("Great Vibes Regular")]),
+    ],
+  };
 }

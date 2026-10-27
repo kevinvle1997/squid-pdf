@@ -8,7 +8,8 @@ import { drawingOf } from "./substitutes";
 /** How an edit comes out, or the span untouched: the four fields the server sends of a span and of an edit's fit alike. */
 export type Verdict = Pick<SpanInfo, "fidelity" | "why" | "substitute" | "same_widths">;
 
-const EXACT: Verdict = { fidelity: "exact", why: null, substitute: null, same_widths: false };
+/** An edit drawn in the font asked for, set as the text around it: no note. */
+export const EXACT: Verdict = { fidelity: "exact", why: null, substitute: null, same_widths: false };
 
 /**
  * The one verdict the note, the chip's short warning and the bar's count say: untouched, the span's own;

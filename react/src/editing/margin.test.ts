@@ -14,7 +14,12 @@ const changeAt = (id: string, y0: number): SpanReading => ({
 test("a note sits level with its line, and one that would overlap the note above moves down", () => {
   // Given out of order: the places come back in the order given.
   const changes = [changeAt("low", 300), changeAt("top", 100), changeAt("close", 104)];
-  expect(notePlaces(changes, 18)).toEqual([305, 105, 123]);
+  expect(
+    notePlaces(
+      changes.map(({ span }) => span.bbox),
+      18,
+    ),
+  ).toEqual([305, 105, 123]);
 });
 
 describe("what a note shows of the original", () => {

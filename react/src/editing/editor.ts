@@ -10,16 +10,19 @@ import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
 import { reattach } from "./fonts";
 import {
   EMPTY_HISTORY,
+  type Entry,
   entriesOf,
   type History,
   type HistoryAction,
   historyReducer,
   type Step,
   spanOf,
+  textIdsOf,
   touching,
 } from "./history";
 import type { FailedImage } from "./images";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
+import { keptTexts, restingVerdictOf, textSpanOf } from "./newText";
 import {
   heardIn,
   NO_NOTICES,
@@ -34,7 +37,8 @@ import {
 import { leftOutSentence, putBackSentence } from "./pageDeletion";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, type SpanReading, textIn, UNEDITED } from "./project";
-import { type Drawn, landedFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
+import { type Drawn, landedFitOf, landedInsertFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
+import { NO_SHIPPED_FACES, type ShippedFaces } from "./shippedFaces";
 import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
@@ -60,8 +64,13 @@ export interface FocusPage {
   readonly block: ScrollLogicalPosition; // "nearest" where the control replaced the one pressed; "start" for a page gone to
 }
 
+/** New text whose mark takes focus as soon as it's drawn: back from its field, or moved. */
+export interface FocusText {
+  readonly textId: number;
+}
+
 /** Where focus is sent, to take as it's drawn. */
-export type FocusTo = FocusSpan | FocusPage;
+export type FocusTo = FocusSpan | FocusPage | FocusText;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
@@ -134,6 +143,8 @@ export interface EditorState {
   readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
   readonly find: FindState;
   readonly shortcutsOpen: boolean; // the list of the editor's keys, from the bar
+  readonly shippedFaces: ShippedFaces; // the handwriting faces new text offers, once the font list comes
+  readonly nudged: number | null; // the version of new text the last nudge made, which the next nudge folds into
 }
 
 export interface Editor {
@@ -195,6 +206,8 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     images: new Map(),
     find: FIND_CLOSED,
     shortcutsOpen: false,
+    shippedFaces: NO_SHIPPED_FACES,
+    nudged: null,
   });
   const reopener = new Reopener(file, opened, (doc) => reopened(editor, doc));
   const near = new Set<number>();
@@ -243,7 +256,7 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
   const { notices, drawn: before, layout, doc, disagreements, reading } = store.get();
   const heard = newlyHeard(noticeLines(notices, before, reading), noticeLines(notices, drawn, reading));
-  const after = disagreementsAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, disagreements });
+  const after = disagreementsAfter(before, drawn, { layout, rules: doc.fit, disagreements });
   store.set({ drawn, disagreements: after, ...(heard !== "" && { announcement: announcing(heard) }) });
 }
 
@@ -331,6 +344,11 @@ function stepped(
     pageStepped(editor, action, { page: pageDelete.page, on });
     return;
   }
+  const newText = step?.find(({ edit }) => edit.kind === "insert");
+  if (step !== undefined && newText !== undefined) {
+    textStepped(editor, action, { step, entry: newText, key });
+    return;
+  }
   const spanId = step?.map((entry) => spanOf(entry.edit)).find((id) => id !== undefined);
   if (step === undefined || spanId === undefined) {
     change(editor, action);
@@ -341,6 +359,26 @@ function stepped(
     announcement: announcing(fill(doc.sentences[key], { text: span === undefined ? "" : textIn(reading, span) })),
     scrollTo: scrollingTo(spanId),
   }));
+}
+
+/** Undo or redo of new text: said as it reads now, or that it's out. */
+function textStepped(
+  editor: Editor,
+  action: HistoryAction,
+  { step, entry, key }: { step: Step; entry: Entry; key: "back_to" | "changed_to" },
+): void {
+  const { history, reading: before } = editor.store.get();
+  const textId = textIdsOf([...entriesOf(history), ...step]).get(entry.id);
+  // Taken out, it's said by the words it had, not an emptied version's none.
+  const had = keptTexts(before).find((text) => text.textId === textId)?.edit.text ?? "";
+  change(editor, action, ({ reading, doc }) => {
+    const now = keptTexts(reading).find((text) => text.textId === textId);
+    const said =
+      now === undefined
+        ? fill(doc.sentences.new_text_taken_out, { text: had })
+        : fill(doc.sentences[key], { text: now.edit.text });
+    return { announcement: announcing(said) };
+  });
 }
 
 /**
@@ -381,12 +419,15 @@ function keptChanges(reading: Reading): SpanReading[] {
   return [...reading.spans.values()].filter(({ span }) => !reading.deleted.has(span.page));
 }
 
-/** How many spans an edit changes on the pages the download keeps: until one does, the bar forecasts, a page's delete or not. */
+/**
+ * How many spans an edit changes, and pieces of new text, on the pages the download keeps: until one does, the bar
+ * forecasts, a page's delete or not.
+ */
 export function changedWordsCount(state: EditorState): number {
-  return keptChanges(state.reading).length;
+  return keptChanges(state.reading).length + keptTexts(state.reading).length;
 }
 
-/** How many changes the bar counts: each span an edit changes, replaced or redacted, and each page left out, but none on it. */
+/** How many changes the bar counts: each span an edit changes, replaced or redacted, each piece of new text, and each page left out, but none on it. */
 export function changedCount(state: EditorState): number {
   return changedWordsCount(state) + state.reading.deleted.size;
 }
@@ -444,15 +485,21 @@ export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "
   return fillCounted(state.doc.sentences.changes_too_long, count);
 }
 
-/** The changed spans whose edit won't match: in a similar font, or set apart from the text around them. */
+/** The changed spans whose edit won't match, in a similar font or set apart from the text around them, then the new text that won't. */
 export function changedMismatches({
   reading,
   drawn,
   layout,
 }: Pick<EditorState, "reading" | "drawn" | "layout">): MismatchPlace[] {
-  return keptChanges(reading).flatMap((spanReading) => {
+  const spans = keptChanges(reading).flatMap((spanReading) => {
     const { span } = spanReading;
     const fit = landedFitOf(drawn, spanReading);
     return placeOf(span, { changed: true, reading: spanReading, fit, font: fontOf(layout.fonts, span) }) ?? [];
   });
+  const texts = keptTexts(reading).flatMap((text) => {
+    const verdict = restingVerdictOf({ layout, drawn }, text);
+    const missing = landedInsertFitOf(drawn, text)?.missing ?? [];
+    return verdict.fidelity === "exact" ? [] : [{ span: textSpanOf(layout, text.edit), verdict, missing }];
+  });
+  return [...spans, ...texts];
 }

@@ -101,9 +101,9 @@ describe("a strip the server drew", () => {
 
   test("covers a span when it crosses the span's row, and reaches as far across it as it does down", () => {
     const span = spanAt(100, 112);
-    expect(isUnderStrip(span, { strips: [{ y: 98, y1: 114 }], info: A4 })).toBe(true);
-    expect(isUnderStrip(span, { strips: [{ y: 298, y1: 314 }], info: A4 })).toBe(false);
-    expect(isUnderStrip(span, { strips: undefined, info: A4 })).toBe(false);
+    expect(isUnderStrip(span.bbox, { strips: [{ y: 98, y1: 114 }], info: A4 })).toBe(true);
+    expect(isUnderStrip(span.bbox, { strips: [{ y: 298, y1: 314 }], info: A4 })).toBe(false);
+    expect(isUnderStrip(span.bbox, { strips: undefined, info: A4 })).toBe(false);
     expect(stripBoxOf(span, A4)).toEqual({ x0: 70, y0: 98, x1: 102, y1: 114 });
     expect(stripBoxOf(aSpan({ id: "wide", bbox: { x0: 1, y0: 100, x1: A4.width, y1: 112 } }), A4)).toMatchObject({
       x0: 0,

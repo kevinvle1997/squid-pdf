@@ -24,7 +24,7 @@ import { editableValueIn } from "../formattedValues";
 import { textIn } from "../project";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
-import { enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "../typing";
+import { enter, fieldFocused, finish, spanDraftOf, stepWayOut, troublesIn, typeInto } from "../typing";
 import { openValueEditor } from "../valueEditor";
 import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
@@ -38,7 +38,7 @@ import { boxOf, fieldPartOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle }
  */
 export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
-  const text = useEditorState((state) => state.draft?.text ?? "");
+  const text = useEditorState((state) => spanDraftOf(state)?.text ?? "");
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const start = useEditorState((state) => textIn(state.reading, span));
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
@@ -48,7 +48,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const glyphs = font?.glyphs ?? {};
   // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
   const rules = useEditorState((state) => state.doc.fit);
-  const asked = useEditorState((state) => state.draft?.strategy);
+  const asked = useEditorState((state) => spanDraftOf(state)?.strategy);
   const setting = settingOf(span, { font, text, asked, rules });
   // Left long, a line past its room shows where the room ends: what to shorten it to.
   const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
@@ -56,17 +56,17 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // What's typed comes to, worked out once a change: its troubles, a line each, the server's then the fit's own,
   // and its verdict.
   const { trouble, fidelity, why, substitute, sameWidths } = useEditorState((state) => {
-    const { sentences, verdict } = troublesIn(state, state.draft?.text ?? "");
+    const { sentences, verdict } = troublesIn(state, spanDraftOf(state)?.text ?? "");
     const comesTo = verdict ?? span;
     const { fidelity, why, substitute, same_widths: sameWidths } = comesTo;
     return { trouble: sentences.join("\n"), fidelity, why, substitute, sameWidths };
   }, shallowEqual);
   const verdict = { fidelity, why, substitute, same_widths: sameWidths };
   // A date or an amount in what's typed, the one the press that opened the field landed on, else the first.
-  const press = useEditorState((state) => state.draft?.press ?? null);
+  const press = useEditorState((state) => spanDraftOf(state)?.press ?? null);
   const dates = useEditorState((state) => state.dates);
   // Held once its editor is opened or the field typed in, so the dates read later never swap it from under the user.
-  const held = useEditorState((state) => state.draft?.value ?? null);
+  const held = useEditorState((state) => spanDraftOf(state)?.value ?? null);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
   const value = editableValueIn(text, { dates, at, held });
   // Sent back from the value's editor in the slip, the field takes focus again.
@@ -121,7 +121,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     if (placed.current) return;
     placed.current = true;
     const input = event.currentTarget;
-    const press = editor.store.get().draft?.press;
+    const press = spanDraftOf(editor.store.get())?.press;
     if (press == null) input.select();
     else input.setSelectionRange(...selectionAt(start, press, { glyphs, span }));
     fieldFocused(editor);

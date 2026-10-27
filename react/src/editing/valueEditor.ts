@@ -5,11 +5,11 @@ import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
 import type { Editor, EditorState } from "./editor";
 import { type Fit, fitOf, troublesAddedOf } from "./fit";
 import { type EditableValue, heldOf } from "./formattedValues";
-import { draftSpanOf, typedState } from "./typing";
+import { draftSpanOf, spanDraftOf, typedState } from "./typing";
 
 /** Open the editor for `value` in the slip, Alt+Down in the field: false while nothing is typed into. */
 export function openValueEditor(editor: Editor, value: EditableValue | undefined): boolean {
-  const { draft } = editor.store.get();
+  const draft = spanDraftOf(editor.store.get());
   if (draft === null || value === undefined) return false;
   editor.store.set({ draft: { ...draft, valueEditorOpen: true, value: heldOf(value) } });
   return true;
@@ -17,7 +17,7 @@ export function openValueEditor(editor: Editor, value: EditableValue | undefined
 
 /** Close the value's editor, keeping what's typed: focus goes back to the field. */
 export function closeValueEditor(editor: Editor): void {
-  const { draft } = editor.store.get();
+  const draft = spanDraftOf(editor.store.get());
   if (draft === null || !draft.valueEditorOpen) return;
   editor.store.set({ draft: { ...draft, valueEditorOpen: false }, focusTo: { spanId: draft.spanId } });
 }
@@ -38,7 +38,7 @@ export function chooseAmount(
 
 function writeValue(editor: Editor, write: (text: string) => string, { returnFocus = true } = {}): void {
   const state = editor.store.get();
-  const { draft } = state;
+  const draft = spanDraftOf(state);
   // Closed already, by Escape: what it held then is left out.
   if (draft === null || !draft.valueEditorOpen) return;
   const typed = typedState({ ...state, draft }, write(draft.text));

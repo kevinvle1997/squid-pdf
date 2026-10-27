@@ -20,6 +20,8 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "Stop editing, and keep the line as it was", keys: ["Esc"] },
   { what: "Choose how a long line fits", keys: ["↑", "↓"] },
   { what: "Open Date or Amount, for a date or an amount in the line", keys: [`${ALT}↓`] },
+  { what: "Add text on the line below", keys: [`${COMMAND}Enter`] },
+  { what: "Move text you added, a point or ten", keys: ["←↑↓→", "Shift ←↑↓→"] },
   { what: "Undo, or redo", keys: [`${COMMAND}Z`, `${COMMAND}Shift Z`] },
   { what: "Redact the line", keys: [`${COMMAND}Delete`] },
   { what: "Export", keys: [`${COMMAND}S`] },
