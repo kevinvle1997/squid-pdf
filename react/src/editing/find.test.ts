@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
-import type { FitInfo, Render } from "../api/types";
-import { aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs } from "../fixtures";
+import type { FitInfo, Render, Sentences } from "../api/types";
+import { aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
 import { change, createEditor, type Editor, type EditorState, undo } from "./editor";
 import {
@@ -46,7 +46,12 @@ const SPANS = [
   aSpan({ id: "redacted", text: `${DATE} secret`, page: 1 }),
   aSpan({ id: "other", text: "nothing to find", page: 1 }),
 ];
-const DOC = aDoc({ spans: SPANS, fonts: [aFont("Times-Roman", { glyphs }), aFont("Named", { glyphs })] });
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
+const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
+  spans: SPANS,
+  fonts: [aFont("Times-Roman", { glyphs }), aFont("Named", { glyphs })],
+});
 
 let editor: Editor;
 
@@ -81,7 +86,7 @@ describe("find", () => {
 
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(found()).toEqual([[0, ["first", "similar"]]]);
-    expect(editor.store.get().announcement.text).toBe("2 places, 1 of them will look different");
+    expect(editor.store.get().announcement.text).toBe("2 PLACES, 1 OF THEM WILL LOOK DIFFERENT");
   });
 
   test("counts a place as looking different for its font, and for the words it would read", () => {
@@ -98,20 +103,32 @@ describe("find", () => {
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
   });
 
-  test("says the count in whole words", () => {
-    expect(countSentence({ places: 0, mismatches: 0 })).toBe("Nothing matches");
-    expect(countSentence({ places: 1, mismatches: 0 })).toBe("1 place will look identical");
-    expect(countSentence({ places: 14, mismatches: 3 })).toBe("14 places, 3 of them will look different");
-    expect(countSentence({ places: 2, mismatches: 2 })).toBe("2 places will look different");
+  test("says the count in the server's words, in the form each count takes", () => {
+    const sentence = (places: number, mismatches: number) => countSentence({ places, mismatches }, PSEUDO_SENTENCES);
+    expect(sentence(0, 0)).toBe("NOTHING MATCHES");
+    expect(sentence(1, 0)).toBe("1 PLACE WILL LOOK IDENTICAL");
+    expect(sentence(14, 3)).toBe("14 PLACES, 3 OF THEM WILL LOOK DIFFERENT");
+    expect(sentence(2, 2)).toBe("2 PLACES WILL LOOK DIFFERENT");
   });
 
   test("keeps apart the part of the count that warns, for --warn, and nothing else", () => {
-    expect(countShown({ places: 14, mismatches: 3 })).toEqual({
-      plain: "14 places, ",
-      warned: "3 of them will look different",
-    });
-    expect(countShown({ places: 2, mismatches: 2 })).toEqual({ plain: "", warned: "2 places will look different" });
-    expect(countShown({ places: 1, mismatches: 0 })).toEqual({ plain: "1 place will look identical", warned: "" });
+    const shown = (places: number, mismatches: number) => countShown({ places, mismatches }, PSEUDO_SENTENCES);
+    expect(shown(14, 3)).toEqual({ plain: "14 PLACES, ", warned: "3 OF THEM WILL LOOK DIFFERENT" });
+    expect(shown(2, 2)).toEqual({ plain: "", warned: "2 PLACES WILL LOOK DIFFERENT" });
+    expect(shown(1, 0)).toEqual({ plain: "1 PLACE WILL LOOK IDENTICAL", warned: "" });
+  });
+
+  test("a reading persisted before the count's sentences were sent shows no count, and never half of one", () => {
+    const lacking = (...keys: (keyof Sentences)[]) => {
+      const stale = structuredClone(PSEUDO_SENTENCES);
+      for (const key of keys) Reflect.deleteProperty(stale, key);
+      return stale;
+    };
+    const nothing = { plain: "", warned: "" };
+    expect(countShown({ places: 14, mismatches: 3 }, lacking("find_some_different"))).toEqual(nothing);
+    expect(countShown({ places: 14, mismatches: 3 }, lacking("find_places"))).toEqual(nothing);
+    expect(countShown({ places: 0, mismatches: 0 }, lacking("find_nothing"))).toEqual(nothing);
+    expect(countShown({ places: 2, mismatches: 2 }, lacking("find_different"))).toEqual(nothing);
   });
 
   test("Change all is one step: every place changes together, and one undo puts them all back", () => {
@@ -124,11 +141,19 @@ describe("find", () => {
     expect(reading.spans.get("similar")?.text).toBe("14 June too");
     expect(find.changed).toBe(2);
     expect(found()).toEqual([]);
-    expect(announcement.text).toBe("Changed 2 places.");
+    expect(announcement.text).toBe("CHANGED 2 PLACES.");
 
     undo(editor);
     expect(editor.store.get().reading.spans.get("first")).toBeUndefined();
     expect(editor.store.get().reading.spans.get("similar")).toBeUndefined();
+  });
+
+  test("Change all of one place says so in the form one takes", () => {
+    typeQuery(editor, `was ${DATE}`);
+    typeReplacement(editor, "was 14 June");
+    changeAll(editor);
+    expect(editor.store.get().find.changed).toBe(1);
+    expect(editor.store.get().announcement.text).toBe("CHANGED 1 PLACE.");
   });
 
   test("Change all while typing keeps the words, as their own step, found as typed, all in one update", () => {
@@ -206,7 +231,7 @@ describe("find", () => {
     setMatchCase(editor, true);
     expect(editor.store.get().find.matchCase).toBe(true);
     expect(found()).toEqual([]);
-    expect(editor.store.get().announcement.text).toBe("Nothing matches");
+    expect(editor.store.get().announcement.text).toBe("NOTHING MATCHES");
     setMatchCase(editor, false);
     setWholeWords(editor, true);
     typeQuery(editor, "14 Mar");

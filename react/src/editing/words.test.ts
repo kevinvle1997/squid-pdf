@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { SENTENCES } from "../fixtures";
-import { counted, fill, shownAs } from "./words";
+import { counted, fill, fillCounted, shownAs } from "./words";
 
 describe("filling the server's sentences", () => {
   test("missing letters are joined with 'or', as the server says them", () => {
@@ -60,6 +60,15 @@ describe("filling the server's sentences", () => {
 });
 
 describe("the forms a sentence with a count takes", () => {
+  test("the form the count takes is filled, the count written as numbers are", () => {
+    expect(fillCounted(SENTENCES.changed_places, 1)).toBe("Changed 1 place.");
+    expect(fillCounted(SENTENCES.changed_places, 1234)).toBe("Changed 1,234 places.");
+  });
+
+  test("a sentence a reading persisted by an earlier build lacks is nothing, whatever the count", () => {
+    expect(fillCounted(undefined, 3)).toBe("");
+  });
+
   test("English counts with the two the server sends, one and other, so every count has its form", () => {
     const named = new Intl.PluralRules("en").resolvedOptions().pluralCategories;
     expect(named.toSorted()).toEqual(["one", "other"]);
