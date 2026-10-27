@@ -183,7 +183,8 @@ function Day({
     <CalendarCell
       ref={cell}
       date={date}
-      className={reason === undefined ? styles.day : styles.markedDay}
+      className={styles.day}
+      data-warned={reason === undefined ? undefined : ""}
       onHoverStart={() => reason !== undefined && onShow(true)}
       onHoverEnd={() => onShow(false)}
     >

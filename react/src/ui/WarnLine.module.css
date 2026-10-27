@@ -1,0 +1,11 @@
+/* The warning's dashed line, under whatever composes it that carries `data-warned`: a dash, never colour alone.
+   Where it runs is the composer's to say, through --warn-line-inset and --warn-line-bottom. */
+.warnLine[data-warned]::before {
+  content: ""; position: absolute;
+  inset-inline: var(--warn-line-inset, 0); bottom: var(--warn-line-bottom, -6px); height: 2px;
+  background: repeating-linear-gradient(90deg, var(--warn-line, var(--mark-warn)) 0 3px, transparent 3px 5px);
+}
+/* A gradient is dropped in this mode: a dashed border keeps the warning's shape. */
+@media (forced-colors: active) {
+  .warnLine[data-warned]::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
+}

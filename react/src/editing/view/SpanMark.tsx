@@ -103,6 +103,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       ref={takeFocus}
       className={className}
       data-span={span.id}
+      data-warned={look.trouble ? "" : undefined}
       style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}

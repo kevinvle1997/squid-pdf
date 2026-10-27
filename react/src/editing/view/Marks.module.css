@@ -4,10 +4,9 @@
 /* The place Enter went to: ringed in the pencil, so it stands out from the rest found. */
 .foundAt { outline: 2px solid var(--mark-change); outline-offset: 1px; border-radius: var(--r-1); }
 /* Where an edit won't match, shown from the bar's list: the warning's tint, and its dashed line clear of a change's. */
-.shown { position: absolute; background: var(--mark-warn-soft); mix-blend-mode: multiply; pointer-events: none; }
-.shown::after {
-  content: ""; position: absolute; inset-inline: 0; bottom: -6px; height: 2px;
-  background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
+.shown {
+  composes: warnLine from "../../ui/WarnLine.module.css";
+  position: absolute; background: var(--mark-warn-soft); mix-blend-mode: multiply; pointer-events: none;
 }
 /* The tint goes in high contrast: a dashed box keeps the words found apart from a change. */
 @media (forced-colors: active) {
@@ -16,5 +15,4 @@
   .found::after { background: Highlight; }
   /* A gradient is dropped too: a dashed border keeps the warning's shape. */
   .shown { outline: 1px dashed CanvasText; }
-  .shown::after { height: 0; background: none; border-top: 2px dashed CanvasText; }
 }

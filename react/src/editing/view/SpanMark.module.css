@@ -31,11 +31,7 @@
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* It went in, but not quite as typed: the server said why. The change keeps its solid line, and the
    warning's dashed one runs under it, clear of the focus ring, so each shows by its shape, never by colour alone. */
-.trouble::before {
-  content: ""; position: absolute; inset-inline: 0; bottom: -6px;
-  height: 2px;
-  background: repeating-linear-gradient(90deg, var(--mark-warn) 0 3px, transparent 3px 5px);
-}
+.trouble { composes: warnLine from "../../ui/WarnLine.module.css"; }
 /* Redacted: white where the words were, as it exports, boxed in the pencil so it reads as taken out, not as
    blank paper; and the change's own line. The wash stays what's pointed at or found, never a redaction at rest. */
 .redacted { background: var(--sheet); box-shadow: inset 0 0 0 1.5px var(--mark-change); }
@@ -47,7 +43,7 @@
 @media (forced-colors: active) {
   .span::after { background: CanvasText; }
   /* A gradient is dropped in this mode: a dashed border keeps the warning's shape. */
-  .formField::after, .trouble::before { height: 0; background: none; border-top: 2px dashed CanvasText; }
+  .formField::after { height: 0; background: none; border-top: 2px dashed CanvasText; }
   /* A change's line is solid, over a form field's too, as on the page. */
   .changed::after, .redacted::after { height: 2px; border-top: 0; background: Highlight; }
   /* The tint goes in this mode: a redacted span keeps a box, so it still reads as more than a change. */
