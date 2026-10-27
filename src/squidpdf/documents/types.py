@@ -115,6 +115,7 @@ class AnalysisFacts(TypedDict):
 
     build: str
     active_content_dropped: bool  # the original had what acts on its own taken out
+    signed: bool  # the original holds a signature, which any download from here breaks
     pages: list[PageInfo]
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
@@ -162,6 +163,7 @@ class Sentences(TypedDict):
     page_put_back: str  # a deleted page back in the download
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
+    edit_breaks_signature: str  # said as the first edit of a signed document starts
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]
@@ -187,6 +189,7 @@ class Document(TypedDict):
     pages: list[PageInfo]
     spans: list[SpanInfo]
     fonts: list[FontInfo]
+    signed: bool  # the original holds a signature: the first edit says it breaks it
 
     id: str
     expires_at: str

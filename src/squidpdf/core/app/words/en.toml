@@ -139,6 +139,10 @@ not_saved = "Couldn't save {path}: {why}."
 # A notice on an upload that worked, but may not be what the user expected.
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
 active_content_dropped = "This PDF had scripts, attached files or links that open other files. They're taken out, so the file you download has none."
+# The file is signed, and any download from here is a new file.
+signed_file = "This PDF is signed. Any change breaks the signature, and so does downloading it from here: a PDF reader will say the file changed after it was signed."
+# Beside the field as the first edit of a signed file starts: what this edit does to the signature.
+edit_breaks_signature = "This PDF is signed, so this change breaks its signature."
 
 # Not sentences: what joins a list's items, and what joins several messages in one line.
 # A list whose placeholder has no join_<its name> here is joined as items.

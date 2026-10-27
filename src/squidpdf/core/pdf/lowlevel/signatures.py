@@ -11,6 +11,8 @@ from squidpdf.core.pdf.lowlevel.objects import root_of
 
 # What a signed file's catalog keeps only for its signatures, so it goes with them.
 _SIGNATURE_CHECKS = ("Perms", "DSS")
+# The permissions (Perms) that are signatures: one certifying the file, one granting rights.
+_SIGNING_PERMS = ("DocMDP", "UR3")
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -25,6 +27,14 @@ class Signatures:
         root = root_of(self.doc)
         kept = [mu.pdf_dict_gets(root, key) for key in _SIGNATURE_CHECKS]
         return bool(self._signed_fields(root)) or not all(map(mu.pdf_is_null, kept))
+
+    def holds_signature(self) -> bool:
+        """Whether a form field's value, or one of the permissions (Perms), is a signature."""
+        mu = pymupdf.mupdf
+        root = root_of(self.doc)
+        perms = mu.pdf_dict_gets(root, "Perms")
+        signing = [mu.pdf_dict_gets(perms, key) for key in _SIGNING_PERMS]
+        return bool(self._signed_fields(root)) or any(map(mu.pdf_is_dict, signing))
 
     def drop(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""

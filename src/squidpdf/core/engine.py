@@ -99,6 +99,10 @@ class Engine:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.driver.drop_active_content()
 
+    def holds_signature(self) -> bool:
+        """Whether the document holds a signature, which any change to the file breaks."""
+        return self.driver.holds_signature()
+
     def pages(self) -> list[Page]:
         """Each page's size, unrotated like the span boxes, and the turn it asks for."""
         return self.driver.pages()

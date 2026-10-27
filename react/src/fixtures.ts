@@ -43,6 +43,7 @@ export const SENTENCES: Sentences = {
   page_put_back: "Page {page} is back in the download",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",
+  edit_breaks_signature: "This PDF is signed, so this change breaks its signature.",
   options: {
     shrink: { label: "Make it slightly smaller", detail: "Reduces the type size just enough to fit." },
     condense: {
@@ -118,6 +119,7 @@ export function aDoc(fields: Partial<Document> = {}): Document {
     pages: Array.from({ length: pageCount }, () => A4),
     spans,
     fonts: [],
+    signed: false,
     fit: RULES,
     sentences: SENTENCES,
     notices: [],

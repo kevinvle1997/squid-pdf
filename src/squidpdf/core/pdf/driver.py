@@ -206,6 +206,15 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def holds_signature(self) -> bool:
+        """Whether the document holds a signature, which any change to the file breaks.
+
+        A signed field's value is one, a widget the form doesn't list included, and so is a
+        certifying (DocMDP) or rights (UR3) entry of its permissions (Perms) that's a signature.
+        What checks one (DSS) is not, nor are permissions naming none.
+        """
+        ...
+
     def is_signed(self) -> bool:
         """Whether the document holds a signature, or anything `drop_signatures` deletes."""
         ...

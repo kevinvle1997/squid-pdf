@@ -508,6 +508,10 @@ class _MuPDFDriver:
         """Whether the document holds a signature, or anything `drop_signatures` deletes."""
         return self.file.signatures.is_signed()
 
+    def holds_signature(self) -> bool:
+        """Whether a form field or the file's permissions hold a signature."""
+        return self.file.signatures.holds_signature()
+
     def drop_signatures(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
         self.file.signatures.drop()
