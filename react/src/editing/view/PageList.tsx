@@ -1,4 +1,5 @@
 import { Link } from "react-aria-components";
+import { isShortcutPress, passShortcut } from "../commands";
 import { goToPage } from "../pageList";
 import { shownNumberOf } from "../project";
 import { useEditor, useEditorState } from "./context";
@@ -41,7 +42,11 @@ function Tick({ page, shownNumber }: { page: number; shownNumber: number }) {
       aria-label={`Page ${shownNumber}`}
       aria-current={current ? "page" : undefined}
       data-page={page}
-      onPress={() => goToPage(editor, page)}
+      // Cmd+Enter goes on to the window's shortcuts: on a page with no text, it opens new text there.
+      onPressStart={passShortcut}
+      onPress={(event) => {
+        if (!isShortcutPress(event)) goToPage(editor, page);
+      }}
     />
   );
 }

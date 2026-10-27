@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { commandFor, isUndoOrRedo, keysOf, onEscape } from "./commands";
+import { commandFor, isShortcutPress, isUndoOrRedo, keysOf, onEscape, passShortcut } from "./commands";
 
 const press = (key: string, held: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
   key,
@@ -50,5 +50,26 @@ describe("Escape in a control", () => {
     onEscape(run)(save);
     expect(run).toHaveBeenCalledOnce();
     expect(save.continuePropagation).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a shortcut pressed on a control", () => {
+  test("goes on to the window when Cmd or Ctrl is held from the keyboard, and only then", () => {
+    const pressed = (fields: { pointerType: string; metaKey?: boolean; ctrlKey?: boolean }) => ({
+      metaKey: false,
+      ctrlKey: false,
+      ...fields,
+      continuePropagation: vi.fn(),
+    });
+    const modEnter = pressed({ pointerType: "keyboard", ctrlKey: true });
+    passShortcut(modEnter);
+    expect(isShortcutPress(modEnter)).toBe(true);
+    expect(modEnter.continuePropagation).toHaveBeenCalledOnce();
+    const enter = pressed({ pointerType: "keyboard" });
+    passShortcut(enter);
+    expect(isShortcutPress(enter)).toBe(false);
+    expect(enter.continuePropagation).not.toHaveBeenCalled();
+    // A click with Cmd held is the control's own.
+    expect(isShortcutPress(pressed({ pointerType: "mouse", metaKey: true }))).toBe(false);
   });
 });

@@ -1374,6 +1374,23 @@ describe("new text", () => {
   });
 });
 
+describe("new text on a page with no text", () => {
+  test("Ctrl+Enter on its tick, or on its delete button, opens new text there and deletes nothing", async () => {
+    const screen = await openEditor({ doc: { ...DOC, pages: [A4, A4] } });
+    screen.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Page 2" }).element().focus();
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    const field = screen.getByRole("textbox", { name: "New text" });
+    await expect.element(field).toHaveFocus();
+
+    // Put away, focus goes to the page's own control: its delete button, which opens it the same way.
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("button", { name: "Delete page 2", exact: true })).toHaveFocus();
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    await expect.element(field).toHaveFocus();
+    expect(screen.getByRole("main").getByText("This page is left out of the download").query()).toBeNull();
+  });
+});
+
 describe("new text in a face we ship", () => {
   test("a signature whose face lacks a letter is in a similar font as it's typed, and the bar counts it so", async () => {
     const screen = await openEditor({ doc: DOC });
