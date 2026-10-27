@@ -144,6 +144,13 @@ class FitRules(TypedDict):
     shrink_floor: float
 
 
+class CountedSentence(TypedDict):
+    """A sentence said with a count, a form for each plural category: the browser picks one."""
+
+    one: str
+    other: str
+
+
 class Sentences(TypedDict):
     """The sentences the browser says about the document, unfilled, in the reader's language."""
 
@@ -164,6 +171,25 @@ class Sentences(TypedDict):
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
     edit_breaks_signature: str  # said as the first edit of a signed document starts
+    # Said to a screen reader as a span's words change, filled with its words now.
+    back_to: str  # undone
+    changed_to: str  # typed and kept, or done again
+    put_back: str  # put back as the document had it, from its margin note
+    redacted: str
+    your_copy_in_use: str  # the user's copy of a font, by its shown name, taken in
+    your_copy_removed: str
+    warning_muted: str  # a font's warning muted, by its shown name
+    warning_unmuted: str
+    downloaded: str  # a file the browser downloaded, by its name
+    # Find's count, and what Change all did.
+    find_nothing: str
+    find_identical: CountedSentence
+    find_different: CountedSentence
+    # When some places will look different: then find_some_different.
+    find_places: CountedSentence
+    find_some_different: CountedSentence  # shown as a warning
+    changed_places: CountedSentence
+    join_parts: str  # what joins sentences said at once
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]

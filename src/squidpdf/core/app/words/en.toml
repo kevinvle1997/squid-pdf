@@ -90,6 +90,36 @@ page_left_out = "This page is left out of the download"
 # A deleted page put back, or its delete undone: announced. `{page}` is its number among the pages
 # shown, now it's back.
 page_put_back = "Page {page} is back in the download"
+# Said to a screen reader as a span changes: its words now, quoted as `quoted` quotes a character.
+# Undone, and done again or typed and kept.
+back_to = "Back to “{text}”."
+changed_to = "Changed to “{text}”."
+# Put back as the document had it, from its margin note.
+put_back = "Put back “{text}”."
+redacted = "Redacted “{text}”."
+# The user's own copy of a font taken in, or removed. `{font}` is the name the font is shown by.
+your_copy_in_use = "Your copy of {font} is in use."
+your_copy_removed = "Your copy of {font} is removed."
+# A font's warning muted, or brought back: what an edit in it says from now on.
+warning_muted = "Edits in {font} won't warn again."
+warning_unmuted = "Edits in {font} warn again."
+# A file the browser downloaded, by the name it was saved under.
+downloaded = "Downloaded {name}."
+
+# Find's count, and what Change all did. A sentence with a count has a form for each plural
+# category the reply sends, `one` and `other`, chosen by `{count}`.
+find_nothing = "Nothing matches"
+find_identical.one = "{count} place will look identical"
+find_identical.other = "{count} places will look identical"
+find_different.one = "{count} place will look different"
+find_different.other = "{count} places will look different"
+# When some places will look different: the count, then, as a warning of its own, how many.
+find_places.one = "{count} place, "
+find_places.other = "{count} places, "
+find_some_different.one = "{count} of them will look different"
+find_some_different.other = "{count} of them will look different"
+changed_places.one = "Changed {count} place."
+changed_places.other = "Changed {count} places."
 
 # Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"

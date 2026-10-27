@@ -210,6 +210,16 @@ export interface components {
         /** @enum {string} */
         Category: "sans" | "serif" | "mono" | "handwriting";
         /**
+         * CountedSentence
+         * @description A sentence said with a count, a form for each plural category: the browser picks one.
+         */
+        CountedSentence: {
+            /** One */
+            one: string;
+            /** Other */
+            other: string;
+        };
+        /**
          * DeletePage
          * @description Leave a page out of the file, and everything on it.
          */
@@ -749,6 +759,33 @@ export interface components {
             empty: string;
             /** Edit Breaks Signature */
             edit_breaks_signature: string;
+            /** Back To */
+            back_to: string;
+            /** Changed To */
+            changed_to: string;
+            /** Put Back */
+            put_back: string;
+            /** Redacted */
+            redacted: string;
+            /** Your Copy In Use */
+            your_copy_in_use: string;
+            /** Your Copy Removed */
+            your_copy_removed: string;
+            /** Warning Muted */
+            warning_muted: string;
+            /** Warning Unmuted */
+            warning_unmuted: string;
+            /** Downloaded */
+            downloaded: string;
+            /** Find Nothing */
+            find_nothing: string;
+            find_identical: components["schemas"]["CountedSentence"];
+            find_different: components["schemas"]["CountedSentence"];
+            find_places: components["schemas"]["CountedSentence"];
+            find_some_different: components["schemas"]["CountedSentence"];
+            changed_places: components["schemas"]["CountedSentence"];
+            /** Join Parts */
+            join_parts: string;
             /** Options */
             options: {
                 [key: string]: {

@@ -58,3 +58,10 @@ describe("filling the server's sentences", () => {
     expect(counted(2, { one: "change", other: "changes" })).toBe("2 changes");
   });
 });
+
+describe("the forms a sentence with a count takes", () => {
+  test("English counts with the two the server sends, one and other, so every count has its form", () => {
+    const named = new Intl.PluralRules("en").resolvedOptions().pluralCategories;
+    expect(named.toSorted()).toEqual(["one", "other"]);
+  });
+});

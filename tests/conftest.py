@@ -448,11 +448,18 @@ def pseudo_sentence(english: str) -> str:
     return "".join(part if _PLACEHOLDER.fullmatch(part) else part.upper() for part in parts)
 
 
+def _pseudo_entry(english: words.CatalogEntry) -> words.CatalogEntry:
+    """A sentence in the test-only language, each of its forms if it takes a count."""
+    if isinstance(english, str):
+        return pseudo_sentence(english)
+    return {form: pseudo_sentence(each) for form, each in english.items()}
+
+
 @pytest.fixture
 def pseudo(monkeypatch) -> str:
     """A second language to answer in, made from English, for this test only; its tag."""
     catalog = {
-        key: pseudo_sentence(said) for key, said in words.CATALOGS[words.ENGLISH].items()
+        key: _pseudo_entry(entry) for key, entry in words.CATALOGS[words.ENGLISH].items()
     }
     monkeypatch.setitem(words.CATALOGS, PSEUDO, catalog)
     return PSEUDO

@@ -23,8 +23,11 @@ _NAME_PREFIX = "char_u"  # a character's name is under its code point: U+202F's 
 # Unicode's punctuation and symbols, by the first letter of their category: quoted in a list.
 _QUOTED_CATEGORIES = frozenset("PS")
 
+# A sentence, or one said with a count: its forms, by plural category ("one", "other").
+type CatalogEntry = str | Mapping[str, str]
 
-def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, str]]:
+
+def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, CatalogEntry]]:
     """Every language file in `folder`, by its lower-case tag: `pt-BR.toml` answers "pt-br"."""
     return {
         file.name.removesuffix(".toml").lower(): tomllib.loads(file.read_text(encoding="utf-8"))
@@ -44,6 +47,24 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
     A key the language lacks is said in English, then as `default`. Raises
     KeyError when there's none of those: a key no catalog has is a bug.
     """
+    found = _entry_in(key, language, default)
+    # Its forms are the browser's to choose between, by the count it has.
+    if not isinstance(found, str):
+        raise TypeError(f"{key!r} is said with a count: forms() has it")
+    return found
+
+
+def forms(key: str, language: str = ENGLISH) -> Mapping[str, str]:
+    """The forms of the sentence under `key`, said with a count, by plural category."""
+    found = _entry_in(key, language, None)
+    # A sentence with no count has one form, and sentence() has it.
+    if isinstance(found, str):
+        raise TypeError(f"{key!r} is said without a count: sentence() has it")
+    return found
+
+
+def _entry_in(key: str, language: str, default: str | None) -> CatalogEntry:
+    """What's under `key` in `language`, else in English, else `default`; KeyError if none."""
     # .get: a language we have may not say every sentence yet, or not be one we have.
     in_english = _ENGLISH_SENTENCES.get(key, default)
     found = CATALOGS.get(language, _ENGLISH_SENTENCES).get(key, in_english)
@@ -52,9 +73,9 @@ def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> s
     return found
 
 
-def catalog(language: str) -> dict[str, str]:
+def catalog(language: str) -> dict[str, CatalogEntry]:
     """Every sentence as `language` says it, English where it has none."""
-    return {key: sentence(key, language) for key in _ENGLISH_SENTENCES}
+    return {key: _entry_in(key, language, None) for key in _ENGLISH_SENTENCES}
 
 
 def character_names(language: str) -> dict[str, str]:

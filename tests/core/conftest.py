@@ -11,6 +11,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 
+from squidpdf.core import words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from tests.conftest import to_unicode, type3_copies_at
 
@@ -542,6 +543,9 @@ def merged_unlike(tmp_path_factory) -> str:
     return renamed
 
 
-def placeholders(sentence: str) -> frozenset[str]:
-    """The `{name}`s a sentence takes."""
-    return frozenset(name for _text, name, _spec, _conv in Formatter().parse(sentence) if name)
+def placeholders(entry: words.CatalogEntry) -> frozenset[str]:
+    """The `{name}`s a sentence takes, in any of its forms if it takes a count."""
+    forms = [entry] if isinstance(entry, str) else entry.values()
+    return frozenset(
+        name for form in forms for _text, name, _spec, _conv in Formatter().parse(form) if name
+    )
