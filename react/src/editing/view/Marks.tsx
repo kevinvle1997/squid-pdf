@@ -90,7 +90,17 @@ function RestingText({ text, page, info }: { text: InsertReading; page: PageStat
     return () => document.fonts.removeEventListener("loadingdone", measureAgain);
   }, [face]);
   const widthPt = textWidthIn(page.layout, text.edit);
-  return <TextMark text={text} info={info} face={face} widthPt={widthPt} takesFocus={page.focusText === text.textId} />;
+  const takesFocus = page.focusText === text.textId;
+  return (
+    <TextMark
+      text={text}
+      info={info}
+      face={face}
+      widthPt={widthPt}
+      takesFocus={takesFocus}
+      sentences={page.sentences}
+    />
+  );
 }
 
 /** Where an edit won't match, in the rows of the bar's list whose eye is on: each place, as long as it's drawn. */

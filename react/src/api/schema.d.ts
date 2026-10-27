@@ -765,6 +765,12 @@ export interface components {
             how_to_add: string;
             /** How To Add Touch */
             how_to_add_touch: string;
+            /** New Text */
+            new_text: string;
+            /** New Text Moves */
+            new_text_moves: string;
+            /** New Text Moves Touch */
+            new_text_moves_touch: string;
             /** Form Field Not Edited */
             form_field_not_edited: string;
             /** Empty */

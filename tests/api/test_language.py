@@ -74,6 +74,9 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     for key in ("how_to_fix_touch", "how_to_add_touch"):
         in_pseudo = pseudo_sentence(words.sentence(key))
         assert_equal(sentences[key], in_pseudo, f"how to start by touch, {key}")
+    for key in ("new_text", "new_text_moves", "new_text_moves_touch"):
+        in_pseudo = pseudo_sentence(words.sentence(key))
+        assert_equal(sentences[key], in_pseudo, f"new text's note, {key}")
     back_to = sentences["back_to"]
     assert_equal(back_to, pseudo_sentence(words.sentence("back_to")), "a span's words undone")
     for key in ("new_text_added", "new_text_moved", "new_text_taken_out", "new_text_set_in"):

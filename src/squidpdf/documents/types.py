@@ -173,6 +173,9 @@ class Sentences(TypedDict):
     how_to_fix_touch: str  # the same, on a touch screen
     how_to_add: str  # the line under it: how new text goes on a page
     how_to_add_touch: str  # the same, on a touch screen
+    new_text: str  # what text the user put on a page is called, over its note
+    new_text_moves: str  # its note: how to move it, or type in it again
+    new_text_moves_touch: str  # the same, on a touch screen
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
     edit_breaks_signature: str  # said as the first edit of a signed document starts
