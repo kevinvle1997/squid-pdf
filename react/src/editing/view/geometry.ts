@@ -43,10 +43,31 @@ export function topOf(yPt: number, page: { height: number }): { top: string } {
 export function pinnedUnder(
   bbox: { x0: number; x1: number; y1: number },
   page: { width: number },
-): { top: string } & ({ left: string; right?: undefined } | { right: string; left?: undefined }) {
-  const top = points(bbox.y1 + SLIP_GAP_PT, page);
-  if (bbox.x0 > page.width / 2) return { top, right: `${((page.width - bbox.x1) / page.width) * 100}%` };
-  return { top, left: `${(bbox.x0 / page.width) * 100}%` };
+): { top: string } & PinnedSide {
+  return { top: points(bbox.y1 + SLIP_GAP_PT, page), ...pinnedSideOf(bbox, page) };
+}
+
+type PinnedSide = { left: string; right?: undefined } | { right: string; left?: undefined };
+
+/** The edge of a box something set beside it keeps: its left, or for a box in the page's right half, its right. */
+function pinnedSideOf(bbox: { x0: number; x1: number }, page: { width: number }): PinnedSide {
+  if (bbox.x0 > page.width / 2) return { right: `${((page.width - bbox.x1) / page.width) * 100}%` };
+  return { left: `${(bbox.x0 / page.width) * 100}%` };
+}
+
+/**
+ * How far a slip `slipWidthPx` wide, pinned to `bbox`, moves in from the side of its page, shown `pageWidthPx`
+ * wide, that it would run past. Why: the page clips what runs past its sides (Page.module.css), and an open
+ * calendar is wider than a verdict.
+ */
+export function slipShiftPx(
+  bbox: { x0: number; x1: number },
+  page: { width: number },
+  { slipWidthPx, pageWidthPx }: { slipWidthPx: number; pageWidthPx: number },
+): number {
+  const pxPerPt = pageWidthPx / page.width;
+  if (pinnedSideOf(bbox, page).right !== undefined) return Math.max(0, slipWidthPx - bbox.x1 * pxPerPt);
+  return Math.min(0, pageWidthPx - bbox.x0 * pxPerPt - slipWidthPx);
 }
 
 /**

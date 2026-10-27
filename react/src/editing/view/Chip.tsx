@@ -1,6 +1,6 @@
 // The proof slip under the field: what an edit here will come to before it's made (Rule 1), the ways
 // out of a long line, and what a pointer can press there; the keyboard's ways are the field's keys and Fonts.
-import type { RefObject } from "react";
+import { type RefObject, useCallback, useState } from "react";
 import { FileTrigger } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
@@ -18,7 +18,7 @@ import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
-import { pinnedUnder } from "./geometry";
+import { pinnedUnder, slipShiftPx } from "./geometry";
 import { ValueEditor } from "./ValueEditor";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
@@ -49,8 +49,28 @@ export function Chip({ span, info, trouble, verdict, setting, value, field, slip
   const signature = useEditorState(signatureWarningOf);
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
+  // Kept on the page's width as what it holds grows, or the page is shown another size: an open calendar is the widest.
+  const [shiftPx, setShiftPx] = useState(0);
+  const keepOnPage = useCallback(
+    (chip: HTMLDivElement | null) => {
+      slip.current = chip;
+      const layer = chip?.offsetParent;
+      if (chip == null || !(layer instanceof HTMLElement)) return;
+      const resized = new ResizeObserver(() => {
+        setShiftPx(slipShiftPx(span.bbox, info, { slipWidthPx: chip.offsetWidth, pageWidthPx: layer.clientWidth }));
+      });
+      resized.observe(chip);
+      resized.observe(layer);
+      return () => resized.disconnect();
+    },
+    [slip, span.bbox, info],
+  );
   return (
-    <div ref={slip} className={styles.chip} style={pinnedUnder(span.bbox, info)}>
+    <div
+      ref={keepOnPage}
+      className={styles.chip}
+      style={{ ...pinnedUnder(span.bbox, info), translate: shiftPx === 0 ? undefined : `${shiftPx}px 0` }}
+    >
       {signature !== null && (
         // Announced as the field takes focus, before the font's note.
         <span className={styles.signature} aria-hidden="true">
