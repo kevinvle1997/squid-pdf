@@ -68,6 +68,9 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(left_out, pseudo_sentence(words.sentence("page_left_out")), "a page deleted")
     put_back = sentences["page_put_back"]
     assert_equal(put_back, pseudo_sentence(words.sentence("page_put_back")), "a page put back")
+    how_to_fix, how_to_add = sentences["how_to_fix"], sentences["how_to_add"]
+    assert_equal(how_to_fix, pseudo_sentence(words.sentence("how_to_fix")), "how to start")
+    assert_equal(how_to_add, pseudo_sentence(words.sentence("how_to_add")), "how to add text")
     back_to = sentences["back_to"]
     assert_equal(back_to, pseudo_sentence(words.sentence("back_to")), "a span's words undone")
     for key in ("new_text_added", "new_text_moved", "new_text_taken_out", "new_text_set_in"):

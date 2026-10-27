@@ -757,6 +757,10 @@ export interface components {
             page_left_out: string;
             /** Page Put Back */
             page_put_back: string;
+            /** How To Fix */
+            how_to_fix: string;
+            /** How To Add */
+            how_to_add: string;
             /** Form Field Not Edited */
             form_field_not_edited: string;
             /** Empty */

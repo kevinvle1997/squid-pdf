@@ -96,6 +96,9 @@ page_left_out = "This page is left out of the download"
 # A deleted page put back, or its delete undone: announced. `{page}` is its number among the pages
 # shown, now it's back.
 page_put_back = "Page {page} is back in the download"
+# How to start, beside the first page until the first edit: one line, then the next under it.
+how_to_fix = "Click any word to fix it."
+how_to_add = "Double-click any blank spot to add text."
 # Said to a screen reader as a span changes: its words now, quoted as `quoted` quotes a character.
 # Undone, and done again or typed and kept.
 back_to = "Back to “{text}”."

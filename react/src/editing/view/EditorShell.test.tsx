@@ -1373,3 +1373,54 @@ describe("new text", () => {
     expect(screen.getByRole("button", { name: "is done" }).query()).not.toBeNull();
   });
 });
+
+describe("how to start", () => {
+  /** The how-to-start line `words` as shown on screen, of the one beside the first page and the one above it. */
+  const shownLine = (words: string) =>
+    [...document.querySelectorAll("p > span")].find((line) => line.textContent === words && line.checkVisibility());
+  const sheetOne = (screen: Awaited<ReturnType<typeof render>>) =>
+    screen.getByRole("region", { name: "Page 1" }).element().querySelector("[style*='aspect-ratio']");
+
+  test("the first page's margin says how, before any change, and the note goes with the first edit", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(1400, 900);
+    try {
+      const screen = await openEditor();
+      await expect.poll(() => shownLine(SENTENCES.how_to_fix)).toBeDefined();
+      // Beside the page, in its margin, not on it.
+      const words = shownLine(SENTENCES.how_to_add)?.getBoundingClientRect();
+      expect(words?.right).toBeLessThanOrEqual(sheetOne(screen)?.getBoundingClientRect().left ?? 0);
+
+      await changeSpan(screen, "is here");
+      await expect.poll(() => shownLine(SENTENCES.how_to_add)).toBeUndefined();
+    } finally {
+      await page.viewport(wide, tall);
+    }
+  });
+
+  test("a reading persisted before its sentences were sent shows no note, squid and all", async () => {
+    const older = { ...SENTENCES };
+    Reflect.deleteProperty(older, "how_to_fix");
+    Reflect.deleteProperty(older, "how_to_add");
+    vi.mocked(documentOf)
+      .mockReset()
+      .mockReturnValue(new Promise(() => undefined));
+    const persisted = { work: { history: EMPTY_HISTORY, fonts: [] }, until: Date.now() + 60_000 };
+    const screen = await openEditor({ doc: { ...DOC, sentences: older }, persisted });
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    expect(document.querySelector("[class*='beside'], [class*='above']")).toBeNull();
+  });
+
+  test("on a narrow screen, where there's no margin, the same line sits above the first page", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(390, 844);
+    try {
+      const screen = await openEditor();
+      await expect.poll(() => shownLine(SENTENCES.how_to_add)).toBeDefined();
+      const above = shownLine(SENTENCES.how_to_add)?.getBoundingClientRect().bottom ?? Infinity;
+      expect(above).toBeLessThanOrEqual(sheetOne(screen)?.getBoundingClientRect().top ?? 0);
+    } finally {
+      await page.viewport(wide, tall);
+    }
+  });
+});

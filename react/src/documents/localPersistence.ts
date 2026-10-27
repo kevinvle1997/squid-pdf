@@ -116,6 +116,8 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   export_left_out: true,
   page_left_out: true,
   page_put_back: true,
+  how_to_fix: true,
+  how_to_add: true,
   form_field_not_edited: true,
   empty: true,
   edit_breaks_signature: true,
