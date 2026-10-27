@@ -182,6 +182,20 @@ describe("an edit", () => {
     expect(troublesIn(editor.store.get(), "was field").sentences).toEqual([SENTENCES.form_field_not_edited]);
   });
 
+  test("an email address typed so it no longer reads as one address is a trouble, said as it's typed", () => {
+    const text = "Write to anna@halde.de";
+    const glyphs = halfWideGlyphs(`${text}@. ,bo`);
+    const doc = aDoc({ spans: [aSpan({ id: "mail", text, room_pt: 100 })], fonts: [aFont("Times-Roman", { glyphs })] });
+    editor = createEditor(FILE, doc, 2);
+    edit(editor, "mail", null);
+    const lost = ["the email address here no longer reads as one address"];
+    expect(troublesIn(editor.store.get(), "Write to anna@halde.de").sentences).toEqual([]);
+    expect(troublesIn(editor.store.get(), "Write to anna@halde de").sentences).toEqual(lost);
+    expect(troublesIn(editor.store.get(), "Write to anna@halde.de, bob@halde.de").sentences).toEqual(lost);
+    typeInto(editor, "Write to anna@@halde.de");
+    expect(editor.store.get().announcement.text).toBe(lost[0]);
+  });
+
   test("a pasted tab or line separator becomes a space, and a bidi control is dropped, since the server refuses new text with one", () => {
     // As pasted: a chat wraps a phone number in bidi controls; Pages breaks lines with U+2028.
     typed("own", "\u202A+1 555\t0100\u202C Invoices are\u2028due\u2029by\u0085May");
