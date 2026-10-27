@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/page_order_cases.json";
-import type { Edit } from "../api/types";
+import type { Edit, Insert } from "../api/types";
 import { A4, aDeletePage, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
 import {
@@ -67,7 +67,7 @@ describe("what the document reads as", () => {
 
   test("new text is on its own page, under its edit's id", () => {
     const reading = read(add(add(EMPTY_HISTORY, aReplace("a", "one")), insert));
-    expect(reading.pages.get(1)?.inserts).toEqual([{ id: 2, edit: insert }]);
+    expect(reading.pages.get(1)?.inserts).toEqual([{ id: 2, textId: 2, edit: insert }]);
     expect(reading.edits).toEqual([aReplace("a", "one"), insert]);
   });
 
@@ -98,6 +98,44 @@ describe("what the document reads as", () => {
     const shrunk = read(add(EMPTY_HISTORY, aReplace("a", "one", { strategy: "shrink" })));
     expect(sameSpan(plain.spans.get("a"), shrunk.spans.get("a"))).toBe(false);
     expect(samePage(plain.pages.get(0), shrunk.pages.get(0))).toBe(false);
+  });
+});
+
+describe("new text, version by version", () => {
+  const moved = { ...insert, origin: [80, 310] as [number, number] };
+  const revise = (
+    history: History,
+    { replaces, edit, folds = false }: { replaces: number; edit: Insert; folds?: boolean },
+  ) => historyReducer(history, { kind: "revise", replaces, edit, folds });
+
+  test("a later version replaces the earlier in the edits sent, read under its first version's id", () => {
+    const reading = read(revise(add(add(EMPTY_HISTORY, aReplace("a", "one")), insert), { replaces: 2, edit: moved }));
+    expect(reading.edits).toEqual([aReplace("a", "one"), moved]);
+    expect(reading.pages.get(1)?.inserts).toEqual([{ id: 3, textId: 2, edit: moved }]);
+  });
+
+  test("undo brings the earlier version back, and redo the later", () => {
+    const later = revise(add(EMPTY_HISTORY, insert), { replaces: 1, edit: { ...insert, text: "Signed again" } });
+    const undone = historyReducer(later, { kind: "undo" });
+    expect(read(undone).edits).toEqual([insert]);
+    expect(read(historyReducer(undone, { kind: "redo" })).edits).toEqual([{ ...insert, text: "Signed again" }]);
+  });
+
+  test("nudges in a row are one step: one undo goes back to where it was before them", () => {
+    const nudged = (by: number) => ({ ...insert, origin: [72 + by, 300] as [number, number] });
+    const once = revise(add(EMPTY_HISTORY, insert), { replaces: 1, edit: nudged(1) });
+    const twice = revise(once, { replaces: 2, edit: nudged(2), folds: true });
+    const thrice = revise(twice, { replaces: 3, edit: nudged(3), folds: true });
+    expect(thrice.done).toHaveLength(2);
+    expect(read(thrice).edits).toEqual([nudged(3)]);
+    expect(read(historyReducer(thrice, { kind: "undo" })).edits).toEqual([insert]);
+  });
+
+  test("its words all taken out, it's gone: nothing reads or sends it, and undo brings it back", () => {
+    const emptied = revise(add(EMPTY_HISTORY, insert), { replaces: 1, edit: { ...insert, text: " " } });
+    expect(read(emptied).pages.size).toBe(0);
+    expect(read(emptied).edits).toEqual([]);
+    expect(read(historyReducer(emptied, { kind: "undo" })).edits).toEqual([insert]);
   });
 });
 
