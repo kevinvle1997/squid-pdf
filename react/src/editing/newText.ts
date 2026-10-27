@@ -16,10 +16,10 @@ import { DEFAULT_FACE, isShippedFace, previewFaceOf } from "./faces";
 import { letterTroublesOf, missingIn } from "./fit";
 import { readableName } from "./fonts";
 import { versionsOf } from "./history";
-import type { MismatchPlace } from "./mismatches";
+import { type MismatchPlace, mismatchKeyOf } from "./mismatches";
 import { pageControlOf } from "./pageList";
 import type { InsertReading, Reading } from "./project";
-import type { Drawn } from "./render";
+import type { Drawn, PageInsertFits } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { type Drawing, drawingIn, drawingOf } from "./substitutes";
 import { EXACT, liveVerdictOf, type Verdict } from "./verdicts";
@@ -224,6 +224,21 @@ export function textPlaceOf(
   if (verdict.fidelity === "exact") return undefined;
   const missing = fit?.missing ?? textDrawingOf(layout, text.edit).switched;
   return { span: textSpanOf(layout, text.edit), verdict, missing };
+}
+
+/** The new text of `texts` in a row of the bar's list that's shown, as the list counts places now. */
+export function shownTextsAmong(
+  texts: readonly InsertReading[],
+  {
+    shown,
+    layout,
+    fits,
+  }: { shown: ReadonlySet<string>; layout: Pick<Layout, "fonts" | "spans">; fits: PageInsertFits },
+): InsertReading[] {
+  return texts.filter((text) => {
+    const place = textPlaceOf(layout, { text, fit: fits[text.id] });
+    return place !== undefined && shown.has(mismatchKeyOf(place, layout.fonts));
+  });
 }
 
 /** The pieces of new text on the pages the download keeps. */

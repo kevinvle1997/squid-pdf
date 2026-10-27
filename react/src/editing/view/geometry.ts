@@ -3,8 +3,13 @@
 import type { CSSProperties } from "react";
 import type { FitInfo, Insert, PageInfo, SpanInfo } from "../../api/types";
 import { FIELD_SPARE_EM, INSERT_ASCENT_EM, INSERT_DESCENT_EM, PX_PER_PT, SLIP_GAP_PT } from "../constants";
+import type { Layout } from "../editor";
 import { familyOf } from "../faces";
 import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
+import { fontOfText, textFaceOf } from "../newText";
+
+/** A box on a page, in its own points from its top left. */
+type Box = { x0: number; y0: number; x1: number; y1: number };
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
@@ -393,11 +398,19 @@ export function fieldPartOf(
 }
 
 /** The box new text is drawn in, from its baseline's start: `widthPt` across, an em above its baseline and a little below. */
-export function textBoxOf(
-  { origin: [x, y], size }: Pick<Insert, "origin" | "size">,
-  widthPt: number,
-): { x0: number; y0: number; x1: number; y1: number } {
+export function textBoxOf({ origin: [x, y], size }: Pick<Insert, "origin" | "size">, widthPt: number): Box {
   return { x0: x, y0: y - size * INSERT_ASCENT_EM, x1: x + widthPt, y1: y + size * INSERT_DESCENT_EM };
+}
+
+/** The box new text is drawn in on its page, as wide as the face that previews it sets it. */
+export function textBoxIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Box {
+  return textBoxOf(insert, textWidthIn(layout, insert));
+}
+
+/** How wide new text draws on its page, in points: in the face that previews it, by its page font's widths if it has one. */
+export function textWidthIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): number {
+  const glyphs = fontOfText(layout, insert)?.glyphs ?? {};
+  return textWidthPt(insert, { face: textFaceOf(layout, insert), glyphs });
 }
 
 /** How wide new text draws, in points: by its font's widths where the browser has them, else as `face` sets it here. */

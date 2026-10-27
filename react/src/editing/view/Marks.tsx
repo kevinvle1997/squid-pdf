@@ -11,13 +11,13 @@ import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
-import { fontOfText, textFaceOf } from "../newText";
+import { shownTextsAmong, textFaceOf } from "../newText";
 import { inPageOrder, type PageState, spanIn } from "../page";
 import type { InsertReading, SpanReading } from "../project";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
-import { boxOf, markBoxOf, textWidthPt } from "./geometry";
+import { boxOf, markBoxOf, textBoxIn, textWidthIn } from "./geometry";
 import styles from "./Marks.module.css";
 import { NewTextField } from "./NewTextField";
 import { createNotes, type Notes } from "./notes";
@@ -89,8 +89,7 @@ function RestingText({ text, page, info }: { text: InsertReading; page: PageStat
     document.fonts.addEventListener("loadingdone", measureAgain);
     return () => document.fonts.removeEventListener("loadingdone", measureAgain);
   }, [face]);
-  const glyphs = fontOfText(page.layout, text.edit)?.glyphs ?? {};
-  const widthPt = textWidthPt(text.edit, { face, glyphs });
+  const widthPt = textWidthIn(page.layout, text.edit);
   return <TextMark text={text} info={info} face={face} widthPt={widthPt} takesFocus={page.focusText === text.textId} />;
 }
 
@@ -106,22 +105,21 @@ function Shown({
   readings: ReadonlyMap<string, SpanReading>;
   fits: PageFits; // each as its span reads now, once drawn so
 }) {
-  const { shownMismatches: shown, changed, fonts } = page;
-  return shownAmong(page.spans, { shown, changed, readings, fits, fonts }).flatMap((span) => {
+  const { shownMismatches: shown, changed, fonts, layout } = page;
+  if (shown.size === 0) return null;
+  const spans = shownAmong(page.spans, { shown, changed, readings, fits, fonts })
     // Being typed into: the field says how it won't match.
-    if (span.id === page.typingIn) return [];
-    const replaced = readings.get(span.id)?.replaced ?? false;
-    return (
-      <span
-        key={span.id}
-        className={styles.shown}
-        aria-hidden="true"
-        data-shown=""
-        data-warned=""
-        style={boxOf(markBoxOf(span, { replaced, fit: fits[span.id] }), info)}
-      />
-    );
-  });
+    .filter((span) => span.id !== page.typingIn)
+    .map((span) => {
+      const replaced = readings.get(span.id)?.replaced ?? false;
+      return { key: span.id, box: markBoxOf(span, { replaced, fit: fits[span.id] }) };
+    });
+  const texts = shownTextsAmong(page.edits?.inserts ?? [], { shown, layout, fits: page.insertFits })
+    .filter((text) => text.textId !== page.writingAgain)
+    .map((text) => ({ key: `text ${text.textId}`, box: textBoxIn(layout, text.edit) }));
+  return [...spans, ...texts].map(({ key, box }) => (
+    <span key={key} className={styles.shown} aria-hidden="true" data-shown="" data-warned="" style={boxOf(box, info)} />
+  ));
 }
 
 /** The words find found, tinted as the change they're about to be: only those words, not their whole line; the place gone to ringed. */
