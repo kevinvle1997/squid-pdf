@@ -1039,6 +1039,25 @@ describe("find and replace", () => {
     await expect.element(screen.getByRole("button", { name: /^Find/ })).toHaveFocus();
   });
 
+  test("a reading persisted before Change all's sentence was sent changes all, with no key hint left alone", async () => {
+    // The server's reading, asked for again, hasn't landed.
+    vi.mocked(documentOf)
+      .mockReset()
+      .mockReturnValue(new Promise<Document>(() => undefined));
+    const stale = structuredClone(DOC);
+    Reflect.deleteProperty(stale.sentences, "changed_places");
+    const screen = await openEditor({ doc: stale });
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("here");
+    const bar = screen.getByRole("search");
+    await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
+    await bar.getByRole("textbox", { name: "Change to" }).fill("there");
+    await bar.getByRole("button", { name: "Change all" }).click();
+    await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
+    await expect.element(bar.getByText("puts it back", { exact: false })).not.toBeInTheDocument();
+  });
+
   test("Match case and Whole words are checkboxes beside the fields, and find again as they're ticked", async () => {
     const screen = await openEditor();
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();

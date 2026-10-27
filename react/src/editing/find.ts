@@ -1,6 +1,6 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitInfo, FitRules, SpanInfo } from "../api/types";
+import type { FitInfo, FitRules, Sentences, SpanInfo } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { announcing, change, changed, type Editor, type EditorState, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf } from "./fit";
@@ -10,7 +10,7 @@ import type { PageState } from "./page";
 import { differing, type Reading, textIn } from "./project";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { finish, typingEnd } from "./typing";
-import { counted } from "./words";
+import { fillCounted, sentenceOrNothing } from "./words";
 
 /** The find bar: what's typed in it, and what it found. */
 export interface FindState extends FindOptions {
@@ -250,24 +250,27 @@ export function findCount(state: EditorState): FindCount {
   return { places: found.length, mismatches: found.filter((each) => looksDifferent(each, judging)).length };
 }
 
-/** The count before a change, as the find bar shows it: one phrase, the part that warns kept apart for --warn. */
-export function countShown({ places, mismatches }: FindCount): { plain: string; warned: string } {
-  if (places === 0) return { plain: "Nothing matches", warned: "" };
-  const where = counted(places, { one: "place", other: "places" });
-  if (mismatches === 0) return { plain: `${where} will look identical`, warned: "" };
-  if (mismatches === places) return { plain: "", warned: `${where} will look different` };
-  return { plain: `${where}, `, warned: `${mismatches} of them will look different` };
+/** The count before a change, as the find bar shows it, in the server's words: the part that warns kept apart for --warn. */
+export function countShown({ places, mismatches }: FindCount, sentences: Sentences): { plain: string; warned: string } {
+  if (places === 0) return { plain: sentenceOrNothing(sentences.find_nothing), warned: "" };
+  if (mismatches === 0) return { plain: fillCounted(sentences.find_identical, places), warned: "" };
+  if (mismatches === places) return { plain: "", warned: fillCounted(sentences.find_different, places) };
+  const plain = fillCounted(sentences.find_places, places);
+  const warned = fillCounted(sentences.find_some_different, mismatches);
+  // A reading persisted by an earlier build may lack either half: then neither shows.
+  if (plain === "" || warned === "") return { plain: "", warned: "" };
+  return { plain, warned };
 }
 
 /** The count as announced, in the words shown: "14 places, 3 of them will look different". */
-export function countSentence(count: FindCount): string {
-  const { plain, warned } = countShown(count);
+export function countSentence(count: FindCount, sentences: Sentences): string {
+  const { plain, warned } = countShown(count, sentences);
   return `${plain}${warned}`;
 }
 
-/** What Change all did, as shown and as announced: "Changed 3 places." */
-export function changedSentence(changed: number): string {
-  return `Changed ${counted(changed, { one: "place", other: "places" })}.`;
+/** What Change all did, as shown and as announced, in the server's words: "Changed 3 places." */
+export function changedSentence(changed: number, sentences: Sentences): string {
+  return fillCounted(sentences.changed_places, changed);
 }
 
 /** Open the bar, or put focus back in "Find" if it's open. Words being typed on the page are kept first. */
@@ -317,7 +320,9 @@ function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   const state = editor.store.get();
   const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null, current: null };
   const find = refound({ ...state, find: searching }, state.reading);
-  const heard = find.searched !== "" && { announcement: announcing(countSentence(findCount({ ...state, find }))) };
+  const heard = find.searched !== "" && {
+    announcement: announcing(countSentence(findCount({ ...state, find }), state.doc.sentences)),
+  };
   editor.store.set({ find, ...heard });
 }
 
@@ -343,7 +348,7 @@ export function changeAll(editor: Editor): void {
   }));
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
-    announcement: announcing(changedSentence(found.length)),
+    announcement: announcing(changedSentence(found.length, state.doc.sentences)),
     find: { ...refound({ ...next, find }, next.reading), changed: found.length },
   }));
 }

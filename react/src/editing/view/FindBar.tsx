@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { Input, Label, TextField } from "react-aria-components";
+import type { Sentences } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { Shortcut } from "../../ui/Tooltip";
@@ -36,6 +37,7 @@ function FindFields() {
   const editor = useEditor();
   const find = useEditorState((state) => state.find);
   const count = useEditorState(findCount, shallowEqual);
+  const sentences = useEditorState((state) => state.doc.sentences);
   // Each open puts focus in "Find", its words selected, even when the bar is open already.
   const focusFind = useCallback(
     (input: HTMLInputElement | null) => {
@@ -109,22 +111,8 @@ function FindFields() {
             </Shortcut>
           </span>
         )}
-        {(find.changed !== null || searched) && (
-          // Its own box, so a line it wraps onto starts under its words, not under the steps.
-          <span className={styles.words}>
-            {find.changed !== null ? (
-              <>
-                {changedSentence(find.changed)}
-                <span className={styles.undoKey}>
-                  {" "}
-                  <kbd>{COMMAND}Z</kbd> puts {formOf(find.changed, { one: "it", other: "them all" })} back.
-                </span>
-              </>
-            ) : (
-              <Counted {...count} />
-            )}
-          </span>
-        )}
+        {find.changed !== null && <ChangedWords changed={find.changed} sentences={sentences} />}
+        {find.changed === null && searched && <Counted count={count} sentences={sentences} />}
       </span>
       <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={nothingToChange}>
         Change all
@@ -157,13 +145,31 @@ function Chevron({ up = false }: { up?: boolean }) {
   );
 }
 
-/** The count, its warning in --warn: what will look different is a warning, never a change. */
-function Counted(count: FindCount) {
-  const { plain, warned } = countShown(count);
+/** What Change all did, and the key that puts it back: nothing where a reading persisted by an earlier build lacks it. */
+function ChangedWords({ changed, sentences }: { changed: number; sentences: Sentences }) {
+  const sentence = changedSentence(changed, sentences);
+  // The key's hint leads from the sentence: alone, it would say nothing of what it puts back.
+  if (sentence === "") return null;
   return (
-    <>
+    // Its own box, so a line it wraps onto starts under its words, not under the steps.
+    <span className={styles.words}>
+      {sentence}
+      <span className={styles.undoKey}>
+        {" "}
+        <kbd>{COMMAND}Z</kbd> {formOf(changed, { one: "puts it back.", other: "puts them all back." })}
+      </span>
+    </span>
+  );
+}
+
+/** The count, its warning in --warn: what will look different is a warning, never a change. Nothing, if it lacks its words. */
+function Counted({ count, sentences }: { count: FindCount; sentences: Sentences }) {
+  const { plain, warned } = countShown(count, sentences);
+  if (plain === "" && warned === "") return null;
+  return (
+    <span className={styles.words}>
       {plain}
       {warned !== "" && <Warn>{warned}</Warn>}
-    </>
+    </span>
   );
 }

@@ -1,5 +1,6 @@
 // Words the browser puts together: the server's `sentences`, sent unfilled, with their facts
 // put in; and the plural forms of the browser's own labels.
+import type { CountedSentence } from "../api/types";
 
 export type Facts = Record<string, string | number | readonly string[]>;
 
@@ -7,6 +8,8 @@ export type Facts = Record<string, string | number | readonly string[]>;
 const JOINS: Record<string, string> = { chars: " or ", letters: " " };
 
 const ONE_DECIMAL = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// Counts as the sentences' language writes them: English's, until the reply says its language.
+const WHOLE = new Intl.NumberFormat("en");
 
 /**
  * `sentence` with each {placeholder} filled; one with no fact stays as written. A sentence a reading persisted by an
@@ -49,11 +52,19 @@ export function shownAs(character: string, names: Readonly<Record<string, string
   return `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+// The forms on the wire are English's, chosen by its rules, until a language with other forms widens the wire.
 const PLURAL = new Intl.PluralRules("en");
 
 /** The word a count takes: "change" for 1, "changes" for 3. */
 export function formOf(count: number, forms: { one: string; other: string }): string {
   return PLURAL.select(count) === "one" ? forms.one : forms.other;
+}
+
+/** The form of the server's sentence `forms` a count of `count` takes, its {count} filled: "Changed 3 places." */
+export function fillCounted(forms: CountedSentence | undefined, count: number): string {
+  // Lacked by a reading persisted by an earlier build, as `fill` says.
+  if (forms === undefined) return "";
+  return fill(formOf(count, forms), { count: WHOLE.format(count) });
 }
 
 /** An interface label for a count: "1 change", "3 changes". */
