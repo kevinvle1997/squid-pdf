@@ -44,6 +44,8 @@ export const SENTENCES: Sentences = {
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
   page_left_out: "This page is left out of the download",
   page_put_back: "Page {page} is back in the download",
+  how_to_fix: "Click any word to fix it.",
+  how_to_add: "Double-click any blank spot to add text.",
   form_field_not_edited: "This text is a form field, which can't be edited yet, so an edit here is left out.",
   email_broken: "the email address here no longer reads as one",
   empty: "This text can't be left empty. Type what it should say, or leave the field to keep it as it was.",

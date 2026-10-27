@@ -128,6 +128,8 @@ def _sentences_in(language: str) -> Sentences:
         "export_left_out": words.sentence("export_left_out", language),
         "page_left_out": words.sentence("page_left_out", language),
         "page_put_back": words.sentence("page_put_back", language),
+        "how_to_fix": words.sentence("how_to_fix", language),
+        "how_to_add": words.sentence("how_to_add", language),
         "form_field_not_edited": words.sentence("form_field_not_edited", language),
         "empty": words.sentence("empty", language),
         "edit_breaks_signature": words.sentence("edit_breaks_signature", language),

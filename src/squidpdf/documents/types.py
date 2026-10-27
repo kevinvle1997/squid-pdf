@@ -169,6 +169,8 @@ class Sentences(TypedDict):
     export_left_out: str
     page_left_out: str  # a page deleted in the editor, said on the slip in its place
     page_put_back: str  # a deleted page back in the download
+    how_to_fix: str  # how to start, beside the first page until the first edit
+    how_to_add: str  # the line under it: how new text goes on a page
     form_field_not_edited: str  # said of a span `form_field` marks, before any edit
     empty: str  # said while the text typed into a span is empty
     edit_breaks_signature: str  # said as the first edit of a signed document starts

@@ -39,10 +39,15 @@ describe("what a page draws", () => {
   });
 
   test("an edit on another page leaves this one's parts as they were, so it doesn't redraw", () => {
+    // The first edit takes the how-to-start note off the first page: past it, nothing there changes.
+    const changeSecond = (text: string) => {
+      edit(editor, "second", null);
+      typeInto(editor, text);
+      finish(editor, true);
+    };
+    changeSecond("first change");
     const before = pageState(editor.store.get(), 0);
-    edit(editor, "second", null);
-    typeInto(editor, "now");
-    finish(editor, true);
+    changeSecond("now");
     expect(shallowEqual(pageState(editor.store.get(), 0), before)).toBe(true);
     expect(shallowEqual(pageState(editor.store.get(), 1), pageState(editor.store.get(), 1))).toBe(true);
   });

@@ -12,6 +12,7 @@ import { unexported } from "../export";
 import { addFaces, facesOf } from "../faces";
 import { retryImages } from "../images";
 import { noticeLines } from "../notices";
+import { neverEdited } from "../page";
 import { pagesShown } from "../project";
 import { loadShippedFaces } from "../shippedFaces";
 import { isWork, readStoredAgain, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
@@ -20,6 +21,7 @@ import { EditorContext, useEditor, useEditorState } from "./context";
 import { DeletedPage } from "./DeletePage";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
+import { HowToStart } from "./HowToStart";
 import { isTyping, pageOn, spanOn } from "./keys";
 import { Page } from "./Page";
 import { PageList } from "./PageList";
@@ -144,6 +146,7 @@ function Pages() {
   const order = useEditorState((state) => state.reading.order);
   const shown = useMemo(() => pagesShown(order, pages), [order, pages]);
   const asked = useEditorState((state) => state.zoom.asked);
+  const howToStart = useEditorState(neverEdited);
   // Zoomed to a share of the printed size: each page takes that much, and the pages scroll sideways past the window.
   const zoomed = asked === null ? undefined : { "--zoom": asked };
   return (
@@ -154,6 +157,7 @@ function Pages() {
       style={zoomed}
       data-zoomed={asked === null ? undefined : ""}
     >
+      {howToStart && <HowToStart beside={false} />}
       {shown.map(({ page, info, shownNumber, splitAfter }) => (
         <Fragment key={page}>
           {shownNumber === null ? (

@@ -15,6 +15,7 @@ import { pageInView, zoomShown } from "../zoom";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { DeletePage } from "./DeletePage";
 import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf, uprightOf } from "./geometry";
+import { HowToStart } from "./HowToStart";
 import { onBarePaper } from "./keys";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
@@ -124,6 +125,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
     >
       {/* First, so Tab reaches it after the page above and before this page's own notes and lines. */}
       <DeletePage page={index} shownNumber={shownNumber} />
+      {page.howToStart && <HowToStart beside />}
       <Margin
         info={info}
         changes={notes}
