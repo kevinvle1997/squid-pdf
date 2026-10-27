@@ -156,6 +156,21 @@ describe("the editor", () => {
     await expect.element(screen.getByRole("status")).not.toHaveTextContent(said);
     await expect.element(line).toBeVisible();
   });
+
+  test("a signed document persisted before it said so, once read again, says so under the bar, heard once", async () => {
+    const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
+    const signed = aDoc({ spans: [span], signed: true, notices: [aDocumentNotice(said, "signed_file")] });
+    // Persisted by an earlier build: no word of a signature, and no sentence for one.
+    const stale = { ...signed, notices: [], sentences: { ...SENTENCES } };
+    Reflect.deleteProperty(stale, "signed");
+    Reflect.deleteProperty(stale.sentences, "edit_breaks_signature");
+    vi.mocked(documentOf).mockReset().mockResolvedValue(signed);
+    const persisted = { work: { history: EMPTY_HISTORY, fonts: [] }, until: Date.now() + 60_000 };
+    const screen = await openEditor({ doc: stale, persisted });
+    await expect.element(screen.getByText(said, { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(said);
+    expect(screen.getByRole("status").element().textContent).toBe(said);
+  });
 });
 
 describe("finding your way", () => {
