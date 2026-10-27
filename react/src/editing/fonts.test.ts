@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/client";
 import type { Document, Render } from "../api/types";
-import { aDoc, aFont, aProblem, aSpan, SENTENCES } from "../fixtures";
+import { aDoc, aFont, aProblem, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
 import {
   attachDropped,
@@ -26,8 +26,14 @@ vi.mock(import("../api/client"), async (original) => ({
 }));
 
 const NAMED = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs: { H: 722, i: 222 } });
-const DOC = aDoc({ spans: [aSpan({ id: "s1", text: "Hi", font: "Arial" })], fonts: [NAMED] });
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
+const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
+  spans: [aSpan({ id: "s1", text: "Hi", font: "Arial" })],
+  fonts: [NAMED],
+});
 const JUDGED_AGAIN = aDoc({
+  sentences: PSEUDO_SENTENCES,
   spans: DOC.spans,
   fonts: [aFont("Arial", { attached: true, glyphs: { H: 722, i: 222, Y: 667 } })],
 });
@@ -57,6 +63,7 @@ describe("the user's own copy of a font", () => {
     expect(state.layout.fonts.get("Arial")?.attached).toBe(true);
     expect(noticeLines(state.notices, state.drawn, state.reading)).toEqual([]);
     expect(editor.attached.get("Arial")).toBe(FONT_FILE);
+    expect(state.announcement.text).toBe("YOUR COPY OF Arial IS IN USE.");
   });
 
   test("every edited page is drawn again with it, though no edit changed", async () => {
@@ -270,7 +277,7 @@ describe("copies of one font, shown under one name", () => {
   });
 
   test("take the user's copy together, each put in in turn, and give it up together", async () => {
-    const doc = aDoc({ spans: DOC.spans, fonts: COPIES });
+    const doc = aDoc({ sentences: PSEUDO_SENTENCES, spans: DOC.spans, fonts: COPIES });
     editor = createEditor(new File(["%PDF-"], "letter.pdf"), doc, 2);
     vi.mocked(putFont).mockResolvedValue(doc);
     vi.mocked(deleteFont).mockResolvedValue(doc);
@@ -285,7 +292,7 @@ describe("copies of one font, shown under one name", () => {
     expect(attached).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
     expect(deleted).toEqual(["Type3 (5 0 R)", "Type3 (9 0 R)"]);
     expect(editor.attached.size).toBe(0);
-    expect(editor.store.get().announcement.text).toBe("Your copy of Drawn-Regular is removed");
+    expect(editor.store.get().announcement.text).toBe("YOUR COPY OF Drawn-Regular IS REMOVED.");
   });
 
   test("listed under one name, as two fonts of a merged file are, take the user's copy in once", async () => {

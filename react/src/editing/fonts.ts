@@ -85,7 +85,7 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
       editor.attached.set(name, file);
     }
     await preview;
-    const announcement = announcing(`Your copy of ${shownNameOf(layout, fontName)} is in use`);
+    const announcement = announcing(fill(doc.sentences.your_copy_in_use, { font: shownNameOf(layout, fontName) }));
     judgedAgain(editor, doc, { announcement, focusFont: fontName });
     void persistWork(editor);
   } catch (error) {
@@ -130,7 +130,7 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
     }
     removeOwnFace(name);
   }
-  const announcement = announcing(`Your copy of ${shownNameOf(layout, fontName)} is removed`);
+  const announcement = announcing(fill(doc.sentences.your_copy_removed, { font: shownNameOf(layout, fontName) }));
   judgedAgain(editor, doc, { announcement, focusFont: fontName });
   void persistWork(editor);
 }
