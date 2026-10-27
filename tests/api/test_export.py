@@ -24,19 +24,22 @@ from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
 from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
+    InProcess,
+    around,
+    span_starting,
+    upload,
+)
+from tests.conftest import (
     CHOSEN,
     NAME_COPIES,
     NOT_XML_COPIES,
     OTHER_LINE,
     REDACTED_NAME,
     SIGNED,
-    InProcess,
-    around,
-    span_starting,
-    upload,
+    StoreWith,
+    cannot_cut,
     with_hidden_copies,
 )
-from tests.conftest import StoreWith, cannot_cut
 from tests.helpers import (
     assert_at_least,
     assert_at_most,
