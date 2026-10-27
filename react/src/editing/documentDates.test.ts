@@ -2,15 +2,15 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan } from "../fixtures";
-import { learnEveryLanguage } from "./dateNames";
+import { learnDateLanguages } from "./dateNames";
 import { createEditor, type Editor } from "./editor";
 import { editableValueIn } from "./formattedValues";
 import { edit } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Hawaiian's March: a language with a three letter code alone, learnt after the first edit starts.
-const TEXT = "Due 14 Malaki 2026";
+// Welsh's March: a month no other date language names, so read only once Welsh is learnt.
+const TEXT = "Due 14 Mawrth 2026";
 
 let editor: Editor;
 
@@ -26,8 +26,8 @@ test("the first edit opens at once: no language is learnt on the spot, and no da
   expect(editor.store.get().layout.dates).toBeNull();
 });
 
-describe("once every language is learnt, in the background", () => {
-  beforeAll(() => learnEveryLanguage());
+describe("once the date languages are learnt, in the background", () => {
+  beforeAll(() => learnDateLanguages());
 
   test("the document's dates are read, so the open field reads its date", () => {
     const { dates } = editor.store.get().layout;

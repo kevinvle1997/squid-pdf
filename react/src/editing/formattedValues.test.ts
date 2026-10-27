@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { type AmountValue, withAmount } from "./amounts";
-import { learnEveryLanguage } from "./dateNames";
+import { learnDateLanguages } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, withDate } from "./dates";
 import { editableValueIn, formattedValuesIn } from "./formattedValues";
 
-// Every language Intl has dates for, learnt in the background as an editor would: the dates here need them.
-beforeAll(() => learnEveryLanguage());
+// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
+beforeAll(() => learnDateLanguages());
 
 /** How the dates of a document of `texts` read, for a reader of English. */
 function readingOf(...texts: string[]): DateReading {

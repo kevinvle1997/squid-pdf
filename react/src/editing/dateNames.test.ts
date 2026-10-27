@@ -9,7 +9,7 @@ afterEach(() => {
 test("the languages behind dates are learnt a few steps a task, each slice stopping before a step would run it past its time", async () => {
   // Learnt afresh: what an earlier test learnt is kept by the module.
   vi.resetModules();
-  const { learnEveryLanguage } = await import("./dateNames");
+  const { learnDateLanguages } = await import("./dateNames");
   // Every step takes two fifths of a slice, as the clock reads: two fit, and a third would run past.
   let clock = 0;
   const now = vi.spyOn(performance, "now").mockImplementation(() => {
@@ -19,7 +19,7 @@ test("the languages behind dates are learnt a few steps a task, each slice stopp
   // Each wait for the next task ends at once: the steps are counted here, not timed.
   vi.useFakeTimers({ toFake: ["setTimeout"], loopLimit: 100_000 });
   const nextTask = vi.spyOn(globalThis, "setTimeout");
-  const learnt = learnEveryLanguage();
+  const learnt = learnDateLanguages();
   await vi.runAllTimersAsync();
   await learnt;
 
