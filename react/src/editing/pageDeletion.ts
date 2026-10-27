@@ -5,15 +5,7 @@ import { announcing, change, type Editor } from "./editor";
 import { deleting } from "./history";
 import { shownNumberOf } from "./project";
 import { typingEnd } from "./typing";
-import { fill } from "./words";
-
-/**
- * A sentence a delete says, or nothing yet: a reading persisted by an earlier build lacks it until the server's is
- * read again (`readStoredAgain`). The words wait; the delete, Put back and undo never do.
- */
-function sentenceOrNothing(sentence: string | undefined): string {
-  return sentence ?? "";
-}
+import { fill, sentenceOrNothing } from "./words";
 
 /** What's said of a page left out of the download, on its slip and as it goes. */
 export function leftOutSentence({ sentences }: Pick<Document, "sentences">): string {
@@ -25,7 +17,7 @@ export function putBackSentence(
   { sentences }: Pick<Document, "sentences">,
   { order, page }: { order: readonly number[]; page: number },
 ): string {
-  return fill(sentenceOrNothing(sentences.page_put_back), { page: String(shownNumberOf(order, page)) });
+  return fill(sentences.page_put_back, { page: String(shownNumberOf(order, page)) });
 }
 
 /** Leave page `page` out of the download, as one step; words being typed are kept first, as their own. Focus goes to its slip's Put back. */

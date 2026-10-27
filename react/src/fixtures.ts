@@ -1,6 +1,7 @@
 // Made-up API replies for tests, whole and typed. A field the server adds breaks here, where
 // `npm run types` brings it in, instead of hiding behind a cast in every test. Tests only.
 import type {
+  CountedSentence,
   DeletePage,
   Document,
   DocumentNoticeInfo,
@@ -81,6 +82,45 @@ export const SENTENCES: Sentences = {
     O: "capital O",
     l: "lowercase l",
   },
+};
+
+// A placeholder, which a sentence shouted keeps as it is.
+const PLACEHOLDER = /(\{\w+\})/;
+
+/** `english` shouted, its placeholders as they are. */
+function shouted(english: string): string {
+  const parts = english.split(PLACEHOLDER);
+  return parts.map((part) => (PLACEHOLDER.test(part) ? part : part.toUpperCase())).join("");
+}
+
+/** Each form of a sentence with a count, shouted. */
+function shoutedForms({ one, other }: CountedSentence): CountedSentence {
+  return { one: shouted(one), other: shouted(other) };
+}
+
+/**
+ * The server's sentences in a language made up for tests, as tests/conftest.py's `pseudo` makes one: those the
+ * browser fills and says of an edit, a font, a download or Find, shouted. A sentence the browser wrote itself reads
+ * unlike them.
+ */
+export const PSEUDO_SENTENCES: Sentences = {
+  ...SENTENCES,
+  back_to: shouted(SENTENCES.back_to),
+  changed_to: shouted(SENTENCES.changed_to),
+  put_back: shouted(SENTENCES.put_back),
+  redacted: shouted(SENTENCES.redacted),
+  your_copy_in_use: shouted(SENTENCES.your_copy_in_use),
+  your_copy_removed: shouted(SENTENCES.your_copy_removed),
+  warning_muted: shouted(SENTENCES.warning_muted),
+  warning_unmuted: shouted(SENTENCES.warning_unmuted),
+  downloaded: shouted(SENTENCES.downloaded),
+  find_nothing: shouted(SENTENCES.find_nothing),
+  find_identical: shoutedForms(SENTENCES.find_identical),
+  find_different: shoutedForms(SENTENCES.find_different),
+  find_places: shoutedForms(SENTENCES.find_places),
+  find_some_different: shoutedForms(SENTENCES.find_some_different),
+  changed_places: shoutedForms(SENTENCES.changed_places),
+  join_parts: " / ",
 };
 
 /** A line of ten-point Times near the top of the first page, reading "was <id>". */

@@ -37,6 +37,7 @@ import { type Drawn, landedFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
+import { fill } from "./words";
 import { type Persistence, persistUntil, persistWork } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
@@ -285,11 +286,12 @@ export function change(editor: Editor, action: HistoryAction | readonly HistoryA
 
 /** Put a span back as the document had it, from its margin note; focus goes to the span. */
 export function putBack(editor: Editor, spanId: string): void {
-  const { history, layout } = editor.store.get();
+  const { history, layout, doc } = editor.store.get();
+  const text = layout.spans.get(spanId)?.text ?? "";
   change(
     editor,
     { kind: "remove", ids: touching(history, spanId) },
-    { announcement: announcing(`Put back ${layout.spans.get(spanId)?.text ?? ""}`), focusTo: { spanId } },
+    { announcement: announcing(fill(doc.sentences.put_back, { text })), focusTo: { spanId } },
   );
 }
 
@@ -304,19 +306,19 @@ export interface PressedOn {
  */
 export function undo(editor: Editor, on: PressedOn = { page: null }): void {
   const step = editor.store.get().history.done.at(-1);
-  stepped(editor, { kind: "undo" }, { step, words: "Back to", on });
+  stepped(editor, { kind: "undo" }, { step, key: "back_to", on });
 }
 
 /** Bring back the last thing undone, announced and brought into view as undo does, and focus moved as it moves it. */
 export function redo(editor: Editor, on: PressedOn = { page: null }): void {
   const step = editor.store.get().history.undone.at(-1);
-  stepped(editor, { kind: "redo" }, { step, words: "Changed to", on });
+  stepped(editor, { kind: "redo" }, { step, key: "changed_to", on });
 }
 
 function stepped(
   editor: Editor,
   action: HistoryAction,
-  { step, words, on }: { step: Step | undefined; words: string; on: PressedOn },
+  { step, key, on }: { step: Step | undefined; key: "back_to" | "changed_to"; on: PressedOn },
 ) {
   const pageDelete = step?.find(({ edit }) => edit.kind === "delete_page")?.edit;
   if (pageDelete?.kind === "delete_page") {
@@ -329,8 +331,8 @@ function stepped(
     return;
   }
   const span = editor.store.get().layout.spans.get(spanId);
-  change(editor, action, ({ reading }) => ({
-    announcement: announcing(`${words} ${span === undefined ? "" : textIn(reading, span)}`),
+  change(editor, action, ({ reading, doc }) => ({
+    announcement: announcing(fill(doc.sentences[key], { text: span === undefined ? "" : textIn(reading, span) })),
     scrollTo: scrollingTo(spanId),
   }));
 }

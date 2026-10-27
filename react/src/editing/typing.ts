@@ -11,6 +11,7 @@ import { type Drawn, landedFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
 import { LOOKS_IDENTICAL, liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
+import { fill } from "./words";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {
@@ -220,7 +221,7 @@ export function typingEnd(
   keep: boolean,
   { returnFocus = false } = {},
 ): { typed: HistoryAction; ended: Partial<EditorState> } {
-  const { draft, layout, reading } = state;
+  const { draft, layout, reading, doc } = state;
   const nothing: HistoryAction = { kind: "add", edits: [] };
   if (draft === null) return { typed: nothing, ended: {} };
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
@@ -235,7 +236,7 @@ export function typingEnd(
   const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
   return {
     typed: { kind: "add", edits: [replace] },
-    ended: { ...ended, announcement: announcing(`Changed to ${draft.text}`) },
+    ended: { ...ended, announcement: announcing(fill(doc.sentences.changed_to, { text: draft.text })) },
   };
 }
 

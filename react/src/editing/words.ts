@@ -8,8 +8,12 @@ const JOINS: Record<string, string> = { chars: " or ", letters: " " };
 
 const ONE_DECIMAL = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-/** `sentence` with each {placeholder} filled; one with no fact stays as written. */
-export function fill(sentence: string, facts: Facts): string {
+/**
+ * `sentence` with each {placeholder} filled; one with no fact stays as written. A sentence a reading persisted by an
+ * earlier build lacks says nothing until the server's is read again (`readStoredAgain`): what's done never waits on it.
+ */
+export function fill(sentence: string | undefined, facts: Facts): string {
+  if (sentence === undefined) return "";
   return sentence.replace(/\{(\w+)\}/g, (placeholder: string, key: string) => {
     const fact = facts[key];
     if (fact === undefined) return placeholder;
@@ -17,6 +21,11 @@ export function fill(sentence: string, facts: Facts): string {
     if (typeof fact === "string") return fact;
     return fact.join(JOINS[key] ?? " ");
   });
+}
+
+/** A sentence of the server's with no facts to fill, or nothing where a reading persisted by an earlier build lacks it. */
+export function sentenceOrNothing(sentence: string | undefined): string {
+  return sentence ?? "";
 }
 
 // Draws nothing on its own: a space, an invisible mark, or an accent alone, which would sit on the space before it.
