@@ -54,21 +54,29 @@ function threePages(): Upload {
   return { name: "three.pdf", mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") };
 }
 
-/** A download read back as any upload is: how many pages it has, and their words. */
-async function reread(page: Page, download: Download): Promise<{ pages: number; text: string }> {
-  const bytes = await readFile(await download.path());
+/** A PDF read back as any upload is. */
+async function reread(page: Page, pdf: Uint8Array): Promise<Document> {
   return page.evaluate(
-    async (pdf) => {
+    async (sent) => {
       const response = await fetch("/api/documents", {
         method: "POST",
         headers: { "content-type": "application/pdf" },
-        body: new Uint8Array(pdf),
+        body: new Uint8Array(sent),
       });
-      const doc = (await response.json()) as Document;
-      return { pages: doc.pages.length, text: doc.spans.map((span) => span.text).join(" ") };
+      return (await response.json()) as Document;
     },
-    [...bytes],
+    [...pdf],
   );
+}
+
+/** A download's bytes. */
+async function bytesOf(download: Download): Promise<Uint8Array> {
+  return readFile(await download.path());
+}
+
+/** A document's words, a span's after another's. */
+function wordsOf(doc: Document): string {
+  return doc.spans.map((span) => span.text).join(" ");
 }
 
 async function seriousProblems(page: Page) {
@@ -249,31 +257,17 @@ test("a date changed through the calendar downloads in the file's own font, and 
 
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("ControlOrMeta+s");
-  const bytes = await readFile(await (await downloading).path());
-  const [before, after] = [await spansOf(page, await readFile(SAMPLE)), await spansOf(page, bytes)];
-  const original = before.find((span) => span.text === line);
-  const edited = after.find((span) => span.text === changed);
+  const [before, after] = [
+    await reread(page, await readFile(SAMPLE)),
+    await reread(page, await bytesOf(await downloading)),
+  ];
+  const original = before.spans.find((span) => span.text === line);
+  const edited = after.spans.find((span) => span.text === changed);
   // Drawn again from the file's own program, which names itself as PostScript does: NimbusRoman-Regular.
   const letters = (name = "") => name.replace(/^[A-Z]{6}\+/, "").replace(/[^A-Za-z]/g, "");
   expect(letters(edited?.font)).toBe(letters(original?.font));
   expect(edited?.fidelity).toBe("exact");
 });
-
-/** The spans a PDF reads as, uploaded as any file is. */
-async function spansOf(page: Page, pdf: Uint8Array) {
-  return page.evaluate(
-    async (sent) => {
-      const response = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "content-type": "application/pdf" },
-        body: new Uint8Array(sent),
-      });
-      const doc = (await response.json()) as Document;
-      return doc.spans.map(({ text, font, fidelity }) => ({ text, font, fidelity }));
-    },
-    [...pdf],
-  );
-}
 
 test("Cmd+Delete redacts a line, and the file downloaded no longer has its words", async ({ page }) => {
   await open(page);
@@ -285,23 +279,10 @@ test("Cmd+Delete redacts a line, and the file downloaded no longer has its words
 
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("ControlOrMeta+s");
-  const bytes = await readFile(await (await downloading).path());
   // Read back as any upload is: the line's words aren't in the file's text at all.
-  const reread = await page.evaluate(
-    async (pdf) => {
-      const body = new Uint8Array(pdf);
-      const response = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "content-type": "application/pdf" },
-        body,
-      });
-      const doc = (await response.json()) as Document;
-      return doc.spans.map((span) => span.text);
-    },
-    [...bytes],
-  );
-  expect(reread.length).toBeGreaterThan(0);
-  expect(reread.join(" ")).not.toContain("This agreement is made");
+  const redacted = await reread(page, await bytesOf(await downloading));
+  expect(redacted.spans.length).toBeGreaterThan(0);
+  expect(wordsOf(redacted)).not.toContain("This agreement is made");
 });
 
 test("Split here downloads two files, each with only its pages, and the edit in the one it's on", async ({ page }) => {
@@ -314,10 +295,10 @@ test("Split here downloads two files, each with only its pages, and the edit in 
   const [first, second] = downloads as [Download, Download];
   expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["sample, page 1.pdf", "sample, page 2.pdf"]);
   // One page apiece, and the edit only where its page went.
-  const [before, after] = [await reread(page, first), await reread(page, second)];
-  expect([before.pages, after.pages]).toEqual([1, 1]);
-  expect(before.text).toContain("9 June 2026");
-  expect(after.text).not.toContain("9 June 2026");
+  const [before, after] = [await reread(page, await bytesOf(first)), await reread(page, await bytesOf(second))];
+  expect([before.pages.length, after.pages.length]).toEqual([1, 1]);
+  expect(wordsOf(before)).toContain("9 June 2026");
+  expect(wordsOf(after)).not.toContain("9 June 2026");
 });
 
 test("a page deleted in the editor is missing from the download, and its slip passes an accessibility check", async ({
@@ -331,10 +312,10 @@ test("a page deleted in the editor is missing from the download, and its slip pa
 
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("ControlOrMeta+s");
-  const { pages, text } = await reread(page, await downloading);
-  expect(pages).toBe(1);
-  expect(text).toContain("Schedule 1");
-  expect(text).not.toContain("SERVICES AGREEMENT");
+  const kept = await reread(page, await bytesOf(await downloading));
+  expect(kept.pages.length).toBe(1);
+  expect(wordsOf(kept)).toContain("Schedule 1");
+  expect(wordsOf(kept)).not.toContain("SERVICES AGREEMENT");
 });
 
 test("Split here after a page is deleted downloads the pages as shown, the deleted page in neither", async ({
@@ -348,9 +329,9 @@ test("Split here after a page is deleted downloads the pages as shown, the delet
   await expect.poll(() => downloads.length).toBe(2);
   const [first, second] = downloads as [Download, Download];
   expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["three, page 1.pdf", "three, page 3.pdf"]);
-  const [before, after] = [await reread(page, first), await reread(page, second)];
-  expect([before.pages, after.pages]).toEqual([1, 1]);
-  expect([before.text, after.text]).toEqual(["First page", "Third page"]);
+  const [before, after] = [await reread(page, await bytesOf(first)), await reread(page, await bytesOf(second))];
+  expect([before.pages.length, after.pages.length]).toEqual([1, 1]);
+  expect([wordsOf(before), wordsOf(after)]).toEqual(["First page", "Third page"]);
 });
 
 test("find counts a date on both pages, Change all changes both, and one undo puts both back", async ({ page }) => {
