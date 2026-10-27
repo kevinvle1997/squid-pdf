@@ -118,6 +118,7 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   form_field_not_edited: true,
   empty: true,
   edit_breaks_signature: true,
+  email_broken: true,
   back_to: true,
   changed_to: true,
   put_back: true,

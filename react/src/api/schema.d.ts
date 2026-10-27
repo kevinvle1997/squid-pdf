@@ -759,6 +759,8 @@ export interface components {
             empty: string;
             /** Edit Breaks Signature */
             edit_breaks_signature: string;
+            /** Email Broken */
+            email_broken: string;
             /** Back To */
             back_to: string;
             /** Changed To */

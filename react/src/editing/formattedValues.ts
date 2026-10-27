@@ -88,7 +88,7 @@ const NAME_THEN_DAY = new RegExp(
 // The same mark twice between numbers, none of them part of a longer run of numbers: 14.03.2026, 2026-03-14.
 const NUMERIC = /(?<![\p{L}\p{N}])(?<!\p{N}[./-])(\d{1,4})([./-])(\d{1,2})\2(\d{1,4})(?![\p{L}\p{N}])(?![./-]\p{N})/gu;
 
-// An address, its name and domain of the letters addresses take, its last part letters alone.
+// An email, its name and domain of the letters emails take, its last part letters alone.
 const EMAIL =
   /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}(?![\p{L}\p{N}-])/gu;
 
@@ -387,7 +387,7 @@ function emailsIn(text: string): EmailValue[] {
   }));
 }
 
-/** How many email addresses `text` reads as. */
-export function addressCountIn(text: string): number {
+/** How many emails `text` reads as. */
+export function emailCountIn(text: string): number {
   return emailsIn(text).length;
 }
