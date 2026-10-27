@@ -312,16 +312,21 @@ function styleIn(state: Pick<EditorState, "layout" | "shippedFaces">, draft: Tex
   return span === undefined ? null : { ...styleOf(span), size: nearSize, nearSize, color };
 }
 
-/** Set the new text being typed in the face `key` names, from the slip's list: drawn in it at once, and announced. */
-export function chooseFace(editor: Editor, key: string): void {
+/**
+ * Set the new text being typed in the face `key` names, from the slip's list: drawn in it at once, and announced.
+ * Larger in a handwriting face, it stays on its page as wide as `widthOf` measures it.
+ */
+export function chooseFace(editor: Editor, key: string, { widthOf }: { widthOf: (insert: Insert) => number }): void {
   const state = editor.store.get();
-  const { draft } = state;
-  if (draft?.kind !== "text") return;
+  const { draft, doc } = state;
+  const info = draft === null ? undefined : doc.pages[draft.page];
+  if (draft?.kind !== "text" || info === undefined) return;
   const style = styleIn(state, draft, key);
   if (style === null) return;
   const label = [...Object.values(faceChoicesOf(state, draft)).flat()].find((choice) => choice.key === key)?.label;
+  const origin = keptOnPage(info, { origin: draft.origin, size: style.size }, widthOf(insertOf({ ...draft, style })));
   const setIn = fill(state.doc.sentences.new_text_set_in, { font: label ?? style.font });
-  editor.store.set({ draft: { ...draft, style }, announcement: announcing(setIn) });
+  editor.store.set({ draft: { ...draft, style, origin }, announcement: announcing(setIn) });
 }
 
 /** Where focus goes when new text at `insert`'s place goes, or its field: the text nearest it, else its page's control. */
@@ -394,17 +399,29 @@ export function writeAgain(editor: Editor, textId: number): void {
   });
 }
 
+/** Open `draft`'s field, its line's start on its page: an empty one has no width yet. */
 function open(editor: Editor, draft: TextDraft): void {
-  editor.store.set({ draft, focusTo: null, unredacting: null });
+  const info = editor.store.get().doc.pages[draft.page];
+  const origin =
+    info === undefined ? draft.origin : keptOnPage(info, { origin: draft.origin, size: draft.style.size }, 0);
+  editor.store.set({ draft: { ...draft, origin }, focusTo: null, unredacting: null });
 }
 
-/** Move new text by `by` points: a drag, a step of its own; a nudge, one with the nudges just before it. */
-export function moveText(editor: Editor, textId: number, { by, nudge }: { by: PagePoint; nudge: boolean }): void {
+/**
+ * Move new text by `by` points, its whole line kept on its page as wide as it draws (`widthPt`): a drag, a step of
+ * its own; a nudge, one with the nudges just before it.
+ */
+export function moveText(
+  editor: Editor,
+  textId: number,
+  { by: [dx, dy], nudge, widthPt }: { by: PagePoint; nudge: boolean; widthPt: number },
+): void {
   const { reading, doc, nudged } = editor.store.get();
   const text = keptTexts(reading).find((insert) => insert.textId === textId);
   const info = text === undefined ? undefined : doc.pages[text.edit.page];
   if (text === undefined || info === undefined) return;
-  const origin = within(info, text.edit, by);
+  const [x, y] = text.edit.origin;
+  const origin = keptOnPage(info, { origin: [x + dx, y + dy], size: text.edit.size }, widthPt);
   const edit = { ...text.edit, origin: [origin[0], origin[1]] as [number, number] };
   const folds = nudge && nudged === text.id;
   const next = editor.store.get().history.next;
@@ -419,10 +436,16 @@ export function moveText(editor: Editor, textId: number, { by, nudge }: { by: Pa
   );
 }
 
-/** Where new text moved `by` starts, kept on its page: a line moved off it would draw nowhere. */
-function within(info: PageInfo, { origin: [x, y], size }: Insert, [dx, dy]: PagePoint): PagePoint {
-  const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), high);
-  return [clamp(x + dx, 0, info.width - size), clamp(y + dy, size * INSERT_ASCENT_EM, info.height)];
+/** Where a line of new text `widthPt` wide starts so the whole of it is on its page: what runs off draws nowhere. */
+export function keptOnPage(
+  info: PageInfo,
+  { origin: [x, y], size }: { origin: PagePoint; size: number },
+  widthPt: number,
+): PagePoint {
+  // Wider than the page, it starts at its left edge.
+  const clamp = (value: number, low: number, high: number) => Math.max(Math.min(value, high), low);
+  const top = size * INSERT_ASCENT_EM;
+  return [clamp(x, 0, info.width - widthPt), clamp(y, top, info.height - size * INSERT_DESCENT_EM)];
 }
 
 /** Take new text out, every version of it, from its margin note: focus goes to the text nearest it. */

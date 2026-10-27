@@ -248,12 +248,12 @@ describe("new text", () => {
 
   test("put on a page, set in a face, moved, typed into again, undone and taken out, it says the server's sentences", () => {
     writeAt(editor, 0, [100, 300]);
-    chooseFace(editor, "page:Named");
+    chooseFace(editor, "page:Named", { widthOf: () => 50 });
     expect(heard()).toBe("SET IN Named.");
     typeInto(editor, "Signed");
     finish(editor, true);
     expect(heard()).toBe("ADDED “Signed”.");
-    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false });
+    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false, widthPt: 50 });
     expect(heard()).toBe("MOVED “Signed”.");
     writeAgain(editor, onlyText().textId);
     typeInto(editor, "Signed again");
@@ -277,12 +277,12 @@ describe("new text", () => {
     }
     editor = createEditor(FILE, stale, 2);
     writeAt(editor, 0, [100, 300]);
-    chooseFace(editor, "page:Named");
+    chooseFace(editor, "page:Named", { widthOf: () => 50 });
     expect(heard()).toBe("");
     typeInto(editor, "Signed");
     finish(editor, true);
     expect(heard()).toBe("");
-    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false });
+    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false, widthPt: 50 });
     expect(onlyText().edit.origin[0]).toBeGreaterThan(100);
     expect(heard()).toBe("");
   });

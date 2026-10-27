@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
+import type { FitRules, FontInfo, Insert, SpanInfo, Strategy } from "../api/types";
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
@@ -12,6 +12,7 @@ import {
   fontOfText,
   inShippedFace,
   insertOf,
+  keptOnPage,
   sameInsert,
   type TextDraft,
   textDrawingOf,
@@ -247,6 +248,22 @@ export function typedState(
   const { value, lost } = heldIn(state, text);
   const valueEditorOpen = state.draft.valueEditorOpen && !lost;
   return { draft: { ...state.draft, text, value, valueEditorOpen }, announcement };
+}
+
+/** Type `typed` into new text: grown past the room to its right, its start moves left, so its end stays on its page. */
+export function typeIntoText(
+  editor: Editor,
+  typed: string,
+  { widthOf }: { widthOf: (insert: Insert) => number },
+): void {
+  const state = editor.store.get();
+  const { draft, doc } = state;
+  const info = draft?.kind === "text" ? doc.pages[draft.page] : undefined;
+  if (draft?.kind !== "text" || info === undefined) return;
+  const text = lineOf(typed);
+  const widthPt = widthOf(insertOf({ ...draft, text }));
+  const origin = keptOnPage(info, { origin: draft.origin, size: draft.style.size }, widthPt);
+  editor.store.set({ draft: { ...draft, text, origin }, announcement: heardAsTyped({ ...state, draft }, text) });
 }
 
 /** What's typed as one line: a gap for each break, and nothing a line can't draw. */

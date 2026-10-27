@@ -33,7 +33,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
-import { EXPORT_INTENT_MS, LINE_BELOW_EM } from "../constants";
+import { EXPORT_INTENT_MS, INSERT_DESCENT_EM, LINE_BELOW_EM } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
@@ -1287,6 +1287,43 @@ describe("new text", () => {
     // As tall as its line, so a press on the line's middle lands on it.
     expect(onPage().height).toBeCloseTo(atDesk.height, 0);
     expect(onPage().top).toBeCloseTo(atDesk.top, 0);
+  });
+
+  test("typed near the right edge, its start moves left as it grows, so the whole line sent is on the page", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const pressed = await doubleClickPaper(screen, [560, 300]);
+    const field = screen.getByRole("textbox", { name: "New text" });
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("Signed by M. Halvorsen");
+    // Live, as it's typed: the field has moved in from the press.
+    expect(field.element().getBoundingClientRect().left).toBeLessThan(pressed.x - 1);
+    await userEvent.keyboard("{Enter}");
+
+    await expect.poll(lastRendered).toHaveLength(1);
+    const [sent] = lastRendered();
+    const mark = screen.getByRole("button", { name: "Signed by M. Halvorsen" });
+    await expect.element(mark).toBeInTheDocument();
+    const layer = screen.getByRole("region", { name: "Page 1" }).element().querySelector("img")?.parentElement;
+    expect(mark.element().getBoundingClientRect().right).toBeLessThanOrEqual(
+      (layer?.getBoundingClientRect().right ?? 0) + 0.5,
+    );
+    // Undone and redone, it comes back where it was sent.
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(mark).not.toBeInTheDocument();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.element(mark).toBeInTheDocument();
+    expect(lastRendered()[0]).toEqual(sent);
+  });
+
+  test("opened at the bottom edge, its baseline is on the page, and so are its letters' feet", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, A4.height - 1]);
+    await userEvent.keyboard("Signed{Enter}");
+
+    await expect.poll(lastRendered).toHaveLength(1);
+    const [sent] = lastRendered();
+    const [, baseline = Infinity] = sent?.kind === "insert" ? sent.origin : [];
+    expect(baseline).toBeLessThanOrEqual(A4.height - red.size * INSERT_DESCENT_EM);
   });
 
   test("a double-click on a span still edits the span", async () => {
