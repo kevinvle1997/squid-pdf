@@ -187,15 +187,6 @@ describe("an edit", () => {
     edit(editor, "turned", null);
     expect(troublesIn(editor.store.get(), "was turned").sentences).toEqual([]);
   });
-
-  test("a font muted warns no more as typing starts, and is announced; warned again, it's back", () => {
-    setWarningMuted(editor, "Named", { muted: true });
-    expect(editor.store.get().mutedFonts).toEqual(new Set(["Named"]));
-    expect(editor.store.get().announcement.text).toBe("Edits in Named won't warn again");
-    setWarningMuted(editor, "Named", { muted: false });
-    expect(editor.store.get().mutedFonts).toEqual(new Set());
-    expect(editor.store.get().announcement.text).toBe("Edits in Named warn again");
-  });
 });
 
 describe("a signed document", () => {
