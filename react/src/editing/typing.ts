@@ -156,7 +156,8 @@ export function typeInto(editor: Editor, typed: string): void {
   const warnedBefore = was.verdict === null ? null : shortWarningOf(was.verdict);
   const warningHeard = warning === warnedBefore || now.verdict === null ? [] : [heardOf(state, now.verdict)];
   const changedKind = now.kind !== was.kind && (now.sentences.length > 0 || warningHeard.length > 0);
-  const heard = [...now.sentences, ...warningHeard, ...offered].join("; ");
+  // A reading persisted by an earlier build lacks the joiner: a space, since join's own default is a comma.
+  const heard = [...now.sentences, ...warningHeard, ...offered].join(state.doc.sentences.join_parts ?? " ");
   const announcement = changedKind ? announcing(heard) : state.announcement;
   store.set({ draft: { ...state.draft, text }, announcement });
 }

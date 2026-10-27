@@ -105,15 +105,34 @@ describe("an edit", () => {
     ]);
   });
 
+  test("what's said at once, read from a reading persisted before the joiner was sent, is joined by a space", () => {
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz");
+    const long = aSpan({ id: "long", text: "abcdefghijklmnopqrst" });
+    const stale = aDoc({
+      sentences: structuredClone(SENTENCES),
+      spans: [long],
+      fonts: [aFont("Times-Roman", { glyphs })],
+    });
+    Reflect.deleteProperty(stale.sentences, "join_parts");
+    editor = createEditor(FILE, stale, 2);
+    edit(editor, "long", null);
+    typeInto(editor, `${long.text}u`);
+    expect(editor.store.get().announcement.text).toBe(
+      "about 5% too long for its place: shorten it, or it runs into what's beside it Up or Down chooses how it fits",
+    );
+  });
+
   test("Up or Down chooses how a long line fits, and the edit takes it while it's offered", () => {
     // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
     const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz");
     const long = aSpan({ id: "long", text: "abcdefghijklmnopqrst" });
-    editor = createEditor(FILE, aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }), 2);
+    const doc = aDoc({ sentences: PSEUDO_SENTENCES, spans: [long], fonts: [aFont("Times-Roman", { glyphs })] });
+    editor = createEditor(FILE, doc, 2);
     edit(editor, "long", null);
     typeInto(editor, `${long.text}u`);
+    // Joined as the server joins what's said at once.
     expect(editor.store.get().announcement.text).toBe(
-      "about 5% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",
+      "about 5% too long for its place: shorten it, or it runs into what's beside it / Up or Down chooses how it fits",
     );
 
     // From leaving it long, the last, round to the first.
