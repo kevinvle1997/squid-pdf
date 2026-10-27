@@ -8,7 +8,7 @@ import { Shortcut } from "../../ui/Tooltip";
 import { BELOW_BAR_PX } from "../constants";
 import { showShortcuts } from "../shortcuts";
 import { useEditor, useEditorState } from "./context";
-import { COMMAND } from "./keys";
+import { ALT, COMMAND } from "./keys";
 import styles from "./Shortcuts.module.css";
 
 /** What each key does, in the order the work goes: find the words, edit them, check them, and send the file. */
@@ -19,6 +19,7 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "Edit the line, then keep what's typed", keys: ["Enter"] },
   { what: "Stop editing, and keep the line as it was", keys: ["Esc"] },
   { what: "Choose how a long line fits", keys: ["↑", "↓"] },
+  { what: "Open Date or Amount, for a date or an amount in the line", keys: [`${ALT}↓`] },
   { what: "Undo, or redo", keys: [`${COMMAND}Z`, `${COMMAND}Shift Z`] },
   { what: "Redact the line", keys: [`${COMMAND}Delete`] },
   { what: "Export", keys: [`${COMMAND}S`] },

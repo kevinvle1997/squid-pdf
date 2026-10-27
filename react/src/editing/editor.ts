@@ -44,7 +44,8 @@ import { FITTED, type Zoom } from "./zoom";
 
 /**
  * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
- * margin note. Its note stays shut until focus moves on, since it would cover the words.
+ * margin note. Its note stays shut until focus moves on, since it would cover the words. While it's
+ * typed into, its field takes it instead: back from a value's editor in the slip.
  */
 export interface FocusSpan {
   readonly spanId: string;

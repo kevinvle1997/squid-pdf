@@ -21,6 +21,7 @@ export interface Draft {
   readonly press: Press | null; // the press that opened it, if one did: where the caret goes
   readonly text: string;
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
+  readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
 }
 
 /** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
@@ -40,7 +41,8 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
 /** Typing into `span` as it reads in `reading`, opened by `press`. */
 export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; press: Press | null }): Draft {
   const now = reading.spans.get(span.id);
-  return { spanId: span.id, page: span.page, press, text: now?.text ?? span.text, strategy: now?.strategy };
+  const text = now?.text ?? span.text;
+  return { spanId: span.id, page: span.page, press, text, strategy: now?.strategy, valueEditorOpen: false };
 }
 
 /** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */
@@ -155,9 +157,16 @@ const SPACING_CONTROL = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
 const NOT_ON_A_LINE = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u202A-\u202E\u2066-\u2069]/gu;
 
 export function typeInto(editor: Editor, typed: string): void {
-  const { store } = editor;
-  const state = store.get();
-  if (state.draft === null) return;
+  const state = editor.store.get();
+  const { draft } = state;
+  if (draft !== null) editor.store.set(typedState({ ...state, draft }, typed));
+}
+
+/** What typing `typed` into the draft makes of the state: its text, and a trouble announced as it appears. */
+export function typedState(
+  state: EditorState & { draft: Draft },
+  typed: string,
+): Pick<EditorState, "announcement"> & { draft: Draft } {
   const text = typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
   const was = troublesIn(state, state.draft.text);
   const now = troublesIn(state, text);
@@ -172,7 +181,7 @@ export function typeInto(editor: Editor, typed: string): void {
   // Such a reading lacks the joiner too: a space, since join's own default is a comma.
   const heard = parts.join(state.doc.sentences.join_parts ?? " ");
   const announcement = changedKind ? announcing(heard) : state.announcement;
-  store.set({ draft: { ...state.draft, text }, announcement });
+  return { draft: { ...state.draft, text }, announcement };
 }
 
 /** The draft's full warning on `verdict`, shown in the chip: none when its words keep their look, or it's muted. */

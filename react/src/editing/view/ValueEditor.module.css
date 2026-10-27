@@ -1,0 +1,65 @@
+/* A row of its own under the verdict, as the ways out of a long line take theirs: the control, and what it opens under it. */
+.editor {
+  /* A day of the calendar: a button's size on a pointer, a finger's on a touch screen. */
+  --cell: 32px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
+  pointer-events: auto;
+}
+@media (pointer: coarse) {
+  .editor { --cell: var(--hit); }
+}
+/* Named for its kind, bordered as the slip's other edit actions are, its chevron turning up while it's open. */
+.control { gap: var(--s1); }
+.chevron { display: block; flex: none; color: var(--ink-lo); }
+
+.calendar { display: flex; flex-direction: column; gap: var(--s2); width: calc(7 * var(--cell)); }
+/* The month, and its steps either side as quiet buttons: tools, not the edit. */
+.month { display: flex; align-items: center; justify-content: space-between; }
+.step { width: var(--cell); height: var(--cell); padding: 0; }
+.step svg { display: block; }
+.monthName { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+.grid { border-collapse: collapse; border-spacing: 0; }
+.weekday { padding: 0 0 var(--s1); font-size: var(--fs-micro); font-weight: 500; color: var(--ink-lo); }
+.day, .markedDay {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: var(--cell); height: var(--cell); border-radius: var(--r-2);
+  font-size: var(--fs-sm); color: var(--ink); font-variant-numeric: tabular-nums;
+  cursor: pointer; outline: none;
+  transition: background-color var(--dur-quick) var(--ease-out);
+}
+.day[data-hovered], .markedDay[data-hovered] { background: var(--rule-soft); }
+/* The chosen day in solid ink, as a chosen way out is. */
+.day[data-selected], .markedDay[data-selected] { background: var(--ink); color: var(--strip); font-weight: 600; }
+.day[data-focus-visible], .markedDay[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
+/* Other months' days are left out: the grid keeps their place. */
+.day[data-outside-month], .markedDay[data-outside-month] { visibility: hidden; }
+/* A day whose date the line can't take: the warning's dashed line under its number, never colour alone. */
+.markedDay::after {
+  content: ""; position: absolute; left: 50%; bottom: calc(var(--cell) / 2 - 10px);
+  width: 16px; height: 2px; transform: translateX(-50%);
+  background: repeating-linear-gradient(90deg, var(--warn) 0 3px, transparent 3px 5px);
+}
+.markedDay[data-selected]::after { background: repeating-linear-gradient(90deg, var(--strip) 0 3px, transparent 3px 5px); }
+
+/* The amount's own field, typed into: no step buttons, named by the Amount control over it. */
+.amountField { display: flex; }
+.amount {
+  width: 14ch;
+  padding: var(--s1) var(--s3); border: 1px solid var(--rule); border-radius: var(--r-2);
+  background: var(--field); color: var(--ink);
+  font: inherit; font-size: var(--fs-input); line-height: 1.5; font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.amount[data-focused] { border-color: var(--change); box-shadow: inset 0 0 0 1px var(--change); }
+@media (pointer: coarse) {
+  .amount { min-height: var(--hit); }
+}
+
+/* Fills and shadows are dropped here: the chosen day and the focus keep a shape of their own. */
+@media (forced-colors: active) {
+  .day[data-selected], .markedDay[data-selected] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .day[data-focus-visible], .markedDay[data-focus-visible] { outline-color: Highlight; }
+  .markedDay::after { height: 0; background: none; border-top: 2px dashed CanvasText; }
+  .amount[data-focused] { outline: 2px solid Highlight; outline-offset: -2px; }
+}
