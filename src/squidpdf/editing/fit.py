@@ -20,6 +20,7 @@ from squidpdf.core import (
     TOLERANCE_PT,
     DrawPlan,
     Engine,
+    Face,
     Fidelity,
     Message,
     Param,
@@ -206,9 +207,8 @@ def insert_span(engine: Engine, insert: Insert) -> Span:
 def insert_fit(engine: Engine, insert: Insert) -> Fitted:
     """What new text will look like: its font and letters, as there's no width to fit."""
     span = insert_span(engine, insert)
-    shipped = insert.font in FACES
     # A font that only lacks a letter is still usable: a substitute draws the line.
-    unusable = not shipped and not engine.fit.has_own_font(span)
+    unusable = insert.font not in FACES and not engine.fit.has_own_font(span)
     typed_plan = engine.fit.plan_for(span, insert.text)
     verdict = _verdict_of(engine, span, insert.text, plan=typed_plan)
     report = FitReport(
@@ -218,10 +218,17 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
         substitute=engine.fit.substitute(span, insert.text, plan=typed_plan),
         unavailable=insert.font if unusable else "",
     )
-    # No font of the document's to stand in for: in a face we ship, it's what was asked.
-    return Fitted(
-        report, typed_plan, replace(verdict, fidelity="exact") if shipped else verdict
-    )
+    return Fitted(report, typed_plan, _new_text_verdict(insert, typed_plan, verdict))
+
+
+def _new_text_verdict(insert: Insert, plan: DrawPlan, verdict: Verdict) -> Verdict:
+    """New text's verdict: in a face we ship, exact where it draws, else a similar face's."""
+    # In a font of the page's: judged as an edit of that font is.
+    if insert.font not in FACES:
+        return verdict
+    drawn_as_asked = isinstance(plan.drawn_in, Face) and plan.drawn_in.name == insert.font
+    fidelity: Fidelity = "exact" if drawn_as_asked else "substitute"
+    return replace(verdict, fidelity=fidelity, why=None)
 
 
 def replace_fit(

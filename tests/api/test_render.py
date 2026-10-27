@@ -443,6 +443,8 @@ _PAGE_FONT = "the page's"  # new text in the font the page's line is in
     [
         # No font of the document's to stand in for: it is what's asked.
         (open_driver, "Caveat Bold", "Signed", ("exact", None)),
+        # A face we ship that lacks Ω: one that has it draws the line, as a similar font.
+        (open_driver, "Caveat Bold", "Ω Smith", ("substitute", "Noto Sans Bold")),
         # In the page's own font, which draws it.
         (open_driver, _PAGE_FONT, "Paid", ("exact", None)),
         # In the page's own font, whose copy lacks "€": a similar font draws the line.

@@ -16,9 +16,9 @@ import { DEFAULT_FACE, isShippedFace, previewFaceOf } from "./faces";
 import { letterTroublesOf, missingIn } from "./fit";
 import { readableName } from "./fonts";
 import { versionsOf } from "./history";
+import type { MismatchPlace } from "./mismatches";
 import type { InsertReading, Reading } from "./project";
 import type { Drawn } from "./render";
-import { landedInsertFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { type Drawing, drawingIn, drawingOf } from "./substitutes";
 import { EXACT, liveVerdictOf, type Verdict } from "./verdicts";
@@ -170,16 +170,23 @@ export function textSpanOf(layout: Pick<Layout, "fonts" | "spans">, insert: Inse
 
 /**
  * How new text comes out, the one verdict its note, the chip and the bar say: its render's once that very version
- * landed (`fit`); in a face we ship, as asked, since only a letter it lacks sends it elsewhere, and its troubles say
- * that; in a page's font, as an edit of that font is worked out.
+ * landed (`fit`); in a face we ship, exact where that face draws it, else the face a letter it lacks sends the line
+ * to; in a page's font, as an edit of that font is worked out.
  */
 export function textVerdictOf(
   layout: Pick<Layout, "fonts" | "spans">,
   { insert, fit }: { insert: Insert; fit: FitInfo | undefined },
 ): Verdict {
   if (fit !== undefined) return fit;
-  if (inShippedFace(insert)) return EXACT;
+  if (inShippedFace(insert)) return shippedVerdictOf(insert);
   return liveVerdictOf(textSpanOf(layout, insert), { font: fontOfText(layout, insert), text: insert.text });
+}
+
+/** New text in a face we ship: exact where it draws the line, else in the similar face a letter it lacks sends it to. */
+function shippedVerdictOf(insert: Insert): Verdict {
+  const { face } = drawingIn(fontNameOf(insert), insert.text);
+  if (face === fontNameOf(insert)) return EXACT;
+  return { fidelity: "substitute", why: null, substitute: face, same_widths: false };
 }
 
 /** How new text is drawn: in what face, and the letters that send it there or are left out. */
@@ -207,9 +214,15 @@ export function textTroublesOf(
   return letterTroublesOf(textDrawingOf(layout, insert), sentences);
 }
 
-/** New text at rest, as its verdict says: the render's for its latest version once that landed, else worked out here. */
-export function restingVerdictOf(state: Pick<EditorState, "layout" | "drawn">, text: InsertReading): Verdict {
-  return textVerdictOf(state.layout, { insert: text.edit, fit: landedInsertFitOf(state.drawn, text) });
+/** New text as a place an edit won't match, as the bar counts places: none where it will. */
+export function textPlaceOf(
+  layout: Pick<Layout, "fonts" | "spans">,
+  { text, fit }: { text: InsertReading; fit: FitInfo | undefined },
+): MismatchPlace | undefined {
+  const verdict = textVerdictOf(layout, { insert: text.edit, fit });
+  if (verdict.fidelity === "exact") return undefined;
+  const missing = fit?.missing ?? textDrawingOf(layout, text.edit).switched;
+  return { span: textSpanOf(layout, text.edit), verdict, missing };
 }
 
 /** The pieces of new text on the pages the download keeps. */

@@ -18,7 +18,7 @@ import {
 } from "../fixtures";
 import { layoutOf } from "./editor";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
-import { restingVerdictOf, textVerdictOf } from "./newText";
+import { textVerdictOf } from "./newText";
 import { project, UNEDITED } from "./project";
 import { type Drawn, landedFitOf, landedFits, landedInsertFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 
@@ -293,6 +293,6 @@ describe("new text's fit", () => {
     expect(landedInsertFitOf(queue.drawn, now)).toEqual(drew);
     const layout = layoutOf(aDoc({ spans: [ONE], fonts: [aFont(ONE.font, { glyphs: halfWideGlyphs("Paid €") })] }));
     expect(textVerdictOf(layout, { insert: text, fit: undefined }).fidelity).toBe("exact");
-    expect(restingVerdictOf({ layout, drawn: queue.drawn }, now)).toEqual(drew);
+    expect(textVerdictOf(layout, { insert: text, fit: landedInsertFitOf(queue.drawn, now) })).toEqual(drew);
   });
 });

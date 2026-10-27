@@ -142,13 +142,15 @@ function fontSentence(
   { fonts, sentences }: { fonts: FontsByObject; sentences: Sentences },
 ): string {
   const [first] = places;
-  const font = first === undefined ? undefined : fontOf(fonts, first.span);
-  if (first === undefined || font === undefined) return "";
-  if (font.why !== null) return font.why;
-  const substitute = substituteOf(first.span, font);
+  if (first === undefined) return "";
+  const font = fontOf(fonts, first.span);
   const chars = [...new Set(places.flatMap((place) => place.missing))].map((letter) =>
     shownAs(letter, sentences.characters),
   );
+  // New text in a face we ship, not the document's: only a letter it lacks sends it to a similar one.
+  if (font === undefined) return fill(sentences.missing, { chars, font: first.verdict.substitute ?? "" });
+  if (font.why !== null) return font.why;
+  const substitute = substituteOf(first.span, font);
   if (chars.length > 0) return fill(sentences.missing, { chars, font: substitute });
   return fill(font.same_widths ? sentences.substitute_same_widths : sentences.substitute, { font: substitute });
 }
