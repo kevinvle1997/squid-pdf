@@ -197,3 +197,35 @@ export function troublesOf(
   }
   return troubles;
 }
+
+/**
+ * What a part of the line, such as a calendar day's date, adds to its troubles if chosen, in the server's words:
+ * `fit` is the line with it, `rest` the line without it and `now` the line as it stands, drawn the way `asked` while
+ * it's offered. Briefly: the letters it needs that the span's font lacks, which the rest of the line doesn't already,
+ * a letter being the part's own, so the one chosen is marked for it too; and its running the line past its room,
+ * where the line now isn't said to, a length being the whole line's. What the rest gets wrong, or draws them
+ * instead, is the slip's full verdict to say, above.
+ */
+export function troublesAddedOf(
+  fit: Fit,
+  {
+    rest,
+    now,
+    asked,
+    rules,
+    sentences,
+  }: { rest: Fit; now: Fit; asked: Strategy | undefined; rules: FitRules; sentences: Sentences },
+): string[] {
+  const troubles: string[] = [];
+  const added = fit.missing.filter((letter) => !rest.missing.includes(letter));
+  const named = added.map((letter) => shownAs(letter, sentences.characters));
+  if (added.length > 0) troubles.push(fill(sentences.not_in_font, { chars: named }));
+  // Too long as `troublesOf` says it. Once the line is, the verdict says so: no day says it again, though one runs
+  // further. Why not against the rest: words typed elsewhere, shorter than the date, can run the line past its room
+  // where the rest alone fits, and every day would say it, the one chosen too.
+  const tooLong = (line: Fit) => runsPast(line.deltaPt, line.roomPt, rules) && wayDrawn(asked, line) === "as-is";
+  if (tooLong(fit) && !tooLong(now)) {
+    troubles.push(fill(sentences.too_long, { percent: String(percentPastRoom(fit)) }));
+  }
+  return troubles;
+}

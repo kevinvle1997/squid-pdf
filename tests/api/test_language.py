@@ -60,6 +60,10 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(
         broken, pseudo_sentence(words.sentence("email_broken")), "an email typed apart"
     )
+    lacking = sentences["not_in_font"]
+    assert_equal(
+        lacking, pseudo_sentence(words.sentence("not_in_font")), "a calendar day's why"
+    )
     left_out = sentences["page_left_out"]
     assert_equal(left_out, pseudo_sentence(words.sentence("page_left_out")), "a page deleted")
     put_back = sentences["page_put_back"]

@@ -155,6 +155,7 @@ class Sentences(TypedDict):
     """The sentences the browser says about the document, unfilled, in the reader's language."""
 
     missing: str
+    not_in_font: str  # the letters alone, on a calendar day the span's font can't write
     will_leave_out: (
         str  # letters no font we have draws, said before the edit as the render says them after
     )

@@ -31,6 +31,7 @@ export const RULES: FitRules = { tolerance_pt: 4, room_slack_pt: 0.1, condense_l
 /** The server's sentences, as core/app/words/en.toml writes them. */
 export const SENTENCES: Sentences = {
   missing: "no {chars} in this font, so the line is drawn in our {font}",
+  not_in_font: "no {chars} in this font",
   will_leave_out: "{letters} can't be drawn in any font we have, and will be left out",
   too_long: "about {percent}% too long for its place: shorten it, or it runs into what's beside it",
   substitute: "Edits here use {font}, which may be a different width from the original.",

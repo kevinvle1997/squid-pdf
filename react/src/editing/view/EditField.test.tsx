@@ -35,6 +35,8 @@ const DOC = aDoc({ spans: [due], fonts: [aFont("Times-Roman", { glyphs: halfWide
 const WHITE_PIXEL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP4DwABAQEAHLCMmQAAAABJRU5ErkJggg==";
 const NO_SEVEN = fill(SENTENCES.missing, { chars: ["7"], font: "Liberation Serif Regular" });
+// What a day the font can't write says, as the mockup draws it: the full verdict is the slip's.
+const DAY_NO_SEVEN = fill(SENTENCES.not_in_font, { chars: ["7"] });
 
 let editor: Editor;
 
@@ -90,16 +92,16 @@ describe("a date in the field", () => {
     await expect.element(screen.getByText("looks identical")).toBeVisible();
   });
 
-  test("a day the font can't write is marked, and says why before it's chosen", async () => {
+  test("a day the font can't write is marked, and says why in a few words before it's chosen", async () => {
     const { screen } = await openField();
     await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
     const seventeenth = screen.getByRole("button", { name: /March 17, 2026/ });
     await expect.element(seventeenth).toBeVisible();
     await userEvent.hover(seventeenth);
-    await expect.poll(() => reasonIn(screen)?.textContent).toBe(NO_SEVEN);
+    await expect.poll(() => reasonIn(screen)?.textContent).toBe(DAY_NO_SEVEN);
     // Heard on the keyboard as focus reaches it, in the server's words.
     await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
-    expect(editor.store.get().announcement.text).toBe(NO_SEVEN);
+    expect(editor.store.get().announcement.text).toBe(DAY_NO_SEVEN);
   });
 
   test.each([1440, 390])(
@@ -160,6 +162,26 @@ describe("a date in the field", () => {
     await expect.element(field).toHaveFocus();
     await expect.element(screen.getByRole("button", { name: "Date" })).toHaveAttribute("aria-expanded", "false");
     expect(editor.store.get().draft?.text).toBe(WORDS);
+  });
+  test("keeps the slip's height as the months are stepped through, into another year and back", async () => {
+    // The 15th and 17th can't be written, nor any month named with a letter "Due 14 March 2026" hasn't, nor 2027.
+    const { screen } = await openField();
+    const control = screen.getByRole("button", { name: "Date" });
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+    const slip = control.element().closest("[data-slip]");
+    // Measured at rest: the slip arrives moving.
+    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    const heightNow = () => slip?.getBoundingClientRect().height;
+    const height = heightNow();
+
+    const heights: (number | undefined)[] = [];
+    for (const key of [...Array(12).fill("{PageDown}"), ...Array(12).fill("{PageUp}")]) {
+      await userEvent.keyboard(key);
+      await new Promise(requestAnimationFrame);
+      heights.push(heightNow());
+    }
+    expect(heights).toEqual(heights.map(() => height));
   });
 });
 

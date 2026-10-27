@@ -70,7 +70,7 @@ test.describe("on a touch screen", () => {
     await page.getByRole("button", { name: "Date" }).tap();
     const seventeenth = page.getByRole("button", { name: /March 17, 2026/ });
     await seventeenth.tap();
-    await expect(page.locator("[data-slip]").getByText(/^no 7 in this font/)).toBeVisible();
+    await expect(page.locator("[data-slip]").getByText("no 7 in this font", { exact: true })).toBeVisible();
     await expect(field).toHaveValue(line);
     await seventeenth.tap();
     await expect(field).toHaveValue("Delivery begins 17 March 2026 and runs eighteen months.");

@@ -143,11 +143,22 @@ def _dressed(sentence: str) -> bool:
             "no é or ß in this font, so the line is drawn in our Carlito Bold",
         ),
         (
+            Message("not_in_font", {"chars": ["5", "7"]}),
+            "no 5 or 7 in this font",
+        ),
+        (
             Message("left_out", {"letters": ["中", "文"]}),
             "Left out 中 文, which no font we have can draw.",
         ),
     ],
-    ids=["a fraction", "a half", "a half just under in binary", "characters", "letters"],
+    ids=[
+        "a fraction",
+        "a half",
+        "a half just under in binary",
+        "characters",
+        "characters alone",
+        "letters",
+    ],
 )
 def test_a_message_is_said_in_english_with_its_facts_written_out(message, said):
     assert_equal(words.render(message), said, "the sentence")

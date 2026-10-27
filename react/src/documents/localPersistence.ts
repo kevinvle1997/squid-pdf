@@ -104,6 +104,7 @@ function renamed(doc: Document | (Omit<Document, "sentences"> & { copy: Document
 // Every sentence the browser reads: typed, so one the server adds must be listed here.
 const SENTENCES_READ: Record<keyof Sentences, true> = {
   missing: true,
+  not_in_font: true,
   will_leave_out: true,
   too_long: true,
   substitute: true,
