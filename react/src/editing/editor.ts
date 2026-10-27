@@ -1,6 +1,6 @@
 // One open document: its state, and the change every edit, undo and put-back goes through. Each action
 // is a function of the editor in the module named for it (typing, export).
-import type { Document, Edit, SpanInfo } from "../api/types";
+import type { Document, Edit, Sentences, SpanInfo } from "../api/types";
 import { lacksSentences } from "../documents/localPersistence";
 import { Reopener } from "../documents/reopen";
 import type { Press } from "./caret";
@@ -37,7 +37,7 @@ import { type Drawn, landedFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
-import { fill } from "./words";
+import { fill, fillCounted } from "./words";
 import { type Persistence, persistUntil, persistWork } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
@@ -385,19 +385,57 @@ export function changedCount(state: EditorState): number {
   return changedWordsCount(state) + state.reading.deleted.size;
 }
 
-/** How many changed spans won't match, and the bar's words: once one is in its own font, all "will look different". */
-export function warnedCount(state: EditorState): { count: number; label: string } {
+/** How many changed spans won't match: once one is in its own font, `different`, and all "will look different". */
+export function warnedCount(state: EditorState): { count: number; different: boolean } {
   const places = changedMismatches(state);
-  const approximate = places.some(({ verdict }) => verdict.fidelity === "approximate");
-  return { count: places.length, label: approximate ? "will look different" : "in a similar font" };
+  const different = places.some(({ verdict }) => verdict.fidelity === "approximate");
+  return { count: places.length, different };
+}
+
+/**
+ * The bar's count of `changed` changes, `count` of them warned, in the server's words: the part that warns kept apart,
+ * as Find's count is. Nothing where a reading persisted by an earlier build lacks either half.
+ */
+export function changesShown(
+  { changed, count, different }: { changed: number; count: number; different: boolean },
+  sentences: Sentences,
+): { plain: string; warned: string } {
+  if (count === 0) return { plain: fillCounted(sentences.changes, changed), warned: "" };
+  if (count === changed) {
+    return {
+      plain: "",
+      warned: fillCounted(different ? sentences.changes_different : sentences.changes_similar, changed),
+    };
+  }
+  const plain = fillCounted(sentences.changes_some, changed);
+  const warned = fillCounted(different ? sentences.changes_some_different : sentences.changes_some_similar, count);
+  if (plain === "" || warned === "") return { plain: "", warned: "" };
+  return { plain, warned };
+}
+
+/** The bar's count before any change, in the server's words: the places an edit won't match, or nothing. */
+export function atRestSentence({ count, reasons }: Mismatches, sentences: Sentences): string {
+  if (count === 0) return "";
+  // A reason the file's own font won't match makes some of them look different, as `different` does after a change.
+  return fillCounted(reasons.length > 0 ? sentences.at_rest_different : sentences.at_rest_similar, count);
 }
 
 /** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
-export function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
+function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
   return keptChanges(reading).filter(({ span, replaced }) => {
     const fit = drawn.fits.get(span.page)?.[span.id];
     return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
   }).length;
+}
+
+/**
+ * The bar's count of the changes left long past their room, in the server's words: nothing when none is, or where a
+ * reading persisted by an earlier build lacks it.
+ */
+export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "doc">): string {
+  const count = runLongCount(state);
+  if (count === 0) return "";
+  return fillCounted(state.doc.sentences.changes_too_long, count);
 }
 
 /** The changed spans whose edit won't match: in a similar font, or set apart from the text around them. */

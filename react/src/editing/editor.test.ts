@@ -1,8 +1,31 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aDocumentNotice, aFont, aProblem, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
-import { changedCount, createEditor, type Editor, layoutOf, putBack, redo, undo, warnedCount } from "./editor";
+import {
+  aDoc,
+  aDocumentNotice,
+  aFit,
+  aFont,
+  aProblem,
+  aReply,
+  aSpan,
+  halfWideGlyphs,
+  PSEUDO_SENTENCES,
+} from "../fixtures";
+import {
+  atRestSentence,
+  changedCount,
+  changesShown,
+  createEditor,
+  type Editor,
+  layoutOf,
+  putBack,
+  redo,
+  runLongSentence,
+  undo,
+  warnedCount,
+} from "./editor";
+import type { Mismatches } from "./mismatches";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
@@ -131,7 +154,7 @@ describe("a change to the history", () => {
     typed("own", "now");
     typed("substituted", "now");
     expect(changedCount(editor.store.get())).toBe(2);
-    expect(warnedCount(editor.store.get())).toEqual({ count: 1, label: "in a similar font" });
+    expect(warnedCount(editor.store.get())).toEqual({ count: 1, different: false });
     const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
     // Its font's own copy draws the font's first span, but not this one: the span is what's counted.
     const elsewhere = aSpan({
@@ -145,7 +168,52 @@ describe("a change to the history", () => {
     typed("substituted", "now");
     typed("turned", "now");
     typed("elsewhere", "now");
-    expect(warnedCount(editor.store.get())).toEqual({ count: 3, label: "will look different" });
+    expect(warnedCount(editor.store.get())).toEqual({ count: 3, different: true });
+  });
+});
+
+describe("the bar's count", () => {
+  test("says the server's sentences, whole, the part that warns kept apart as Find's is", () => {
+    const shown = (changed: number, count: number, different: boolean) =>
+      changesShown({ changed, count, different }, PSEUDO_SENTENCES);
+    expect(shown(3, 0, false)).toEqual({ plain: "3 CHANGES", warned: "" });
+    expect(shown(1, 1, false)).toEqual({ plain: "", warned: "1 CHANGE IN A SIMILAR FONT" });
+    expect(shown(2, 2, true)).toEqual({ plain: "", warned: "2 CHANGES WILL LOOK DIFFERENT" });
+    expect(shown(3, 1, false)).toEqual({ plain: "3 CHANGES, ", warned: "1 OF THEM IN A SIMILAR FONT" });
+    expect(shown(1234, 2, true)).toEqual({ plain: "1,234 CHANGES, ", warned: "2 OF THEM WILL LOOK DIFFERENT" });
+  });
+
+  test("before any change, says the places an edit won't match in the server's sentence, nothing when there are none", () => {
+    const atRest = (count: number, reasons: Mismatches["reasons"]) =>
+      atRestSentence({ count, fonts: [], reasons }, PSEUDO_SENTENCES);
+    expect(atRest(0, [])).toBe("");
+    expect(atRest(1, [])).toBe("EDITS IN 1 PLACE WILL USE A SIMILAR FONT");
+    const turned = { key: "turned_text", code: "turned_text" as const, places: 2, sentence: "" };
+    expect(atRest(2, [turned])).toBe("EDITS IN 2 PLACES WILL LOOK DIFFERENT");
+  });
+
+  test("on a reading persisted before its sentences were sent, shows nothing, and never half of itself", () => {
+    const stale = structuredClone(PSEUDO_SENTENCES);
+    Reflect.deleteProperty(stale, "changes_some_similar");
+    Reflect.deleteProperty(stale, "at_rest_similar");
+    expect(changesShown({ changed: 3, count: 1, different: false }, stale)).toEqual({ plain: "", warned: "" });
+    expect(atRestSentence({ count: 1, fonts: [], reasons: [] }, stale)).toBe("");
+  });
+
+  test("counts the changes left long past their room in the server's sentence, nothing where a reading lacks it", async () => {
+    const tooLong = aFit({
+      message: "about 12% too long",
+      message_parts: [{ code: "too_long", params: { percent: 12 } }],
+    });
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { own: tooLong } }));
+    const before = editor.store.get().drawn;
+    typed("own", "now and then");
+    await vi.waitFor(() => expect(editor.store.get().drawn).not.toBe(before));
+    expect(runLongSentence(editor.store.get())).toBe("1 TOO LONG FOR ITS PLACE");
+
+    const stale = structuredClone(PSEUDO_SENTENCES);
+    Reflect.deleteProperty(stale, "changes_too_long");
+    expect(runLongSentence({ ...editor.store.get(), doc: { ...DOC, sentences: stale } })).toBe("");
   });
 });
 
