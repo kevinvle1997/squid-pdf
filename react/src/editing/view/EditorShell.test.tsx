@@ -1341,6 +1341,107 @@ describe("new text", () => {
     await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
   });
 
+  // Each way a drag is cut short: the browser taking the pointer back, the mark losing it, the window losing focus.
+  const CANCELS: [string, (mark: Element, at: PointerEventInit) => void][] = [
+    ["the browser cancels", (mark, at) => mark.dispatchEvent(new PointerEvent("pointercancel", at))],
+    ["whose mark loses the pointer", (mark, at) => mark.dispatchEvent(new PointerEvent("lostpointercapture", at))],
+    ["the window's losing focus cuts short", () => window.dispatchEvent(new FocusEvent("blur"))],
+  ];
+
+  test.each(CANCELS)("a drag %s puts the text back, and the next click and drag work", async (_, cancel) => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    await expect.poll(lastRendered).toHaveLength(1);
+    const sentX = () => {
+      const [sent] = lastRendered();
+      return sent?.kind === "insert" ? sent.origin[0] : undefined;
+    };
+    const x = sentX() ?? 0;
+    const rendered = vi.mocked(renderStrips).mock.calls.length;
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toBeInTheDocument();
+    const from = mark.element().getBoundingClientRect();
+    const pointer = { pointerId: 7, pointerType: "mouse", isPrimary: true, button: 0, bubbles: true };
+    const at = (dx: number) => ({ ...pointer, clientX: from.left + 2 + dx, clientY: from.top + 2 + dx });
+    mark.element().dispatchEvent(new PointerEvent("pointerdown", at(0)));
+    mark.element().dispatchEvent(new PointerEvent("pointermove", at(40)));
+    await expect.poll(() => mark.element().getBoundingClientRect().left).toBeGreaterThan(from.left + 20);
+
+    cancel(mark.element(), at(40));
+    await expect.poll(() => mark.element().getBoundingClientRect().left).toBe(from.left);
+    expect(vi.mocked(renderStrips).mock.calls.length).toBe(rendered);
+    // The next press is a press, not a drag's end.
+    await mark.click();
+    await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(mark).toHaveFocus();
+    // The next drag moves it, from where it was.
+    mark.element().dispatchEvent(new PointerEvent("pointerdown", at(0)));
+    mark.element().dispatchEvent(new PointerEvent("pointermove", at(30)));
+    mark.element().dispatchEvent(new PointerEvent("pointerup", at(30)));
+    await expect.poll(sentX).toBeGreaterThan(x);
+  });
+
+  /** New text set just above "was here", grabbed at its left end and dragged onto that line, which is drawn over it. */
+  async function dragOntoTheLine(screen: Awaited<ReturnType<typeof render>>, pointerType: string) {
+    await doubleClickPaper(screen, [80, 60]);
+    await userEvent.keyboard("Signed M. Halvorsen{Enter}");
+    await expect.poll(lastRendered).toHaveLength(1);
+    const mark = screen.getByRole("button", { name: "Signed M. Halvorsen" });
+    await expect.element(mark).toBeInTheDocument();
+    const from = mark.element().getBoundingClientRect();
+    const line = screen.getByRole("button", { name: "was here" }).element().getBoundingClientRect();
+    const pointer = { pointerId: 7, pointerType, isPrimary: true, button: 0, bubbles: true };
+    const grab = { ...pointer, clientX: from.left + 4, clientY: (from.top + from.bottom) / 2 };
+    const over = { ...grab, clientY: (line.top + line.bottom) / 2 };
+    mark.element().dispatchEvent(new PointerEvent("pointerdown", grab));
+    mark.element().dispatchEvent(new PointerEvent("pointermove", over));
+    await expect.poll(() => mark.element().getBoundingClientRect().top).toBeGreaterThan(from.top + 20);
+    // What the browser aims the pointer's events at: the line, drawn after the new text above it.
+    const under = document.elementFromPoint(over.clientX, over.clientY);
+    expect(under?.textContent).toBe("was here");
+    return { mark, from, under, over };
+  }
+
+  // The next press after a drop the mark never heard: a click on it, or Enter.
+  const PRESSES: [string, (mark: HTMLElement | SVGElement) => Promise<void>][] = [
+    ["a click", (mark) => userEvent.click(mark)],
+    [
+      "Enter",
+      async (mark) => {
+        mark.focus();
+        await userEvent.keyboard("{Enter}");
+      },
+    ],
+  ];
+
+  test.each(PRESSES)("new text let go over a line drawn on it moves, and %s next types into it", async (_, press) => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const { mark, under, over } = await dragOntoTheLine(screen, "mouse");
+    const sentY = () => {
+      const [sent] = lastRendered();
+      return sent?.kind === "insert" ? sent.origin[1] : undefined;
+    };
+    const y = sentY() ?? 0;
+    // Let go over the line, as outside the window: no press on the mark ends the drag.
+    under?.dispatchEvent(new PointerEvent("pointerup", over));
+    await expect.poll(sentY).toBeGreaterThan(y + 20);
+
+    await press(mark.element());
+    await expect.element(screen.getByRole("textbox", { name: "Change “Signed M. Halvorsen”" })).toHaveFocus();
+  });
+
+  test("a drag the browser cancels over a line drawn on it puts the text back", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    const { mark, from, under, over } = await dragOntoTheLine(screen, "touch");
+    const rendered = vi.mocked(renderStrips).mock.calls.length;
+    // The browser aims its pointercancel at what's under the finger: the line, not the mark.
+    under?.dispatchEvent(new PointerEvent("pointercancel", over));
+    await expect.poll(() => mark.element().getBoundingClientRect().top).toBe(from.top);
+    expect(vi.mocked(renderStrips).mock.calls.length).toBe(rendered);
+  });
+
   test("a typed signature is in a handwriting face a step larger, chosen from the chip, and its margin note takes it out", async () => {
     const screen = await openEditor({ doc: RED_DOC });
     await doubleClickPaper(screen, [300, 300]);

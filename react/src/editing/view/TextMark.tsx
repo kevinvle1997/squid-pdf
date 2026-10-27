@@ -1,4 +1,4 @@
-import { memo, useCallback, useId, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { mergeProps, useButton, useFocusRing, useHover, useMove } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
@@ -33,19 +33,19 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
   const noteId = useId();
   const [dragged, setDragged] = useState<PagePoint | null>(null);
   const dragging = useRef<PagePoint | null>(null); // how far it's dragged, as the moves come: drawn as `dragged`
-  const moved = useRef(false);
+  const moved = useRef(false); // the pointer pressed on the mark has dragged it since
+  const cancelled = useRef(false); // the drag was cut short: the text stays where it was
+  const pointer = useRef<number | null>(null); // the pointer pressed on the mark, whose drag React Aria tracks
   const [noted, setNoted] = useState(false);
   const waiting = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { textId } = text;
 
   const { buttonProps } = useButton(
     {
-      onPress: () => {
-        // A drag ends with a press: it moved the text, and types into nothing.
-        if (moved.current) {
-          moved.current = false;
-          return;
-        }
+      onPress: ({ pointerType }) => {
+        // A drag ends with a press: it moved the text, and types into nothing. Keys and a screen reader's press never
+        // drag it.
+        if (moved.current && pointerType !== "keyboard" && pointerType !== "virtual") return;
         writeAgain(editor, textId);
       },
     },
@@ -76,9 +76,34 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
       const by = dragging.current;
       dragging.current = null;
       setDragged(null);
+      // Cancelled, it's put back.
+      if (cancelled.current) {
+        cancelled.current = false;
+        return;
+      }
       if (pointerType !== "keyboard" && by !== null) moveText(editor, textId, { by, nudge: false });
     },
   });
+  /** Cut the drag short as the browser cancels one, so every hook on the mark ends it and the next press starts afresh. */
+  function cutShort() {
+    if (dragging.current === null) return;
+    const cancel = new PointerEvent("pointercancel", { pointerId: pointer.current ?? undefined, bubbles: true });
+    mark.current?.dispatchEvent(cancel);
+  }
+  const onWindowBlur = useEffectEvent(cutShort);
+  // Heard on the window, as `useMove` hears it, since the browser aims it at what's under the pointer, which may be
+  // a line drawn over the mark; and first, before the drag's end, which React Aria says the same way for a drop.
+  const onPointerCancel = useEffectEvent(({ pointerId }: PointerEvent) => {
+    if (pointerId === pointer.current) cancelled.current = dragging.current !== null;
+  });
+  useEffect(() => {
+    window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("pointercancel", onPointerCancel, { capture: true });
+    return () => {
+      window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("pointercancel", onPointerCancel, { capture: true });
+    };
+  }, []);
   const { hoverProps, isHovered } = useHover({
     onHoverStart: () => {
       clearTimeout(waiting.current);
@@ -109,6 +134,15 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
           onBlur: () => {
             if (takesFocus) focusMoved(editor);
           },
+          // Each press starts afresh: a drop let go where the mark doesn't hear it (over a line drawn on it, or outside
+          // the window) ends with no press. A second finger on the mark mid-drag is no press of its own: the first
+          // one drags.
+          onPointerDown: ({ pointerId, isPrimary }: { pointerId: number; isPrimary: boolean }) => {
+            if (!isPrimary) return;
+            pointer.current = pointerId;
+            moved.current = false;
+          },
+          onLostPointerCapture: cutShort,
         })}
         ref={takeFocus}
         type="button"
