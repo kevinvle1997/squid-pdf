@@ -3,7 +3,7 @@ import { Button, type PressEvent } from "react-aria-components";
 import type { FitInfo, FontInfo, PageInfo, RedactionInfo, Sentences, SpanInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { type Press, pressOf } from "../caret";
-import { onEscape } from "../commands";
+import { isShortcutPress, onEscape, passShortcut } from "../commands";
 import { DOUBLE_TAP_MS } from "../constants";
 import { type FocusSpan, focusMoved } from "../editor";
 import { lookOf } from "../marks";
@@ -61,7 +61,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
 
   function pressed(event: PressEvent) {
     // Cmd+Enter is new text on the line below, the window's shortcut: it doesn't edit the span.
-    if (event.pointerType === "keyboard" && (event.metaKey || event.ctrlKey)) return;
+    if (isShortcutPress(event)) return;
     // Enter, Space, or a screen reader's activation: edit at once, the whole span selected.
     if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
       notes.hide(span.id);
@@ -110,9 +110,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       aria-describedby={described ? noteId : undefined}
       onPress={pressed}
       // Cmd+Enter goes on to the window's shortcuts, which open new text below: the mark would keep it.
-      onPressStart={(event) => {
-        if (event.pointerType === "keyboard" && (event.metaKey || event.ctrlKey)) event.continuePropagation();
-      }}
+      onPressStart={passShortcut}
       onHoverStart={(event) => showNote(event.target, "hover")}
       onHoverEnd={(event) => {
         notes.hide(span.id);

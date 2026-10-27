@@ -3,6 +3,7 @@ import { Button as AriaButton } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { NameTip } from "../../ui/Tooltip";
+import { isShortcutPress, passShortcut } from "../commands";
 import { focusMoved } from "../editor";
 import { deletePage, leftOutSentence, putPageBack } from "../pageDeletion";
 import { useEditor, useEditorState } from "./context";
@@ -45,7 +46,11 @@ export function DeletePage({ page, shownNumber }: { page: number; shownNumber: n
           className={styles.button}
           aria-label={name}
           isDisabled={last}
-          onPress={() => deletePage(editor, page)}
+          // Cmd+Enter goes on to the window's shortcuts: on a page with no text, it opens new text there.
+          onPressStart={passShortcut}
+          onPress={(event) => {
+            if (!isShortcutPress(event)) deletePage(editor, page);
+          }}
         >
           <TrashCan />
         </AriaButton>

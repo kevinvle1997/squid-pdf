@@ -76,6 +76,23 @@ export function isUndoOrRedo(press: KeyPress): boolean {
   return run === undo || run === redo;
 }
 
+/** A control's press, as React Aria says it: by which pointer, and the keys held with it. */
+interface ControlPress {
+  readonly pointerType: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+}
+
+/** Whether a press on a control is a key held with Cmd or Ctrl: a window's shortcut (Cmd+Enter), not the control's. */
+export function isShortcutPress(press: ControlPress): boolean {
+  return press.pointerType === "keyboard" && (press.metaKey || press.ctrlKey);
+}
+
+/** A React Aria `onPressStart` that lets a shortcut's key go on to the window, which the control would keep. */
+export function passShortcut(press: ControlPress & { continuePropagation(): void }): void {
+  if (isShortcutPress(press)) press.continuePropagation();
+}
+
 /** A React Aria key handler where Escape runs `run`: every other key goes on, so the window's shortcuts hear it. */
 export function onEscape(run: () => void): (event: { key: string; continuePropagation(): void }) => void {
   return (event) => {
