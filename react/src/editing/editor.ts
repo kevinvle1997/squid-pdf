@@ -7,6 +7,7 @@ import type { Press } from "./caret";
 import type { ExportAhead } from "./export";
 import { FIND_CLOSED, type FindState, findAfterChange } from "./find";
 import { reattach } from "./fonts";
+import { type DateOrder, dateOrderIn } from "./formattedValues";
 import {
   EMPTY_HISTORY,
   entriesOf,
@@ -102,6 +103,7 @@ export interface Layout {
   readonly fonts: FontsByObject;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
   readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
+  readonly dateOrder: DateOrder | undefined; // how its numeric dates read, where one of them settles it
 }
 
 export interface EditorState {
@@ -160,6 +162,7 @@ export function layoutOf(doc: Document): Layout {
     fonts,
     warnedFonts: new Set(mismatches.map(({ span }) => shownNameIn(fonts, span))),
     mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
+    dateOrder: dateOrderIn(doc.spans.map((span) => span.text)),
   };
 }
 
