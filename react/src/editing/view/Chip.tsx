@@ -24,7 +24,7 @@ interface Props {
   span: SpanInfo;
   info: PageInfo;
   trouble: string; // what won't come out as typed, a line each; empty when it fits
-  verdict: Pick<Verdict, "fidelity" | "substitute">; // what an edit of what's typed comes to, and in what face
+  verdict: Verdict; // what an edit of what's typed comes to, and in what face
   setting: Setting; // how the line is drawn, and the ways out to choose from
 }
 
@@ -39,7 +39,7 @@ export function Chip({ span, info, trouble, verdict, setting }: Props) {
   const muted = useEditorState((state) => state.mutedFonts.has(shown));
   const offered = useEditorState(offersCopy);
   const attaching = useEditorState((state) => state.attaching !== null);
-  const note = editNote(span, { font, sentences, muted });
+  const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   return (
     <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>

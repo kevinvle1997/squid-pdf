@@ -25,6 +25,7 @@ import {
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { EXPORT_INTENT_MS } from "../constants";
 import { EMPTY_HISTORY, historyReducer } from "../history";
+import { fill } from "../words";
 import { EditorShell } from "./EditorShell";
 
 // What's persisted in this browser is the App's to test, in the browser's real storage; here, what's asked of it.
@@ -567,14 +568,15 @@ describe("the user's own copy of a font", () => {
   });
 
   test("shares the chip with why an edit won't match, side by side, neither over the other", async () => {
-    // The file's own Times draws it, turned on the page, and has no Y.
+    // The file's own Times draws it, turned on the page, and has no Y: typed, a similar font draws the line.
     const turned = aSpan({ ...span, fidelity: "approximate", why: { code: "turned_text", params: {} } });
     const own = aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
     const screen = await openEditor({ doc: own, name: "letter.pdf" });
     await typeInSpan(screen, "was Yes");
 
     const offer = screen.getByRole("button", { name: "Use your copy" });
-    const why = screen.getByText(SENTENCES.approximate.turned_text ?? "", { exact: false }).first();
+    const similar = fill(SENTENCES.substitute, { font: "Liberation Serif Regular" });
+    const why = screen.getByText(similar, { exact: false }).first();
     await expect.element(offer).toBeVisible();
     await expect.element(why).toBeVisible();
     const sentence = why.element().getBoundingClientRect();

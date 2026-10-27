@@ -43,12 +43,12 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
 
   test("as typing starts, a similar font is announced and warned, whatever its widths", () => {
     const sameWidths = { ...substituted, same_widths: true };
-    expect(editNote(substituted, { font: substitutedFont, sentences, muted: false })).toEqual({
+    expect(editNote(substituted, { verdict: substituted, font: substitutedFont, sentences, muted: false })).toEqual({
       warn: true,
       sentence: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: "Not embedded.",
     });
-    expect(editNote(sameWidths, { font: substitutedFont, sentences, muted: false })).toEqual({
+    expect(editNote(sameWidths, { verdict: sameWidths, font: substitutedFont, sentences, muted: false })).toEqual({
       warn: true,
       sentence: "Edits here use Liberation Sans Regular, whose letters are the same width as the original's.",
       why: "Not embedded.",
@@ -57,18 +57,18 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("a font whose warning the user muted says nothing in full as typing starts, but the chip's short warning stays", () => {
-    expect(editNote(substituted, { font: substitutedFont, sentences, muted: true })).toBeNull();
+    expect(editNote(substituted, { verdict: substituted, font: substitutedFont, sentences, muted: true })).toBeNull();
     expect(shortWarningOf(substituted)).toBe("a similar font");
   });
 
   test("the span's own fidelity is what's told, not its font's first span's", () => {
     // The font's own copy draws its first span, so the font names no similar face; this span's doesn't.
-    expect(editNote(substituted, { font: aFont("Arial"), sentences, muted: false })).toEqual({
+    expect(editNote(substituted, { verdict: substituted, font: aFont("Arial"), sentences, muted: false })).toEqual({
       warn: true,
       sentence: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
       why: null,
     });
-    expect(editNote(span, { font: substitutedFont, sentences, muted: false })).toBeNull();
+    expect(editNote(span, { verdict: span, font: substitutedFont, sentences, muted: false })).toBeNull();
     expect(shortWarningOf(span)).toBeNull();
   });
 
@@ -99,7 +99,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
 
   test("as typing starts, text the file's own font draws but an edit won't match says why, warned", () => {
     const turned = aSpan({ id: "s3", fidelity: "approximate", why: { code: "turned_text", params: {} } });
-    expect(editNote(turned, { font: ownFont, sentences, muted: false })).toEqual({
+    expect(editNote(turned, { verdict: turned, font: ownFont, sentences, muted: false })).toEqual({
       warn: true,
       sentence: sentences.approximate.turned_text,
       why: null,

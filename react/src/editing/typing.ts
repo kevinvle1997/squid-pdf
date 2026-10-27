@@ -5,7 +5,7 @@ import type { Press } from "./caret";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import type { HistoryAction } from "./history";
-import { editNote } from "./marks";
+import { editNote, type Note } from "./marks";
 import type { Reading, SpanReading } from "./project";
 import { type Drawn, landedFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
@@ -153,22 +153,38 @@ export function typeInto(editor: Editor, typed: string): void {
   const offered = now.offers && !was.offers ? [WAYS_KEYS] : [];
   const warning = now.verdict === null ? null : shortWarningOf(now.verdict);
   const warnedBefore = was.verdict === null ? null : shortWarningOf(was.verdict);
-  const warningHeard = warning === warnedBefore ? [] : [warning ?? LOOKS_IDENTICAL];
+  const warningHeard = warning === warnedBefore || now.verdict === null ? [] : [heardOf(state, now.verdict)];
   const changedKind = now.kind !== was.kind && (now.sentences.length > 0 || warningHeard.length > 0);
   const heard = [...now.sentences, ...warningHeard, ...offered].join("; ");
   const announcement = changedKind ? announcing(heard) : state.announcement;
   store.set({ draft: { ...state.draft, text }, announcement });
 }
 
+/** The draft's full warning on `verdict`, shown in the chip: none when its words keep their look, or it's muted. */
+function draftNoteOf(state: EditorState, verdict: Verdict): Note | null {
+  const { draft, layout, doc, mutedFonts } = state;
+  const span = draft === null ? undefined : layout.spans.get(draft.spanId);
+  if (span === undefined) return null;
+  const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
+  return editNote(span, { verdict, font: fontOf(layout.fonts, span), sentences: doc.sentences, muted });
+}
+
+/** What's heard as the words typed come to `verdict`: its full warning as the chip shows it, else its short words. */
+function heardOf(state: EditorState, verdict: Verdict): string {
+  const note = draftNoteOf(state, verdict);
+  if (note !== null) return [note.sentence, note.why].filter(Boolean).join(" ");
+  return shortWarningOf(verdict) ?? LOOKS_IDENTICAL;
+}
+
 /** The field took focus as typing starts: what an edit here warns of, and what's wrong already, is heard once. */
 export function fieldFocused(editor: Editor): void {
   const state = editor.store.get();
-  const { draft, layout, doc, mutedFonts } = state;
+  const { draft, layout } = state;
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
   if (draft === null || span === undefined) return;
-  const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
-  const note = editNote(span, { font: fontOf(layout.fonts, span), sentences: doc.sentences, muted });
-  const trouble = troublesIn(state, draft.text).sentences.join("\n");
+  const { sentences, verdict } = troublesIn(state, draft.text);
+  const note = draftNoteOf(state, verdict ?? span);
+  const trouble = sentences.join("\n");
   const heard = [note?.sentence, note?.why, trouble].filter(Boolean).join(" ");
   if (heard !== "") announce(editor, heard);
 }

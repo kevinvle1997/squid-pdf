@@ -11,6 +11,7 @@ import { colorOf, emulateTouchScreen } from "../../testing";
 import { PX_PER_PT } from "../constants";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
+import { setWarningMuted } from "../mutedWarnings";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -258,6 +259,8 @@ describe("a page", () => {
     await page.viewport(1400, 900);
     const amount = aSpan({ ...span, text: "was here", bbox: { x0: 480, y0: 100, x1: 560, y1: 124 } });
     openDocument(aDoc({ spans: [amount], fonts: DOC.fonts }));
+    // Its font's full warning muted: the chip holds the trouble, the offer and Redact alone.
+    setWarningMuted(editor, "Times-Roman", { muted: true });
     const screen = await draw();
     await editSpan(screen);
     await userEvent.keyboard("{ArrowRight}Q");
@@ -345,6 +348,44 @@ describe("a page", () => {
     // The verdict's kind didn't change with this letter: nothing more is heard.
     await userEvent.keyboard("{Backspace}");
     await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14");
+    expect(editor.store.get().announcement).toBe(heard);
+  });
+
+  test("the chip's full warning goes once the words typed draw exact, and comes back with the letter, each heard once", async () => {
+    // Its copy of the font has no "€", so judged on its own words a similar font draws it; the copy draws every other letter.
+    const lacking = aSpan({
+      ...span,
+      id: "s4",
+      text: "Total 14 €",
+      font: "LiberationSerif",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+      same_widths: true,
+    });
+    const font = aFont("LiberationSerif", {
+      substitute: "Liberation Serif Regular",
+      same_widths: true,
+      glyphs: halfWideGlyphs("Total 0123456789"),
+    });
+    openDocument(aDoc({ spans: [lacking], fonts: [font] }));
+    const warning = "Edits here use Liberation Serif Regular, whose letters are the same width as the original's.";
+    const screen = await draw();
+    await editSpan(screen, "Total 14 €");
+    // As the edit starts, its own words warrant the warning in full.
+    await expect.element(screen.getByText(warning)).toBeVisible();
+
+    await userEvent.keyboard("{ArrowRight}{Backspace}");
+    await expect.element(screen.getByText("looks identical")).toBeVisible();
+    await expect.element(screen.getByText(warning)).not.toBeInTheDocument();
+    expect(editor.store.get().announcement.text).toBe("looks identical");
+
+    await userEvent.keyboard("€");
+    await expect.element(screen.getByText(warning)).toBeVisible();
+    const heard = editor.store.get().announcement;
+    expect(heard.text).toContain(warning);
+    // Still a similar font's with this change: nothing more is heard.
+    await userEvent.keyboard("{ArrowLeft}{Backspace}");
+    await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14€");
     expect(editor.store.get().announcement).toBe(heard);
   });
 
