@@ -82,6 +82,12 @@ test.describe("new text on a touch screen", () => {
 
   test("a double tap on bare paper opens new text there, and a single tap opens none", async ({ page }) => {
     await open(page);
+    // Above the first page, the how-to-start note says it a finger's way: its copy in the margin is hidden here.
+    const onScreen = (words: string) => page.getByText(words).filter({ visible: true });
+    await expect(onScreen("Tap any word to fix it.")).toHaveCount(1);
+    await expect(onScreen("Double-tap any blank spot to add text.")).toHaveCount(1);
+    await expect(page.getByText("Click any word to fix it.")).toHaveCount(0);
+    await expect(page.getByText("Double-click any blank spot to add text.")).toHaveCount(0);
     // The sheet, first: the layer its slips hang from, after it, has its shape too.
     const shape = page.getByRole("region", { name: "Page 1" }).locator("[style*='aspect-ratio']");
     const sheet = await shape.first().boundingBox();

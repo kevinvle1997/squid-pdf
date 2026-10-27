@@ -759,8 +759,12 @@ export interface components {
             page_put_back: string;
             /** How To Fix */
             how_to_fix: string;
+            /** How To Fix Touch */
+            how_to_fix_touch: string;
             /** How To Add */
             how_to_add: string;
+            /** How To Add Touch */
+            how_to_add_touch: string;
             /** Form Field Not Edited */
             form_field_not_edited: string;
             /** Empty */

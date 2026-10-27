@@ -1674,8 +1674,9 @@ describe("how to start", () => {
 
   test("a reading persisted before its sentences were sent shows no note, squid and all", async () => {
     const older = { ...SENTENCES };
-    Reflect.deleteProperty(older, "how_to_fix");
-    Reflect.deleteProperty(older, "how_to_add");
+    for (const key of ["how_to_fix", "how_to_add", "how_to_fix_touch", "how_to_add_touch"] as const) {
+      Reflect.deleteProperty(older, key);
+    }
     vi.mocked(documentOf)
       .mockReset()
       .mockReturnValue(new Promise(() => undefined));
@@ -1683,6 +1684,25 @@ describe("how to start", () => {
     const screen = await openEditor({ doc: { ...DOC, sentences: older }, persisted });
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     expect(document.querySelector("[class*='beside'], [class*='above']")).toBeNull();
+  });
+
+  test("with a mouse it says to click and double-click; on a touch screen, to tap and double-tap", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(1400, 900);
+    try {
+      await openEditor();
+      await expect.poll(() => shownLine(SENTENCES.how_to_add)).toBeDefined();
+      expect(shownLine(SENTENCES.how_to_fix)).toBeDefined();
+      expect(shownLine(SENTENCES.how_to_fix_touch)).toBeUndefined();
+      expect(shownLine(SENTENCES.how_to_add_touch)).toBeUndefined();
+      await emulateTouchScreen();
+      await expect.poll(() => shownLine(SENTENCES.how_to_add_touch)).toBeDefined();
+      expect(shownLine(SENTENCES.how_to_fix_touch)).toBeDefined();
+      expect(shownLine(SENTENCES.how_to_fix)).toBeUndefined();
+      expect(shownLine(SENTENCES.how_to_add)).toBeUndefined();
+    } finally {
+      await page.viewport(wide, tall);
+    }
   });
 
   test("on a narrow screen, where there's no margin, the same line sits above the first page", async () => {

@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from "react";
 import { Mascot } from "../../ui/Mascot";
+import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { sentenceOrNothing } from "../words";
 import { useEditorState } from "./context";
 import styles from "./HowToStart.module.css";
@@ -12,7 +14,12 @@ export function HowToStart({ beside }: { beside: boolean }) {
   const sentences = useEditorState((state) => state.doc.sentences);
   // The page list's ticks hang beside the first page too: the note goes under them.
   const ticks = useEditorState((state) => state.reading.order.length);
-  const lines = [sentenceOrNothing(sentences.how_to_fix), sentenceOrNothing(sentences.how_to_add)];
+  // A finger taps where a mouse clicks.
+  const touch = useSyncExternalStore(onPointerChange, coarsePointer);
+  const lines = [
+    sentenceOrNothing(touch ? sentences.how_to_fix_touch : sentences.how_to_fix),
+    sentenceOrNothing(touch ? sentences.how_to_add_touch : sentences.how_to_add),
+  ];
   if (lines.every((line) => line === "")) return null;
   return (
     <div className={beside ? styles.beside : styles.above} style={{ "--ticks": ticks }}>
