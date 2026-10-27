@@ -66,6 +66,22 @@ describe("an edit", () => {
     expect(editor.store.get().announcement).toBe(muted);
   });
 
+  test("with its font's warning muted, what the words typed come to is heard in the server's sentence, whole", () => {
+    const own = aSpan({ id: "own", text: "abc", font: "Kept" });
+    const fonts = [aFont("Kept", { glyphs: halfWideGlyphs("abc") })];
+    editor = createEditor(FILE, aDoc({ sentences: PSEUDO_SENTENCES, spans: [own], fonts }), 2);
+    setWarningMuted(editor, "Kept", { muted: true });
+    edit(editor, "own", null);
+    // No font we have draws it: the file's own font draws the rest, and the line won't match. Its trouble is heard first.
+    typeInto(editor, "abc\u2713");
+    expect(editor.store.get().announcement.text).toMatch(/ \/ THIS EDIT WILL LOOK DIFFERENT\.$/);
+    // Its copy lacks it, and a face we ship draws the line.
+    typeInto(editor, "abcz");
+    expect(editor.store.get().announcement.text).toMatch(/ \/ THIS EDIT WILL USE A SIMILAR FONT\.$/);
+    typeInto(editor, "abc");
+    expect(editor.store.get().announcement.text).toBe("THIS EDIT WILL LOOK IDENTICAL.");
+  });
+
   test("typing holds a draft apart from the history, until it's finished", () => {
     edit(editor, "own", null);
     expect(editor.store.get().draft).toMatchObject({ spanId: "own", page: 0, text: "was own" });

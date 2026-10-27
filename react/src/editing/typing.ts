@@ -10,8 +10,8 @@ import type { Reading, SpanReading } from "./project";
 import { type Drawn, landedFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
-import { LOOKS_IDENTICAL, liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
-import { fill } from "./words";
+import { liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
+import { fill, sentenceOrNothing } from "./words";
 
 /** The text being typed into a span, not yet in the history. */
 export interface Draft {
@@ -156,8 +156,10 @@ export function typeInto(editor: Editor, typed: string): void {
   const warnedBefore = was.verdict === null ? null : shortWarningOf(was.verdict);
   const warningHeard = warning === warnedBefore || now.verdict === null ? [] : [heardOf(state, now.verdict)];
   const changedKind = now.kind !== was.kind && (now.sentences.length > 0 || warningHeard.length > 0);
-  // A reading persisted by an earlier build lacks the joiner: a space, since join's own default is a comma.
-  const heard = [...now.sentences, ...warningHeard, ...offered].join(state.doc.sentences.join_parts ?? " ");
+  // A sentence a reading persisted by an earlier build lacks is nothing, and leaves no joiner behind.
+  const parts = [...now.sentences, ...warningHeard, ...offered].filter((part) => part !== "");
+  // Such a reading lacks the joiner too: a space, since join's own default is a comma.
+  const heard = parts.join(state.doc.sentences.join_parts ?? " ");
   const announcement = changedKind ? announcing(heard) : state.announcement;
   store.set({ draft: { ...state.draft, text }, announcement });
 }
@@ -171,11 +173,18 @@ function draftNoteOf(state: EditorState, verdict: Verdict): Note | null {
   return editNote(span, { verdict, font: fontOf(layout.fonts, span), sentences: doc.sentences, muted });
 }
 
+// What's heard of each verdict where no full warning is: the chip's short words, as the server says them whole.
+const VERDICT_SENTENCES: Record<Verdict["fidelity"], "typed_identical" | "typed_different" | "typed_similar"> = {
+  exact: "typed_identical",
+  approximate: "typed_different",
+  substitute: "typed_similar",
+};
+
 /** What's heard as the words typed come to `verdict`: its full warning as the chip shows it, else its short words. */
 function heardOf(state: EditorState, verdict: Verdict): string {
   const note = draftNoteOf(state, verdict);
   if (note !== null) return [note.sentence, note.why].filter(Boolean).join(" ");
-  return shortWarningOf(verdict) ?? LOOKS_IDENTICAL;
+  return sentenceOrNothing(state.doc.sentences[VERDICT_SENTENCES[verdict.fidelity]]);
 }
 
 /** What a signed document's first edit says in full as it starts, in the server's words: nothing once an edit is in. */

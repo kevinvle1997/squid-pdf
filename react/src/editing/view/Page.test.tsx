@@ -344,7 +344,7 @@ describe("a page", () => {
     await expect.element(screen.getByText("Liberation Serif", { exact: true })).toBeVisible();
     expect(screen.getByText("Liberation Serif Regular", { exact: true }).query()).toBeNull();
     const heard = editor.store.get().announcement;
-    expect(heard.text).toBe("looks identical");
+    expect(heard.text).toBe(SENTENCES.typed_identical);
     // The verdict's kind didn't change with this letter: nothing more is heard.
     await userEvent.keyboard("{Backspace}");
     await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14");
@@ -377,7 +377,7 @@ describe("a page", () => {
     await userEvent.keyboard("{ArrowRight}{Backspace}");
     await expect.element(screen.getByText("looks identical")).toBeVisible();
     await expect.element(screen.getByText(warning)).not.toBeInTheDocument();
-    expect(editor.store.get().announcement.text).toBe("looks identical");
+    expect(editor.store.get().announcement.text).toBe(SENTENCES.typed_identical);
 
     await userEvent.keyboard("€");
     await expect.element(screen.getByText(warning)).toBeVisible();
