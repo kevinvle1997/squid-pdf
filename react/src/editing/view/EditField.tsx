@@ -64,9 +64,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const verdict = { fidelity, why, substitute, same_widths: sameWidths };
   // A date or an amount in what's typed, the one the press that opened the field landed on, else the first.
   const press = useEditorState((state) => state.draft?.press ?? null);
-  const dates = useEditorState((state) => state.layout.dates);
+  const dates = useEditorState((state) => state.dates);
+  // Held once its editor is opened or the field typed in, so the dates read later never swap it from under the user.
+  const held = useEditorState((state) => state.draft?.value ?? null);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
-  const value = editableValueIn(text, { dates, at });
+  const value = editableValueIn(text, { dates, at, held });
   // Sent back from the value's editor in the slip, the field takes focus again.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;

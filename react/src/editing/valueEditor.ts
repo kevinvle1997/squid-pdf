@@ -4,14 +4,14 @@ import { type AmountValue, withAmount } from "./amounts";
 import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
 import type { Editor, EditorState } from "./editor";
 import { type Fit, fitOf, troublesAddedOf } from "./fit";
-import type { EditableValue } from "./formattedValues";
+import { type EditableValue, heldOf } from "./formattedValues";
 import { draftSpanOf, typedState } from "./typing";
 
 /** Open the editor for `value` in the slip, Alt+Down in the field: false while nothing is typed into. */
 export function openValueEditor(editor: Editor, value: EditableValue | undefined): boolean {
   const { draft } = editor.store.get();
   if (draft === null || value === undefined) return false;
-  editor.store.set({ draft: { ...draft, valueEditorOpen: true } });
+  editor.store.set({ draft: { ...draft, valueEditorOpen: true, value: heldOf(value) } });
   return true;
 }
 

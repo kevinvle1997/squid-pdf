@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
@@ -24,6 +24,7 @@ import {
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { EXPORT_INTENT_MS } from "../constants";
+import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
 import { EditorShell } from "./EditorShell";
@@ -754,6 +755,46 @@ describe("the user's own copy of a font", () => {
 
     await expect.element(screen.getByRole("dialog").getByText(MISMATCH)).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).not.toBeInTheDocument();
+  });
+});
+
+describe("a date's control in the field's slip", () => {
+  beforeAll(() => learnDateLanguages());
+
+  test("stays as the server judges the fonts again: a copy of the span's font dropped on the field", async () => {
+    const words = "Due 14 March 2026";
+    const glyphs = halfWideGlyphs(words);
+    const due = { ...ARIAL_SPAN, text: words };
+    const exact = { ...due, fidelity: "exact" as const, substitute: null };
+    vi.mocked(putFont).mockResolvedValue(aDoc({ spans: [exact], fonts: [aFont("Arial", { attached: true, glyphs })] }));
+    const screen = await openEditor({
+      doc: aDoc({ spans: [due], fonts: [{ ...NAMED, glyphs }] }),
+      name: "invoice.pdf",
+    });
+    const mark = screen.getByRole("button", { name: words });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const control = screen.getByRole("button", { name: "Date" });
+    await expect.element(control).toBeVisible();
+    await expect.element(screen.getByText("Liberation Sans Regular")).toBeVisible();
+
+    const field = screen.getByRole("textbox").element();
+    // A file dragged from the desktop has an entry in the file system; one built here has none.
+    const entry = vi.spyOn(DataTransferItem.prototype, "webkitGetAsEntry");
+    entry.mockReturnValue({ isFile: true } as FileSystemEntry);
+    const dropped = new DataTransfer();
+    dropped.items.add(FONT_FILE);
+    dropped.effectAllowed = "copy";
+    for (const type of ["dragenter", "dragover", "drop"]) {
+      field.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dropped }));
+    }
+    entry.mockRestore();
+
+    // Judged again, the user's copy draws it: the field is still open, and its date still has its control.
+    await expect.element(screen.getByText("Arial", { exact: true })).toBeVisible();
+    await expect.element(screen.getByRole("textbox")).toHaveFocus();
+    await expect.element(control).toBeVisible();
   });
 });
 

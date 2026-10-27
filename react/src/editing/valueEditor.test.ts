@@ -6,8 +6,9 @@ import { type AmountValue, amountsIn } from "./amounts";
 import { learnDateLanguages } from "./dateNames";
 import { dateReadingOf, datesIn } from "./dates";
 import { createEditor } from "./editor";
+import { editableValueIn } from "./formattedValues";
 import { edit, typeInto } from "./typing";
-import { amountFormatOptions, markedDays, reasonsAnyDayGives, shownDayAfter } from "./valueEditor";
+import { amountFormatOptions, markedDays, openValueEditor, reasonsAnyDayGives, shownDayAfter } from "./valueEditor";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
@@ -147,6 +148,36 @@ describe("a day in the calendar", () => {
     expect(shownDayAfter(17, { day: 19, isShown: true })).toBe(19);
     expect(shownDayAfter(19, { day: 17, isShown: false })).toBe(19);
     expect(shownDayAfter(19, { day: 19, isShown: false })).toBeNull();
+  });
+});
+
+describe("the value its editor is open on", () => {
+  test("broken a moment as it's typed, closes its editor, and is held again once it's back", async () => {
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
+    const words = "Due 14 March 2026, total 1.250,00 €";
+    const span = aSpan({ id: "due", text: words, room_pt: 400 });
+    const doc = aDoc({
+      spans: [span],
+      fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(`${words}0123456789`) })],
+    });
+    const editor = createEditor(new File(["%PDF-"], "invoice.pdf"), doc, 2);
+    edit(editor, "due", null);
+    await vi.waitFor(() => expect(editor.store.get().dates).not.toBeNull());
+    const { dates } = editor.store.get();
+    /** The value its control is offered for, as the field shows it. */
+    const offered = (text: string) =>
+      editableValueIn(text, { dates, at: undefined, held: editor.store.get().draft?.value ?? null });
+    expect(openValueEditor(editor, offered(words))).toBe(true);
+    expect(offered(words)?.kind).toBe("date");
+
+    // The year retyped by hand: "2026" is "202" a moment, then "2027".
+    typeInto(editor, "Due 14 March 202, total 1.250,00 €");
+    expect(editor.store.get().draft?.valueEditorOpen).toBe(false);
+    typeInto(editor, "Due 14 March 20, total 1.250,00 €");
+    typeInto(editor, "Due 14 March 202, total 1.250,00 €");
+    const retyped = "Due 14 March 2027, total 1.250,00 €";
+    typeInto(editor, retyped);
+    expect(offered(retyped)?.kind).toBe("date");
   });
 });
 

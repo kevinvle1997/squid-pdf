@@ -9,7 +9,7 @@ import type { Editor } from "./editor";
  * language learnt later could be one the languages learnt so far settle wrongly.
  */
 export function readDocumentDates(editor: Editor): void {
-  if (editor.store.get().layout.dates !== null) return;
+  if (editor.store.get().dates !== null) return;
   void learnDateLanguages().then(() => readNow(editor));
 }
 
@@ -17,5 +17,5 @@ function readNow(editor: Editor): void {
   const { layout } = editor.store.get();
   const texts = [...layout.spans.values()].map((span) => span.text);
   const dates = dateReadingOf(texts, { readerLanguages: navigator.languages });
-  editor.store.set({ layout: { ...layout, dates } });
+  editor.store.set({ dates });
 }

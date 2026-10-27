@@ -23,15 +23,15 @@ test("the first edit opens at once: no language is learnt on the spot, and no da
   expect(asked).not.toHaveBeenCalled();
   asked.mockRestore();
   expect(editor.store.get().draft?.spanId).toBe("due");
-  expect(editor.store.get().layout.dates).toBeNull();
+  expect(editor.store.get().dates).toBeNull();
 });
 
 describe("once the date languages are learnt, in the background", () => {
   beforeAll(() => learnDateLanguages());
 
   test("the document's dates are read, so the open field reads its date", () => {
-    const { dates } = editor.store.get().layout;
+    const { dates } = editor.store.get();
     if (dates === null) throw new Error("not read once learnt");
-    expect(editableValueIn(TEXT, { dates, at: undefined })?.kind).toBe("date");
+    expect(editableValueIn(TEXT, { dates, at: undefined, held: null })?.kind).toBe("date");
   });
 });

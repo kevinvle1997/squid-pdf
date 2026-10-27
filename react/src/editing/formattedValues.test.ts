@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { type AmountValue, withAmount } from "./amounts";
 import { learnDateLanguages } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, withDate } from "./dates";
-import { editableValueIn, formattedValuesIn } from "./formattedValues";
+import { editableValueIn, formattedValuesIn, heldThrough } from "./formattedValues";
 
 // Every language a date is read in, learnt in the background as an editor would: the dates here need them.
 beforeAll(() => learnDateLanguages());
@@ -86,8 +86,34 @@ describe("the value an editor opens on", () => {
   test("is the one the press landed on, else the first; an email has no editor", () => {
     const text = "Paid €40 on 14 March 2026 to anna@halde.de";
     const dates = readingOf(text);
-    expect(editableValueIn(text, { dates, at: text.indexOf("March") })?.kind).toBe("date");
-    expect(editableValueIn(text, { dates, at: undefined })?.kind).toBe("amount");
-    expect(editableValueIn("Write to anna@halde.de", { dates, at: 12 })).toBeUndefined();
+    expect(editableValueIn(text, { dates, at: text.indexOf("March"), held: null })?.kind).toBe("date");
+    expect(editableValueIn(text, { dates, at: undefined, held: null })?.kind).toBe("amount");
+    expect(editableValueIn("Write to anna@halde.de", { dates, at: 12, held: null })).toBeUndefined();
+  });
+
+  test("is the one held, where it lay, though the press landed on another or it's been rewritten", () => {
+    const text = "Due 14 March 2026, total 1.250,00 €";
+    const dates = readingOf(text);
+    const held = { kind: "amount", start: text.indexOf("1.250"), end: text.length } as const;
+    expect(editableValueIn(text, { dates, at: text.indexOf("March"), held })?.kind).toBe("amount");
+    const rewritten = "Due 14 March 2026, total 980,00 €";
+    expect(editableValueIn(rewritten, { dates, at: undefined, held })?.kind).toBe("amount");
+    // Typed away, it holds nothing: the first is offered again.
+    expect(editableValueIn("Due 14 March 2026, total", { dates, at: undefined, held })?.kind).toBe("date");
+  });
+
+  test("held, moves with the words either side of a change, however far a paste or a deletion takes it", () => {
+    const text = "Due 14 March 2026, total 1.250,00 €";
+    const held = { kind: "amount", start: text.indexOf("1.250"), end: text.length } as const;
+    const pasted = `INVOICE NUMBER ABCDEFGHIJKLMNOP: ${text}`;
+    expect(heldThrough(held, { before: text, after: pasted })).toEqual({ ...held, start: 58, end: 68 });
+    const longer = "Due 14 March 2026, total amount payable now 1.250,00 €";
+    const fromLonger = { kind: "amount", start: longer.indexOf("1.250"), end: longer.length } as const;
+    expect(heldThrough(fromLonger, { before: longer, after: text })).toEqual(held);
+    // Typed after it, or right before it, it keeps to its own letters.
+    expect(heldThrough(held, { before: text, after: `${text} ` })).toEqual(held);
+    expect(heldThrough(held, { before: text, after: text.replace("1.250", "€ 1.250") }).start).toBe(held.start + 2);
+    // Rewritten inside, it covers what's there now.
+    expect(heldThrough(held, { before: text, after: text.replace("1.250,00", "980,5") })).toEqual({ ...held, end: 32 });
   });
 });

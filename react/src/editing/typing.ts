@@ -1,11 +1,11 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
-import type { Press } from "./caret";
+import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
-import { emailCountIn } from "./formattedValues";
+import { editableValueIn, emailCountIn, type HeldValue, heldOf, heldThrough, heldValueIn } from "./formattedValues";
 import type { HistoryAction } from "./history";
 import { editNote, type Note } from "./marks";
 import { type Reading, type SpanReading, textIn } from "./project";
@@ -23,6 +23,7 @@ export interface Draft {
   readonly text: string;
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
   readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
+  readonly value: HeldValue | null; // the date or amount its editor is offered for, held once it's opened or typed in
 }
 
 /** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
@@ -40,11 +41,42 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
   store.set({ draft: draftOf(span, { reading, press }), focusTo: null, unredacting: null });
 }
 
-/** Typing into `span` as it reads in `reading`, opened by `press`. */
+/**
+ * Typing into `span` as it reads in `reading`, opened by `press`. No value is held yet: until the user types or opens
+ * its editor, the value offered follows the dates as they're read, so the one pressed on can still be.
+ */
 export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; press: Press | null }): Draft {
   const now = reading.spans.get(span.id);
   const text = now?.text ?? span.text;
-  return { spanId: span.id, page: span.page, press, text, strategy: now?.strategy, valueEditorOpen: false };
+  return {
+    spanId: span.id,
+    page: span.page,
+    press,
+    text,
+    strategy: now?.strategy,
+    valueEditorOpen: false,
+    value: null,
+  };
+}
+
+/**
+ * What the draft holds of the date or amount offered once it reads `text`, typed in: the one held, carried along
+ * as the words before it change (`heldThrough`), else the one the press that opened the field landed on, else the
+ * first (`editableValueIn`), and none while there's none. `lost`, when the one held is gone from the text: its kind
+ * and where it lay are still held, so a value of that kind back over it is the one held again, as a year retyped
+ * by hand passes through no date at all. Meanwhile, and if none ever comes back, the control offers what's there.
+ */
+function heldIn(state: EditorState & { draft: Draft }, text: string): { value: HeldValue | null; lost: boolean } {
+  const { draft, layout, reading, dates } = state;
+  const span = layout.spans.get(draft.spanId);
+  if (span === undefined) return { value: null, lost: false };
+  const held = draft.value === null ? null : heldThrough(draft.value, { before: draft.text, after: text });
+  const glyphs = fontOf(layout.fonts, span)?.glyphs ?? {};
+  const at = draft.press === null ? undefined : selectionAt(textIn(reading, span), draft.press, { glyphs, span })[0];
+  const value = editableValueIn(text, { dates, at, held });
+  const lost = held !== null && heldValueIn(text, { dates, held }) === undefined;
+  if (lost) return { value: held, lost };
+  return { value: value === undefined ? null : heldOf(value), lost };
 }
 
 /** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */
@@ -180,7 +212,11 @@ export function typedState(
   // Such a reading lacks the joiner too: a space, since join's own default is a comma.
   const heard = parts.join(state.doc.sentences.join_parts ?? " ");
   const announcement = changedKind ? announcing(heard) : state.announcement;
-  return { draft: { ...state.draft, text }, announcement };
+  // The value whose editor is open gone from the text, the editor goes with it, focus staying where it is: never
+  // another value's editor in its place, taking focus from the field typed in.
+  const { value, lost } = heldIn(state, text);
+  const valueEditorOpen = state.draft.valueEditorOpen && !lost;
+  return { draft: { ...state.draft, text, value, valueEditorOpen }, announcement };
 }
 
 /** The draft's full warning on `verdict`, shown in the chip: none when its words keep their look, or it's muted. */
