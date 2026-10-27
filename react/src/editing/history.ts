@@ -1,10 +1,11 @@
 // The edit history, held in the browser: the steps done, each undone whole, and those undone for redo.
 // Each edit has an id of its own, so it can be taken out wherever it stands, as putting a span back does.
-import type { Edit } from "../api/types";
+import type { Edit, Insert } from "../api/types";
 
 export interface Entry {
   readonly id: number;
   readonly edit: Edit;
+  readonly replaces?: number; // new text's earlier version, by its id: only the latest is sent
 }
 
 /** One thing the user did: an edit, or several at once (a replace-all), undone together. */
@@ -18,6 +19,8 @@ export interface History {
 
 export type HistoryAction =
   | { kind: "add"; edits: readonly Edit[] }
+  // New text's next version, a step of its own; or, when `folds`, in the last step's place if that's the one it replaces.
+  | { kind: "revise"; replaces: number; edit: Insert; folds: boolean }
   | { kind: "undo" }
   | { kind: "redo" }
   | { kind: "remove"; ids: ReadonlySet<number> }; // these edits go; the rest keep their order
@@ -31,6 +34,15 @@ export function historyReducer(history: History, action: HistoryAction): History
       const step = action.edits.map((edit, index) => ({ id: history.next + index, edit }));
       // A new step ends what redo could bring back.
       return { done: [...history.done, step], undone: [], next: history.next + step.length };
+    }
+    case "revise": {
+      const last = history.done.at(-1);
+      const folded = action.folds && last?.length === 1 && last[0]?.id === action.replaces ? last[0] : undefined;
+      // Folded, it replaces what the last step replaced: one undo goes back past every nudge in a row.
+      const replaces = folded === undefined ? action.replaces : folded.replaces;
+      const entry: Entry = { id: history.next, edit: action.edit, ...(replaces !== undefined && { replaces }) };
+      const done = folded === undefined ? history.done : history.done.slice(0, -1);
+      return { done: [...done, [entry]], undone: [], next: history.next + 1 };
     }
     case "undo": {
       const last = history.done.at(-1);
@@ -73,4 +85,17 @@ export function touching(history: History, spanId: string): Set<number> {
 export function deleting(history: History, page: number): Set<number> {
   const deletes = entriesOf(history).filter(({ edit }) => edit.kind === "delete_page" && edit.page === page);
   return new Set(deletes.map((entry) => entry.id));
+}
+
+/** Which piece of new text each entry is a version of, by its first version's id: an edit that names none is its own. */
+export function textIdsOf(entries: readonly Entry[]): Map<number, number> {
+  const ids = new Map<number, number>();
+  for (const { id, replaces } of entries) ids.set(id, replaces === undefined ? id : (ids.get(replaces) ?? replaces));
+  return ids;
+}
+
+/** The ids of every version in effect of the new text first made as `textId`: what taking it out from its margin note takes. */
+export function versionsOf(history: History, textId: number): Set<number> {
+  const versions = [...textIdsOf(entriesOf(history))].filter(([, text]) => text === textId);
+  return new Set(versions.map(([id]) => id));
 }
