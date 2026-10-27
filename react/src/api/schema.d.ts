@@ -731,6 +731,8 @@ export interface components {
         Sentences: {
             /** Missing */
             missing: string;
+            /** Not In Font */
+            not_in_font: string;
             /** Will Leave Out */
             will_leave_out: string;
             /** Too Long */

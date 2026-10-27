@@ -8,6 +8,9 @@
 # What's wrong with a replacement.
 # `{font}` is the face that draws the line instead.
 missing = "no {chars} in this font, so the line is drawn in our {font}"
+# Said by the browser on a calendar day whose date the span's font can't write: the slip above
+# it says `missing` in full, so the day says only which letters.
+not_in_font = "no {chars} in this font"
 will_leave_out = "{letters} can't be drawn in any font we have, and will be left out"
 chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"

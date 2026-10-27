@@ -20,7 +20,9 @@
 .step { width: var(--cell); height: var(--cell); padding: 0; }
 .step svg { display: block; }
 .monthName { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+/* Its rows a day's height, so the weeks a month is short of six take as much under the reasons (`.reasons`). */
 .grid { border-collapse: collapse; border-spacing: 0; }
+.grid td { padding: 0; }
 .weekday { padding: 0 0 var(--s1); font-size: var(--fs-micro); font-weight: 500; color: var(--ink-lo); }
 /* A day, and, where the line can't take its date, the warning's dashed line under its number. */
 .day {
@@ -40,8 +42,9 @@
 .day[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
 /* Other months' days are left out: the grid keeps their place. */
 .day[data-outside-month] { visibility: hidden; }
-/* A marked day's reason, under the month: each the month has in one cell, shown one at a time. */
-.reasons { display: grid; }
+/* A marked day's reason, under the month: each a day can give in one cell, shown one at a time. Under it, the room
+   of the weeks the month is short of six, so the slip keeps its height as the months are stepped through. */
+.reasons { display: grid; grid-template-rows: auto calc(var(--weeks-short, 0) * var(--cell)); }
 .reason {
   grid-area: 1 / 1; margin: 0; visibility: hidden;
   font-size: var(--fs-sm); line-height: 1.4; white-space: normal;

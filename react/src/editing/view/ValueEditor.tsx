@@ -1,16 +1,17 @@
 // A date's or an amount's editor in the slip, offered beside the field, never instead of it (Rule 5): what's
 // chosen is written into the field, and before the pick each day the line can't take says why (Rule 1).
-import { CalendarDate } from "@internationalized/date";
+import { CalendarDate, getWeeksInMonth } from "@internationalized/date";
 import {
   type FocusEvent,
   type KeyboardEvent,
   type RefObject,
   useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { useFocusVisible, useFocusWithin } from "react-aria";
+import { useFocusVisible, useFocusWithin, useLocale } from "react-aria";
 import {
   Calendar,
   CalendarCell,
@@ -40,6 +41,7 @@ import {
   closeValueEditor,
   markedDays,
   openValueEditor,
+  reasonsAnyDayGives,
   shownDayAfter,
 } from "../valueEditor";
 import { useEditor, useEditorState } from "./context";
@@ -48,6 +50,9 @@ import styles from "./ValueEditor.module.css";
 
 // The control names the value's kind: the reader's word for it.
 const KIND = { date: "Date", amount: "Amount" } as const;
+
+// The weeks a month's days can span, in any calendar the reader's language starts its week in.
+const MOST_WEEKS = 6;
 
 /** The value's control in the slip, and its editor under it while open. */
 export function ValueEditor({ value, field }: { value: EditableValue; field: RefObject<HTMLInputElement | null> }) {
@@ -127,6 +132,14 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
     markedDays(editor.store.get(), { value, text, year: date.year, month: date.month });
   const marked = reasonsIn(focused);
   const reason = shown === null ? undefined : marked.get(shown);
+  // Every reason a day can give, laid out in the reasons' row, so stepping months never changes the slip's height.
+  const reserved = useMemo(
+    () => reasonsAnyDayGives(editor.store.get(), { value, text, year: focused.year }),
+    [editor, value, text, focused.year],
+  );
+  const { locale } = useLocale();
+  // The month's weeks fill six rows, as many as a month can take, so its height doesn't change with its weeks.
+  const weeksShort = MOST_WEEKS - getWeeksInMonth(focused, locale);
 
   function focusOn(date: CalendarDate) {
     setFocused(date);
@@ -182,11 +195,11 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
           )}
         </CalendarGridBody>
       </CalendarGrid>
-      {/* A row of its own under the month: it covers no day and no button of the slip's. Every reason the month
-          has is laid out in it, one shown, so it's as tall as the longest and nothing moves as one shows. Heard
-          as focus reaches the day, so not read again. */}
-      <div className={styles.reasons} aria-hidden="true">
-        {[...new Set(marked.values())].map((why) => (
+      {/* A row of its own under the month: it covers no day and no button of the slip's. Every reason a day can
+          give is laid out in it, one shown, so it's as tall as the longest and nothing moves as one shows or the
+          month changes. Heard as focus reaches the day, so not read again. */}
+      <div className={styles.reasons} aria-hidden="true" style={{ "--weeks-short": weeksShort }}>
+        {[...new Set([...reserved, ...marked.values()])].map((why) => (
           <p key={why} className={styles.reason} data-shown={why === reason ? "" : undefined}>
             <Warn mark>{why}</Warn>
           </p>

@@ -116,6 +116,7 @@ def _sentences_in(language: str) -> Sentences:
     }
     return {
         "missing": words.sentence("missing", language),
+        "not_in_font": words.sentence("not_in_font", language),
         "will_leave_out": words.sentence("will_leave_out", language),
         "too_long": words.sentence("too_long", language),
         "substitute": words.sentence("substitute", language),
