@@ -69,6 +69,8 @@ export function Chip({ span, info, trouble, verdict, setting, value, field, slip
     <div
       ref={keepOnPage}
       className={styles.chip}
+      // A key pressed in it is the edit's own, as one in the field is (`isTyping`).
+      data-slip=""
       style={{ ...pinnedUnder(span.bbox, info), translate: shiftPx === 0 ? undefined : `${shiftPx}px 0` }}
     >
       {signature !== null && (
