@@ -441,9 +441,9 @@ export interface components {
          * Insert
          * @description Draw new text where the document has none: a signature, an annotation.
          *
-         *     `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a
-         *     font the document uses on this page. Anything else is drawn in a look-alike,
-         *     and its fit says so: the fit always says what will really be drawn.
+         *     `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a font
+         *     this page uses, by `font_object` too where given: two can read by one name. Anything
+         *     else is drawn in a look-alike, and its fit says so: the fit says what will really draw.
          */
         Insert: {
             /** Page */
@@ -475,6 +475,8 @@ export interface components {
                 number,
                 number
             ];
+            /** Font Object */
+            font_object?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}

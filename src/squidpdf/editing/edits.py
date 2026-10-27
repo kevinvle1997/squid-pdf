@@ -77,9 +77,9 @@ class Redact:
 class Insert:
     """Draw new text where the document has none: a signature, an annotation.
 
-    `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a
-    font the document uses on this page. Anything else is drawn in a look-alike,
-    and its fit says so: the fit always says what will really be drawn.
+    `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a font
+    this page uses, by `font_object` too where given: two can read by one name. Anything
+    else is drawn in a look-alike, and its fit says so: the fit says what will really draw.
     """
 
     page: int
@@ -88,6 +88,7 @@ class Insert:
     size: float
     font: str = "Liberation Sans Regular"
     color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    font_object: int | None = None
     kind: Literal["insert"] = "insert"
 
     def __post_init__(self) -> None:

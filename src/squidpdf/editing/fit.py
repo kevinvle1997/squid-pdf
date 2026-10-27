@@ -196,7 +196,9 @@ def insert_span(engine: Engine, insert: Insert) -> Span:
         text=insert.text,
         size=insert.size,
         font=insert.font,
-        font_object=engine.font_object_named(insert.page, insert.font),
+        font_object=engine.font_object_named(
+            insert.page, insert.font, font_object=insert.font_object
+        ),
         color=insert.color,
     )
 
