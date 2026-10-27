@@ -225,6 +225,126 @@ describe("the control's key", () => {
 });
 
 describe("an amount in the field", () => {
+  // A date and an amount on one line, each letter 6 points wide.
+  const BOTH = "Due 14 March 2026, total 1.250,00 €";
+
+  // What a paste puts before the line: longer than the amount, so the amount moves past where it lay.
+  const PASTED = "INVOICE NUMBER ABCDEFGHIJKLMNOP: ";
+
+  /** The editor on a line of `words`, its date languages held back until what's returned is called. */
+  function holdBackDates(words = BOTH): () => void {
+    let learnt: () => void = () => undefined;
+    vi.mocked(learnDateLanguages).mockReturnValueOnce(new Promise<void>((done) => (learnt = done)));
+    const both = aSpan({ id: "due", text: words, size: 12, bbox: due.bbox, room_pt: 400 });
+    const glyphs = halfWideGlyphs(`${words}${PASTED}0123456789`);
+    editor = createEditor(
+      new File(["%PDF-"], "invoice.pdf"),
+      aDoc({ spans: [both], fonts: [aFont("Times-Roman", { glyphs })] }),
+      2,
+    );
+    return () => learnt();
+  }
+
+  /** The field on `BOTH` opened by a click on its date, as a mouse does. */
+  async function clickDate() {
+    const screen = await render(
+      <EditorContext.Provider value={editor}>
+        <Page index={0} info={A4} shownNumber={1} />
+      </EditorContext.Provider>,
+    );
+    const mark = screen.getByRole("button", { name: BOTH });
+    await expect.element(mark).toBeInTheDocument();
+    const { width, height } = mark.element().getBoundingClientRect();
+    const marchPt = (BOTH.indexOf("March") + 2) * 6;
+    await mark.click({ position: { x: (width * marchPt) / (due.bbox.x1 - due.bbox.x0), y: height / 2 } });
+    const field = screen.getByRole("textbox", { name: `Change “${BOTH}”` });
+    await expect.element(field).toHaveFocus();
+    return { screen, field };
+  }
+
+  test("offered before the dates are read, gives way to the date pressed on once they are, nothing done with it", async () => {
+    const learnt = holdBackDates();
+    const { screen } = await clickDate();
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+
+    learnt();
+    await expect.element(screen.getByRole("button", { name: "Date" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Amount" }).query()).toBeNull();
+  });
+
+  test("offered before the dates are read, stays once they are, typed in", async () => {
+    const learnt = holdBackDates();
+    const { screen, field } = await clickDate();
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+    await userEvent.keyboard("{End} ");
+    await expect.element(field).toHaveValue(`${BOTH} `);
+
+    learnt();
+    await expect.poll(() => editor.store.get().dates).not.toBeNull();
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Date" }).query()).toBeNull();
+  });
+
+  test("held, typed in, stays as a paste before it moves it further than its own length", async () => {
+    const learnt = holdBackDates();
+    const { screen, field } = await openField(BOTH);
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+    await userEvent.keyboard("{End} ");
+    learnt();
+    await expect.poll(() => editor.store.get().dates).not.toBeNull();
+
+    await field.fill(`${PASTED}${BOTH} `);
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Date" }).query()).toBeNull();
+  });
+
+  /** The field on `words`, its Amount editor opened, the dates read, and focus pressed back into the field. */
+  async function backInTheField(words = BOTH) {
+    const learnt = holdBackDates(words);
+    const { screen, field } = await openField(words);
+    await screen.getByRole("button", { name: "Amount" }).click();
+    await expect.element(screen.getByRole("textbox", { name: "Amount" })).toHaveFocus();
+    learnt();
+    await expect.poll(() => editor.store.get().dates).not.toBeNull();
+    await field.click();
+    await expect.element(field).toHaveFocus();
+    return { screen, field };
+  }
+
+  test("open, stays open on its amount as a paste before it moves it, focus staying in the field", async () => {
+    const { screen, field } = await backInTheField();
+
+    await field.fill(`${PASTED}${BOTH}`);
+    await expect.element(screen.getByRole("textbox", { name: "Amount" })).toBeVisible();
+    expect(screen.getByRole("grid").query()).toBeNull();
+    await expect.element(field).toHaveFocus();
+  });
+
+  test("open, stays open on its amount as words before it are deleted, focus staying in the field", async () => {
+    const words = "Due 14 March 2026, total amount payable now 1.250,00 €";
+    const { screen, field } = await backInTheField(words);
+    const input = field.element();
+    if (!(input instanceof HTMLInputElement)) throw new Error("no field");
+    const gone = "amount payable now ";
+    input.setSelectionRange(words.indexOf(gone), words.indexOf(gone) + gone.length);
+
+    await userEvent.keyboard("{Backspace}");
+    await expect.element(field).toHaveValue(BOTH);
+    await expect.element(screen.getByRole("textbox", { name: "Amount" })).toBeVisible();
+    expect(screen.getByRole("grid").query()).toBeNull();
+    await expect.element(field).toHaveFocus();
+  });
+
+  test("open, closes once its amount is typed away, focus staying in the field", async () => {
+    const { screen, field } = await backInTheField();
+
+    await field.fill("Due 14 March 2026, total");
+    await expect.element(screen.getByRole("button", { name: "Date" })).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Date" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("grid").query()).toBeNull();
+    await expect.element(field).toHaveFocus();
+  });
+
   test("Enter in its number field writes it as the page writes amounts, and focus goes back to the field", async () => {
     const words = "Pay 1.250,00 €";
     const amount = aSpan({ id: "due", text: words, size: 20, bbox: due.bbox, room_pt: 200 });
@@ -250,5 +370,25 @@ describe("an amount in the field", () => {
     editor = createEditor(new File(["%PDF-"], "invoice.pdf"), aDoc({ spans: [amount], fonts: DOC.fonts }), 2);
     const { screen } = await openField(words);
     await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
+  });
+
+  test("stays open, with what's typed in it, as the dates finish being read beside it", async () => {
+    const learnt = holdBackDates();
+    const { screen } = await openField(BOTH);
+    const control = screen.getByRole("button", { name: "Amount" });
+    await control.click();
+    const number = screen.getByRole("textbox", { name: "Amount" });
+    await expect.element(number).toHaveFocus();
+    await userEvent.keyboard("{Control>}a{/Control}980");
+    const slip = control.element().closest("[data-slip]")?.getBoundingClientRect().height;
+
+    learnt();
+    await expect.poll(() => editor.store.get().dates).not.toBeNull();
+    // The dates are read, and the date is the first value: the Amount the user chose stays all the same.
+    expect(editor.store.get().dates).not.toBeNull();
+    await expect.element(number).toHaveFocus();
+    await expect.element(number).toHaveValue(expect.stringContaining("980"));
+    expect(screen.getByRole("button", { name: "Date" }).query()).toBeNull();
+    expect(control.element().closest("[data-slip]")?.getBoundingClientRect().height).toBe(slip);
   });
 });

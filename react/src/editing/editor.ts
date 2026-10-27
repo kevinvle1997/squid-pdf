@@ -104,12 +104,14 @@ export interface Layout {
   readonly fonts: FontsByObject;
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
   readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
-  readonly dates: DateReading | null; // what settles how its dates read: worked out as the first edit starts
 }
 
 export interface EditorState {
   readonly doc: Document; // the server's copy now
   readonly layout: Layout;
+  // What settles how its dates read, once every language is learnt after the first edit starts. Kept as the layout
+  // is worked out again: its spans' words don't change.
+  readonly dates: DateReading | null;
   readonly scale: number; // pixels per point, as the page images are drawn
   readonly zoom: Zoom; // how large the pages show
   readonly pageInView: number; // the page under the window's middle, as the bar says where the reader is
@@ -163,7 +165,6 @@ export function layoutOf(doc: Document): Layout {
     fonts,
     warnedFonts: new Set(mismatches.map(({ span }) => shownNameIn(fonts, span))),
     mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
-    dates: null,
   };
 }
 
@@ -171,6 +172,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   const store = createStore<EditorState>({
     doc: opened,
     layout: layoutOf(opened),
+    dates: null,
     scale,
     zoom: FITTED,
     pageInView: 0,

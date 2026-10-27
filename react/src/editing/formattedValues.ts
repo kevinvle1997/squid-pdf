@@ -39,14 +39,63 @@ export function formattedValuesIn(text: string, { dates }: { dates: DateReading 
   return kept;
 }
 
-/** The value a date or amount editor opens on: the one at `at` in the text, else the first. */
+/** Which value an editor is offered for, its kind and where it lies: held as the text changes, and the dates are read. */
+export interface HeldValue extends Extent {
+  readonly kind: EditableValue["kind"];
+}
+
+/**
+ * The value a date or amount editor opens on: the one `held` (`heldValueIn`), else the one at `at` in the text,
+ * else the first. Why held first: the dates, read later, would otherwise swap the editor from under the user.
+ */
 export function editableValueIn(
   text: string,
-  { dates, at }: { dates: DateReading | null; at: number | undefined },
+  { dates, at, held }: { dates: DateReading | null; at: number | undefined; held: HeldValue | null },
 ): EditableValue | undefined {
-  const editable = formattedValuesIn(text, { dates }).filter((value) => value.kind !== "email");
+  const editable = editableIn(text, { dates });
   const under = at === undefined ? undefined : editable.find((value) => value.start <= at && at <= value.end);
-  return under ?? editable[0];
+  return heldValueIn(text, { dates, held }) ?? under ?? editable[0];
+}
+
+/** The value of `held`'s kind where it lies in `text`: none with none held, or once it's gone from the text. */
+export function heldValueIn(
+  text: string,
+  { dates, held }: { dates: DateReading | null; held: HeldValue | null },
+): EditableValue | undefined {
+  if (held === null) return undefined;
+  return editableIn(text, { dates }).find((value) => value.kind === held.kind && overlap(value, held));
+}
+
+function editableIn(text: string, { dates }: { dates: DateReading | null }): EditableValue[] {
+  return formattedValuesIn(text, { dates }).filter((value) => value.kind !== "email");
+}
+
+/**
+ * Where `held` lies once the text reads `after` for `before`: carried with the words either side of what changed,
+ * so a paste or a deletion ahead of it, however long, moves it along. Typed right before it or right after, it keeps
+ * to its own letters; rewritten inside, it covers what's there now.
+ */
+export function heldThrough(held: HeldValue, { before, after }: { before: string; after: string }): HeldValue {
+  const shortest = Math.min(before.length, after.length);
+  // The words the change left either side of it, at the start and at the end.
+  let ahead = 0;
+  while (ahead < shortest && before[ahead] === after[ahead]) ahead++;
+  let behind = 0;
+  while (behind < shortest - ahead && before.at(-1 - behind) === after.at(-1 - behind)) behind++;
+  const changedUpTo = before.length - behind;
+  const moved = after.length - before.length;
+  const start = held.start >= changedUpTo ? held.start + moved : Math.min(held.start, ahead);
+  const end = held.end <= ahead ? held.end : Math.max(held.end, changedUpTo) + moved;
+  return { kind: held.kind, start, end };
+}
+
+/** What's held of `value` while its editor is offered. */
+export function heldOf({ kind, start, end }: EditableValue): HeldValue {
+  return { kind, start, end };
+}
+
+function overlap(a: Extent, b: Extent): boolean {
+  return a.start <= b.end && b.start <= a.end;
 }
 
 function emailsIn(text: string): EmailValue[] {
