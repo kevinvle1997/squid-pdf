@@ -1,7 +1,17 @@
 import { describe, expect, test } from "vitest";
 import { A4, aFit, aSpan } from "../../fixtures";
 import { PX_PER_PT } from "../constants";
-import { cropOf, fieldScaleOf, layerOf, markBoxOf, pinnedUnder, previewStyleOf, sheetWidthOf, topOf } from "./geometry";
+import {
+  cropOf,
+  fieldScaleOf,
+  layerOf,
+  markBoxOf,
+  pinnedUnder,
+  previewStyleOf,
+  sheetWidthOf,
+  slipShiftPx,
+  topOf,
+} from "./geometry";
 
 describe("a touch screen's field", () => {
   test("scales from the size it's set at down to the span's, as the page is shown", () => {
@@ -36,6 +46,15 @@ describe("what's set under a box", () => {
     expect(pinnedUnder({ x0: 60, x1: 200, y1: 56 }, page)).toEqual({ top: "10cqw", left: "10%" });
     // An amount in a right-hand column: what's under it ends where it does, not past the page.
     expect(pinnedUnder({ x0: 480, x1: 540, y1: 56 }, page)).toEqual({ top: "10cqw", right: "10%" });
+  });
+
+  test("moves in from a side of the page it would run past", () => {
+    // A 600 pt page shown 300 px wide: half a pixel a point.
+    const shown = { pageWidthPx: 300 };
+    expect(slipShiftPx({ x0: 60, x1: 200 }, { width: 600 }, { slipWidthPx: 280, ...shown })).toBe(-10);
+    expect(slipShiftPx({ x0: 60, x1: 200 }, { width: 600 }, { slipWidthPx: 100, ...shown })).toBe(0);
+    // Pinned at its right edge, in the page's right half: moved right as far as it would run past the left.
+    expect(slipShiftPx({ x0: 320, x1: 400 }, { width: 600 }, { slipWidthPx: 230, ...shown })).toBe(30);
   });
 });
 
