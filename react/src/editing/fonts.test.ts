@@ -55,7 +55,7 @@ describe("the user's own copy of a font", () => {
     const state = editor.store.get();
     expect(putFont).toHaveBeenCalledWith(DOC.id, "Arial", FONT_FILE);
     expect(state.layout.fonts.get("Arial")?.attached).toBe(true);
-    expect(noticeLines(state.notices, state.drawn, { deleted: new Set() })).toEqual([]);
+    expect(noticeLines(state.notices, state.drawn, state.reading)).toEqual([]);
     expect(editor.attached.get("Arial")).toBe(FONT_FILE);
   });
 
@@ -81,9 +81,7 @@ describe("the user's own copy of a font", () => {
     finish(editor, true);
     const changed = editor.store.get();
 
-    expect(noticeLines(refused.notices, refused.drawn, { deleted: new Set() })).toEqual([
-      { tone: "warn", text: MISMATCH },
-    ]);
+    expect(noticeLines(refused.notices, refused.drawn, refused.reading)).toEqual([{ tone: "warn", text: MISMATCH }]);
     expect(refused.announcement.text).toBe(MISMATCH);
     expect(refused.notices.font?.font).toBe("Arial");
     expect(refused.doc).toBe(DOC);

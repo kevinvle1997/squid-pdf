@@ -53,7 +53,7 @@ describe("a change to the history", () => {
     });
     typed("own", "now");
     expect(editor.store.get().notices).toEqual({
-      document: [warn(found.detail)],
+      document: [{ ...warn(found.detail), type: "signed" }],
       export: [],
       reopen: null,
       font: null,

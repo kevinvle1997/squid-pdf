@@ -19,7 +19,17 @@ import {
 } from "./history";
 import type { FailedImage } from "./images";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
-import { heardIn, NO_NOTICES, type Notices, newlyHeard, noticeLines, noticesAfterChange, plain, warn } from "./notices";
+import {
+  heardIn,
+  NO_NOTICES,
+  type Notices,
+  newlyHeard,
+  noticeLines,
+  noticesAfterChange,
+  openingLines,
+  openingNoticesOf,
+  plain,
+} from "./notices";
 import { leftOutSentence, putBackSentence } from "./pageDeletion";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, type SpanReading, textIn, UNEDITED } from "./project";
@@ -166,7 +176,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     draft: null,
     unredacting: null,
     focusTo: null,
-    notices: { ...NO_NOTICES, document: opened.notices.map((notice) => warn(notice.detail)) },
+    notices: { ...NO_NOTICES, document: openingNoticesOf(opened) },
     announcement: { text: "", count: 0 },
     scrollTo: null,
     exporting: false,
@@ -225,15 +235,15 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
  */
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
   const { notices, drawn: before, layout, doc, disagreements, reading } = store.get();
-  const shown = { deleted: reading.deleted };
-  const heard = newlyHeard(noticeLines(notices, before, shown), noticeLines(notices, drawn, shown));
+  const heard = newlyHeard(noticeLines(notices, before, reading), noticeLines(notices, drawn, reading));
   const after = disagreementsAfter(before, drawn, { fonts: layout.fonts, rules: doc.fit, disagreements });
   store.set({ drawn, disagreements: after, ...(heard !== "" && { announcement: announcing(heard) }) });
 }
 
 /** The editor is on screen: what opening the file found is heard, now its live region is there to announce it. */
 export function announceOpening(editor: Editor): void {
-  const found = editor.store.get().notices.document;
+  const { notices, reading } = editor.store.get();
+  const found = openingLines(notices, reading);
   if (found.length > 0) announce(editor, heardIn(found));
 }
 
