@@ -19,8 +19,6 @@ from squidpdf.documents import store
 from squidpdf.documents.store import FolderStore
 from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
-    NAME_COPIES,
-    REDACTED_NAME,
     InProcess,
     around,
     edit_counts,
@@ -28,9 +26,8 @@ from tests.api.conftest import (
     refusing_own_copies,
     span_starting,
     upload,
-    with_hidden_copies,
 )
-from tests.conftest import in_a_copy_lacking
+from tests.conftest import NAME_COPIES, REDACTED_NAME, in_a_copy_lacking, with_hidden_copies
 from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
