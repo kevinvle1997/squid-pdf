@@ -121,6 +121,35 @@ find_some_different.other = "{count} of them will look different"
 changed_places.one = "Changed {count} place."
 changed_places.other = "Changed {count} places."
 
+# The bar's count of the changes, and of those that won't match: "will look different" once one
+# is drawn in the document's own font, else "in a similar font". All of them, or so many of them,
+# each its own sentence, so the part that warns is marked as a whole, as Find's is.
+changes.one = "{count} change"
+changes.other = "{count} changes"
+changes_different.one = "{count} change will look different"
+changes_different.other = "{count} changes will look different"
+changes_similar.one = "{count} change in a similar font"
+changes_similar.other = "{count} changes in a similar font"
+changes_some.one = "{count} change, "
+changes_some.other = "{count} changes, "
+changes_some_different.one = "{count} of them will look different"
+changes_some_different.other = "{count} of them will look different"
+changes_some_similar.one = "{count} of them in a similar font"
+changes_some_similar.other = "{count} of them in a similar font"
+# The bar's count before any change: the places an edit won't match, as the count above says it.
+at_rest_different.one = "Edits in {count} place will look different"
+at_rest_different.other = "Edits in {count} places will look different"
+at_rest_similar.one = "Edits in {count} place will use a similar font"
+at_rest_similar.other = "Edits in {count} places will use a similar font"
+# The bar's count of the changes left long past the space after them, as a change's own note says it.
+changes_too_long.one = "{count} too long for its place"
+changes_too_long.other = "{count} too long for their places"
+# Heard as the words typed come to look identical, different or in a similar font, where the
+# font's warning isn't heard in full: muted, or none to give.
+typed_identical = "This edit will look identical."
+typed_different = "This edit will look different."
+typed_similar = "This edit will use a similar font."
+
 # Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
 

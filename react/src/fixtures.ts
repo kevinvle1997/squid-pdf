@@ -60,6 +60,27 @@ export const SENTENCES: Sentences = {
   find_places: { one: "{count} place, ", other: "{count} places, " },
   find_some_different: { one: "{count} of them will look different", other: "{count} of them will look different" },
   changed_places: { one: "Changed {count} place.", other: "Changed {count} places." },
+  changes: { one: "{count} change", other: "{count} changes" },
+  changes_different: { one: "{count} change will look different", other: "{count} changes will look different" },
+  changes_similar: { one: "{count} change in a similar font", other: "{count} changes in a similar font" },
+  changes_some: { one: "{count} change, ", other: "{count} changes, " },
+  changes_some_different: {
+    one: "{count} of them will look different",
+    other: "{count} of them will look different",
+  },
+  changes_some_similar: { one: "{count} of them in a similar font", other: "{count} of them in a similar font" },
+  at_rest_different: {
+    one: "Edits in {count} place will look different",
+    other: "Edits in {count} places will look different",
+  },
+  at_rest_similar: {
+    one: "Edits in {count} place will use a similar font",
+    other: "Edits in {count} places will use a similar font",
+  },
+  changes_too_long: { one: "{count} too long for its place", other: "{count} too long for their places" },
+  typed_identical: "This edit will look identical.",
+  typed_different: "This edit will look different.",
+  typed_similar: "This edit will use a similar font.",
   join_parts: "; ",
   options: {
     shrink: { label: "Make it slightly smaller", detail: "Reduces the type size just enough to fit." },
@@ -100,8 +121,8 @@ function shoutedForms({ one, other }: CountedSentence): CountedSentence {
 
 /**
  * The server's sentences in a language made up for tests, as tests/conftest.py's `pseudo` makes one: those the
- * browser fills and says of an edit, a font, a download or Find, shouted. A sentence the browser wrote itself reads
- * unlike them.
+ * browser fills and says of an edit, a font, a download, Find or the bar's count, shouted. A sentence the browser
+ * wrote itself reads unlike them.
  */
 export const PSEUDO_SENTENCES: Sentences = {
   ...SENTENCES,
@@ -120,6 +141,18 @@ export const PSEUDO_SENTENCES: Sentences = {
   find_places: shoutedForms(SENTENCES.find_places),
   find_some_different: shoutedForms(SENTENCES.find_some_different),
   changed_places: shoutedForms(SENTENCES.changed_places),
+  changes: shoutedForms(SENTENCES.changes),
+  changes_different: shoutedForms(SENTENCES.changes_different),
+  changes_similar: shoutedForms(SENTENCES.changes_similar),
+  changes_some: shoutedForms(SENTENCES.changes_some),
+  changes_some_different: shoutedForms(SENTENCES.changes_some_different),
+  changes_some_similar: shoutedForms(SENTENCES.changes_some_similar),
+  at_rest_different: shoutedForms(SENTENCES.at_rest_different),
+  at_rest_similar: shoutedForms(SENTENCES.at_rest_similar),
+  changes_too_long: shoutedForms(SENTENCES.changes_too_long),
+  typed_identical: shouted(SENTENCES.typed_identical),
+  typed_different: shouted(SENTENCES.typed_different),
+  typed_similar: shouted(SENTENCES.typed_similar),
   join_parts: " / ",
 };
 
