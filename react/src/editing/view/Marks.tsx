@@ -84,6 +84,7 @@ function Shown({
         className={styles.shown}
         aria-hidden="true"
         data-shown=""
+        data-warned=""
         style={boxOf(markBoxOf(span, { replaced, fit: fits[span.id] }), info)}
       />
     );
