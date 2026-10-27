@@ -19,7 +19,7 @@ import pytest
 
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
-from tests.conftest import named_only
+from tests.conftest import OTHER_LINE, named_only, with_hidden_copies
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
 
@@ -149,7 +149,9 @@ def test_check_says_a_same_length_edit_fits(pdf, capsys):
     code = main(["check", pdf, span_id, "Invoices are due within ninety days."])
 
     assert_equal(code, 0, "exit code of `squidpdf check`")
-    assert_in("fits in place", capsys.readouterr().out, "the check output")
+    out = capsys.readouterr().out
+    assert_in("fits in place", out, "the check output")
+    assert_not_in(words.sentence("signed_file"), out, "the check output, for a file not signed")
 
 
 def test_check_explains_an_edit_that_will_not_fit(pdf, capsys):
@@ -172,13 +174,41 @@ def test_edit_replaces_the_text_and_saves(pdf, tmp_path, capsys):
     code = main(["edit", pdf, span_id, shorter, "-o", str(out_pdf)])
 
     assert_equal(code, 0, "exit code of `squidpdf edit`")
-    assert_in("saved", capsys.readouterr().out, "the edit output")
+    out = capsys.readouterr().out
+    assert_in("saved", out, "the edit output")
+    assert_not_in(words.sentence("signed_file"), out, "the edit output, for a file not signed")
     saved = _text(out_pdf)
     assert_in("ninety days", saved, "the saved PDF after an edit")
     assert_not_in("thirty days", saved, "the saved PDF after an edit")
     with pymupdf.open(out_pdf) as doc:
         producer = doc.xref_get_key(-1, "Info/Producer")  # -1: the file's trailer
     assert_equal(producer, ("string", "squidpdf"), "the program the Info names")
+
+
+@pytest.mark.parametrize(
+    ("command", "said"),
+    [
+        (["check", "Other lime"], "signed_file"),
+        (["edit", "Other lime", "-o", "out.pdf"], "signed_file"),
+        (["redact", "-o", "out.pdf"], "signatures_removed"),
+    ],
+    ids=["check", "edit", "redact"],
+)
+def test_a_signed_file_says_what_the_command_does_to_its_signature(
+    tmp_path, monkeypatch, capsys, command, said
+):
+    """As the browser does: a change breaks the signature, and a redaction takes it away."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "signed.pdf").write_bytes(with_hidden_copies(["signature"]))
+    span_id = _span_id("signed.pdf", OTHER_LINE)
+    name, *rest = command
+
+    code = main([name, "signed.pdf", span_id, *rest])
+
+    assert_equal(code, 0, f"exit code of `squidpdf {name}`")
+    out = capsys.readouterr().out
+    for key in ("signed_file", "signatures_removed"):
+        assert_equal(words.sentence(key) in out, key == said, f"`squidpdf {name}` saying {key}")
 
 
 def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys):
@@ -224,7 +254,9 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     code = main(["redact", pdf, span_id, "-o", str(out_pdf)])
 
     assert_equal(code, 0, "exit code of `squidpdf redact`")
-    assert_in("checked gone by re-reading it", capsys.readouterr().out, "the redact output")
+    out = capsys.readouterr().out
+    assert_in("checked gone by re-reading it", out, "the redact output")
+    assert_not_in(words.sentence("signatures_removed"), out, "the redact output, unsigned")
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 

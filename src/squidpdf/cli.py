@@ -185,6 +185,11 @@ def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
         yield _Opened(engine, index, span, rooms=engine.rooms(index, [span]))
 
 
+def _signature_notices(engine: Engine) -> list[Message]:
+    """What the browser says as a signed file opens: any file written breaks its signature."""
+    return [Message("signed_file")] if engine.holds_signature() else []
+
+
 @contextmanager
 def _saved_apart(out: str) -> Iterator[str]:
     """A path to save to apart from `out`, its file put at `out` once the save and checks pass.
@@ -226,6 +231,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
         print(f"\n  {span.text!r} -> {args.text!r}")
         print(f"  {_DIM}{span.font} {span.size}pt{_OFF}")
         print(f"  width {fit.delta_pt:+.2f} pt")
+        for said in _signature_notices(opened.engine):
+            print(f"  {_YELLOW}{words.render(said)}{_OFF}")
 
         described = words.render_all(fit.describe())
         # It fits: nothing to choose between.
@@ -277,6 +284,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             described = str(words.render_all(fit.describe()))
             return _fail(described, hint="(pass --force to do it anyway)")
 
+        signature_notices = _signature_notices(opened.engine)
         # The same save a download gets.
         with _saved_apart(args.out) as to:
             saved = save_edited(
@@ -288,7 +296,9 @@ def _cmd_edit(args: argparse.Namespace) -> int:
                 driver_factory=DEFAULT_DRIVER_FACTORY,
             )
     print(f"\n  {span.text!r} -> {args.text!r}")
-    for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
+    for said in (
+        [notice.detail for notice in saved.applied.notices] + saved.notices + signature_notices
+    ):
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
     print(f"  {_GREEN}saved{_OFF} {args.out}\n")
     return 0
@@ -305,6 +315,9 @@ def _cmd_redact(args: argparse.Namespace) -> int:
     """Remove a span, save, and verify by re-reading the output that it is gone."""
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
+        # Asked before the save takes the signatures out, as render asks.
+        hidden = opened.engine.redaction.hidden_places([span])[span.id]
+        removal_notices = [Message("signatures_removed")] if "signatures" in hidden else []
         # The same save and check a download gets.
         try:
             with _saved_apart(args.out) as to:
@@ -319,7 +332,9 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         except RedactionFailed as failed:  # the text was still in the file, so none was kept
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
-    for said in [notice.detail for notice in saved.applied.notices] + saved.notices:
+    for said in (
+        [notice.detail for notice in saved.applied.notices] + saved.notices + removal_notices
+    ):
         print(f"  {_YELLOW}{words.render(said)}{_OFF}")
     print(f"  {_GREEN}saved{_OFF} {args.out} {_DIM}· checked gone by re-reading it{_OFF}\n")
     return 0
