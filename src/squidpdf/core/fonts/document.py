@@ -289,11 +289,16 @@ class DocumentFonts:
             by_object.setdefault(font.xref, font)
         return _PageFacts(fonts, by_object)
 
-    def font_object_named(self, page: int, name: str) -> int | None:
+    def font_object_named(
+        self, page: int, name: str, *, font_object: int | None = None
+    ) -> int | None:
         """The object of the page's font that goes by `name`, for new text in it; None if none.
 
-        As the page's text names it, which the browser is told; else as the page lists it.
+        `font_object` first, when the page has it: two fonts can read by one name. Else as
+        the page's text names it, which the browser is told; else as the page lists it.
         """
+        if font_object in self._facts(page).by_object:
+            return font_object
         pieces = _each_piece(self._page_lines(page))
         named = (piece.font_object for piece in pieces if piece.font == name)
         in_text = next((font_object for font_object in named if font_object is not None), None)

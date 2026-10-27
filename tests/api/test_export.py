@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import re
 import tempfile
@@ -16,9 +17,11 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 from fontTools.subset import Subsetter
+from fontTools.ttLib import TTFont
 
 from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import Engine, words, write_dense
+from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
@@ -1390,3 +1393,73 @@ def test_the_longest_document_exports_within_the_export_timeout(mine, longest, m
 
     assert_equal(exported.page_count, documents_constants.MAX_PAGES, "pages exported")
     assert_in(edit["text"], exported[last_page].get_text(), "the edit, on the last page")
+
+
+_READ_ALIKE = ("Liberation Serif Regular", "Liberation Sans Regular")  # the page's two fonts
+_SERIF_LINE = "Set in the serif"  # the page's first line, in Liberation Serif
+_SANS_LINE = "Set in the sans"  # its second, in Liberation Sans named as Liberation Serif
+
+
+def _sans_named_as_serif() -> bytes:
+    """Liberation Sans, its names Liberation Serif's: text in it reads as in the serif."""
+    serif = TTFont(io.BytesIO(face_bytes(FACES["Liberation Serif Regular"])))
+    sans = TTFont(io.BytesIO(face_bytes(FACES["Liberation Sans Regular"])))
+    for record in sans["name"].names:
+        serifs = serif["name"].getName(
+            record.nameID, record.platformID, record.platEncID, record.langID
+        )
+        if serifs is not None:
+            record.string = serifs.toUnicode()
+    renamed = io.BytesIO()
+    sans.save(renamed)
+    return renamed.getvalue()
+
+
+@pytest.fixture(scope="module")
+def read_alike() -> bytes:
+    """A page of two lines whose fonts read by one name: a serif's, and a sans renamed so."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="serif", fontbuffer=face_bytes(FACES["Liberation Serif Regular"]))
+    page.insert_font(fontname="sans", fontbuffer=_sans_named_as_serif())
+    page.insert_text((72, 96), _SERIF_LINE, fontname="serif", fontsize=12)
+    page.insert_text((72, 140), _SANS_LINE, fontname="sans", fontsize=12)
+    return doc.tobytes()
+
+
+def test_new_text_is_drawn_in_the_font_its_object_names_where_two_read_alike(mine, read_alike):
+    """Two fonts whose text reads one name: by that name, new text goes to the first.
+
+    The page's text can't tell the two apart, so both lines read as the serif's; named by
+    its object, the sans draws it.
+    """
+    doc = upload(mine, read_alike).json()
+    [sans_object] = [
+        xref for xref, *_, resource, _ in _fonts_of(read_alike) if resource == "sans"
+    ]
+    serif_line, sans_line = (span_starting(doc, 0, line) for line in (_SERIF_LINE, _SANS_LINE))
+    read_as = {line["font"] for line in (serif_line, sans_line)}
+    assert_equal(read_as, {serif_line["font"]}, "the two lines' fonts, read by one name")
+    insert = {
+        "kind": "insert",
+        "page": 0,
+        "origin": [72, 300],
+        "text": "Signed",
+        "size": 12,
+        "font": sans_line["font"],
+        "font_object": sans_object,
+    }
+
+    pdf = _opened(_export(mine, doc, [insert]))
+
+    [signed] = pdf[0].search_for("Signed")
+    faces = {face: pymupdf.Font(fontbuffer=face_bytes(FACES[face])) for face in _READ_ALIKE}
+    widths = {face: font.text_length("Signed", fontsize=12) for face, font in faces.items()}
+    drawn_in = min(widths, key=lambda face: abs(widths[face] - signed.width))
+    assert_equal(drawn_in, "Liberation Sans Regular", "the face as wide as the new text")
+
+
+def _fonts_of(pdf_bytes: bytes) -> list[tuple]:
+    """The fonts a file's first page lists, as PyMuPDF lists them, resource names and all."""
+    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as pdf:
+        return pdf[0].get_fonts()
