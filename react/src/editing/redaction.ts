@@ -1,6 +1,7 @@
 // Redaction: a span's words taken out of the file and checked by reading back what's saved (Rule 4); a
 // keyboard command, not a tool (Rule 5). The server takes a whole span, so a selection inside one redacts it all.
 import type { Edit } from "../api/types";
+import { readDocumentDates } from "./documentDates";
 import { announcing, change, type Editor } from "./editor";
 import { entriesOf } from "./history";
 import { textIn } from "./project";
@@ -27,6 +28,7 @@ export function editAnyway(editor: Editor): void {
   const { unredacting, history, layout } = editor.store.get();
   const span = unredacting === null ? undefined : layout.spans.get(unredacting.spanId);
   if (unredacting === null || span === undefined) return;
+  readDocumentDates(editor);
   const isRedaction = (edit: Edit) => edit.kind === "redact" && edit.span_id === span.id;
   const redactions = new Set(entriesOf(history).flatMap((entry) => (isRedaction(entry.edit) ? [entry.id] : [])));
   change(editor, { kind: "remove", ids: redactions }, ({ reading }) => ({

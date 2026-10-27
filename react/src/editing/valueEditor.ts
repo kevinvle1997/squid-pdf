@@ -1,7 +1,9 @@
 // A date's or an amount's editor in the slip, beside the field: it opens on the value being typed in,
 // and what's chosen there is written into the field's text, as typing it would be.
+import { type AmountValue, withAmount } from "./amounts";
+import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
 import type { Editor, EditorState } from "./editor";
-import { type AmountValue, type DateValue, daysIn, type EditableValue, withAmount, withDate } from "./formattedValues";
+import type { EditableValue } from "./formattedValues";
 import { troublesIn, typedState } from "./typing";
 
 /** Open the editor for `value` in the slip, Alt+Down in the field: false while nothing is typed into. */
@@ -20,7 +22,7 @@ export function closeValueEditor(editor: Editor): void {
 }
 
 /** The day chosen in the calendar, written into the field as the page writes dates, and focus back in it. */
-export function chooseDate(editor: Editor, value: DateValue, date: Parameters<typeof withDate>[2]): void {
+export function chooseDate(editor: Editor, value: DateValue, date: CalendarDay): void {
   writeValue(editor, (text) => withDate(text, value, date));
 }
 
