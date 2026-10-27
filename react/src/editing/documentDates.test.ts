@@ -1,8 +1,9 @@
-import { expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan } from "../fixtures";
-import { createEditor } from "./editor";
+import { learnEveryLanguage } from "./dateNames";
+import { createEditor, type Editor } from "./editor";
 import { editableValueIn } from "./formattedValues";
 import { edit } from "./typing";
 
@@ -11,19 +12,26 @@ vi.mock(import("../api/client"), async (original) => ({ ...(await original()), r
 // Hawaiian's March: a language with a three letter code alone, learnt after the first edit starts.
 const TEXT = "Due 14 Malaki 2026";
 
-test("the first edit reads the document's dates at once, and again once every language is learnt", async () => {
+let editor: Editor;
+
+test("the first edit opens at once: no language is learnt on the spot, and no date is read yet", () => {
   vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
   const doc = aDoc({ spans: [aSpan({ id: "due", text: TEXT })], fonts: [aFont("Times-Roman")] });
-  const editor = createEditor(new File(["%PDF-"], "invoice.pdf"), doc, 2);
-  expect(editor.store.get().layout.dates).toBeNull();
+  editor = createEditor(new File(["%PDF-"], "invoice.pdf"), doc, 2);
+  const asked = vi.spyOn(Intl.DateTimeFormat, "supportedLocalesOf");
   edit(editor, "due", null);
-  const first = editor.store.get().layout.dates;
-  if (first === null) throw new Error("not read as the edit started");
-  expect(editableValueIn(TEXT, { dates: first, at: undefined })).toBeUndefined();
+  expect(asked).not.toHaveBeenCalled();
+  asked.mockRestore();
+  expect(editor.store.get().draft?.spanId).toBe("due");
+  expect(editor.store.get().layout.dates).toBeNull();
+});
 
-  // The field reads `layout.dates`, so its value is read again as this changes.
-  await vi.waitFor(() => expect(editor.store.get().layout.dates).not.toBe(first), { timeout: 20_000 });
-  const learnt = editor.store.get().layout.dates;
-  if (learnt === null) throw new Error("not read again");
-  expect(editableValueIn(TEXT, { dates: learnt, at: undefined })?.kind).toBe("date");
+describe("once every language is learnt, in the background", () => {
+  beforeAll(() => learnEveryLanguage());
+
+  test("the document's dates are read, so the open field reads its date", () => {
+    const { dates } = editor.store.get().layout;
+    if (dates === null) throw new Error("not read once learnt");
+    expect(editableValueIn(TEXT, { dates, at: undefined })?.kind).toBe("date");
+  });
 });

@@ -66,7 +66,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const press = useEditorState((state) => state.draft?.press ?? null);
   const dates = useEditorState((state) => state.layout.dates);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
-  const value = dates === null ? undefined : editableValueIn(text, { dates, at });
+  const value = editableValueIn(text, { dates, at });
   // Sent back from the value's editor in the slip, the field takes focus again.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;

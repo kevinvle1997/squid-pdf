@@ -1,14 +1,16 @@
-// What settles how the document's dates read: worked out as its first edit starts, off the page's first
-// draw, and again once every language Intl has dates for is learnt, so an open field reads its date anew.
+// What settles how the document's dates read: worked out once every language Intl has dates for is learnt,
+// in the background as the first edit starts, so the field opens at once and reads its date once they are.
 import { learnEveryLanguage } from "./dateNames";
 import { dateReadingOf } from "./dates";
 import type { Editor } from "./editor";
 
-/** Work out how the document's dates read, once, and learn the rest of the languages behind it. */
+/**
+ * Work out how the document's dates read, once every language is learnt. Why not before: a month named in a
+ * language learnt later could be one the languages learnt so far settle wrongly.
+ */
 export function readDocumentDates(editor: Editor): void {
   if (editor.store.get().layout.dates !== null) return;
-  readNow(editor);
-  learnEveryLanguage(() => readNow(editor));
+  void learnEveryLanguage().then(() => readNow(editor));
 }
 
 function readNow(editor: Editor): void {

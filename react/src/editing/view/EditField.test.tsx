@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { learnEveryLanguage } from "../dateNames";
 import "@fontsource/funnel-sans/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -13,6 +14,12 @@ import { fill } from "../words";
 import { EditorContext } from "./context";
 import { ALT } from "./keys";
 import { Page } from "./Page";
+
+// Learning as an editor does, unless a test holds it back.
+vi.mock(import("../dateNames"), async (original) => {
+  const learnt = await original();
+  return { ...learnt, learnEveryLanguage: vi.fn(learnt.learnEveryLanguage) };
+});
 
 vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
@@ -27,6 +34,9 @@ vi.mock(import("../../api/client"), async (original) => ({
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
 }));
+
+// Every language Intl has dates for, learnt in the background as an editor would: the dates here need them.
+beforeAll(() => learnEveryLanguage());
 
 const WORDS = "Due 14 March 2026";
 // A subset that drew only these words: it has no 7, so the 17th can't be written in it.
@@ -231,5 +241,14 @@ describe("an amount in the field", () => {
     await userEvent.keyboard("{Enter}");
     await expect.element(field).toHaveValue("Pay 980,50 €");
     await expect.element(field).toHaveFocus();
+  });
+
+  test("has its control as the edit starts, before the languages behind dates are learnt", async () => {
+    vi.mocked(learnEveryLanguage).mockReturnValueOnce(new Promise<void>(() => undefined));
+    const words = "Pay 1.250,00 €";
+    const amount = aSpan({ id: "due", text: words, size: 20, bbox: due.bbox, room_pt: 200 });
+    editor = createEditor(new File(["%PDF-"], "invoice.pdf"), aDoc({ spans: [amount], fonts: DOC.fonts }), 2);
+    const { screen } = await openField(words);
+    await expect.element(screen.getByRole("button", { name: "Amount" })).toBeVisible();
   });
 });

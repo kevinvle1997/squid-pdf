@@ -1,5 +1,6 @@
 // Month and weekday names in every language Intl has dates for, worked out from Intl.DateTimeFormat, so no
 // table of names ships: which languages name a word, and a month or a weekday named again in one of them.
+import { LEARN_BATCH, LEARN_SLICE_MS } from "./constants";
 
 export type NameWidth = "long" | "short";
 export type NameKind = "month" | "weekday";
@@ -25,65 +26,91 @@ const ALPHABET = [..."abcdefghijklmnopqrstuvwxyz"];
 // The world's, Europe's and Latin America's forms of a language, where Intl has them: en-001 writes "14 Sept 2026".
 const REGIONS = ["001", "150", "419"];
 const WIDTHS: readonly NameWidth[] = ["long", "short"];
+const KINDS: readonly NameKind[] = ["month", "weekday"];
 // A Sunday, the first of the week as Intl numbers its days.
 const A_SUNDAY = Date.UTC(2000, 0, 2);
 const DAY_MS = 86_400_000;
 
 /** Every name of the languages learnt so far, by the name in lower case, in the order they were learnt. */
-let byName: Map<string, DateName[]> | undefined;
+const byName = new Map<string, DateName[]>();
 const namesIn = new Map<string, readonly DateName[]>();
 const learnt = new Set<string>();
-// Who hears once every language is learnt; null once they all are.
-let waiting: (() => void)[] | null = [];
-let learning = false;
+let everyLanguage: Promise<void> | undefined;
 
-/** The names of every language with a two letter code that Intl has dates for, and its regions' forms. */
-function names(): Map<string, DateName[]> {
-  if (byName !== undefined) return byName;
-  byName = new Map();
-  const twoLetters = ALPHABET.flatMap((first) => ALPHABET.map((second) => first + second));
-  for (const language of Intl.DateTimeFormat.supportedLocalesOf(twoLetters)) learn(language);
-  return byName;
+/**
+ * Every language Intl has dates for, learnt in slices between other work: those with a two letter code, then
+ * those with three. Why: Intl lists no languages, and asking it of every code at once holds the page up.
+ */
+export function learnEveryLanguage(): Promise<void> {
+  everyLanguage ??= learnInSlices();
+  return everyLanguage;
+}
+
+async function learnInSlices(): Promise<void> {
+  const steps = learningSteps();
+  // Each slice a task of its own, the first too: whatever asked goes on first.
+  do {
+    await new Promise((nextTask) => setTimeout(nextTask));
+  } while (learntASlice(steps));
 }
 
 /**
- * Learn the languages with a two letter code now, and the rest, with three, a first letter at a time between
- * other work, then call `onLearnt`. Why: Intl lists no languages, and asking it of every three letter code at
- * once holds the page up.
+ * Learn for one slice's time, stopping before a step as long as the longest so far would run past it: false once
+ * there's nothing left to learn.
  */
-export function learnEveryLanguage(onLearnt: () => void): void {
-  names();
-  if (waiting === null) return;
-  waiting.push(onLearnt);
-  if (learning) return;
-  learning = true;
-  const firstLetters = [...ALPHABET];
-  const next = () => {
-    const first = firstLetters.shift();
-    if (first === undefined) {
-      const heard = waiting ?? [];
-      waiting = null;
-      for (const hear of heard) hear();
-      return;
-    }
-    const codes = ALPHABET.flatMap((second) => ALPHABET.map((third) => first + second + third));
-    for (const language of Intl.DateTimeFormat.supportedLocalesOf(codes)) learn(language);
-    setTimeout(next);
-  };
-  setTimeout(next);
+function learntASlice(steps: Generator<void>): boolean {
+  const start = performance.now();
+  let longest = 0;
+  for (let now = start; now - start + longest < LEARN_SLICE_MS; ) {
+    if (steps.next().done) return false;
+    const stepped = performance.now();
+    longest = Math.max(longest, stepped - now);
+    now = stepped;
+  }
+  return true;
 }
 
-/** Index the names of `language` and of its regions' forms that Intl has. */
-function learn(language: string): void {
+/**
+ * Learning every language, a step at a time, each well inside a slice: asking Intl which of a few codes it has,
+ * then each one's forms, a format at a time. Why so small: one ask of Intl can't be split, nor one format.
+ */
+function* learningSteps(): Generator<void> {
+  const twoLetters = ALPHABET.flatMap((first) => ALPHABET.map((second) => first + second));
+  const threeLetters = ALPHABET.flatMap((first) => twoLetters.map((rest) => first + rest));
+  const codes = [...twoLetters, ...threeLetters];
+  for (let at = 0; at < codes.length; at += LEARN_BATCH) {
+    const languages = Intl.DateTimeFormat.supportedLocalesOf(codes.slice(at, at + LEARN_BATCH));
+    yield;
+    for (const language of languages) yield* learningOf(language);
+  }
+}
+
+/** Learning the names of `language` and of its regions' forms that Intl has, a step a form and a format. */
+function* learningOf(language: string): Generator<void> {
   // A three letter code Intl reads as a two letter one's language: "deu" is "de".
   if (learnt.has(language)) return;
   learnt.add(language);
-  const index = names();
-  const forms = [language, ...REGIONS.map((region) => `${language}-${region}`).filter(isOwnForm)];
-  for (const name of forms.flatMap(namesInLanguage)) {
+  for (const form of [language, ...REGIONS.map((region) => `${language}-${region}`)]) {
+    const own = form === language || isOwnForm(form);
+    yield;
+    if (own) yield* learningNamesIn(form);
+  }
+}
+
+/** Learning the names in `language`, a format at a time, then indexing them by name. */
+function* learningNamesIn(language: string): Generator<void> {
+  const named: DateName[] = [];
+  for (const width of WIDTHS) {
+    for (const kind of KINDS) {
+      named.push(...namedInDates(language, { kind, width }));
+      yield;
+    }
+  }
+  namesIn.set(language, named);
+  for (const name of named) {
     const key = name.name.toLowerCase();
-    const same = index.get(key);
-    if (same === undefined) index.set(key, [name]);
+    const same = byName.get(key);
+    if (same === undefined) byName.set(key, [name]);
     else same.push(name);
   }
 }
@@ -98,34 +125,35 @@ function isOwnForm(locale: string): boolean {
   }
 }
 
-/** The names `word` is, of `kind`, in every language learnt, in any case. */
+/** The names `word` is, of `kind`, in every language learnt so far, in any case. */
 export function namesOf(word: string, kind: NameKind): readonly DateName[] {
-  return (names().get(word.normalize("NFC").toLowerCase()) ?? []).filter((name) => name.kind === kind);
+  return (byName.get(word.normalize("NFC").toLowerCase()) ?? []).filter((name) => name.kind === kind);
 }
 
 /** The twelve months' names in `language`, then its seven weekdays', long then short, as each is written in a date. */
 function namesInLanguage(language: string): readonly DateName[] {
   const cached = namesIn.get(language);
   if (cached !== undefined) return cached;
-  const all = WIDTHS.flatMap((width) => [
-    ...Array.from({ length: 12 }, (_, index) => nameOf(language, { kind: "month", width, index: index + 1 })),
-    ...Array.from({ length: 7 }, (_, index) => nameOf(language, { kind: "weekday", width, index })),
-  ]);
-  // A language that writes its months as numbers has no names to find.
-  const named = all.filter((name) => /\p{L}/u.test(name.name));
+  const named = WIDTHS.flatMap((width) => KINDS.flatMap((kind) => namedInDates(language, { kind, width })));
   namesIn.set(language, named);
   return named;
 }
 
-function nameOf(
-  language: string,
-  { kind, width, index }: { kind: NameKind; width: NameWidth; index: number },
-): DateName {
+/** The names `namesInDates` finds, where `language` writes them in letters: some write their months as numbers. */
+function namedInDates(language: string, which: { kind: NameKind; width: NameWidth }): DateName[] {
+  return namesInDates(language, which).filter((name) => /\p{L}/u.test(name.name));
+}
+
+/** Every month's or weekday's name in `language`, `width` long, as a date writes it: one format, asked twelve or seven times. */
+function namesInDates(language: string, { kind, width }: { kind: NameKind; width: NameWidth }): DateName[] {
   const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" };
-  const date = kind === "month" ? Date.UTC(2000, index - 1, 14) : A_SUNDAY + index * DAY_MS;
   const format = new Intl.DateTimeFormat(language, { ...options, [kind]: width });
-  const name = format.formatToParts(date).find((part) => part.type === kind)?.value ?? "";
-  return { language, kind, index, width, name };
+  const indexes = kind === "month" ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [0, 1, 2, 3, 4, 5, 6];
+  return indexes.map((index) => {
+    const date = kind === "month" ? Date.UTC(2000, index - 1, 14) : A_SUNDAY + index * DAY_MS;
+    const name = format.formatToParts(date).find((part) => part.type === kind)?.value ?? "";
+    return { language, kind, index, width, name };
+  });
 }
 
 /** The words `language` writes between a date's parts with its months `width` long: "de" in "14 de marzo de 2026". */

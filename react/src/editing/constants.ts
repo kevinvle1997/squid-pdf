@@ -56,3 +56,9 @@ export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;
 
 /** A step this close to the share shown, as a share of it, is skipped: zooming in from 45% goes to 75%, not 50%. */
 export const ZOOM_SKIP = 1.15;
+
+/** Languages for dates are learnt in slices this long, between other work: well inside a frame, so nothing waits on them. */
+export const LEARN_SLICE_MS = 8;
+
+/** How many language codes are asked of Intl at once while learning: few enough that the ask stays inside a slice. */
+export const LEARN_BATCH = 10;

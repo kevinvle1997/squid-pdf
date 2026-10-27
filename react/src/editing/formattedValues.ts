@@ -23,9 +23,12 @@ export type EditableValue = DateValue | AmountValue;
 const EMAIL =
   /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}(?![\p{L}\p{N}-])/gu;
 
-/** The dates, amounts and emails in `text`, left to right; a date read as `dates` settles it, or not at all. */
-export function formattedValuesIn(text: string, { dates }: { dates: DateReading }): FormattedValue[] {
-  const found = [...datesIn(text, dates), ...amountsIn(text), ...emailsIn(text)];
+/**
+ * The dates, amounts and emails in `text`, left to right; a date read as `dates` settles it, or not at all, and
+ * none while the document's dates aren't read yet (null), which an amount or an email never waits on.
+ */
+export function formattedValuesIn(text: string, { dates }: { dates: DateReading | null }): FormattedValue[] {
+  const found = [...(dates === null ? [] : datesIn(text, dates)), ...amountsIn(text), ...emailsIn(text)];
   // A date first where two read the same letters: what's found earliest, then longest, keeps them.
   found.sort((a, b) => a.start - b.start || b.end - a.end);
   const kept: FormattedValue[] = [];
@@ -39,7 +42,7 @@ export function formattedValuesIn(text: string, { dates }: { dates: DateReading 
 /** The value a date or amount editor opens on: the one at `at` in the text, else the first. */
 export function editableValueIn(
   text: string,
-  { dates, at }: { dates: DateReading; at: number | undefined },
+  { dates, at }: { dates: DateReading | null; at: number | undefined },
 ): EditableValue | undefined {
   const editable = formattedValuesIn(text, { dates }).filter((value) => value.kind !== "email");
   const under = at === undefined ? undefined : editable.find((value) => value.start <= at && at <= value.end);

@@ -1,7 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test } from "vitest";
 import { type AmountValue, withAmount } from "./amounts";
+import { learnEveryLanguage } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, withDate } from "./dates";
 import { editableValueIn, formattedValuesIn } from "./formattedValues";
+
+// Every language Intl has dates for, learnt in the background as an editor would: the dates here need them.
+beforeAll(() => learnEveryLanguage());
 
 /** How the dates of a document of `texts` read, for a reader of English. */
 function readingOf(...texts: string[]): DateReading {
@@ -37,7 +41,8 @@ describe("a date", () => {
   });
 
   test("keeps its language, whatever the reader's: a German month stays German", () => {
-    const date = dateIn("14. März 2026");
+    // Swiss and Low German name March so too: the document's other months are German's alone.
+    const date = dateIn("14. März 2026", readingOf("14. März 2026", "1. Februar 2026", "24. Dezember 2025"));
     expect(withDate("14. März 2026", date, { year: 2026, month: 2, day: 3 })).toBe("3. Februar 2026");
   });
 
