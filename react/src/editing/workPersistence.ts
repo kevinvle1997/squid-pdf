@@ -7,7 +7,7 @@ import { announcing, type Editor, layoutOf } from "./editor";
 import { unexported } from "./export";
 import { addOwnFace } from "./faces";
 import { entriesOf, type History } from "./history";
-import { warn } from "./notices";
+import { newlyHeard, noticeLines, warn } from "./notices";
 import { project, UNEDITED } from "./project";
 
 /** A font copy as it's stored: its bytes, and their type, which goes with them to the server. */
@@ -111,15 +111,21 @@ export function readStoredAgain(editor: Editor): void {
   if (lacksSentences(editor.store.get().doc)) void readAgain(editor);
 }
 
-/** The server's reading of the document asked for again, in place of the one persisted; why not, in the bar if it fails. */
+/**
+ * The server's reading of the document asked for again, in place of the one persisted, with what opening it finds:
+ * a line that's new under the bar is heard. Why not, in the bar if it fails.
+ */
 async function readAgain(editor: Editor): Promise<void> {
   const { store, reopener } = editor;
   try {
     const doc = await reopener.readAgain();
+    const { notices: before, drawn, reading } = store.get();
     // A failure said before, this one's or opening again's, is over: the document is there.
-    const { reopen } = store.get().notices;
-    const notices = { ...store.get().notices, reopen: reopen?.tone === "warn" ? null : reopen };
-    store.set({ doc, layout: layoutOf(doc), notices });
+    const reopen = before.reopen?.tone === "warn" ? null : before.reopen;
+    const notices = { ...before, document: doc.notices.map((notice) => warn(notice.detail)), reopen };
+    const shown = { deleted: reading.deleted };
+    const heard = newlyHeard(noticeLines(before, drawn, shown), noticeLines(notices, drawn, shown));
+    store.set({ doc, layout: layoutOf(doc), notices, ...(heard !== "" && { announcement: announcing(heard) }) });
   } catch (error) {
     const said = sentenceOf(error);
     store.set({ notices: { ...store.get().notices, reopen: warn(said) }, announcement: announcing(said) });
