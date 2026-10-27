@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from "vitest";
-import { learnEveryLanguage } from "./dateNames";
+import { learnDateLanguages } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, datesIn, withDate } from "./dates";
 
-// Every language Intl has dates for, learnt in the background as an editor would: the dates here need them.
-beforeAll(() => learnEveryLanguage());
+// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
+beforeAll(() => learnDateLanguages());
 
 /** How the dates of a document of `texts` read, for a reader of `readerLanguages`. */
 function readingOf(texts: string[], readerLanguages: string[] = []): DateReading {
@@ -24,6 +24,12 @@ function asSecondOf(
 ) {
   const date = dateIn(text, reading);
   return date === undefined ? undefined : withDate(text, date, { year, month, day: 2 });
+}
+
+/** `text`, its one date changed to `day` of March 2026, or undefined where no date is read. */
+function asDayOf(text: string, { day, reading }: { day: number; reading: DateReading }) {
+  const date = dateIn(text, reading);
+  return date === undefined ? undefined : withDate(text, date, { year: 2026, month: 3, day });
 }
 
 describe("a month name several languages share", () => {
@@ -62,10 +68,98 @@ describe("a month name several languages share", () => {
   });
 });
 
+describe("a month name, by the document's own months", () => {
+  test("is read only in a language that names every month the document holds, never one sharing a single word", () => {
+    const italian = readingOf(["2 Januar 2026", "3 Oktober 2026", "14 novembre 2026"], ["it-IT"]);
+    expect(asSecondOf("14 novembre 2026", { month: 5, reading: italian })).toBeUndefined();
+    const french = readingOf(["2 janvier 2026", "3 octobre 2026", "14 mar 2026"], ["es-ES"]);
+    expect(asSecondOf("14 mar 2026", { month: 4, reading: french })).toBeUndefined();
+    // Cebuano names "Enero" and "Sep", but not "marzo".
+    const spanish = readingOf(["2 de enero de 2026", "3 de marzo de 2026", "14 Sep 2026"], ["es-ES"]);
+    expect(asSecondOf("14 Sep 2026", { month: 10, reading: spanish })).toBeUndefined();
+  });
+
+  test("names it where the language would end it with a full stop, so the reader's languages decide among them", () => {
+    // Dutch writes "feb", Swedish "feb.": both name every month here, and write March apart.
+    const swedish = readingOf(["2 januari 2026", "14 feb 2026"], ["sv-SE"]);
+    expect(asSecondOf("14 feb 2026", { month: 3, reading: swedish })).toBe("2 mars 2026");
+    const dutchOrSwedish = ["2 januari 2026", "3 oktober 2026", "14 Dec 2026"];
+    expect(asSecondOf("14 Dec 2026", { month: 1, reading: readingOf(dutchOrSwedish, ["en-US"]) })).toBeUndefined();
+    expect(asSecondOf("14 Dec 2026", { month: 1, reading: readingOf(dutchOrSwedish, ["nl-NL"]) })).toBe("2 Jan 2026");
+  });
+
+  test("named in no one language CLDR covers fully, is no date to edit, though a constructed one names it all", () => {
+    // Interlingue alone names both "Januar" and "may", and it's no document's language.
+    const reading = readingOf(["2 Januar 2026", "14 may 2026"], ["es-ES"]);
+    expect(asSecondOf("14 may 2026", { month: 3, reading })).toBeUndefined();
+    expect(dateIn("14 marto 2026", readingOf([], ["eo"]))).toBeUndefined();
+  });
+
+  // "de" and "no" are months in Jola-Fonyi, "di" in a language CLDR covers only in part. The date is the first text.
+  test.each([
+    {
+      texts: ["14 de marzo de 2026"],
+      stray: "Página 1 de 12",
+      reader: "es-ES",
+      month: 1,
+      comesTo: "2 de enero de 2026",
+    },
+    {
+      texts: ["14 de marzo de 2026"],
+      stray: "Resolución 12 de 2026",
+      reader: "es-ES",
+      month: 1,
+      comesTo: "2 de enero de 2026",
+    },
+    {
+      texts: ["14 de março de 2026"],
+      stray: "Página 1 de 12",
+      reader: "pt-BR",
+      month: 1,
+      comesTo: "2 de janeiro de 2026",
+    },
+    // Another date in Italian, as "marzo" alone is Spanish too.
+    {
+      texts: ["14 marzo 2026", "2 gennaio 2026"],
+      stray: "Pagina 1 di 12",
+      reader: "it-IT",
+      month: 4,
+      comesTo: "2 aprile 2026",
+    },
+    {
+      texts: ["Published 14 March 2026"],
+      stray: "Vol. 3, No. 12",
+      reader: "en-US",
+      month: 4,
+      comesTo: "Published 2 April 2026",
+    },
+  ])(
+    "is never a short word in a month's place, as in “$stray”, that only a thinly covered language names one",
+    ({ texts, stray, reader, month, comesTo }) => {
+      const [date = ""] = texts;
+      expect(asSecondOf(date, { month, reading: readingOf([...texts, stray], [reader]) })).toBe(comesTo);
+    },
+  );
+
+  test("is no month: a word a language names a month is read as one only in a date", () => {
+    const french = readingOf(["Lun 16/03/2026"], ["fr-FR"]);
+    expect(french.monthWords).toEqual([]);
+    expect(asDayOf("Lun 16/03/2026", { day: 17, reading: french })).toBe("Mar 17/03/2026");
+  });
+});
+
 describe("a date's own marks", () => {
   test("a full stop after it, its language's own, keeps it in that language", () => {
     expect(asSecondOf("14. mart 2026.", { month: 9, reading: readingOf([], ["bs"]) })).toBe("2. septembar 2026.");
     expect(dateIn("14. mart 2026.", readingOf([], ["en-US"]))).toBeUndefined();
+  });
+
+  test("a part written in one digit is written in one, and the day with it, which says nothing of its own", () => {
+    const reading = readingOf(["14.3.2026"]);
+    const date = dateIn("14.3.2026", reading);
+    if (date === undefined) throw new Error("no date");
+    expect(withDate("14.3.2026", date, { year: 2026, month: 3, day: 2 })).toBe("2.3.2026");
+    expect(withDate("14.3.2026", date, { year: 2026, month: 11, day: 2 })).toBe("2.11.2026");
   });
 
   test("a part written in two digits is written in two", () => {

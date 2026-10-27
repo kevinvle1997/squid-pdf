@@ -3,7 +3,7 @@ import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
 import { type AmountValue, amountsIn } from "./amounts";
-import { learnEveryLanguage } from "./dateNames";
+import { learnDateLanguages } from "./dateNames";
 import { dateReadingOf, datesIn } from "./dates";
 import { createEditor } from "./editor";
 import { edit, typeInto } from "./typing";
@@ -12,8 +12,8 @@ import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Every language Intl has dates for, learnt in the background as an editor would: the dates here need them.
-beforeAll(() => learnEveryLanguage());
+// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
+beforeAll(() => learnDateLanguages());
 
 /** The one amount `text` holds. */
 function amountIn(text: string): AmountValue {

@@ -46,6 +46,8 @@ const YEAR = String.raw`\d{4}|\d{2}`;
 const BEFORE = String.raw`(?:(\p{L}+\.?)(,?[\s\u00a0\u202f]+))?`;
 const ALONE_BEFORE = String.raw`(?<![\p{L}\p{N}])`;
 const ALONE_AFTER = String.raw`(?![\p{L}\p{N}])`;
+// Not run on into more numbers: "Lun 16/03" is no date in "Lun 16/03/2026".
+const NO_MORE_NUMBERS = String.raw`(?![./-]\p{N})`;
 
 /** The patterns of a date with its month named, each with its parts in the order they come. */
 const NAMED: readonly { readonly order: DateFormat["order"]; readonly pattern: RegExp }[] = [
@@ -57,7 +59,7 @@ const NAMED: readonly { readonly order: DateFormat["order"]; readonly pattern: R
 function named(...parts: [string, string, string]): RegExp {
   const [first, second, third] = parts;
   return new RegExp(
-    `${ALONE_BEFORE}${BEFORE}(${first})(${BETWEEN})(${second})(${BETWEEN})(${third})${ALONE_AFTER}`,
+    `${ALONE_BEFORE}${BEFORE}(${first})(${BETWEEN})(${second})(${BETWEEN})(${third})${ALONE_AFTER}${NO_MORE_NUMBERS}`,
     "gu",
   );
 }
@@ -119,20 +121,23 @@ export function datesIn(text: string, reading: DateReading): DateValue[] {
   return [...named, ...readEach(text, { pattern: NUMERIC, read: (match) => numericDateOf(match, reading) })];
 }
 
+/** What `read` makes of a date whose words nothing settles: no date, and none inside it, as the date alone. */
+const UNSETTLED = Symbol("unsettled");
+
 /**
  * What `read` makes of each match of `pattern` in `text`. A match it makes nothing of is tried again a letter
  * on, since a date may start inside it: "40 on 14" looks like one, and "14 March 2026" follows.
  */
 function readEach<T>(
   text: string,
-  { pattern, read }: { pattern: RegExp; read: (match: RegExpExecArray) => T | undefined },
+  { pattern, read }: { pattern: RegExp; read: (match: RegExpExecArray) => T | undefined | typeof UNSETTLED },
 ): T[] {
   const found: T[] = [];
   const searching = new RegExp(pattern.source, pattern.flags);
   for (let match = searching.exec(text); match !== null; match = searching.exec(text)) {
     const value = read(match);
     if (value === undefined) searching.lastIndex = match.index + 1;
-    else found.push(value);
+    else if (value !== UNSETTLED) found.push(value);
   }
   return found;
 }
@@ -151,7 +156,7 @@ function partsOf(match: RegExpMatchArray) {
 function namedDateOf(
   match: RegExpMatchArray,
   { order, reading }: { order: DateFormat["order"]; reading: DateReading },
-): DateValue | undefined {
+): DateValue | undefined | typeof UNSETTLED {
   const { whole, before, beforeSpace, parts, between } = partsOf(match);
   const at = order.indexOf("month");
   let monthWord = parts[at] ?? "";
@@ -160,16 +165,16 @@ function namedDateOf(
     monthWord = monthWord.slice(0, -1);
     betweenParts = at === 0 ? [`.${betweenParts[0]}`, betweenParts[1]] : [betweenParts[0], `.${betweenParts[1]}`];
   }
-  const monthOnly = settledNames({ month: monthWord, between: betweenParts }, reading);
+  const monthOnlyWords = { month: monthWord, between: betweenParts };
+  const monthOnly = settledNames(monthOnlyWords, reading);
   if (monthOnly?.month === undefined) return undefined;
   const value = { day: parts[order.indexOf("day")] ?? "", year: parts[order.indexOf("year")] ?? "" };
   const date = dayOf({ year: value.year, month: monthOnly.month.index, day: Number(value.day) });
   if (date === undefined) return undefined;
-  const weekdayWord = isWeekdayOf(before, date) ? before : undefined;
-  const words = { month: monthWord, weekday: weekdayWord, between: betweenParts };
-  const settled = weekdayWord === undefined ? monthOnly : settledNames(words, reading);
-  // A weekday no language settles on: written for another date, it would be a guess.
-  if (settled?.month === undefined) return undefined;
+  const weekday = weekdayBefore(before, date);
+  const settled = weekday === undefined ? monthOnly : settledNames({ ...monthOnlyWords, weekday }, reading);
+  // A weekday no language settles on: written for another date, it would be a guess, and left as it is, stale.
+  if (settled?.month === undefined) return UNSETTLED;
   const format: DateFormat = {
     order,
     between: betweenParts,
@@ -177,11 +182,11 @@ function namedDateOf(
     month: wordOf(settled.month, monthWord),
     weekday: settled.weekday === undefined ? null : { word: wordOf(settled.weekday, before), between: beforeSpace },
   };
-  return located({ date, format }, { match, whole, before: weekdayWord === undefined ? before + beforeSpace : "" });
+  return located({ date, format }, { match, whole, before: weekday === undefined ? before + beforeSpace : "" });
 }
 
 /** A date written in numbers alone: year first, or a day and month in the order they can only read in, or the document's. */
-function numericDateOf(match: RegExpMatchArray, reading: DateReading): DateValue | undefined {
+function numericDateOf(match: RegExpMatchArray, reading: DateReading): DateValue | undefined | typeof UNSETTLED {
   const [whole, before = "", beforeSpace = "", first = "", mark = "", second = "", last = ""] = match;
   const yearFirst = first.length === 4 && last.length <= 2;
   if (!yearFirst && (first.length > 2 || !isYear(last))) return undefined;
@@ -191,18 +196,18 @@ function numericDateOf(match: RegExpMatchArray, reading: DateReading): DateValue
   const parts = numericPartsOf(order, { first, second, last });
   const date = dayOf({ year: parts.year, month: Number(parts.month), day: Number(parts.day) });
   if (date === undefined) return undefined;
-  const weekdayWord = isWeekdayOf(before, date) ? before : undefined;
-  const settled = weekdayWord === undefined ? undefined : settledNames({ weekday: weekdayWord, between: [] }, reading);
-  // A weekday no language settles on: written for another date, it would be a guess.
-  if (weekdayWord !== undefined && settled === undefined) return undefined;
+  const weekday = weekdayBefore(before, date);
+  const settled = weekday === undefined ? undefined : settledNames({ weekday, between: [] }, reading);
+  // A weekday no language settles on: written for another date, it would be a guess, and left as it is, stale.
+  if (weekday !== undefined && settled === undefined) return UNSETTLED;
   const format: DateFormat = {
     order: parts.order,
     between: [mark, mark],
-    digits: { day: digitCountOf(parts.day), month: digitCountOf(parts.month), year: digitsOf(parts.year) },
+    digits: { ...numericDigitsOf(parts), year: digitsOf(parts.year) },
     month: null,
     weekday: settled?.weekday === undefined ? null : { word: wordOf(settled.weekday, before), between: beforeSpace },
   };
-  return located({ date, format }, { match, whole, before: weekdayWord === undefined ? before + beforeSpace : "" });
+  return located({ date, format }, { match, whole, before: weekday === undefined ? before + beforeSpace : "" });
 }
 
 /** A date read from `match`, placed where it is in its text: past the word before it, unless that's its weekday. */
@@ -253,8 +258,21 @@ function hasZero(digits: string): boolean {
   return digits.length === 2 && digits.startsWith("0");
 }
 
-function digitCountOf(digits: string): 1 | 2 {
-  return digits.length === 2 ? 2 : 1;
+/**
+ * How many digits a numeric date's day and month are written in: two where a part shows a zero, one where it's a
+ * single digit. A part that shows neither, as 14 doesn't, follows the other; with neither showing, two.
+ */
+function numericDigitsOf({ day, month }: { day: string; month: string }): { day: 1 | 2; month: 1 | 2 } {
+  const dayShows = digitsShownBy(day);
+  const monthShows = digitsShownBy(month);
+  return { day: dayShows ?? monthShows ?? 2, month: monthShows ?? dayShows ?? 2 };
+}
+
+/** The digits a number's own writing shows a date part takes: undefined where it's two, with no zero. */
+function digitsShownBy(digits: string): 1 | 2 | undefined {
+  if (digits.length === 1) return 1;
+  if (digits.startsWith("0")) return 2;
+  return undefined;
 }
 
 function digitsOf(year: string): 2 | 4 {
@@ -262,7 +280,9 @@ function digitsOf(year: string): 2 | 4 {
 }
 
 function wordOf(name: DateName, written: string): NameWord {
-  return { language: name.language, width: name.width, letterCase: caseOf(written, name.name) };
+  const stopLeftOff = name.name.endsWith(".") && !written.endsWith(".");
+  const own = stopLeftOff ? name.name.slice(0, -1) : name.name;
+  return { language: name.language, width: name.width, letterCase: caseOf(written, own), stopLeftOff };
 }
 
 /** `text` with `value` changed to `date`, written as the page wrote the date it replaces. */
@@ -283,19 +303,18 @@ function writtenDate(date: CalendarDay, format: DateFormat): string {
 }
 
 /**
- * Whether `word` names the day of the week `date` falls on, in some language. Why: a word before a date that
- * names another day isn't its weekday, but a word that happens to be one in some other language.
+ * The word before a date, if some language names it the day of the week `date` falls on. Why: a word before a
+ * date that names another day isn't its weekday, but a word that happens to be one in some other language.
  */
-function isWeekdayOf(word: string, date: CalendarDay): boolean {
-  return namesOf(word, "weekday").some((name) => name.index === weekdayOf(date));
+function weekdayBefore(word: string, date: CalendarDay): WeekdayWord | undefined {
+  const index = weekdayOf(date);
+  return namesOf(word, "weekday").some((name) => name.index === index) ? { word, index } : undefined;
 }
 
 /** The day of the week `date` falls on, from 0, Sunday. */
 export function weekdayOf({ year, month, day }: CalendarDay): number {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
-
-// ---- Which language a date's names are in ----
 
 /** A language that names a date's words, and the name each word is in it. */
 interface Named {
@@ -304,34 +323,39 @@ interface Named {
   readonly weekday?: DateName;
 }
 
+/** A weekday's name as written before a date, and the day it names there, from 0, Sunday. */
+interface WeekdayWord {
+  readonly word: string;
+  readonly index: number;
+}
+
 /** A date's words: its month's and weekday's names as written, and what's between its parts. */
 interface DateWords {
   readonly month?: string;
-  readonly weekday?: string;
+  readonly weekday?: WeekdayWord;
   readonly between: readonly string[];
 }
 
 /**
- * The names a date's words are, in the one language they settle on: every language that names them, if all
- * write every month and weekday alike; else those the document's other dates are written in; else those the
- * reader reads. Undefined where that leaves more than one way to write them, so no editor guesses.
+ * The names a date's words are, in the one language they settle on. A language counts only if it names every
+ * month the document holds, and this date's words; where those that count would write a month or a weekday
+ * apart, the reader's languages decide among them. Undefined where that leaves no one way, so no editor guesses.
  */
 function settledNames(words: DateWords, reading: DateReading): Named | undefined {
-  let languages = languagesNaming(words);
-  if (languages.length === 0) return undefined;
-  if (writeAlike(languages, words)) return languages[0];
-  const inDocument = mostOf(languages, (named) => reading.monthWords.filter((word) => names(named, word)).length);
-  if (inDocument.length > 0) languages = inDocument;
-  if (writeAlike(languages, words)) return languages[0];
-  return readersOf(languages, { words, reading });
+  const counting = languagesNaming(words).filter((named) =>
+    reading.monthWords.every((word) => namesMonth(named, word)),
+  );
+  if (counting.length === 0) return undefined;
+  if (writeAlike(counting, words)) return counting[0];
+  return readersOf(counting, { words, reading });
 }
 
-/** The languages naming every word in `words`, each name in the case written where any language has it so. */
+/** The languages naming every word in `words`, a weekday only as the date's own day, each name as written if it has one so. */
 function languagesNaming(words: DateWords): Named[] {
-  const kinds = (["month", "weekday"] as const).filter((kind) => words[kind] !== undefined);
+  const kinds = kindsIn(words);
   const byLanguage = new Map<string, Partial<Record<NameKind, DateName[]>>>();
   for (const kind of kinds) {
-    for (const name of namesOf(words[kind] ?? "", kind)) {
+    for (const name of namesIn(words, kind)) {
       const found = byLanguage.get(name.language) ?? {};
       found[kind] = [...(found[kind] ?? []), name];
       byLanguage.set(name.language, found);
@@ -339,12 +363,27 @@ function languagesNaming(words: DateWords): Named[] {
   }
   const all = [...byLanguage].flatMap(([language, found]) => {
     if (!kinds.every((kind) => found[kind] !== undefined)) return [];
-    const pick = (kind: NameKind) => bestOf(found[kind] ?? [], words[kind] ?? "");
+    const pick = (kind: NameKind) => bestOf(found[kind] ?? [], wordIn(words, kind));
     return [{ language, month: pick("month"), weekday: pick("weekday") }];
   });
-  const withWordsBetween = all.filter((named) => writesBetween(named, words.between));
-  const asWritten = withWordsBetween.filter((named) => kinds.every((kind) => named[kind]?.name === words[kind]));
-  return asWritten.length > 0 ? asWritten : withWordsBetween;
+  return all.filter((named) => writesBetween(named, words.between));
+}
+
+/** Which of a month and a weekday `words` names. */
+function kindsIn(words: DateWords): NameKind[] {
+  return (["month", "weekday"] as const).filter((kind) => words[kind] !== undefined);
+}
+
+/** The word written for `kind` in a date: its month's or its weekday's name. */
+function wordIn(words: DateWords, kind: NameKind): string {
+  return kind === "month" ? (words.month ?? "") : (words.weekday?.word ?? "");
+}
+
+/** Every name the word written for `kind` is, a weekday's only where it names the date's own day. */
+function namesIn(words: DateWords, kind: NameKind): readonly DateName[] {
+  const names = namesOf(wordIn(words, kind), kind);
+  if (kind === "month") return names;
+  return names.filter((name) => name.index === words.weekday?.index);
 }
 
 /** Of one language's names for a word, the one written just so, else any; long before short. */
@@ -360,10 +399,9 @@ function writesBetween(named: Named, between: readonly string[]): boolean {
   return words.every((word) => own.includes(word));
 }
 
-/** Whether every one of `languages` writes each month and weekday the way the others do, in the page's case. */
+/** Whether every one of `languages` writes each month and weekday the way the others do, the page's way. */
 function writeAlike(languages: readonly Named[], words: DateWords): boolean {
-  const kinds = (["month", "weekday"] as const).filter((kind) => words[kind] !== undefined);
-  return kinds.every((kind) => {
+  return kindsIn(words).every((kind) => {
     const count = kind === "month" ? 12 : 7;
     const first = kind === "month" ? 1 : 0;
     return Array.from({ length: count }, (_, at) => at + first).every((index) => {
@@ -376,19 +414,12 @@ function writeAlike(languages: readonly Named[], words: DateWords): boolean {
 function writtenIn(named: Named, { kind, index, words }: { kind: NameKind; index: number; words: DateWords }): string {
   const name = named[kind];
   if (name === undefined) return "";
-  return nameFor(kind, index, wordOf(name, words[kind] ?? ""));
+  return nameFor(kind, index, wordOf(name, wordIn(words, kind)));
 }
 
 /** Whether `named`'s language names `word` a month. */
-function names(named: Named, word: string): boolean {
+function namesMonth(named: Named, word: string): boolean {
   return namesOf(word, "month").some((name) => name.language === named.language);
-}
-
-/** Those of `items` that score highest by `score`, when any scores at all. */
-function mostOf<T>(items: readonly T[], score: (item: T) => number): T[] {
-  const scores = items.map(score);
-  const best = Math.max(0, ...scores);
-  return best === 0 ? [] : items.filter((_, at) => scores[at] === best);
 }
 
 /**
