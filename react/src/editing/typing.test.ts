@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
-import { createEditor, type Editor } from "./editor";
+import { createEditor, type Editor, undo } from "./editor";
 import { setWarningMuted } from "./mutedWarnings";
+import { deletePage } from "./pageDeletion";
 import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "./typing";
 import { fill } from "./words";
 
@@ -192,5 +193,40 @@ describe("an edit", () => {
     setWarningMuted(editor, "Named", { muted: false });
     expect(editor.store.get().mutedFonts).toEqual(new Set());
     expect(editor.store.get().announcement.text).toBe("Edits in Named warn again");
+  });
+});
+
+describe("a signed document", () => {
+  // Its font has every letter it reads, so what's heard is the signature's sentence alone.
+  const glyphs = halfWideGlyphs("was signed is");
+  const SIGNED = aDoc({
+    spans: [aSpan({ id: "signed", font: "Kept" }), aSpan({ id: "later", page: 1, font: "Kept" })],
+    fonts: [aFont("Kept", { glyphs })],
+    signed: true,
+  });
+
+  /** What's heard as the field on the span "signed" takes focus, the field left as it was after. */
+  const heardOnFocus = () => {
+    edit(editor, "signed", null);
+    fieldFocused(editor);
+    const heard = editor.store.get().announcement.text;
+    finish(editor, false);
+    return heard;
+  };
+
+  test("the first edit's field hears that a change breaks the signature; once an edit is in, no more, until it's undone", () => {
+    editor = createEditor(FILE, SIGNED, 2);
+    expect(heardOnFocus()).toBe(SENTENCES.edit_breaks_signature);
+    typed("signed", "is signed");
+    expect(heardOnFocus()).not.toContain(SENTENCES.edit_breaks_signature);
+    undo(editor);
+    expect(heardOnFocus()).toBe(SENTENCES.edit_breaks_signature);
+  });
+
+  test("a page left out of the download is a first edit too", () => {
+    editor = createEditor(FILE, SIGNED, 2);
+    expect(heardOnFocus()).toBe(SENTENCES.edit_breaks_signature);
+    deletePage(editor, 1);
+    expect(heardOnFocus()).not.toContain(SENTENCES.edit_breaks_signature);
   });
 });

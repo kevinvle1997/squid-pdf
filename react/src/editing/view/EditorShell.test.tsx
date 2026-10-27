@@ -133,6 +133,29 @@ describe("the editor", () => {
     await expect.element(screen.getByText(second ?? "", { exact: true }).first()).toBeVisible();
     await expect.element(screen.getByRole("status")).toHaveTextContent(`${first} ${second}`);
   });
+
+  test("a signed document says so under the bar as it opens, heard once, and it stays there past the first edit", async () => {
+    const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
+    // Its font has every letter typed, so the signature's sentence is all the field hears.
+    const fonts = [aFont("Times-Roman", { glyphs: LETTERS })];
+    const signed = aDoc({ spans: [span], fonts, signed: true, notices: [aDocumentNotice(said, "signed_file")] });
+    const screen = await openEditor({ doc: signed });
+    const line = screen.getByText(said, { exact: true }).first();
+    await expect.element(line).toBeVisible();
+    const underTheBar = screen.getByRole("banner").element().compareDocumentPosition(line.element());
+    expect(underTheBar & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.element().closest("main")).toBeNull();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(said);
+    const mark = screen.getByRole("button", { name: "was here" });
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("status")).toHaveTextContent(SENTENCES.edit_breaks_signature);
+    await screen.getByRole("textbox").fill("is here");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Changed to is here");
+    await expect.element(screen.getByRole("status")).not.toHaveTextContent(said);
+    await expect.element(line).toBeVisible();
+  });
 });
 
 describe("finding your way", () => {
