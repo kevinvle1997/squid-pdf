@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { exportPdf, ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, SENTENCES } from "../fixtures";
+import { A4, aDoc, aFileNotice, aFont, aProblem, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { createEditor, type Editor, undo } from "./editor";
 import { exportName, exportNow, partName, splitAfter, splitPages, unexported } from "./export";
 import { plain, warn } from "./notices";
@@ -16,7 +16,9 @@ vi.mock(import("../api/client"), async (original) => ({
   stillThere: vi.fn(),
 }));
 
+// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
+  sentences: PSEUDO_SENTENCES,
   spans: [
     aSpan({ id: "own", font: "Kept" }),
     aSpan({
@@ -72,8 +74,19 @@ describe("export", () => {
       pages: undefined,
     });
     // Named once the typing is in: it's the edit that marks the file edited.
-    expect(editor.store.get().notices.export).toEqual([plain("Downloaded contract, edited.pdf.")]);
+    expect(editor.store.get().notices.export).toEqual([plain("DOWNLOADED contract, edited.pdf.")]);
     expect(editor.store.get().exporting).toBe(false);
+  });
+
+  test("a reading persisted before the download's sentence was sent still downloads, and says nothing of it", async () => {
+    vi.mocked(exportPdf).mockResolvedValue({ pdf: new Blob(), skipped: [], notices: [] });
+    const stale = structuredClone(DOC);
+    Reflect.deleteProperty(stale.sentences, "downloaded");
+    editor = createEditor(FILE, stale, 2);
+    typed("own", "typed");
+    await exportNow(editor);
+    expect(names).toEqual(["contract, edited.pdf"]);
+    expect(editor.store.get().notices.export).toEqual([]);
   });
 
   test("an export started while typing keeps the words and starts in the same update", async () => {
@@ -158,8 +171,8 @@ describe("export", () => {
     ]);
     expect(names).toEqual(["contract, page 1.pdf", "contract, pages 2–3.pdf"]);
     expect(threePages.store.get().notices.export).toEqual([
-      plain("Downloaded contract, page 1.pdf."),
-      plain("Downloaded contract, pages 2–3.pdf."),
+      plain("DOWNLOADED contract, page 1.pdf."),
+      plain("DOWNLOADED contract, pages 2–3.pdf."),
     ]);
     expect(unexported(threePages.store.get())).toBe(false);
   });
