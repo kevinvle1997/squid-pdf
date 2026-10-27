@@ -56,6 +56,7 @@ describe("filling the server's sentences", () => {
   test("a count takes its plural from the language's rules, not an added s", () => {
     expect(counted(1, { one: "change", other: "changes" })).toBe("1 change");
     expect(counted(2, { one: "change", other: "changes" })).toBe("2 changes");
+    expect(counted(1234, { one: "change", other: "changes" })).toBe("1,234 changes");
   });
 });
 

@@ -1,18 +1,18 @@
 // The bar over the document: its name and pages, what's changed and how much of it won't match, and
 // the tools and the one action, Export.
 import { useCallback } from "react";
+import type { Sentences } from "../../api/types";
 import { AfterDelay } from "../../ui/AfterDelay";
 import { Button } from "../../ui/Button";
 import { ThemeToggle } from "../../ui/ThemeToggle";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import { Wordmark } from "../../ui/Wordmark";
-import { changedCount, changedWordsCount, runLongCount, warnedCount } from "../editor";
+import { atRestSentence, changedCount, changedWordsCount, changesShown, runLongSentence, warnedCount } from "../editor";
 import { exportAhead, exportIntended, exportNow, exportUnintended } from "../export";
 import { openFind } from "../find";
 import type { Mismatches } from "../mismatches";
 import { shallowEqual } from "../store";
-import { formOf } from "../words";
 import { whereSentence } from "../zoom";
 import styles from "./Bar.module.css";
 import { useEditor, useEditorState } from "./context";
@@ -28,8 +28,9 @@ export function Bar() {
   // A page's delete changes no words, so the whole document's forecast stays until a word changes.
   const wordsChanged = useEditorState(changedWordsCount);
   const warned = useEditorState(warnedCount, shallowEqual);
-  const runLong = useEditorState(runLongCount);
+  const runLong = useEditorState(runLongSentence);
   const atRest = useEditorState((state) => state.layout.mismatchesAtRest);
+  const sentences = useEditorState((state) => state.doc.sentences);
   const exporting = useEditorState((state) => state.exporting);
   // The document opened again, or couldn't: shown in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
@@ -46,11 +47,15 @@ export function Bar() {
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
         )}
         <span className={styles.status}>
-          {wordsChanged === 0 ? <AtRest mismatches={atRest} /> : <Changed changed={changed} {...warned} />}
+          {wordsChanged === 0 ? (
+            <AtRest mismatches={atRest} sentences={sentences} />
+          ) : (
+            <Changed changed={changed} warned={warned} sentences={sentences} />
+          )}
           {/* Left long past its room: each change says so on its mark, and the bar counts them. */}
-          {changed > 0 && runLong > 0 && (
+          {runLong !== "" && (
             <span className={styles.runLong}>
-              <Warn>{runLong} too long</Warn>
+              <Warn>{runLong}</Warn>
             </span>
           )}
         </span>
@@ -86,36 +91,36 @@ function Where() {
   return <span className={styles.meta}>{where}</span>;
 }
 
-/** The changes, and how many of them won't match, the count warned and pressed for where: every one of them, or so many. */
-function Changed({ changed, count, label }: { changed: number; count: number; label: string }) {
-  const changes = formOf(changed, { one: "change", other: "changes" });
-  if (count === 0) return `${changed} ${changes}`;
-  // The changes' own count is the warning.
-  if (count === changed) {
-    return (
-      <MismatchCount changed>
-        <Warn>{changed}</Warn> {changes} {label}
-      </MismatchCount>
-    );
-  }
+/** The changes, and how many of them won't match: that part warned, and pressed for where. */
+function Changed({
+  changed,
+  warned,
+  sentences,
+}: {
+  changed: number;
+  warned: ReturnType<typeof warnedCount>;
+  sentences: Sentences;
+}) {
+  const shown = changesShown({ changed, ...warned }, sentences);
   return (
     <>
-      {changed} {changes},{" "}
-      <MismatchCount changed>
-        <Warn>{count}</Warn> of them {label}
-      </MismatchCount>
+      {shown.plain}
+      {shown.warned !== "" && (
+        <MismatchCount changed>
+          <Warn>{shown.warned}</Warn>
+        </MismatchCount>
+      )}
     </>
   );
 }
 
 /** Before any change, where an edit won't match, warned and pressed for where (Rule 1): nothing when it all will. */
-function AtRest({ mismatches }: { mismatches: Mismatches }) {
-  const { count, reasons } = mismatches;
-  if (count === 0) return null;
-  const places = formOf(count, { one: "place", other: "places" });
+function AtRest({ mismatches, sentences }: { mismatches: Mismatches; sentences: Sentences }) {
+  const sentence = atRestSentence(mismatches, sentences);
+  if (sentence === "") return null;
   return (
     <MismatchCount changed={false}>
-      Edits in <Warn>{count}</Warn> {places} {reasons.length > 0 ? "will look different" : "will use a similar font"}
+      <Warn>{sentence}</Warn>
     </MismatchCount>
   );
 }

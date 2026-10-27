@@ -276,10 +276,11 @@ describe("the bar", () => {
     expect(bar.getByText("will use a similar font", { exact: false }).element().textContent).toBe(
       "Edits in 1 place will use a similar font",
     );
-    // The bar's own warning colour, which reads on its ink.
+    // The bar's own warning colour, which reads on its ink, on the whole sentence, as Find's count marks its own.
     const warn = bar.element().appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
-    expect(getComputedStyle(bar.getByText("1", { exact: true }).element()).color).toBe(getComputedStyle(warn).color);
+    const warned = bar.getByText("Edits in 1 place will use a similar font", { exact: true });
+    expect(getComputedStyle(warned.element()).color).toBe(getComputedStyle(warn).color);
     warn.remove();
     await changeSpan(screen, "was there");
     await expect.element(bar.getByText("1 change", { exact: false })).toBeVisible();
@@ -318,14 +319,14 @@ describe("the bar", () => {
     await expect.element(screen.getByRole("dialog").getByText("Arial", { exact: true })).toBeVisible();
   });
 
-  test("after a change, it counts the lines left long past their room, warned", async () => {
+  test("after a change, it counts the lines left long past their room in the server's sentence, warned whole", async () => {
     const tooLong = { code: "too_long", params: { percent: 12 } };
     vi.mocked(renderStrips).mockResolvedValue(
       aReply({ fits: { [span.id]: aFit({ delta_pt: 10, message: "about 12% too long", message_parts: [tooLong] }) } }),
     );
     const screen = await openEditor();
     await changeSpan(screen, "is here and there");
-    const long = screen.getByRole("banner").getByText("1 too long");
+    const long = screen.getByRole("banner").getByText("1 too long for its place", { exact: true });
     await expect.element(long).toBeVisible();
     expect(getComputedStyle(long.element()).color).toBe(colorOf("--bar-warn"));
   });

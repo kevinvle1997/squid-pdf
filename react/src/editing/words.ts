@@ -69,5 +69,5 @@ export function fillCounted(forms: CountedSentence | undefined, count: number): 
 
 /** An interface label for a count: "1 change", "3 changes". */
 export function counted(count: number, forms: { one: string; other: string }): string {
-  return `${count} ${formOf(count, forms)}`;
+  return `${WHOLE.format(count)} ${formOf(count, forms)}`;
 }

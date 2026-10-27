@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { A4, aDoc } from "../../fixtures";
+import { A4, aDoc, aFont, aSpan, PSEUDO_SENTENCES } from "../../fixtures";
 import { createEditor } from "../editor";
 import { pageInView } from "../zoom";
 import { Bar } from "./Bar";
@@ -33,4 +33,28 @@ test("a page scrolled into view redraws where the bar says the reader is, and no
   pageInView(editor, 2);
   await expect.element(screen.getByText("Page 3 of 3")).toBeInTheDocument();
   expect(drawn.fonts).toBe(before);
+});
+
+test("before any change, the count is the server's sentence, warned whole", async () => {
+  const similar = aSpan({
+    id: "similar",
+    font: "Named",
+    fidelity: "substitute",
+    substitute: "Liberation Serif Regular",
+  });
+  const doc = aDoc({
+    sentences: PSEUDO_SENTENCES,
+    spans: [similar],
+    fonts: [aFont("Named", { substitute: "Liberation Serif Regular" })],
+  });
+  const editor = createEditor(new File(["%PDF-"], "contract.pdf"), doc, 2);
+  const screen = await render(
+    <EditorContext.Provider value={editor}>
+      <Bar />
+    </EditorContext.Provider>,
+  );
+  const count = screen.getByRole("button", { name: "EDITS IN 1 PLACE WILL USE A SIMILAR FONT" });
+  await expect.element(count).toBeVisible();
+  // The warning is the whole sentence, as Find's is: never a number marked inside words that aren't.
+  await expect.element(count.getByText("EDITS IN 1 PLACE WILL USE A SIMILAR FONT", { exact: true })).toBeVisible();
 });
