@@ -1,6 +1,4 @@
-// New text on a page: where a press or a key puts it, the text it takes its style from, the faces it can be set
-// in, how it comes out (Rule 1, as an edit of a span does), and moving it. A typed signature is new text in a
-// handwriting face, drawn a step larger: no kind of its own.
+// New text, a typed signature among it: where it opens, its style, how it comes out (Rule 1), and moving it.
 import type { FitInfo, FontInfo, Insert, PageInfo, SpanInfo } from "../api/types";
 import {
   HANDWRITING_STEP,
@@ -11,16 +9,15 @@ import {
   NEW_TEXT_MARGIN_PT,
   NEW_TEXT_SIZE_PT,
 } from "./constants";
-import { announcing, change, type Editor, type EditorState, type FocusTo, type Layout } from "./editor";
+import { announcing, change, type Editor, type FocusTo, type Layout } from "./editor";
 import { DEFAULT_FACE, isShippedFace, previewFaceOf } from "./faces";
 import { missingIn } from "./fit";
-import { readableName } from "./fonts";
 import { versionsOf } from "./history";
 import { type MismatchPlace, mismatchKeyOf } from "./mismatches";
 import { pageControlOf } from "./pageList";
 import type { NewTextReading, Reading } from "./project";
 import type { PageNewTextFits } from "./render";
-import { fontOf, shownNameIn } from "./spanFonts";
+import { fontOf } from "./spanFonts";
 import { type Drawing, drawingIn, drawingOf } from "./substitutes";
 import { EXACT, liveVerdictOf, type Verdict } from "./verdicts";
 import { fill } from "./words";
@@ -138,6 +135,14 @@ export function fontOfNewText(layout: Pick<Layout, "fonts">, insert: Insert): Fo
   return fontOf(layout.fonts, { font: fontNameOf(insert), font_object: insert.font_object ?? null });
 }
 
+/** Where new text's line sits, from its baseline's start, before it's measured: an em above it and a little below. */
+export function newTextLineOf({ origin: [x, y], size }: { origin: PagePoint; size: number }): Box {
+  return { x0: x, y0: y - size * NEW_TEXT_ASCENT_EM, x1: x, y1: y + size * NEW_TEXT_DESCENT_EM };
+}
+
+/** A box on a page, in its own points from its top left. */
+export type Box = { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number };
+
 /**
  * New text in a page's font as a span of it, so it's judged and previewed as an edit of that font is: drawn level
  * and unspaced, as the server draws new text, and by the file's own copy where the font's spans say it can.
@@ -153,7 +158,7 @@ export function asSpanOf(insert: Insert, { font, inFile }: { font: FontInfo | un
     font_object: insert.font_object ?? null,
     size,
     color: [...(insert.color ?? BLACK)],
-    bbox: { x0: x, y0: y - size * NEW_TEXT_ASCENT_EM, x1: x, y1: y + size * NEW_TEXT_DESCENT_EM },
+    bbox: newTextLineOf(insert),
     origin: [x, y],
     fidelity: "exact",
     why: null,
@@ -240,93 +245,6 @@ export function shownNewTextsAmong(
 /** The pieces of new text on the pages the download keeps. */
 export function keptNewTexts(reading: Reading): NewTextReading[] {
   return [...reading.pages].flatMap(([page, edits]) => (reading.deleted.has(page) ? [] : edits.newTexts));
-}
-
-/** One face the slip offers new text: a font of the page's, by its shown name, or a face we ship. */
-export interface FontChoice {
-  readonly key: string;
-  readonly label: string; // its name, as the reader knows it
-  readonly face: string; // the face its name is set in
-  readonly handwriting: boolean;
-}
-
-/** The faces the slip offers: the page's own fonts, else the face it opened in; then the handwriting faces we ship. */
-export function fontChoicesOf(
-  state: Pick<EditorState, "layout" | "shippedFaces">,
-  draft: NewTextDraft,
-): { page: FontChoice[]; handwriting: FontChoice[] } {
-  const { layout, shippedFaces } = state;
-  const handwriting = shippedFaces.handwriting.map((name) => shippedChoice(name, true));
-  const page = [...pageFonts(layout, draft)].map(([shown, span]) => {
-    const insert = { ...insertOf({ ...draft, style: styleOf(span) }), text: readableName(shown) };
-    return { key: pageKey(shown), label: readableName(shown), face: newTextFaceOf(layout, insert), handwriting: false };
-  });
-  // A page with no text of its own offers the face new text opened in, so the one chosen is listed.
-  if (page.length === 0) return { page: [shippedChoice(NEW_TEXT_FACE, false)], handwriting };
-  return { page, handwriting };
-}
-
-/** The page's fonts by their shown names, in the order their text comes, each with a span set in it: the nearest's, for its own. */
-function pageFonts(layout: Layout, draft: NewTextDraft): Map<string, SpanInfo> {
-  const near = draft.nearId === null ? undefined : layout.spans.get(draft.nearId);
-  const spans = (layout.pages.get(draft.page) ?? []).filter((span) => !span.form_field);
-  const fonts = new Map<string, SpanInfo>();
-  // The first span of a font stands for it, but for the one the text is styled from.
-  for (const span of near === undefined ? spans : [near, ...spans]) {
-    const shown = shownNameIn(layout.fonts, span);
-    if (!fonts.has(shown)) fonts.set(shown, span);
-  }
-  return new Map([...fonts].sort(([, a], [, b]) => spans.indexOf(a) - spans.indexOf(b)));
-}
-
-const pageKey = (shown: string) => `page:${shown}`;
-const shippedKey = (face: string) => `face:${face}`;
-
-/** A face we ship, as the slip lists it: by its name, "Regular" aside. */
-function shippedChoice(face: string, handwriting: boolean): FontChoice {
-  return { key: shippedKey(face), label: face.replace(/ Regular$/, ""), face, handwriting };
-}
-
-/** The face the slip shows chosen for `draft`. */
-export function chosenFontOf(layout: Pick<Layout, "fonts">, draft: NewTextDraft): string {
-  const { font, fontObject } = draft.style;
-  if (inShippedFace({ font, font_object: fontObject })) return shippedKey(font);
-  return pageKey(shownNameIn(layout.fonts, { font, font_object: fontObject }));
-}
-
-/** The style `draft` takes in the face `key` names: a handwriting face a step larger than the text it's styled from. */
-function styleIn(
-  state: Pick<EditorState, "layout" | "shippedFaces">,
-  draft: NewTextDraft,
-  key: string,
-): NewTextStyle | null {
-  const { nearSize, color } = draft.style;
-  const choices = fontChoicesOf(state, draft);
-  const chosen = [...choices.page, ...choices.handwriting].find((choice) => choice.key === key);
-  if (chosen === undefined) return null;
-  if (key.startsWith("face:")) {
-    const size = chosen.handwriting ? nearSize * HANDWRITING_STEP : nearSize;
-    return { font: chosen.face, fontObject: null, size, nearSize, color };
-  }
-  const span = pageFonts(state.layout, draft).get(key.slice("page:".length));
-  return span === undefined ? null : { ...styleOf(span), size: nearSize, nearSize, color };
-}
-
-/**
- * Set the new text being typed in the face `key` names, from the slip's list: drawn in it at once, and announced.
- * Larger in a handwriting face, it stays on its page as wide as `widthOf` measures it.
- */
-export function chooseFont(editor: Editor, key: string, { widthOf }: { widthOf: (insert: Insert) => number }): void {
-  const state = editor.store.get();
-  const { draft, doc } = state;
-  const info = draft === null ? undefined : doc.pages[draft.page];
-  if (draft?.kind !== "newText" || info === undefined) return;
-  const style = styleIn(state, draft, key);
-  if (style === null) return;
-  const label = [...Object.values(fontChoicesOf(state, draft)).flat()].find((choice) => choice.key === key)?.label;
-  const origin = keptOnPage(info, { origin: draft.origin, size: style.size }, widthOf(insertOf({ ...draft, style })));
-  const setIn = fill(state.doc.sentences.new_text_set_in, { font: label ?? style.font });
-  editor.store.set({ draft: { ...draft, style, origin }, announcement: announcing(setIn) });
 }
 
 /** Where focus goes when new text at `insert`'s place goes, or its field: the text nearest it, else its page's control. */

@@ -1,21 +1,20 @@
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mergeRefs, useFocusWithin } from "react-aria";
 import { Group, Input, TextField } from "react-aria-components";
-import type { PageInfo } from "../../api/types";
+import type { Insert, PageInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { ChoiceList } from "../../ui/ChoiceList";
 import { Warn } from "../../ui/Warn";
 import { isUndoOrRedo } from "../commands";
-import { HANDWRITING_STEP, SLIP_GAP_PT } from "../constants";
-import { focusMoved } from "../editor";
+import { SLIP_GAP_PT } from "../constants";
+import { type Editor, focusMoved } from "../editor";
 import { addFaces, familyOf } from "../faces";
+import { chooseFont, chosenFontOf, type FontChoice, fontChoicesOf, sameChoices, shippedNameOf } from "../fontChoices";
 import { readableName } from "../fonts";
 import { setWarningMuted } from "../mutedWarnings";
 import {
+  type Box,
   backToField,
-  chooseFont,
-  chosenFontOf,
-  fontChoicesOf,
   fontNameOf,
   fontOfNewText,
   inShippedFace,
@@ -32,10 +31,11 @@ import { Facts } from "./Chip";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import fieldStyles from "./EditField.module.css";
+import { useFaceOnPage } from "./faceOnPage";
 import {
   fieldScaleOf,
-  newTextBoxOf,
   newTextFieldWidthPt,
+  newTextSlipLineOf,
   newTextStyleOf,
   newTextWidthIn,
   newTextWidthPt,
@@ -44,59 +44,21 @@ import {
 
 /**
  * New text being typed, where it will be drawn, in the face that will draw it, and its slip under it: what it
- * comes to (Rule 1, as an edit of a span), then the faces it can be set in. Leaving both ends the typing.
+ * comes to (Rule 1, as an edit of a span), then the fonts it can be set in. Leaving both ends the typing.
  */
 export function NewTextField({ info }: { info: PageInfo }) {
   const editor = useEditor();
   const draft = useEditorState((state) => (state.draft?.kind === "newText" ? state.draft : null));
   const layout = useEditorState((state) => state.layout);
-  const field = useRef<HTMLInputElement>(null);
-  const placed = useRef(false);
-  const [, measureAgain] = useReducer((times: number) => times + 1, 0);
-  const [scale, setScale] = useState(1);
-  const size = draft?.style.size ?? 0;
-  // As the page is shown wider or narrower, what a touch screen's field scales by to show the text's size.
-  const watchPage = useCallback(
-    (input: HTMLInputElement | null) => {
-      field.current = input;
-      const layer = input?.offsetParent;
-      if (input == null || !(layer instanceof HTMLElement)) return;
-      const resized = new ResizeObserver(() => {
-        const fontPx = parseFloat(getComputedStyle(input).fontSize);
-        setScale(fieldScaleOf(size, { pageWidthPt: info.width, shownPx: layer.clientWidth, fontPx }));
-      });
-      resized.observe(layer);
-      return () => resized.disconnect();
-    },
-    [size, info.width],
-  );
-  // Sent back from the slip, the field takes focus as it's drawn again.
-  const sentBack = useEditorState((state) => state.focusTo !== null && "field" in state.focusTo);
-  const takeFocus = useCallback(
-    (input: HTMLInputElement | null) => {
-      if (!sentBack || input === null) return;
-      input.focus();
-      focusMoved(editor);
-    },
-    [sentBack, editor],
-  );
-  const fieldRef = useMemo(() => mergeRefs(watchPage, takeFocus), [watchPage, takeFocus]);
   const insert = draft === null ? null : insertOf(draft);
+  // A letter the face lacks sends the line to another, put on the page only once one does.
   const face = insert === null ? null : newTextFaceOf(layout, insert);
-  // A letter the face lacks sends the line to its broadest, put on the page only once one does.
-  useEffect(() => {
-    if (face === null) return;
-    addFaces([face]);
-    // A face that loads once the field is open draws its letters wider or narrower than first measured.
-    document.fonts.addEventListener("loadingdone", measureAgain);
-    return () => document.fonts.removeEventListener("loadingdone", measureAgain);
-  }, [face]);
-  const { focusWithinProps } = useFocusWithin({
-    // Only leaving the field and its slip ends the typing: a file picker takes the window's focus, not theirs.
-    onBlurWithin: () => {
-      if (document.hasFocus()) finish(editor, true);
-    },
-  });
+  useFaceOnPage(face);
+  const scaled = useFieldScale(draft?.style.size ?? 0, info);
+  const takeFocus = useFocusSentBack(editor);
+  const fieldRef = useMemo(() => mergeRefs(scaled.ref, takeFocus), [scaled.ref, takeFocus]);
+  const endsOnLeaving = useEndsOnLeaving(editor);
+  const placed = useRef(false);
   if (draft === null || insert === null || face === null) return null;
 
   // Once, as the field takes focus: what's here already is heard, and what an edit in its font warns of.
@@ -108,31 +70,24 @@ export function NewTextField({ info }: { info: PageInfo }) {
 
   function onKeyDown(event: KeyboardEvent) {
     // In the slip, undo and redo are the typing's, as in a span's calendar: nothing is undone, the field's words among it.
-    if (event.target !== field.current && isUndoOrRedo(event)) {
+    if (event.target !== scaled.field.current && isUndoOrRedo(event)) {
       event.preventDefault();
       return;
     }
-    if (event.key !== "Escape" && !(event.key === "Enter" && event.target === field.current)) return;
+    if (event.key !== "Escape" && !(event.key === "Enter" && event.target === scaled.field.current)) return;
     event.preventDefault();
     if (event.key === "Enter") enter(editor);
     else finish(editor, false, { returnFocus: true });
   }
 
-  const font = fontOfNewText(layout, insert);
-  const widthPt = newTextWidthPt(insert, { face, glyphs: font?.glyphs ?? {} });
+  const widthPt = newTextWidthPt(insert, { face, glyphs: fontOfNewText(layout, insert)?.glyphs ?? {} });
   const fieldWidthPt = newTextFieldWidthPt(insert, widthPt);
-  // The slip hangs under the line as a handwriting face sets it, the larger: choosing a face never moves it from under the pointer.
-  const box = newTextBoxOf(
-    { ...insert, size: Math.max(insert.size, draft.style.nearSize * HANDWRITING_STEP) },
-    fieldWidthPt,
-  );
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = newTextStyleOf(insert, info, face);
   return (
     // `data-slip`: a key pressed in the slip is the slip's, as one in the field is the field's (`isTyping`).
     <Group
-      onFocus={focusWithinProps.onFocus}
-      onBlur={focusWithinProps.onBlur}
+      {...endsOnLeaving}
       aria-label="New text and its font"
       className={fieldStyles.field}
       onKeyDown={onKeyDown}
@@ -156,61 +111,69 @@ export function NewTextField({ info }: { info: PageInfo }) {
             "--field-size": fontSize,
             "--field-width": points(fieldWidthPt, info),
             "--field-height": height,
-            "--field-scale": scale,
+            "--field-scale": scaled.scale,
           }}
         />
       </TextField>
-      <NewTextChip draft={draft} info={info} box={box} />
+      <NewTextChip
+        draft={draft}
+        info={info}
+        line={newTextSlipLineOf(insert, { nearSize: draft.style.nearSize, fieldWidthPt })}
+      />
     </Group>
   );
 }
 
-/** The slip under new text: what it comes to, the full warning as it opens, and the faces it can be set in. */
-function NewTextChip({
-  draft,
-  info,
-  box,
-}: {
-  draft: NewTextDraft;
-  info: PageInfo;
-  box: { x0: number; y0: number; x1: number; y1: number };
-}) {
-  const editor = useEditor();
-  const kept = useKeptOnPage(box, info);
-  const { trouble, note, why, shortWarning, drawnIn } = useEditorState((state) => {
-    const { sentences, verdict } = troublesIn(state, draft.text);
-    const insert = insertOf(draft);
-    const said = verdict === null ? null : draftNoteOf(state, verdict);
-    const shown = readableName(shownNameIn(state.layout.fonts, newTextSpanOf(state.layout, insert)));
-    const named = inShippedFace(insert) ? fontNameOf(insert).replace(/ Regular$/, "") : shown;
-    return {
-      trouble: sentences.join("\n"),
-      note: said?.sentence ?? null,
-      why: said?.why ?? null,
-      shortWarning: verdict === null ? null : shortWarningOf(verdict),
-      drawnIn: verdict?.substitute ?? named,
-    };
-  }, shallowEqual);
-  const shown = useEditorState((state) =>
-    shownNameIn(state.layout.fonts, newTextSpanOf(state.layout, insertOf(draft))),
+/** The field and what a touch screen's field scales by to show the text's size, again as the page is shown wider or narrower. */
+function useFieldScale(sizePt: number, info: PageInfo) {
+  const field = useRef<HTMLInputElement>(null);
+  const [scale, setScale] = useState(1);
+  const ref = useCallback(
+    (input: HTMLInputElement | null) => {
+      field.current = input;
+      const layer = input?.offsetParent;
+      if (input == null || !(layer instanceof HTMLElement)) return;
+      const resized = new ResizeObserver(() => {
+        const fontPx = parseFloat(getComputedStyle(input).fontSize);
+        setScale(fieldScaleOf(sizePt, { pageWidthPt: info.width, shownPx: layer.clientWidth, fontPx }));
+      });
+      resized.observe(layer);
+      return () => resized.disconnect();
+    },
+    [sizePt, info.width],
   );
-  const choices = useEditorState((state) => fontChoicesOf(state, draft), sameChoices);
-  const chosen = useEditorState((state) => chosenFontOf(state.layout, draft));
-  const failed = useEditorState((state) => state.shippedFaces.failed);
-  const layout = useEditorState((state) => state.layout);
-  // Each name is set in its own face: put on the page as the list shows.
-  useEffect(() => addFaces([...choices.page, ...choices.handwriting].map((choice) => choice.face)), [choices]);
-  const named = (choice: { key: string; label: string; face: string }) => ({
-    id: choice.key,
-    label: choice.label,
-    style: { fontFamily: familyOf(choice.face) },
+  return { field, ref, scale };
+}
+
+/** A ref for the field: sent back to it from the slip, it takes focus as it's drawn again. */
+function useFocusSentBack(editor: Editor) {
+  const sentBack = useEditorState((state) => state.focusTo !== null && "field" in state.focusTo);
+  return useCallback(
+    (input: HTMLInputElement | null) => {
+      if (!sentBack || input === null) return;
+      input.focus();
+      focusMoved(editor);
+    },
+    [sentBack, editor],
+  );
+}
+
+/** What ends the typing: leaving the field and its slip, not a file picker taking the window's focus. */
+function useEndsOnLeaving(editor: Editor) {
+  const { focusWithinProps } = useFocusWithin({
+    onBlurWithin: () => {
+      if (document.hasFocus()) finish(editor, true);
+    },
   });
-  const groups = [
-    { name: "This page's fonts", shown: false, choices: choices.page.map(named) },
-    ...(choices.handwriting.length > 0
-      ? [{ name: "Handwriting", shown: true, choices: choices.handwriting.map(named) }]
-      : []),
-  ];
+  return { onFocus: focusWithinProps.onFocus, onBlur: focusWithinProps.onBlur };
+}
+
+/** The slip under new text, hung under `line`: what it comes to, the full warning as it opens, and the fonts it can be set in. */
+function NewTextChip({ draft, info, line }: { draft: NewTextDraft; info: PageInfo; line: Box }) {
+  const editor = useEditor();
+  const kept = useKeptOnPage(line, info);
+  const { trouble, note, why, shortWarning, drawnIn, shown } = useChipFacts(draft);
+  const { groups, chosen, failed, widthOf } = useFontList(draft);
   return (
     <div ref={kept.ref} className={styles.chip} style={kept.style}>
       {note !== null && (
@@ -236,7 +199,7 @@ function NewTextChip({
           label="Font"
           groups={groups}
           chosen={chosen}
-          onChoose={(key) => chooseFont(editor, key, { widthOf: (insert) => newTextWidthIn(layout, insert) })}
+          onChoose={(key) => chooseFont(editor, key, { widthOf })}
           onEnter={() => enter(editor)}
           onPointerChoice={() => backToField(editor)}
         />
@@ -244,6 +207,52 @@ function NewTextChip({
       </span>
     </div>
   );
+}
+
+/** What the slip says new text being typed comes to: its troubles, its full warning, and what draws it. */
+function useChipFacts(draft: NewTextDraft) {
+  return useEditorState((state) => {
+    const { sentences, verdict } = troublesIn(state, draft.text);
+    const insert = insertOf(draft);
+    const said = verdict === null ? null : draftNoteOf(state, verdict);
+    const shown = shownNameIn(state.layout.fonts, newTextSpanOf(state.layout, insert));
+    const named = inShippedFace(insert) ? shippedNameOf(fontNameOf(insert)) : readableName(shown);
+    return {
+      trouble: sentences.join("\n"),
+      note: said?.sentence ?? null,
+      why: said?.why ?? null,
+      shortWarning: verdict === null ? null : shortWarningOf(verdict),
+      drawnIn: verdict?.substitute ?? named,
+      shown, // the font's name as muting knows it
+    };
+  }, shallowEqual);
+}
+
+/** The slip's list of fonts, each name in its own face, the one chosen, and how wide new text draws in one. */
+function useFontList(draft: NewTextDraft) {
+  const choices = useEditorState((state) => fontChoicesOf(state, draft), sameChoices);
+  const chosen = useEditorState((state) => chosenFontOf(state.layout, draft));
+  const failed = useEditorState((state) => state.shippedFaces.failed);
+  const layout = useEditorState((state) => state.layout);
+  // Each name is set in its own face: put on the page as the list shows.
+  useEffect(() => addFaces([...choices.page, ...choices.handwriting].map((choice) => choice.face)), [choices]);
+  const named = (choice: FontChoice) => ({
+    id: choice.key,
+    label: choice.label,
+    style: { fontFamily: familyOf(choice.face) },
+  });
+  const groups = [
+    { name: "This page's fonts", shown: false, choices: choices.page.map(named) },
+    ...(choices.handwriting.length > 0
+      ? [{ name: "Handwriting", shown: true, choices: choices.handwriting.map(named) }]
+      : []),
+  ];
+  return {
+    groups,
+    chosen,
+    failed,
+    widthOf: (insert: Insert) => newTextWidthIn(layout, insert),
+  };
 }
 
 /**
@@ -292,11 +301,4 @@ function useKeptOnPage(box: { x0: number; y0: number; x1: number; y1: number }, 
       ? {}
       : { maxHeight: `${kept.roomPx}px`, overflowY: "auto" as const, pointerEvents: "auto" as const };
   return { ref, style: { ...placed, ...scrolled, translate: `${-kept.slidPx}px 0` } };
-}
-
-/** Whether two lists of faces offer the same, by key and face: each is built fresh from the state. */
-function sameChoices(a: ReturnType<typeof fontChoicesOf>, b: ReturnType<typeof fontChoicesOf>): boolean {
-  const same = (x: readonly { key: string; face: string }[], y: readonly { key: string; face: string }[]) =>
-    x.length === y.length && x.every((choice, index) => choice.key === y[index]?.key && choice.face === y[index]?.face);
-  return same(a.page, b.page) && same(a.handwriting, b.handwriting);
 }

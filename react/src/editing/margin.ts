@@ -1,5 +1,7 @@
 // The margin's notes, one per changed span and piece of new text, placed as a proof has them: level with
 // the line they're about, and nudged down just enough that no two overlap.
+import { type Editor, putBack } from "./editor";
+import { newTextLineOf, takeOutNewText } from "./newText";
 import type { NewTextReading, SpanReading } from "./project";
 
 /** Where each note's middle sits, in points from the page's top, in the order its lines come, a note's height apart. */
@@ -78,4 +80,29 @@ function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], 
 /** What new text's note says: its name, for what pressing it undoes, and the words added, marked as a proof marks an insertion. */
 export function newTextNoteOf({ edit }: NewTextReading): NoteWords {
   return { label: `Undo: take out “${edit.text}”`, struck: "", inserted: edit.text, was: "", now: edit.text };
+}
+
+/** One note in the margin: what it says, the line it's about, and what pressing it undoes. */
+export interface MarginNote {
+  readonly key: string;
+  readonly note: NoteWords;
+  readonly line: { readonly y0: number; readonly y1: number };
+  readonly undo: (editor: Editor) => void;
+}
+
+/** A page's margin notes: each changed span's, which a press puts back, then each piece of new text's, which it takes out. */
+export function marginNotesOf(changes: readonly SpanReading[], newTexts: readonly NewTextReading[]): MarginNote[] {
+  const spans = changes.map((change) => ({
+    key: change.span.id,
+    note: noteOf(change),
+    line: change.span.bbox,
+    undo: (editor: Editor) => putBack(editor, change.span.id),
+  }));
+  const added = newTexts.map((text) => ({
+    key: `new text ${text.newTextId}`,
+    note: newTextNoteOf(text),
+    line: newTextLineOf(text.edit),
+    undo: (editor: Editor) => takeOutNewText(editor, text.newTextId),
+  }));
+  return [...spans, ...added];
 }

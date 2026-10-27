@@ -25,8 +25,9 @@ import {
   undo,
   warnedCount,
 } from "./editor";
+import { chooseFont } from "./fontChoices";
 import type { Mismatches } from "./mismatches";
-import { chooseFont, keptNewTexts, moveNewText, openNewTextAgain, openNewTextAt } from "./newText";
+import { keptNewTexts, moveNewText, openNewTextAgain, openNewTextAt } from "./newText";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 

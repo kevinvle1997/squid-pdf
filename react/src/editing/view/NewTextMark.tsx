@@ -1,21 +1,49 @@
-import { memo, useCallback, useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore } from "react";
-import { mergeProps, useButton, useFocusRing, useHover, useMove } from "react-aria";
+import {
+  memo,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { mergeProps, type PressEvent, useButton, useFocusRing, useHover, useMove } from "react-aria";
 import type { PageInfo, Sentences } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_TAP_MS, NOTE_DELAY_MS } from "../constants";
-import { focusMoved } from "../editor";
-import { moveNewText, moveOnPage, openNewTextAgain, type PagePoint } from "../newText";
+import { type Editor, focusMoved } from "../editor";
+import { moveNewText, moveOnPage, newTextFaceOf, openNewTextAgain, type PagePoint } from "../newText";
+import type { PageState } from "../page";
 import type { NewTextReading } from "../project";
 import { sentenceOrNothing } from "../words";
 import { useEditor } from "./context";
-import { boxOf, newTextBoxOf, newTextStyleOf } from "./geometry";
+import { useFaceOnPage } from "./faceOnPage";
+import { boxOf, newTextBoxOf, newTextWidthIn, newTextWordsStyleOf } from "./geometry";
 import styles from "./NewTextMark.module.css";
 
 /** A nudge of new text from the keyboard, in points: Shift takes the larger step. */
 const NUDGE_PT = 1;
 const SHIFT_NUDGE_PT = 10;
+
+/** New text at rest on `page`, measured in the face that previews it, again as that face loads. */
+export function RestingNewText({ text, page, info }: { text: NewTextReading; page: PageState; info: PageInfo }) {
+  const face = newTextFaceOf(page.layout, text.edit);
+  useFaceOnPage(face);
+  return (
+    <NewTextMark
+      text={text}
+      info={info}
+      face={face}
+      widthPt={newTextWidthIn(page.layout, text.edit)}
+      takesFocus={page.focusNewText === text.newTextId}
+      sentences={page.sentences}
+    />
+  );
+}
 
 interface Props {
   text: NewTextReading;
@@ -31,50 +59,137 @@ interface Props {
  * nudge it, a point a press or ten with Shift; Enter or a click types into it again. Its note says so, on hover,
  * focus and a tap; on a touch screen, a second tap types into it.
  */
-export const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takesFocus, sentences }: Props) {
+const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takesFocus, sentences }: Props) {
   const editor = useEditor();
+  const { newTextId } = text;
   const mark = useRef<HTMLButtonElement | null>(null);
   const noteId = useId();
-  const [dragged, setDragged] = useState<PagePoint | null>(null);
-  const dragging = useRef<PagePoint | null>(null); // how far it's dragged, as the moves come: drawn as `dragged`
-  const moved = useRef(false); // the pointer pressed on the mark has dragged it since
-  const cancelled = useRef(false); // the drag was cut short: the text stays where it was
-  const pointer = useRef<number | null>(null); // the pointer pressed on the mark, whose drag React Aria tracks
-  const [noted, setNoted] = useState(false);
-  const waiting = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const lastTap = useRef(0);
+  const note = useNote();
+  const drag = useDrag(editor, { newTextId, info, widthPt, mark, onStart: note.hide });
+  const takeFocus = useTakeFocus(mark, takesFocus);
   // A finger has no keys: its note says how to move it without them.
   const touch = useSyncExternalStore(onPointerChange, coarsePointer);
-  const { newTextId } = text;
-
   const { buttonProps } = useButton(
     {
       onPress: ({ pointerType }) => {
-        // A drag ends with a press: it moved the text, and types into nothing. Keys and a screen reader's press never
-        // drag it.
-        if (moved.current && pointerType !== "keyboard" && pointerType !== "virtual") return;
-        const at = performance.now();
+        // A drag ends with a press: it moved the text, and types into nothing.
+        if (drag.endedBy(pointerType)) return;
         // A touch screen has no hover: a tap shows the note, and a second tap types into it.
-        if (pointerType === "touch" && at - lastTap.current >= DOUBLE_TAP_MS) {
-          lastTap.current = at;
-          setNoted(true);
-          // Nothing hovers off on a touch screen, so the next press anywhere closes it.
-          window.addEventListener("pointerdown", () => setNoted(false), { once: true, capture: true });
-          return;
-        }
-        lastTap.current = 0;
+        if (pointerType === "touch" && !note.tappedTwice()) return;
         openNewTextAgain(editor, newTextId);
       },
     },
     mark,
   );
+  const { focusProps, isFocusVisible } = useFocusRing();
+
+  const [dx, dy] = drag.by ?? [0, 0];
+  const where = { ...text.edit, origin: [text.edit.origin[0] + dx, text.edit.origin[1] + dy] as [number, number] };
+  // A reading persisted before the note's sentences were sent has none to show.
+  const heading = sentenceOrNothing(sentences.new_text);
+  const detail = sentenceOrNothing(touch ? sentences.new_text_moves_touch : sentences.new_text_moves);
+  const showsNote = (note.shown || isFocusVisible) && drag.by === null && (heading !== "" || detail !== "");
+  return (
+    <>
+      <button
+        {...mergeProps(buttonProps, drag.props, note.hoverProps, focusProps, {
+          onBlur: () => {
+            if (takesFocus) focusMoved(editor);
+          },
+        })}
+        ref={takeFocus}
+        type="button"
+        className={classes(styles.text, note.hovered && styles.hovered, isFocusVisible && styles.focused)}
+        style={boxOf(newTextBoxOf(where, widthPt), info)}
+        aria-describedby={showsNote ? noteId : undefined}
+        data-new-text={newTextId}
+      >
+        {/* Dragged, its words go with the pointer, over the ink left where it was until it's put down. */}
+        {drag.by === null ? (
+          <span className="vh">{text.edit.text}</span>
+        ) : (
+          <span className={styles.words} style={newTextWordsStyleOf(where, info, face)}>
+            {text.edit.text}
+          </span>
+        )}
+      </button>
+      <Tooltip
+        id={noteId}
+        triggerRef={mark}
+        isOpen={showsNote}
+        onOpenChange={(isOpen) => isOpen || note.hide()}
+        heading={heading}
+      >
+        {detail}
+      </Tooltip>
+    </>
+  );
+});
+
+/** The mark's note: shown a moment after a pointer rests on it, or by a tap, which nothing hovers off from. */
+function useNote() {
+  const [shown, setShown] = useState(false);
+  const waiting = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const lastTap = useRef(0);
+  const hide = useCallback(() => {
+    clearTimeout(waiting.current);
+    setShown(false);
+  }, []);
+  const { hoverProps, isHovered } = useHover({
+    onHoverStart: () => {
+      clearTimeout(waiting.current);
+      waiting.current = setTimeout(() => setShown(true), NOTE_DELAY_MS);
+    },
+    onHoverEnd: hide,
+  });
+  /** A tap: the first shows the note, and says no; one soon after it says yes, to type in it. */
+  function tappedTwice(): boolean {
+    const at = performance.now();
+    if (at - lastTap.current < DOUBLE_TAP_MS) {
+      lastTap.current = 0;
+      return true;
+    }
+    lastTap.current = at;
+    setShown(true);
+    // Nothing hovers off on a touch screen, so the next press anywhere closes it.
+    window.addEventListener("pointerdown", hide, { once: true, capture: true });
+    return false;
+  }
+  return { shown, hovered: isHovered, hoverProps, hide, tappedTwice };
+}
+
+/**
+ * The mark's drag: drawn moved `by` points as the pointer goes, then a step of the history as it's put down; the
+ * keyboard's arrows nudge it at once. A drag cut short (`pointercancel`, `lostpointercapture`, the window's blur)
+ * puts it back.
+ */
+function useDrag(
+  editor: Editor,
+  {
+    newTextId,
+    info,
+    widthPt,
+    mark,
+    onStart,
+  }: {
+    newTextId: number;
+    info: PageInfo;
+    widthPt: number;
+    mark: RefObject<HTMLButtonElement | null>;
+    onStart: () => void;
+  },
+) {
+  const [by, setBy] = useState<PagePoint | null>(null);
+  const dragging = useRef<PagePoint | null>(null); // how far it's dragged, as the moves come: drawn as `by`
+  const moved = useRef(false); // the pointer pressed on the mark has dragged it since
+  const cancelled = useRef(false); // the drag was cut short: the text stays where it was
+  const pointer = useRef<number | null>(null); // the pointer pressed on the mark, whose drag React Aria tracks
   const { moveProps } = useMove({
     onMoveStart: ({ pointerType }) => {
       if (pointerType === "keyboard") return;
       // Dragged, it says nothing: the note would hang where it was.
       moved.current = true;
-      clearTimeout(waiting.current);
-      setNoted(false);
+      onStart();
     },
     onMove: ({ pointerType, deltaX, deltaY, shiftKey }) => {
       if (pointerType === "keyboard") {
@@ -82,23 +197,25 @@ export const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt
         moveNewText(editor, newTextId, { by: [deltaX * step, deltaY * step], nudge: true, widthPt });
         return;
       }
-      const shownWidthPx =
-        mark.current?.offsetParent instanceof HTMLElement ? mark.current.offsetParent.offsetWidth : 0;
+      const layer = mark.current?.offsetParent;
+      const shownWidthPx = layer instanceof HTMLElement ? layer.offsetWidth : 0;
       const [dx, dy] = moveOnPage([deltaX, deltaY], { shownWidthPx, info });
       const [x, y] = dragging.current ?? [0, 0];
       dragging.current = [x + dx, y + dy];
-      setDragged(dragging.current);
+      setBy(dragging.current);
     },
     onMoveEnd: ({ pointerType }) => {
-      const by = dragging.current;
+      const dropped = dragging.current;
       dragging.current = null;
-      setDragged(null);
+      setBy(null);
       // Cancelled, it's put back.
       if (cancelled.current) {
         cancelled.current = false;
         return;
       }
-      if (pointerType !== "keyboard" && by !== null) moveNewText(editor, newTextId, { by, nudge: false, widthPt });
+      if (pointerType !== "keyboard" && dropped !== null) {
+        moveNewText(editor, newTextId, { by: dropped, nudge: false, widthPt });
+      }
     },
   });
   /** Cut the drag short as the browser cancels one, so every hook on the mark ends it and the next press starts afresh. */
@@ -121,80 +238,31 @@ export const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt
       window.removeEventListener("pointercancel", onPointerCancel, { capture: true });
     };
   }, []);
-  const { hoverProps, isHovered } = useHover({
-    onHoverStart: () => {
-      clearTimeout(waiting.current);
-      waiting.current = setTimeout(() => setNoted(true), NOTE_DELAY_MS);
+  const props = mergeProps(moveProps, {
+    // Each press starts afresh: a drop let go where the mark doesn't hear it (over a line drawn on it, or outside the
+    // window) ends with no press. A second finger on the mark mid-drag is no press of its own: the first one drags.
+    onPointerDown: ({ pointerId, isPrimary }: { pointerId: number; isPrimary: boolean }) => {
+      if (!isPrimary) return;
+      pointer.current = pointerId;
+      moved.current = false;
     },
-    onHoverEnd: () => {
-      clearTimeout(waiting.current);
-      setNoted(false);
-    },
+    onLostPointerCapture: cutShort,
   });
-  const { focusProps, isFocusVisible } = useFocusRing();
-  // Sent focus, the mark takes it as it's drawn: back from its field, or where it stood before a move.
-  const takeFocus = useCallback(
+  /** Whether a press is the end of a drag just put down: it moved the text, and is no press of its own. */
+  function endedBy(pointerType: PressEvent["pointerType"]): boolean {
+    // Keys and a screen reader's press never drag it.
+    return moved.current && pointerType !== "keyboard" && pointerType !== "virtual";
+  }
+  return { by, props, endedBy };
+}
+
+/** A ref for the mark: sent focus, it takes it as it's drawn, back from its field or where it stood before a move. */
+function useTakeFocus(mark: RefObject<HTMLButtonElement | null>, takesFocus: boolean) {
+  return useCallback(
     (element: HTMLButtonElement | null) => {
       mark.current = element;
       if (takesFocus) element?.focus();
     },
-    [takesFocus],
+    [mark, takesFocus],
   );
-
-  const [dx, dy] = dragged ?? [0, 0];
-  const where = { ...text.edit, origin: [text.edit.origin[0] + dx, text.edit.origin[1] + dy] as [number, number] };
-  // A reading persisted before the note's sentences were sent has none to show.
-  const heading = sentenceOrNothing(sentences.new_text);
-  const detail = sentenceOrNothing(touch ? sentences.new_text_moves_touch : sentences.new_text_moves);
-  const showsNote = (noted || isFocusVisible) && dragged === null && (heading !== "" || detail !== "");
-  return (
-    <>
-      <button
-        {...mergeProps(buttonProps, moveProps, hoverProps, focusProps, {
-          onBlur: () => {
-            if (takesFocus) focusMoved(editor);
-          },
-          // Each press starts afresh: a drop let go where the mark doesn't hear it (over a line drawn on it, or outside
-          // the window) ends with no press. A second finger on the mark mid-drag is no press of its own: the first
-          // one drags.
-          onPointerDown: ({ pointerId, isPrimary }: { pointerId: number; isPrimary: boolean }) => {
-            if (!isPrimary) return;
-            pointer.current = pointerId;
-            moved.current = false;
-          },
-          onLostPointerCapture: cutShort,
-        })}
-        ref={takeFocus}
-        type="button"
-        className={classes(styles.text, isHovered && styles.hovered, isFocusVisible && styles.focused)}
-        style={boxOf(newTextBoxOf(where, widthPt), info)}
-        aria-describedby={showsNote ? noteId : undefined}
-        data-new-text={newTextId}
-      >
-        {/* Dragged, its words go with the pointer, over the ink left where it was until it's put down. */}
-        {dragged === null ? (
-          <span className="vh">{text.edit.text}</span>
-        ) : (
-          <span className={styles.words} style={wordsStyleOf(where, info, face)}>
-            {text.edit.text}
-          </span>
-        )}
-      </button>
-      <Tooltip
-        id={noteId}
-        triggerRef={mark}
-        isOpen={showsNote}
-        onOpenChange={(isOpen) => isOpen || setNoted(false)}
-        heading={heading}
-      >
-        {detail}
-      </Tooltip>
-    </>
-  );
-});
-
-/** New text's words as they're set, wherever the box they're drawn in is. */
-function wordsStyleOf(insert: NewTextReading["edit"], info: PageInfo, face: string) {
-  const { left: _left, top: _top, height: _height, ...words } = newTextStyleOf(insert, info, face);
-  return words;
 }

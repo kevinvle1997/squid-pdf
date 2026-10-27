@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { aSpan } from "../fixtures";
-import { changedWordsIn, insertedWordsIn, noteOf, notePlaces } from "./margin";
+import { anInsert, aSpan } from "../fixtures";
+import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM } from "./constants";
+import { changedWordsIn, insertedWordsIn, marginNotesOf, noteOf, notePlaces } from "./margin";
 import type { SpanReading } from "./project";
 
 const changeAt = (id: string, y0: number): SpanReading => ({
@@ -84,5 +85,15 @@ describe("what a note says", () => {
     // A word changed or taken out: nothing was only added.
     expect(insertedWordsIn("was here", "is here now")).toBeNull();
     expect(insertedWordsIn("was here", "was")).toBeNull();
+  });
+});
+
+describe("a page's margin notes", () => {
+  test("are each changed span's, then each piece of new text's, level with its line, a proof's caret before its words", () => {
+    const newText = { id: 3, newTextId: 2, edit: anInsert({ text: "Signed", origin: [72, 400], size: 10 }) };
+    const notes = marginNotesOf([changeAt("one", 100)], [newText]);
+    expect(notes.map(({ key }) => key)).toEqual(["one", "new text 2"]);
+    expect(notes[1]?.line).toMatchObject({ y0: 400 - 10 * NEW_TEXT_ASCENT_EM, y1: 400 + 10 * NEW_TEXT_DESCENT_EM });
+    expect(notes[1]?.note).toMatchObject({ label: "Undo: take out “Signed”", inserted: "Signed", was: "" });
   });
 });
