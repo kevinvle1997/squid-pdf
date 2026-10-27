@@ -13,7 +13,7 @@ import { shallowEqual } from "../store";
 import { pageInView, zoomShown } from "../zoom";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { DeletePage } from "./DeletePage";
-import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
+import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf, uprightOf } from "./geometry";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
@@ -168,7 +168,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
 
 /**
  * The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated
- * points. Over it, a layer the same, unclipped, for the slip of the span typed into.
+ * points. Over it, a layer of the same shape, upright and unclipped, for the slip of the span typed into.
  */
 function Sheet({
   info,
@@ -189,7 +189,7 @@ function Sheet({
         </div>
       </div>
       <div className={styles.slips} style={sheetShapeOf(info)}>
-        <div ref={slipLayerRef} className={styles.layer} style={layerOf(info)} />
+        <div ref={slipLayerRef} className={styles.layer} style={layerOf(uprightOf(info))} />
       </div>
       {/* Its crop marks, in its cell: the sheet clips everything inside it, so they hang off a box of their own. */}
       <Trim className={styles.trim} />

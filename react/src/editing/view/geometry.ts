@@ -55,19 +55,188 @@ function pinnedSideOf(bbox: { x0: number; x1: number }, page: { width: number })
   return { left: `${(bbox.x0 / page.width) * 100}%` };
 }
 
+/** A slip's width and height, in the page's points as it's shown. */
+export interface SlipSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Which side of its line, as it's shown, a slip sits on. */
+export type Side = "below" | "above" | "left" | "right";
+
+/** How far the window reaches past the shown page's left and right edges, less its gutter, in the page's points. */
+export interface WindowRoom {
+  readonly left: number;
+  readonly right: number;
+}
+
 /**
- * How far a slip `slipWidthPx` wide, pinned to `bbox`, moves in from the side of its page, shown `pageWidthPx`
- * wide, that it would run past. Why: the page clips what runs past its sides (Page.module.css), and an open
- * calendar is wider than a verdict.
+ * Where a slip may sit about its line as the page is turned, the side under the line first: then the line's
+ * other side, then before its start and past its end, which the field grows towards. Below has room always.
  */
-export function slipShiftPx(
-  bbox: { x0: number; x1: number },
-  page: { width: number },
-  { slipWidthPx, pageWidthPx }: { slipWidthPx: number; pageWidthPx: number },
-): number {
-  const pxPerPt = pageWidthPx / page.width;
-  if (pinnedSideOf(bbox, page).right !== undefined) return Math.max(0, slipWidthPx - bbox.x1 * pxPerPt);
-  return Math.min(0, pageWidthPx - bbox.x0 * pxPerPt - slipWidthPx);
+const SIDES_BY_TURN: Record<PageInfo["turn_cw"], readonly Side[]> = {
+  0: ["below"],
+  90: ["left", "right", "above", "below"],
+  180: ["above", "below"],
+  270: ["right", "left", "below"],
+};
+
+/**
+ * Where a slip about `line` sits on its page's upright layer (`uprightOf`): under the line, at its start, as the
+ * page is turned, and never turned itself, so its words read across. Once its `size` is known, it sits on `side`
+ * of the line, else the side `slipSideOf` chooses, never over the line as drawn, which runs to `endPt` across the
+ * page, as a field typed long does.
+ */
+export function slipPlaceOf(
+  line: SpanInfo["bbox"],
+  page: PageInfo,
+  {
+    size,
+    endPt = line.x1,
+    side,
+    room = { left: 0, right: 0 },
+  }: { size?: SlipSize | undefined; endPt?: number; side?: Side | undefined; room?: WindowRoom } = {},
+): CSSProperties {
+  if (size === undefined) return hungFrom(line, page);
+  const shown = uprightOf(page);
+  const sideTaken = side ?? slipSideOf(line, page, { size, endPt });
+  const place = placeBeside(boxesOf(line, { page, endPt }), { side: sideTaken, size, page });
+  // With no room on the page, one over or under its line keeps to the window: wider than the page, it would run
+  // past the screen's edge. One beside its line keeps its place, which is off the line.
+  const along = sideTaken === "above" || sideTaken === "below";
+  const keptToWindow = along && !hasRoom(place, { size, pageWidth: shown.width });
+  const left = keptToWindow
+    ? clamp(place.left, { least: -room.left, most: shown.width + room.right - size.width })
+    : place.left;
+  // Moved from the layer's corner, so it's laid out in the same room wherever it sits, and keeps its size: the
+  // corner on the side facing its line, so as it grows, it grows away from the line.
+  const across = points(left, shown);
+  const down = points(place.top, shown);
+  if (sideTaken === "above") {
+    return { left: 0, bottom: 0, translate: `${across} ${points(place.top + size.height - shown.height, shown)}` };
+  }
+  if (sideTaken === "left") {
+    return { right: 0, top: 0, translate: `${points(left + size.width - shown.width, shown)} ${down}` };
+  }
+  return { left: 0, top: 0, translate: `${across} ${down}` };
+}
+
+/**
+ * The side of its line a slip `size` big sits on: the first as the page is turned (`SIDES_BY_TURN`) where it's whole
+ * on the page's width and below its top, else below, the last of every order.
+ */
+export function slipSideOf(
+  line: SpanInfo["bbox"],
+  page: PageInfo,
+  { size, endPt = line.x1 }: { size: SlipSize; endPt?: number },
+): Side {
+  const boxes = boxesOf(line, { page, endPt });
+  const pageWidth = uprightOf(page).width;
+  const fits = (side: Side) => hasRoom(placeBeside(boxes, { side, size, page }), { size, pageWidth });
+  return SIDES_BY_TURN[page.turn_cw].find(fits) ?? "below";
+}
+
+/** The line's own box as it's shown, and as it's drawn, running to `endPt`. */
+function boxesOf(line: SpanInfo["bbox"], { page, endPt }: { page: PageInfo; endPt: number }) {
+  return { own: shownBoxOf(line, page), drawn: shownBoxOf({ ...line, x1: Math.max(line.x1, endPt) }, page) };
+}
+
+/**
+ * Where a slip hangs before its size is known: from the point under the line's start, by the corner that keeps
+ * it off the line as the page is turned. A line running down the screen has its slip to the left.
+ */
+function hungFrom(line: SpanInfo["bbox"], page: PageInfo): CSSProperties {
+  if (page.turn_cw === 0) return pinnedUnder(line, page);
+  const shown = uprightOf(page);
+  const [x, y] = shownPointOf([line.x0, line.y1 + SLIP_GAP_PT], page);
+  const fromLeft = `${(x / shown.width) * 100}%`;
+  const fromRight = `${((shown.width - x) / shown.width) * 100}%`;
+  const fromBottom = `${((shown.height - y) / shown.height) * 100}%`;
+  switch (page.turn_cw) {
+    case 90:
+      return { top: points(y, shown), right: fromRight };
+    case 180:
+      return { bottom: fromBottom, right: fromRight };
+    case 270:
+      return { bottom: fromBottom, left: fromLeft };
+    default:
+      return page.turn_cw satisfies never;
+  }
+}
+
+/** A box on the upright page, in its points. */
+interface ShownBox {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/** Where `line` shows once the page is turned, on the upright page. */
+function shownBoxOf(line: SpanInfo["bbox"], page: PageInfo): ShownBox {
+  const [x0, y0] = shownPointOf([line.x0, line.y0], page);
+  const [x1, y1] = shownPointOf([line.x1, line.y1], page);
+  return { left: Math.min(x0, x1), top: Math.min(y0, y1), right: Math.max(x0, x1), bottom: Math.max(y0, y1) };
+}
+
+/**
+ * Where a slip `size` big sits on `side` of a line, its `own` box and as `drawn`, shown on the upright page: lined
+ * up with the line's start, as it hangs before its size is known, then moved along the line to stay on the page.
+ */
+function placeBeside(
+  { own, drawn }: { own: ShownBox; drawn: ShownBox },
+  { side, size, page }: { side: Side; size: SlipSize; page: PageInfo },
+): { left: number; top: number } {
+  switch (side) {
+    case "below":
+    case "above": {
+      const top = side === "below" ? drawn.bottom + SLIP_GAP_PT : drawn.top - SLIP_GAP_PT - size.height;
+      const left = clamp(leftAlongOf(own, { size, page }), { least: 0, most: uprightOf(page).width - size.width });
+      return { left, top };
+    }
+    case "left":
+    case "right": {
+      const left = side === "left" ? drawn.left - SLIP_GAP_PT - size.width : drawn.right + SLIP_GAP_PT;
+      // Lined up with the line's start: its top turned a quarter clockwise, its foot turned the other way.
+      const top = page.turn_cw === 270 ? own.bottom - size.height : own.top;
+      return { left, top: Math.max(0, top) };
+    }
+    default:
+      return side satisfies never;
+  }
+}
+
+/** Where a slip over or under its line starts across the page: at the line's start, as the page is turned. */
+function leftAlongOf(box: ShownBox, { size, page }: { size: SlipSize; page: PageInfo }): number {
+  // Unturned, it's pinned as what's set under a box is (`pinnedSideOf`).
+  if (page.turn_cw === 0) return box.left > page.width / 2 ? box.right - size.width : box.left;
+  if (page.turn_cw === 270) return box.left;
+  return box.right - size.width;
+}
+
+/** Whether a slip `size` big at `place` is whole on the page's width and below its top: past its foot is room. */
+function hasRoom(place: { left: number; top: number }, { size, pageWidth }: { size: SlipSize; pageWidth: number }) {
+  return place.left >= 0 && place.left + size.width <= pageWidth && place.top >= 0;
+}
+
+function clamp(value: number, { least, most }: { least: number; most: number }): number {
+  return Math.max(least, Math.min(value, most));
+}
+
+/** Where a point on the page, in its own points, shows once the page is turned: in the upright page's points. */
+function shownPointOf([x, y]: [number, number], page: PageInfo): [number, number] {
+  switch (page.turn_cw) {
+    case 0:
+      return [x, y];
+    case 90:
+      return [page.height - y, x];
+    case 180:
+      return [page.width - x, page.height - y];
+    case 270:
+      return [y, page.width - x];
+    default:
+      return page.turn_cw satisfies never;
+  }
 }
 
 /**
@@ -113,6 +282,12 @@ export function sheetWidthOf(page: PageInfo): { "--sheet-width": string } {
 export function sheetShapeOf(page: PageInfo): CSSProperties {
   const [wide, tall] = shownSize(page);
   return { aspectRatio: `${wide} / ${tall}` };
+}
+
+/** The page as it's shown, upright: its width and height swapped where it's turned a quarter, and no turn. */
+export function uprightOf(page: PageInfo): PageInfo {
+  const [wide, tall] = shownSize(page);
+  return { width: wide, height: tall, turn_cw: 0 };
 }
 
 /** The page's own layer in its sheet: the page's size in unrotated points, turned as the file says. */
