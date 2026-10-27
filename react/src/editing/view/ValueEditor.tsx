@@ -25,8 +25,10 @@ import {
 import { Button } from "../../ui/Button";
 import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Shortcut, Tooltip } from "../../ui/Tooltip";
+import type { AmountValue } from "../amounts";
+import type { DateValue } from "../dates";
 import { announce } from "../editor";
-import type { AmountValue, DateValue, EditableValue } from "../formattedValues";
+import type { EditableValue } from "../formattedValues";
 import { finish } from "../typing";
 import { chooseAmount, chooseDate, closeValueEditor, markedDays, openValueEditor } from "../valueEditor";
 import { useEditor, useEditorState } from "./context";

@@ -2,6 +2,7 @@
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
 import type { FitRules, FontInfo, SpanInfo, Strategy } from "../api/types";
 import type { Press } from "./caret";
+import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
 import { type Fit, fitOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import { emailCountIn } from "./formattedValues";
@@ -35,6 +36,7 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
     store.set({ unredacting: { spanId, press }, announcement: announcing(doc.sentences.undo_redaction) });
     return;
   }
+  readDocumentDates(editor);
   store.set({ draft: draftOf(span, { reading, press }), focusTo: null, unredacting: null });
 }
 

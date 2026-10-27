@@ -19,7 +19,6 @@ import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, runsPast, settingOf } from "../fit";
 import { attachDropped } from "../fonts";
 import { editableValueIn } from "../formattedValues";
-import { learnEveryLanguage } from "../monthNames";
 import { textIn } from "../project";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
@@ -63,11 +62,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const verdict = { fidelity, why, substitute, same_widths: sameWidths };
   // A date or an amount in what's typed, the one the press that opened the field landed on, else the first.
   const press = useEditorState((state) => state.draft?.press ?? null);
-  const dateOrder = useEditorState((state) => state.layout.dateOrder);
+  const dates = useEditorState((state) => state.layout.dates);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
-  const value = editableValueIn(text, { dateOrder, at });
-  // Its month's name may be in a language Intl is asked of only as it's needed.
-  useEffect(learnEveryLanguage, []);
+  const value = dates === null ? undefined : editableValueIn(text, { dates, at });
   // Sent back from the value's editor in the slip, the field takes focus again.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;
