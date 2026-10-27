@@ -24,13 +24,13 @@ import {
 } from "../newText";
 import { shownNameIn } from "../spanFonts";
 import { shallowEqual } from "../store";
-import { draftNoteOf, enter, fieldFocused, finish, troublesIn, typeInto } from "../typing";
+import { draftNoteOf, enter, fieldFocused, finish, troublesIn, typeIntoText } from "../typing";
 import { shortWarningOf } from "../verdicts";
 import { Facts } from "./Chip";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import fieldStyles from "./EditField.module.css";
-import { fieldScaleOf, points, textBoxOf, textStyleOf, textWidthPt } from "./geometry";
+import { fieldScaleOf, points, textBoxOf, textStyleOf, textWidthIn, textWidthPt } from "./geometry";
 
 /**
  * New text being typed, where it will be drawn, in the face that will draw it, and its slip under it: what it
@@ -121,7 +121,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
       <TextField
         aria-label={draft.of === null ? "New text" : `Change “${draft.of.edit.text}”`}
         value={draft.text}
-        onChange={(next) => typeInto(editor, next)}
+        onChange={(next) => typeIntoText(editor, next, { widthOf: (typed) => textWidthIn(layout, typed) })}
         className={fieldStyles.field}
       >
         <Input
@@ -177,6 +177,7 @@ function TextChip({
   const choices = useEditorState((state) => faceChoicesOf(state, draft), sameChoices);
   const chosen = useEditorState((state) => chosenFaceOf(state.layout, draft));
   const failed = useEditorState((state) => state.shippedFaces.failed);
+  const layout = useEditorState((state) => state.layout);
   // Each name is set in its own face: put on the page as the list shows.
   useEffect(() => addFaces([...choices.page, ...choices.handwriting].map((choice) => choice.face)), [choices]);
   const named = (choice: { key: string; label: string; face: string }) => ({
@@ -215,7 +216,7 @@ function TextChip({
           label="Font"
           groups={groups}
           chosen={chosen}
-          onChoose={(key) => chooseFace(editor, key)}
+          onChoose={(key) => chooseFace(editor, key, { widthOf: (insert) => textWidthIn(layout, insert) })}
           onEnter={() => enter(editor)}
           onPointerChoice={onPointerChoice}
         />

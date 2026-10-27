@@ -62,7 +62,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
     onMove: ({ pointerType, deltaX, deltaY, shiftKey }) => {
       if (pointerType === "keyboard") {
         const step = shiftKey ? SHIFT_NUDGE_PT : NUDGE_PT;
-        moveText(editor, textId, { by: [deltaX * step, deltaY * step], nudge: true });
+        moveText(editor, textId, { by: [deltaX * step, deltaY * step], nudge: true, widthPt });
         return;
       }
       const shownWidthPx =
@@ -81,7 +81,7 @@ export const TextMark = memo(function TextMark({ text, info, face, widthPt, take
         cancelled.current = false;
         return;
       }
-      if (pointerType !== "keyboard" && by !== null) moveText(editor, textId, { by, nudge: false });
+      if (pointerType !== "keyboard" && by !== null) moveText(editor, textId, { by, nudge: false, widthPt });
     },
   });
   /** Cut the drag short as the browser cancels one, so every hook on the mark ends it and the next press starts afresh. */
