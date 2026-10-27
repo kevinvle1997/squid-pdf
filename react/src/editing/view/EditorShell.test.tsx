@@ -1374,6 +1374,37 @@ describe("new text", () => {
   });
 });
 
+describe("new text in a face we ship", () => {
+  test("a signature whose face lacks a letter is in a similar font as it's typed, and the bar counts it so", async () => {
+    const screen = await openEditor({ doc: DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Ω Smith");
+    await screen.getByRole("option", { name: "Caveat Bold" }).click();
+    // Caveat has no Ω: a face that has it draws the whole line.
+    const slip = screen.getByRole("group", { name: "New text and its font" });
+    await expect.element(slip.getByText("Noto Sans Bold", { exact: false })).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+
+    const count = screen.getByRole("button", { name: "1 change in a similar font" });
+    await expect.element(count).toBeVisible();
+    await count.click();
+    const row = screen.getByRole("dialog").getByText("Caveat Bold", { exact: true });
+    await expect.element(row).toBeVisible();
+    await expect.element(screen.getByRole("dialog").getByText(/Noto Sans Bold/)).toBeVisible();
+  });
+
+  test("a signature its face draws whole is exact: no warning, and none counted", async () => {
+    const screen = await openEditor({ doc: DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("M. Smith");
+    await screen.getByRole("option", { name: "Caveat Bold" }).click();
+    await expect.element(screen.getByText("looks identical")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(screen.getByRole("banner").getByText("1 change", { exact: true })).toBeVisible();
+  });
+});
+
 describe("how to start", () => {
   /** The how-to-start line `words` as shown on screen, of the one beside the first page and the one above it. */
   const shownLine = (words: string) =>

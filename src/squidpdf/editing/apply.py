@@ -11,7 +11,6 @@ from dataclasses import dataclass, replace
 from typing import assert_never
 
 from squidpdf.core import (
-    FACES,
     Engine,
     Face,
     InvalidRequest,
@@ -398,7 +397,7 @@ class Ran:
     """What doing the steps came out with: what came out other than asked, and each draw.
 
     `redrawn` is each replace drawn, by span id, and `placed` each insert, by its place:
-    the face we ship that drew it, None for its own font (a face we ship is new text's own).
+    the face we ship that drew it, None for its own font (new text's face, where it draws).
     A replace the erase couldn't clear isn't drawn, so isn't there.
     """
 
@@ -482,8 +481,9 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
         drawn = engine.draw(
             step.span, step.span.text, plan=step.fitted.plan, turn_ccw=step.turn_ccw
         )
-        # New text in a face we ship is in its own font, whichever of ours draws it.
-        face = None if step.span.font in FACES else drawn.face
+        # New text in a face we ship is in its own font where that face draws it.
+        asked = drawn.face is not None and drawn.face.name == step.span.font
+        face = None if asked else drawn.face
         insert_notices: list[Notice] = [
             InsertNotice(step.position, said) for said in drawn.notices
         ]

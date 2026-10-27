@@ -22,7 +22,7 @@ import {
 } from "./history";
 import type { FailedImage } from "./images";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
-import { keptTexts, restingVerdictOf, textSpanOf } from "./newText";
+import { keptTexts, textPlaceOf } from "./newText";
 import {
   heardIn,
   NO_NOTICES,
@@ -496,10 +496,8 @@ export function changedMismatches({
     const fit = landedFitOf(drawn, spanReading);
     return placeOf(span, { changed: true, reading: spanReading, fit, font: fontOf(layout.fonts, span) }) ?? [];
   });
-  const texts = keptTexts(reading).flatMap((text) => {
-    const verdict = restingVerdictOf({ layout, drawn }, text);
-    const missing = landedInsertFitOf(drawn, text)?.missing ?? [];
-    return verdict.fidelity === "exact" ? [] : [{ span: textSpanOf(layout, text.edit), verdict, missing }];
-  });
+  const texts = keptTexts(reading).flatMap(
+    (text) => textPlaceOf(layout, { text, fit: landedInsertFitOf(drawn, text) }) ?? [],
+  );
   return [...spans, ...texts];
 }
