@@ -754,6 +754,51 @@ describe("a page", () => {
     await expect.element(screen.getByRole("region", { name: "Page 1" }).getByText(busy)).toBeVisible();
   });
 
+  describe("the page's edge", () => {
+    /** What a press at the middle of `box`, on screen, lands on. */
+    const pressedAt = (box: DOMRect) => document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+
+    test("clips what's drawn past its foot: a mark there can't be pressed under the page", async () => {
+      const past = aSpan({ id: "past", text: "under it", bbox: { x0: 72, y0: 846, x1: 152, y1: 858 } });
+      openDocument(aDoc({ spans: [span, past], fonts: DOC.fonts }));
+      const screen = await draw();
+      const mark = screen.getByRole("button", { name: "under it" });
+      await expect.element(mark).toBeInTheDocument();
+      expect(mark.element().contains(pressedAt(mark.element().getBoundingClientRect()))).toBe(false);
+    });
+
+    test("lets the slip of a line at its foot hang past it, whole, and pressed", async () => {
+      await page.viewport(1400, 900);
+      const foot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 820, x1: 152, y1: 834 } });
+      openDocument(aDoc({ spans: [foot], fonts: DOC.fonts }));
+      const screen = await draw();
+      await editSpan(screen, "at the foot");
+      const redact = screen.getByRole("button", { name: "Redact" });
+      await expect.element(redact).toBeVisible();
+      redact.element().scrollIntoView({ block: "center" });
+      const sheet = sheetOf(screen.getByRole("textbox").element()).getBoundingClientRect();
+      const box = redact.element().getBoundingClientRect();
+      expect(box.top).toBeGreaterThan(sheet.bottom);
+      expect(redact.element().contains(pressedAt(box))).toBe(true);
+    });
+
+    test("clips a field typed past it on a turned page", async () => {
+      const turned: PageInfo = { ...A4, turn_cw: 90 };
+      const edge = aSpan({ ...span, id: "edge", text: "was here", bbox: { x0: 500, y0: 100, x1: 580, y1: 124 } });
+      openDocument(aDoc({ spans: [edge], fonts: DOC.fonts }));
+      const screen = await draw(0, turned);
+      await editSpan(screen);
+      await userEvent.keyboard("{ArrowRight}and a great deal more besides");
+      const field = screen.getByRole("textbox").element();
+      const sheet = sheetOf(field).getBoundingClientRect();
+      const box = field.getBoundingClientRect();
+      // Turned a quarter, the line runs down the screen: past the page's foot, nothing of it takes a press.
+      expect(box.bottom).toBeGreaterThan(sheet.bottom);
+      const below = new DOMRect(box.x, sheet.bottom + 2, box.width, Math.min(8, box.bottom - sheet.bottom - 2));
+      expect(field.contains(pressedAt(below))).toBe(false);
+    });
+  });
+
   test("a page wider than A4 shows at its printed size too", async () => {
     await page.viewport(1400, 900);
     const letter: PageInfo = { width: 612, height: 792, turn_cw: 0 };

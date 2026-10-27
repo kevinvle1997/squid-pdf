@@ -34,19 +34,19 @@
   position: relative; inset-inline-start: calc(var(--page-start) - var(--centred));
 }
 /* The sheet and its crop marks share one cell, so the marks' box is the sheet's. */
-.sheet, .trim { grid-row: 1; grid-column: 2; max-width: var(--shown-width); }
+.sheet, .trim, .slips { grid-row: 1; grid-column: 2; max-width: var(--shown-width); }
 .sheet {
   position: relative;
   width: 100%;
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
-  /* Clipped across, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret
-     typed past the page's edge in view, sliding the page out from under the field. Down, a slip under a
-     line near the page's foot hangs past it, as an open calendar does. */
-  overflow: clip visible;
+  /* Clipped, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret
+     typed past the page's edge in view, sliding the page out from under the field. */
+  overflow: clip;
 }
-/* The page typed into lies over the next, so its slip hangs over that page rather than under it. */
-.sheet:has(input) { z-index: var(--z-chip); }
+/* Over the sheet, the same shape, unclipped: the slip of the span typed into hangs past the page's foot,
+   whole, and over the next page. Only what's on the slip takes a press. */
+.slips { position: relative; z-index: var(--z-chip); width: 100%; pointer-events: none; }
 /* Drawn over the sheet, so a press goes through it to the page. */
 .trim { pointer-events: none; }
 /* The shadow and the crop marks go in high contrast: an outline keeps the sheet's edge. */
@@ -77,5 +77,5 @@
 @media (max-width: 820px) {
   .column { --full-width: var(--shown-width); --margin-shift: 0px; --beside-margin: 0px; --beside-sheet: 0px; }
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
-  .sheet, .trim { grid-column: 1; }
+  .sheet, .trim, .slips { grid-column: 1; }
 }

@@ -6,6 +6,9 @@ import type { Editor, EditorState } from "../editor";
 
 export const EditorContext = createContext<Editor | null>(null);
 
+/** A page's layer for its slips, over its sheet but not clipped by it: what the field's slip is drawn in. */
+export const SlipLayerContext = createContext<HTMLElement | null>(null);
+
 /** The editor, for a handler to act on. */
 export function useEditor(): Editor {
   const editor = useContext(EditorContext);

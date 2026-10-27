@@ -4,6 +4,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   useCallback,
+  useContext,
   useEffect,
   useReducer,
   useRef,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import { isFileDropItem, useDrop } from "react-aria";
 import { Input, TextField } from "react-aria-components";
+import { createPortal } from "react-dom";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { selectionAt } from "../caret";
 import { carriesFiles } from "../dropped";
@@ -25,7 +27,7 @@ import { shallowEqual } from "../store";
 import { enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "../typing";
 import { openValueEditor } from "../valueEditor";
 import { Chip } from "./Chip";
-import { useEditor, useEditorState } from "./context";
+import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { boxOf, fieldPartOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
 
@@ -71,7 +73,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     return focusTo !== null && "spanId" in focusTo && focusTo.spanId === span.id ? focusTo : null;
   });
   const field = useRef<HTMLInputElement>(null);
-  const slip = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLDivElement>(null);
+  // The page's layer for slips, which its sheet doesn't clip: a slip near the foot hangs past it, over the next page.
+  const slipLayer = useContext(SlipLayerContext);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
   // As the page is shown wider or narrower, what the field scales by to show the span's size.
@@ -166,7 +170,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           // and the value's editor in the slip goes on with it.
           onBlur={(event) => {
             const to = event.relatedTarget;
-            if (to instanceof Node && slip.current?.contains(to)) return;
+            if (to instanceof Node && chip.current?.contains(to)) return;
             if (document.hasFocus()) finish(editor, true);
           }}
           style={{
@@ -195,16 +199,20 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           style={boxOf(fieldPartOf(span, { text, start: value.start, end: value.end, face, scale: setting }), info)}
         />
       )}
-      <Chip
-        slip={slip}
-        span={span}
-        info={info}
-        trouble={trouble}
-        verdict={verdict}
-        setting={setting}
-        value={value}
-        field={field}
-      />
+      {slipLayer !== null &&
+        createPortal(
+          <Chip
+            chip={chip}
+            span={span}
+            info={info}
+            trouble={trouble}
+            verdict={verdict}
+            setting={setting}
+            value={value}
+            field={field}
+          />,
+          slipLayer,
+        )}
     </>
   );
 }
