@@ -182,3 +182,16 @@ export function fieldWidthPt(
   const typedPt = Math.max(lineWidthPt(span, text, glyphs), shownPt);
   return Math.max(span.bbox.x1 - span.bbox.x0, typedPt + span.size * FIELD_SPARE_EM);
 }
+
+/** Where `start` to `end` of the field's `text` sits on the page, as the field sets the text: in `face`, at `scale`. */
+export function fieldPartOf(
+  span: SpanInfo,
+  { text, start, end, face, scale }: { text: string; start: number; end: number; face: string; scale: LineScale },
+): SpanInfo["bbox"] {
+  const setAt = { ...span, size: span.size * scale.size };
+  const widthTo = (index: number) => {
+    const before = text.slice(0, index);
+    return (shownWidthPt(before, face, setAt.size) + letterSpacingPt(setAt, before)) * scale.scaleX;
+  };
+  return { ...span.bbox, x0: span.bbox.x0 + widthTo(start), x1: span.bbox.x0 + widthTo(end) };
+}

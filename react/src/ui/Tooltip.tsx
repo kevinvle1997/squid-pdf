@@ -49,12 +49,23 @@ export function Tooltip({ heading, warn = false, children, triggerRef, isOpen, o
   );
 }
 
-/** A button's keyboard shortcut, shown under it on hover or focus, as editors show theirs. */
-export function Shortcut({ keys, children }: { keys: string; children: ReactElement }) {
+/**
+ * A button's keyboard shortcut, shown under it on hover or focus, as editors show theirs; or beside it
+ * (`end`), where what's under it is another button to press.
+ */
+export function Shortcut({
+  keys,
+  placement = "bottom",
+  children,
+}: {
+  keys: string;
+  placement?: "bottom" | "end";
+  children: ReactElement;
+}) {
   return (
     <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
       {children}
-      <AriaTooltip className={styles.shortcut} placement="bottom" offset={6}>
+      <AriaTooltip className={styles.shortcut} placement={placement} offset={6}>
         <kbd>{keys}</kbd>
       </AriaTooltip>
     </TooltipTrigger>

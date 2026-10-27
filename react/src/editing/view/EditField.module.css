@@ -35,9 +35,16 @@
   border-inline-start: 2px dashed var(--mark-warn);
   pointer-events: none;
 }
+/* The date or amount its editor rewrites, ringed as Find rings the place it went to, over the field's words. */
+.valueRing {
+  position: absolute; z-index: var(--z-field);
+  outline: 2px solid var(--mark-change); outline-offset: 1px; border-radius: var(--r-1);
+  pointer-events: none;
+}
 /* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
 @media (forced-colors: active) {
   .input { outline: 2px solid Highlight; }
   .troubleInput { outline: 2px dashed CanvasText; }
   .roomEnds { border-color: CanvasText; }
+  .valueRing { outline-color: Highlight; }
 }

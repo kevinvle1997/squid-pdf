@@ -1,5 +1,6 @@
 // The proof slip under the field: what an edit here will come to before it's made (Rule 1), the ways
 // out of a long line, and what a pointer can press there; the keyboard's ways are the field's keys and Fonts.
+import type { RefObject } from "react";
 import { FileTrigger } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
@@ -8,6 +9,7 @@ import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
 import { attachFont, FONT_FILES, offersCopy, readableName } from "../fonts";
+import type { EditableValue } from "../formattedValues";
 import { editNote } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
@@ -17,6 +19,7 @@ import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
 import { pinnedUnder } from "./geometry";
+import { ValueEditor } from "./ValueEditor";
 
 const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
@@ -26,10 +29,13 @@ interface Props {
   trouble: string; // what won't come out as typed, a line each; empty when it fits
   verdict: Verdict; // what an edit of what's typed comes to, and in what face
   setting: Setting; // how the line is drawn, and the ways out to choose from
+  value: EditableValue | undefined; // a date or an amount in what's typed, which has an editor of its own
+  field: RefObject<HTMLInputElement | null>; // the field typed into, which the value's editor sends focus back to
+  slip: RefObject<HTMLDivElement | null>; // this slip, for the field to tell focus moving into it from leaving
 }
 
 /** The slip under the span typed into. */
-export function Chip({ span, info, trouble, verdict, setting }: Props) {
+export function Chip({ span, info, trouble, verdict, setting, value, field, slip }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
@@ -44,7 +50,7 @@ export function Chip({ span, info, trouble, verdict, setting }: Props) {
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   return (
-    <div className={styles.chip} style={pinnedUnder(span.bbox, info)}>
+    <div ref={slip} className={styles.chip} style={pinnedUnder(span.bbox, info)}>
       {signature !== null && (
         // Announced as the field takes focus, before the font's note.
         <span className={styles.signature} aria-hidden="true">
@@ -89,6 +95,7 @@ export function Chip({ span, info, trouble, verdict, setting }: Props) {
           </span>
         </span>
       )}
+      {value !== undefined && <ValueEditor value={value} field={field} />}
       <span className={styles.actions}>
         {offered && (
           // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.

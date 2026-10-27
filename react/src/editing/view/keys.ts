@@ -2,6 +2,7 @@
 // where a key was pressed. Read off the DOM, which node hasn't, so tested in the browser.
 const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
 export const COMMAND = APPLE ? "⌘" : "Ctrl ";
+export const ALT = APPLE ? "⌥" : "Alt ";
 
 /** Whether a key was pressed in a text field, whose own keys come before a shortcut's. */
 export function isTyping(target: EventTarget | null): boolean {
