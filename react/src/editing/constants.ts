@@ -16,6 +16,9 @@ export const SLIP_GAP_PT = 4;
 /** The edit field reaches this far past what's typed, a share of the size, so the caret has room after the last letter. */
 export const FIELD_SPARE_EM = 0.5;
 
+/** New text's field is never narrower than this, a share of its size: room for a couple of letters, so an empty one shows. */
+export const NEW_TEXT_FIELD_MIN_EM = 2;
+
 /** A new line has no box until it's drawn: an em above its baseline and this far below covers any face we ship. */
 export const INSERT_ASCENT_EM = 1;
 export const INSERT_DESCENT_EM = 0.3;
@@ -25,8 +28,8 @@ export const NEW_TEXT_FACE = "Liberation Sans Regular";
 export const NEW_TEXT_SIZE_PT = 11;
 
 /**
- * New text in a handwriting face is drawn this much larger than the text it's styled from: those faces draw
- * small for their size, and a hand signs larger than print, so a signature at the text's own size reads as a note.
+ * New text in a handwriting face is drawn this much larger than the text it's styled from. Handwriting faces set
+ * their lowercase small, so the step brings a signature up to the size of the text around it.
  */
 export const HANDWRITING_STEP = 1.3;
 
