@@ -78,6 +78,7 @@ function Facts() {
     <div className={styles.facts}>
       <div className={styles.promise}>
         <h2 className={styles.promiseTitle}>
+          {/* An hour is the server's IDLE_S, held to these words by tests/documents/test_store.py. */}
           We <mark>delete your file</mark> an hour after you're done.
         </h2>
         <p className={styles.promiseSentence}>
