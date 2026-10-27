@@ -290,7 +290,7 @@ describe("find", () => {
         strategy: undefined,
         redacted: false,
       };
-      const edits = { spans: [reading], inserts: [] };
+      const edits = { spans: [reading], newTexts: [] };
       const page = {
         spans: [line],
         edits,

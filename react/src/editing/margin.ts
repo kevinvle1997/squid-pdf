@@ -1,6 +1,6 @@
 // The margin's notes, one per changed span and piece of new text, placed as a proof has them: level with
 // the line they're about, and nudged down just enough that no two overlap.
-import type { InsertReading, SpanReading } from "./project";
+import type { NewTextReading, SpanReading } from "./project";
 
 /** Where each note's middle sits, in points from the page's top, in the order its lines come, a note's height apart. */
 export function notePlaces(lines: readonly { y0: number; y1: number }[], noteHeightPt: number): number[] {
@@ -76,6 +76,6 @@ function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], 
 }
 
 /** What new text's note says: its name, for what pressing it undoes, and the words added, marked as a proof marks an insertion. */
-export function textNoteOf({ edit }: InsertReading): NoteWords {
+export function newTextNoteOf({ edit }: NewTextReading): NoteWords {
   return { label: `Undo: take out “${edit.text}”`, struck: "", inserted: edit.text, was: "", now: edit.text };
 }

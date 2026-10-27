@@ -1,7 +1,7 @@
 // The one reading of the history that what's drawn, rendered and exported agree on. An object nothing
 // changed stays the same object from one reading to the next, so whatever draws it can skip it.
 import type { Document, Edit, Insert, PageInfo, Replace, SpanInfo, Strategy } from "../api/types";
-import { type Entry, textIdsOf } from "./history";
+import { type Entry, newTextIdsOf } from "./history";
 
 export interface SpanReading {
   readonly span: SpanInfo;
@@ -12,16 +12,16 @@ export interface SpanReading {
 }
 
 /** A piece of new text as its latest version has it. */
-export interface InsertReading {
+export interface NewTextReading {
   readonly id: number; // its latest version's edit's, in the history
-  readonly textId: number; // its first version's: the same however it's moved or retyped
+  readonly newTextId: number; // its first version's: the same however it's moved or retyped
   readonly edit: Insert;
 }
 
 /** One page's edits. */
 export interface PageEdits {
   readonly spans: readonly SpanReading[]; // in the document's order
-  readonly inserts: readonly InsertReading[]; // in the order made
+  readonly newTexts: readonly NewTextReading[]; // in the order made
 }
 
 export interface Reading {
@@ -93,8 +93,8 @@ export function samePage(a: PageEdits | undefined, b: PageEdits | undefined): bo
   return (
     a.spans.length === b.spans.length &&
     a.spans.every((span, index) => sameSpan(span, b.spans[index])) &&
-    a.inserts.length === b.inserts.length &&
-    a.inserts.every((insert, index) => insert.id === b.inserts[index]?.id)
+    a.newTexts.length === b.newTexts.length &&
+    a.newTexts.every((insert, index) => insert.id === b.newTexts[index]?.id)
   );
 }
 
@@ -133,8 +133,8 @@ export function project(
   const replaces = new Map<string, Replace>();
   const redacted = new Set<string>();
   // New text's latest version wins, as a span's last replace does: by its first version's id, in the order last made.
-  const latest = new Map<number, InsertReading>();
-  const textIds = textIdsOf(entries);
+  const latest = new Map<number, NewTextReading>();
+  const newTextIds = newTextIdsOf(entries);
   for (const { id, edit } of entries) {
     switch (edit.kind) {
       case "replace":
@@ -144,9 +144,9 @@ export function project(
         redacted.add(edit.span_id);
         break;
       case "insert": {
-        const textId = textIds.get(id) ?? id;
-        latest.delete(textId);
-        latest.set(textId, { id, textId, edit });
+        const newTextId = newTextIds.get(id) ?? id;
+        latest.delete(newTextId);
+        latest.set(newTextId, { id, newTextId, edit });
         break;
       }
       // Read whole below, in order.
@@ -158,9 +158,9 @@ export function project(
   }
 
   const readings = new Map<string, SpanReading>();
-  const byPage = new Map<number, { spans: SpanReading[]; inserts: InsertReading[] }>();
+  const byPage = new Map<number, { spans: SpanReading[]; newTexts: NewTextReading[] }>();
   const onPage = (page: number) => {
-    const edits = byPage.get(page) ?? { spans: [], inserts: [] };
+    const edits = byPage.get(page) ?? { spans: [], newTexts: [] };
     byPage.set(page, edits);
     return edits;
   };
@@ -179,9 +179,9 @@ export function project(
     onPage(span.page).spans.push(kept);
   }
   // Its words all taken out, new text is gone, as an emptied span isn't an edit.
-  const inserts = [...latest.values()].filter(({ edit }) => edit.text.trim() !== "");
-  for (const insert of inserts) onPage(insert.edit.page).inserts.push(insert);
-  for (const insert of inserts) live.add(insert.edit);
+  const newTexts = [...latest.values()].filter(({ edit }) => edit.text.trim() !== "");
+  for (const insert of newTexts) onPage(insert.edit.page).newTexts.push(insert);
+  for (const insert of newTexts) live.add(insert.edit);
 
   const pages = new Map<number, PageEdits>();
   for (const [page, edits] of [...byPage].sort(([a], [b]) => a - b)) {

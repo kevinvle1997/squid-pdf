@@ -6,9 +6,9 @@ import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_REACH_PX, LAZY_MARGIN } from "../constants";
 import { imageFailed, imageLoaded } from "../images";
-import { pointOnPage, writeAt } from "../newText";
+import { openNewTextAt, pointOnPage } from "../newText";
 import { type PageState, pageState, spanIn } from "../page";
-import type { InsertReading, SpanReading } from "../project";
+import type { NewTextReading, SpanReading } from "../project";
 import { stillShows } from "../redrawRegions";
 import { shallowEqual } from "../store";
 import { pageInView, zoomShown } from "../zoom";
@@ -20,10 +20,10 @@ import { onBarePaper } from "./keys";
 import { ChangeList, Margin } from "./Margin";
 import { Marks } from "./Marks";
 import styles from "./Page.module.css";
-import { Previews, Settles, TextPreviews } from "./Previews";
+import { NewTextPreviews, Previews, Settles } from "./Previews";
 
 const NO_CHANGES: readonly SpanReading[] = [];
-const NO_TEXTS: readonly InsertReading[] = [];
+const NO_NEW_TEXTS: readonly NewTextReading[] = [];
 
 /**
  * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points;
@@ -94,7 +94,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const sheet = useSheet(index, info, { nearPages: editor.near });
   const page = useEditorState((state) => pageState(state, index), shallowEqual);
   const changes = page.edits?.spans ?? NO_CHANGES;
-  const texts = page.edits?.inserts ?? NO_TEXTS;
+  const texts = page.edits?.newTexts ?? NO_NEW_TEXTS;
   // A strip whose rows no longer hold an edit goes at once: the page beneath is right as it is, and
   // undo needs no render to show it.
   const strips = useMemo(
@@ -110,7 +110,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
   // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
   const notes = keepMarks ? changes : NO_CHANGES;
-  const textNotes = keepMarks ? texts : NO_TEXTS;
+  const newTextNotes = keepMarks ? texts : NO_NEW_TEXTS;
   const paper = useBarePaper(index, info);
 
   return (
@@ -129,7 +129,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
       <Margin
         info={info}
         changes={notes}
-        texts={textNotes}
+        texts={newTextNotes}
         noteHeightPt={sheet.noteHeightPt}
         pageNumber={shownNumber}
       />
@@ -166,7 +166,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
             ))}
             <Settles page={page} info={info} />
             <Previews page={page} info={info} strips={strips} />
-            <TextPreviews page={page} info={info} strips={strips} />
+            <NewTextPreviews page={page} info={info} strips={strips} />
           </>
         )}
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
@@ -176,7 +176,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
           </SlipLayerContext.Provider>
         )}
       </Sheet>
-      <ChangeList changes={notes} texts={textNotes} pageNumber={shownNumber} />
+      <ChangeList changes={notes} texts={newTextNotes} pageNumber={shownNumber} />
     </section>
   );
 });
@@ -203,12 +203,12 @@ function useBarePaper(index: number, info: PageInfo) {
         const reach = was === null ? Infinity : Math.hypot(event.clientX - was.x, event.clientY - was.y);
         const twice = was !== null && at - was.at < DOUBLE_TAP_MS && reach < DOUBLE_TAP_REACH_PX;
         lastTap.current = twice ? null : { at, x: event.clientX, y: event.clientY };
-        if (twice) writeAt(editor, index, pressAt(event));
+        if (twice) openNewTextAt(editor, index, pressAt(event));
       };
       const doubleClicked = (event: MouseEvent) => {
         // A finger's double tap is the taps' own, above: a browser that says it as a double click too would say it twice.
         if (pointer === "touch" || !onBarePaper(event.target, layer)) return;
-        writeAt(editor, index, pressAt(event));
+        openNewTextAt(editor, index, pressAt(event));
       };
       layer.addEventListener("pointerdown", pressed);
       layer.addEventListener("pointerup", tapped);

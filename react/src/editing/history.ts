@@ -88,14 +88,14 @@ export function deleting(history: History, page: number): Set<number> {
 }
 
 /** Which piece of new text each entry is a version of, by its first version's id: an edit that names none is its own. */
-export function textIdsOf(entries: readonly Entry[]): Map<number, number> {
+export function newTextIdsOf(entries: readonly Entry[]): Map<number, number> {
   const ids = new Map<number, number>();
   for (const { id, replaces } of entries) ids.set(id, replaces === undefined ? id : (ids.get(replaces) ?? replaces));
   return ids;
 }
 
-/** The ids of every version in effect of the new text first made as `textId`: what taking it out from its margin note takes. */
-export function versionsOf(history: History, textId: number): Set<number> {
-  const versions = [...textIdsOf(entriesOf(history))].filter(([, text]) => text === textId);
+/** The ids of every version in effect of the new text first made as `newTextId`: what taking it out from its margin note takes. */
+export function versionsOf(history: History, newTextId: number): Set<number> {
+  const versions = [...newTextIdsOf(entriesOf(history))].filter(([, text]) => text === newTextId);
   return new Set(versions.map(([id]) => id));
 }

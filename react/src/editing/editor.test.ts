@@ -26,7 +26,7 @@ import {
   warnedCount,
 } from "./editor";
 import type { Mismatches } from "./mismatches";
-import { chooseFace, keptTexts, moveText, writeAgain, writeAt } from "./newText";
+import { chooseFont, keptNewTexts, moveNewText, openNewTextAgain, openNewTextAt } from "./newText";
 import { plain, warn } from "./notices";
 import { edit, finish, typeInto } from "./typing";
 
@@ -241,27 +241,27 @@ describe("before any change", () => {
 describe("new text", () => {
   const heard = () => editor.store.get().announcement.text;
   const onlyText = () => {
-    const [text] = keptTexts(editor.store.get().reading);
+    const [text] = keptNewTexts(editor.store.get().reading);
     if (text === undefined) throw new Error("new text is on the page");
     return text;
   };
 
   test("put on a page, set in a face, moved, typed into again, undone and taken out, it says the server's sentences", () => {
-    writeAt(editor, 0, [100, 300]);
-    chooseFace(editor, "page:Named", { widthOf: () => 50 });
+    openNewTextAt(editor, 0, [100, 300]);
+    chooseFont(editor, "page:Named", { widthOf: () => 50 });
     expect(heard()).toBe("SET IN Named.");
     typeInto(editor, "Signed");
     finish(editor, true);
     expect(heard()).toBe("ADDED “Signed”.");
-    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false, widthPt: 50 });
+    moveNewText(editor, onlyText().newTextId, { by: [10, 0], nudge: false, widthPt: 50 });
     expect(heard()).toBe("MOVED “Signed”.");
-    writeAgain(editor, onlyText().textId);
+    openNewTextAgain(editor, onlyText().newTextId);
     typeInto(editor, "Signed again");
     finish(editor, true);
     expect(heard()).toBe("CHANGED TO “Signed again”.");
     undo(editor);
     expect(heard()).toBe("BACK TO “Signed”.");
-    writeAgain(editor, onlyText().textId);
+    openNewTextAgain(editor, onlyText().newTextId);
     typeInto(editor, "");
     finish(editor, true);
     expect(heard()).toBe("TOOK OUT “Signed”.");
@@ -276,13 +276,13 @@ describe("new text", () => {
       Reflect.deleteProperty(stale.sentences, key);
     }
     editor = createEditor(FILE, stale, 2);
-    writeAt(editor, 0, [100, 300]);
-    chooseFace(editor, "page:Named", { widthOf: () => 50 });
+    openNewTextAt(editor, 0, [100, 300]);
+    chooseFont(editor, "page:Named", { widthOf: () => 50 });
     expect(heard()).toBe("");
     typeInto(editor, "Signed");
     finish(editor, true);
     expect(heard()).toBe("");
-    moveText(editor, onlyText().textId, { by: [10, 0], nudge: false, widthPt: 50 });
+    moveNewText(editor, onlyText().newTextId, { by: [10, 0], nudge: false, widthPt: 50 });
     expect(onlyText().edit.origin[0]).toBeGreaterThan(100);
     expect(heard()).toBe("");
   });

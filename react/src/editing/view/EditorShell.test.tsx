@@ -33,7 +33,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
-import { EXPORT_INTENT_MS, INSERT_DESCENT_EM, LINE_BELOW_EM } from "../constants";
+import { EXPORT_INTENT_MS, LINE_BELOW_EM, NEW_TEXT_DESCENT_EM } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
@@ -1323,7 +1323,7 @@ describe("new text", () => {
     await expect.poll(lastRendered).toHaveLength(1);
     const [sent] = lastRendered();
     const [, baseline = Infinity] = sent?.kind === "insert" ? sent.origin : [];
-    expect(baseline).toBeLessThanOrEqual(A4.height - red.size * INSERT_DESCENT_EM);
+    expect(baseline).toBeLessThanOrEqual(A4.height - red.size * NEW_TEXT_DESCENT_EM);
   });
 
   test("a double-click on a span still edits the span", async () => {

@@ -24,9 +24,9 @@ export function pageOn(target: EventTarget | null): number | null {
   return on?.dataset.page === undefined ? null : Number(on.dataset.page);
 }
 
-/** The new text a key was pressed on: its mark says which, as `data-text`. */
+/** The new text a key was pressed on: its mark says which, as `data-new-text`. */
 export function newTextOn(target: EventTarget | null): number | null {
-  const id = target instanceof HTMLElement ? target.dataset.text : undefined;
+  const id = target instanceof HTMLElement ? target.dataset.newText : undefined;
   return id === undefined ? null : Number(id);
 }
 

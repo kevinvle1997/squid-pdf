@@ -4,7 +4,7 @@ import { renderStrips } from "../api/client";
 import type { Edit, FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
-import { differing, type InsertReading, type PageEdits, type Reading, type SpanReading, sameSpan } from "./project";
+import { differing, type NewTextReading, type PageEdits, type Reading, type SpanReading, sameSpan } from "./project";
 import { bottomOf, regionsFor, stalePages } from "./redrawRegions";
 
 /** A strip of a page the server drew, ready to paint: its top and bottom in points, and its image's address. */
@@ -19,7 +19,7 @@ export interface Strip {
 export type PageFits = Readonly<Record<string, FitInfo>>;
 
 /** The server's fit for each piece of new text on one page, by the id of the version it was drawn from. */
-export type PageInsertFits = Readonly<Record<number, FitInfo>>;
+export type PageNewTextFits = Readonly<Record<number, FitInfo>>;
 
 /** The server's verdict on each redacted span on one page, by span id. */
 export type PageRedactions = Readonly<Record<string, RedactionInfo>>;
@@ -29,7 +29,7 @@ export interface Drawn {
   readonly from: ReadonlyMap<number, Reading>; // by page: the reading its strips were drawn from
   // What a reply says of a page comes and goes with its strips: a page the reply didn't draw keeps its objects, so it isn't drawn again.
   readonly fits: ReadonlyMap<number, PageFits>; // by page: the server's fit for each replaced span on it
-  readonly insertFits: ReadonlyMap<number, PageInsertFits>; // by page: the server's fit for each piece of new text on it
+  readonly newTextFits: ReadonlyMap<number, PageNewTextFits>; // by page: the server's fit for each piece of new text on it
   readonly redactions: ReadonlyMap<number, PageRedactions>; // by page: whether each redaction on it holds
   readonly notices: ReadonlyMap<number, readonly NoticeInfo[]>; // by page: what drawing it did other than asked
   readonly skipped: readonly SkippedInfo[]; // the edits the last reply left out, from every page
@@ -40,7 +40,7 @@ export const NOTHING_DRAWN: Drawn = {
   strips: new Map(),
   from: new Map(),
   fits: new Map(),
-  insertFits: new Map(),
+  newTextFits: new Map(),
   redactions: new Map(),
   notices: new Map(),
   skipped: [],
@@ -55,8 +55,8 @@ export function landedFitOf(drawn: Drawn, now: SpanReading): FitInfo | undefined
 }
 
 /** The server's fit for new text as `now` has it, once a render of that very version landed; none before. */
-export function landedInsertFitOf(drawn: Drawn, now: InsertReading): FitInfo | undefined {
-  return drawn.insertFits.get(now.edit.page)?.[now.id];
+export function landedNewTextFitOf(drawn: Drawn, now: NewTextReading): FitInfo | undefined {
+  return drawn.newTextFits.get(now.edit.page)?.[now.id];
 }
 
 /** A page's fits, less those of spans its strips were drawn from other words for: those say nothing of the words now. */
@@ -99,9 +99,9 @@ function onPages<V>(reading: Reading, bySpan: Readonly<Record<string, V>>): Map<
 }
 
 /** Each fit of new text in `reply`, by the page it's on, under the version it was drawn from: named by its place in the edits sent. */
-function insertFitsOnPages(reading: Reading, reply: RenderReply): Map<number, Record<number, FitInfo>> {
-  const sent = new Map<Edit, InsertReading>();
-  for (const edits of reading.pages.values()) for (const insert of edits.inserts) sent.set(insert.edit, insert);
+function newTextFitsOnPages(reading: Reading, reply: RenderReply): Map<number, Record<number, FitInfo>> {
+  const sent = new Map<Edit, NewTextReading>();
+  for (const edits of reading.pages.values()) for (const insert of edits.newTexts) sent.set(insert.edit, insert);
   const pages = new Map<number, Record<number, FitInfo>>();
   for (const { edit: position, ...fit } of reply.insert_fits) {
     const edit = reading.edits[position];
@@ -117,7 +117,7 @@ function insertFitsOnPages(reading: Reading, reply: RenderReply): Map<number, Re
  */
 function byPage(reading: Reading, reply: RenderReply, drawing: readonly number[]) {
   const fits = onPages(reading, reply.fits);
-  const insertFits = insertFitsOnPages(reading, reply);
+  const newTextFits = newTextFitsOnPages(reading, reply);
   const redactions = onPages(reading, reply.redactions);
   const notices = new Map<number, NoticeInfo[]>();
   for (const notice of reply.notices) {
@@ -125,7 +125,7 @@ function byPage(reading: Reading, reply: RenderReply, drawing: readonly number[]
     const page = pageOfNotice(reading, notice) ?? drawing[0];
     if (page !== undefined) notices.set(page, [...(notices.get(page) ?? []), notice]);
   }
-  return { fits, insertFits, redactions, notices };
+  return { fits, newTextFits, redactions, notices };
 }
 
 interface Options {
@@ -248,7 +248,7 @@ export class RenderQueue {
     const strips = new Map(this.#drawn.strips);
     const from = new Map(this.#drawn.from);
     const fits = new Map(this.#drawn.fits);
-    const insertFits = new Map(this.#drawn.insertFits);
+    const newTextFits = new Map(this.#drawn.newTextFits);
     const redactions = new Map(this.#drawn.redactions);
     const notices = new Map(this.#drawn.notices);
     const nothingSaid = { fits: {}, insert_fits: [], redactions: {}, notices: [], skipped: [] };
@@ -259,14 +259,14 @@ export class RenderQueue {
       else strips.delete(page);
       from.set(page, reading);
       setOrDelete(fits, page, landed.fits.get(page));
-      setOrDelete(insertFits, page, landed.insertFits.get(page));
+      setOrDelete(newTextFits, page, landed.newTextFits.get(page));
       setOrDelete(redactions, page, landed.redactions.get(page));
       setOrDelete(notices, page, landed.notices.get(page));
     }
     // Skipped is of the whole edit list: a reply replaces it, and it goes with the last edit.
     const skipped = reply?.skipped ?? (reading.edits.length === 0 ? [] : this.#drawn.skipped);
     const failed = reply === null ? this.#drawn.failed : null;
-    this.#drawn = { strips, from, fits, insertFits, redactions, notices, skipped, failed };
+    this.#drawn = { strips, from, fits, newTextFits, redactions, notices, skipped, failed };
     this.#options.drawn(this.#drawn);
   }
 }

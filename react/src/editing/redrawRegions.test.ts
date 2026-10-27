@@ -45,7 +45,7 @@ describe("strips to redraw", () => {
   test("edits on separate lines are separate strips, top first", () => {
     const [top, bottom] = SPANS as [SpanInfo, SpanInfo];
     const reading = readingOf(aReplace(bottom.id), aReplace(top.id));
-    expect(regionsFor(0, A4, reading.pages.get(0) ?? { spans: [], inserts: [] })).toEqual([
+    expect(regionsFor(0, A4, reading.pages.get(0) ?? { spans: [], newTexts: [] })).toEqual([
       { page: 0, y0: 98, y1: 114 },
       { page: 0, y0: 298, y1: 314 },
     ]);

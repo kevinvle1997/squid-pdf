@@ -5,24 +5,24 @@ import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
-import { INSERT_ASCENT_EM } from "../constants";
+import { NEW_TEXT_ASCENT_EM } from "../constants";
 import { addFaces } from "../faces";
 import { tintsOn } from "../find";
 import { lookOf } from "../marks";
 import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
-import { shownTextsAmong, textFaceOf } from "../newText";
+import { newTextFaceOf, shownNewTextsAmong } from "../newText";
 import { inPageOrder, type PageState, spanIn } from "../page";
-import type { InsertReading, SpanReading } from "../project";
+import type { NewTextReading, SpanReading } from "../project";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
-import { boxOf, markBoxOf, textBoxIn, textWidthIn } from "./geometry";
+import { boxOf, markBoxOf, newTextBoxIn, newTextWidthIn } from "./geometry";
 import styles from "./Marks.module.css";
 import { NewTextField } from "./NewTextField";
+import { NewTextMark } from "./NewTextMark";
 import { createNotes, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
-import { TextMark } from "./TextMark";
 import { UndoRedaction } from "./UndoRedaction";
 
 /** A mark over every span, or the field where one is being typed into, and the one note they share. */
@@ -42,7 +42,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
       {inPageOrder(page.spans, placedOn(page)).map(({ span, placed }) => {
         if (placed === "field") return <NewTextField key="field" info={info} />;
         if (placed !== undefined) {
-          return <RestingText key={placed.textId} text={placed} page={page} info={info} />;
+          return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} />;
         }
         return span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -71,28 +71,28 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
 }
 
 /** What's put on the page among its spans: each piece of new text at rest, and the field new text is typed in. */
-function placedOn(page: PageState): { item: InsertReading | "field"; at: readonly [number, number] }[] {
-  const resting = (page.edits?.inserts ?? []).filter((text) => text.textId !== page.writingAgain);
+function placedOn(page: PageState): { item: NewTextReading | "field"; at: readonly [number, number] }[] {
+  const resting = (page.edits?.newTexts ?? []).filter((text) => text.newTextId !== page.newTextTypedAgain);
   const texts = resting.map((text) => {
     const [x, y] = text.edit.origin;
-    return { item: text, at: [x, y - text.edit.size * INSERT_ASCENT_EM] as const };
+    return { item: text, at: [x, y - text.edit.size * NEW_TEXT_ASCENT_EM] as const };
   });
-  return page.writing === null ? texts : [...texts, { item: "field" as const, at: page.writing }];
+  return page.newTextAt === null ? texts : [...texts, { item: "field" as const, at: page.newTextAt }];
 }
 
 /** New text at rest, measured in the face that previews it, again as that face loads. */
-function RestingText({ text, page, info }: { text: InsertReading; page: PageState; info: PageInfo }) {
+function RestingNewText({ text, page, info }: { text: NewTextReading; page: PageState; info: PageInfo }) {
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
-  const face = textFaceOf(page.layout, text.edit);
+  const face = newTextFaceOf(page.layout, text.edit);
   useEffect(() => {
     addFaces([face]);
     document.fonts.addEventListener("loadingdone", measureAgain);
     return () => document.fonts.removeEventListener("loadingdone", measureAgain);
   }, [face]);
-  const widthPt = textWidthIn(page.layout, text.edit);
-  const takesFocus = page.focusText === text.textId;
+  const widthPt = newTextWidthIn(page.layout, text.edit);
+  const takesFocus = page.focusNewText === text.newTextId;
   return (
-    <TextMark
+    <NewTextMark
       text={text}
       info={info}
       face={face}
@@ -124,9 +124,9 @@ function Shown({
       const replaced = readings.get(span.id)?.replaced ?? false;
       return { key: span.id, box: markBoxOf(span, { replaced, fit: fits[span.id] }) };
     });
-  const texts = shownTextsAmong(page.edits?.inserts ?? [], { shown, layout, fits: page.insertFits })
-    .filter((text) => text.textId !== page.writingAgain)
-    .map((text) => ({ key: `text ${text.textId}`, box: textBoxIn(layout, text.edit) }));
+  const texts = shownNewTextsAmong(page.edits?.newTexts ?? [], { shown, layout, fits: page.newTextFits })
+    .filter((text) => text.newTextId !== page.newTextTypedAgain)
+    .map((text) => ({ key: `text ${text.newTextId}`, box: newTextBoxIn(layout, text.edit) }));
   return [...spans, ...texts].map(({ key, box }) => (
     <span key={key} className={styles.shown} aria-hidden="true" data-shown="" data-warned="" style={boxOf(box, info)} />
   ));

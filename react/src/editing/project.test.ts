@@ -67,7 +67,7 @@ describe("what the document reads as", () => {
 
   test("new text is on its own page, under its edit's id", () => {
     const reading = read(add(add(EMPTY_HISTORY, aReplace("a", "one")), insert));
-    expect(reading.pages.get(1)?.inserts).toEqual([{ id: 2, textId: 2, edit: insert }]);
+    expect(reading.pages.get(1)?.newTexts).toEqual([{ id: 2, newTextId: 2, edit: insert }]);
     expect(reading.edits).toEqual([aReplace("a", "one"), insert]);
   });
 
@@ -111,7 +111,7 @@ describe("new text, version by version", () => {
   test("a later version replaces the earlier in the edits sent, read under its first version's id", () => {
     const reading = read(revise(add(add(EMPTY_HISTORY, aReplace("a", "one")), insert), { replaces: 2, edit: moved }));
     expect(reading.edits).toEqual([aReplace("a", "one"), moved]);
-    expect(reading.pages.get(1)?.inserts).toEqual([{ id: 3, textId: 2, edit: moved }]);
+    expect(reading.pages.get(1)?.newTexts).toEqual([{ id: 3, newTextId: 2, edit: moved }]);
   });
 
   test("undo brings the earlier version back, and redo the later", () => {

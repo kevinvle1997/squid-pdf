@@ -3,7 +3,7 @@
 import { type Editor, type PressedOn, redo, undo } from "./editor";
 import { exportNow } from "./export";
 import { openFind, stepFind } from "./find";
-import { writeBelow, writeOnBarePage } from "./newText";
+import { openNewTextBelow, openNewTextOnBarePage } from "./newText";
 import { redact } from "./redaction";
 import { showShortcuts } from "./shortcuts";
 
@@ -44,11 +44,11 @@ const COMMANDS: readonly Command[] = [
 /** New text from the keyboard: below the span the key was pressed on, or at the top of a page with no text. */
 function newTextFrom(editor: Editor, at: KeyAt): void {
   if (at.spanId !== null) {
-    writeBelow(editor, at.spanId);
+    openNewTextBelow(editor, at.spanId);
     return;
   }
   const bare = at.page !== null && (editor.store.get().layout.pages.get(at.page) ?? []).length === 0;
-  if (bare && at.page !== null) writeOnBarePage(editor, at.page);
+  if (bare && at.page !== null) openNewTextOnBarePage(editor, at.page);
 }
 
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;

@@ -9,18 +9,18 @@ import { editableValueIn, emailCountIn, type HeldValue, heldOf, heldThrough, hel
 import type { HistoryAction } from "./history";
 import { editNote, type Note } from "./marks";
 import {
-  fontOfText,
+  fontOfNewText,
   inShippedFace,
   insertOf,
   keptOnPage,
+  type NewTextDraft,
+  newTextDrawingOf,
+  newTextSpanOf,
+  newTextVerdictOf,
   sameInsert,
-  type TextDraft,
-  textDrawingOf,
-  textSpanOf,
-  textVerdictOf,
 } from "./newText";
 import { type Reading, type SpanReading, textIn } from "./project";
-import { type Drawn, landedFitOf, landedInsertFitOf } from "./render";
+import { type Drawn, landedFitOf, landedNewTextFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
 import { liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
@@ -39,7 +39,7 @@ export interface SpanDraft {
 }
 
 /** What's being typed: into a span, or new text. */
-export type Draft = SpanDraft | TextDraft;
+export type Draft = SpanDraft | NewTextDraft;
 
 /** The draft, while it's a span's. */
 export function spanDraftOf(state: Pick<EditorState, "draft">): SpanDraft | null {
@@ -164,7 +164,7 @@ interface Troubles {
 
 /** What the draft's span would get wrong reading `text`, the ways out it offers, and what it comes to. */
 export function troublesIn(state: EditorState, text: string): Troubles {
-  if (state.draft?.kind === "text") return textTroublesIn(state, state.draft, text);
+  if (state.draft?.kind === "newText") return newTextTroublesIn(state, state.draft, text);
   const typing = draftSpanOf(state);
   if (typing === undefined) return { sentences: [], kind: "", offers: false, verdict: null };
   const { draft, span, font } = typing;
@@ -190,13 +190,13 @@ export function troublesIn(state: EditorState, text: string): Troubles {
 }
 
 /** What new text being typed would get wrong reading `text`, and what it comes to: only letters, as it has no width to fit. */
-function textTroublesIn(state: EditorState, draft: TextDraft, text: string): Troubles {
+function newTextTroublesIn(state: EditorState, draft: NewTextDraft, text: string): Troubles {
   const insert = insertOf({ ...draft, text });
   // Typed into again and not changed: its render's verdict holds.
   const fit =
-    draft.of !== null && sameInsert(draft.of.edit, insert) ? landedInsertFitOf(state.drawn, draft.of) : undefined;
-  const verdict = textVerdictOf(state.layout, { insert, fit });
-  const drawing = textDrawingOf(state.layout, insert);
+    draft.of !== null && sameInsert(draft.of.edit, insert) ? landedNewTextFitOf(state.drawn, draft.of) : undefined;
+  const verdict = newTextVerdictOf(state.layout, { insert, fit });
+  const drawing = newTextDrawingOf(state.layout, insert);
   const kind = `${drawing.switched.join("")} ${drawing.leftOut.join("")} ${shortWarningOf(verdict) ?? ""}`;
   return { sentences: letterTroublesOf(drawing, state.doc.sentences), kind, offers: false, verdict };
 }
@@ -251,15 +251,15 @@ export function typedState(
 }
 
 /** Type `typed` into new text: grown past the room to its right, its start moves left, so its end stays on its page. */
-export function typeIntoText(
+export function typeIntoNewText(
   editor: Editor,
   typed: string,
   { widthOf }: { widthOf: (insert: Insert) => number },
 ): void {
   const state = editor.store.get();
   const { draft, doc } = state;
-  const info = draft?.kind === "text" ? doc.pages[draft.page] : undefined;
-  if (draft?.kind !== "text" || info === undefined) return;
+  const info = draft?.kind === "newText" ? doc.pages[draft.page] : undefined;
+  if (draft?.kind !== "newText" || info === undefined) return;
   const text = lineOf(typed);
   const widthPt = widthOf(insertOf({ ...draft, text }));
   const origin = keptOnPage(info, { origin: draft.origin, size: draft.style.size }, widthPt);
@@ -291,13 +291,13 @@ function heardAsTyped(state: EditorState & { draft: Draft }, text: string): Edit
 /** The draft's full warning on `verdict`, shown in the chip: none when its words keep their look, or it's muted. */
 export function draftNoteOf(state: EditorState, verdict: Verdict): Note | null {
   const { draft, layout, doc, mutedFonts } = state;
-  if (draft?.kind === "text") {
+  if (draft?.kind === "newText") {
     const insert = insertOf(draft);
     // A face we ship draws it as asked: there's nothing to warn of but a letter it lacks.
     if (inShippedFace(insert)) return null;
-    const span = textSpanOf(layout, insert);
+    const span = newTextSpanOf(layout, insert);
     const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
-    return editNote(span, { verdict, font: fontOfText(layout, insert), sentences: doc.sentences, muted });
+    return editNote(span, { verdict, font: fontOfNewText(layout, insert), sentences: doc.sentences, muted });
   }
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
   if (span === undefined) return null;
@@ -344,7 +344,7 @@ export function fieldFocused(editor: Editor): void {
 export function enter(editor: Editor): void {
   const { draft, doc } = editor.store.get();
   // New text with nothing typed is put away, as Escape does; typed into again and emptied, it's taken out.
-  if (draft?.kind === "text") {
+  if (draft?.kind === "newText") {
     finish(editor, true, { returnFocus: true });
     return;
   }
@@ -372,7 +372,7 @@ export function typingEnd(
   const { draft, layout, reading, doc } = state;
   const nothing: HistoryAction = { kind: "add", edits: [] };
   if (draft === null) return { typed: nothing, ended: {} };
-  if (draft.kind === "text") return textTypingEnd(state, draft, { keep, returnFocus });
+  if (draft.kind === "newText") return newTextTypingEnd(state, draft, { keep, returnFocus });
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
   const now = reading.spans.get(draft.spanId);
   const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
@@ -390,22 +390,22 @@ export function typingEnd(
 }
 
 /** What ending new text's typing makes: the text, its next version, nothing, or, emptied, its taking out. */
-function textTypingEnd(
+function newTextTypingEnd(
   state: EditorState,
-  draft: TextDraft,
+  draft: NewTextDraft,
   { keep, returnFocus }: { keep: boolean; returnFocus: boolean },
 ): { typed: HistoryAction; ended: Partial<EditorState> } {
   const nothing: HistoryAction = { kind: "add", edits: [] };
   const back = {
     draft: null,
-    ...(returnFocus && { focusTo: draft.of === null ? draft.back : { textId: draft.of.textId } }),
+    ...(returnFocus && { focusTo: draft.of === null ? draft.back : { newTextId: draft.of.newTextId } }),
   };
   const edit = insertOf(draft);
   const unchanged = draft.of !== null && sameInsert(draft.of.edit, edit);
   if (!keep || unchanged || (draft.of === null && isEmpty(draft.text))) return { typed: nothing, ended: back };
   if (draft.of === null) {
     const added = {
-      ...(returnFocus && { focusTo: { textId: state.history.next } }),
+      ...(returnFocus && { focusTo: { newTextId: state.history.next } }),
       announcement: announcing(fill(state.doc.sentences.new_text_added, { text: draft.text })),
     };
     return { typed: { kind: "add", edits: [edit] }, ended: { ...back, ...added } };

@@ -138,16 +138,16 @@ describe("where a render disagrees with its preview", () => {
 describe("where a render of new text disagrees with its preview", () => {
   const signed = anInsert({ font: "Caveat Bold", text: "Signed" });
   const textPulsing = (disagreements: ReadonlyMap<number, PreviewDisagreement>) => [
-    ...(disagreements.get(0)?.textIds ?? []),
+    ...(disagreements.get(0)?.newTextIds ?? []),
   ];
 
   test("in a face we ship, drawn as asked, it swaps in silently; a letter left out the live check drew pulses", () => {
     const reading = readingOf(signed);
-    const [text] = reading.pages.get(0)?.inserts ?? [];
-    const drewAs = (fit: FitInfo) => drawnOf(reading, [0], { insertFits: new Map([[0, { [text?.id ?? 0]: fit }]]) });
+    const [text] = reading.pages.get(0)?.newTexts ?? [];
+    const drewAs = (fit: FitInfo) => drawnOf(reading, [0], { newTextFits: new Map([[0, { [text?.id ?? 0]: fit }]]) });
 
     expect(textPulsing(disagreementsAfter(NOTHING_DRAWN, drewAs(aFit()), judged()))).toEqual([]);
     const leftOut = drewAs(aFit({ left_out: ["S"] }));
-    expect(textPulsing(disagreementsAfter(NOTHING_DRAWN, leftOut, judged()))).toEqual([text?.textId]);
+    expect(textPulsing(disagreementsAfter(NOTHING_DRAWN, leftOut, judged()))).toEqual([text?.newTextId]);
   });
 });
