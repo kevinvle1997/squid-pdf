@@ -241,6 +241,8 @@ test("a date changed through the calendar downloads in the file's own font, and 
   // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
   const line = "Delivery begins 14 March 2026 and runs eighteen months.";
   const field = await startEdit(page, { line });
+  // Offered once the languages behind dates are learnt, in the background as the field opened.
+  await expect(page.getByRole("button", { name: "Date" })).toBeVisible();
   await field.press("Alt+ArrowDown");
   await expect(page.getByRole("button", { name: /March 14, 2026/ })).toBeFocused();
   // Before the pick, a day it can't write says why.
