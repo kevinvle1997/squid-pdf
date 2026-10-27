@@ -1,16 +1,16 @@
 // What the browser draws over a page until the server's render shows it: a span's new words, a
 // redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
-import type { FitRules, FontInfo, Insert, PageInfo, SpanInfo, Strategy } from "../../api/types";
+import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
 import { STRIP_PAD_PT } from "../constants";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
-import { fontOfText, textFaceOf } from "../newText";
+import { textFaceOf } from "../newText";
 import type { PageState } from "../page";
 import { differing } from "../project";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
 import { fontOf } from "../spanFonts";
-import { boxOf, cropOf, previewStyleOf, textBoxOf, textStyleOf, textWidthPt } from "./geometry";
+import { boxOf, cropOf, previewStyleOf, textBoxIn, textStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
 /** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
@@ -22,7 +22,7 @@ export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
     .map((span) => ({ key: span.id, box: span.bbox }));
   const texts = (page.edits?.inserts ?? [])
     .filter((text) => disagreement.textIds.has(text.textId))
-    .map((text) => ({ key: `text ${text.textId}`, box: textBox(page, text.edit) }));
+    .map((text) => ({ key: `text ${text.textId}`, box: textBoxIn(page.layout, text.edit) }));
   return [...spans, ...texts].map(({ key, box }) => (
     <span
       key={`${key}:${disagreement.count}`}
@@ -32,13 +32,6 @@ export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
       style={boxOf(box, info)}
     />
   ));
-}
-
-/** Where new text is drawn, as wide as its preview's face sets it. */
-function textBox(page: PageState, insert: Insert) {
-  const face = textFaceOf(page.layout, insert);
-  const glyphs = fontOfText(page.layout, insert)?.glyphs ?? {};
-  return textBoxOf(insert, textWidthPt(insert, { face, glyphs }));
 }
 
 /**
@@ -60,13 +53,18 @@ export function TextPreviews({
   const drawnIds = new Set(drawn.map((text) => text.id));
   const nowIds = new Set(now.map((text) => text.id));
   const covered = drawn.filter(
-    (text) => !nowIds.has(text.id) && isUnderStrip(textBox(page, text.edit), { strips, info }),
+    (text) => !nowIds.has(text.id) && isUnderStrip(textBoxIn(page.layout, text.edit), { strips, info }),
   );
   const previewed = now.filter((text) => !drawnIds.has(text.id) && text.textId !== page.writingAgain);
   return (
     <>
       {covered.map((text) => (
-        <Original key={`was ${text.id}`} box={padded(textBox(page, text.edit), info)} info={info} src={page.src} />
+        <Original
+          key={`was ${text.id}`}
+          box={padded(textBoxIn(page.layout, text.edit), info)}
+          info={info}
+          src={page.src}
+        />
       ))}
       {previewed.map((text) => (
         <span

@@ -1317,6 +1317,20 @@ describe("new text", () => {
     expect(status.element().firstElementChild).toBe(heard);
   });
 
+  test("the bar's eye marks where new text in a similar font is, as it marks a changed line", async () => {
+    const screen = await openEditor({ doc: ARIAL_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("a{Enter}");
+    await screen.getByRole("button", { name: "1 change in a similar font" }).click();
+    await screen.getByRole("button", { name: "Show the places in Arial on the page" }).click();
+
+    const marked = () => [...document.querySelectorAll<HTMLElement>("[data-shown]")];
+    await expect.poll(() => marked().length).toBe(1);
+    const mark = screen.getByRole("button", { name: "a", exact: true }).element().getBoundingClientRect();
+    const [shown] = marked();
+    expect(shown?.getBoundingClientRect()).toMatchObject({ left: mark.left, top: mark.top, width: mark.width });
+  });
+
   test("Cmd+Enter on a span opens new text on the line below it; arrows nudge it a point, Shift+arrows ten", async () => {
     const screen = await openEditor({ doc: RED_DOC });
     const mark = screen.getByRole("button", { name: "was here" });
