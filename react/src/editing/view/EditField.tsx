@@ -48,13 +48,15 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // Left long, a line past its room shows where the room ends: what to shorten it to.
   const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
   const pastRoom = fit !== undefined && setting.way === "as-is" && runsPast(fit.deltaPt, fit.roomPt, rules);
-  // One trouble a line: a sentence of the server's, then the fit's own.
-  // What's typed comes to, worked out once a change: its troubles, a line each, and its verdict.
-  const { trouble, fidelity, substitute } = useEditorState((state) => {
+  // What's typed comes to, worked out once a change: its troubles, a line each, the server's then the fit's own,
+  // and its verdict.
+  const { trouble, fidelity, why, substitute, sameWidths } = useEditorState((state) => {
     const { sentences, verdict } = troublesIn(state, state.draft?.text ?? "");
     const comesTo = verdict ?? span;
-    return { trouble: sentences.join("\n"), fidelity: comesTo.fidelity, substitute: comesTo.substitute };
+    const { fidelity, why, substitute, same_widths: sameWidths } = comesTo;
+    return { trouble: sentences.join("\n"), fidelity, why, substitute, sameWidths };
   }, shallowEqual);
+  const verdict = { fidelity, why, substitute, same_widths: sameWidths };
   const field = useRef<HTMLInputElement>(null);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
@@ -161,7 +163,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           style={boxOf({ ...span.bbox, x0: span.bbox.x1 + span.room_pt, x1: span.bbox.x1 + span.room_pt }, info)}
         />
       )}
-      <Chip span={span} info={info} trouble={trouble} verdict={{ fidelity, substitute }} setting={setting} />
+      <Chip span={span} info={info} trouble={trouble} verdict={verdict} setting={setting} />
     </>
   );
 }

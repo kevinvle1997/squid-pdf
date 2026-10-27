@@ -54,14 +54,22 @@ export function lookOf({ span, font, reading, fit, redaction, sentences }: Marke
   return { ...looks, note: fidelityNote(verdictOf(span, { reading, fit, live }), { span, font, sentences }) };
 }
 
-/** What an edit in `span` warns of as typing starts: nothing when it keeps its look, or its font's warning is muted. */
+/**
+ * What an edit in `span` warns of in full while it's typed, as `verdict` says of the words typed: nothing when
+ * they keep its look, or its font's warning is muted.
+ */
 export function editNote(
   span: SpanInfo,
-  { font, sentences, muted }: { font: FontInfo | undefined; sentences: Sentences; muted: boolean },
+  {
+    verdict,
+    font,
+    sentences,
+    muted,
+  }: { verdict: Verdict; font: FontInfo | undefined; sentences: Sentences; muted: boolean },
 ): Note | null {
   // A form field's is a trouble of the field's own: whatever is typed, the edit is left out.
   if (muted || span.form_field) return null;
-  return fidelityNote(span, { span, font, sentences });
+  return fidelityNote(verdict, { span, font, sentences });
 }
 
 /** What a redaction's render found, in the server's words: nothing to say until it's drawn, or when it all went. */
