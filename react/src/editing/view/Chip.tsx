@@ -31,11 +31,11 @@ interface Props {
   setting: Setting; // how the line is drawn, and the ways out to choose from
   value: EditableValue | undefined; // a date or an amount in what's typed, which has an editor of its own
   field: RefObject<HTMLInputElement | null>; // the field typed into, which the value's editor sends focus back to
-  slip: RefObject<HTMLDivElement | null>; // this slip, for the field to tell focus moving into it from leaving
+  chip: RefObject<HTMLDivElement | null>; // this slip, for the field to tell focus moving into it from leaving
 }
 
 /** The slip under the span typed into. */
-export function Chip({ span, info, trouble, verdict, setting, value, field, slip }: Props) {
+export function Chip({ span, info, trouble, verdict, setting, value, field, chip }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
@@ -52,18 +52,18 @@ export function Chip({ span, info, trouble, verdict, setting, value, field, slip
   // Kept on the page's width as what it holds grows, or the page is shown another size: an open calendar is the widest.
   const [shiftPx, setShiftPx] = useState(0);
   const keepOnPage = useCallback(
-    (chip: HTMLDivElement | null) => {
-      slip.current = chip;
-      const layer = chip?.offsetParent;
-      if (chip == null || !(layer instanceof HTMLElement)) return;
+    (element: HTMLDivElement | null) => {
+      chip.current = element;
+      const layer = element?.offsetParent;
+      if (element == null || !(layer instanceof HTMLElement)) return;
       const resized = new ResizeObserver(() => {
-        setShiftPx(slipShiftPx(span.bbox, info, { slipWidthPx: chip.offsetWidth, pageWidthPx: layer.clientWidth }));
+        setShiftPx(slipShiftPx(span.bbox, info, { slipWidthPx: element.offsetWidth, pageWidthPx: layer.clientWidth }));
       });
-      resized.observe(chip);
+      resized.observe(element);
       resized.observe(layer);
       return () => resized.disconnect();
     },
-    [slip, span.bbox, info],
+    [chip, span.bbox, info],
   );
   return (
     <div

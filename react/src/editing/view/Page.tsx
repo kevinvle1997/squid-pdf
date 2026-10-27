@@ -11,7 +11,7 @@ import type { SpanReading } from "../project";
 import { stillShows } from "../redrawRegions";
 import { shallowEqual } from "../store";
 import { pageInView, zoomShown } from "../zoom";
-import { useEditor, useEditorState } from "./context";
+import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { DeletePage } from "./DeletePage";
 import { boxOf, layerOf, printedPxOf, sheetShapeOf, sheetWidthOf, topOf } from "./geometry";
 import { ChangeList, Margin } from "./Margin";
@@ -98,6 +98,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   );
   const label = `Page ${shownNumber}`;
   const [focusedIn, setFocusedIn] = useState(false);
+  const [slipLayer, setSlipLayer] = useState<HTMLDivElement | null>(null);
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
   // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
   // page whose mark has focus, or focus would fall to the document as its mark went.
@@ -118,7 +119,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
       {/* First, so Tab reaches it after the page above and before this page's own notes and lines. */}
       <DeletePage page={index} shownNumber={shownNumber} />
       <Margin info={info} changes={notes} noteHeightPt={sheet.noteHeightPt} pageNumber={shownNumber} />
-      <Sheet info={info} sheetRef={sheet.ref}>
+      <Sheet info={info} sheetRef={sheet.ref} slipLayerRef={setSlipLayer}>
         {sheet.near && (
           // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
           <img
@@ -154,21 +155,41 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
           </>
         )}
         {page.scrollTo !== null && <ScrollAnchor key={page.scrollTo.count} page={page} info={info} />}
-        {keepMarks && <Marks page={page} info={info} />}
+        {keepMarks && (
+          <SlipLayerContext.Provider value={slipLayer}>
+            <Marks page={page} info={info} />
+          </SlipLayerContext.Provider>
+        )}
       </Sheet>
       <ChangeList changes={notes} pageNumber={shownNumber} />
     </section>
   );
 });
 
-/** The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated points. */
-function Sheet({ info, sheetRef, children }: { info: PageInfo; sheetRef: Ref<HTMLDivElement>; children: ReactNode }) {
+/**
+ * The sheet, as wide as the page is printed and turned as the file says; inside, everything is in unrotated
+ * points. Over it, a layer the same, unclipped, for the slip of the span typed into.
+ */
+function Sheet({
+  info,
+  sheetRef,
+  slipLayerRef,
+  children,
+}: {
+  info: PageInfo;
+  sheetRef: Ref<HTMLDivElement>;
+  slipLayerRef: Ref<HTMLDivElement>;
+  children: ReactNode;
+}) {
   return (
     <>
       <div ref={sheetRef} className={styles.sheet} style={sheetShapeOf(info)}>
         <div className={styles.layer} style={layerOf(info)}>
           {children}
         </div>
+      </div>
+      <div className={styles.slips} style={sheetShapeOf(info)}>
+        <div ref={slipLayerRef} className={styles.layer} style={layerOf(info)} />
       </div>
       {/* Its crop marks, in its cell: the sheet clips everything inside it, so they hang off a box of their own. */}
       <Trim className={styles.trim} />
