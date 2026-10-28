@@ -10,6 +10,12 @@
 .words { display: flex; flex-direction: column; gap: var(--s1); }
 .note[data-entering] { animation: global(arrive) var(--dur-move) var(--ease-out); }
 .note[data-exiting] { animation: global(fade) var(--dur-quick) var(--ease-out) reverse; }
+/* The note many share: closed by a press on it, it fades without taking the next, which goes to what's under it. */
+.shared { composes: note; }
+.shared[data-exiting] { pointer-events: none; }
+/* The gap to what it's over is its own, so a pointer crossing it is on the note all the way, over nothing else. */
+.shared::after { content: ""; position: absolute; inset-inline: 0; top: 100%; height: var(--note-gap); }
+.shared[data-placement="bottom"]::after { top: auto; bottom: 100%; }
 .heading { font-weight: 600; color: var(--ink); }
 /* The shadow is dropped here, so an outline keeps the note apart from the page under it. */
 @media (forced-colors: active) {

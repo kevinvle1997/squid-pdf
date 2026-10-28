@@ -33,7 +33,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
-import { EXPORT_INTENT_MS, LINE_BELOW_EM, NEW_TEXT_DESCENT_EM } from "../constants";
+import { EXPORT_INTENT_MS, LINE_BELOW_EM, NEW_TEXT_DESCENT_EM, NOTE_CLOSE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
@@ -1613,6 +1613,61 @@ describe("new text", () => {
     await expect.element(mark).toHaveFocus();
     const note = screen.getByRole("tooltip");
     await expect.element(note).toHaveTextContent(`${SENTENCES.new_text}${SENTENCES.new_text_moves}`);
+  });
+
+  test("Escape closes new text's note keyboard focus showed, until focus leaves it (WCAG 1.4.13, Dismissible)", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(note).not.toBeInTheDocument();
+    await expect.element(mark).toHaveFocus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}{Tab}");
+    await expect.element(mark).toHaveFocus();
+    await expect.element(note).toBeVisible();
+  });
+
+  test("Escape over new text's note a hover showed leaves the next keyboard focus on it to show it", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    const before = document.activeElement as HTMLElement;
+    await mark.hover();
+    await expect.element(mark).toHaveAttribute("aria-describedby");
+    await userEvent.keyboard("{Escape}");
+    await expect.element(mark).not.toHaveAttribute("aria-describedby");
+    await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
+    before.focus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(mark).toHaveFocus();
+    await expect.element(mark).toHaveAttribute("aria-describedby");
+  });
+
+  test("the pointer passing over new text's note keyboard focus showed leaves it shown (WCAG 1.4.13, Persistent)", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toBeVisible();
+    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    await note.hover();
+    await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
+    const leftAt = performance.now();
+    // Past the delay a note closes after: still there, focus still on its mark.
+    await expect
+      .poll(() => performance.now() - leftAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
+      .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
+    await expect.element(mark).toHaveFocus();
+    await expect.element(note).toBeVisible();
   });
 
   test("with a reading persisted before new text's sentences were sent, its note and its margin note say nothing of it", async () => {

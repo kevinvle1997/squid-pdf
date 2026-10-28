@@ -48,6 +48,9 @@ export const DOUBLE_TAP_REACH_PX = 24;
 /** How long a pointer rests on a span before its note shows. Focus shows it at once. */
 export const NOTE_DELAY_MS = 250;
 
+/** How long a span's note stays once the pointer leaves its mark or the note: time to cross between them. React Aria's own `closeDelay`, so the margin's notes close alike. */
+export const NOTE_CLOSE_DELAY_MS = 500;
+
 /** Find runs once typing in it stops for this long: soon enough to feel live, late enough to skip each letter. */
 export const FIND_DELAY_MS = 200;
 

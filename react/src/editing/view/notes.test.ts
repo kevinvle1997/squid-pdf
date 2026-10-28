@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { NOTE_CLOSE_DELAY_MS } from "../constants";
 import { createNotes } from "./notes";
 
 // Only its identity matters here: which mark a note is over.
@@ -53,5 +54,31 @@ describe("a page's note", () => {
     expect(notes.store.get()).toEqual({ shown: null, last: { spanId: "a", anchor: markA, via: "focus" } });
     notes.show("b", markB, "hover");
     expect(notes.store.get().shown?.spanId).toBe("b");
+  });
+
+  test("leaving its mark, it closes after the delay, unless the pointer comes onto it; leaving that closes it too", () => {
+    const notes = createNotes(250);
+    notes.show("a", markA, "focus");
+    notes.hideSoon("a");
+    notes.keep("a");
+    vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS);
+    expect(notes.store.get().shown?.spanId).toBe("a");
+
+    notes.hideSoon("a");
+    vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS - 1);
+    expect(notes.store.get().shown?.spanId).toBe("a");
+    vi.advanceTimersByTime(1);
+    expect(notes.store.get().shown).toBeNull();
+  });
+
+  test("a note closing as the pointer left doesn't close the one shown after it", () => {
+    const notes = createNotes(250);
+    notes.show("a", markA, "focus");
+    notes.hideSoon("a");
+    notes.show("b", markB, "hover");
+    notes.hide("b");
+    notes.show("a", markA, "focus");
+    vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS);
+    expect(notes.store.get().shown?.spanId).toBe("a");
   });
 });
