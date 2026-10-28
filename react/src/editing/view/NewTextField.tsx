@@ -1,12 +1,22 @@
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeRefs, useFocusWithin } from "react-aria";
-import { Group, Input, TextField } from "react-aria-components";
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { mergeProps, mergeRefs, useFocusWithin } from "react-aria";
+import { Input, TextField } from "react-aria-components";
+import { createPortal } from "react-dom";
 import type { Insert, PageInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { ChoiceList } from "../../ui/ChoiceList";
 import { Warn } from "../../ui/Warn";
 import { isUndoOrRedo } from "../commands";
-import { SLIP_GAP_PT } from "../constants";
 import { type Editor, focusMoved } from "../editor";
 import { addFaces, familyOf } from "../faces";
 import { chooseFont, chosenFontOf, type FontChoice, fontChoicesOf, sameChoices, shippedNameOf } from "../fontChoices";
@@ -22,6 +32,8 @@ import {
   type NewTextDraft,
   newTextFaceOf,
   newTextSpanOf,
+  pastFaces,
+  toFaces,
 } from "../newText";
 import { shownNameIn } from "../spanFonts";
 import { shallowEqual } from "../store";
@@ -29,7 +41,7 @@ import { draftNoteOf, enter, fieldFocused, finish, troublesIn, typeIntoNewText }
 import { shortWarningOf } from "../verdicts";
 import { Facts } from "./Chip";
 import styles from "./Chip.module.css";
-import { useEditor, useEditorState } from "./context";
+import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import fieldStyles from "./EditField.module.css";
 import { useFaceOnPage } from "./faceOnPage";
 import {
@@ -41,10 +53,11 @@ import {
   newTextWidthPt,
   points,
 } from "./geometry";
+import { useSlipPlace } from "./slipPlace";
 
 /**
- * New text being typed, where it will be drawn, in the face that will draw it, and its slip under it: what it
- * comes to (Rule 1, as an edit of a span), then the fonts it can be set in. Leaving both ends the typing.
+ * New text being typed, where it will be drawn, in the face that will draw it, and its slip: what it comes to (Rule 1,
+ * as an edit of a span), then the fonts it can be set in. Leaving both ends the typing.
  */
 export function NewTextField({ info }: { info: PageInfo }) {
   const editor = useEditor();
@@ -55,9 +68,11 @@ export function NewTextField({ info }: { info: PageInfo }) {
   const face = insert === null ? null : newTextFaceOf(layout, insert);
   useFaceOnPage(face);
   const scaled = useFieldScale(draft?.style.size ?? 0, info);
-  const takeFocus = useFocusSentBack(editor);
-  const fieldRef = useMemo(() => mergeRefs(scaled.ref, takeFocus), [scaled.ref, takeFocus]);
-  const endsOnLeaving = useEndsOnLeaving(editor);
+  const takeFocus = useFocusSent(editor, "field");
+  const fieldRef = useMemo(() => mergeRefs<HTMLInputElement>(scaled.ref, takeFocus), [scaled.ref, takeFocus]);
+  const slip = useRef<HTMLDivElement>(null);
+  // The page's layer for slips, which its sheet doesn't clip: a slip near the foot hangs past it, over the next page.
+  const slipLayer = useContext(SlipLayerContext);
   const placed = useRef(false);
   if (draft === null || insert === null || face === null) return null;
 
@@ -68,13 +83,21 @@ export function NewTextField({ info }: { info: PageInfo }) {
     fieldFocused(editor);
   }
 
+  // Leaving the field and its slip ends the typing, but not a file picker taking the window's focus.
+  function leaving(event: FocusEvent) {
+    const to = event.relatedTarget;
+    if (to instanceof Node && (scaled.field.current?.contains(to) || slip.current?.contains(to))) return;
+    if (document.hasFocus()) finish(editor, true);
+  }
+
   function onKeyDown(event: KeyboardEvent) {
-    // In the slip, undo and redo are the typing's, as in a span's calendar: nothing is undone, the field's words among it.
-    if (event.target !== scaled.field.current && isUndoOrRedo(event)) {
+    // On to the fonts, as Tab would reach them were the slip not apart from the page.
+    if (event.key === "Tab" && !event.shiftKey) {
       event.preventDefault();
+      toFaces(editor);
       return;
     }
-    if (event.key !== "Escape" && !(event.key === "Enter" && event.target === scaled.field.current)) return;
+    if (event.key !== "Enter" && event.key !== "Escape") return;
     event.preventDefault();
     if (event.key === "Enter") enter(editor);
     else finish(editor, false, { returnFocus: true });
@@ -85,14 +108,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = newTextStyleOf(insert, info, face);
   return (
-    // `data-slip`: a key pressed in the slip is the slip's, as one in the field is the field's (`isTyping`).
-    <Group
-      {...endsOnLeaving}
-      aria-label="New text and its font"
-      className={fieldStyles.field}
-      onKeyDown={onKeyDown}
-      data-slip=""
-    >
+    <>
       <TextField
         aria-label={draft.of === null ? "New text" : `Change “${draft.of.edit.text}”`}
         value={draft.text}
@@ -103,6 +119,8 @@ export function NewTextField({ info }: { info: PageInfo }) {
           ref={fieldRef}
           autoFocus
           onFocus={place}
+          onBlur={leaving}
+          onKeyDown={onKeyDown}
           className={fieldStyles.input}
           spellCheck={false}
           autoComplete="off"
@@ -115,12 +133,18 @@ export function NewTextField({ info }: { info: PageInfo }) {
           }}
         />
       </TextField>
-      <NewTextChip
-        draft={draft}
-        info={info}
-        line={newTextSlipLineOf(insert, { nearSize: draft.style.nearSize, fieldWidthPt })}
-      />
-    </Group>
+      {slipLayer !== null &&
+        createPortal(
+          <NewTextChip
+            draft={draft}
+            info={info}
+            line={newTextSlipLineOf(insert, { nearSize: draft.style.nearSize, fieldWidthPt })}
+            slip={slip}
+            onLeave={leaving}
+          />,
+          slipLayer,
+        )}
+    </>
   );
 }
 
@@ -145,37 +169,79 @@ function useFieldScale(sizePt: number, info: PageInfo) {
   return { field, ref, scale };
 }
 
-/** A ref for the field: sent back to it from the slip, it takes focus as it's drawn again. */
-function useFocusSentBack(editor: Editor) {
-  const sentBack = useEditorState((state) => state.focusTo !== null && "field" in state.focusTo);
+/** A ref for the part of new text being typed that `part` names: focus sent there, it takes it as it's drawn again. */
+function useFocusSent(editor: Editor, part: "field" | "faces") {
+  const sent = useEditorState((state) => state.focusTo !== null && part in state.focusTo);
   return useCallback(
-    (input: HTMLInputElement | null) => {
-      if (!sentBack || input === null) return;
-      input.focus();
+    (element: HTMLElement | null) => {
+      if (!sent || element === null) return;
+      element.focus();
       focusMoved(editor);
     },
-    [sentBack, editor],
+    [sent, editor],
   );
 }
 
-/** What ends the typing: leaving the field and its slip, not a file picker taking the window's focus. */
-function useEndsOnLeaving(editor: Editor) {
-  const { focusWithinProps } = useFocusWithin({
-    onBlurWithin: () => {
-      if (document.hasFocus()) finish(editor, true);
-    },
-  });
-  return { onFocus: focusWithinProps.onFocus, onBlur: focusWithinProps.onBlur };
-}
-
-/** The slip under new text, hung under `line`: what it comes to, the full warning as it opens, and the fonts it can be set in. */
-function NewTextChip({ draft, info, line }: { draft: NewTextDraft; info: PageInfo; line: Box }) {
+/**
+ * The slip of new text, hung from `line` on the page's layer for slips, as a span's chip is: what it comes to, the full
+ * warning as it opens, and the fonts it can be set in. Focus leaving it goes through `onLeave`, as the field's does.
+ */
+function NewTextChip({
+  draft,
+  info,
+  line,
+  slip,
+  onLeave,
+}: {
+  draft: NewTextDraft;
+  info: PageInfo;
+  line: Box;
+  slip: RefObject<HTMLDivElement | null>;
+  onLeave: (event: FocusEvent) => void;
+}) {
   const editor = useEditor();
-  const kept = useKeptOnPage(line, info);
   const { trouble, note, why, shortWarning, drawnIn, shown } = useChipFacts(draft);
   const { groups, chosen, failed, widthOf } = useFontList(draft);
+  // On the side of its line it was on while the fonts are in use: a face chosen grows or shrinks it, under the keys.
+  const [inUse, setInUse] = useState(false);
+  const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setInUse });
+  const { slipRef, style } = useSlipPlace(line, { page: info, holdSide: inUse });
+  const placed = useCallback(
+    (element: HTMLDivElement | null) => {
+      slip.current = element;
+      return slipRef(element);
+    },
+    [slip, slipRef],
+  );
+  const takeFocus = useFocusSent(editor, "faces");
+
+  function onKeyDown(event: KeyboardEvent) {
+    // Undo and redo are the typing's, as in a span's calendar: nothing is undone, the field's words among it.
+    if (isUndoOrRedo(event)) {
+      event.preventDefault();
+      return;
+    }
+    // Back to the field, which the slip hangs apart from, or on to what follows the field on its page.
+    if (event.key === "Tab") {
+      if (event.shiftKey) backToField(editor);
+      else if (!pastFaces(editor)) return;
+      event.preventDefault();
+      return;
+    }
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    finish(editor, false, { returnFocus: true });
+  }
+
   return (
-    <div ref={kept.ref} className={styles.chip} style={kept.style}>
+    // `data-slip`: a key pressed in it is the slip's, as one in the field is the field's (`isTyping`).
+    <div
+      ref={placed}
+      className={styles.chip}
+      style={style}
+      data-slip=""
+      {...mergeProps(focusWithinProps, { onBlur: onLeave, onKeyDown })}
+    >
       {note !== null && (
         // Heard as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
         <span className={styles.note}>
@@ -202,6 +268,7 @@ function NewTextChip({ draft, info, line }: { draft: NewTextDraft; info: PageInf
           onChoose={(key) => chooseFont(editor, key, { widthOf })}
           onEnter={() => enter(editor)}
           onPointerChoice={() => backToField(editor)}
+          listRef={takeFocus}
         />
         {failed !== null && <span className={styles.facesFailed}>{failed}</span>}
       </span>
@@ -253,52 +320,4 @@ function useFontList(draft: NewTextDraft) {
     failed,
     widthOf: (insert: Insert) => newTextWidthIn(layout, insert),
   };
-}
-
-/**
- * Where the slip goes so the page holds all of it, as the page clips what runs past its edges: under the text, slid
- * left as far as it would run past the right edge; over it, where there's room there and none under it; and where
- * there's room for it on neither side, on the roomier one, as tall as that room, scrolled.
- */
-function useKeptOnPage(box: { x0: number; y0: number; x1: number; y1: number }, info: PageInfo) {
-  const [kept, setKept] = useState<{ slidPx: number; above: boolean; roomPx: number | null }>({
-    slidPx: 0,
-    above: false,
-    roomPx: null,
-  });
-  const { x0, y0, y1 } = box;
-  const ref = useCallback(
-    (slip: HTMLDivElement | null) => {
-      const layer = slip?.offsetParent;
-      if (slip == null || !(layer instanceof HTMLElement)) return;
-      const measured = new ResizeObserver(() => {
-        // Its own offsets and full height, which a transform and a scroll leave alone.
-        const pxPerPt = layer.clientWidth / info.width;
-        const left = x0 * pxPerPt;
-        const runsPast = left + slip.offsetWidth - layer.clientWidth;
-        const below = layer.clientHeight - (y1 + SLIP_GAP_PT) * pxPerPt;
-        const above = (y0 - SLIP_GAP_PT) * pxPerPt;
-        const tall = slip.scrollHeight;
-        const goesAbove = tall > below && above > below;
-        const room = goesAbove ? above : below;
-        setKept({
-          slidPx: runsPast > 0 ? Math.min(runsPast, left) : 0,
-          above: goesAbove,
-          roomPx: tall > room ? room : null,
-        });
-      });
-      measured.observe(slip);
-      measured.observe(layer);
-      return () => measured.disconnect();
-    },
-    [x0, y0, y1, info.width],
-  );
-  const placed = kept.above
-    ? { bottom: points(info.height - y0 + SLIP_GAP_PT, info), left: points(x0, info) }
-    : { top: points(y1 + SLIP_GAP_PT, info), left: points(x0, info) };
-  const scrolled =
-    kept.roomPx === null
-      ? {}
-      : { maxHeight: `${kept.roomPx}px`, overflowY: "auto" as const, pointerEvents: "auto" as const };
-  return { ref, style: { ...placed, ...scrolled, translate: `${-kept.slidPx}px 0` } };
 }

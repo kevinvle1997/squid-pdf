@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, Ref } from "react";
 import { Header, ListBox, ListBoxItem, ListBoxSection } from "react-aria-components";
 import styles from "./ChoiceList.module.css";
 
@@ -23,15 +23,17 @@ interface Props {
   onChoose: (id: string) => void;
   onEnter: () => void; // Enter on a choice: done choosing
   onPointerChoice?: () => void; // a pointer chose: focus can go back to what it came from
+  listRef?: Ref<HTMLDivElement>; // the list, for focus sent to it
 }
 
 /**
  * One choice of many, listed open, the one chosen ticked in ink and softly filled: never blue, which is for what
  * changed. The arrow keys choose as they go, as React Aria's list does; a pointer's press chooses at once.
  */
-export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointerChoice }: Props) {
+export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointerChoice, listRef }: Props) {
   return (
     <ListBox
+      ref={listRef}
       aria-label={label}
       className={styles.list}
       selectionMode="single"

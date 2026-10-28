@@ -3,7 +3,7 @@ import type { Render } from "../api/types";
 import { A4, aDoc, aFit, aFont, anInsert, aSpan, halfWideGlyphs } from "../fixtures";
 import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM, NEW_TEXT_SIZE_PT } from "./constants";
 import { change, createEditor, layoutOf } from "./editor";
-import { keptNewTexts, moveNewText, openNewTextAt, shownNewTextsAmong } from "./newText";
+import { afterNewTextField, keptNewTexts, moveNewText, openNewTextAt, shownNewTextsAmong } from "./newText";
 import { typeIntoNewText } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({
@@ -38,6 +38,29 @@ describe("the new text a shown row of the bar's list marks", () => {
   test("goes by its render once that version landed", () => {
     const fits = { 1: aFit({ fidelity: "exact" }) };
     expect(shownNewTextsAmong([inArial], { layout: LAYOUT, fits, shown: new Set(["font:Arial"]) })).toEqual([]);
+  });
+});
+
+describe("what follows the field new text is typed in, as Tab from its fonts goes on", () => {
+  // Two lines, and new text at rest between them.
+  const top = aSpan({ id: "top", bbox: { x0: 72, y0: 100, x1: 152, y1: 112 } });
+  const foot = aSpan({ id: "foot", bbox: { x0: 72, y0: 500, x1: 152, y1: 512 } });
+  function opened(at: [number, number]) {
+    const editor = createEditor(new File(["%PDF-"], "a.pdf"), aDoc({ spans: [top, foot] }), 2);
+    change(editor, { kind: "add", edits: [anInsert({ origin: [72, 300] })] });
+    openNewTextAt(editor, 0, at);
+    return editor.store.get();
+  }
+
+  test("is the line after its place in the page's order, or the new text at rest there", () => {
+    expect(afterNewTextField(opened([300, 50]))).toEqual({ spanId: "top" });
+    const [resting] = keptNewTexts(opened([300, 200]).reading);
+    expect(afterNewTextField(opened([300, 200]))).toEqual({ newTextId: resting?.newTextId });
+    expect(afterNewTextField(opened([300, 400]))).toEqual({ spanId: "foot" });
+  });
+
+  test("is nothing past the page's last line: Tab goes on from the slip, after the page", () => {
+    expect(afterNewTextField(opened([300, 700]))).toBeNull();
   });
 });
 

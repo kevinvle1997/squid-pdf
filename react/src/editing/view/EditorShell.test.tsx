@@ -1204,6 +1204,13 @@ async function doubleClickPaper(screen: Awaited<ReturnType<typeof render>>, [x, 
   return { x: shown.left + position.x, y: shown.top + position.y };
 }
 
+/** The slip of new text being typed, on the page's layer for slips: the one slip open. */
+function newTextSlip() {
+  const slip = document.querySelector("[data-slip]");
+  if (slip === null) throw new Error("no slip");
+  return page.elementLocator(slip);
+}
+
 /** The edits the last render asked for. */
 function lastRendered() {
   return vi.mocked(renderStrips).mock.lastCall?.[1].edits ?? [];
@@ -1342,7 +1349,7 @@ describe("new text", () => {
 
     await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
     const warning = fill(SENTENCES.substitute, { font: "Liberation Sans Regular" });
-    const slip = screen.getByRole("group", { name: "New text and its font" });
+    const slip = newTextSlip();
     await expect.element(slip.getByText(warning)).toBeVisible();
     await expect.element(slip.getByText("a similar font", { exact: true })).toBeVisible();
     const status = screen.getByRole("status");
@@ -1578,6 +1585,27 @@ describe("new text", () => {
     await expect.element(screen.getByRole("banner").getByText(/change/)).not.toBeInTheDocument();
   });
 
+  test("Tab from the fonts goes on to the page's next line, and the typing is kept", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 60]); // above the page's one line
+    await userEvent.keyboard("Signed{Tab}");
+    await expect.element(screen.getByRole("option", { name: "Times Roman" })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(screen.getByRole("button", { name: red.text, exact: true })).toHaveFocus();
+    await expect.element(screen.getByRole("button", { name: "Signed", exact: true })).toBeInTheDocument();
+  });
+
+  test("Tab from the fonts with nothing after it on the page goes where Tab from its place would", async () => {
+    const screen = await openEditor({ doc: { ...RED_DOC, pages: [A4, A4] } });
+    await doubleClickPaper(screen, [300, 300]); // below the page's one line
+    await userEvent.keyboard("Signed{Tab}");
+    await expect.element(screen.getByRole("option", { name: "Times Roman" })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    // Past the page, before the next: as Tab goes on from its last line.
+    await expect.element(screen.getByRole("button", { name: "Split after page 1" })).toHaveFocus();
+    await expect.element(screen.getByRole("button", { name: "Signed", exact: true })).toBeInTheDocument();
+  });
+
   test("in its fonts, undo and redo are the typing's, not the window's or the browser's: nothing is undone", async () => {
     const screen = await openEditor({ doc: RED_DOC });
     await changeSpan(screen, "is done");
@@ -1674,8 +1702,7 @@ describe("new text in a face we ship", () => {
     await userEvent.keyboard("Ω Smith");
     await screen.getByRole("option", { name: "Caveat Bold" }).click();
     // Caveat has no Ω: a face that has it draws the whole line.
-    const slip = screen.getByRole("group", { name: "New text and its font" });
-    await expect.element(slip.getByText("Noto Sans Bold", { exact: false })).toBeVisible();
+    await expect.element(newTextSlip().getByText("Noto Sans Bold", { exact: false })).toBeVisible();
     await userEvent.keyboard("{Enter}");
 
     const count = screen.getByRole("button", { name: "1 change in a similar font" });

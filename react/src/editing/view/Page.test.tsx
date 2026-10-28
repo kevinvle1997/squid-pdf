@@ -7,14 +7,28 @@ import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { ProblemError, pageImage, pageUrl, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
-import { A4, aDoc, aFit, aFont, aProblem, aRedact, aReply, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
+import {
+  A4,
+  aDoc,
+  aFit,
+  aFont,
+  aFontList,
+  aProblem,
+  aRedact,
+  aReply,
+  aSpan,
+  halfWideGlyphs,
+  SENTENCES,
+} from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
 import { PX_PER_PT } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
 import { setWarningMuted } from "../mutedWarnings";
+import { openNewTextAt } from "../newText";
 import { redact } from "../redaction";
+import { loadShippedFaces } from "../shippedFaces";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
 import { Page } from "./Page";
@@ -32,6 +46,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   pageUrl: vi.fn(),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
+  fontList: vi.fn(async () => aFontList()),
 }));
 
 // The page draws its margin each time it's drawn itself, so counting the margin counts the page.
@@ -969,6 +984,91 @@ describe("a page", () => {
         expect(slip().right).toBeLessThanOrEqual(390 - 16 + 1);
       },
     );
+
+    /** New text opened at `at` on the page shown as `info`, in `doc`, `words` typed: its field, its fonts and its slip. */
+    async function openNewText(info: PageInfo, at: [number, number], { doc = DOC, words = "" } = {}) {
+      openDocument(doc);
+      await loadShippedFaces(editor);
+      const screen = await draw(0, info);
+      openNewTextAt(editor, 0, at);
+      const field = screen.getByRole("textbox", { name: "New text" });
+      await expect.element(field).toHaveFocus();
+      if (words !== "") await userEvent.keyboard(words);
+      const faces = screen.getByRole("listbox", { name: "Font" });
+      await expect.element(faces).toBeVisible();
+      // Where it rests: it arrives moving up.
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      const slip = () => faces.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
+      return { screen, field, faces, slip };
+    }
+
+    test("keeps new text's slip by the page's right edge whole on the page, and off its field", async () => {
+      await page.viewport(1400, 900);
+      const { field, slip } = await openNewText(A4, [560, 300], { words: "Signed" });
+      const sheet = sheetOf(field.element()).getBoundingClientRect();
+      await expect.poll(() => slip().right).toBeLessThanOrEqual(sheet.right + 1);
+      expect(slip().left).toBeGreaterThanOrEqual(sheet.left - 1);
+      expect(overlap(slip(), field.element().getBoundingClientRect())).toBe(false);
+    });
+
+    test("lets new text's slip at its foot hang past it, whole, and pressed", async () => {
+      await page.viewport(1400, 900);
+      const { field, faces } = await openNewText(A4, [300, 835]);
+      const option = faces.getByRole("option", { name: "Caveat Bold" });
+      option.element().scrollIntoView({ block: "center" });
+      const sheet = sheetOf(field.element()).getBoundingClientRect();
+      const box = option.element().getBoundingClientRect();
+      expect(box.top).toBeGreaterThan(sheet.bottom);
+      expect(option.element().contains(pressedAt(box))).toBe(true);
+    });
+
+    test.each([90, 180, 270] as const)(
+      "keeps new text's slip upright on a page turned %i°, whole across it, and off its field",
+      async (turn) => {
+        await page.viewport(1400, 900);
+        const { field, faces, slip } = await openNewText({ ...A4, turn_cw: turn }, [300, 400], { words: "Signed" });
+        // Upright, a font's name runs across it.
+        const option = faces.getByRole("option", { name: "Caveat Bold" }).element().getBoundingClientRect();
+        expect(option.width).toBeGreaterThan(option.height);
+        await expect.poll(() => overlap(slip(), field.element().getBoundingClientRect())).toBe(false);
+        const sheet = sheetOf(field.element()).getBoundingClientRect();
+        expect(slip().left).toBeGreaterThanOrEqual(sheet.left - 1);
+        expect(slip().right).toBeLessThanOrEqual(sheet.right + 1);
+      },
+    );
+
+    test("Tab in new text's field goes on to its fonts, and Shift+Tab back, the typing still open", async () => {
+      // Above the page's line, which comes after it in page order.
+      const { field, faces } = await openNewText(A4, [300, 60], { words: "Signed" });
+      await userEvent.keyboard("{Tab}");
+      await expect.element(faces.getByRole("option", { name: "Times Roman" })).toHaveFocus();
+      await userEvent.keyboard("{ArrowDown}");
+      await expect.element(faces.getByRole("option", { name: "Caveat", exact: true, selected: true })).toHaveFocus();
+      await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+      await expect.element(field).toHaveFocus();
+      await expect.element(field).toHaveValue("Signed");
+    });
+
+    test("holds the side of its line new text's slip is on while its fonts are in use from the keys", async () => {
+      await page.viewport(1400, 900);
+      // Arial only named, so its slip warns in full, and is the taller for it; in Caveat it warns of nothing.
+      const arial = { ...span, font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" } as const;
+      const font = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs });
+      const doc = aDoc({ spans: [aSpan({ ...arial, in_file: false })], fonts: [font] });
+      // Upside down, the line shows a quarter of the way down: over it, room for the slip in Caveat, not in Arial.
+      const { field, faces, slip } = await openNewText({ ...A4, turn_cw: 180 }, [300, 640], { doc });
+      const side = () => sideOf(slip(), field.element().getBoundingClientRect());
+      expect(side()).toBe("below");
+      const tall = slip().height;
+      await userEvent.keyboard("{Tab}{ArrowDown}");
+      await expect.element(faces.getByRole("option", { name: "Caveat", exact: true, selected: true })).toHaveFocus();
+      // Placed as it shrinks, before the frame is painted.
+      await expect.poll(() => slip().height).toBeLessThan(tall);
+      expect(side()).toBe("below");
+      // Back in the field, nothing in it is in use: it takes the side it has room on.
+      await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+      await expect.poll(side).toBe("above");
+    });
 
     test("clips a field typed past it on a turned page", async () => {
       const turned: PageInfo = { ...A4, turn_cw: 90 };

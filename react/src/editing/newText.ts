@@ -9,11 +9,21 @@ import {
   NEW_TEXT_MARGIN_PT,
   NEW_TEXT_SIZE_PT,
 } from "./constants";
-import { announcing, change, type Editor, type FocusTo, type Layout } from "./editor";
+import {
+  announcing,
+  change,
+  type Editor,
+  type EditorState,
+  type FocusNewText,
+  type FocusSpan,
+  type FocusTo,
+  type Layout,
+} from "./editor";
 import { DEFAULT_FACE, isShippedFace, previewFaceOf } from "./faces";
 import { missingIn } from "./fit";
 import { versionsOf } from "./history";
 import { type MismatchPlace, mismatchKeyOf } from "./mismatches";
+import { inPageOrder, placedOnPage } from "./page";
 import { pageControlOf } from "./pageList";
 import type { NewTextReading, Reading } from "./project";
 import type { PageNewTextFits } from "./render";
@@ -256,9 +266,45 @@ export function focusAfterNewText(
   return near === undefined ? pageControlOf(reading, page) : { spanId: near.id };
 }
 
-/** A face chosen in the slip with a pointer: focus goes back to the field, where the typing is. */
+/** A face chosen in the slip with a pointer, or Shift+Tab there: focus goes back to the field, where the typing is. */
 export function backToField(editor: Editor): void {
   editor.store.set({ focusTo: { field: true } });
+}
+
+/** Tab in the field: focus goes on to the fonts in its slip, which hangs on the page's layer for slips, apart from it. */
+export function toFaces(editor: Editor): void {
+  editor.store.set({ focusTo: { faces: true } });
+}
+
+/**
+ * Tab in the slip's fonts: focus goes on to what follows the field on its page, as Tab from the field's own place
+ * would, past the slip that hangs apart from it. False when nothing on the page follows it: Tab goes on from the slip
+ * then, which comes after the page, as the field's place does.
+ */
+export function pastFaces(editor: Editor): boolean {
+  const next = afterNewTextField(editor.store.get());
+  if (next === null) return false;
+  editor.store.set({ focusTo: next });
+  return true;
+}
+
+/** What follows the field new text is typed in, in its page's order: a line, or new text at rest, if any does. */
+export function afterNewTextField({
+  draft,
+  layout,
+  reading,
+}: Pick<EditorState, "draft" | "layout" | "reading">): FocusSpan | FocusNewText | null {
+  if (draft?.kind !== "newText") return null;
+  const placed = placedOnPage({
+    edits: reading.pages.get(draft.page),
+    newTextAt: draft.origin,
+    newTextTypedAgain: draft.of?.newTextId ?? null,
+  });
+  const marks = inPageOrder(layout.pages.get(draft.page) ?? [], placed);
+  const next = marks[marks.findIndex((mark) => mark.placed === "field") + 1];
+  if (next === undefined) return null;
+  if (next.span !== undefined) return { spanId: next.span.id };
+  return next.placed === "field" ? null : { newTextId: next.placed.newTextId };
 }
 
 /** Open new text where `at` was pressed on bare paper, styled as the text nearest it. */
