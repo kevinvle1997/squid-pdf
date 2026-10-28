@@ -20,7 +20,7 @@ import {
   halfWideGlyphs,
   SENTENCES,
 } from "../../fixtures";
-import { colorOf, emulateTouchScreen } from "../../testing";
+import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "../../testing";
 import { NOTE_CLOSE_DELAY_MS, PX_PER_PT } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
@@ -163,8 +163,7 @@ async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
   if (box === undefined) throw new Error("no slip");
   const at = { x: box.left + box.width / 2, y: box.top + 4 };
   if (pointer === "finger") {
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await tapAt(at);
     return;
   }
   const press = { ...at, button: "left" as const, clickCount: 1 };
@@ -202,7 +201,7 @@ async function hoveredUnderALine() {
   const mark = screen.getByRole("button", { name: "SSN below" });
   await expect.element(mark).toBeInTheDocument();
   const box = mark.element().getBoundingClientRect();
-  const start = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  const start = middleOf(box);
   await moveMouse(start, start);
   await expect.element(screen.getByRole("tooltip")).toBeVisible();
   await expect.element(mark).toHaveAttribute("aria-describedby");
@@ -650,8 +649,7 @@ describe("a page", () => {
     const box = mark.element().getBoundingClientRect();
     // On "was", the first word: a quarter of the way along "was here".
     const at = { x: box.left + box.width / 4, y: box.top + box.height / 2 };
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await tapAt(at);
     const field = screen.getByRole("textbox");
     await expect.element(field).toHaveFocus();
     const input = field.element();
@@ -854,7 +852,10 @@ describe("a page", () => {
 
   describe("the page's edge", () => {
     /** What a press at the middle of `box`, on screen, lands on. */
-    const pressedAt = (box: DOMRect) => document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    const pressedAt = (box: DOMRect) => {
+      const { x, y } = middleOf(box);
+      return document.elementFromPoint(x, y);
+    };
 
     test("clips what's drawn past its foot: a mark there can't be pressed under the page", async () => {
       const past = aSpan({ id: "past", text: "under it", bbox: { x0: 72, y0: 846, x1: 152, y1: 858 } });
@@ -887,7 +888,7 @@ describe("a page", () => {
       const redact = screen.getByRole("button", { name: "Redact" });
       await expect.element(redact).toBeVisible();
       // Where it rests: it arrives moving up.
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      await animationsDone();
       // Upright, a button's words run across it.
       const button = redact.element().getBoundingClientRect();
       expect(button.width).toBeGreaterThan(button.height);
@@ -935,7 +936,7 @@ describe("a page", () => {
         await editSpan(screen, "at the foot");
         const redact = screen.getByRole("button", { name: "Redact" });
         await expect.element(redact).toBeVisible();
-        await Promise.all(document.getAnimations().map((animation) => animation.finished));
+        await animationsDone();
         const field = screen.getByRole("textbox").element();
         const slip = () => redact.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
         await expect.poll(() => overlap(slip(), field.getBoundingClientRect())).toBe(false);
@@ -955,7 +956,7 @@ describe("a page", () => {
         await editSpan(screen, "at the foot (redacted)");
         const keep = screen.getByRole("button", { name: "Keep redaction" });
         await expect.element(keep).toHaveFocus();
-        await Promise.all(document.getAnimations().map((animation) => animation.finished));
+        await animationsDone();
         const mark = screen.getByRole("button", { name: "at the foot (redacted)" }).element();
         const prompt = () => keep.element().closest("[role=group]")?.getBoundingClientRect() ?? new DOMRect();
         const sheet = () => sheetOf(mark).getBoundingClientRect();
@@ -980,7 +981,7 @@ describe("a page", () => {
       await editSpan(screen, DATED);
       const control = screen.getByRole("button", { name: "Date" });
       await expect.element(control).toBeVisible();
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      await animationsDone();
       const slip = () => control.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
       return { screen, control, slip };
     }
@@ -1075,7 +1076,7 @@ describe("a page", () => {
       const faces = screen.getByRole("listbox", { name: "Font" });
       await expect.element(faces).toBeVisible();
       // Where it rests: it arrives moving up.
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      await animationsDone();
       const slip = () => faces.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
       return { screen, field, faces, slip };
     }
@@ -1449,7 +1450,7 @@ describe("a page", () => {
     mark.element().focus();
     const note = screen.getByRole("tooltip");
     await expect.element(note).toBeVisible();
-    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    await animationsDone();
     const { outlineWidth, outlineOffset } = getComputedStyle(mark.element());
     const ringTop = mark.element().getBoundingClientRect().top - parseFloat(outlineWidth) - parseFloat(outlineOffset);
     // React Aria places the note on a whole pixel, as the ring is drawn.
@@ -1473,7 +1474,7 @@ describe("a page", () => {
     // A press away from it first: after a key, React Aria opens no note on hover.
     await pressMouse({ x: 1, y: 1 });
     const box = lower.element().getBoundingClientRect();
-    const at = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    const at = middleOf(box);
     await moveMouse(at, at);
     await expect.element(lower).toHaveAttribute("aria-describedby");
     const tip = screen.getByRole("tooltip").element().getBoundingClientRect();

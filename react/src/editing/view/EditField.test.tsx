@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { cdp, page, userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { learnDateLanguages } from "../dateNames";
 import "@fontsource/funnel-sans/600.css";
@@ -8,7 +8,7 @@ import "../../styles/base.css";
 import { pageUrl, renderStrips } from "../../api/client";
 import type { Render } from "../../api/types";
 import { A4, aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
-import { emulateTouchScreen } from "../../testing";
+import { animationsDone, emulateTouchScreen, middleOf, tapAt } from "../../testing";
 import { createEditor, type Editor, undo } from "../editor";
 import { typeInto } from "../typing";
 import { fill } from "../words";
@@ -82,13 +82,6 @@ function reasonIn(screen: Awaited<ReturnType<typeof render>>): HTMLElement | nul
   return under?.querySelector<HTMLElement>("[data-shown]") ?? null;
 }
 
-/** A finger's tap at the middle of `box`, as a touch screen sends it. */
-async function tapAt(box: DOMRect) {
-  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-  await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-}
-
 describe("a date in the field", () => {
   test("Alt+Down opens the calendar in the slip, beside the field, on the date's own day", async () => {
     const { screen } = await openField();
@@ -126,13 +119,13 @@ describe("a date in the field", () => {
       const control = screen.getByRole("button", { name: "Date" });
       await expect.element(control).toBeVisible();
       // Tapped where it comes to rest: the slip arrives moving.
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
-      await tapAt(control.element().getBoundingClientRect());
+      await animationsDone();
+      await tapAt(middleOf(control.element().getBoundingClientRect()));
       const marked = screen.getByRole("button", { name: /March 27, 2026/ });
       await expect.element(marked).toBeVisible();
       const slip = control.element().closest("[data-slip]");
       const height = slip?.getBoundingClientRect().height;
-      await tapAt(marked.element().getBoundingClientRect());
+      await tapAt(middleOf(marked.element().getBoundingClientRect()));
       await expect.poll(() => reasonIn(screen)).not.toBeNull();
       // Its line was kept for it: the slip doesn't grow as it shows.
       expect(slip?.getBoundingClientRect().height).toBe(height);
@@ -215,7 +208,7 @@ describe("a date in the field", () => {
     await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
     const slip = control.element().closest("[data-slip]");
     // Measured at rest: the slip arrives moving.
-    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    await animationsDone();
     const heightNow = () => slip?.getBoundingClientRect().height;
     const height = heightNow();
 

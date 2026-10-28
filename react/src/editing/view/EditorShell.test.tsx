@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { cdp, page, userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
@@ -32,7 +32,7 @@ import {
   halfWideGlyphs,
   SENTENCES,
 } from "../../fixtures";
-import { colorOf, emulateTouchScreen } from "../../testing";
+import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "../../testing";
 import { EXPORT_INTENT_MS, LINE_BELOW_EM, NEW_TEXT_DESCENT_EM, NOTE_CLOSE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
@@ -273,7 +273,7 @@ describe("finding your way", () => {
       await expect.element(control).toHaveAttribute("aria-expanded", "true");
       await new Promise(requestAnimationFrame);
       await new Promise(requestAnimationFrame);
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      await animationsDone();
       const slip = control.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
       expect(slip.left).toBeGreaterThanOrEqual(16 - 1);
       expect(slip.right).toBeLessThanOrEqual(390 - 16 + 1);
@@ -969,7 +969,7 @@ describe("a date's control in the field's slip", () => {
 async function settledSlip() {
   await new Promise(requestAnimationFrame);
   await new Promise(requestAnimationFrame);
-  await Promise.all(document.getAnimations().map((animation) => animation.finished));
+  await animationsDone();
   return document.querySelector("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
 }
 
@@ -2040,7 +2040,7 @@ describe("new text", () => {
     await expect.element(mark).toHaveFocus();
     const note = screen.getByRole("tooltip");
     await expect.element(note).toBeVisible();
-    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    await animationsDone();
     await note.hover();
     await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
     const leftAt = performance.now();
@@ -2078,17 +2078,13 @@ describe("new text", () => {
     mark.element().blur();
     await emulateTouchScreen();
     const box = mark.element().getBoundingClientRect();
-    const at = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    const tap = async () => {
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    };
+    const at = middleOf(box);
 
-    await tap();
+    await tapAt(at);
     const note = screen.getByRole("tooltip");
     await expect.element(note).toHaveTextContent(`${SENTENCES.new_text}${SENTENCES.new_text_moves_touch}`);
     expect(screen.getByRole("textbox", { name: "Change “Signed”" }).query()).toBeNull();
-    await tap();
+    await tapAt(at);
     await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
   });
 

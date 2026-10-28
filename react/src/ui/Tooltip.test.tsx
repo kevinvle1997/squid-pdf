@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { middleOf } from "../testing";
 import "../styles/tokens.css";
 import { Button } from "./Button";
 import { Shortcut, Tip } from "./Tooltip";
@@ -32,7 +33,7 @@ test("a note shown on hover stays as the pointer moves onto it, to be read (WCAG
   const note = screen.getByRole("tooltip");
   await expect.element(note).toBeVisible();
   const box = note.element().getBoundingClientRect();
-  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const at = middleOf(box);
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
   // Past the delay a note closes after: still there, under the pointer.
   await new Promise((closed) => setTimeout(closed, 1000));

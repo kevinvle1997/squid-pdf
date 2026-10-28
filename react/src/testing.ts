@@ -20,3 +20,19 @@ export async function emulateTouchScreen() {
   });
   expect(matchMedia("(pointer: coarse)").matches).toBe(true);
 }
+
+/** The middle of `box`, where a pointer presses it. */
+export function middleOf(box: DOMRect): { x: number; y: number } {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/** Until every animation running in the document has finished. */
+export async function animationsDone(): Promise<void> {
+  await Promise.all(document.getAnimations().map((animation) => animation.finished));
+}
+
+/** A finger's tap at a point in the window, as a touch screen sends it: Chromium's own touch events. */
+export async function tapAt(at: { x: number; y: number }) {
+  await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+  await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
