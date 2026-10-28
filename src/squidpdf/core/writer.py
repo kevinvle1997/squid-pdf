@@ -83,7 +83,8 @@ class _AddedFont:
 
     name: str  # what the user reads it as
     file: bytes = field(repr=False)  # the whole font
-    xrefs: set[int] = field(default_factory=set)  # its PDF objects; pages usually share one
+    # Its PDF objects; pages usually share one.
+    font_objects: set[int] = field(default_factory=set)
     # Every letter drawn in it, over all pages.
     drawn: set[str] = field(default_factory=set, repr=False)
 
@@ -91,9 +92,9 @@ class _AddedFont:
         """Keep the letters of `text`, drawn in it, for `save` to cut it down to."""
         self.drawn.update(text)
 
-    def note_object(self, xref: int) -> None:
-        """Keep `xref`, another PDF object it was added as: another page's, usually."""
-        self.xrefs.add(xref)
+    def note_object(self, font_object: int) -> None:
+        """Keep `font_object`, another PDF object it was added as: another page's, usually."""
+        self.font_objects.add(font_object)
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,9 +178,9 @@ class PageWriter:
                 # The whole file still draws every letter; the file is only bigger.
                 font_file = added.file
                 notices.append(Message("face_not_trimmed", {"font": added.name}))
-            for xref in sorted(added.xrefs):
+            for font_object in sorted(added.font_objects):
                 try:
-                    self.driver.replace_font_file(xref, font_file)
+                    self.driver.replace_font_file(font_object, font_file)
                 except DriverError as problem:  # its file can't be swapped: it stays whole
                     notices.append(problem.reason)
         self.driver.save(path)
@@ -237,7 +238,8 @@ class PageWriter:
         agree with the others'.
         """
         runs = [
-            CodeRun(_codes_for(run.coded, run.text), run.copy.font.xref) for run in coded_runs
+            CodeRun(_codes_for(run.coded, run.text), run.copy.font.font_object)
+            for run in coded_runs
         ]
         self.driver.write_codes(
             span.page,
@@ -281,7 +283,9 @@ class PageWriter:
             raise FontUnusable(problem.reason) from problem
         if copy.lent is not None:
             added_font = _AddedFont(copy.lent.name, copy.embedded.file)
-            self._keep_whole(copy.lent.source, added_font, xref=font_resource.xref)
+            self._keep_whole(
+                copy.lent.source, added_font, font_object=font_resource.font_object
+            )
         return font_resource.resource
 
     def _note_lent_letters(self, own: PooledFont, text: str) -> None:
@@ -304,16 +308,18 @@ class PageWriter:
         font_resource = self.driver.add_font(
             page, font_file, resource=_resource_name("S", face.file)
         )
-        self._keep_whole(face.file, _AddedFont(face.name, font_file), xref=font_resource.xref)
+        self._keep_whole(
+            face.file, _AddedFont(face.name, font_file), font_object=font_resource.font_object
+        )
         return font_resource.resource
 
-    def _keep_whole(self, source: str, font: _AddedFont, *, xref: int) -> None:
-        """Note a font added whole as font `xref`, for `save` to cut down.
+    def _keep_whole(self, source: str, font: _AddedFont, *, font_object: int) -> None:
+        """Note a font added whole as font `font_object`, for `save` to cut down.
 
         `source` tells one font file from another: two can share a name.
         """
         # The first time a file is added makes its record; later pages add their object.
-        self.added.setdefault(source, font).note_object(xref)
+        self.added.setdefault(source, font).note_object(font_object)
 
 
 def _resource_name(kind: str, source: str) -> str:

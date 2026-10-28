@@ -68,8 +68,8 @@ class PdfDriver(Protocol):
     """A PDF open in a library. `core.pdf.mupdf`'s is the one there is.
 
     Pages count from 0. Boxes and points are in points, top-left origin, on the page unrotated.
-    A font the library can't use raises DriverError, saying why, and the engine falls back
-    rather than crashing. Anything else goes up to `result_of`, which says what it means.
+    A font goes by its PDF object, as `PageFont.font_object` gives it. One the library can't use
+    raises DriverError, saying why, so the engine falls back. Anything else goes to `result_of`.
     """
 
     def page_count(self) -> int:
@@ -127,22 +127,22 @@ class PdfDriver(Protocol):
         """Every font the page uses, forms included."""
         ...
 
-    def font_bytes(self, xref: int) -> bytes:
+    def font_bytes(self, font_object: int) -> bytes:
         """The font file stored in the PDF. Raises DriverError when it can't be read out."""
         ...
 
-    def font_descriptor(self, xref: int) -> FontDescriptor | None:
+    def font_descriptor(self, font_object: int) -> FontDescriptor | None:
         """What the font's description says of its look and the font it names; None if none."""
         ...
 
-    def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
+    def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first; None without a letter list.
 
         Raises DriverError when the library can't load the font.
         """
         ...
 
-    def listed_widths(self, xref: int) -> dict[str, float] | None:
+    def listed_widths(self, font_object: int) -> dict[str, float] | None:
         """Each letter the font's width list gives a width, per 1000 em; None without a list.
 
         The list is `/Widths`, or a two-byte font's `/W`, read whether the font is stored or
@@ -276,8 +276,8 @@ class PdfDriver(Protocol):
         """
         ...
 
-    def replace_font_file(self, xref: int, font_file: bytes) -> None:
-        """Swap in a new file for font `xref`. It must keep each glyph at its old number.
+    def replace_font_file(self, font_object: int, font_file: bytes) -> None:
+        """Swap in a new file for font `font_object`. It must keep each glyph at its old number.
 
         Raises DriverError when the font's file can't be found to swap.
         """

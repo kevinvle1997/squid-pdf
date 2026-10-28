@@ -99,7 +99,8 @@ def test_an_attached_copy_with_the_same_widths_lends_the_letters_the_file_lacks(
     saved.write_bytes(exported.content)
     page = pymupdf.open(saved)[0]
     stored = [
-        len(pymupdf.open(saved).extract_font(xref)[3]) for xref, *_ in page.get_fonts(full=True)
+        len(pymupdf.open(saved).extract_font(font_object)[3])
+        for font_object, *_ in page.get_fonts(full=True)
     ]
 
     assert_equal(before["missing"], ["Y", "a", "y"], "letters missing before it's attached")
@@ -178,13 +179,13 @@ def test_a_width_list_is_read_as_written_or_found_unreadable(
         str(tmp_path / "arial.pdf"), "Liberation Sans Regular", base_font="Arial"
     )
     doc = pymupdf.open(path)
-    [(xref, *_rest)] = doc[0].get_fonts()
+    [(font_object, *_rest)] = doc[0].get_fonts()
     if first_char is None:
-        doc.xref_set_key(xref, "FirstChar", "null")
+        doc.xref_set_key(font_object, "FirstChar", "null")
     else:
         kept_apart = doc.get_new_xref()
         doc.update_object(kept_apart, "32")
-        doc.xref_set_key(xref, "FirstChar", f"{kept_apart} 0 R")
+        doc.xref_set_key(font_object, "FirstChar", f"{kept_apart} 0 R")
     doc.saveIncr()
     arial_doc = upload(mine, Path(path).read_bytes()).json()
 
@@ -310,8 +311,8 @@ def test_a_font_stored_under_a_long_name_is_read_by_it(mine, tmp_path):
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())
     page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=12)
-    [(xref, *_)] = page.get_fonts()
-    name_two_byte_font(doc, xref, "Poppins-Regular" + "X" * 105)
+    [(font_object, *_)] = page.get_fonts()
+    name_two_byte_font(doc, font_object, "Poppins-Regular" + "X" * 105)
     path = tmp_path / "long.pdf"
     doc.save(path)
 

@@ -1435,7 +1435,9 @@ def test_new_text_is_drawn_in_the_font_its_object_names_where_two_read_alike(min
     """
     doc = upload(mine, read_alike).json()
     [sans_object] = [
-        xref for xref, *_, resource, _ in _fonts_of(read_alike) if resource == "sans"
+        font_object
+        for font_object, *_, resource, _ in _fonts_of(read_alike)
+        if resource == "sans"
     ]
     serif_line, sans_line = (span_starting(doc, 0, line) for line in (_SERIF_LINE, _SANS_LINE))
     read_as = {line["font"] for line in (serif_line, sans_line)}

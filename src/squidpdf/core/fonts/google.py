@@ -159,7 +159,7 @@ class GoogleFontController:
 
     def _file_for(self, font: PageFont) -> GoogleFile:
         """Google's file for one of the document's fonts. Raises FontUnusable when none fits."""
-        return _google_file(font.name, self.driver.font_descriptor(font.xref))
+        return _google_file(font.name, self.driver.font_descriptor(font.font_object))
 
     def _open(self, file: GoogleFile) -> EmbeddedFont:
         """`file`, fetched and opened. Raises FontUnusable when it can't be had or opened."""

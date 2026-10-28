@@ -92,7 +92,7 @@ def open_embedded(driver: PdfDriver, page_font: PageFont) -> tuple[EmbeddedFont,
     if not page_font.is_embedded:
         raise FontUnusable(Message("font_not_in_file"))
     try:
-        font_file = driver.font_bytes(page_font.xref)
+        font_file = driver.font_bytes(page_font.font_object)
         return _open_font_file(driver, page_font, font_file)
     except DriverError as problem:  # the library can't read the font out, open it or load it
         raise FontUnusable(problem.reason) from problem
@@ -182,7 +182,7 @@ def _read_coded_font(driver: PdfDriver, font: PageFont) -> CodedFont:
     code_bytes = _bytes_per_code(font)
     if code_bytes is None:
         raise FontUnusable(Message("font_cant_write"))
-    font_codes = driver.font_codes(font.xref, code_bytes)
+    font_codes = driver.font_codes(font.font_object, code_bytes)
     if font_codes is None:
         raise FontUnusable(Message("font_no_letter_list"))
 

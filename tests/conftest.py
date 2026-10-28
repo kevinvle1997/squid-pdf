@@ -123,8 +123,12 @@ def saved_as(face: str) -> str:
 def stored_file(path: str, page: int, font: str) -> bytes:
     """The font file a saved page stores under the name `font`."""
     doc = pymupdf.open(path)
-    [xref] = [xref for xref, _ext, _kind, name, *_ in doc[page].get_fonts() if name == font]
-    _name, _ext, _kind, buffer = doc.extract_font(xref)
+    [font_object] = [
+        font_object
+        for font_object, _ext, _kind, name, *_ in doc[page].get_fonts()
+        if name == font
+    ]
+    _name, _ext, _kind, buffer = doc.extract_font(font_object)
     return buffer
 
 
@@ -140,14 +144,14 @@ def named_only(
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 96), "Hello there", fontname="helv", fontsize=12)
-    [(xref, *_rest)] = page.get_fonts()
-    doc.xref_set_key(xref, "BaseFont", f"/{base_font}")
+    [(font_object, *_rest)] = page.get_fonts()
+    doc.xref_set_key(font_object, "BaseFont", f"/{base_font}")
     if flags is not None:
         descriptor = (
             f"<</Type/FontDescriptor/FontName/{base_font}/Flags {flags}"
             f"/ItalicAngle {italic_angle}>>"
         )
-        doc.xref_set_key(xref, "FontDescriptor", descriptor)
+        doc.xref_set_key(font_object, "FontDescriptor", descriptor)
     doc.save(path)
     return path
 
@@ -165,24 +169,24 @@ def named_with_widths(path: str, face: str, *, base_font: str) -> str:
     ]
     path = named_only(path, base_font)
     doc = pymupdf.open(path)
-    [(xref, *_rest)] = doc[0].get_fonts()
-    doc.xref_set_key(xref, "Subtype", "/TrueType")
-    doc.xref_set_key(xref, "FirstChar", str(_WIDTH_LIST_CODES.start))
-    doc.xref_set_key(xref, "LastChar", str(_WIDTH_LIST_CODES.stop - 1))
-    doc.xref_set_key(xref, "Widths", "[" + " ".join(map(str, widths)) + "]")
+    [(font_object, *_rest)] = doc[0].get_fonts()
+    doc.xref_set_key(font_object, "Subtype", "/TrueType")
+    doc.xref_set_key(font_object, "FirstChar", str(_WIDTH_LIST_CODES.start))
+    doc.xref_set_key(font_object, "LastChar", str(_WIDTH_LIST_CODES.stop - 1))
+    doc.xref_set_key(font_object, "Widths", "[" + " ".join(map(str, widths)) + "]")
     doc.saveIncr()
     return path
 
 
-def name_two_byte_font(doc: pymupdf.Document, xref: int, name: str) -> int:
+def name_two_byte_font(doc: pymupdf.Document, font_object: int, name: str) -> int:
     """Names a two-byte font and the one inside it `ABCDEF+<name>`, as a real trimmed copy is.
 
     Returns the one inside, which keeps the font's description.
     """
-    _kind, descendants = doc.xref_get_key(xref, "DescendantFonts")
+    _kind, descendants = doc.xref_get_key(font_object, "DescendantFonts")
     inner = int(descendants.strip("[]").split()[0])
-    for font_xref in (xref, inner):
-        doc.xref_set_key(font_xref, "BaseFont", f"/ABCDEF+{name}")
+    for each_font in (font_object, inner):
+        doc.xref_set_key(each_font, "BaseFont", f"/ABCDEF+{name}")
     return inner
 
 
@@ -489,8 +493,8 @@ def poppins_subset(tmp_path_factory) -> str:
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=trimmed_file.getvalue())
     page.insert_text((72, 96), POPPINS_TEXT, fontname="own", fontsize=_POPPINS_SIZE)
-    [(xref, *_)] = page.get_fonts()
-    name_two_byte_font(doc, xref, "Poppins-Regular")
+    [(font_object, *_)] = page.get_fonts()
+    name_two_byte_font(doc, font_object, "Poppins-Regular")
     path = str(tmp_path_factory.mktemp("google") / "poppins.pdf")
     doc.save(path)
     return path

@@ -259,7 +259,7 @@ class DocumentFonts:
         # New text, or a font the page doesn't list: no list to read.
         if page_font is None:
             return None
-        return self.driver.listed_widths(page_font.xref)
+        return self.driver.listed_widths(page_font.font_object)
 
     def read_before_erasing(self, span: Span) -> None:
         """Read what a draw over `span` asks of its font, while its page still has the font."""
@@ -286,7 +286,7 @@ class DocumentFonts:
         by_object: dict[int, PageFont] = {}
         # The library's order: a font listed twice, under two resource names, is its first.
         for font in fonts:
-            by_object.setdefault(font.xref, font)
+            by_object.setdefault(font.font_object, font)
         return _PageFacts(fonts, by_object)
 
     def font_object_named(
@@ -306,7 +306,7 @@ class DocumentFonts:
             return in_text
         wanted = strip_subset(name)
         listed = (font for font in self._facts(page).fonts if strip_subset(font.name) == wanted)
-        return next((font.xref for font in listed), None)
+        return next((font.font_object for font in listed), None)
 
     def _pool(self, page: int, page_font: PageFont) -> PooledFont:
         """Open the page's copy of the font, then pool the copies that lend it letters with it.
@@ -367,11 +367,13 @@ class DocumentFonts:
         """
         font_name = self._copies_name(own)
         # The own copy may be listed under another name, found by the one its text reads.
-        seen = {own.xref}
+        seen = {own.font_object}
         for font in self._fonts_nearest_first(page):
-            is_other_copy = font.xref not in seen and self._copies_name(font) == font_name
+            is_other_copy = (
+                font.font_object not in seen and self._copies_name(font) == font_name
+            )
             if is_other_copy:
-                seen.add(font.xref)  # one font object on several pages is one copy
+                seen.add(font.font_object)  # one font object on several pages is one copy
                 yield font
 
     def _copies_name(self, font: PageFont) -> str:
@@ -384,7 +386,9 @@ class DocumentFonts:
         A Type3 font's own name is often its object's, so no two copies share it:
         the font its description names stands in, when it names one.
         """
-        descriptor = self.driver.font_descriptor(font.xref) if font.kind == "type3" else None
+        descriptor = (
+            self.driver.font_descriptor(font.font_object) if font.kind == "type3" else None
+        )
         # Its own name: not a Type3, or a Type3 whose description names no font.
         if descriptor is None or descriptor.name is None:
             return strip_subset(font.name)
@@ -462,14 +466,14 @@ class DocumentFonts:
     def look_alike(self, span: Span) -> LookAlike:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self._page_font(span)
-        xref = None if page_font is None else page_font.xref
-        key = (span.font, xref)
-        return self.cache.look_alike(key, partial(self._look_alike_of, span, xref))
+        font_object = None if page_font is None else page_font.font_object
+        key = (span.font, font_object)
+        return self.cache.look_alike(key, partial(self._look_alike_of, span, font_object))
 
-    def _look_alike_of(self, span: Span, xref: int | None) -> LookAlike:
-        """The look-alike for the span's font, stored as object `xref`, if it is."""
+    def _look_alike_of(self, span: Span, font_object: int | None) -> LookAlike:
+        """The look-alike for the span's font, stored as object `font_object`, if it is."""
         # New text, or a font the page doesn't list: go by the name alone.
-        descriptor = None if xref is None else self.driver.font_descriptor(xref)
+        descriptor = None if font_object is None else self.driver.font_descriptor(font_object)
         own = self.own(span)
         # The file's own copy says what kind of font it is where the description doesn't.
         file_kind = None if own is None else kind_in_file(own.own.embedded.file)

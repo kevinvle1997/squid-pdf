@@ -43,18 +43,18 @@ class FontRecords:
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
 
-    def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
+    def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first.
 
         None if the font has no letter list (its ToUnicode) or MuPDF can't read
         that list; DriverError if MuPDF can't load the font at all. `code_bytes`
         is 1 for a simple font, 2 for a Type0 (two-byte) font.
         """
-        value_type, _value = self.doc.xref_get_key(xref, "ToUnicode")
+        value_type, _value = self.doc.xref_get_key(font_object, "ToUnicode")
         if value_type == PDF_NULL:
             return None
 
-        with self._mupdf_font_record(xref) as font:
+        with self._mupdf_font_record(font_object) as font:
             if font.to_unicode is None:  # MuPDF couldn't read it
                 return None
             if code_bytes == 1:
@@ -64,17 +64,17 @@ class FontRecords:
             codes = (_font_code(font, value) for value in range(code_count))
             return [code for code in codes if code is not None]
 
-    def listed_widths(self, xref: int) -> dict[str, float] | None:
+    def listed_widths(self, font_object: int) -> dict[str, float] | None:
         """Each letter the font's width list gives a width, per 1000 em, lowest code first.
 
         None when it has no list: `/Widths` for a simple font, `/W` on a two-byte font's
         one inside. A width of 0 is a code the file never draws, and is left out.
         """
-        listed = self._listed_codes(xref)
+        listed = self._listed_codes(font_object)
         if listed is None:
             return None
         widths: dict[str, float] = {}
-        with self._mupdf_font_record(xref) as font:
+        with self._mupdf_font_record(font_object) as font:
             for code in listed:
                 cid = pymupdf.mupdf.ll_pdf_lookup_cmap(font.encoding, code)
                 letter = _letter_of(font, code, cid)
@@ -83,35 +83,35 @@ class FontRecords:
                     widths.setdefault(letter, width)  # lowest code first: the one a page writes
         return widths
 
-    def _listed_codes(self, xref: int) -> range | list[int] | None:
+    def _listed_codes(self, font_object: int) -> range | list[int] | None:
         """The codes the font's width list gives widths for; None without one that reads."""
         # A simple font: its list runs from FirstChar to LastChar, within its byte.
-        if self._entry(xref, "Widths") is not None:
-            first = _whole_number(self._entry(xref, "FirstChar"))
-            last = _whole_number(self._entry(xref, "LastChar"))
+        if self._entry(font_object, "Widths") is not None:
+            first = _whole_number(self._entry(font_object, "FirstChar"))
+            last = _whole_number(self._entry(font_object, "LastChar"))
             if first is None or last is None:
                 return None
             return range(max(first, 0), min(last, _ONE_BYTE_CODES - 1) + 1)
-        value_type, _value = self.doc.xref_get_key(xref, "DescendantFonts")
+        value_type, _value = self.doc.xref_get_key(font_object, "DescendantFonts")
         # Neither kind of list: the reader falls back on widths of its own.
         if value_type == PDF_NULL:
             return None
         # `/W` lists CIDs: only by Identity is a code its CID, so its letter can be read.
-        if self._entry(xref, "Encoding") not in _IDENTITY_ENCODINGS:
+        if self._entry(font_object, "Encoding") not in _IDENTITY_ENCODINGS:
             return None
-        inner = self.inner_font(xref)
+        inner = self.inner_font(font_object)
         # The one inside written in place, or nowhere in the file: not read.
         if inner is None:
             return None
         w = self._entry(inner, "W")
         return None if w is None else _cids_in(w)
 
-    def inner_font(self, xref: int) -> int | None:
+    def inner_font(self, font_object: int) -> int | None:
         """A two-byte (Type0) font's inner font, by number; None without one of its own.
 
         None too when it, or the list it's in, points past the file's last object.
         """
-        value_type, value = self.doc.xref_get_key(xref, "DescendantFonts")
+        value_type, value = self.doc.xref_get_key(font_object, "DescendantFonts")
         # The list kept as an object of its own ("12 0 R"): read it there.
         if value_type == "xref":
             listed = int(value.split()[0])
@@ -141,21 +141,21 @@ class FontRecords:
             return self.doc.xref_object(int(referenced.group(1)), compressed=True)
         return value
 
-    def text_font_name(self, xref: int) -> str | None:
-        """The name text in font `xref` is read under, often the font file's own.
+    def text_font_name(self, font_object: int) -> str | None:
+        """The name text in font `font_object` is read under, often the font file's own.
 
         A page can list a font as "Carlito Bold" while its text reads "Carlito-Bold",
         the name inside the file. None when MuPDF can't load the font.
         """
         try:
-            with self._mupdf_font_record(xref) as font:
+            with self._mupdf_font_record(font_object) as font:
                 return pymupdf.mupdf.ll_fz_font_name(font.font)
         except DriverError:  # MuPDF can't load the font
             return None
 
     @contextmanager
-    def _mupdf_font_record(self, xref: int) -> Iterator[pymupdf.mupdf.pdf_font_desc]:
-        """MuPDF's own record of font `xref`: its letter list, codes and glyph widths.
+    def _mupdf_font_record(self, font_object: int) -> Iterator[pymupdf.mupdf.pdf_font_desc]:
+        """MuPDF's own record of font `font_object`: its letter list, codes and glyph widths.
 
         MuPDF's C function pdf_load_font builds the record and pdf_drop_font
         frees it; Python never frees it, so it is only lent out inside a `with`.
@@ -170,7 +170,7 @@ class FontRecords:
         resources.resources = no_resources.m_internal
         try:
             font = mu.ll_pdf_load_font(
-                pdf.m_internal, resources, mu.pdf_load_object(pdf, xref).m_internal
+                pdf.m_internal, resources, mu.pdf_load_object(pdf, font_object).m_internal
             )
         except MUPDF_ERRORS as exc:  # MuPDF can't make sense of the font object
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc

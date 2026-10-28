@@ -146,7 +146,9 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     assert_equal([file.path for file in asked], ["ofl/poppins/Poppins-Regular.ttf"], "fetched")
     saved = pymupdf.open(out)
     assert_equal(saved[0].get_text().strip(), _WANTED, "the text read back")
-    font_files = [saved.extract_font(xref)[-1] for xref, *_ in saved[0].get_fonts()]
+    font_files = [
+        saved.extract_font(font_object)[-1] for font_object, *_ in saved[0].get_fonts()
+    ]
     lending = [file for file in font_files if coverage_of(file).covers("Y")]
     assert_equal(len(lending), 1, "font files on the page that draw a Y")
     # Cut down to what was drawn, as a face we ship is: not the whole font.
@@ -454,9 +456,9 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
 def _described_as(path: str, out: Path, *, name: str, described: dict[str, str]) -> str:
     """The Poppins fixture at `out`, its font named `name` and described by `described`."""
     doc = pymupdf.open(path)
-    [(xref, *_)] = doc[0].get_fonts()
+    [(font_object, *_)] = doc[0].get_fonts()
     # A space in a PDF name is written #20.
-    inner = name_two_byte_font(doc, xref, name.replace(" ", "#20"))
+    inner = name_two_byte_font(doc, font_object, name.replace(" ", "#20"))
     _kind, descriptor_reference = doc.xref_get_key(inner, "FontDescriptor")
     descriptor = int(descriptor_reference.split()[0])
     for key, value in described.items():

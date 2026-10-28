@@ -53,8 +53,8 @@ def in_google_families():
         line = "Hello there " + "bcd"[number]
         page.insert_font(fontname=f"f{number}", fontbuffer=_trimmed(line))
         page.insert_text((72, 96 + 20 * number), line, fontname=f"f{number}", fontsize=12)
-    for (xref, *_), family in zip(page.get_fonts(), _FAMILIES, strict=True):
-        name_two_byte_font(doc, xref, family)
+    for (font_object, *_), family in zip(page.get_fonts(), _FAMILIES, strict=True):
+        name_two_byte_font(doc, font_object, family)
     _, folder = FOLDER_STORE.create("owner")
     doc.save(folder / store.ORIGINAL)
     return folder

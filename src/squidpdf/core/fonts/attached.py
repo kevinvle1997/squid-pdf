@@ -61,7 +61,7 @@ class AttachedFonts:
         if name not in self.files:
             return None
         copy = self.opened_copy(font, name)
-        why = why_unlike_listed(copy, self.driver.listed_widths(font.xref))
+        why = why_unlike_listed(copy, self.driver.listed_widths(font.font_object))
         if why is not None:
             raise FontUnusable(why)
         return copy
