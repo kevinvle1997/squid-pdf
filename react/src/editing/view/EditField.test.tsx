@@ -186,6 +186,27 @@ describe("a date in the field", () => {
     expect(editor.store.get().focusTo).toBeNull();
   });
 
+  test("open, Alt+Down from the field goes back into it, on the month stepped to; Date still closes it", async () => {
+    const { screen, field } = await openField();
+    const control = screen.getByRole("button", { name: "Date" });
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+    // The step drawn in the month's header: React Aria keeps a second for screen readers, after the days.
+    await screen.getByRole("button", { name: "Next" }).first().click();
+    await expect.element(screen.getByRole("heading", { name: "April 2026" })).toBeVisible();
+    // Back in the field, the calendar left open beside it, as a click leaves it.
+    await field.click();
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("{Home}x");
+    await expect.element(field).toHaveValue(`x${WORDS}`);
+
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /April 14, 2026/ })).toHaveFocus();
+    await expect.element(screen.getByRole("heading", { name: "April 2026" })).toBeVisible();
+    await control.click();
+    await expect.element(control).toHaveAttribute("aria-expanded", "false");
+  });
+
   test("keeps the slip's height as the months are stepped through, into another year and back", async () => {
     // The 15th and 17th can't be written, nor any month named with a letter "Due 14 March 2026" hasn't, nor 2027.
     const { screen } = await openField();
@@ -358,6 +379,15 @@ describe("an amount in the field", () => {
     await expect.element(field).toHaveFocus();
     // Taken where it was: none left waiting to pull focus back once the field is left.
     expect(editor.store.get().focusTo).toBeNull();
+  });
+
+  test("open, Alt+Down from the field goes back into its number field", async () => {
+    const { screen, field } = await backInTheField();
+    await userEvent.keyboard("{Home}x");
+    await expect.element(field).toHaveValue(`x${BOTH}`);
+
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("textbox", { name: "Amount" })).toHaveFocus();
   });
 
   test("Enter in its number field writes it as the page writes amounts, and focus goes back to the field", async () => {

@@ -7,11 +7,17 @@ import { type Fit, fitOf, troublesAddedOf } from "./fit";
 import { type EditableValue, heldOf } from "./formattedValues";
 import { draftSpanOf, spanDraftOf, typedState } from "./typing";
 
-/** Open the editor for `value` in the slip, Alt+Down in the field: false while nothing is typed into. */
+/**
+ * Open the editor for `value` in the slip, Alt+Down in the field: it takes focus as it's drawn, and open already, it's
+ * sent focus from the field. False while nothing is typed into.
+ */
 export function openValueEditor(editor: Editor, value: EditableValue | undefined): boolean {
   const draft = spanDraftOf(editor.store.get());
   if (draft === null || value === undefined) return false;
-  editor.store.set({ draft: { ...draft, valueEditorOpen: true, value: heldOf(value) } });
+  editor.store.set({
+    draft: { ...draft, valueEditorOpen: true, value: heldOf(value) },
+    ...(draft.valueEditorOpen && { focusTo: { valueEditor: draft.spanId } }),
+  });
   return true;
 }
 

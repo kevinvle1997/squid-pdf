@@ -5,6 +5,8 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type RefObject,
+  useCallback,
+  useContext,
   useId,
   useMemo,
   useRef,
@@ -18,7 +20,9 @@ import {
   CalendarGrid,
   CalendarGridBody,
   CalendarGridHeader,
+  type CalendarGridProps,
   CalendarHeaderCell,
+  CalendarStateContext,
   Disclosure,
   DisclosurePanel,
   Heading,
@@ -32,7 +36,7 @@ import { Warn } from "../../ui/Warn";
 import type { AmountValue } from "../amounts";
 import { isUndoOrRedo } from "../commands";
 import type { DateValue } from "../dates";
-import { announce } from "../editor";
+import { announce, focusMoved } from "../editor";
 import type { EditableValue } from "../formattedValues";
 import { finish, spanDraftOf } from "../typing";
 import {
@@ -185,7 +189,7 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
           <Arrow towards="next" />
         </Button>
       </header>
-      <CalendarGrid className={styles.grid} weekdayStyle="narrow">
+      <Days className={styles.grid} weekdayStyle="narrow">
         <CalendarGridHeader>
           {(weekday) => <CalendarHeaderCell className={styles.weekday}>{weekday}</CalendarHeaderCell>}
         </CalendarGridHeader>
@@ -202,7 +206,7 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
             </CalendarCell>
           )}
         </CalendarGridBody>
-      </CalendarGrid>
+      </Days>
       {/* A row of its own under the month: it covers no day and no button of the slip's. Every reason a day can
           give is laid out in it, one shown, so it's as tall as the longest and nothing moves as one shows or the
           month changes. Heard as focus reaches the day, so not read again. */}
@@ -217,10 +221,40 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
   );
 }
 
+/**
+ * The month's days, taking focus sent back into the open calendar: to its focused day, on the month the user stepped
+ * to, which React Aria's calendar focuses once told it has focus.
+ */
+function Days(props: CalendarGridProps) {
+  const editor = useEditor();
+  const sent = useFocusSent();
+  const setFocused = useContext(CalendarStateContext)?.setFocused;
+  const takeFocus = useCallback(
+    (grid: HTMLTableElement | null) => {
+      if (!sent || grid === null || setFocused === undefined) return;
+      setFocused(true);
+      focusMoved(editor);
+    },
+    [sent, setFocused, editor],
+  );
+  return <CalendarGrid ref={takeFocus} {...props} />;
+}
+
 /** A number field read the reader's way; what it writes keeps the page's. */
 function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: string }) {
   const editor = useEditor();
   const input = useRef<HTMLInputElement>(null);
+  const sent = useFocusSent();
+  // Focus sent back into the open editor goes to the number field.
+  const takeFocus = useCallback(
+    (element: HTMLInputElement | null) => {
+      input.current = element;
+      if (!sent || element === null) return;
+      element.focus();
+      focusMoved(editor);
+    },
+    [sent, editor],
+  );
   return (
     <NumberField
       aria-labelledby={labelledBy}
@@ -239,9 +273,14 @@ function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: s
         if (event.key === "Enter") closeValueEditor(editor);
       }}
     >
-      <Input ref={input} className={styles.amount} />
+      <Input ref={takeFocus} className={styles.amount} />
     </NumberField>
   );
+}
+
+/** Whether focus is sent back into the open value's editor from its field: opening, it takes focus as it's drawn. */
+function useFocusSent(): boolean {
+  return useEditorState((state) => state.focusTo !== null && "valueEditor" in state.focusTo);
 }
 
 /** Which way the control's editor goes: down to open it, up to close it. */

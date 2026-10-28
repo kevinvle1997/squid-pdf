@@ -169,6 +169,10 @@ describe("the value its editor is open on", () => {
       editableValueIn(text, { dates, at: undefined, held: spanDraftOf(editor.store.get())?.value ?? null });
     expect(openValueEditor(editor, offered(words))).toBe(true);
     expect(offered(words)?.kind).toBe("date");
+    // Opening, it takes focus as it's drawn; open already, focus is sent into it from the field.
+    expect(editor.store.get().focusTo).toBeNull();
+    expect(openValueEditor(editor, offered(words))).toBe(true);
+    expect(editor.store.get().focusTo).toEqual({ valueEditor: "due" });
 
     // The year retyped by hand: "2026" is "202" a moment, then "2027".
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
