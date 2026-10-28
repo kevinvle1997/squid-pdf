@@ -381,6 +381,13 @@ describe("an amount in the field", () => {
     expect(editor.store.get().focusTo).toBeNull();
   });
 
+  test("open, a press into its number field takes focus there, as the slip's other presses don't", async () => {
+    const { screen } = await backInTheField();
+    const number = screen.getByRole("textbox", { name: "Amount" });
+    await number.click();
+    await expect.element(number).toHaveFocus();
+  });
+
   test("open, Alt+Down from the field goes back into its number field", async () => {
     const { screen, field } = await backInTheField();
     await userEvent.keyboard("{Home}x");

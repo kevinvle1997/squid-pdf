@@ -1,6 +1,6 @@
 // A view test though nothing's drawn: what a key was pressed on is an element, which only a browser has.
 import { describe, expect, test } from "vitest";
-import { isOnMarginNote, isTyping, pageOn, spanOn } from "./keys";
+import { isOnMarginNote, isTyping, keepFocusOnPress, pageOn, spanOn } from "./keys";
 
 describe("where a key was pressed", () => {
   test("in a text field, whose keys are its own, or anywhere else", () => {
@@ -37,5 +37,26 @@ describe("where a key was pressed", () => {
     expect(isOnMarginNote(document.createElement("button"))).toBe(false);
     expect(isOnMarginNote(window)).toBe(false);
     expect(isOnMarginNote(null)).toBe(false);
+  });
+});
+
+describe("a press on a slip", () => {
+  /** Whether a press on `target` would still move focus: the browser's own default, not prevented. */
+  function movesFocus(target: Element): boolean {
+    const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    target.dispatchEvent(press);
+    return !press.defaultPrevented;
+  }
+
+  test("leaves focus where it is, but goes into a field of the slip's own", () => {
+    const slip = document.body.appendChild(document.createElement("div"));
+    slip.addEventListener("mousedown", keepFocusOnPress);
+    try {
+      expect(movesFocus(slip)).toBe(false);
+      expect(movesFocus(slip.appendChild(document.createElement("span")))).toBe(false);
+      expect(movesFocus(slip.appendChild(document.createElement("input")))).toBe(true);
+    } finally {
+      slip.remove();
+    }
   });
 });

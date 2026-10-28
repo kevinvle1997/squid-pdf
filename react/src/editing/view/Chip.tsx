@@ -18,6 +18,7 @@ import { chooseWayOut, signatureWarningOf, spanDraftOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
+import { keepFocusOnPress } from "./keys";
 import { useSlipPlace } from "./slipPlace";
 import { ValueEditor } from "./ValueEditor";
 
@@ -62,12 +63,14 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
     [chip, slipRef],
   );
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: it hears only the presses its controls don't take, to keep focus
     <div
       ref={placed}
       className={styles.chip}
       // A key pressed in it is the edit's own, as one in the field is (`isTyping`).
       data-slip=""
       style={style}
+      onMouseDown={keepFocusOnPress}
     >
       {signature !== null && (
         // Announced as the field takes focus, before the font's note.
@@ -133,11 +136,9 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
           </span>
         )}
         {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
-        <span className={styles.redact}>
-          <Button keepFocus onPress={() => redact(editor, span.id)}>
-            Redact
-          </Button>
-        </span>
+        <Button keepFocus onPress={() => redact(editor, span.id)}>
+          Redact
+        </Button>
       </span>
     </div>
   );
