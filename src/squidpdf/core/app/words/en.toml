@@ -68,6 +68,8 @@ email_broken = "the email address here no longer reads as one"
 empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
 # A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
 not_redacted = "This text couldn't be removed, so the file can't be downloaded with this redaction."
+# A redaction new text is drawn over: the check reads the new text's words in its box too.
+covered_by_new_text = "New text sits over this redaction, so it can't be checked and the file can't be downloaded with it. Move the new text off it."
 # `{places}` are the places below, each in a word of its own.
 hidden_copies = "These words were also in this file's {places}. The file you download leaves them out; where a part can't be kept without them, that part goes too."
 # Where a file keeps a hidden copy of words, each named in a sentence above.
@@ -203,6 +205,7 @@ no_such_page = "This document doesn't have that page."
 redaction_conflict = "This text has a redaction. Undo it to edit."
 bad_reference = "A redaction points at text that isn't in this document: {span_id}."
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
+redaction_covered = "New text on page {page} sits over a redaction, so the redaction can't be checked and nothing was downloaded. Move the new text off it."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."
 method_not_allowed = "Something went wrong sending this to us. Reload the page and try again."
 rate_limited = "Too much at once from here. Try again in a minute."

@@ -76,7 +76,10 @@ from squidpdf.core.fonts.substitute import face_coverage as face_coverage
 from squidpdf.core.pdf.driver import DriverFactory as DriverFactory
 from squidpdf.core.pdf.samples import write_dense as write_dense, write_sample as write_sample
 from squidpdf.core.plan import DrawPlan as DrawPlan
-from squidpdf.core.redaction import RedactionCheck as RedactionCheck
+from squidpdf.core.redaction import (
+    RedactionCheck as RedactionCheck,
+    any_word_left as any_word_left,
+)
 from squidpdf.core.text.fidelity import (
     APPROXIMATE_REASONS as APPROXIMATE_REASONS,
     ApproximateReason as ApproximateReason,
@@ -87,6 +90,7 @@ from squidpdf.core.text.fidelity import (
 )
 from squidpdf.core.types import (
     COPY_PLACES as COPY_PLACES,
+    QUARTER_TURNS as QUARTER_TURNS,
     Category as Category,
     Face as Face,
     Fragment as Fragment,

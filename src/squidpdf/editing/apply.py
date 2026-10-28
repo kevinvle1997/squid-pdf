@@ -293,6 +293,17 @@ def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
     )
 
 
+def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
+    """How far new text is turned on each page, so it reads upright as the page is shown.
+
+    Turned back as far as its page turns, an edit's turn included.
+    """
+    return [
+        turn_added(page.turn_cw, resolved.turns.get(number, 0))
+        for number, page in enumerate(engine.pages())
+    ]
+
+
 def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
     """A fit, with its plan, for each replace and insert the log leaves, drawn or not.
 
@@ -344,16 +355,7 @@ def plan(
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
     ]
-    # New text reads upright as the page is shown: turned back as far as its page turns,
-    # an edit's turn included.
-    turns_cw = (
-        [
-            turn_added(page.turn_cw, resolved.turns.get(number, 0))
-            for number, page in enumerate(engine.pages())
-        ]
-        if placed
-        else []
-    )
+    turns_ccw = new_text_turns(engine, resolved) if placed else []
     return [
         *(_step_for(edited_span, fits) for edited_span in shown),
         *(
@@ -361,7 +363,7 @@ def plan(
                 listed.position,
                 insert_span(engine, listed.insert),
                 fits.inserts[listed.position],
-                turn_ccw=turns_cw[listed.insert.page],
+                turn_ccw=turns_ccw[listed.insert.page],
             )
             for listed in placed
         ),

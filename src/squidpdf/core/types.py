@@ -68,6 +68,12 @@ class Rect:
         """How tall the box is."""
         return self.y1 - self.y0
 
+    def overlaps(self, other: Rect) -> bool:
+        """Whether this box and `other` share any area: boxes that only touch don't."""
+        across = self.x0 < other.x1 and other.x0 < self.x1
+        down = self.y0 < other.y1 and other.y0 < self.y1
+        return across and down
+
     def union(self, other: Rect) -> Rect:
         """The smallest box that covers both this one and `other`."""
         return Rect(

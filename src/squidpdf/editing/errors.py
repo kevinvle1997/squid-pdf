@@ -32,6 +32,17 @@ class RedactionFailed(Problem):
         super().__init__(span_id=span_id, text=text, page=page)
 
 
+class RedactionCovered(Problem):
+    """New text sits over a redacted span, so the check reads its letters there: no file."""
+
+    type = "redaction_covered"
+    status = 422
+
+    def __init__(self, span_id: str, page: int) -> None:
+        """Name the span, and its page counted from 1."""
+        super().__init__(span_id=span_id, page=page)
+
+
 class TooManyEdits(Problem):
     """More edits in one request than the server applies."""
 

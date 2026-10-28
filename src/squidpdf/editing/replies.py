@@ -60,7 +60,7 @@ def _said_of(redaction: Redaction, language: str) -> list[Message]:
     """What to say of a redaction drawn: its words still there, else where else they were."""
     # Still in the file: the download is refused.
     if not redaction.verified:
-        return [Message("not_redacted")]
+        return [why_unredacted(redaction)]
     copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
     named = [words.sentence(f"place_{place}", language) for place in copy_places]
     said = [Message("hidden_copies", {"places": named})] if named else []
@@ -68,6 +68,14 @@ def _said_of(redaction: Redaction, language: str) -> list[Message]:
     if "signatures" in redaction.hidden_copies:
         said.append(Message("signatures_removed"))
     return said
+
+
+def why_unredacted(redaction: Redaction) -> Message:
+    """Why a redaction's words are still in the file: new text drawn over it, or not removed."""
+    # What the check read in the box may be the new text's: the user's to move.
+    if redaction.covered:
+        return Message("covered_by_new_text")
+    return Message("not_redacted")
 
 
 def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:

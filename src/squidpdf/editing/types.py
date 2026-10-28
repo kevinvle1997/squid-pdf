@@ -88,7 +88,7 @@ class Applied:
 
 @dataclass(frozen=True, slots=True)
 class Redaction:
-    """A redaction drawn: whether its words are gone from the file, and where else they were.
+    """A redaction drawn: whether its words are gone, where else they were, and why not.
 
     `hidden_copies` are the places read from the document as it came, then "signatures"
     if signed.
@@ -96,6 +96,7 @@ class Redaction:
 
     verified: bool
     hidden_copies: list[HiddenPlace]
+    covered: bool  # its words are left only in its box, under new text sharing one
 
 
 @dataclass(frozen=True, slots=True)

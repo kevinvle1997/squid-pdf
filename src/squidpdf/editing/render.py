@@ -17,7 +17,6 @@ from squidpdf.core import (
     BUILD,
     Engine,
     InvalidRequest,
-    Message,
     Page,
     Rect,
     Reply,
@@ -42,8 +41,14 @@ from squidpdf.editing.apply import (
     verdicts_of,
 )
 from squidpdf.editing.edits import Edit, check_edits
-from squidpdf.editing.redaction import RedactionController
-from squidpdf.editing.replies import fit_info, notice_info, redaction_info, skipped_info
+from squidpdf.editing.redaction import redactions_of
+from squidpdf.editing.replies import (
+    fit_info,
+    notice_info,
+    redaction_info,
+    skipped_info,
+    why_unredacted,
+)
 from squidpdf.editing.types import (
     DrawnPage,
     ImageInfo,
@@ -135,16 +140,14 @@ def _draw_regions(
         resolved = resolve(engine, index, rooms=rooms, edits=edits)
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)
-        redactions = RedactionController(tuple(redacted_by(steps)))
+        # Before run too: erasing can drop the fonts new text is measured with.
+        redactions = redactions_of(engine, resolved, redacted_by(steps))
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         ran = run(engine, steps)
         verdicts = verdicts_of(fits, ran)
-        gone = redactions.gone(engine)
+        redaction_per_span = redactions.drawn(engine, hidden=hidden)
         images = _draw(engine, regions, drawn_pages=drawn_pages)
 
-    redaction_per_span = {
-        span_id: Redaction(words_gone, hidden[span_id]) for span_id, words_gone in gone.items()
-    }
     return Rendered(
         images,
         fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()},
@@ -152,20 +155,20 @@ def _draw_regions(
         verdicts=verdicts.replaces,
         insert_verdicts=verdicts.inserts,
         skipped=resolved.skipped,
-        notices=ran.notices + _said_unredacted(gone),
+        notices=ran.notices + _said_unredacted(redaction_per_span),
         redactions=redaction_per_span,
     )
 
 
-def _said_unredacted(gone: dict[str, bool]) -> list[Notice]:
+def _said_unredacted(redactions: dict[str, Redaction]) -> list[Notice]:
     """A notice for each redaction drawn whose words are still in the file, on the page or not.
 
     Said now, while the user can still undo it: export refuses the file.
     """
     return [
-        SpanNotice(span_id, Message("not_redacted"))
-        for span_id, words_gone in gone.items()
-        if not words_gone
+        SpanNotice(span_id, why_unredacted(redaction))
+        for span_id, redaction in redactions.items()
+        if not redaction.verified
     ]
 
 
