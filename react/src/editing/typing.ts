@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import type { FitRules, FontInfo, Insert, SpanInfo, Strategy } from "../api/types";
+import type { FitRules, FontInfo, Insert, Replace, SpanInfo, Strategy } from "../api/types";
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
@@ -356,6 +356,22 @@ function isEmpty(text: string): boolean {
   return text.trim() === "";
 }
 
+/** The edit a span's typing is kept as once it ends: none while no span is typed in, or nothing would change. */
+export function keptEditOf(state: EditorState): Replace | null {
+  const { layout, reading } = state;
+  const draft = spanDraftOf(state);
+  if (draft === null) return null;
+  const now = reading.spans.get(draft.spanId);
+  const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
+  // Only a way out on offer goes with the edit: the server draws any other as typed, and says so.
+  const way = wayIn(state);
+  const strategy = way === "as-is" ? undefined : way;
+  const unchanged = draft.text === was && strategy === now?.strategy;
+  // Emptying a span isn't a replacement: taking text out is redaction's job.
+  if (unchanged || isEmpty(draft.text)) return null;
+  return { kind: "replace", span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
+}
+
 /**
  * What ending the typing makes, for an action to make in its own update: the step it adds, with no
  * edit unless `keep` and the words changed, and the rest it sets. `returnFocus` is `finish`'s.
@@ -365,20 +381,13 @@ export function typingEnd(
   keep: boolean,
   { returnFocus = false } = {},
 ): { typed: HistoryAction; ended: Partial<EditorState> } {
-  const { draft, layout, reading, doc } = state;
+  const { draft, doc } = state;
   const nothing: HistoryAction = { kind: "add", edits: [] };
   if (draft === null) return { typed: nothing, ended: {} };
   if (draft.kind === "newText") return newTextTypingEnd(state, draft, { keep, returnFocus });
   const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
-  const now = reading.spans.get(draft.spanId);
-  const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
-  // Only a way out on offer goes with the edit: the server draws any other as typed, and says so.
-  const way = wayIn(state);
-  const strategy = way === "as-is" ? undefined : way;
-  const unchanged = draft.text === was && strategy === now?.strategy;
-  // Emptying a span isn't a replacement: taking text out is redaction's job.
-  if (!keep || unchanged || isEmpty(draft.text)) return { typed: nothing, ended };
-  const replace = { kind: "replace" as const, span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
+  const replace = keptEditOf(state);
+  if (!keep || replace === null) return { typed: nothing, ended };
   return {
     typed: { kind: "add", edits: [replace] },
     ended: { ...ended, announcement: announcing(fill(doc.sentences.changed_to, { text: draft.text })) },

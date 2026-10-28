@@ -54,7 +54,7 @@ function FindFields() {
     else closeOnEscape(event);
   };
   const searched = find.searched !== "" && find.searched === find.query;
-  const at = placeAt(find);
+  const at = useEditorState(placeAt);
   const nothingToChange = find.query === "" || find.replacement === "" || (searched && count.places === 0);
   return (
     // biome-ignore lint/a11y/useSemanticElements: Chromium gives <search> no landmark yet, so a screen reader would miss it.
@@ -88,7 +88,7 @@ function FindFields() {
       <span className={styles.count}>
         {find.changed === null && searched && count.places > 0 && (
           <span className={styles.step}>
-            {at !== null && <span className={styles.at}>{`${at.at} of ${at.of}`}</span>}
+            {at !== null && <span className={styles.at}>{`${at} of ${count.places}`}</span>}
             <Shortcut keys="Shift Enter">
               <Button
                 variant="quiet"
