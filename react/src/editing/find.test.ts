@@ -114,6 +114,19 @@ describe("find", () => {
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
   });
 
+  test("counts the span being typed in by the words typed, as Change all changes them", () => {
+    edit(editor, "first", null);
+    const typed = `was ${DATE} and the whole of the year that follows it`;
+    typeInto(editor, typed);
+    typeQuery(editor, DATE);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    typeReplacement(editor, "14 June");
+    // Saved, its words changed fit its room; as typed, they run past it.
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
+    changeAll(editor);
+    expect(editor.store.get().reading.spans.get("first")?.text).toBe(typed.replace(DATE, "14 June"));
+  });
+
   test("counts a place by the verdict its change would get, as the chip says it of that edit", () => {
     // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
     const lacking = aSpan({
@@ -394,7 +407,18 @@ describe("stepping through the places found", () => {
     expect(current()).toBe("first");
     stepFind(editor, -1);
     expect(current()).toBe("similar");
-    expect(placeAt(editor.store.get().find)).toEqual({ at: 2, of: 2 });
+    expect(placeAt(editor.store.get())).toBe(2);
+  });
+
+  test("steps through the places the count counts, the span being typed in among them", () => {
+    typeQuery(editor, DATE);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    edit(editor, "other", null);
+    typeInto(editor, `${DATE} now`);
+    expect(findCount(editor.store.get()).places).toBe(3);
+    stepFind(editor, -1);
+    expect(current()).toBe("other");
+    expect(editor.store.get().announcement.text).toBe("3 of 3");
   });
 
   test("a step before typing has stopped finds first, and a new search starts from the top again", () => {
@@ -407,7 +431,7 @@ describe("stepping through the places found", () => {
     typeQuery(editor, "14 M");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(current()).toBeNull();
-    expect(placeAt(editor.store.get().find)).toBeNull();
+    expect(placeAt(editor.store.get())).toBeNull();
   });
 
   test("with find shut, nothing is gone to", () => {

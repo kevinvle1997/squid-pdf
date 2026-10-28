@@ -1,15 +1,15 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitInfo, FitRules, Sentences, SpanInfo, Strategy } from "../api/types";
+import type { FitInfo, FitRules, Replace, Sentences, SpanInfo, Strategy } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { announcing, change, changed, type Editor, type EditorState, scrollingTo } from "./editor";
+import { announcing, change, type Editor, type EditorState, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
 import { differing, type Reading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
-import { finish, typingEnd } from "./typing";
+import { finish, keptEditOf, typingEnd } from "./typing";
 import { editVerdictOf } from "./verdicts";
 import { fillCounted, sentenceOrNothing } from "./words";
 
@@ -50,20 +50,30 @@ interface Found {
 }
 
 /**
- * Every span that reads `find.searched` now, in the order shown. None on a page left out of the download, which
- * the file won't have; a redaction or a form field takes no replace.
+ * Every span that reads `find.searched` in `reading`, `typed` in place of its span's words, in the order shown. None
+ * on a page left out of the download, which the file won't have; a redaction or a form field takes no replace.
  */
-function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Reading; find: FindState }): Found[] {
+function foundIn(
+  spans: readonly SpanInfo[],
+  { reading, find, typed }: { reading: Reading; find: FindState; typed: Replace | null },
+): Found[] {
   if (find.searched === "") return [];
   const found: Found[] = [];
   for (const span of spans) {
     const now = reading.spans.get(span.id);
     if (reading.deleted.has(span.page) || span.form_field || now?.redacted) continue;
-    const text = textIn(reading, span);
+    const kept = typed?.span_id === span.id ? typed : undefined;
+    const text = kept?.text ?? textIn(reading, span);
+    const strategy = kept === undefined ? now?.strategy : kept.strategy;
     const matches = matchesIn(text, find.searched, find);
-    if (matches.length > 0) found.push({ span, text, strategy: now?.strategy, matches });
+    if (matches.length > 0) found.push({ span, text, strategy, matches });
   }
   return found;
+}
+
+/** The places found as Change all would change them: in the words being typed on the page, as typing keeps them. */
+function foundNow(state: EditorState): Found[] {
+  return foundIn(state.doc.spans, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
 }
 
 /** Whether a span's matches are the same as before. */
@@ -163,24 +173,24 @@ export function tintsOn(
   });
 }
 
-/** The find bar's matches found again in `reading`; the place gone to stays while it's still found. */
+/** The find bar's marks found again in `reading`; the place gone to stays while it's still found. */
 function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
   const { find, doc } = state;
-  const found = foundIn(doc.spans, { reading, find });
+  // The span typed in shows no marks (`tintsOn`), so its saved words do here.
+  const found = foundIn(doc.spans, { reading, find, typed: null });
   const current = found.some(({ span }) => span.id === find.current) ? find.current : null;
   return { ...find, matches: matchesOf(found, find.matches), current };
 }
 
-/** The places found, by span, in the document's order: the order they were found in. */
-export function placesIn(find: Pick<FindState, "matches">): string[] {
-  return [...find.matches.values()].flatMap((onPage) => [...onPage.keys()]);
+/** The places found, by span, in the document's order: those the count counts. */
+function placesIn(state: EditorState): string[] {
+  return foundNow(state).map(({ span }) => span.id);
 }
 
-/** Where the place gone to is among those found, counting from 1, and how many there are; null before one is. */
-export function placeAt(find: Pick<FindState, "matches" | "current">): { at: number; of: number } | null {
-  const places = placesIn(find);
-  const index = find.current === null ? -1 : places.indexOf(find.current);
-  return index < 0 ? null : { at: index + 1, of: places.length };
+/** Where the place gone to is among those the count counts, counting from 1; null before one is. */
+export function placeAt(state: EditorState): number | null {
+  const index = state.find.current === null ? -1 : placesIn(state).indexOf(state.find.current);
+  return index < 0 ? null : index + 1;
 }
 
 /** The place `step` from the one gone to, round from the last to the first; the first or last when none is yet. */
@@ -199,8 +209,9 @@ export function stepFind(editor: Editor, step: 1 | -1): void {
     clearTimeout(editor.finding.timer);
     search(editor);
   }
-  const { find } = editor.store.get();
-  const places = placesIn(find);
+  const state = editor.store.get();
+  const { find } = state;
+  const places = placesIn(state);
   const current = placeAfter(places, find.current, step);
   if (current === undefined) return;
   const at = places.indexOf(current) + 1;
@@ -246,10 +257,10 @@ function looksDifferent(
   return runsPast(fit.deltaPt, fit.roomPt, rules) && wayDrawn(judged.strategy, fit) === "as-is";
 }
 
-/** The find bar's count now. */
+/** The find bar's count now, found as Change all finds: in the words being typed, as typing keeps them. */
 export function findCount(state: EditorState): FindCount {
-  const { find, doc, reading, layout, drawn } = state;
-  const found = foundIn(doc.spans, { reading, find });
+  const { find, doc, layout, drawn } = state;
+  const found = foundNow(state);
   const judging = { drawn, fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
   return { places: found.length, mismatches: found.filter((each) => looksDifferent(each, judging)).length };
 }
@@ -334,12 +345,10 @@ function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
 export function changeAll(editor: Editor): void {
   const state = editor.store.get();
   const { typed, ended } = typingEnd(state, true);
-  // Found in the words as typed: their step comes first.
-  const typing = changed(state, [typed]);
   // What's typed but not yet found is what the user sees in "Find": find it first.
-  const find = searchingQuery(typing.find);
-  // Nothing to change to, since emptying a span is redaction's job.
-  const found = find.replacement === "" ? [] : foundIn(state.doc.spans, { reading: typing.reading, find });
+  const find = searchingQuery(state.find);
+  // Nothing to change to, since emptying a span is redaction's job. Found as the count finds, in the words typed.
+  const found = find.replacement === "" ? [] : foundNow({ ...state, find });
   if (found.length === 0) {
     change(editor, typed, ended);
     return;

@@ -1548,6 +1548,22 @@ describe("find and replace", () => {
     await expect.element(screen.getByRole("button", { name: /^Find/ })).toHaveFocus();
   });
 
+  test("the step's place among those found agrees with the count beside it while a span is typed in", async () => {
+    const there = aSpan({ id: "s2", text: "is there", size: 20, bbox: { x0: 72, y0: 200, x1: 152, y1: 224 } });
+    const screen = await openEditor({ doc: aDoc({ spans: [span, there], fonts: [aFont("Times-Roman")] }) });
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("was");
+    const bar = screen.getByRole("search");
+    await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(bar.getByText("1 of 1")).toBeVisible();
+    await screen.getByRole("button", { name: "is there" }).click();
+    await userEvent.keyboard("{Control>}a{/Control}was there");
+    await expect.element(bar.getByText(/^2 places, 1 of them/)).toBeVisible();
+    await expect.element(bar.getByText("1 of 2")).toBeVisible();
+  });
+
   test("a reading persisted before Change all's sentence was sent changes all, with no key hint left alone", async () => {
     // The server's reading, asked for again, hasn't landed.
     vi.mocked(documentOf)
