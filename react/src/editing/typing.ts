@@ -19,11 +19,11 @@ import {
   newTextVerdictOf,
   sameInsert,
 } from "./newText";
-import { type Reading, type SpanReading, textIn } from "./project";
-import { type Drawn, landedFitOf, landedNewTextFitOf } from "./render";
+import { type Reading, textIn } from "./project";
+import { landedNewTextFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
-import { liveVerdictOf, shortWarningOf, type Verdict, verdictOf } from "./verdicts";
+import { editVerdictOf, shortWarningOf, type Verdict } from "./verdicts";
 import { fill, sentenceOrNothing } from "./words";
 
 /** The text being typed into a span, not yet in the history. */
@@ -175,7 +175,7 @@ export function troublesIn(state: EditorState, text: string): Troubles {
   if (span.form_field) return { sentences: [sentences.form_field_not_edited], kind: "form field", ...unedited };
   // Taking text out isn't a change: told while the field is empty.
   if (isEmpty(text)) return { sentences: [sentences.empty], kind: "empty", ...unedited };
-  const verdict = draftVerdictOf(state.drawn, { draft, span, font, text });
+  const verdict = editVerdictOf(state.drawn, { span, font, text, strategy: draft.strategy });
   const fit = fitOf(span, { font, text, rules });
   const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
@@ -199,16 +199,6 @@ function newTextTroublesIn(state: EditorState, draft: NewTextDraft, text: string
   const drawing = newTextDrawingOf(state.layout, insert);
   const kind = `${drawing.switched.join("")} ${drawing.leftOut.join("")} ${shortWarningOf(verdict) ?? ""}`;
   return { sentences: letterTroublesOf(drawing, state.doc.sentences), kind, offers: false, verdict };
-}
-
-/** What the draft's span reading `text` comes to: its render's, once one of these very words lands, else worked out here. */
-function draftVerdictOf(
-  drawn: Drawn,
-  { draft, span, font, text }: { draft: SpanDraft; span: SpanInfo; font: FontInfo; text: string },
-): Verdict {
-  const now: SpanReading = { span, text, replaced: text !== span.text, strategy: draft.strategy, redacted: false };
-  const live = () => liveVerdictOf(span, { font, text });
-  return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }
 
 /** Whether `typed` reads as other than the emails `before` held: one broken, or run into another. */

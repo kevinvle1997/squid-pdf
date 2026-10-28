@@ -23,7 +23,9 @@ import {
 } from "./find";
 import type { LineScale } from "./fit";
 import { matchesIn } from "./matching";
-import { edit, typeInto } from "./typing";
+import { NOTHING_DRAWN } from "./render";
+import { edit, troublesIn, typeInto } from "./typing";
+import { shortWarningOf } from "./verdicts";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
@@ -69,6 +71,15 @@ afterEach(() => {
 
 const found = () => [...editor.store.get().find.matches].map(([page, spans]) => [page, [...spans.keys()]]);
 
+/** The chip's short warning on an edit of `spanId` reading `text`: the span's own where none is worked out, as `EditField` shows it. */
+function chipWarningOf(spanId: string, text: string): string | null {
+  edit(editor, spanId, null);
+  const state = editor.store.get();
+  const verdict = troublesIn(state, text).verdict ?? state.layout.spans.get(spanId);
+  if (verdict === undefined) throw new Error(`no span ${spanId}`);
+  return shortWarningOf(verdict);
+}
+
 /** Each state `run` sets, as what's drawn would hear of it. */
 function updatesOf(run: () => void): EditorState[] {
   const heard: EditorState[] = [];
@@ -101,6 +112,57 @@ describe("find", () => {
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
     typeReplacement(editor, "14 June and the whole of the year that follows it");
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
+  });
+
+  test("counts a place by the verdict its change would get, as the chip says it of that edit", () => {
+    // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
+    const lacking = aSpan({
+      id: "total",
+      text: "Total 14 €",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+    });
+    const font = aFont("Times-Roman", {
+      substitute: "Liberation Serif Regular",
+      glyphs: halfWideGlyphs("Total 0123456789"),
+    });
+    editor = createEditor(new File(["%PDF-"], "invoice.pdf"), aDoc({ spans: [lacking], fonts: [font] }), 2);
+    openFind(editor);
+    typeQuery(editor, "14 €");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    // Nothing to change to yet: judged on the words it reads now, as the chip judges them as an edit starts.
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1 });
+
+    typeReplacement(editor, "2");
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 0 });
+    changeAll(editor);
+    expect(editor.store.get().reading.spans.get("total")?.text).toBe("Total 2");
+    expect(chipWarningOf("total", "Total 2")).toBeNull();
+    expect(chipWarningOf("total", "Total 14 €")).toBe("a similar font");
+  });
+
+  test("counts a place in a font it can't measure by the span's own verdict, as the chip says it", () => {
+    // Its font isn't among the document's: the chip has nothing to work an edit out from, though a render landed.
+    const unlisted = aSpan({
+      id: "total",
+      text: "Total 14 €",
+      font: "Unlisted",
+      fidelity: "substitute",
+      substitute: "Liberation Serif Regular",
+    });
+    editor = createEditor(new File(["%PDF-"], "invoice.pdf"), aDoc({ spans: [unlisted] }), 2);
+    change(editor, { kind: "add", edits: [aReplace("total", "Total 2")] });
+    const { reading } = editor.store.get();
+    editor.store.set({
+      drawn: { ...NOTHING_DRAWN, from: new Map([[0, reading]]), fits: new Map([[0, { total: aFit() }]]) },
+    });
+    openFind(editor);
+    typeQuery(editor, "2");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    typeReplacement(editor, "2");
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1 });
+    changeAll(editor);
+    expect(chipWarningOf("total", "Total 2")).toBe("a similar font");
   });
 
   test("says the count in the server's words, in the form each count takes", () => {

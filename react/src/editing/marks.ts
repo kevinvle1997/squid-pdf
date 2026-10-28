@@ -79,11 +79,6 @@ function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   return { warn: true, sentence: redaction.message, why: null };
 }
 
-/** Whether an edit here won't match the text around it, whatever the words: a similar font, or its own set apart from it. */
-export function wontMatch(span: SpanInfo): boolean {
-  return span.substitute !== null || span.why !== null;
-}
-
 /** Why an edit here won't match the text around it, in the server's words. */
 function approximateSentence(why: NonNullable<SpanInfo["why"]>, sentences: Sentences): string {
   return fill(sentences.approximate[why.code] ?? "", why.params);
