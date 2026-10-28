@@ -21,7 +21,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "../../testing";
-import { NOTE_CLOSE_DELAY_MS, PX_PER_PT } from "../constants";
+import { NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS, PX_PER_PT } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
@@ -1406,6 +1406,67 @@ describe("a page", () => {
 
     await moveMouse(onNote, { x: 1, y: noteBox.top - 40 });
     await expect.element(note, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toBeInTheDocument();
+  });
+
+  /** Signed, new text at rest on the page beside a form field, its mark unfocused, the pointer away. */
+  async function signedBesideAField() {
+    const formField = aSpan({
+      id: "s3",
+      text: "SSN 078",
+      form_field: true,
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    openDocument(aDoc({ spans: [formField], fonts: [aFont("Times-Roman")] }));
+    await loadShippedFaces(editor);
+    const screen = await draw();
+    const spanMark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(spanMark).toBeInTheDocument();
+    openNewTextAt(editor, 0, [300, 500]);
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard("Signed{Enter}");
+    const newTextMark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(newTextMark).toHaveFocus();
+    newTextMark.element().blur();
+    await pressMouse({ x: 1, y: 1 });
+    return { screen, spanMark, newTextMark };
+  }
+
+  /** Wait past the delay a hover's note opens after, so the next hover is cold. */
+  async function pastNoteDelay() {
+    const from = performance.now();
+    await expect.poll(() => performance.now() - from).toBeGreaterThan(NOTE_DELAY_MS * 2);
+  }
+
+  test("new text clicked to type into again, its note a hover showed, is back on the page with its note shut", async () => {
+    const { screen, newTextMark } = await signedBesideAField();
+    const on = middleOf(newTextMark.element().getBoundingClientRect());
+    await moveMouse(on, on);
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    await pressMouse(on);
+    await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
+    await userEvent.keyboard("{End}X{Enter}");
+    const again = screen.getByRole("button", { name: "SignedX" });
+    await expect.element(again).toHaveFocus();
+    again.element().blur();
+    await pressMouse({ x: 1, y: 1 });
+
+    await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  test("new text undone while its note a hover showed is open leaves the page's notes: the next hover waits", async () => {
+    const { spanMark, newTextMark } = await signedBesideAField();
+    const on = middleOf(newTextMark.element().getBoundingClientRect());
+    await moveMouse(on, on);
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    flushSync(() => undo(editor));
+    await expect.element(newTextMark).not.toBeInTheDocument();
+    await pastNoteDelay();
+    const onSpan = middleOf(spanMark.element().getBoundingClientRect());
+    await moveMouse(onSpan, onSpan);
+    await new Promise(requestAnimationFrame);
+
+    expect(spanMark.element()).not.toHaveAttribute("aria-describedby");
+    await expect.element(spanMark).toHaveAttribute("aria-describedby");
   });
 
   test("a press on a span's note, over the line above, closes it, and the next press there edits that line", async () => {

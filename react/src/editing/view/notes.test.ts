@@ -20,7 +20,7 @@ describe("a page's note", () => {
     notes.show("a", markA, "hover");
     expect(notes.store.get().shown).toBeNull();
     vi.advanceTimersByTime(250);
-    expect(notes.store.get().shown).toEqual({ spanId: "a", anchor: markA, via: "hover" });
+    expect(notes.store.get().shown).toEqual({ markId: "a", anchor: markA, via: "hover" });
 
     notes.hide("a");
     notes.show("b", markB, "hover");
@@ -29,14 +29,14 @@ describe("a page's note", () => {
     expect(notes.store.get().shown).toBeNull();
   });
 
-  test("focus and a tap show it at once; one span's leaving doesn't close another's", () => {
+  test("focus and a tap show it at once; one mark's leaving doesn't close another's", () => {
     const notes = createNotes(250);
     notes.show("a", markA, "focus");
-    expect(notes.store.get().shown?.spanId).toBe("a");
+    expect(notes.store.get().shown?.markId).toBe("a");
     notes.hide("b");
-    expect(notes.store.get().shown?.spanId).toBe("a");
+    expect(notes.store.get().shown?.markId).toBe("a");
     notes.show("b", markB, "tap");
-    expect(notes.store.get().shown?.spanId).toBe("b");
+    expect(notes.store.get().shown?.markId).toBe("b");
   });
 
   test("a click's focus doesn't take over the note its hover showed", () => {
@@ -51,9 +51,9 @@ describe("a page's note", () => {
     const notes = createNotes(250);
     notes.show("a", markA, "focus");
     notes.hide("a");
-    expect(notes.store.get()).toEqual({ shown: null, last: { spanId: "a", anchor: markA, via: "focus" } });
+    expect(notes.store.get()).toEqual({ shown: null, last: { markId: "a", anchor: markA, via: "focus" } });
     notes.show("b", markB, "hover");
-    expect(notes.store.get().shown?.spanId).toBe("b");
+    expect(notes.store.get().shown?.markId).toBe("b");
   });
 
   test("leaving its mark, it closes after the delay, unless the pointer comes onto it; leaving that closes it too", () => {
@@ -62,11 +62,11 @@ describe("a page's note", () => {
     notes.hideSoon("a");
     notes.keep("a");
     vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS);
-    expect(notes.store.get().shown?.spanId).toBe("a");
+    expect(notes.store.get().shown?.markId).toBe("a");
 
     notes.hideSoon("a");
     vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS - 1);
-    expect(notes.store.get().shown?.spanId).toBe("a");
+    expect(notes.store.get().shown?.markId).toBe("a");
     vi.advanceTimersByTime(1);
     expect(notes.store.get().shown).toBeNull();
   });
@@ -79,6 +79,6 @@ describe("a page's note", () => {
     notes.hide("b");
     notes.show("a", markA, "focus");
     vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS);
-    expect(notes.store.get().shown?.spanId).toBe("a");
+    expect(notes.store.get().shown?.markId).toBe("a");
   });
 });

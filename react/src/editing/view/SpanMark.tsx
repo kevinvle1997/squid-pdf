@@ -38,7 +38,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
   const { span, info, reading, font, fit, redaction, sentences, focusTo, notes, noteId } = props;
   const editor = useEditor();
   const look = lookOf({ span, font, reading, fit, redaction, sentences });
-  const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.spanId === span.id);
+  const described = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.markId === span.id);
   const lastTap = useRef(0);
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
   const takeFocus = useCallback(
