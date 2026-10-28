@@ -180,7 +180,8 @@ jobs:
           caddy=$(sed -n 's/^FROM \(caddy:.*\)/\1/p' react/Dockerfile)
           password=$(openssl rand -hex 16)
           echo "::add-mask::$password"
-          hash=$(docker run --rm "$caddy" caddy hash-password --plaintext "$password")
+          # Through stdin, where no other process can read it; caddy reads one line, and fails without its newline.
+          hash=$(printf '%s\n' "$password" | docker run --rm --interactive "$caddy" caddy hash-password)
           printf "SQUIDPDF_DOMAIN=localhost\nSQUIDPDF_USER=ci\nSQUIDPDF_PASSWORD_HASH='%s'\n" "$hash" > .env
           echo "SQUIDPDF_PASSWORD=$password" >> "$GITHUB_ENV"
 
