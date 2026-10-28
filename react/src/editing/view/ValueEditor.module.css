@@ -2,7 +2,6 @@
 .editor {
   /* A day of the calendar: a button's size on a pointer, a finger's on a touch screen. */
   --cell: 32px;
-  pointer-events: auto;
 }
 @media (pointer: coarse) {
   .editor { --cell: var(--hit); }

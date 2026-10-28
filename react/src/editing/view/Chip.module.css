@@ -6,13 +6,13 @@
   display: flex; flex-direction: column; gap: var(--s2);
   max-width: 30rem;
   white-space: nowrap; line-height: 1;
-  pointer-events: none;
+  /* The whole slip takes a press, which leaves focus in the field (Chip.tsx): one through it would end the typing. */
+  pointer-events: auto;
 }
 /* What an edit here warns of, in full, as typing starts, and muting it under that: above the edit's own facts. */
 .note {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
-  pointer-events: auto;
 }
 /* That a change breaks a signed document's signature, until its first edit: above the font's note, ruled off and wrapped as that note is. */
 .signature {
@@ -31,22 +31,15 @@
 /* It will match: said in ink, as plainly as a warning is said in red. */
 .identical { color: var(--ink); }
 /* The ways out of a long line take a row of their own, under what's wrong. */
-.ways {
-  display: flex; align-items: center; gap: var(--s2);
-  pointer-events: auto;
-}
+.ways { display: flex; align-items: center; gap: var(--s2); }
 /* What a pointer can press, always last and in one row on the chip's one left edge: the user's own copy
    of the span's font, and redacting the span. */
 .actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
-.offer {
-  display: flex; align-items: baseline; gap: var(--s2);
-  pointer-events: auto;
-}
-.redact { pointer-events: auto; }
+.offer { display: flex; align-items: baseline; gap: var(--s2); }
 /* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }
 }
 /* New text's faces, listed open under its facts, and why the handwriting ones are missing if the list didn't come. */
-.faces { display: flex; flex-direction: column; gap: var(--s2); pointer-events: auto; }
+.faces { display: flex; flex-direction: column; gap: var(--s2); }
 .facesFailed { white-space: normal; line-height: 1.4; }

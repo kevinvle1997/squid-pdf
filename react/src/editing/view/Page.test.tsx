@@ -155,6 +155,21 @@ async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS)
   await userEvent.keyboard("{Enter}");
 }
 
+/** Press, by mouse or finger, the bare background of the slip `within` is on: in its padding, halfway along its top. */
+async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
+  const box = within.closest("[data-slip]")?.getBoundingClientRect();
+  if (box === undefined) throw new Error("no slip");
+  const at = { x: box.left + box.width / 2, y: box.top + 4 };
+  if (pointer === "finger") {
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    return;
+  }
+  const press = { ...at, button: "left" as const, clickCount: 1 };
+  await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...press });
+  await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
+}
+
 /** Scroll the page far enough away that it's past the margin pages are drawn within. */
 function farAway() {
   spacer = document.createElement("div");
@@ -462,6 +477,30 @@ describe("a page", () => {
     await expect.element(note).not.toBeInTheDocument();
     expect(editor.store.get().reading.spans.size).toBe(0);
     await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
+  });
+
+  test.each(["mouse", "finger"] as const)(
+    "a press by %s on the chip's bare background keeps the edit open, focus in the field",
+    async (pointer) => {
+      if (pointer === "finger") await emulateTouchScreen();
+      const screen = await draw();
+      await editSpan(screen);
+      await userEvent.keyboard("{ArrowRight} now");
+      const field = screen.getByRole("textbox");
+      await pressBareSlip(screen.getByRole("button", { name: "Redact" }).element(), pointer);
+      await expect.element(field).toHaveFocus();
+      await expect.element(field).toHaveValue(`${WORDS} now`);
+    },
+  );
+
+  test("Shift+Tab from the field, with nothing before it to go to, keeps the edit and puts focus on the span", async () => {
+    // One page, so the page's Delete is off: nothing comes before the field.
+    openDocument(aDoc({ spans: [span], fonts: DOC.fonts }));
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{ArrowRight} now");
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await expect.element(screen.getByRole("button", { name: `${WORDS} now` })).toHaveFocus();
   });
 
   test("Redact in the field's chip takes the whole span out, typed words and all, and its margin note puts it back", async () => {
@@ -1047,6 +1086,28 @@ describe("a page", () => {
       await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
       await expect.element(field).toHaveFocus();
       await expect.element(field).toHaveValue("Signed");
+    });
+
+    test.each(["mouse", "finger"] as const)(
+      "a press by %s on new text's slip, on its bare background, keeps the typing open, focus in the field",
+      async (pointer) => {
+        if (pointer === "finger") await emulateTouchScreen();
+        // A line under all of the slip, so a press let through it lands on the line's mark, which would take focus.
+        const under = aSpan({ ...span, bbox: { x0: 40, y0: 290, x1: 555, y1: 760 } });
+        const doc = aDoc({ spans: [under], fonts: DOC.fonts });
+        const { field, faces } = await openNewText(A4, [300, 300], { doc, words: "Signed" });
+        await pressBareSlip(faces.element(), pointer);
+        await expect.element(field).toHaveFocus();
+        await expect.element(field).toHaveValue("Signed");
+      },
+    );
+
+    test("Shift+Tab from new text's field, with nothing before it to go to, keeps it and puts focus on it", async () => {
+      // On one page, so the page's Delete is off, and above its line: nothing comes before the field.
+      const doc = aDoc({ spans: [span], fonts: DOC.fonts });
+      const { screen } = await openNewText(A4, [300, 60], { doc, words: "Signed" });
+      await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+      await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
     });
 
     test("holds the side of its line new text's slip is on while its fonts are in use from the keys", async () => {

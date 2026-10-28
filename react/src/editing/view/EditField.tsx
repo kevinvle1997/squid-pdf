@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { isFileDropItem, useDrop } from "react-aria";
+import { isFileDropItem, useDrop, useFocusVisible } from "react-aria";
 import { Input, TextField } from "react-aria-components";
 import { createPortal } from "react-dom";
 import type { PageInfo, SpanInfo } from "../../api/types";
@@ -80,6 +80,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const slipLayer = useContext(SlipLayerContext);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
+  const { isFocusVisible } = useFocusVisible();
   // As the page is shown wider or narrower, what the field scales by to show the span's size.
   const watchPage = useCallback(
     (input: HTMLInputElement | null) => {
@@ -179,7 +180,9 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           onBlur={(event) => {
             const to = event.relatedTarget;
             if (to instanceof Node && chip.current?.contains(to)) return;
-            if (document.hasFocus()) finish(editor, true);
+            // Tabbed past all there is, focus would fall to the document: it goes to the span, as Enter sends it.
+            const tabbedOut = to === null && isFocusVisible;
+            if (document.hasFocus()) finish(editor, true, { returnFocus: tabbedOut });
           }}
           style={{
             ...where,

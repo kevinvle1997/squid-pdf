@@ -18,6 +18,14 @@ export function onBarePaper(target: EventTarget | null, layer: Element): boolean
   return target === layer || (target instanceof HTMLImageElement && target.parentElement === layer);
 }
 
+/**
+ * A press on a slip leaves focus where it is, in the field typed into, unless it's into a field of the slip's own (the
+ * amount's). Not React Aria's `preventFocusOnPress`, which would keep that field from taking focus too.
+ */
+export function keepFocusOnPress(event: Pick<MouseEvent, "target" | "preventDefault">): void {
+  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+}
+
 /** The page a key was pressed on, anything on it or its tick in the page list: each says which, as `data-page`. */
 export function pageOn(target: EventTarget | null): number | null {
   const on = target instanceof HTMLElement ? target.closest<HTMLElement>("[data-page]") : null;
