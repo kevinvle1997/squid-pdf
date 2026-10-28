@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import "../../styles/tokens.css";
@@ -963,6 +963,286 @@ describe("a date's control in the field's slip", () => {
       expect(screen.getByRole("button", { name: "is here" }).query(), keys).not.toBeNull();
     }
   });
+});
+
+/** The slip over or under the field, settled once it's placed and its arrival has run. */
+async function settledSlip() {
+  await new Promise(requestAnimationFrame);
+  await new Promise(requestAnimationFrame);
+  await Promise.all(document.getAnimations().map((animation) => animation.finished));
+  return document.querySelector("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
+}
+
+/** Where what's held at the top over the pages ends: the bar, its rows wrapped, the page list, and the lines under it. */
+function stickyFootOf(screen: Awaited<ReturnType<typeof render>>) {
+  const top = screen.getByRole("banner").element().parentElement;
+  if (top === null) return Infinity;
+  return Math.max(...[top, ...top.children].map((box) => box.getBoundingClientRect().bottom));
+}
+
+/** Where the window ends under `slip`: at the zoom control's top where it lies under it, else at its foot. */
+function windowFootUnder(slip: DOMRect, screen: Awaited<ReturnType<typeof render>>) {
+  const foot = window.visualViewport?.height ?? window.innerHeight;
+  const zoom = screen.getByRole("group", { name: "Zoom" }).element().getBoundingClientRect();
+  return slip.left < zoom.right && slip.right > zoom.left ? Math.min(foot, zoom.top) : foot;
+}
+
+/** Runs `run` in a window `width` by `height`, then gives the window back its size. */
+async function inWindow(width: number, height: number, run: () => Promise<void>) {
+  const [wide, tall] = [window.innerWidth, window.innerHeight];
+  await page.viewport(width, height);
+  try {
+    await run();
+  } finally {
+    await page.viewport(wide, tall);
+  }
+}
+
+/** Scrolls the window so `element`'s foot is `y` down it. */
+function scrollFootTo(element: Element, y: number) {
+  window.scrollBy(0, element.getBoundingClientRect().bottom - y);
+}
+
+/** Opens the field on `mark` from the keyboard. */
+async function openFieldOn(screen: Awaited<ReturnType<typeof render>>, mark: Element) {
+  if (!(mark instanceof HTMLElement)) throw new Error("no mark");
+  mark.focus();
+  await userEvent.keyboard("{Enter}");
+  await expect.element(screen.getByRole("textbox")).toHaveFocus();
+}
+
+describe("a slip near the window's foot", () => {
+  beforeAll(() => learnDateLanguages());
+  // What the window reports going wrong, as it does a slip's observer started again mid-delivery.
+  const reported: string[] = [];
+  const report = (event: ErrorEvent) => reported.push(event.message);
+  beforeEach(() => {
+    reported.length = 0;
+    window.addEventListener("error", report);
+  });
+  afterEach(() => {
+    window.removeEventListener("error", report);
+    expect(reported).toEqual([]);
+  });
+
+  // A line low on the first of two pages, in a font with no é.
+  const low = aSpan({ id: "low", text: "was low", size: 20, bbox: { x0: 72, y0: 640, x1: 152, y1: 664 } });
+  const LOW = { ...aDoc({ spans: [low], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] }), pages: [A4, A4] };
+  // A date on the first of two pages, which opens a calendar.
+  const DUE_WORDS = "Due 14 March 2026";
+  const due = aSpan({ id: "due", text: DUE_WORDS, size: 12, bbox: { x0: 72, y0: 640, x1: 200, y1: 655 } });
+  const DUE_FONT = aFont("Times-Roman", { glyphs: halfWideGlyphs(`${DUE_WORDS}0123456789`) });
+  const DUE = { ...aDoc({ spans: [due], fonts: [DUE_FONT] }), pages: [A4, A4] };
+
+  /** Opens the calendar of the date's field, open already. */
+  async function openCalendar(screen: Awaited<ReturnType<typeof render>>) {
+    const control = screen.getByRole("button", { name: "Date" });
+    await expect.element(control).toBeVisible();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(control).toHaveAttribute("aria-expanded", "true");
+  }
+
+  test.each([
+    [1440, 900],
+    [390, 667],
+  ])(
+    "at %d px, hangs under its line while the window has room there, and the page doesn't move",
+    async (width, height) => {
+      await inWindow(width, height, async () => {
+        const screen = await openEditor({ doc: LOW });
+        const mark = screen.getByRole("button", { name: "was low" });
+        await expect.element(mark).toBeInTheDocument();
+        scrollFootTo(mark.element(), height / 3);
+        const scrolled = window.scrollY;
+        await openFieldOn(screen, mark.element());
+
+        const slip = await settledSlip();
+        expect(slip.top).toBeGreaterThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().bottom);
+        expect(slip.bottom).toBeLessThanOrEqual(windowFootUnder(slip, screen));
+        expect(window.scrollY).toBe(scrolled);
+      });
+    },
+  );
+
+  test.each([
+    [1440, 900],
+    [390, 667],
+  ])(
+    "at %d px, opens over its line when the window has no room under it, whole in the window, and the page doesn't move",
+    async (width, height) => {
+      await inWindow(width, height, async () => {
+        const screen = await openEditor({ doc: LOW });
+        const mark = screen.getByRole("button", { name: "was low" });
+        await expect.element(mark).toBeInTheDocument();
+        // Clear of the zoom control, but under it the slip would pass the window's foot.
+        scrollFootTo(mark.element(), height - 60);
+        const scrolled = window.scrollY;
+        await openFieldOn(screen, mark.element());
+
+        const slip = await settledSlip();
+        expect(slip.bottom).toBeLessThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().top);
+        expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+        expect(window.scrollY).toBe(scrolled);
+      });
+    },
+  );
+
+  test("on a phone, opens over a line near its page's top, over the page before, when the window has room there", async () => {
+    await inWindow(390, 844, async () => {
+      const top = aSpan({ id: "top", page: 2, text: "was top", size: 20, bbox: { x0: 72, y0: 40, x1: 152, y1: 64 } });
+      const screen = await openEditor({
+        doc: aDoc({ spans: [top], pages: [A4, A4, A4, A4], fonts: [aFont("Times-Roman")] }),
+      });
+      screen.getByRole("region", { name: "Page 3" }).element().scrollIntoView();
+      const mark = screen.getByRole("button", { name: "was top" });
+      await expect.element(mark).toBeInTheDocument();
+      scrollFootTo(mark.element(), 780);
+      const scrolled = window.scrollY;
+      await openFieldOn(screen, mark.element());
+
+      const slip = await settledSlip();
+      expect(slip.bottom).toBeLessThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().top);
+      expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+      expect(window.scrollY).toBe(scrolled);
+      // Drawn over the page before, not under it.
+      const inside = document.elementFromPoint((slip.left + slip.right) / 2, slip.top + 20);
+      expect(inside?.closest("[data-slip]")).not.toBeNull();
+    });
+  });
+
+  /** Opens "was low" on a phone with room on neither side of it. */
+  async function openWithRoomOnNeitherSide() {
+    const screen = await openEditor({ doc: LOW });
+    const mark = screen.getByRole("button", { name: "was low" });
+    await expect.element(mark).toBeInTheDocument();
+    // Halfway between the bar's foot and the zoom control's top: neither has room for the slip.
+    scrollFootTo(mark.element(), 190);
+    await openFieldOn(screen, mark.element());
+    return screen;
+  }
+
+  test("on a phone, with room on neither side of its line, is brought into view under it, clear of the bar and the zoom control", async () => {
+    await inWindow(390, 320, async () => {
+      const screen = await openWithRoomOnNeitherSide();
+
+      const slip = await settledSlip();
+      const field = screen.getByRole("textbox").element().getBoundingClientRect();
+      expect(slip.top).toBeGreaterThanOrEqual(field.bottom);
+      expect(field.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+      expect(slip.bottom).toBeLessThanOrEqual(windowFootUnder(slip, screen));
+    });
+  });
+
+  test("on a phone, brought into view, is brought in again as typing grows it, as far as its top", async () => {
+    await inWindow(390, 320, async () => {
+      const screen = await openWithRoomOnNeitherSide();
+      const opened = await settledSlip();
+      // A letter the font lacks adds a line saying so.
+      await userEvent.keyboard("é");
+      await expect.poll(async () => (await settledSlip()).height).toBeGreaterThan(opened.height);
+
+      // Taller now than the window has room for: brought in as far as its top, which holds the verdict.
+      const slip = await settledSlip();
+      expect(slip.height).toBeGreaterThan(windowFootUnder(slip, screen) - stickyFootOf(screen));
+      expect(slip.top - stickyFootOf(screen)).toBeGreaterThanOrEqual(0);
+      expect(slip.top - stickyFootOf(screen)).toBeLessThan(1);
+    });
+  });
+
+  test("on a phone, keeps to its side of its line as typing grows it, brought into view there", async () => {
+    await inWindow(390, 667, async () => {
+      const screen = await openEditor({ doc: LOW });
+      const mark = screen.getByRole("button", { name: "was low" });
+      await expect.element(mark).toBeInTheDocument();
+      scrollFootTo(mark.element(), 300);
+      await openFieldOn(screen, mark.element());
+      const opened = await settledSlip();
+      // Its foot just over the zoom control: a line more and it passes it, with room over its line.
+      window.scrollBy(0, opened.bottom - windowFootUnder(opened, screen) + 4);
+      await userEvent.keyboard("é");
+      await expect.poll(async () => (await settledSlip()).height).toBeGreaterThan(opened.height);
+
+      const slip = await settledSlip();
+      expect(slip.top).toBeGreaterThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().bottom);
+      expect(slip.bottom).toBeLessThanOrEqual(windowFootUnder(slip, screen));
+    });
+  });
+
+  test("on a phone, taller than the window has room for under its line, keeps its top in view", async () => {
+    await inWindow(390, 520, async () => {
+      const screen = await openEditor({ doc: DUE });
+      const mark = screen.getByRole("button", { name: DUE_WORDS });
+      await expect.element(mark).toBeInTheDocument();
+      // Just under the bar.
+      scrollFootTo(mark.element(), stickyFootOf(screen) + 20);
+      await openFieldOn(screen, mark.element());
+      await openCalendar(screen);
+
+      const slip = await settledSlip();
+      expect(slip.top).toBeGreaterThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().bottom);
+      expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+    });
+  });
+
+  test("on a phone, over its line, grows up from it as its calendar opens, its top brought into view under the bar", async () => {
+    await inWindow(390, 560, async () => {
+      const screen = await openEditor({ doc: DUE });
+      const mark = screen.getByRole("button", { name: DUE_WORDS });
+      await expect.element(mark).toBeInTheDocument();
+      scrollFootTo(mark.element(), 480);
+      await openFieldOn(screen, mark.element());
+      await openCalendar(screen);
+
+      const slip = await settledSlip();
+      expect(slip.bottom).toBeLessThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().top);
+      expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+    });
+  });
+
+  test("on a phone, clear of the lines held under the bar", async () => {
+    const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
+    const signed = { ...LOW, signed: true, notices: [aDocumentNotice(said, "signed_file")] };
+    await inWindow(390, 340, async () => {
+      const screen = await openEditor({ doc: signed });
+      await expect.element(screen.getByText(said, { exact: true }).first()).toBeVisible();
+      const mark = screen.getByRole("button", { name: "was low" });
+      await expect.element(mark).toBeInTheDocument();
+      scrollFootTo(mark.element(), 270);
+      await openFieldOn(screen, mark.element());
+
+      const slip = await settledSlip();
+      expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+      expect(slip.bottom).toBeLessThanOrEqual(windowFootUnder(slip, screen));
+    });
+  });
+
+  test.each([
+    [1440, 900],
+    [390, 844],
+    [390, 667],
+  ])(
+    "at %d by %d px, near the last page's foot, opens its calendar whole in the window, the pages scrolling no way but sideways",
+    async (width, height) => {
+      await inWindow(width, height, async () => {
+        const words = "Due 14 March 2026";
+        const glyphs = halfWideGlyphs(`${words}0123456789`);
+        const last = aSpan({ id: "due", text: words, size: 12, bbox: { x0: 72, y0: 800, x1: 200, y1: 815 } });
+        const screen = await openEditor({ doc: aDoc({ spans: [last], fonts: [aFont("Times-Roman", { glyphs })] }) });
+        const mark = screen.getByRole("button", { name: words });
+        await expect.element(mark).toBeInTheDocument();
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        await openFieldOn(screen, mark.element());
+        await openCalendar(screen);
+
+        const slip = await settledSlip();
+        const pages = document.getElementById("pages");
+        if (pages === null) throw new Error("no pages");
+        expect(pages.scrollHeight).toBeLessThanOrEqual(pages.clientHeight);
+        expect(slip.bottom).toBeLessThanOrEqual(windowFootUnder(slip, screen));
+        expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
+      });
+    },
+  );
 });
 
 describe("splitting the document", () => {

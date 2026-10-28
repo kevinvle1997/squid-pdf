@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { mergeProps, mergeRefs, useFocusVisible, useFocusWithin } from "react-aria";
+import { mergeRefs, useFocusVisible } from "react-aria";
 import { Input, TextField } from "react-aria-components";
 import { createPortal } from "react-dom";
 import type { Insert, PageInfo } from "../../api/types";
@@ -206,10 +206,7 @@ function NewTextChip({
   const editor = useEditor();
   const { trouble, note, why, shortWarning, drawnIn, shown } = useChipFacts(draft);
   const { groups, chosen, failed, widthOf } = useFontList(draft);
-  // On the side of its line it was on while the fonts are in use: a face chosen grows or shrinks it, under the keys.
-  const [inUse, setInUse] = useState(false);
-  const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setInUse });
-  const { slipRef, style } = useSlipPlace(line, { page: info, holdSide: inUse });
+  const { slipRef, style } = useSlipPlace(line, { page: info });
   const placed = useCallback(
     (element: HTMLDivElement | null) => {
       slip.current = element;
@@ -239,12 +236,15 @@ function NewTextChip({
 
   return (
     // `data-slip`: a key pressed in it is the slip's, as one in the field is the field's (`isTyping`).
+    // biome-ignore lint/a11y/noStaticElementInteractions: it hears the keys and presses its controls leave, and focus leaving it
     <div
       ref={placed}
       className={styles.chip}
       style={style}
       data-slip=""
-      {...mergeProps(focusWithinProps, { onBlur: onLeave, onKeyDown, onMouseDown: keepFocusOnPress })}
+      onBlur={onLeave}
+      onKeyDown={onKeyDown}
+      onMouseDown={keepFocusOnPress}
     >
       {note !== null && (
         // Heard as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.

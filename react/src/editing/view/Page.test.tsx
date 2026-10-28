@@ -76,6 +76,8 @@ const WHITE_PIXEL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP4DwABAQEAHLCMmQAAAABJRU5ErkJggg==";
 // The viewport the file starts in, put back after each test so none runs at the size another set.
 const VIEWPORT = { width: window.innerWidth, height: window.innerHeight };
+// Tall enough for the window to have room under the page's foot, where a slip at the foot hangs.
+const ROOM_UNDER_FOOT = { width: 1400, height: 1400 };
 
 let editor: Editor;
 // What `farAway` adds below the page, taken out after the test even when it fails.
@@ -864,7 +866,7 @@ describe("a page", () => {
     });
 
     test("lets the slip of a line at its foot hang past it, whole, and pressed", async () => {
-      await page.viewport(1400, 900);
+      await page.viewport(ROOM_UNDER_FOOT.width, ROOM_UNDER_FOOT.height);
       const foot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 820, x1: 152, y1: 834 } });
       openDocument(aDoc({ spans: [foot], fonts: DOC.fonts }));
       const screen = await draw();
@@ -900,7 +902,7 @@ describe("a page", () => {
     });
 
     test("lets the prompt before un-redacting a line at its foot hang past it, whole, and pressed", async () => {
-      await page.viewport(1400, 900);
+      await page.viewport(ROOM_UNDER_FOOT.width, ROOM_UNDER_FOOT.height);
       const foot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 820, x1: 152, y1: 834 } });
       openDocument(aDoc({ spans: [foot], fonts: DOC.fonts }));
       redact(editor, "foot");
@@ -1088,7 +1090,7 @@ describe("a page", () => {
     });
 
     test("lets new text's slip at its foot hang past it, whole, and pressed", async () => {
-      await page.viewport(1400, 900);
+      await page.viewport(ROOM_UNDER_FOOT.width, ROOM_UNDER_FOOT.height);
       const { field, faces } = await openNewText(A4, [300, 835]);
       const option = faces.getByRole("option", { name: "Caveat Bold" });
       option.element().scrollIntoView({ block: "center" });
@@ -1147,7 +1149,7 @@ describe("a page", () => {
       await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
     });
 
-    test("holds the side of its line new text's slip is on while its fonts are in use from the keys", async () => {
+    test("holds the side of its line new text's slip is on as its fonts, used from the keys, shrink it", async () => {
       await page.viewport(1400, 900);
       // Arial only named, so its slip warns in full, and is the taller for it; in Caveat it warns of nothing.
       const arial = { ...span, font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" } as const;
@@ -1163,9 +1165,10 @@ describe("a page", () => {
       // Placed as it shrinks, before the frame is painted.
       await expect.poll(() => slip().height).toBeLessThan(tall);
       expect(side()).toBe("below");
-      // Back in the field, nothing in it is in use: it takes the side it has room on.
+      // Back in the field, it stays on its side: a slip crosses its line only where the pages would cut it.
       await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
-      await expect.poll(side).toBe("above");
+      await expect.element(field).toHaveFocus();
+      expect(side()).toBe("below");
     });
 
     test("clips a field typed past it on a turned page", async () => {

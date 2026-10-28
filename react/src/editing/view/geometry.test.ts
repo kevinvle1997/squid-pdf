@@ -54,6 +54,9 @@ describe("a span's mark", () => {
   });
 });
 
+// A window with no end above or below the page: only its sides are asked.
+const TALL = { top: Infinity, bottom: Infinity, pagesStart: Infinity, pagesEnd: Infinity, zoomControl: null };
+
 /** A slip's place once its size is known: moved from its layer's corner by `left` and `top`. */
 function placed(left: string, top: string) {
   return { left: 0, top: 0, translate: `${left} ${top}` };
@@ -83,11 +86,11 @@ describe("what's set under a box", () => {
     const small = { width: 200, height: 120, turn_cw: 0 } as const;
     const line = { x0: 20, y0: 10, x1: 80, y1: 20 };
     const size = { width: 230, height: 60 };
-    expect(slipPlaceOf(line, small, { size, room: { left: 30, right: 6 } })).toEqual(
+    expect(slipPlaceOf(line, small, { size, room: { ...TALL, left: 30, right: 6 } })).toEqual(
       placed(points(-24, small), points(24, small)),
     );
     // With less spare than it needs, it starts at the gutter, and runs past the page's right edge.
-    expect(slipPlaceOf(line, small, { size, room: { left: 4, right: 6 } })).toEqual(
+    expect(slipPlaceOf(line, small, { size, room: { ...TALL, left: 4, right: 6 } })).toEqual(
       placed(points(-4, small), points(24, small)),
     );
   });
@@ -99,6 +102,82 @@ describe("what's set under a box", () => {
     // Pinned at its right edge, in the page's right half: moved right until it starts where the page does.
     const right = { x0: 320, y0: 10, x1: 400, y1: 20 };
     expect(slipPlaceOf(right, A4, { size: { width: 450, height: 60 } })).toEqual(placed(points(0, A4), points(24, A4)));
+  });
+});
+
+describe("a slip under a line near the window's foot", () => {
+  // A line 20 pt tall, 700 pt down an A4 page, and a slip 80 pt tall: under it, it would reach 804 pt down.
+  const line = { x0: 72, y0: 700, x1: 152, y1: 720 };
+  const size = { width: 175, height: 80 };
+  // The window shows the page from 100 pt down, under the bar, to 760 pt, its foot; the pages end far past it.
+  const room = { ...TALL, left: 0, right: 0, top: -100, bottom: 760 - 842 };
+
+  test("hangs above its line, grown up from it, when the window has no room below and has it above", () => {
+    expect(slipSideOf(line, A4, { size, room })).toBe("above");
+    expect(slipPlaceOf(line, A4, { size, side: "above", room })).toEqual(
+      placedOver(points(72, A4), points(700 - SLIP_GAP_PT - 842, A4)),
+    );
+  });
+
+  test("wider than its page, as on a phone, hangs above its line too", () => {
+    expect(slipSideOf(line, A4, { size: { width: 700, height: 80 }, room })).toBe("above");
+  });
+
+  test("stays under its line while the window has room there, so nothing moves for it", () => {
+    expect(slipSideOf(line, A4, { size, room: { ...room, bottom: 0 } })).toBe("below");
+  });
+
+  test("with room on neither side, stays under its line", () => {
+    // The window starts 680 pt down: over the line, the slip would start at 616 pt.
+    expect(slipSideOf(line, A4, { size, room: { ...room, top: -680 } })).toBe("below");
+  });
+
+  test("where the zoom control lies under it, hangs above its line when under it would reach the control", () => {
+    // The window ends at 820 pt, and the zoom control's top at 790 pt, from 200 pt across: the slip runs to 247 pt.
+    const zoomed = { ...room, bottom: 820 - 842, zoomControl: { left: 200, bottom: 790 - 842 } };
+    expect(slipSideOf(line, A4, { size, room: zoomed })).toBe("above");
+    // From 300 pt across, it isn't under the slip, which has room to the window's foot.
+    expect(slipSideOf(line, A4, { size, room: { ...zoomed, zoomControl: { left: 300, bottom: -52 } } })).toBe("below");
+  });
+
+  test("near its page's top, hangs above it over the page before when the window has room there", () => {
+    // 30 pt down a page whose top shows 300 pt down the window, which ends 100 pt down the page.
+    const nearTop = { x0: 72, y0: 30, x1: 152, y1: 50 };
+    const seen = { ...room, top: 300, bottom: 100 - 842 };
+    expect(slipSideOf(nearTop, A4, { size, room: seen })).toBe("above");
+    // On the first page, the pages start 20 pt over its top, and no scroll shows a slip over them.
+    expect(slipSideOf(nearTop, A4, { size, room: { ...seen, top: 20, pagesStart: 20 } })).toBe("below");
+  });
+
+  test("with room on neither side, near the pages' end, hangs above its line, which a scroll can show", () => {
+    // The last page: the pages end 60 pt past its foot, and no scroll shows a slip past them.
+    const lastPage = { ...room, top: -680, bottom: 60, pagesEnd: 60 };
+    expect(slipSideOf(line, A4, { size: { width: 175, height: 200 }, room: lastPage })).toBe("above");
+  });
+
+  test("held under its line, stays there as it grows past the window's foot, which a scroll can show", () => {
+    expect(slipSideOf(line, A4, { size, room, held: "below" })).toBe("below");
+  });
+
+  test("held under its line, hangs above it once it grows past the pages' end, which no scroll shows", () => {
+    // An open calendar, under a line near the last page's foot.
+    const calendar = { width: 175, height: 300 };
+    const lastPage = { ...room, top: -400, bottom: 60, pagesEnd: 60 };
+    expect(slipSideOf(line, A4, { size: { width: 175, height: 40 }, room: lastPage, held: "below" })).toBe("below");
+    expect(slipSideOf(line, A4, { size: calendar, room: lastPage, held: "below" })).toBe("above");
+  });
+
+  test("held over its line once under it passed the pages' end, stays there as it shrinks", () => {
+    const lastPage = { ...room, top: -400, bottom: 60, pagesEnd: 60 };
+    expect(slipSideOf(line, A4, { size: { width: 175, height: 40 }, room: lastPage, held: "above" })).toBe("above");
+  });
+
+  test("on a page turned a quarter, goes before the line's start when beside it would pass the window's foot", () => {
+    // Shown 22 to 42 pt from the left, from 72 to 152 pt down: right of it, the slip would reach 132 pt down.
+    const nearFoot = { x0: 72, y0: 800, x1: 152, y1: 820 };
+    const turned = { ...A4, turn_cw: 90 } as const;
+    const short = { ...TALL, left: 0, right: 0, top: 0, bottom: 120 - 595 };
+    expect(slipSideOf(nearFoot, turned, { size: { width: 175, height: 60 }, room: short })).toBe("above");
   });
 });
 

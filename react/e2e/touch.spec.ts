@@ -57,7 +57,8 @@ test.describe("on a touch screen", () => {
     await expect(day).toBeVisible();
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(page.getByText(/Alt|⌥/)).toHaveCount(0);
-    expect((await day.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    // Its laid-out height: a box measured through the slip's fractional translate can round a hair short.
+    expect(await day.evaluate((element: HTMLElement) => element.offsetHeight)).toBeGreaterThanOrEqual(44);
   });
 
   test("a tap on a day the font can't write says why, and a second tap chooses it", async ({ page }) => {
