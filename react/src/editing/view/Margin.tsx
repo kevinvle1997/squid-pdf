@@ -97,7 +97,8 @@ export function ChangeList({
 function UndoNote({ label, undo, children }: { label: string; undo: (editor: Editor) => void; children: ReactNode }) {
   const editor = useEditor();
   return (
-    <Button className={styles.note} aria-label={label} onPress={() => undo(editor)}>
+    // `data-margin-note`: Cmd+Z here may take the note away, so focus goes to what it changed (`isOnMarginNote`).
+    <Button className={styles.note} aria-label={label} onPress={() => undo(editor)} data-margin-note="">
       {children}
       <i className={styles.bar} aria-hidden="true" />
     </Button>

@@ -80,4 +80,6 @@
   .column { --full-width: var(--shown-width); --margin-shift: 0px; --beside-margin: 0px; --beside-sheet: 0px; }
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
   .sheet, .trim, .slips { grid-column: 1; }
+  /* Here the bar wraps to three rows, the file's, the count's and the buttons', over the find bar and the page list. */
+  .anchor { scroll-margin-block-start: calc(4 * var(--bar-height) + var(--s4)); }
 }

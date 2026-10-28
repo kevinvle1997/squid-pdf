@@ -337,17 +337,21 @@ export function putBack(editor: Editor, spanId: string): void {
   );
 }
 
-/** Where a key was pressed: on a page, anything on it or its tick in the page list, by the page; on new text, by its id. */
+/**
+ * Where a key was pressed: on a page, anything on it or its tick in the page list, by the page; on new text, by its
+ * id; or on a margin note, which an undo or redo may take away.
+ */
 export interface PressedOn {
   readonly page: number | null;
   readonly newTextId: number | null;
+  readonly marginNote: boolean;
 }
 
-const PRESSED_NOWHERE: PressedOn = { page: null, newTextId: null };
+const PRESSED_NOWHERE: PressedOn = { page: null, newTextId: null, marginNote: false };
 
 /**
  * Take off the last thing done; announce what its span reads now and bring it into view. Focus stays, but on what
- * a page's delete or its undo takes away with the page: focus goes to the page's control in its place.
+ * it may take away: on a page its delete takes, focus goes to the page's control; on a margin note, to what it changed.
  */
 export function undo(editor: Editor, on: PressedOn = PRESSED_NOWHERE): void {
   const step = editor.store.get().history.done.at(-1);
@@ -384,12 +388,14 @@ function stepped(
   change(editor, action, ({ reading, doc }) => ({
     announcement: announcing(fill(doc.sentences[key], { text: span === undefined ? "" : textIn(reading, span) })),
     scrollTo: scrollingTo(spanId),
+    ...(on.marginNote && { focusTo: { spanId } }),
   }));
 }
 
 /**
  * Undo or redo of new text: said as it reads now, or that it's out. Focus on its mark, gone with it, goes to the
- * text nearest it; anywhere else, or on a mark that stays, it stays.
+ * text nearest it, brought into view; on a margin note, to its mark on a page near, or the text nearest it once it's
+ * out; anywhere else it stays.
  */
 function newTextStepped(
   editor: Editor,
@@ -402,14 +408,26 @@ function newTextStepped(
   const had = keptNewTexts(before).find((text) => text.newTextId === newTextId)?.edit.text ?? "";
   change(editor, action, ({ reading, layout, doc }) => {
     const now = keptNewTexts(reading).find((text) => text.newTextId === newTextId);
-    if (now !== undefined) return { announcement: announcing(fill(doc.sentences[key], { text: now.edit.text })) };
+    if (now !== undefined) {
+      // Nothing brings new text into view: on a far page, its mark isn't drawn to take focus until it's scrolled to.
+      const markShown = on.marginNote && editor.near.has(now.edit.page);
+      return {
+        announcement: announcing(fill(doc.sentences[key], { text: now.edit.text })),
+        ...(markShown && { focusTo: { newTextId: now.newTextId } }),
+      };
+    }
     const gone = entry.edit.kind === "insert" ? entry.edit : undefined;
+    const focusMoves = on.newTextId === newTextId || on.marginNote;
     return {
       announcement: announcing(fill(doc.sentences.new_text_taken_out, { text: had })),
-      ...(gone !== undefined &&
-        on.newTextId === newTextId && { focusTo: focusAfterNewText({ layout, reading }, gone) }),
+      ...(gone !== undefined && focusMoves && sendingFocus(focusAfterNewText({ layout, reading }, gone))),
     };
   });
+}
+
+/** Focus sent to `target`, a span brought into view with it: a far page draws no mark to take it. */
+function sendingFocus(target: FocusTo): Partial<Pick<EditorState, "focusTo" | "scrollTo">> {
+  return "spanId" in target ? { focusTo: target, scrollTo: scrollingTo(target.spanId) } : { focusTo: target };
 }
 
 /**

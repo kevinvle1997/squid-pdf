@@ -34,3 +34,8 @@ export function newTextOn(target: EventTarget | null): number | null {
 export function spanOn(target: EventTarget | null): string | null {
   return target instanceof HTMLElement ? (target.dataset.span ?? null) : null;
 }
+
+/** Whether a key was pressed on a margin note, beside the page or under it: its button has `data-margin-note`. */
+export function isOnMarginNote(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.dataset.marginNote !== undefined;
+}
