@@ -1,15 +1,16 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitInfo, FitRules, Sentences, SpanInfo } from "../api/types";
+import type { FitInfo, FitRules, Sentences, SpanInfo, Strategy } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import { announcing, change, changed, type Editor, type EditorState, scrollingTo } from "./editor";
-import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf } from "./fit";
-import { wontMatch } from "./marks";
+import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
 import { differing, type Reading, textIn } from "./project";
+import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { finish, typingEnd } from "./typing";
+import { editVerdictOf } from "./verdicts";
 import { fillCounted, sentenceOrNothing } from "./words";
 
 /** The find bar: what's typed in it, and what it found. */
@@ -40,10 +41,11 @@ export const FIND_CLOSED: FindState = {
   closed: 0,
 };
 
-/** One span found: the span, what it reads now, and where in that the words match. */
+/** One span found: the span, what it reads now and the way out it's drawn with, and where in that the words match. */
 interface Found {
   readonly span: SpanInfo;
   readonly text: string;
+  readonly strategy: Strategy | undefined;
   readonly matches: readonly Match[];
 }
 
@@ -59,7 +61,7 @@ function foundIn(spans: readonly SpanInfo[], { reading, find }: { reading: Readi
     if (reading.deleted.has(span.page) || span.form_field || now?.redacted) continue;
     const text = textIn(reading, span);
     const matches = matchesIn(text, find.searched, find);
-    if (matches.length > 0) found.push({ span, text, matches });
+    if (matches.length > 0) found.push({ span, text, strategy: now?.strategy, matches });
   }
   return found;
 }
@@ -227,26 +229,28 @@ export interface FindCount {
   readonly mismatches: number;
 }
 
-/** Whether changing the words found in a span leaves it set apart from the text around it. */
+/** Whether changing the words found in a span leaves it set apart from the text around it, as the chip says of that edit. */
 function looksDifferent(
-  { span, text, matches }: Found,
-  { fonts, replacement, rules }: { fonts: FontsByObject; replacement: string; rules: FitRules },
+  { span, text, strategy, matches }: Found,
+  { drawn, fonts, replacement, rules }: { drawn: Drawn; fonts: FontsByObject; replacement: string; rules: FitRules },
 ): boolean {
-  // Drawn in a similar font, or set so an edit won't match: whatever the words.
-  if (wontMatch(span)) return true;
   const font = fontOf(fonts, span);
-  // Nothing to change to yet, or no widths to check it by.
-  if (replacement === "" || font === undefined) return false;
-  // The live check typing uses, on the words as they'd read changed.
-  const fit = fitOf(span, { font, text: replacedIn(text, matches, replacement), rules });
-  return fit.missing.length > 0 || runsPast(fit.deltaPt, fit.roomPt, rules);
+  // Its font unknown, the chip works nothing out and shows the span's own verdict: so does the count.
+  if (font === undefined) return span.fidelity !== "exact";
+  // Nothing to change to yet: its words as they read now, as the chip judges them when an edit of it starts.
+  const judged =
+    replacement === "" ? { text, strategy } : { text: replacedIn(text, matches, replacement), strategy: undefined };
+  if (editVerdictOf(drawn, { span, font, ...judged }).fidelity !== "exact") return true;
+  // Past its room with no way out taken, the line runs on: the chip warns of that too. Change all takes none.
+  const fit = fitOf(span, { font, text: judged.text, rules });
+  return runsPast(fit.deltaPt, fit.roomPt, rules) && wayDrawn(judged.strategy, fit) === "as-is";
 }
 
 /** The find bar's count now. */
 export function findCount(state: EditorState): FindCount {
-  const { find, doc, reading, layout } = state;
+  const { find, doc, reading, layout, drawn } = state;
   const found = foundIn(doc.spans, { reading, find });
-  const judging = { fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
+  const judging = { drawn, fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
   return { places: found.length, mismatches: found.filter((each) => looksDifferent(each, judging)).length };
 }
 

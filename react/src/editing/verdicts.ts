@@ -1,8 +1,9 @@
 // How an edit comes out, or a span untouched, as the note, the chip's short warning and the bar's count all say
 // it: one verdict, the server's once its render lands, worked out here as it's typed (Rule 1).
-import type { FitInfo, FontInfo, SpanInfo } from "../api/types";
+import type { FitInfo, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { missingIn } from "./fit";
 import type { SpanReading } from "./project";
+import { type Drawn, landedFitOf } from "./render";
 import { drawingOf } from "./substitutes";
 
 /** How an edit comes out, or the span untouched: the four fields the server sends of a span and of an edit's fit alike. */
@@ -42,6 +43,16 @@ export function liveVerdictOf(span: SpanInfo, { font, text }: { font: FontInfo |
   }
   const why = setApartBy(span, drawing.leftOut);
   return why === null ? EXACT : { ...EXACT, fidelity: "approximate", why };
+}
+
+/** What `span` changed to read `text` comes to: its render's once one of these very words lands, else `liveVerdictOf`. */
+export function editVerdictOf(
+  drawn: Drawn,
+  { span, font, text, strategy }: { span: SpanInfo; font: FontInfo; text: string; strategy: Strategy | undefined },
+): Verdict {
+  const now: SpanReading = { span, text, replaced: text !== span.text, strategy, redacted: false };
+  const live = () => liveVerdictOf(span, { font, text });
+  return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }
 
 /** How an edit in the span's own font won't match the text around it, as the server checks it in turn; null when it will. */
