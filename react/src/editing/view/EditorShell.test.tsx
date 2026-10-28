@@ -677,6 +677,76 @@ describe("undo and redo", () => {
     await vi.waitFor(() => expect(window.scrollY).toBeGreaterThan(0));
     expect(document.activeElement).toBe(focused);
   });
+
+  test("on a change's margin note, Cmd+Z sends focus to its span as the note goes, as pressing the note does", async () => {
+    const screen = await openEditor();
+    await changeSpan(screen, "is here");
+    const note = screen.getByRole("button", { name: "Undo: “is here” goes back to “was here”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(note).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("on a change's margin note, Cmd+Shift+Z sends focus to its span as the note goes", async () => {
+    const screen = await openEditor();
+    await changeSpan(screen, "is here");
+    // Typed back to the original, the span has no note; undone, it has again.
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox").fill("was here");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: /^Undo/ })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    const note = screen.getByRole("button", { name: "Undo: “is here” goes back to “was here”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+
+    await expect.element(note).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("on a change's margin note that stays, Cmd+Z sends focus to its span, as one that goes does", async () => {
+    const screen = await openEditor();
+    await changeSpan(screen, "is here");
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox").fill("is there");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: "Undo: “is there” goes back to “was here”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(screen.getByRole("button", { name: "Undo: “is here” goes back to “was here”" })).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "is here" })).toHaveFocus();
+  });
+
+  test("on a phone, zoomed in, Cmd+Z on a change in the list under the page brings its span out from under the bar", async () => {
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    await page.viewport(390, 844);
+    try {
+      // A similar font draws it, so the bar counts it, a row of its own here.
+      const screen = await openEditor({ doc: { ...ARIAL_DOC, pages: [A4, A4] } });
+      await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+      for (let times = 0; times < 4; times++) await screen.getByRole("button", { name: "Zoom in" }).click();
+      await expect.element(screen.getByRole("button", { name: "Fit to the window, now 150%" })).toBeVisible();
+      await changeSpan(screen, "is here");
+      const note = screen.getByRole("button", { name: "Undo: “is here” goes back to “was here”" });
+      await expect.element(note).toBeVisible();
+      note.element().focus();
+      await userEvent.keyboard("{Control>}z{/Control}");
+
+      const mark = screen.getByRole("button", { name: "was here" });
+      await expect.element(mark).toHaveFocus();
+      // What's held at the top over the pages: the bar, its rows wrapped, and the page list under it.
+      const foot = screen.getByRole("banner").element().parentElement?.getBoundingClientRect().bottom ?? Infinity;
+      await expect.poll(() => mark.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(foot);
+    } finally {
+      await page.viewport(wide, tall);
+    }
+  });
 });
 
 async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>, file = FONT_FILE) {
@@ -1458,6 +1528,80 @@ describe("new text", () => {
     // Its adding undone, the mark goes, and focus goes to the line it was set below.
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(mark).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("on its margin note, Cmd+Z sends focus to the text nearest it as the note goes, as pressing the note does", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const note = screen.getByRole("button", { name: "Undo: take out “Signed”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(note).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("on its margin note, Cmd+Shift+Z that takes it out again sends focus to the text nearest it", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    // Typed into again and emptied, it's taken out; undone, it and its note are back.
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox", { name: "Change “Signed”" }).fill("");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Signed" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    const note = screen.getByRole("button", { name: "Undo: take out “Signed”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+
+    await expect.element(note).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
+  });
+
+  test("on its margin note that stays, Cmd+Z sends focus to its mark", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox", { name: "Change “Signed”" }).fill("Signed M.");
+    await userEvent.keyboard("{Enter}");
+    const note = screen.getByRole("button", { name: "Undo: take out “Signed M.”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(screen.getByRole("button", { name: "Undo: take out “Signed”" })).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+  });
+
+  test("on a far page's margin note, Cmd+Z taking out new text brings the text nearest it into view, with focus", async () => {
+    const far = aSpan({ id: "far", text: "far text", page: 7, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
+    const doc = aDoc({ ...RED_DOC, spans: [red, far], pages: Array.from({ length: 8 }, () => A4) });
+    const screen = await openEditor({ doc });
+    screen.getByRole("region", { name: "Page 8" }).element().scrollIntoView();
+    const farMark = screen.getByRole("button", { name: "far text" });
+    await expect.element(farMark).toBeInTheDocument();
+    farMark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.getByRole("textbox").fill("far texts");
+    await userEvent.keyboard("{Enter}");
+    window.scrollTo(0, 0);
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Undo: take out “Signed”" })).toBeInTheDocument();
+    // The new text, the last thing done, undone from the far change's note, which stays.
+    screen.getByRole("region", { name: "Page 8" }).element().scrollIntoView();
+    const note = screen.getByRole("button", { name: "Undo: “far texts” goes back to “far text”" });
+    await expect.element(note).toBeInTheDocument();
+    note.element().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.element(screen.getByRole("button", { name: "Signed" })).not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
   });
 

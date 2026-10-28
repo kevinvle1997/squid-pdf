@@ -22,7 +22,7 @@ import { DeletedPage } from "./DeletePage";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
 import { HowToStart } from "./HowToStart";
-import { isTyping, newTextOn, pageOn, spanOn } from "./keys";
+import { isOnMarginNote, isTyping, newTextOn, pageOn, spanOn } from "./keys";
 import { Page } from "./Page";
 import { PageList } from "./PageList";
 import { SplitHere } from "./SplitHere";
@@ -65,7 +65,8 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
       if (command === undefined) return;
       event.preventDefault();
       const { target } = event;
-      command.run(editor, { spanId: spanOn(target), page: pageOn(target), newTextId: newTextOn(target) });
+      const marginNote = isOnMarginNote(target);
+      command.run(editor, { spanId: spanOn(target), page: pageOn(target), newTextId: newTextOn(target), marginNote });
     };
     const online = () => {
       editor.queue.retry();

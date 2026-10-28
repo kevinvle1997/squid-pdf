@@ -7,7 +7,7 @@ import { openNewTextBelow, openNewTextOnBarePage } from "./newText";
 import { redact } from "./redaction";
 import { showShortcuts } from "./shortcuts";
 
-/** Where a key was pressed: on a span's mark, by its id, or on a page's own control, by its page. */
+/** Where a key was pressed (`PressedOn`), and the span's mark it was on, by its id. */
 export interface KeyAt extends PressedOn {
   readonly spanId: string | null;
 }

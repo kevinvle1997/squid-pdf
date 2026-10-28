@@ -1,6 +1,6 @@
 // A view test though nothing's drawn: what a key was pressed on is an element, which only a browser has.
 import { describe, expect, test } from "vitest";
-import { isTyping, pageOn, spanOn } from "./keys";
+import { isOnMarginNote, isTyping, pageOn, spanOn } from "./keys";
 
 describe("where a key was pressed", () => {
   test("in a text field, whose keys are its own, or anywhere else", () => {
@@ -28,5 +28,14 @@ describe("where a key was pressed", () => {
     expect(pageOn(page)).toBe(2);
     expect(pageOn(document.createElement("button"))).toBeNull();
     expect(pageOn(window)).toBeNull();
+  });
+
+  test("on a margin note, which says it is one, or on anything else", () => {
+    const note = document.createElement("button");
+    note.dataset.marginNote = "";
+    expect(isOnMarginNote(note)).toBe(true);
+    expect(isOnMarginNote(document.createElement("button"))).toBe(false);
+    expect(isOnMarginNote(window)).toBe(false);
+    expect(isOnMarginNote(null)).toBe(false);
   });
 });
