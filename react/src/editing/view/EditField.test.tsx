@@ -10,6 +10,7 @@ import type { Render } from "../../api/types";
 import { A4, aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../../fixtures";
 import { emulateTouchScreen } from "../../testing";
 import { createEditor, type Editor, undo } from "../editor";
+import { typeInto } from "../typing";
 import { fill } from "../words";
 import { EditorContext } from "./context";
 import { ALT } from "./keys";
@@ -173,6 +174,18 @@ describe("a date in the field", () => {
     await expect.element(screen.getByRole("button", { name: "Date" })).toHaveAttribute("aria-expanded", "false");
     expect(editor.store.get().draft?.text).toBe(WORDS);
   });
+
+  test("typed away while its calendar has focus, gives focus back to the field, never to the page's body", async () => {
+    const { screen, field } = await openField();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+    // As the browser's own undo of the field would type it, out of sight of it.
+    typeInto(editor, "Due ");
+    await expect.element(screen.getByRole("grid")).not.toBeInTheDocument();
+    await expect.element(field).toHaveFocus();
+    expect(editor.store.get().focusTo).toBeNull();
+  });
+
   test("keeps the slip's height as the months are stepped through, into another year and back", async () => {
     // The 15th and 17th can't be written, nor any month named with a letter "Due 14 March 2026" hasn't, nor 2027.
     const { screen } = await openField();
@@ -343,6 +356,8 @@ describe("an amount in the field", () => {
     await expect.element(screen.getByRole("button", { name: "Date" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("grid").query()).toBeNull();
     await expect.element(field).toHaveFocus();
+    // Taken where it was: none left waiting to pull focus back once the field is left.
+    expect(editor.store.get().focusTo).toBeNull();
   });
 
   test("Enter in its number field writes it as the page writes amounts, and focus goes back to the field", async () => {

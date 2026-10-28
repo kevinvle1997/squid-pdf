@@ -84,7 +84,12 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const watchPage = useCallback(
     (input: HTMLInputElement | null) => {
       field.current = input;
-      if (refocus !== null) input?.focus();
+      if (refocus !== null && input !== null) {
+        // Sent back while it has focus already, as its value's editor closes under the typing: no focus event comes
+        // to take it, so it's taken here.
+        if (input === document.activeElement) focusMoved(editor);
+        else input.focus();
+      }
       const layer = input?.offsetParent;
       if (input == null || !(layer instanceof HTMLElement)) return;
       const resized = new ResizeObserver(() => {
@@ -99,7 +104,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         document.fonts.removeEventListener("loadingdone", measureAgain);
       };
     },
-    [span.size, info.width, refocus],
+    [span.size, info.width, refocus, editor],
   );
   // A font file dropped on the field is the user's copy of the span's font.
   const { dropProps } = useDrop({

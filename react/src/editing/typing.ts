@@ -240,14 +240,20 @@ export function typeInto(editor: Editor, typed: string): void {
 export function typedState(
   state: EditorState & { draft: SpanDraft },
   typed: string,
-): Pick<EditorState, "announcement"> & { draft: SpanDraft } {
+): Pick<EditorState, "announcement"> & Partial<Pick<EditorState, "focusTo">> & { draft: SpanDraft } {
   const text = lineOf(typed);
   const announcement = heardAsTyped(state, text);
-  // The value whose editor is open gone from the text, the editor goes with it, focus staying where it is: never
-  // another value's editor in its place, taking focus from the field typed in.
+  // The value whose editor is open gone from the text, the editor goes with it, and focus goes to the field: where it
+  // is when typed there, and never to the page's body from the editor going under it. Never another value's editor in
+  // its place, taking focus from the field typed in.
   const { value, lost } = heldIn(state, text);
+  const closing = state.draft.valueEditorOpen && lost;
   const valueEditorOpen = state.draft.valueEditorOpen && !lost;
-  return { draft: { ...state.draft, text, value, valueEditorOpen }, announcement };
+  return {
+    draft: { ...state.draft, text, value, valueEditorOpen },
+    announcement,
+    ...(closing && { focusTo: { spanId: state.draft.spanId } }),
+  };
 }
 
 /** Type `typed` into new text: grown past the room to its right, its start moves left, so its end stays on its page. */
