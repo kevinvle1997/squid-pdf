@@ -113,9 +113,14 @@ export const SpanMark = memo(function SpanMark(props: Props) {
       onPressStart={passShortcut}
       onHoverStart={(event) => showNote(event.target, "hover")}
       onHoverEnd={(event) => {
-        notes.hide(span.id);
         // Still focused: its note stays for the keyboard, as the one focus showed.
-        if (event.target === document.activeElement) showNote(event.target, "focus");
+        if (event.target === document.activeElement) {
+          notes.hide(span.id);
+          showNote(event.target, "focus");
+          return;
+        }
+        // Not at once: the pointer may be on its way to the note, to read it (WCAG 1.4.13, Hoverable).
+        notes.hideSoon(span.id);
       }}
       onFocus={(event) => showNote(event.target, "focus")}
       onBlur={() => {

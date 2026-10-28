@@ -21,7 +21,7 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { colorOf, emulateTouchScreen } from "../../testing";
-import { PX_PER_PT } from "../constants";
+import { NOTE_CLOSE_DELAY_MS, PX_PER_PT } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
@@ -168,6 +168,43 @@ async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
   const press = { ...at, button: "left" as const, clickCount: 1 };
   await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...press });
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
+}
+
+/** Move the mouse from `from` to `to` a few pixels at a time, as a hand does, over whatever lies between. */
+async function moveMouse(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 2));
+  for (let step = 1; step <= steps; step++) {
+    const along = step / steps;
+    const at = { x: from.x + (to.x - from.x) * along, y: from.y + (to.y - from.y) * along };
+    await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
+  }
+}
+
+/** Press the mouse's left button at `at`, and let it go. */
+async function pressMouse(at: { x: number; y: number }) {
+  const press = { ...at, button: "left" as const, clickCount: 1 };
+  await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...press });
+  await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
+}
+
+/**
+ * Two lines of a form field's text, one under the other, each with a note; the pointer rests on the lower,
+ * at `start`, until its note shows.
+ */
+async function hoveredUnderALine() {
+  const fieldAt = (id: string, y0: number) =>
+    aSpan({ id, text: `SSN ${id}`, form_field: true, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 } });
+  openDocument(aDoc({ spans: [fieldAt("above", 276), fieldAt("below", 300)], fonts: [aFont("Times-Roman")] }));
+  const screen = await draw();
+  const above = screen.getByRole("button", { name: "SSN above" });
+  const mark = screen.getByRole("button", { name: "SSN below" });
+  await expect.element(mark).toBeInTheDocument();
+  const box = mark.element().getBoundingClientRect();
+  const start = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  await moveMouse(start, start);
+  await expect.element(screen.getByRole("tooltip")).toBeVisible();
+  await expect.element(mark).toHaveAttribute("aria-describedby");
+  return { screen, above, mark, start };
 }
 
 /** Scroll the page far enough away that it's past the margin pages are drawn within. */
@@ -1345,5 +1382,99 @@ describe("a page", () => {
     await expect.element(textbox).toHaveFocus();
     const input = textbox.element() as HTMLInputElement;
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 0]);
+  });
+
+  test("a span's note stays while the pointer moves from its mark onto it, over the line above, and closes once it leaves both", async () => {
+    const { screen, above, mark, start } = await hoveredUnderALine();
+    const note = screen.getByRole("tooltip");
+    const noteBox = note.element().getBoundingClientRect();
+    const onNote = { x: start.x, y: noteBox.top + noteBox.height / 2 };
+    await moveMouse(start, onNote);
+    const movedAt = performance.now();
+    // Past the delay a note closes after, and its fade: still there, under the pointer.
+    await expect
+      .poll(() => performance.now() - movedAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
+      .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
+    await expect.element(note).toBeVisible();
+    expect(note.element()).not.toHaveAttribute("data-exiting");
+    await expect.element(mark).toHaveAttribute("aria-describedby");
+    await expect.element(above).not.toHaveAttribute("aria-describedby");
+
+    await moveMouse(onNote, { x: 1, y: noteBox.top - 40 });
+    await expect.element(note, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toBeInTheDocument();
+  });
+
+  test("a press on a span's note, over the line above, closes it, and the next press there edits that line", async () => {
+    const { screen, mark, start } = await hoveredUnderALine();
+    // Just above the hovered line: where the line above is drawn, under the note.
+    const justAbove = { x: start.x, y: mark.element().getBoundingClientRect().top - 4 };
+    await moveMouse(start, justAbove);
+    await pressMouse(justAbove);
+    await expect.element(mark).not.toHaveAttribute("aria-describedby");
+    await pressMouse(justAbove);
+    await expect.element(screen.getByRole("textbox", { name: "Change “SSN above”" })).toHaveFocus();
+  });
+
+  test("Escape closes a span's note a hover showed, with nothing focused (WCAG 1.4.13, Dismissible)", async () => {
+    const { screen } = await hoveredUnderALine();
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  test("Escape with a span's note shown closes only the note, and the next puts away the edit open", async () => {
+    const { screen } = await hoveredUnderALine();
+    flushSync(() => edit(editor, "above", null));
+    const field = screen.getByRole("textbox", { name: "Change “SSN above”" });
+    await expect.element(field).toHaveFocus();
+    await expect.element(screen.getByRole("tooltip")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(field).not.toBeInTheDocument();
+  });
+
+  test("a span's note keyboard focus shows sits clear of the mark's focus ring", async () => {
+    const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(mark).toBeInTheDocument();
+    // Focus from the keyboard: a key pressed first, as Tab would be.
+    await userEvent.keyboard("{Shift}");
+    mark.element().focus();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toBeVisible();
+    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+    const { outlineWidth, outlineOffset } = getComputedStyle(mark.element());
+    const ringTop = mark.element().getBoundingClientRect().top - parseFloat(outlineWidth) - parseFloat(outlineOffset);
+    // React Aria places the note on a whole pixel, as the ring is drawn.
+    expect(note.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(Math.round(ringTop));
+  });
+
+  test("a margin note's note takes the pointer only where it's drawn, not in the gap to the note above", async () => {
+    await page.viewport(1400, 900);
+    const lineAt = (id: string, y0: number) =>
+      aSpan({ id, text: `was ${id}`, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 }, origin: [72, y0 + 20] });
+    openDocument(aDoc({ spans: [lineAt("above", 276), lineAt("below", 300)], fonts: DOC.fonts }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: "was below" })).toBeInTheDocument();
+    for (const id of ["above", "below"]) {
+      edit(editor, id, null);
+      typeInto(editor, `is ${id}`);
+      finish(editor, true);
+    }
+    const lower = screen.getByRole("button", { name: "Undo: “is below” goes back to “was below”" });
+    await expect.element(lower).toBeVisible();
+    // A press away from it first: after a key, React Aria opens no note on hover.
+    await pressMouse({ x: 1, y: 1 });
+    const box = lower.element().getBoundingClientRect();
+    const at = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    await moveMouse(at, at);
+    await expect.element(lower).toHaveAttribute("aria-describedby");
+    const tip = screen.getByRole("tooltip").element().getBoundingClientRect();
+    const underIt = document.elementFromPoint(at.x, tip.bottom + 4);
+    expect(underIt?.closest("[role=tooltip]")).toBeNull();
   });
 });

@@ -153,6 +153,7 @@ function PageNote({
       triggerRef={{ current: last.anchor }}
       isOpen={shown !== null && (shown.via !== "focus" || isFocusVisible)}
       onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
+      onHoverChange={(isHovered) => (isHovered ? notes.keep(last.spanId) : notes.hideSoon(last.spanId))}
       heading={note.sentence}
       warn={note.warn}
     >

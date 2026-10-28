@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode, RefObject } from "react";
+import { type ReactElement, type ReactNode, type RefObject, useEffect, useEffectEvent } from "react";
 import {
   Tooltip as AriaTooltip,
   TooltipTrigger,
@@ -15,6 +15,7 @@ interface Props {
   triggerRef: RefObject<Element | null>; // what it's shown over
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  onHoverChange?: (isHovered: boolean) => void; // the pointer came onto it or left it; without one, leaving closes it
   id: string; // its words', for what it describes to name in aria-describedby
 }
 
@@ -23,22 +24,46 @@ interface Props {
  * many triggers can share one, each saying when it's theirs. React Aria's Tooltip reads its
  * state from a trigger's context even on its own, so it's given one.
  */
-export function Tooltip({ heading, warn = false, children, triggerRef, isOpen, onOpenChange, id }: Props) {
+export function Tooltip({
+  heading,
+  warn = false,
+  children,
+  triggerRef,
+  isOpen,
+  onOpenChange,
+  onHoverChange,
+  id,
+}: Props) {
   const state: TooltipTriggerState = {
     isOpen,
     shouldSkipAnimation: false,
-    open: () => onOpenChange(true),
-    close: () => onOpenChange(false),
+    open: () => (onHoverChange ?? onOpenChange)(true),
+    // React Aria closes it at once when what it's over scrolls; otherwise the pointer left it.
+    close: (immediate) => (immediate || onHoverChange === undefined ? onOpenChange(false) : onHoverChange(false)),
   };
+  const closeOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.stopPropagation();
+    onOpenChange(false);
+  });
+  // Escape closes it and nothing else, wherever focus is, as React Aria's own trigger does (WCAG 1.4.13, Dismissible).
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => document.removeEventListener("keydown", closeOnEscape, true);
+  }, [isOpen]);
   return (
     <TooltipTriggerStateContext.Provider value={state}>
       <AriaTooltip
         triggerRef={triggerRef}
         isOpen={isOpen}
         onOpenChange={onOpenChange}
-        className={styles.note}
+        className={styles.shared}
         placement="top"
-        offset={8}
+        offset={NOTE_OFFSET_PX}
+        style={{ "--note-gap": `${NOTE_OFFSET_PX}px` }}
+        // It covers the text beside what it's on: a press on it closes it, so the next reaches that text.
+        onPointerDown={() => onOpenChange(false)}
         // Kept off the window's edge by the body's gutter, as every line of words is.
         containerPadding={GUTTER_PX}
       >
@@ -103,6 +128,13 @@ export function Tip({ heading, detail, children }: { heading: string; detail: st
     </TooltipTrigger>
   );
 }
+
+// The focus ring of what it's over, as a page's marks draw it (`outline: 2px`, `outline-offset: 1px`).
+const RING_WIDTH_PX = 2;
+const RING_OFFSET_PX = 1;
+
+// Just clear of that ring, which it would cover; the gap is the note's to the pointer (WCAG 1.4.13, Hoverable).
+const NOTE_OFFSET_PX = RING_WIDTH_PX + RING_OFFSET_PX;
 
 // --s4, the gutter text keeps from the window's edge (design.md, Space and layout).
 const GUTTER_PX = 16;

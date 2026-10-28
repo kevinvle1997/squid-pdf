@@ -82,18 +82,22 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
     mark,
   );
   const { focusProps, isFocusVisible } = useFocusRing();
+  // Escape, or a press on it, closes the note focus showed until focus leaves (WCAG 1.4.13, Dismissible).
+  const [dismissed, setDismissed] = useState(false);
 
   const [dx, dy] = drag.by ?? [0, 0];
   const where = { ...text.edit, origin: [text.edit.origin[0] + dx, text.edit.origin[1] + dy] as [number, number] };
   // A reading persisted before the note's sentences were sent has none to show.
   const heading = sentenceOrNothing(sentences.new_text);
   const detail = sentenceOrNothing(touch ? sentences.new_text_moves_touch : sentences.new_text_moves);
-  const showsNote = (note.shown || isFocusVisible) && drag.by === null && (heading !== "" || detail !== "");
+  const showsNote =
+    (note.shown || (isFocusVisible && !dismissed)) && drag.by === null && (heading !== "" || detail !== "");
   return (
     <>
       <button
         {...mergeProps(buttonProps, drag.props, note.hoverProps, focusProps, {
           onBlur: () => {
+            setDismissed(false);
             if (takesFocus) focusMoved(editor);
           },
         })}
@@ -117,7 +121,13 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
         id={noteId}
         triggerRef={mark}
         isOpen={showsNote}
-        onOpenChange={(isOpen) => isOpen || note.hide()}
+        onOpenChange={(isOpen) => {
+          if (isOpen) return;
+          note.hide();
+          if (isFocusVisible) setDismissed(true);
+        }}
+        // The pointer leaving it is no dismissal: a note focus showed stays (WCAG 1.4.13, Persistent).
+        onHoverChange={(isHovered) => isHovered || note.hide()}
         heading={heading}
       >
         {detail}
