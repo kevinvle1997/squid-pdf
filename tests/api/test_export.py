@@ -703,6 +703,8 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
         "title": ("string", "Notes on"),
         "author": ("null", "null"),
         "xmp": ["Notes on"],
+        "page_xmp": ["Notes on"],
+        "annotation_xmp": ["Notes on"],
         "bookmark": (("string", "Visit by"), ("string", "")),
         "note": ("Call", "", "Visit", ("null", "null")),
         "free_text": "Ask",
@@ -906,6 +908,19 @@ def test_an_exported_files_xmp_says_what_its_info_says(mine, typed_metadata):
     assert_equal(said, expected, "what the XMP says of the file's last change and its making")
 
 
+def _page_xmp_of(pdf: pymupdf.Document, page: pymupdf.Page) -> str:
+    """The page's own metadata (XMP), as text."""
+    _value_type, stream = pdf.xref_get_key(page.xref, "Metadata")
+    return pdf.xref_stream(int(stream.split()[0])).decode()
+
+
+def _annotation_xmp_of(pdf: pymupdf.Document, page: pymupdf.Page) -> str:
+    """The metadata (XMP) of the comment written in the page's list itself, as text."""
+    _value_type, comments = pdf.xref_get_key(page.xref, "Annots")
+    [stream] = re.findall(r"/Metadata (\d+) 0 R", comments)
+    return pdf.xref_stream(int(stream)).decode()
+
+
 def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
     """What each copy `with_hidden_copies` made of the name holds, read back from the file.
 
@@ -921,6 +936,8 @@ def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
         "title": pdf.xref_get_key(-1, "Info/Title"),  # -1: the file's trailer
         "author": pdf.xref_get_key(-1, "Info/Author"),
         "xmp": re.findall(r">([^<>]+)<", pdf.get_xml_metadata()),
+        "page_xmp": re.findall(r">([^<>]+)<", _page_xmp_of(pdf, page)),
+        "annotation_xmp": re.findall(r">([^<>]+)<", _annotation_xmp_of(pdf, page)),
         "bookmark": tuple(
             pdf.xref_get_key(catalog, f"Outlines/{end}/Title") for end in ("First", "Last")
         ),
