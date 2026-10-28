@@ -352,7 +352,7 @@ export function enter(editor: Editor): void {
 }
 
 /** Whether typed text says nothing: no change, since taking text out is redaction's job. */
-function isEmpty(text: string): boolean {
+export function isEmpty(text: string): boolean {
   return text.trim() === "";
 }
 

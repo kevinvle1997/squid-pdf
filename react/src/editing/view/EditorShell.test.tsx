@@ -1564,6 +1564,61 @@ describe("find and replace", () => {
     await expect.element(bar.getByText("1 of 2")).toBeVisible();
   });
 
+  test("Change all is off while every place found would be left empty, and the count says why", async () => {
+    const screen = await openEditor();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("was here");
+    const bar = screen.getByRole("search");
+    await bar.getByRole("textbox", { name: "Change to" }).fill(" ");
+    await expect.element(bar.getByText("1 place can't be left empty")).toBeVisible();
+    await expect.element(bar.getByRole("button", { name: "Change all" })).toBeDisabled();
+  });
+
+  test("Change all puts focus in Change to, whether it stays on or turns off under it", async () => {
+    const screen = await openEditor();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("here");
+    const bar = screen.getByRole("search");
+    const changeTo = bar.getByRole("textbox", { name: "Change to" });
+    const changeAll = bar.getByRole("button", { name: "Change all" });
+    // Changed, and "here" still found: it stays on.
+    await changeTo.fill("here and there");
+    await expect.element(changeAll).toBeEnabled();
+    changeAll.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: "was here and there" })).toBeInTheDocument();
+    await expect.element(changeAll).toBeEnabled();
+    await expect.element(changeTo).toHaveFocus();
+    // Changed, and nothing reads "here" now: it turns off.
+    await changeTo.fill("this");
+    await expect.element(bar.getByText(/^1 place/)).toBeVisible();
+    changeAll.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(bar.getByText(/^Changed 1 place/)).toBeVisible();
+    await expect.element(changeAll).toBeDisabled();
+    await expect.element(changeTo).toHaveFocus();
+  });
+
+  test("the bar opened again after a Change all puts focus in Find, its words selected, as every open does", async () => {
+    const screen = await openEditor();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    await userEvent.keyboard("here");
+    const bar = screen.getByRole("search");
+    await bar.getByRole("textbox", { name: "Change to" }).fill("there");
+    await bar.getByRole("button", { name: "Change all" }).click();
+    await expect.element(bar.getByText(/^Changed 1 place/)).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(bar).not.toBeInTheDocument();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    const find = screen.getByRole("textbox", { name: "Find" });
+    await expect.element(find).toHaveFocus();
+    const input = find.element() as HTMLInputElement;
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "here".length]);
+  });
+
   test("a reading persisted before Change all's sentence was sent changes all, with no key hint left alone", async () => {
     // The server's reading, asked for again, hasn't landed.
     vi.mocked(documentOf)
@@ -1581,6 +1636,37 @@ describe("find and replace", () => {
     await bar.getByRole("button", { name: "Change all" }).click();
     await expect.element(screen.getByRole("button", { name: "was there" })).toBeInTheDocument();
     await expect.element(bar.getByText("puts it back", { exact: false })).not.toBeInTheDocument();
+  });
+
+  test("the find bar keeps its height as Find is typed into and its count settles, at every width", async () => {
+    const screen = await openEditor();
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    const [wide, tall] = [window.innerWidth, window.innerHeight];
+    // A phone, the narrow layout's widest, a bar too narrow for the count beside the fields, and a desk.
+    for (const [width, height] of [
+      [390, 844],
+      [820, 900],
+      [1000, 800],
+      [1440, 900],
+    ] as const) {
+      await page.viewport(width, height);
+      await userEvent.keyboard("{Control>}f{/Control}");
+      const bar = screen.getByRole("search");
+      const heights = new Set<number>();
+      const watch = new ResizeObserver(() => heights.add(bar.element().getBoundingClientRect().height));
+      watch.observe(bar.element());
+      // Found, then typed on (nothing counted while the delay runs), then nothing found, then found again.
+      await userEvent.keyboard("her");
+      await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
+      await userEvent.keyboard("x");
+      await expect.element(bar.getByText("Nothing matches")).toBeVisible();
+      await userEvent.keyboard("{Backspace}");
+      await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
+      watch.disconnect();
+      expect([width, [...heights]]).toEqual([width, [bar.element().getBoundingClientRect().height]]);
+      await userEvent.keyboard("{Escape}");
+    }
+    await page.viewport(wide, tall);
   });
 
   test("Match case and Whole words are checkboxes beside the fields, and find again as they're ticked", async () => {

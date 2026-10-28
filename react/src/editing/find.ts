@@ -9,7 +9,7 @@ import type { PageState } from "./page";
 import { differing, type Reading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
-import { finish, keptEditOf, typingEnd } from "./typing";
+import { finish, isEmpty, keptEditOf, typingEnd } from "./typing";
 import { editVerdictOf } from "./verdicts";
 import { fillCounted, sentenceOrNothing } from "./words";
 
@@ -24,6 +24,7 @@ export interface FindState extends FindOptions {
   readonly changed: number | null; // how many places "Change all" just changed, until anything else changes
   readonly opened: number; // counted: each open puts focus in "Find", even when it's open already
   readonly closed: number; // counted: closing from inside the bar puts focus back on the bar's "Find"
+  readonly changedAll: number; // counted while open: each Change all puts focus in "Change to", since it can turn off under it
 }
 
 /** The find bar before it's opened. */
@@ -39,6 +40,7 @@ export const FIND_CLOSED: FindState = {
   changed: null,
   opened: 0,
   closed: 0,
+  changedAll: 0,
 };
 
 /** One span found: the span, what it reads now and the way out it's drawn with, and where in that the words match. */
@@ -234,10 +236,16 @@ export function findAfterChange(state: Pick<EditorState, "find" | "doc">, readin
   return found.changed === null ? found : { ...found, changed: null };
 }
 
-/** How many places are found, and how many of them a change won't keep looking like the text around them. */
+/** How many places are found, how many of them will look different, and how many Change all leaves as they are. */
 export interface FindCount {
   readonly places: number;
   readonly mismatches: number;
+  readonly leftAsTheyAre: number; // the change would empty them, so Change all leaves them as they are, as typing would
+}
+
+/** Whether changing the words found in a span would empty it, by typing's own test; nothing to change to yet doesn't. */
+function wouldEmpty({ text, matches }: Found, replacement: string): boolean {
+  return replacement !== "" && isEmpty(replacedIn(text, matches, replacement));
 }
 
 /** Whether changing the words found in a span leaves it set apart from the text around it, as the chip says of that edit. */
@@ -261,20 +269,29 @@ function looksDifferent(
 export function findCount(state: EditorState): FindCount {
   const { find, doc, layout, drawn } = state;
   const found = foundNow(state);
+  const changing = found.filter((each) => !wouldEmpty(each, find.replacement));
   const judging = { drawn, fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
-  return { places: found.length, mismatches: found.filter((each) => looksDifferent(each, judging)).length };
+  const mismatches = changing.filter((each) => looksDifferent(each, judging)).length;
+  return { places: found.length, mismatches, leftAsTheyAre: found.length - changing.length };
 }
 
 /** The count before a change, as the find bar shows it, in the server's words: the part that warns kept apart for --warn. */
-export function countShown({ places, mismatches }: FindCount, sentences: Sentences): { plain: string; warned: string } {
+export function countShown(
+  { places, mismatches, leftAsTheyAre }: FindCount,
+  sentences: Sentences,
+): { plain: string; warned: string } {
   if (places === 0) return { plain: sentenceOrNothing(sentences.find_nothing), warned: "" };
-  if (mismatches === 0) return { plain: fillCounted(sentences.find_identical, places), warned: "" };
+  if (leftAsTheyAre === places) return { plain: "", warned: fillCounted(sentences.find_empty, places) };
+  const identical = mismatches === 0 && leftAsTheyAre === 0;
+  if (identical) return { plain: fillCounted(sentences.find_identical, places), warned: "" };
   if (mismatches === places) return { plain: "", warned: fillCounted(sentences.find_different, places) };
   const plain = fillCounted(sentences.find_places, places);
-  const warned = fillCounted(sentences.find_some_different, mismatches);
-  // A reading persisted by an earlier build may lack either half: then neither shows.
-  if (plain === "" || warned === "") return { plain: "", warned: "" };
-  return { plain, warned };
+  const different = mismatches === 0 ? [] : [fillCounted(sentences.find_some_different, mismatches)];
+  const empty = leftAsTheyAre === 0 ? [] : [fillCounted(sentences.find_some_empty, leftAsTheyAre)];
+  const warnings = [...different, ...empty];
+  // A reading persisted by an earlier build may lack any part: then none shows.
+  if (plain === "" || warnings.includes("")) return { plain: "", warned: "" };
+  return { plain, warned: warnings.join(sentences.join_parts) };
 }
 
 /** The count as announced, in the words shown: "14 places, 3 of them will look different". */
@@ -303,7 +320,9 @@ export function closeFind(editor: Editor, { fromInside = false }: { fromInside?:
   clearTimeout(editor.finding.timer);
   const { find } = editor.store.get();
   const closed = find.closed + (fromInside ? 1 : 0);
-  editor.store.set({ find: { ...find, open: false, matches: new Map(), current: null, closed } });
+  // Opened again, it puts focus in "Find", as every open does, not where the last Change all left it.
+  const ended = { open: false, matches: new Map(), current: null, closed, changedAll: 0 };
+  editor.store.set({ find: { ...find, ...ended } });
 }
 
 /** Typing in "Find": echoed at once, and found once typing stops for a moment. */
@@ -346,22 +365,24 @@ export function changeAll(editor: Editor): void {
   const state = editor.store.get();
   const { typed, ended } = typingEnd(state, true);
   // What's typed but not yet found is what the user sees in "Find": find it first.
-  const find = searchingQuery(state.find);
+  const find = { ...searchingQuery(state.find), changedAll: state.find.changedAll + 1 };
   // Nothing to change to, since emptying a span is redaction's job. Found as the count finds, in the words typed.
   const found = find.replacement === "" ? [] : foundNow({ ...state, find });
-  if (found.length === 0) {
-    change(editor, typed, ended);
+  // A span it would leave empty stays as it is, as typing leaves it.
+  const changing = found.filter((each) => !wouldEmpty(each, find.replacement));
+  if (changing.length === 0) {
+    change(editor, typed, { ...ended, find: { ...state.find, changedAll: find.changedAll } });
     return;
   }
   clearTimeout(editor.finding.timer);
-  const edits = found.map(({ span, text, matches }) => ({
+  const edits = changing.map(({ span, text, matches }) => ({
     kind: "replace" as const,
     span_id: span.id,
     text: replacedIn(text, matches, find.replacement),
   }));
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
-    announcement: announcing(changedSentence(found.length, state.doc.sentences)),
-    find: { ...refound({ ...next, find }, next.reading), changed: found.length },
+    announcement: announcing(changedSentence(changing.length, state.doc.sentences)),
+    find: { ...refound({ ...next, find }, next.reading), changed: changing.length },
   }));
 }

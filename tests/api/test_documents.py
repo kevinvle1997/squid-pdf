@@ -523,6 +523,8 @@ _FILLED_BY_THE_BROWSER = (
     "find_different",
     "find_places",
     "find_some_different",
+    "find_empty",
+    "find_some_empty",
     "changed_places",
     "changes",
     "changes_different",

@@ -158,6 +158,8 @@ def _sentences_in(language: str) -> Sentences:
         "find_different": _counted_in("find_different", language),
         "find_places": _counted_in("find_places", language),
         "find_some_different": _counted_in("find_some_different", language),
+        "find_empty": _counted_in("find_empty", language),
+        "find_some_empty": _counted_in("find_some_empty", language),
         "changed_places": _counted_in("changed_places", language),
         "changes": _counted_in("changes", language),
         "changes_different": _counted_in("changes_different", language),
