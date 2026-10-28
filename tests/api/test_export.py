@@ -164,6 +164,16 @@ def _redact(span: dict) -> dict:
     return {"kind": "redact", "span_id": span["id"]}
 
 
+def _new_text_at(span: dict, text: str, origin: list[float]) -> dict:
+    """New text on `span`'s page, at its size, starting at `origin`."""
+    return {"kind": "insert", "page": span["page"], "origin": origin, "text": text, "size": 11}
+
+
+def _over(span: dict, text: str) -> dict:
+    """New text drawn over `span`'s box, a little in from its start, on its last row."""
+    return _new_text_at(span, text, [span["bbox"]["x0"] + 40, span["bbox"]["y1"]])
+
+
 def _export(
     client, doc: dict, edits: list[dict], pages: list[int] | None = None, language: str = "en"
 ):
@@ -236,14 +246,22 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     """Text still in the saved file means no file, and the user is told which span.
 
     The erase is what's broken here, not the check: the text really is still
-    in the file, and the check reads it where its page went.
+    in the file, and the check reads it where its page went. New text over it
+    sharing no word isn't blamed, and it's named before one new text covers.
     """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
     monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
     span = span_starting(doc, 1, "Invoices")
+    covered = span_starting(doc, 1, "Delivery")  # listed first, under its own "March"
     kept = _files(doc)
 
-    response = _export(mine, doc, [_redact(span)], pages=pages)
+    edits = [
+        _redact(covered),
+        _over(covered, "March"),
+        _redact(span),
+        _over(span, "Hello there"),
+    ]
+    response = _export(mine, doc, edits, pages=pages)
 
     assert_problem(response, "redaction_failed", 422)
     said = words.sentence("redaction_failed").format(text=span["text"], page=2)
@@ -600,17 +618,18 @@ def test_an_image_whose_bytes_only_hold_an_ei_still_downloads(mine, place):
     assert_equal(_lines(_opened(response)), [[_KEPT]], "the page's lines")
 
 
+@pytest.mark.parametrize("new_text", [[], ["card"]], ids=["alone", "under new text"])
 def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refused_at_export(
-    mine,
+    mine, new_text
 ):
     """The user hears it while they can still undo it, and the words never leave in a file.
 
     A dictionary MuPDF can't read holds the line in what a screen reader reads, so the
-    redaction can't rewrite it.
+    redaction can't rewrite it. New text over it writes no hidden copy, so isn't blamed.
     """
     doc = upload(mine, _marked_pdf(["unreadable"])).json()
     card = span_starting(doc, 0, "A US card")
-    edits = [_redact(card)]
+    edits = [_redact(card), *(_over(card, text) for text in new_text)]
     body = {"edits": edits, "scale": 1, "regions": [around(card)]}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
@@ -622,6 +641,52 @@ def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refu
     notices = [(notice["span_id"], notice["code"]) for notice in rendered["notices"]]
     assert_equal(notices, [(card["id"], "not_redacted")], "render's notices")
     assert_problem(exported, "redaction_failed", 422)
+
+
+@pytest.mark.parametrize(
+    ("turns", "origin_of"),
+    [
+        ([], lambda box: [box["x0"] + 40, box["y1"]]),
+        # Drawn upside down, hanging from its origin: in the box, though a level line isn't.
+        (
+            [{"kind": "rotate_page", "page": 0, "degrees": 180}],
+            lambda box: [box["x0"] + 40, box["y0"]],
+        ),
+    ],
+    ids=["a level page", "a page an edit turns"],
+)
+def test_new_text_over_a_redaction_sharing_a_word_with_it_is_named_at_render_and_export(
+    mine, doc, turns, origin_of
+):
+    """The check reads the new text's "on" in the box and refuses: the user hears why.
+
+    The redaction did its job; moving the new text off it is what lets the file go.
+    """
+    made = span_starting(doc, 0, "Made on")
+    edits = [*turns, _redact(made), _new_text_at(made, "on", origin_of(made["bbox"]))]
+    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
+
+    exported = _export(mine, doc, edits)
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+
+    assert_problem(exported, "redaction_covered", 422)
+    said = words.sentence("redaction_covered").format(page=1)
+    assert_equal(exported.json()["detail"], said, "what the user reads")
+    covered = words.sentence("covered_by_new_text")
+    assert_equal(rendered["redactions"][made["id"]]["message"], covered, "what render says")
+    notices = [(notice["span_id"], notice["code"]) for notice in rendered["notices"]]
+    assert_equal(notices, [(made["id"], "covered_by_new_text")], "render's notices")
+
+
+def test_new_text_over_a_redaction_sharing_no_word_with_it_downloads_without_the_redaction(
+    mine, doc
+):
+    """Only the redacted words are looked for, so other words over the box pass the check."""
+    made = span_starting(doc, 0, "Made on")
+    response = _export(mine, doc, [_redact(made), _over(made, "Hello there")])
+
+    first_page = _lines(_opened(response))[0]
+    assert_equal(first_page, ["SERVICES AGREEMENT", "Hello there"], "the first page's lines")
 
 
 def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(mine):

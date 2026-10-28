@@ -158,8 +158,10 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     engine.save(str(tmp_path / "redacted.pdf"))
 
     redacted = redacted_in(_resolved(engine, index, edits))
-    verified = RedactionController(redacted).gone(engine)
-    assert_equal(verified, {span.id: True}, "the in-memory verdict on the redacted span")
+    drawn = RedactionController(redacted, covered=frozenset()).drawn(
+        engine, hidden={span.id: []}
+    )
+    assert_true(drawn[span.id].verified, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())
     assert_not_in(span.text, text, "the saved page after a redact")
@@ -848,7 +850,7 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         engine.save(out)
 
     with pytest.raises(RedactionFailed) as failed:
-        RedactionController(redacted_in(resolved)).check_saved(
+        RedactionController(redacted_in(resolved), covered=frozenset()).check_saved(
             out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY
         )
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)

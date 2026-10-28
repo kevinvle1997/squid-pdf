@@ -40,8 +40,8 @@ from squidpdf.documents.types import Loaded
 from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
-from squidpdf.editing.errors import RedactionFailed
-from squidpdf.editing.redaction import RedactionController
+from squidpdf.editing.errors import RedactionCovered, RedactionFailed
+from squidpdf.editing.redaction import redactions_of
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
 
@@ -183,13 +183,13 @@ def save_edited(
 ) -> Saved:
     """Apply the edits, keep `pages`, save to `to` naming squidpdf, and check the redactions.
 
-    Raises RedactionFailed, and deletes the file, if a redacted span's text is still in it.
-    The same save and check whether a browser downloads the file or the CLI writes it.
-    `rooms` holds at least each edited span's room, by id, from the original (`Engine.rooms`).
+    Raises RedactionFailed or RedactionCovered, deleting the file, if a redacted span's words
+    are left. The CLI saves this way too. `rooms` has each edited span's, from `Engine.rooms`.
     """
     resolved = resolve(engine, index, rooms=rooms, edits=edits)
     order = page_order(resolved, pages)
-    redactions = RedactionController(redacted_in(resolved))
+    # Before the edits: erasing can drop the fonts new text is measured with.
+    redactions = redactions_of(engine, resolved, redacted_in(resolved))
     # Before the edits: a redaction takes its words out of the mark as from every hidden copy.
     engine.mark_changed_by(_PRODUCER, datetime.now(UTC))
     applied = apply_edits(engine, resolved)
@@ -203,7 +203,7 @@ def save_edited(
     notices += engine.save(to)
     try:
         redactions.check_saved(to, pages=order, driver_factory=driver_factory)
-    except RedactionFailed:  # the text is still in the file: never leave it lying around
+    except RedactionFailed, RedactionCovered:  # refused: never leave the file lying around
         Path(to).unlink()
         raise
     return Saved(applied, notices)
