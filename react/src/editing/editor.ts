@@ -79,8 +79,13 @@ export interface FocusField {
   readonly field: true;
 }
 
+/** The fonts in the slip of new text being typed, taking focus from its field: Tab, which the slip hangs apart from. */
+export interface FocusFaces {
+  readonly faces: true;
+}
+
 /** Where focus is sent, to take as it's drawn. */
-export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusField;
+export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusField | FocusFaces;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
