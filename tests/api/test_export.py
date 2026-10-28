@@ -11,6 +11,8 @@ import time
 import zlib
 from collections.abc import Collection, Iterator
 from datetime import UTC, datetime
+from functools import partial
+from itertools import accumulate
 from pathlib import Path
 
 import pymupdf
@@ -1222,8 +1224,9 @@ _AES_256 = 5  # pymupdf.PDF_ENCRYPT_AES_256, which its type stubs leave out
 # PyMuPDF's PDF_PERM_PRINT and PDF_PERM_ACCESSIBILITY: print it, and read it aloud.
 _MAY_PRINT_AND_READ_ALOUD = 4 | 512
 _AS_OWNER = 4  # what `authenticate` answers for the owner's password
-# The file's Encrypt dictionary, as its trailer keeps it: the method, then the permissions (P).
-_PROTECTION_KEYS = ("Filter", "V", "R", "Length", "P")
+# The file's Encrypt dictionary, as its trailer keeps it: the method, the permissions (P), and
+# whether its XMP is encrypted with the rest.
+_PROTECTION_KEYS = ("Filter", "V", "R", "Length", "P", "EncryptMetadata")
 
 
 def _owner_only(doc: pymupdf.Document) -> bytes:
@@ -1245,8 +1248,21 @@ def owner_only(three_pages) -> bytes:
 def _protection_of(pdf_bytes: bytes) -> tuple[list[str], bool]:
     """How a file is protected, and whether the owner password still opens it as owner."""
     pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-    encrypt_entries = [pdf.xref_get_key(-1, f"Encrypt/{key}")[1] for key in _PROTECTION_KEYS]
+    encrypt_entries = [_protection_entry(pdf, key) for key in _PROTECTION_KEYS]
     return encrypt_entries, pdf.authenticate(_OWNER_PASSWORD) == _AS_OWNER
+
+
+def _protection_entry(pdf: pymupdf.Document, key: str) -> str:
+    """The file's protection's `key`, read through its object when it's kept in one."""
+    value_type, value = pdf.xref_get_key(-1, f"Encrypt/{key}")  # -1: the trailer
+    # In the Encrypt dictionary itself.
+    if value_type != "xref":
+        return value
+    number = int(value.split()[0])
+    # Naming no object: a reader takes it as null.
+    if number >= pdf.xref_length():
+        return "null"
+    return pdf.xref_object(number, compressed=True)
 
 
 @pytest.mark.parametrize("pages", [None, [1, 2]], ids=["every page", "a split's part"])
@@ -1391,58 +1407,209 @@ def test_a_protected_files_plain_xmp_is_left_out_of_the_download_and_said(mine, 
     assert_equal(said, _protection_of(sent), "how the download is protected")
 
 
-def _with_version_apart(sent: bytes) -> bytes:
-    """`sent` with an update keeping its protection's version (V 4) in an object of its own.
+# An entry's value as a dictionary's source writes it, after its key: a dictionary of
+# dictionaries (CF), a string, a name, or a number or a true or false after a space.
+_ENTRY_VALUE = r"<<(?:[^<>]|<<[^<>]*>>)*>>|<[0-9A-Fa-f]*>|\([^)]*\)|/[^/<>()\[\] ]+| [^/<>]+"
 
-    Appended as an edit in place appends one: the Encrypt again, then a table and a trailer
+
+def _with_update(sent: bytes, objects: dict[int, str]) -> bytes:
+    """`sent` with an update writing each of `objects`, by its number, over what it held.
+
+    Appended as an edit in place appends one: the objects, then a table and a trailer
     naming only what changed, and where the table before it is (Prev).
     """
     pdf = pymupdf.open(stream=sent, filetype="pdf")
-    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
-    version = pdf.xref_length()  # the next free object number
-    source = pdf.xref_object(encrypt, compressed=True).replace("/V 4", f"/V {version} 0 R")
-    objects = [f"{encrypt} 0 obj\n{source}\nendobj\n", f"{version} 0 obj\n4\nendobj\n"]
-    offsets = [len(sent), len(sent) + len(objects[0])]
+    written = [f"{number} 0 obj\n{source}\nendobj\n" for number, source in objects.items()]
+    offsets = list(accumulate(map(len, written[:-1]), initial=len(sent)))
     table = "".join(
-        f"{n} 1\n{at:010d} 00000 n \n"
-        for n, at in zip((encrypt, version), offsets, strict=True)
+        f"{number} 1\n{at:010d} 00000 n \n" for number, at in zip(objects, offsets, strict=True)
     )
-    trailer = re.sub(r"/Size \d+", f"/Size {version + 1}", pdf.pdf_trailer(compressed=True))
+    size = max(pdf.xref_length(), max(objects) + 1)
+    trailer = re.sub(r"/Size \d+", f"/Size {size}", pdf.pdf_trailer(compressed=True))
     entries = trailer.removesuffix(">>")  # left open, for Prev to join
     previous = re.findall(rb"startxref\s+(\d+)", sent)[-1].decode()
-    table_at = offsets[1] + len(objects[1])
+    table_at = offsets[-1] + len(written[-1])
     update = (
-        f"{''.join(objects)}xref\n{table}trailer\n{entries}/Prev {previous}>>\n"
+        f"{''.join(written)}xref\n{table}trailer\n{entries}/Prev {previous}>>\n"
         f"startxref\n{table_at}\n%%EOF\n"
     )
     return sent + update.encode()
 
 
-def test_a_protected_files_plain_xmp_is_left_out_when_its_version_is_kept_apart(mine):
-    """A version kept in an object of its own is read through it, as any reader reads it."""
-    sent = _with_version_apart((_FIXTURES / _PLAIN_XMP[0]).read_bytes())
+def _with_entry_apart(sent: bytes, entry: str, *, references: int) -> bytes:
+    """`sent` with an update keeping its protection's `entry` in an object of its own.
+
+    Reached through `references` objects, each naming the next, the last holding it.
+    """
+    pdf = pymupdf.open(stream=sent, filetype="pdf")
+    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    apart = pdf.xref_length()  # the next free object number
+    source = pdf.xref_object(encrypt, compressed=True)
+    value = re.findall(rf"/{entry}({_ENTRY_VALUE})", source)[0]
+    source = source.replace(f"/{entry}{value}", f"/{entry} {apart} 0 R", 1)
+    last = apart + references - 1
+    naming = {number: f"{number + 1} 0 R" for number in range(apart, last)}
+    return _with_update(sent, {encrypt: source, **naming, last: value})
+
+
+def _entries_apart(pdf: pymupdf.Document) -> list[str]:
+    """Each entry of the file's protection kept as an object of its own."""
+    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    keys = pdf.xref_get_keys(encrypt)
+    return [key for key in keys if pdf.xref_get_key(encrypt, key)[0] == "xref"]
+
+
+@pytest.mark.parametrize(
+    ("name", "entry", "references"),
+    [
+        (_PLAIN_XMP[0], "V", 1),
+        (_PLAIN_XMP[0], "EncryptMetadata", 1),
+        (_PLAIN_XMP[1], "EncryptMetadata", 1),
+        *((_PLAIN_XMP[0], entry, 1) for entry in ("O", "U", "Filter", "CF")),
+        *((_PLAIN_XMP[1], entry, 1) for entry in ("OE", "Perms")),
+        (_PLAIN_XMP[0], "EncryptMetadata", 2),
+        (_PLAIN_XMP[0], "O", 2),
+    ],
+    ids=[
+        "version",
+        "flag, AES-128",
+        "flag, AES-256",
+        *("O U Filter CF".split()),
+        *("OE Perms".split()),
+        "flag, through two objects",
+        "O, through two objects",
+    ],
+)
+def test_a_protected_file_downloads_protected_as_it_came_with_an_entry_kept_apart(
+    mine, name, entry, references
+):
+    """An entry kept in an object of its own is read through it, and written in place.
+
+    A reader needs it before it can decrypt anything, so the download opens without a
+    password and its page reads; the file's plain XMP is still left out, and said.
+    """
+    sent = _with_entry_apart((_FIXTURES / name).read_bytes(), entry, references=references)
     uploaded = upload(mine, sent)
 
     assert_equal(uploaded.status_code, 201, uploaded.text[:200])
     doc = uploaded.json()
+    response = _export(mine, doc, [])
+    saved = _opened(response)
+    assert_in(_PLAIN_XMP_TITLE, saved[0].get_text(), "the download's page")
+    assert_equal(_entries_apart(saved), [], "the download's protection kept as objects")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(sent), "how the download is protected")
     notices = [notice["type"] for notice in doc["notices"]]
     assert_in("plain_xmp_dropped", notices, "what the upload said")
-    assert_equal(
-        _xmp_objects_in(_opened(_export(mine, doc, []))), [], "the XMP left in the file"
+    assert_equal(_xmp_objects_in(saved), [], "the XMP left in the file")
+
+
+# The AES-128 fixture's one crypt filter (StdCF), and its crypt filters (CF), as its Encrypt
+# dictionary writes them.
+_STD_CF = "<</AuthEvent/DocOpen/CFM/AESV2/Length 16>>"
+_CRYPT_FILTERS = f"/CF<</StdCF{_STD_CF}>>"
+
+
+def _with_crypt_filter_apart(sent: bytes, *, crypt_filters: str, objects: list[str]) -> bytes:
+    """`sent` with its crypt filters written as `crypt_filters`, naming `objects`.
+
+    The objects take the next free numbers, which the sources name as `{a}` and `{b}`.
+    """
+    pdf = pymupdf.open(stream=sent, filetype="pdf")
+    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    a = pdf.xref_length()  # the next free object number
+    source = pdf.xref_object(encrypt, compressed=True)
+    source = source.replace(_CRYPT_FILTERS, crypt_filters.format(a=a, b=a + 1), 1)
+    added = {a + n: kept.format(a=a, b=a + 1) for n, kept in enumerate(objects)}
+    return _with_update(sent, {encrypt: source, **added})
+
+
+@pytest.mark.parametrize(
+    ("crypt_filters", "objects"),
+    [
+        ("/CF<</AAA {a} 0 R/StdCF {a} 0 R>>", [_STD_CF]),
+        ("/AAA {a} 0 R/CF<</StdCF {a} 0 R>>", [_STD_CF]),
+        ("/CF {a} 0 R", ["<</StdCF {b} 0 R>>", _STD_CF.replace(">>", "/Back {a} 0 R>>")]),
+    ],
+    ids=["twice in CF", "beside CF", "naming CF again"],
+)
+def test_a_crypt_filter_named_twice_is_still_written_in_place(mine, crypt_filters, objects):
+    """It goes in place in CF, wherever else it's named, so the download opens."""
+    aes_128 = (_FIXTURES / _PLAIN_XMP[0]).read_bytes()
+    sent = _with_crypt_filter_apart(aes_128, crypt_filters=crypt_filters, objects=objects)
+    uploaded = upload(mine, sent)
+
+    assert_equal(uploaded.status_code, 201, uploaded.text[:200])
+    response = _export(mine, uploaded.json(), [])
+    saved = _opened(response)
+    assert_in(_PLAIN_XMP_TITLE, saved[0].get_text(), "the download's page")
+    crypt_filter, _source = saved.xref_get_key(-1, "Encrypt/CF/StdCF")  # -1: the trailer
+    assert_equal(crypt_filter, "dict", "how the download keeps its crypt filter")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(sent), "how the download is protected")
+
+
+def _with_objects_named_beside_protection(sent: bytes, *, links: str, depth: int) -> bytes:
+    """`sent` with its Encrypt dictionary naming, under a key no reader reads, a run of objects.
+
+    `depth` objects, each naming the next by `links`, which writes it as `{next}`.
+    """
+    pdf = pymupdf.open(stream=sent, filetype="pdf")
+    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    first = pdf.xref_length()  # the next free object number
+    source = pdf.xref_object(encrypt, compressed=True).removesuffix(">>")
+    run = {
+        number: f"<<{links.format(next=number + 1)}>>" for number in range(first, first + depth)
+    }
+    return _with_update(
+        sent, {encrypt: f"{source}/Extra {first} 0 R>>", **run, first + depth: "<<>>"}
     )
+
+
+@pytest.mark.parametrize(
+    ("links", "depth"),
+    [("/A {next} 0 R/B {next} 0 R", 20), ("/Next {next} 0 R", 1200)],
+    ids=["each naming the next twice", "a long run"],
+)
+def test_a_protection_naming_objects_no_reader_reads_opens_as_it_came(mine, links, depth):
+    """Only what a reader reads to make the key goes in place, so the rest can't hold it up.
+
+    Followed whole, objects naming the next twice double at each one, and a long run goes
+    deeper than Python lets calls go.
+    """
+    aes_128 = (_FIXTURES / _PLAIN_XMP[0]).read_bytes()
+    sent = _with_objects_named_beside_protection(aes_128, links=links, depth=depth)
+    uploaded = upload(mine, sent)
+
+    assert_equal(uploaded.status_code, 201, uploaded.text[:200])
+    response = _export(mine, uploaded.json(), [])
+    saved = _opened(response)
+    assert_in(_PLAIN_XMP_TITLE, saved[0].get_text(), "the download's page")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(sent), "how the download is protected")
 
 
 _RC4_128 = 3  # pymupdf.PDF_ENCRYPT_RC4_128: protection (V2) with no crypt filters
 
 
-def _rc4_asking_plain_xmp(pdf: pymupdf.Document) -> bytes:
-    """`pdf` behind RC4 and an owner password, its protection asking to keep its XMP plain.
+def _flag_written_as(pdf: pymupdf.Document, *, encryption: int, flag: bytes) -> bytes:
+    """`pdf` behind `encryption` and an owner password, its EncryptMetadata written as `flag`.
 
-    Below V4 the flag means nothing: the XMP is encrypted with the rest. Saved without
-    object streams, the trailer is plain text after every object, so its longer word moves none.
+    Saved without object streams, the trailer is plain text after every object, so a
+    longer flag moves none.
     """
-    protected = pdf.tobytes(encryption=_RC4_128, owner_pw=_OWNER_PASSWORD, use_objstms=False)
-    return protected.replace(b"/EncryptMetadata true", b"/EncryptMetadata false", 1)
+    protected = pdf.tobytes(encryption=encryption, owner_pw=_OWNER_PASSWORD, use_objstms=False)
+    return protected.replace(b"/EncryptMetadata true", b"/EncryptMetadata " + flag, 1)
+
+
+def _flag_naming_the_next_object(pdf: pymupdf.Document) -> bytes:
+    """`pdf` behind AES-128, its EncryptMetadata naming the object the upload adds first.
+
+    The file holds no such object, so a reader takes the flag as no flag.
+    """
+    protected = pdf.tobytes(encryption=_AES_128, owner_pw=_OWNER_PASSWORD, use_objstms=False)
+    next_object = pymupdf.open(stream=protected, filetype="pdf").xref_length()
+    return _flag_written_as(pdf, encryption=_AES_128, flag=f"{next_object} 0 R".encode())
 
 
 @pytest.mark.parametrize(
@@ -1450,22 +1617,29 @@ def _rc4_asking_plain_xmp(pdf: pymupdf.Document) -> bytes:
     [
         lambda pdf: pdf.tobytes(encryption=_AES_128, owner_pw=_OWNER_PASSWORD),
         lambda pdf: pdf.tobytes(encryption=_AES_256, owner_pw=_OWNER_PASSWORD),
-        _rc4_asking_plain_xmp,
+        # Below V4 the flag means nothing: the XMP is encrypted with the rest.
+        partial(_flag_written_as, encryption=_RC4_128, flag=b"false"),
+        # No true or false: a reader takes it as true, as with no flag.
+        partial(_flag_written_as, encryption=_AES_128, flag=b"(false)"),
+        _flag_naming_the_next_object,
     ],
-    ids=["AES-128", "AES-256", "RC4 asking plain"],
+    ids=["AES-128", "AES-256", "RC4 asking plain", "a string", "a reference to no object"],
 )
 def test_a_protected_files_encrypted_xmp_is_kept_and_nothing_is_said(
     mine, typed_metadata, protect
 ):
-    """Only XMP the file keeps plain is left out."""
+    """Only XMP the file keeps plain is left out. The protection comes out as it came."""
     sent = protect(pymupdf.open(stream=typed_metadata, filetype="pdf"))
     doc = upload(mine, sent).json()
 
-    saved = _opened(_export(mine, doc, []))
+    response = _export(mine, doc, [])
 
     notices = [notice["type"] for notice in doc["notices"]]
     assert_not_in("plain_xmp_dropped", notices, "what the upload said")
+    saved = _opened(response)
     assert_equal(saved.get_xml_metadata(), _with_mark(_TYPED_XMP, saved), "the metadata")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(sent), "how the download is protected")
 
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
