@@ -234,7 +234,7 @@ def copy_source(copy: FontCopy) -> str:
     """What tells one copy from another: where it was lent from, or its object and name."""
     if copy.lent is not None:
         return copy.lent.source
-    return f"{copy.font.xref} {copy.font.name}"
+    return f"{copy.font.font_object} {copy.font.name}"
 
 
 def lacks_a_keyboard_letter(letters: Mapping[str, FontCopy]) -> bool:

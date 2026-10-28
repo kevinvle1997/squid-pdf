@@ -51,7 +51,7 @@ def test_a_shipped_faces_width_is_what_mupdf_measures(driver, name):
 def test_a_trimmed_fonts_width_is_what_mupdf_measures(driver, pdf):
     """The sample's own font, trimmed to its letters: most of these it has no shape for."""
     doc = pymupdf.open(pdf)
-    [xref] = [xref for xref, *_ in doc[EMBEDDED_PAGE].get_fonts()]
-    _name, _ext, _kind, font_file = doc.extract_font(xref)
+    [font_object] = [font_object for font_object, *_ in doc[EMBEDDED_PAGE].get_fonts()]
+    _name, _ext, _kind, font_file = doc.extract_font(font_object)
     doc.close()
     _assert_widths_match(driver.open_font(font_file), font_file, "trimmed")

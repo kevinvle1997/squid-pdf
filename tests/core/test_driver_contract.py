@@ -63,11 +63,13 @@ def test_a_font_added_to_a_page_keeps_its_name_when_its_text_is_erased(pdf):
         x, y = _ADDED_AT
         driver.erase_text(0, [Rect(x, y - 12, x + 60, y)])
         left = driver.text_in(0, [Rect(x, y - 12, x + 60, y)])
-        fonts = {font.resource: font.xref for font in driver.fonts(0)}
+        fonts = {font.resource: font.font_object for font in driver.fonts(0)}
 
     assert_equal(left, [""], "the added text, after the erase")
     # .get: the check is whether the name is still there.
-    assert_equal(fonts.get(added.resource), added.xref, "the font under its resource name")
+    assert_equal(
+        fonts.get(added.resource), added.font_object, "the font under its resource name"
+    )
 
 
 def test_an_erase_says_what_it_could_not_clear_as_a_form_fields_value(form, tmp_path):
@@ -210,7 +212,7 @@ def test_each_piece_names_a_font_the_page_lists_or_none_for_a_form_fields_own(tm
     path = tmp_path / "field.pdf"
     doc.save(path)
     with open_pdf(str(path)) as engine:
-        listed = {font.xref for font in engine.driver.fonts(0)}
+        listed = {font.font_object for font in engine.driver.fonts(0)}
         pieces = [piece for line in engine.driver.text_lines(0) for piece in line]
 
     named_by = {piece.text: piece.font_object for piece in pieces}

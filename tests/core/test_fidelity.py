@@ -413,7 +413,7 @@ def _first_span(engine: Engine) -> Span:
 
 def _font_files(doc: pymupdf.Document, page: int) -> set[bytes]:
     """Each font file a page of `doc` draws with."""
-    return {doc.extract_font(xref)[-1] for xref, *_ in doc[page].get_fonts()}
+    return {doc.extract_font(font_object)[-1] for font_object, *_ in doc[page].get_fonts()}
 
 
 def _blank_letters(page: pymupdf.Page) -> list[str]:

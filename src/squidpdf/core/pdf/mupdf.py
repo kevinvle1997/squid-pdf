@@ -88,7 +88,7 @@ _KINDS: dict[str, FontKind] = {
     "Type3": "type3",
 }
 # The name MuPDF's text gives a Type3 font with no /Name, by its object.
-_UNNAMED_TYPE3 = "Type3 ({xref} 0 R)"
+_UNNAMED_TYPE3 = "Type3 ({font_object} 0 R)"
 # How a font's program is stored, as PyMuPDF names it, in our words. "cid" is a CFF
 # whose shapes are numbered, not named.
 _FILE_TYPES: dict[str, FontFileType] = {
@@ -272,7 +272,9 @@ class _MuPDFDriver:
         by_name: dict[str, PageFont] = {}
         # The library's order: the first by a name wins.
         for font in fonts:
-            embedded = self.file.fonts.text_font_name(font.xref) if font.is_embedded else None
+            embedded = (
+                self.file.fonts.text_font_name(font.font_object) if font.is_embedded else None
+            )
             if embedded is not None:
                 by_name.setdefault(as_pymupdf_names(embedded), font)
         return by_name
@@ -338,8 +340,8 @@ class _MuPDFDriver:
         listed = self.doc[page].get_fonts(full=True)
         return [
             PageFont(
-                xref=xref,
-                name=name if kind != "Type3" else self._type3_name(xref),
+                font_object=font_object,
+                name=name if kind != "Type3" else self._type3_name(font_object),
                 # .get: a font with no kind, or one the PDF format has no name for.
                 kind=_KINDS.get(kind, "other"),
                 # .get: "n/a" when only named, or stored in a way MuPDF can't name.
@@ -348,35 +350,35 @@ class _MuPDFDriver:
                 encoding=encoding,
                 in_form=referencer != 0,
             )
-            for xref, file_type, kind, name, resource, encoding, referencer in listed
+            for font_object, file_type, kind, name, resource, encoding, referencer in listed
         ]
 
-    def _type3_name(self, xref: int) -> str:
+    def _type3_name(self, font_object: int) -> str:
         """A Type3 font's name as its text reads it: its /Name, never the /BaseFont listed."""
-        value_type, value = self.doc.xref_get_key(xref, "Name")
+        value_type, value = self.doc.xref_get_key(font_object, "Name")
         # No /Name, which a Type3 font needn't have.
         if value_type != "name":
-            return _UNNAMED_TYPE3.format(xref=xref)
+            return _UNNAMED_TYPE3.format(font_object=font_object)
         return value.removeprefix("/")
 
-    def font_bytes(self, xref: int) -> bytes:
+    def font_bytes(self, font_object: int) -> bytes:
         """The font file stored in the PDF. Raises DriverError when MuPDF can't read it out."""
         try:
-            _name, _ext, _kind, buffer = self.doc.extract_font(xref)
+            _name, _ext, _kind, buffer = self.doc.extract_font(font_object)
         except MUPDF_ERRORS as exc:  # MuPDF can't read the font's stream out
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
         # Stored, but empty: nothing to draw with.
         if not buffer:
-            raise DriverError(Message("font_unreadable"), debug=f"font {xref} is empty")
+            raise DriverError(Message("font_unreadable"), debug=f"font {font_object} is empty")
         return buffer
 
-    def font_descriptor(self, xref: int) -> FontDescriptor | None:
+    def font_descriptor(self, font_object: int) -> FontDescriptor | None:
         """What the font's description says about how it looks; None when it has none.
 
         A font only named by one of the 14 standard names often has none. A
         two-byte (Type0) font keeps it on the font inside it.
         """
-        owner = self._describing_font(xref)
+        owner = self._describing_font(font_object)
         if owner is None:
             return None
         value_type, _value = self.doc.xref_get_key(owner, "FontDescriptor")
@@ -392,16 +394,16 @@ class _MuPDFDriver:
             name=name.removeprefix("/") if name_type == "name" else None,
         )
 
-    def _describing_font(self, xref: int) -> int | None:
+    def _describing_font(self, font_object: int) -> int | None:
         """Where the font's description lives: the font itself, or a Type0's inner font.
 
         None when a Type0's inner font isn't an object of its own in the file.
         """
-        value_type, _value = self.doc.xref_get_key(xref, "DescendantFonts")
+        value_type, _value = self.doc.xref_get_key(font_object, "DescendantFonts")
         # A simple font describes itself.
         if value_type not in ("array", "xref"):
-            return xref
-        return self.file.fonts.inner_font(xref)
+            return font_object
+        return self.file.fonts.inner_font(font_object)
 
     def _number(self, xref: int, key: str) -> float | None:
         """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
@@ -411,21 +413,21 @@ class _MuPDFDriver:
             return None
         return float(value)
 
-    def font_codes(self, xref: int, code_bytes: int) -> list[FontCode] | None:
+    def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None:
         """Each code the font has a letter for, lowest first; None without a letter list.
 
         Read from MuPDF's own record of the font. Raises DriverError when MuPDF
         can't load it.
         """
-        return self.file.fonts.font_codes(xref, code_bytes)
+        return self.file.fonts.font_codes(font_object, code_bytes)
 
-    def listed_widths(self, xref: int) -> dict[str, float] | None:
+    def listed_widths(self, font_object: int) -> dict[str, float] | None:
         """Each letter the font's width list gives a width, per 1000 em; None without a list.
 
         Read from MuPDF's own record of the font. Raises DriverError when MuPDF
         can't load it.
         """
-        return self.file.fonts.listed_widths(xref)
+        return self.file.fonts.listed_widths(font_object)
 
     def open_font(self, font_file: bytes) -> _MuPDFFont:
         """Open a font file to measure with. Raises DriverError when it isn't one."""
@@ -451,11 +453,11 @@ class _MuPDFDriver:
         free_name = self._free_name(page, resource)
         pdf_page = self.doc[page]
         try:
-            xref = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
+            font_object = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
-        self._changed_page(page).keep_named(free_name, xref)
-        return FontResource(free_name, xref)
+        self._changed_page(page).keep_named(free_name, font_object)
+        return FontResource(free_name, font_object)
 
     def _changed_page(self, page: int) -> _ChangedPage:
         """What this driver did to the page so far, kept from the first change on."""
@@ -480,8 +482,8 @@ class _MuPDFDriver:
             if missed:
                 self.file.redaction.redact(page, missed)
                 left = self.text_in(page, boxes)
-        for resource, xref in self._changed_page(page).named.items():
-            self.file.additions.restore_font(page, resource, xref)
+        for resource, font_object in self._changed_page(page).named.items():
+            self.file.additions.restore_font(page, resource, font_object)
         return left
 
     def drop_links(self, page: int, boxes: list[Rect]) -> None:
@@ -536,9 +538,10 @@ class _MuPDFDriver:
         out here.
         """
         x, y = self.file.additions.to_pdf_space(page, origin)
-        resources = self._resources_of(page, {run.xref for run in runs})
+        resources = self._resources_of(page, {run.font_object for run in runs})
         shown = " ".join(
-            f"{_written_name(resources[run.xref])} {size:.{_PDF_DP}f} Tf <{run.codes.hex()}> Tj"
+            f"{_written_name(resources[run.font_object])} {size:.{_PDF_DP}f} Tf"
+            f" <{run.codes.hex()}> Tj"
             for run in runs
         )
         # See-through: a graphics state that paints at `opacity`.
@@ -556,8 +559,8 @@ class _MuPDFDriver:
         stream = f"q{paint} BT {color_operands} rg {placed} Tm{spaced} {shown} ET Q"
         self._add_content(page, stream.encode())
 
-    def _resources_of(self, page: int, xrefs: set[int]) -> dict[int, str]:
-        """The page's resource name for each font in `xrefs`, giving one to any it lacks.
+    def _resources_of(self, page: int, font_objects: set[int]) -> dict[int, str]:
+        """The page's resource name for each font in `font_objects`, giving one to any it lacks.
 
         It lacks one when erasing dropped the font, or when it's another page's copy.
         """
@@ -565,12 +568,12 @@ class _MuPDFDriver:
         for font in self.fonts(page):
             # The first resource name the page lists a font under, in MuPDF's order.
             if not font.in_form:
-                named.setdefault(font.xref, font.resource)
-        for xref in sorted(xrefs - named.keys()):
-            resource = self._free_name(page, f"C{xref}")
-            self.file.additions.restore_font(page, resource, xref)
-            self._changed_page(page).keep_named(resource, xref)
-            named[xref] = resource
+                named.setdefault(font.font_object, font.resource)
+        for font_object in sorted(font_objects - named.keys()):
+            resource = self._free_name(page, f"C{font_object}")
+            self.file.additions.restore_font(page, resource, font_object)
+            self._changed_page(page).keep_named(resource, font_object)
+            named[font_object] = resource
         return named
 
     def _free_name(self, page: int, name: str) -> str:
@@ -605,7 +608,7 @@ class _MuPDFDriver:
         # Where the page's own coordinates start in the PDF's: the crop box's corner, down
         # from the paper's top. Not `to_pdf_space`, whose numbers differ in the last bit.
         paper_top, corner = pdf_page.mediabox.y1, pdf_page.cropbox_position
-        xrefs = self._changed_page(page).named
+        font_objects = self._changed_page(page).named
         style = _RunStyle(
             paint=self._paint_at(page, opacity),
             scale_x=scale_x,
@@ -616,7 +619,7 @@ class _MuPDFDriver:
         for run in written:
             x, y = run.origin
             start = (x + corner.x, paper_top - y - corner.y)
-            glyphs = self._glyph_codes(xrefs[run.resource], run.text)
+            glyphs = self._glyph_codes(font_objects[run.resource], run.text)
             stream += _written_run(start, glyphs=glyphs, resource=run.resource, style=style)
         self._add_content(page, stream.encode())
 
@@ -627,19 +630,19 @@ class _MuPDFDriver:
             return ""
         return f"/{self.file.additions.add_opacity_as_pymupdf(page, opacity)} gs\n"
 
-    def _glyph_codes(self, xref: int, text: str) -> str:
-        """`text` as codes in font `xref`, four hex digits a letter: each its glyph's number.
+    def _glyph_codes(self, font_object: int, text: str) -> str:
+        """`text` in font `font_object`'s codes: four hex digits a letter, its glyph's number.
 
         `add_font` adds a font whose codes are its glyphs' numbers.
         """
-        program = self._program_of(xref)
+        program = self._program_of(font_object)
         return "".join(f"{program.glyph_of(ch):04x}" for ch in text)
 
-    def _program_of(self, xref: int) -> _MuPDFFont:
-        """Font `xref`'s file, opened to look its letters up in; opened once."""
-        if xref not in self.programs:
-            self.programs[xref] = _mupdf_font(self.font_bytes(xref))
-        return self.programs[xref]
+    def _program_of(self, font_object: int) -> _MuPDFFont:
+        """Font `font_object`'s file, opened to look its letters up in; opened once."""
+        if font_object not in self.programs:
+            self.programs[font_object] = _mupdf_font(self.font_bytes(font_object))
+        return self.programs[font_object]
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
@@ -682,13 +685,14 @@ class _MuPDFDriver:
         """Release the open document."""
         self.doc.close()
 
-    def replace_font_file(self, xref: int, font_file: bytes) -> None:
-        """Swap in a new file for font `xref`. It must keep each glyph at its old number."""
-        owner = self._describing_font(xref)
+    def replace_font_file(self, font_object: int, font_file: bytes) -> None:
+        """Swap in a new file for font `font_object`, which must keep each glyph's number."""
+        owner = self._describing_font(font_object)
         # Its inner font in place, or nowhere: MuPDF never adds one so, so it's someone else's.
         if owner is None:
             raise DriverError(
-                self._why_kept_whole(xref), debug=f"font {xref} has no inner font of its own"
+                self._why_kept_whole(font_object),
+                debug=f"font {font_object} has no inner font of its own",
             )
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self.doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
@@ -696,16 +700,17 @@ class _MuPDFDriver:
         # No file where MuPDF stores ours: someone else's font.
         if value is None:
             raise DriverError(
-                self._why_kept_whole(xref), debug=f"font {xref} has no file to swap"
+                self._why_kept_whole(font_object),
+                debug=f"font {font_object} has no file to swap",
             )
         file_xref = _object_number(value)
         self.doc.update_stream(file_xref, font_file)
         # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
 
-    def _why_kept_whole(self, xref: int) -> Message:
-        """Why font `xref` stays whole in the saved file, naming it as the file does."""
-        _value_type, base_font = self.doc.xref_get_key(xref, "BaseFont")
+    def _why_kept_whole(self, font_object: int) -> Message:
+        """Why font `font_object` stays whole in the saved file, naming it as the file does."""
+        _value_type, base_font = self.doc.xref_get_key(font_object, "BaseFont")
         return Message("face_not_trimmed", {"font": base_font.lstrip("/")})
 
     def has_tags(self) -> bool:
@@ -738,9 +743,9 @@ class _ChangedPage:
     # Whether the page's own drawing is known to put back each setting it changes.
     balanced: bool = False
 
-    def keep_named(self, resource: str, xref: int) -> None:
-        """Note that the page draws with font `xref` as `resource`, so an erase keeps it."""
-        self.named[resource] = xref
+    def keep_named(self, resource: str, font_object: int) -> None:
+        """Note the page draws with font `font_object` as `resource`, so an erase keeps it."""
+        self.named[resource] = font_object
 
     def wrap(self, pdf_page: pymupdf.Page) -> None:
         """Wrap the page's own drawing, the first time, so its settings can't leak into ours."""
@@ -823,7 +828,7 @@ def _text_piece(
     return TextPiece(
         text=raw["text"],
         font=font_name,
-        font_object=None if font is None else font.xref,
+        font_object=None if font is None else font.font_object,
         size=raw["size"],
         color=_rgb(raw["color"]),
         opacity=raw["alpha"] / _BYTE_MAX,

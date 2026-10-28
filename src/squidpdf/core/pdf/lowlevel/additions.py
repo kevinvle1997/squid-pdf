@@ -26,8 +26,8 @@ class PageAdditions:
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
 
-    def restore_font(self, page: int, resource: str, xref: int) -> None:
-        """Point the page's resource name `resource` at font `xref`, already in the file.
+    def restore_font(self, page: int, resource: str, font_object: int) -> None:
+        """Point the page's resource name `resource` at font `font_object`, already in the file.
 
         Erasing text can remove a font the page no longer uses: this puts it
         back. Nothing new is added to the file.
@@ -36,7 +36,7 @@ class PageAdditions:
         pdf = pdf_of(self.doc)
         resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
         fonts = _dictionary_under(resources, mu.PDF_ENUM_NAME_Font)
-        mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, xref, 0))
+        mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, font_object, 0))
 
     def add_opacity(self, page: int, opacity: float) -> str:
         """The page's name for a graphics state that fills at `opacity`, written to the page.

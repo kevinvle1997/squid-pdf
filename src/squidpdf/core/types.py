@@ -150,7 +150,7 @@ class FontResource:
     """
 
     resource: str  # its resource name on the page, e.g. "F1"
-    xref: int  # its PDF object
+    font_object: int  # its PDF object
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,14 +172,14 @@ class CodeRun:
     """
 
     codes: bytes
-    xref: int  # its font's PDF object: the page may know it by another resource name
+    font_object: int  # its font's PDF object: the page may know it by another resource name
 
 
 @dataclass(frozen=True, slots=True)
 class PageFont:
     """A font a page uses."""
 
-    xref: int  # its PDF object
+    font_object: int  # its PDF object
     name: str  # e.g. "ABCDEF+Arial"
     kind: FontKind
     file_type: FontFileType

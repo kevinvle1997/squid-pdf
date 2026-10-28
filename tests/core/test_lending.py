@@ -56,10 +56,10 @@ class _NotingDriver:
     read_out: list[int]
     listed: list[int]
 
-    def font_bytes(self, xref: int) -> bytes:
+    def font_bytes(self, font_object: int) -> bytes:
         """The real driver's answer, noted."""
-        self.read_out.append(xref)
-        return self.driver.font_bytes(xref)
+        self.read_out.append(font_object)
+        return self.driver.font_bytes(font_object)
 
     def fonts(self, page: int) -> list[PageFont]:
         """The real driver's answer, noted."""
@@ -81,7 +81,11 @@ def _noting_driver(path: str, *, read_out: list[int], listed: list[int]) -> PdfD
 def _copies(path: str) -> list[int]:
     """Each page's copy of the font, by its object number, page by page."""
     doc = pymupdf.open(path)
-    return [xref for number in range(doc.page_count) for xref, *_ in doc[number].get_fonts()]
+    return [
+        font_object
+        for number in range(doc.page_count)
+        for font_object, *_ in doc[number].get_fonts()
+    ]
 
 
 def test_a_copy_a_line_doesnt_need_is_never_opened(tmp_path):
@@ -128,7 +132,7 @@ def test_a_pool_takes_in_no_copy_once_it_has_every_letter_the_files_copies_draw(
     def counted(
         other: pool.FontCopy, *, own: pool.FontCopy, letters: Mapping[str, pool.FontCopy]
     ) -> Message | None:
-        checked.append(other.font.xref)
+        checked.append(other.font.font_object)
         return why_turned_away(other, own=own, letters=letters)
 
     monkeypatch.setattr(pool, "why_turned_away", counted)

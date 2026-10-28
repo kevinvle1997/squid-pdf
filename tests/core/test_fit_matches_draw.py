@@ -34,11 +34,11 @@ def _own_font_file(path: str) -> str:
     page.insert_font(fontname="own", fontbuffer=pymupdf.Font("helv").buffer)
     page.insert_text((72, 96), _OWN_TEXT, fontname="own", fontsize=_SIZE)
     doc.subset_fonts(verbose=False)
-    [(xref, *_)] = page.get_fonts()
+    [(font_object, *_)] = page.get_fonts()
     # A two-byte font names itself twice: on the font and on the one inside it.
-    _value_type, descendants = doc.xref_get_key(xref, "DescendantFonts")
-    for font_xref in (xref, int(descendants.strip("[]").split()[0])):
-        doc.xref_set_key(font_xref, "BaseFont", f"/{_CALIBRI}")
+    _value_type, descendants = doc.xref_get_key(font_object, "DescendantFonts")
+    for each_font in (font_object, int(descendants.strip("[]").split()[0])):
+        doc.xref_set_key(each_font, "BaseFont", f"/{_CALIBRI}")
     doc.save(path)
     return path
 
