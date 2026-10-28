@@ -103,15 +103,15 @@ describe("find", () => {
   test("counts a place as looking different for its font, and for the words it would read", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1, leftAsTheyAre: 0 });
 
     typeReplacement(editor, "14 June");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1, leftAsTheyAre: 0 });
     // A letter the font hasn't got, and a line that runs past its room.
     typeReplacement(editor, "14 Juné");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2, leftAsTheyAre: 0 });
     typeReplacement(editor, "14 June and the whole of the year that follows it");
-    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2, leftAsTheyAre: 0 });
   });
 
   test("counts the span being typed in by the words typed, as Change all changes them", () => {
@@ -122,7 +122,7 @@ describe("find", () => {
     vi.advanceTimersByTime(FIND_DELAY_MS);
     typeReplacement(editor, "14 June");
     // Saved, its words changed fit its room; as typed, they run past it.
-    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2 });
+    expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2, leftAsTheyAre: 0 });
     changeAll(editor);
     expect(editor.store.get().reading.spans.get("first")?.text).toBe(typed.replace(DATE, "14 June"));
   });
@@ -144,10 +144,10 @@ describe("find", () => {
     typeQuery(editor, "14 €");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     // Nothing to change to yet: judged on the words it reads now, as the chip judges them as an edit starts.
-    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1, leftAsTheyAre: 0 });
 
     typeReplacement(editor, "2");
-    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 0 });
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 0, leftAsTheyAre: 0 });
     changeAll(editor);
     expect(editor.store.get().reading.spans.get("total")?.text).toBe("Total 2");
     expect(chipWarningOf("total", "Total 2")).toBeNull();
@@ -173,21 +173,26 @@ describe("find", () => {
     typeQuery(editor, "2");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     typeReplacement(editor, "2");
-    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1 });
+    expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1, leftAsTheyAre: 0 });
     changeAll(editor);
     expect(chipWarningOf("total", "Total 2")).toBe("a similar font");
   });
 
   test("says the count in the server's words, in the form each count takes", () => {
-    const sentence = (places: number, mismatches: number) => countSentence({ places, mismatches }, PSEUDO_SENTENCES);
+    const sentence = (places: number, mismatches: number, leftAsTheyAre = 0) =>
+      countSentence({ places, mismatches, leftAsTheyAre }, PSEUDO_SENTENCES);
     expect(sentence(0, 0)).toBe("NOTHING MATCHES");
     expect(sentence(1, 0)).toBe("1 PLACE WILL LOOK IDENTICAL");
     expect(sentence(14, 3)).toBe("14 PLACES, 3 OF THEM WILL LOOK DIFFERENT");
     expect(sentence(2, 2)).toBe("2 PLACES WILL LOOK DIFFERENT");
+    expect(sentence(2, 0, 2)).toBe("2 PLACES CAN'T BE LEFT EMPTY");
+    expect(sentence(14, 0, 2)).toBe("14 PLACES, 2 OF THEM CAN'T BE LEFT EMPTY");
+    expect(sentence(14, 3, 2)).toBe("14 PLACES, 3 OF THEM WILL LOOK DIFFERENT / 2 OF THEM CAN'T BE LEFT EMPTY");
   });
 
   test("keeps apart the part of the count that warns, for --warn, and nothing else", () => {
-    const shown = (places: number, mismatches: number) => countShown({ places, mismatches }, PSEUDO_SENTENCES);
+    const shown = (places: number, mismatches: number) =>
+      countShown({ places, mismatches, leftAsTheyAre: 0 }, PSEUDO_SENTENCES);
     expect(shown(14, 3)).toEqual({ plain: "14 PLACES, ", warned: "3 OF THEM WILL LOOK DIFFERENT" });
     expect(shown(2, 2)).toEqual({ plain: "", warned: "2 PLACES WILL LOOK DIFFERENT" });
     expect(shown(1, 0)).toEqual({ plain: "1 PLACE WILL LOOK IDENTICAL", warned: "" });
@@ -200,10 +205,14 @@ describe("find", () => {
       return stale;
     };
     const nothing = { plain: "", warned: "" };
-    expect(countShown({ places: 14, mismatches: 3 }, lacking("find_some_different"))).toEqual(nothing);
-    expect(countShown({ places: 14, mismatches: 3 }, lacking("find_places"))).toEqual(nothing);
-    expect(countShown({ places: 0, mismatches: 0 }, lacking("find_nothing"))).toEqual(nothing);
-    expect(countShown({ places: 2, mismatches: 2 }, lacking("find_different"))).toEqual(nothing);
+    expect(countShown({ places: 14, mismatches: 3, leftAsTheyAre: 0 }, lacking("find_some_different"))).toEqual(
+      nothing,
+    );
+    expect(countShown({ places: 14, mismatches: 3, leftAsTheyAre: 0 }, lacking("find_places"))).toEqual(nothing);
+    expect(countShown({ places: 0, mismatches: 0, leftAsTheyAre: 0 }, lacking("find_nothing"))).toEqual(nothing);
+    expect(countShown({ places: 2, mismatches: 2, leftAsTheyAre: 0 }, lacking("find_different"))).toEqual(nothing);
+    expect(countShown({ places: 2, mismatches: 0, leftAsTheyAre: 2 }, lacking("find_empty"))).toEqual(nothing);
+    expect(countShown({ places: 14, mismatches: 0, leftAsTheyAre: 2 }, lacking("find_some_empty"))).toEqual(nothing);
   });
 
   test("Change all is one step: every place changes together, and one undo puts them all back", () => {
@@ -271,6 +280,37 @@ describe("find", () => {
     undo(editor);
     openFind(editor);
     expect(editor.store.get().find.changed).toBeNull();
+  });
+
+  test("Change all leaves as it was a place it would leave empty, as typing does, and the count says so first", () => {
+    const spans = [aSpan({ id: "date", text: DATE }), aSpan({ id: "first", text: `was ${DATE}` })];
+    const doc = aDoc({ sentences: PSEUDO_SENTENCES, spans, fonts: DOC.fonts });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), doc, 2);
+    openFind(editor);
+    typeQuery(editor, DATE);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    // Only spaces: "date" would read nothing, which typing's own test calls empty.
+    typeReplacement(editor, "  ");
+    expect(countSentence(findCount(editor.store.get()), PSEUDO_SENTENCES)).toBe(
+      "2 PLACES, 1 OF THEM CAN'T BE LEFT EMPTY",
+    );
+    changeAll(editor);
+    const { reading, announcement } = editor.store.get();
+    expect(reading.spans.get("date")).toBeUndefined();
+    expect(reading.spans.get("first")?.text).toBe("was   ");
+    expect(announcement.text).toBe("CHANGED 1 PLACE.");
+    // Still a match, so still marked: the count said it stays.
+    expect(found()).toEqual([[0, ["date"]]]);
+  });
+
+  test("Change all changes nothing when every place would be left empty, and the count says so", () => {
+    typeQuery(editor, `was ${DATE}`);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    typeReplacement(editor, " ");
+    expect(countSentence(findCount(editor.store.get()), PSEUDO_SENTENCES)).toBe("1 PLACE CAN'T BE LEFT EMPTY");
+    const before = editor.store.get().history;
+    changeAll(editor);
+    expect(editor.store.get().history).toBe(before);
   });
 
   test("Change all needs words to change to: emptying a span is redaction's job", () => {

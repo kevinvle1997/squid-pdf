@@ -145,6 +145,8 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   find_different: true,
   find_places: true,
   find_some_different: true,
+  find_empty: true,
+  find_some_empty: true,
   changed_places: true,
   changes: true,
   changes_different: true,

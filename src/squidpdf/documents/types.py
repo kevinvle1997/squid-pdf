@@ -204,6 +204,9 @@ class Sentences(TypedDict):
     # When some places will look different: then find_some_different.
     find_places: CountedSentence
     find_some_different: CountedSentence  # shown as a warning
+    # When a change would leave places empty: every place, or then find_some_empty.
+    find_empty: CountedSentence  # shown as a warning
+    find_some_empty: CountedSentence  # shown as a warning
     changed_places: CountedSentence
     # The bar's count of the changes: all of them warned, or some, as Find's is.
     changes: CountedSentence

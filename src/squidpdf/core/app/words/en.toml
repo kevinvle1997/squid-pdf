@@ -144,6 +144,12 @@ find_places.one = "{count} place, "
 find_places.other = "{count} places, "
 find_some_different.one = "{count} of them will look different"
 find_some_different.other = "{count} of them will look different"
+# When a change would leave a place's text empty: Change all leaves it as it is, as typing would.
+find_empty.one = "{count} place can't be left empty"
+find_empty.other = "{count} places can't be left empty"
+# When some would be: as a warning of its own, after how many will look different.
+find_some_empty.one = "{count} of them can't be left empty"
+find_some_empty.other = "{count} of them can't be left empty"
 changed_places.one = "Changed {count} place."
 changed_places.other = "Changed {count} places."
 

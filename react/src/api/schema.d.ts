@@ -811,6 +811,8 @@ export interface components {
             find_different: components["schemas"]["CountedSentence"];
             find_places: components["schemas"]["CountedSentence"];
             find_some_different: components["schemas"]["CountedSentence"];
+            find_empty: components["schemas"]["CountedSentence"];
+            find_some_empty: components["schemas"]["CountedSentence"];
             changed_places: components["schemas"]["CountedSentence"];
             changes: components["schemas"]["CountedSentence"];
             changes_different: components["schemas"]["CountedSentence"];

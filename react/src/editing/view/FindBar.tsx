@@ -47,6 +47,13 @@ function FindFields() {
     },
     [find.opened],
   );
+  // Each Change all puts focus in "Change to": the button can turn off under it, and the next words go there.
+  const focusChangeTo = useCallback(
+    (input: HTMLInputElement | null) => {
+      if (find.changedAll > 0) input?.focus();
+    },
+    [find.changedAll],
+  );
   const closeOnEscape = onEscape(() => closeFind(editor, { fromInside: true }));
   // In "Find", Enter goes to the next place found and Shift+Enter the one before, as every editor's find does.
   const stepOnEnter = (event: { key: string; shiftKey: boolean; continuePropagation(): void }) => {
@@ -55,7 +62,10 @@ function FindFields() {
   };
   const searched = find.searched !== "" && find.searched === find.query;
   const at = useEditorState(placeAt);
-  const nothingToChange = find.query === "" || find.replacement === "" || (searched && count.places === 0);
+  // Change all follows the count beside it: shown, with words to change to, and a place it changes.
+  const changeToTyped = find.replacement !== "";
+  const placesChanged = count.places - count.leftAsTheyAre;
+  const canChange = searched && changeToTyped && placesChanged > 0;
   return (
     // biome-ignore lint/a11y/useSemanticElements: Chromium gives <search> no landmark yet, so a screen reader would miss it.
     <div role="search" className={styles.bar} aria-label="Find and replace">
@@ -75,7 +85,7 @@ function FindFields() {
         onKeyDown={closeOnEscape}
       >
         <Label>Change to</Label>
-        <Input className={styles.input} spellCheck={false} autoComplete="off" />
+        <Input ref={focusChangeTo} className={styles.input} spellCheck={false} autoComplete="off" />
       </TextField>
       <span className={styles.options}>
         <Checkbox isSelected={find.matchCase} onChange={(on) => setMatchCase(editor, on)} onKeyDown={closeOnEscape}>
@@ -114,7 +124,7 @@ function FindFields() {
         {find.changed !== null && <ChangedWords changed={find.changed} sentences={sentences} />}
         {find.changed === null && searched && <Counted count={count} sentences={sentences} />}
       </span>
-      <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={nothingToChange}>
+      <Button onPress={() => changeAll(editor)} onKeyDown={closeOnEscape} isDisabled={!canChange}>
         Change all
       </Button>
       <Shortcut keys="Esc">
