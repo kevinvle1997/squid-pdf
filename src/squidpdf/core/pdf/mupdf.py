@@ -684,12 +684,8 @@ class _MuPDFDriver:
 
     def drop_xmp(self) -> None:
         """Delete the file's XMP, wherever the file names it. Its Info stays."""
-        xmp = self.doc.xref_xml_metadata()
-        # A page may name it too, which would keep it in the file.
-        for xref in range(1, self.doc.xref_length()):
-            value_type, value = self.doc.xref_get_key(xref, "Metadata")
-            if value_type == "xref" and _object_number(value) == xmp:
-                self.doc.xref_set_key(xref, "Metadata", PDF_NULL)
+        # The object itself, not the catalog's name for it: a page or PieceInfo may name it too.
+        self.doc.update_object(self.doc.xref_xml_metadata(), PDF_NULL)
 
     def mark_changed_by(self, producer: str, when: datetime) -> None:
         """Say in the file's metadata that `producer` changed it, at `when`."""
