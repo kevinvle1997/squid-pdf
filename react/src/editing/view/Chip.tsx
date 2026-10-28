@@ -14,7 +14,7 @@ import { editNote } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
-import { chooseWayOut, signatureWarningOf, spanDraftOf } from "../typing";
+import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
@@ -51,10 +51,8 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const signature = useEditorState(signatureWarningOf);
   const note = editNote(span, { verdict, font, sentences, muted });
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
-  // Whole on the page and off the line, as what it holds grows, or the page is shown another size; on the side
-  // it was while a value's editor is open in it.
-  const valueEditorOpen = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
-  const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt, holdSide: valueEditorOpen });
+  // Off the line and in view, as what it holds grows, or the page or the window is shown another size.
+  const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt });
   const placed = useCallback(
     (element: HTMLDivElement | null) => {
       chip.current = element;

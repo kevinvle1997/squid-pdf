@@ -75,18 +75,39 @@ export interface SlipSize {
 /** Which side of its line, as it's shown, a slip sits on. */
 export type Side = "below" | "above" | "left" | "right";
 
-/** How far the window reaches past the shown page's left and right edges, less its gutter, in the page's points. */
+/**
+ * How far the window reaches past the shown page's edges, in the page's points: past its left and right less its
+ * gutter, past its top and foot as it's scrolled now, from what's held over the pages to the window's foot, and to
+ * where the pages start and end, which clip: no scroll shows a slip past them.
+ */
 export interface WindowRoom {
   readonly left: number;
   readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+  readonly pagesStart: number;
+  readonly pagesEnd: number;
+  // The zoom control over the window's foot: from `left` across to the window's edge, the window ends at its top.
+  readonly zoomControl: { readonly left: number; readonly bottom: number } | null;
 }
+
+// The window not measured yet: none past the page's sides, the pages starting at its top, and no end under it.
+const UNMEASURED: WindowRoom = {
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: Infinity,
+  pagesStart: 0,
+  pagesEnd: Infinity,
+  zoomControl: null,
+};
 
 /**
  * Where a slip may sit about its line as the page is turned, the side under the line first: then the line's
- * other side, then before its start and past its end, which the field grows towards. Below has room always.
+ * other side, then before its start and past its end, which the field grows towards.
  */
 const SIDES_BY_TURN: Record<PageInfo["turn_cw"], readonly Side[]> = {
-  0: ["below"],
+  0: ["below", "above"],
   90: ["left", "right", "above", "below"],
   180: ["above", "below"],
   270: ["right", "left", "below"],
@@ -105,26 +126,19 @@ export function slipPlaceOf(
     size,
     endPt = line.x1,
     side,
-    room = { left: 0, right: 0 },
+    room = UNMEASURED,
   }: { size?: SlipSize | undefined; endPt?: number; side?: Side | undefined; room?: WindowRoom } = {},
 ): CSSProperties {
   if (size === undefined) return hungFrom(line, page);
   const shown = uprightOf(page);
-  const sideTaken = side ?? slipSideOf(line, page, { size, endPt });
-  const place = placeBeside(boxesOf(line, { page, endPt }), { side: sideTaken, size, page });
-  // With no room on the page, one over or under its line keeps to the window: wider than the page, it would run
-  // past the screen's edge. One beside its line keeps its place, which is off the line.
-  const along = sideTaken === "above" || sideTaken === "below";
-  const keptToWindow = along && !hasRoom(place, { size, pageWidth: shown.width });
-  const left = keptToWindow
-    ? clamp(place.left, { least: -room.left, most: shown.width + room.right - size.width })
-    : place.left;
+  const sideTaken = side ?? slipSideOf(line, page, { size, endPt, room });
+  const { left, top } = placedOn(boxesOf(line, { page, endPt }), { side: sideTaken, size, page, room });
   // Moved from the layer's corner, so it's laid out in the same room wherever it sits, and keeps its size: the
   // corner on the side facing its line, so as it grows, it grows away from the line.
   const across = points(left, shown);
-  const down = points(place.top, shown);
+  const down = points(top, shown);
   if (sideTaken === "above") {
-    return { left: 0, bottom: 0, translate: `${across} ${points(place.top + size.height - shown.height, shown)}` };
+    return { left: 0, bottom: 0, translate: `${across} ${points(top + size.height - shown.height, shown)}` };
   }
   if (sideTaken === "left") {
     return { right: 0, top: 0, translate: `${points(left + size.width - shown.width, shown)} ${down}` };
@@ -133,18 +147,34 @@ export function slipPlaceOf(
 }
 
 /**
- * The side of its line a slip `size` big sits on: the first as the page is turned (`SIDES_BY_TURN`) where it's whole
- * on the page's width and below its top, else below, the last of every order.
+ * The side of its line a slip `size` big sits on: the first as the page is turned (`SIDES_BY_TURN`) that the window
+ * shows it whole on, else the first a scroll can, else below.
+ *
+ * A side `held` is kept while a scroll can show it whole there, though another side would need no scroll.
  */
 export function slipSideOf(
   line: SpanInfo["bbox"],
   page: PageInfo,
-  { size, endPt = line.x1 }: { size: SlipSize; endPt?: number },
+  {
+    size,
+    endPt = line.x1,
+    room = UNMEASURED,
+    held,
+  }: { size: SlipSize; endPt?: number; room?: WindowRoom; held?: Side | undefined },
 ): Side {
   const boxes = boxesOf(line, { page, endPt });
-  const pageWidth = uprightOf(page).width;
-  const fits = (side: Side) => hasRoom(placeBeside(boxes, { side, size, page }), { size, pageWidth });
-  return SIDES_BY_TURN[page.turn_cw].find(fits) ?? "below";
+  const shown = uprightOf(page);
+  const placeOn = (side: Side) => placedOn(boxes, { side, size, page, room });
+  const withinPages = (side: Side) => {
+    const { top } = placeOn(side);
+    return top >= -room.pagesStart && top + size.height <= shown.height + room.pagesEnd;
+  };
+  if (held !== undefined && withinPages(held)) return held;
+  const onPage = SIDES_BY_TURN[page.turn_cw].filter((side) =>
+    fitsPage(placeOn(side), { side, size, pageWidth: shown.width }),
+  );
+  const inWindow = (side: Side) => fitsWindow(placeOn(side), { size, shown, room });
+  return onPage.find(inWindow) ?? onPage.find(withinPages) ?? onPage[0] ?? "below";
 }
 
 /** The line's own box as it's shown, and as it's drawn, running to `endPt`. */
@@ -217,6 +247,22 @@ function placeBeside(
   }
 }
 
+/**
+ * Where a slip `size` big sits on `side` of a line, as `placeBeside` puts it, but for one over or under its line
+ * that the page hasn't room across for, which keeps to the window instead.
+ */
+function placedOn(
+  boxes: { own: ShownBox; drawn: ShownBox },
+  { side, size, page, room }: { side: Side; size: SlipSize; page: PageInfo; room: WindowRoom },
+): { left: number; top: number } {
+  const place = placeBeside(boxes, { side, size, page });
+  const shown = uprightOf(page);
+  // Wider than the page, it would run past the screen's edge. One beside its line keeps its place, off the line.
+  const keptToWindow = overOrUnder(side) && !fitsAcross(place, { size, pageWidth: shown.width });
+  if (!keptToWindow) return place;
+  return { ...place, left: clamp(place.left, { least: -room.left, most: shown.width + room.right - size.width }) };
+}
+
 /** Where a slip over or under its line starts across the page: at the line's start, as the page is turned. */
 function leftAlongOf(box: ShownBox, { size, page }: { size: SlipSize; page: PageInfo }): number {
   // Unturned, it's pinned as what's set under a box is (`pinnedSideOf`).
@@ -225,9 +271,36 @@ function leftAlongOf(box: ShownBox, { size, page }: { size: SlipSize; page: Page
   return box.right - size.width;
 }
 
-/** Whether a slip `size` big at `place` is whole on the page's width and below its top: past its foot is room. */
-function hasRoom(place: { left: number; top: number }, { size, pageWidth }: { size: SlipSize; pageWidth: number }) {
-  return place.left >= 0 && place.left + size.width <= pageWidth && place.top >= 0;
+/** Whether a slip `size` big at `place` is whole on the page's width. */
+function fitsAcross(place: { left: number }, { size, pageWidth }: { size: SlipSize; pageWidth: number }) {
+  return place.left >= 0 && place.left + size.width <= pageWidth;
+}
+
+/**
+ * Whether a slip on `side` of its line fits the page, as `fitsAcross` says, but for one over or under its line: that
+ * one keeps to the window across, and may hang past the page's top or foot, over the page before or the next.
+ */
+function fitsPage(
+  place: { left: number },
+  { side, size, pageWidth }: { side: Side; size: SlipSize; pageWidth: number },
+) {
+  return overOrUnder(side) || fitsAcross(place, { size, pageWidth });
+}
+
+/** Whether `side` is over or under its line, as against before its start or past its end. */
+function overOrUnder(side: Side): boolean {
+  return side === "above" || side === "below";
+}
+
+/** Whether a slip `size` big at `place` is whole in the window's height (`WindowRoom`), clear of the zoom control. */
+function fitsWindow(
+  place: { left: number; top: number },
+  { size, shown, room }: { size: SlipSize; shown: { height: number }; room: WindowRoom },
+) {
+  const zoom = room.zoomControl;
+  const overZoom = zoom !== null && place.left + size.width > zoom.left;
+  const bottom = overZoom ? Math.min(room.bottom, zoom.bottom) : room.bottom;
+  return place.top >= -room.top && place.top + size.height <= shown.height + bottom;
 }
 
 function clamp(value: number, { least, most }: { least: number; most: number }): number {

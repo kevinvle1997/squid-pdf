@@ -20,7 +20,7 @@ export function UndoRedaction({ span, info, sentences }: { span: SpanInfo; info:
   const asked = useId();
   const keepOnEscape = onEscape(() => keepRedaction(editor));
   const slipLayer = useContext(SlipLayerContext);
-  // Placed as the field's chip is: whole on the page and off the line, however the page is turned.
+  // Placed as the field's chip is: off the line and in view, however the page is turned.
   const { slipRef, style } = useSlipPlace(span.bbox, { page: info });
   if (slipLayer === null) return null;
   return createPortal(
