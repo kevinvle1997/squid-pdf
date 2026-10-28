@@ -228,6 +228,124 @@ _CATALOG = "<< /Type /Catalog /Pages 2 0 R >>"
 _PAGE = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"
 
 
+_HELVETICA = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+# A Type3 font with no /Name whose letters, H and i, are squares: nothing reads their shapes.
+_SQUARES = (
+    "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 500 700] /FontMatrix [0.001 0 0 0.001 0 0]"
+    " /CharProcs << /H 5 0 R /i 5 0 R >> /Encoding << /Differences [72 /H 105 /i] >>"
+    f" /FirstChar 72 /LastChar 105 /Widths [500 {'0 ' * 32}500] >>"
+)
+_SQUARE = "500 0 0 0 400 600 d1 0 0 400 600 re f"  # the square both letters draw
+
+
+def _in_place(fonts: dict[str, str], drawn: str) -> bytes:
+    """One page drawing `drawn`, its resources holding each of `fonts` in place, by name.
+
+    Written in place: the font's dictionary is inside the page's resources, not an object
+    of its own. Object 5 is the square a Type3 font's letters draw, and 6 a Helvetica object.
+    """
+    named = " ".join(f"/{resource} {font}" for resource, font in fonts.items())
+    page = (
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
+        f" /Resources << /Font << {named} >> >> >>"
+    )
+    pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
+    streams = [
+        f"<< /Length {len(held)} >>\nstream\n{held}\nendstream" for held in (drawn, _SQUARE)
+    ]
+    return _written_out([_CATALOG, pages, page, *streams, _HELVETICA])
+
+
+def test_a_font_written_in_place_not_as_an_object_goes_by_its_name(mine):
+    """It has no object, so its text goes by its name, as a font no page lists does."""
+    sent = _in_place({"F1": _HELVETICA}, "BT /F1 12 Tf 72 700 Td (Hello world) Tj ET")
+
+    uploaded = upload(mine, sent)
+
+    assert_equal(uploaded.status_code, 201, uploaded.text[:200])
+    doc = uploaded.json()
+    spans = [(span["text"], span["font"], span["font_object"]) for span in doc["spans"]]
+    assert_equal(spans, [("Hello world", "Helvetica", None)], "the page's text, indexed")
+    fonts = [(font["name"], font["font_object"]) for font in doc["fonts"]]
+    assert_equal(fonts, [("Helvetica", None)], "the fonts it lists")
+
+
+def _in_a_comment(font: str, drawn: str) -> bytes:
+    """One page whose comment draws `drawn`, its drawing's resources holding `font` in place.
+
+    The page's own list of fonts leaves out a comment's. Object 4 is the comment, 5 the square
+    a Type3 font's letters draw, and 6 the comment's drawing.
+    """
+    page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [4 0 R] >>"
+    pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
+    comment = "<< /Type /Annot /Subtype /Square /Rect [72 500 172 520] /AP << /N 6 0 R >> >>"
+    drawing = (
+        f"<< /Type /XObject /Subtype /Form /BBox [0 0 100 20] /Resources << /Font << /T1 {font}"
+        f" >> >> /Length {len(drawn)} >>\nstream\n{drawn}\nendstream"
+    )
+    square = f"<< /Length {len(_SQUARE)} >>\nstream\n{_SQUARE}\nendstream"
+    return _written_out([_CATALOG, pages, page, comment, square, drawing])
+
+
+_HI = "BT /T1 12 Tf 2 4 Td (Hi) Tj ET"  # "Hi" in the font named T1
+
+
+@pytest.mark.parametrize(
+    "sent",
+    [_in_place({"T1": _SQUARES}, _HI), _in_a_comment(_SQUARES, _HI)],
+    ids=["on the page", "in a comment's drawing, which the page's list leaves out"],
+)
+def test_an_unnamed_type3_font_written_in_place_goes_by_a_name_saying_it_has_none(mine, sent):
+    """Its text names it by an object it doesn't have, which would name nothing in the file.
+
+    Its resource name is never shown.
+    """
+    doc = upload(mine, sent).json()
+
+    spans = [(span["text"], span["font"]) for span in doc["spans"]]
+    assert_equal(spans, [("Hi", "Type3 (no name)")], "the text, by its font")
+    fonts = [(font["name"], font["shown_name"]) for font in doc["fonts"]]
+    assert_equal(fonts, [("Type3 (no name)", "Type3 (no name)")], "the fonts it lists")
+
+
+# Two lines: the first in a font named `name`, the second in the Helvetica object, F2.
+_TWO_LINES = (
+    "BT /{name} 12 Tf 72 700 Td (Hello world) Tj ET BT /F2 12 Tf 72 650 Td (Second line) Tj ET"
+)
+
+
+def _second_line_edited(client, doc: dict) -> pymupdf.Document:
+    """The file downloaded with its second line made "Second time", opened."""
+    edit = {"kind": "replace", "span_id": doc["spans"][1]["id"], "text": "Second time"}
+    response = client.post(f"/api/documents/{doc['id']}/export", json={"edits": [edit]})
+    assert_equal(response.status_code, 200, response.text[:200])
+    return pymupdf.open(stream=response.content, filetype="pdf")
+
+
+def test_a_font_written_in_place_keeps_its_resource_name_from_a_font_an_edit_adds(mine):
+    """An edit adds its face under a name of its own, past every name the page uses.
+
+    So a font written in place under the name the face would take still draws its line.
+    """
+    plain = upload(
+        mine, _in_place({"F1": _HELVETICA, "F2": "6 0 R"}, _TWO_LINES.format(name="F1"))
+    )
+    substitute = plain.json()["spans"][1]["substitute"]
+    with _second_line_edited(mine, plain.json()) as saved:
+        listed = saved[0].get_fonts(full=True)
+    # The name its face goes under where the page uses none like it.
+    face_name = next(
+        resource for _o, _t, _k, name, resource, *_ in listed if name == substitute
+    )
+    fonts = {face_name: _HELVETICA, "F2": "6 0 R"}
+    doc = upload(mine, _in_place(fonts, _TWO_LINES.format(name=face_name))).json()
+
+    with _second_line_edited(mine, doc) as saved:
+        lines = saved[0].get_text().splitlines()
+
+    assert_equal(lines, ["Hello world", "Second time"], "the download's lines")
+
+
 @pytest.mark.parametrize(
     ("body", "problem", "status"),
     [

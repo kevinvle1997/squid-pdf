@@ -33,7 +33,7 @@ from squidpdf.core.pdf.lowlevel import (
     pdf_file,
 )
 from squidpdf.core.pdf.png import png_of
-from squidpdf.core.pdf.text_fonts import as_pymupdf_names, page_text_fonts
+from squidpdf.core.pdf.text_fonts import PageTextFonts, as_pymupdf_names, page_text_fonts
 from squidpdf.core.types import (
     QUARTER_TURNS,
     SOLID,
@@ -91,8 +91,13 @@ _KINDS: dict[str, FontKind] = {
     "MMType1": "type1",
     "Type3": "type3",
 }
+# The object PyMuPDF lists a font written in place under: none.
+_IN_PLACE = 0
 # The name MuPDF's text gives a Type3 font with no /Name, by its object.
 _UNNAMED_TYPE3 = "Type3 ({font_object} 0 R)"
+# The name such a font written in place goes by instead, as its text names every one alike,
+# and a resource name is never shown.
+_UNNAMED_TYPE3_IN_PLACE = "Type3 (no name)"
 # How a font's program is stored, as PyMuPDF names it, in our words. "cid" is a CFF
 # whose shapes are numbered, not named.
 _FILE_TYPES: dict[str, FontFileType] = {
@@ -267,7 +272,7 @@ class _MuPDFDriver:
                     raw,
                     direction=line["dir"],
                     font=by_name.font_of(raw["font"], by_embedded_name),
-                    font_name=by_name.name_of(raw["font"]),
+                    font_name=_font_name(raw["font"], by_name),
                 )
                 for raw in line["spans"]
             ]
@@ -343,22 +348,31 @@ class _MuPDFDriver:
         return _page_letters(list(_each_letter(lines)))
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, forms included; a Type3 by the name its text reads."""
-        listed = self.doc[page].get_fonts(full=True)
-        return [
-            PageFont(
-                font_object=font_object,
-                name=name if kind != "Type3" else self._type3_name(font_object),
-                # .get: a font with no kind, or one the PDF format has no name for.
-                kind=_KINDS.get(kind, "other"),
-                # .get: "n/a" when only named, or stored in a way MuPDF can't name.
-                file_type=_FILE_TYPES.get(file_type, "none"),
-                resource=resource,
-                encoding=encoding,
-                in_form=referencer != 0,
-            )
-            for font_object, file_type, kind, name, resource, encoding, referencer in listed
-        ]
+        """Each font the page uses that's an object of its own, forms included."""
+        return self._fonts_of(self._listed_fonts(page))
+
+    def _listed_fonts(self, page: int) -> list[_ListedFont]:
+        """Every font the page uses, forms included, as PyMuPDF lists it, in place or not."""
+        return [_ListedFont(*listed) for listed in self.doc[page].get_fonts(full=True)]
+
+    def _fonts_of(self, listed: list[_ListedFont]) -> list[PageFont]:
+        """Each of `listed` that's an object, in our words: one written in place has none."""
+        return [self._page_font(font) for font in listed if not font.written_in_place]
+
+    def _page_font(self, listed: _ListedFont) -> PageFont:
+        """A font PyMuPDF listed, in our words; a Type3 by the name its text reads."""
+        kind = listed.kind
+        return PageFont(
+            font_object=listed.font_object,
+            name=listed.name if kind != "Type3" else self._type3_name(listed.font_object),
+            # .get: a font with no kind, or one the PDF format has no name for.
+            kind=_KINDS.get(kind, "other"),
+            # .get: "n/a" when only named, or stored in a way MuPDF can't name.
+            file_type=_FILE_TYPES.get(listed.file_type, "none"),
+            resource=listed.resource,
+            encoding=listed.encoding,
+            in_form=listed.referencer != 0,
+        )
 
     def _type3_name(self, font_object: int) -> str:
         """A Type3 font's name as its text reads it: its /Name, never the /BaseFont listed."""
@@ -585,7 +599,8 @@ class _MuPDFDriver:
 
     def _free_name(self, page: int, name: str) -> str:
         """`name`, or `name` numbered past any resource name the page already uses."""
-        taken = {font.resource for font in self.fonts(page)}
+        # Those written in place too, which `fonts` leaves out: their names are taken.
+        taken = {font.resource for font in self._listed_fonts(page)}
         candidates = chain([name], (f"{name}{n}" for n in count(2)))
         return next(candidate for candidate in candidates if candidate not in taken)
 
@@ -764,6 +779,32 @@ class _MuPDFDriver:
         """
         self._changed_page(page).wrap(self.doc[page])
         self.file.additions.add_drawing(page, stream)
+
+
+@dataclass(frozen=True, slots=True)
+class _ListedFont:
+    """A font a page uses, as PyMuPDF's list of them gives it, read by name."""
+
+    font_object: int  # its PDF object; _IN_PLACE for one written in place
+    file_type: str
+    kind: str
+    name: str  # empty for a Type3 font with no /Name written in place
+    resource: str
+    encoding: str
+    referencer: int  # the form (a reusable drawing) that uses it; 0 for the page itself
+
+    @property
+    def written_in_place(self) -> bool:
+        """Whether it's written in place, so it has no object of its own."""
+        return self.font_object == _IN_PLACE
+
+
+def _font_name(read_as: str, by_name: PageTextFonts) -> str:
+    """The name of a piece's font its text reads as `read_as`, as the page lists it."""
+    # An unnamed Type3 font written in place, which its text names by an object it doesn't have.
+    if read_as == _UNNAMED_TYPE3.format(font_object=_IN_PLACE):
+        return _UNNAMED_TYPE3_IN_PLACE
+    return by_name.name_of(read_as)
 
 
 @dataclass(slots=True)

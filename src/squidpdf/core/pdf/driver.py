@@ -124,7 +124,11 @@ class PdfDriver(Protocol):
         ...
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Every font the page uses, forms included."""
+        """Each font the page uses that's an object of its own, forms included.
+
+        Not one written in place, its dictionary inside the page's resources rather than an
+        object: it has no object to look it up by, so its text goes by its name.
+        """
         ...
 
     def font_bytes(self, font_object: int) -> bytes:
