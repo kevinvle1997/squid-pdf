@@ -115,6 +115,9 @@ class AnalysisFacts(TypedDict):
 
     build: str
     active_content_dropped: bool  # the original had what acts on its own taken out
+    plain_xmp_dropped: (
+        bool  # the original had XMP it kept plain, which reads garbled, taken out
+    )
     signed: bool  # the original holds a signature, which any download from here breaks
     pages: list[PageInfo]
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.

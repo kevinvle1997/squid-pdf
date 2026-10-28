@@ -291,6 +291,18 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def keeps_xmp_plain(self) -> bool:
+        """Whether the file is protected and has XMP it asks to keep unencrypted.
+
+        What the file asks (EncryptMetadata false, which only V4 or later means), whether or
+        not the library reads it so.
+        """
+        ...
+
+    def drop_xmp(self) -> None:
+        """Delete the file's XMP, wherever the file names it. Its Info stays."""
+        ...
+
     def has_tags(self) -> bool:
         """Whether the file is tagged: it has the reading order a screen reader follows."""
         ...

@@ -38,7 +38,7 @@ _SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
 
 
 def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> KeptAnalysis:
-    """Take out what acts on its own, index the new upload, keep its pages, and analyse it.
+    """Take out what acts on its own and plain XMP; index the upload, keep its pages, analyse.
 
     The one place an index is built, so no span id the browser holds ever moves.
     Raises TooManyPages past `max_pages`, before reading a page.
@@ -56,20 +56,26 @@ def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> Ke
 
 
 def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
-    """Refuse a file past `max_pages`; rewrite one with what acts on its own, without it.
+    """Refuse a file past `max_pages`; rewrite one without what acts on its own or plain XMP.
 
     Before the index, so every span id is the rewritten file's. Nothing here needs what
-    goes, and a viewer would run it from the file the user downloads.
+    goes: a viewer would run what acts, and every later open would read the XMP garbled.
     """
     with documents.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
+        active_content_dropped = engine.drop_active_content()
+        plain_xmp_dropped = engine.drop_plain_xmp()
+        rewritten = active_content_dropped or plain_xmp_dropped
         # The original stays exactly as it was sent.
-        if not engine.drop_active_content():
+        if not rewritten:
             return
         # Nothing was added, so saving says nothing.
         store.replace_original(folder, engine.save)
-    store.keep_active_content_dropped(folder)
+    if active_content_dropped:
+        store.keep_active_content_dropped(folder)
+    if plain_xmp_dropped:
+        store.keep_plain_xmp_dropped(folder)
 
 
 def analyse(documents: DocumentStore, folder: Path) -> KeptAnalysis:
@@ -149,6 +155,7 @@ def _document_facts(folder: Path, *, signed: bool, fonts: list[FontFacts]) -> An
     return {
         "build": BUILD,
         "active_content_dropped": store.active_content_dropped(folder),
+        "plain_xmp_dropped": store.plain_xmp_dropped(folder),
         "signed": signed,
         "pages": [
             {"width": page.width, "height": page.height, "turn_cw": page.turn_cw}
