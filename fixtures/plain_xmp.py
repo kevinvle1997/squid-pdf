@@ -22,15 +22,17 @@ _XMP = f"""<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
 </rdf:Description></rdf:RDF></x:xmpmeta>
 <?xpacket end="w"?>"""
 # Each file: the revision of the standard protection it uses, AES-128 (R4) or AES-256 (R6),
-# and whether its page names the catalog's XMP too, which leaves it in the file if kept.
+# and what else names the catalog's XMP, which leaves it in the file if kept: its page's
+# Metadata, or the private data an application keeps in the catalog (PieceInfo).
 _FILES = {
-    "plain_xmp_aes128.pdf": (4, False),
-    "plain_xmp_aes256.pdf": (6, False),
-    "plain_xmp_shared.pdf": (4, True),
+    "plain_xmp_aes128.pdf": (4, None),
+    "plain_xmp_aes256.pdf": (6, None),
+    "plain_xmp_shared.pdf": (4, "page"),
+    "plain_xmp_pieceinfo.pdf": (4, "pieceinfo"),
 }
 
 
-def _with_plain_xmp(*, shared: bool) -> pikepdf.Pdf:
+def _with_plain_xmp(*, shared: str | None) -> pikepdf.Pdf:
     """One page of `_LINE` in Helvetica, its Info titled `_LINE`, its XMP `_XMP_TITLE`."""
     pdf = pikepdf.new()
     pdf.add_blank_page()
@@ -48,8 +50,10 @@ def _with_plain_xmp(*, shared: bool) -> pikepdf.Pdf:
     xmp = pdf.make_indirect(pdf.make_stream(_XMP.encode()))
     xmp.Type, xmp.Subtype = pikepdf.Name.Metadata, pikepdf.Name.XML
     pdf.Root.Metadata = xmp
-    if shared:
+    if shared == "page":
         page.obj.Metadata = xmp
+    if shared == "pieceinfo":
+        pdf.Root.PieceInfo = pikepdf.Dictionary(App=pikepdf.Dictionary(Private=xmp))
     return pdf
 
 

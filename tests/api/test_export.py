@@ -1351,9 +1351,14 @@ def test_a_file_with_only_an_owner_password_keeps_its_protection_when_its_upload
 
 
 _FIXTURES = Path(__file__).parents[2] / "fixtures"
-# Files behind an owner password alone that keep their XMP plain, as `fixtures/plain_xmp.py`
-# writes them, AES-128, AES-256, then AES-128 with its page naming the same XMP.
-_PLAIN_XMP = ["plain_xmp_aes128.pdf", "plain_xmp_aes256.pdf", "plain_xmp_shared.pdf"]
+# Files behind an owner password alone that keep their XMP plain (`fixtures/plain_xmp.py`):
+# AES-128, AES-256, then AES-128 with its page, then its catalog's PieceInfo, naming it too.
+_PLAIN_XMP = [
+    "plain_xmp_aes128.pdf",
+    "plain_xmp_aes256.pdf",
+    "plain_xmp_shared.pdf",
+    "plain_xmp_pieceinfo.pdf",
+]
 _PLAIN_XMP_TITLE = "Quarterly report"  # their Info's title, and their page's line
 
 

@@ -12,6 +12,7 @@ import pty
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Literal, get_args
 
 import pymupdf
@@ -258,6 +259,38 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     assert_in("checked gone by re-reading it", out, "the redact output")
     assert_not_in(words.sentence("signatures_removed"), out, "the redact output, unsigned")
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
+
+
+# Behind an owner password alone, AES-128, its XMP kept plain, as `fixtures/plain_xmp.py`
+# writes it; its page's one line is "Quarterly report".
+_PLAIN_XMP = str(Path(__file__).parents[1] / "fixtures" / "plain_xmp_aes128.pdf")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [["edit", "Yearly report"], ["redact"]],
+    ids=["edit", "redact"],
+)
+def test_a_protected_files_plain_xmp_is_left_out_of_the_saved_file_and_said(
+    tmp_path, capsys, command
+):
+    """As the upload does: MuPDF writes that XMP as encrypted, and anyone can undo it."""
+    out_pdf = tmp_path / "out.pdf"
+    name, *rest = command
+
+    code = main(
+        [name, _PLAIN_XMP, _span_id(_PLAIN_XMP, "Quarterly"), *rest, "-o", str(out_pdf)]
+    )
+
+    assert_equal(code, 0, f"exit code of `squidpdf {name}`")
+    with pymupdf.open(out_pdf) as saved:
+        xmp = [
+            xref
+            for xref in range(1, saved.xref_length())
+            if saved.xref_get_key(xref, "Type") == ("name", "/Metadata")
+        ]
+    assert_equal(xmp, [], "the XMP left in the saved file")
+    assert_in(words.sentence("plain_xmp_dropped"), capsys.readouterr().out, "what it says")
 
 
 def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
