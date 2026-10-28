@@ -32,8 +32,8 @@
    What's changed stays beside the file's name, as a document's status sits beside its title. */
 .actions { flex: none; display: flex; align-items: center; gap: var(--s2); margin-inline-start: auto; }
 .actions button { white-space: nowrap; }
-/* The one action: the highlighter, ink on it. */
-.export { --ink: var(--bar-act); --strip: var(--bar-act-ink); }
+/* The one action: the highlighter, ink on it. Off, it's any primary off, its keycap on the bar's own tint. */
+.export:not([data-disabled]) { --ink: var(--bar-act); --strip: var(--bar-act-ink); }
 /* A bar too narrow for everything: the count's words wrap before the name is cut. */
 @container (max-width: 1080px) {
   .status { min-width: 12em; white-space: normal; line-height: 1.3; }

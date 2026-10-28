@@ -21,8 +21,10 @@
 .button[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
 
 .secondary { background: transparent; border-color: var(--rule); color: var(--ink); }
-.secondary[data-hovered] { background: var(--rule-soft); }
-.secondary[data-disabled] { border-color: var(--rule-soft); color: var(--ink-lo); }
+/* Its edge firms as it's pointed at, so the fill it shares with off never stands for on alone. */
+.secondary[data-hovered] { background: var(--rule-soft); border-color: var(--ink-lo); }
+/* Off, it's flat, as a primary is off: no edge to press, its words a step back. An edge a shade fainter read as on. */
+.secondary[data-disabled] { background: var(--rule-soft); border-color: transparent; color: var(--ink-lo); }
 
 /* Solid ink, so the one action a screen asks for is the first thing found on it. Its border is
    see-through, so the fill reaches the edge in every state, with no rim when it lightens. */
@@ -39,7 +41,7 @@
 .quiet[data-disabled] { color: var(--ink-lo); }
 
 /* A keycap is --rule-soft too, so on that fill it would vanish: it takes the surface's tint instead. */
-.secondary[data-hovered] kbd, .quiet[data-hovered] kbd, .primary[data-disabled] kbd {
+.secondary[data-hovered] kbd, .quiet[data-hovered] kbd, .primary[data-disabled] kbd, .secondary[data-disabled] kbd {
   background: var(--strip); color: var(--ink-lo);
 }
 /* A touch screen has no keys to hint at. */
