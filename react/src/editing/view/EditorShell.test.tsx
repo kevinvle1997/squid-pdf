@@ -2052,6 +2052,32 @@ describe("new text", () => {
     await expect.element(note).toBeVisible();
   });
 
+  test("new text's note stays while the pointer moves from its mark onto it, and closes once it leaves both (WCAG 1.4.13, Hoverable)", async () => {
+    const screen = await openEditor({ doc: RED_DOC });
+    await doubleClickPaper(screen, [300, 300]);
+    await userEvent.keyboard("Signed{Enter}");
+    const mark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(mark).toHaveFocus();
+    mark.element().blur();
+    await mark.hover();
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toBeVisible();
+    await animationsDone();
+    await note.hover();
+    const movedAt = performance.now();
+    // Past the delay a note closes after, and its fade: still there, under the pointer.
+    await expect
+      .poll(() => performance.now() - movedAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
+      .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
+    await expect.element(note).toBeVisible();
+    expect(note.element()).not.toHaveAttribute("data-exiting");
+
+    await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
+    // Not at once: after the delay.
+    expect(note.element()).not.toHaveAttribute("data-exiting");
+    await expect.element(note, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toBeInTheDocument();
+  });
+
   test("with a reading persisted before new text's sentences were sent, its note and its margin note say nothing of it", async () => {
     const older = { ...RED_DOC.sentences };
     for (const key of ["new_text", "new_text_moves", "new_text_moves_touch"] as const) {

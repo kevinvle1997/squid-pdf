@@ -23,7 +23,7 @@ import { createNotes, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
 
-/** A mark over every span, or the field where one is being typed into, and the one note they share. */
+/** A mark over every span and new text, or the field being typed into, and the notes they share: one at a time. */
 export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   const [notes] = useState(createNotes);
   const noteId = useId();
@@ -40,7 +40,7 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
       {inPageOrder(page.spans, placedOnPage(page)).map(({ span, placed }) => {
         if (placed === "field") return <NewTextField key="field" info={info} />;
         if (placed !== undefined) {
-          return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} />;
+          return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} notes={notes} />;
         }
         return span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -135,7 +135,8 @@ function PageNote({
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
   // Focus shows the note only when it's the keyboard's: a click's focus leaves it to the click.
   const { isFocusVisible } = useFocusVisible();
-  const span = last === null ? undefined : spanIn(page, last.spanId);
+  // New text's note is its own mark's to draw.
+  const span = last === null ? undefined : spanIn(page, last.markId);
   if (last === null || span === undefined) return null;
   const { note } = lookOf({
     span,
@@ -148,12 +149,12 @@ function PageNote({
   if (note === null) return null;
   return (
     <Tooltip
-      key={last.spanId}
+      key={last.markId}
       id={id}
       triggerRef={{ current: last.anchor }}
       isOpen={shown !== null && (shown.via !== "focus" || isFocusVisible)}
-      onOpenChange={(isOpen) => isOpen || notes.hide(last.spanId)}
-      onHoverChange={(isHovered) => (isHovered ? notes.keep(last.spanId) : notes.hideSoon(last.spanId))}
+      onOpenChange={(isOpen) => isOpen || notes.hide(last.markId)}
+      onHoverChange={(isHovered) => (isHovered ? notes.keep(last.markId) : notes.hideSoon(last.markId))}
       heading={note.sentence}
       warn={note.warn}
     >
