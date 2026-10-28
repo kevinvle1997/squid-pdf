@@ -849,6 +849,50 @@ describe("a date's control in the field's slip", () => {
     await expect.element(screen.getByRole("textbox")).toHaveFocus();
     await expect.element(control).toBeVisible();
   });
+
+  test.each([
+    [
+      "a date's calendar, on a day",
+      "Due 14 March 2026",
+      (screen: Awaited<ReturnType<typeof render>>) => screen.getByRole("button", { name: /March 14, 2026/ }),
+    ],
+    [
+      "an amount's number field",
+      "Pay 1.250,00 €",
+      (screen: Awaited<ReturnType<typeof render>>) => screen.getByRole("textbox", { name: "Amount" }),
+    ],
+  ])("in %s, undo and redo take back nothing typed in the field, nor another edit", async (_, words, inEditorOf) => {
+    const due = aSpan({ id: "due", text: words, bbox: { x0: 72, y0: 200, x1: 242, y1: 224 }, size: 20 });
+    const glyphs = halfWideGlyphs(`abcdefghijklmnopqrstuvwxyz ${words}`);
+    const screen = await openEditor({ doc: aDoc({ spans: [span, due], fonts: [aFont("Times-Roman", { glyphs })] }) });
+    await changeSpan(screen, "is here");
+    const mark = screen.getByRole("button", { name: words });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    // Typed before the editor opens, so the browser has the field's own typing to undo: emptied, then the line put
+    // in at once, as a paste does, so one undo of the browser's would take the value away and close its editor.
+    const field = screen.getByRole("textbox", { name: `Change “${words}”` });
+    await userEvent.keyboard("{Backspace}");
+    await expect.element(field).toHaveValue("");
+    document.execCommand("insertText", false, `${words} ab`);
+    await expect.element(field).toHaveValue(`${words} ab`);
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    const inEditor = inEditorOf(screen);
+    await expect.element(inEditor).toHaveFocus();
+
+    for (const keys of [
+      "{Control>}z{/Control}",
+      "{Control>}{Shift>}z{/Shift}{/Control}",
+      "{Control>}y{/Control}",
+      "{Control>}z{/Control}",
+    ]) {
+      await userEvent.keyboard(keys);
+      expect(field.element(), keys).toHaveValue(`${words} ab`);
+      expect(document.activeElement, keys).toBe(inEditor.element());
+      expect(screen.getByRole("button", { name: "is here" }).query(), keys).not.toBeNull();
+    }
+  });
 });
 
 describe("splitting the document", () => {

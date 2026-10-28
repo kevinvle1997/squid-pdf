@@ -173,6 +173,8 @@ describe("the value its editor is open on", () => {
     // The year retyped by hand: "2026" is "202" a moment, then "2027".
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
     expect(spanDraftOf(editor.store.get())?.valueEditorOpen).toBe(false);
+    // Closed under it, the editor sends focus back to the field: never left to fall to the page's body.
+    expect(editor.store.get().focusTo).toEqual({ spanId: "due" });
     typeInto(editor, "Due 14 March 20, total 1.250,00 €");
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
     const retyped = "Due 14 March 2027, total 1.250,00 €";

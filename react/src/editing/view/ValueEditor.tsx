@@ -30,6 +30,7 @@ import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import type { AmountValue } from "../amounts";
+import { isUndoOrRedo } from "../commands";
 import type { DateValue } from "../dates";
 import { announce } from "../editor";
 import type { EditableValue } from "../formattedValues";
@@ -77,13 +78,20 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   );
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Undo and redo are the typing's, as in new text's slip: nothing is undone, the field's words out of sight least
+    // of all. The number field gives up its own undo for it.
+    if (isUndoOrRedo(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key !== "Escape") return;
     event.preventDefault();
     closeValueEditor(editor);
   }
 
   return (
-    // Escape, from the calendar or the number field, closes it: their other keys are their own.
+    // Undo and redo, from the calendar or the number field, do nothing, and Escape closes it: their other keys are
+    // their own.
     // biome-ignore lint/a11y/noStaticElementInteractions: it hears what its controls don't handle
     <div {...focusWithinProps} className={styles.editor} onKeyDown={onKeyDown}>
       <Disclosure
