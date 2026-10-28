@@ -509,6 +509,8 @@ NAME_COPIES = (
     "title",
     "author",
     "xmp",
+    "page_xmp",
+    "annotation_xmp",
     "bookmark",
     "note",
     "free_text",
@@ -596,6 +598,9 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
     doc.set_metadata(info)
     if "xmp" in copies:
         doc.set_xml_metadata(_XMP.format(name=REDACTED_NAME))
+    if "page_xmp" in copies:
+        # The page's own metadata, apart from the catalog's: any object may name one.
+        doc.xref_set_key(page.xref, "Metadata", f"{_new_xmp(doc)} 0 R")
     for kind, written in _NOT_XML.items():
         if kind in copies:
             _set_metadata_bytes(doc, written)
@@ -670,7 +675,24 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         )
     if "tag" in copies:
         _tag_a_picture(doc, f"Photo of {REDACTED_NAME}")
+    if "annotation_xmp" in copies:
+        # A comment naming metadata of its own, written in the page's list of comments
+        # itself, not as an object of its own. Last: it writes that list again, whole.
+        value_type, listed = doc.xref_get_key(page.xref, "Annots")
+        comments = listed[1:-1] if value_type == "array" else ""
+        square = (
+            f"<</Type/Annot/Subtype/Square/Rect[400 400 420 420]/Metadata {_new_xmp(doc)} 0 R>>"
+        )
+        doc.xref_set_key(page.xref, "Annots", f"[{comments} {square}]")
     return doc.tobytes()
+
+
+def _new_xmp(doc: pymupdf.Document) -> int:
+    """New metadata (XMP) in `doc` that holds the name, which nothing names yet; its number."""
+    xmp = _new_stream(doc, _XMP.format(name=REDACTED_NAME).encode())
+    doc.xref_set_key(xmp, "Type", "/Metadata")
+    doc.xref_set_key(xmp, "Subtype", "/XML")
+    return xmp
 
 
 def _set_metadata_bytes(doc: pymupdf.Document, written: bytes) -> None:

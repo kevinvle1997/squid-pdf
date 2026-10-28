@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
+from itertools import chain
 from typing import Literal, assert_never
 
 import pymupdf
@@ -19,11 +20,11 @@ from squidpdf.core.pdf.lowlevel.fields import (
 )
 from squidpdf.core.pdf.lowlevel.objects import (
     HIDDEN_COPY_KEYS,
+    PDF_NULL,
     bytes_of,
     each_reached,
     items_of,
     keys_of,
-    metadata_stream,
     pdf_of,
     put_stream,
     put_text,
@@ -331,32 +332,44 @@ class DocumentHiddenCopies:
                 mu.pdf_dirty_annot(annotation)
         mu.pdf_update_page(pdf_page)
 
+    def _metadata_streams(self) -> list[pymupdf.mupdf.PdfObj]:
+        """Every metadata (XMP) stream any dictionary in the file names, each once."""
+        mu = pymupdf.mupdf
+        pdf = pdf_of(self.doc)
+        streams: dict[int, pymupdf.mupdf.PdfObj] = {}
+        held = (
+            mu.pdf_resolve_indirect(mu.pdf_new_indirect(pdf, number, 0))
+            for number in range(1, mu.pdf_xref_len(pdf))
+        )
+        for value in chain([mu.pdf_trailer(pdf)], held):
+            for dictionary in _dictionaries_in(value):
+                stream = mu.pdf_dict_get(dictionary, mu.PDF_ENUM_NAME_Metadata)
+                # Several may name one, as a page may name the catalog's.
+                if mu.pdf_is_stream(stream):
+                    streams.setdefault(mu.pdf_to_num(stream), stream)
+        return list(streams.values())
+
     def _metadata_texts(self) -> list[str]:
-        """The text in the document's metadata (XMP), each string apart; whole if not XML."""
-        stream = metadata_stream(self.doc)
-        if stream is None:
-            return []
-        written = bytes_of(stream)
-        dom = xml_of(written)
-        # Not XML: any of it may hold a word, in any encoding it may be in.
-        if dom is None:
-            return [readings_of(written)]
-        return [str(piece.nodeValue) for piece in xml_strings(dom)]
+        """The text in every metadata (XMP) stream, each string apart; whole if not XML."""
+        return [text for stream in self._metadata_streams() for text in _xmp_texts(stream)]
 
     def _rewrite_metadata(self, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(text)` for each string in the metadata (XMP); it goes if not XML."""
-        mu = pymupdf.mupdf
-        stream = metadata_stream(self.doc)
-        if stream is None:
-            return
+        """Put `rewritten(text)` for each string in every metadata (XMP) stream."""
+        for stream in self._metadata_streams():
+            self._rewrite_xmp(stream, rewritten)
+
+    def _rewrite_xmp(
+        self, stream: pymupdf.mupdf.PdfObj, rewritten: Callable[[str], str]
+    ) -> None:
+        """Put `rewritten(text)` for each string of one XMP stream; it goes if not XML."""
         written = bytes_of(stream)
         dom = xml_of(written)
         # Not XML, and nothing in it would change: it stays as the file wrote it.
         if dom is None and not _changes([readings_of(written)], rewritten):
             return
-        # Not XML, so not written back: it goes, as something in it would change.
+        # Not XML, so not written back: it goes, wherever it's named, as something would change.
         if dom is None:
-            mu.pdf_dict_del(root_of(self.doc), mu.PDF_ENUM_NAME_Metadata)
+            self.doc.update_object(pymupdf.mupdf.pdf_to_num(stream), PDF_NULL)
             return
         changed = False
         for piece in xml_strings(dom):
@@ -368,6 +381,37 @@ class DocumentHiddenCopies:
         if not changed:
             return
         put_stream(self.doc, stream, xml_written(dom))
+
+
+def _dictionaries_in(value: pymupdf.mupdf.PdfObj) -> Iterator[pymupdf.mupdf.PdfObj]:
+    """`value` if it's a dictionary, and each written inside it, as a comment in a list.
+
+    Not one it names as an object of its own: each object is read as itself.
+    """
+    mu = pymupdf.mupdf
+    waiting = [value]
+    while waiting:
+        node = waiting.pop()
+        if mu.pdf_is_indirect(node):
+            continue
+        if mu.pdf_is_array(node):
+            waiting += items_of(node)
+            continue
+        # Anything else that isn't a dictionary (a number, a name) holds none.
+        if not mu.pdf_is_dict(node):
+            continue
+        yield node
+        waiting += values_of(node)
+
+
+def _xmp_texts(stream: pymupdf.mupdf.PdfObj) -> list[str]:
+    """The text in one metadata (XMP) stream, each string apart; whole if not XML."""
+    written = bytes_of(stream)
+    dom = xml_of(written)
+    # Not XML: any of it may hold a word, in any encoding it may be in.
+    if dom is None:
+        return [readings_of(written)]
+    return [str(piece.nodeValue) for piece in xml_strings(dom)]
 
 
 def _texts_in(value: pymupdf.mupdf.PdfObj) -> list[str]:
