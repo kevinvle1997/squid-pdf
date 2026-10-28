@@ -84,8 +84,16 @@ export interface FocusFaces {
   readonly faces: true;
 }
 
+/**
+ * The open value's editor in the slip of the span typed into, taking focus back from its field by Alt+Down: the
+ * calendar's focused day, or the amount's number field. Opening, it takes focus as it's drawn.
+ */
+export interface FocusValueEditor {
+  readonly valueEditor: string; // the span typed into
+}
+
 /** Where focus is sent, to take as it's drawn. */
-export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusField | FocusFaces;
+export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusField | FocusFaces | FocusValueEditor;
 
 /** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
