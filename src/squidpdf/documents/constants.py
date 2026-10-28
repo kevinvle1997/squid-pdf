@@ -35,8 +35,8 @@ DOCUMENT_CACHE = "private, no-cache"  # always asked again, answered 304 if unch
 REPLY_VERSION = 12
 # How an original, its span index and page list are kept: bump it when one changes. One kept
 # in another reads as gone, never indexed again, and the browser opens it again from its copy.
-DOCUMENT_FORMAT = 4
+DOCUMENT_FORMAT = 5
 # How an analysis is kept and judged: bump it when either changes; an old one is redone.
-ANALYSIS_FORMAT = 11
+ANALYSIS_FORMAT = 12
 
 MAX_IMAGE_PIXELS = 20_000_000  # a larger page gets a smaller scale instead

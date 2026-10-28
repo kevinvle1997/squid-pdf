@@ -68,6 +68,10 @@ _KEEP_PROTECTION = 0  # pymupdf.PDF_ENCRYPT_KEEP, which its type stubs leave out
 _TRAILER = -1  # what PyMuPDF's object calls take for the file's trailer
 # A file's ID with both parts empty: MuPDF keeps the first part as it is and writes the second.
 _EMPTY_ID = "[<> <>]"
+_FALSE = ("bool", "false")  # a false entry, as PyMuPDF's object calls read one
+_CRYPT_FILTERS_FROM = (
+    4  # the first protection version (V) with crypt filters, and EncryptMetadata
+)
 # The bytes a PDF name holds as they are: printable, and none that ends a name or
 # starts an escape. Any other is written #xx.
 _PRINTABLE = range(0x21, 0x7F)
@@ -655,6 +659,37 @@ class _MuPDFDriver:
     def drop_active_content(self) -> bool:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.file.active_content.drop()
+
+    def keeps_xmp_plain(self) -> bool:
+        """Whether the file is protected and has XMP it asks to keep unencrypted.
+
+        MuPDF reads and writes that XMP as encrypted all the same.
+        """
+        # Not asked to keep it plain, or not protected at all.
+        if self.doc.xref_get_key(_TRAILER, "Encrypt/EncryptMetadata") != _FALSE:
+            return False
+        version = self._protection_version()
+        # Below V4, or with no version to read, the flag means nothing: encrypted with the rest.
+        if version is None or version < _CRYPT_FILTERS_FROM:
+            return False
+        return self.doc.xref_xml_metadata() != 0  # 0: it has no XMP
+
+    def _protection_version(self) -> int | None:
+        """The version (V) of the file's protection, wherever it's kept; None if no number."""
+        value_type, version = self.doc.xref_get_key(_TRAILER, "Encrypt/V")
+        # In an object of its own: that object is the number.
+        if value_type == "xref":
+            version = self.doc.xref_object(_object_number(version), compressed=True)
+        return int(version) if version.isdigit() else None
+
+    def drop_xmp(self) -> None:
+        """Delete the file's XMP, wherever the file names it. Its Info stays."""
+        xmp = self.doc.xref_xml_metadata()
+        # A page may name it too, which would keep it in the file.
+        for xref in range(1, self.doc.xref_length()):
+            value_type, value = self.doc.xref_get_key(xref, "Metadata")
+            if value_type == "xref" and _object_number(value) == xmp:
+                self.doc.xref_set_key(xref, "Metadata", PDF_NULL)
 
     def mark_changed_by(self, producer: str, when: datetime) -> None:
         """Say in the file's metadata that `producer` changed it, at `when`."""

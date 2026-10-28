@@ -55,6 +55,7 @@ def document_json(
         "notices": _notices_in(
             has_text=kept.spans != _NO_SPANS,
             active_content_dropped=facts["active_content_dropped"],
+            plain_xmp_dropped=facts["plain_xmp_dropped"],
             signed=facts["signed"],
             language=language,
         ),
@@ -187,7 +188,12 @@ def _counted_in(key: str, language: str) -> CountedSentence:
 
 
 def _notices_in(
-    *, has_text: bool, active_content_dropped: bool, signed: bool, language: str
+    *,
+    has_text: bool,
+    active_content_dropped: bool,
+    plain_xmp_dropped: bool,
+    signed: bool,
+    language: str,
 ) -> list[DocumentNoticeInfo]:
     """What may not be what the user expected of this document, in `language`."""
     said: list[Message] = []
@@ -197,6 +203,9 @@ def _notices_in(
     # Taken out when it came in: the file downloaded lacks what the user's had.
     if active_content_dropped:
         said.append(Message("active_content_dropped"))
+    # Taken out when it came in too: the file downloaded lacks some of its properties.
+    if plain_xmp_dropped:
+        said.append(Message("plain_xmp_dropped"))
     # Any download from here is a new file, so no signature in it holds: said before the edit.
     if signed:
         said.append(Message("signed_file"))

@@ -1350,6 +1350,119 @@ def test_a_file_with_only_an_owner_password_keeps_its_protection_when_its_upload
     assert_equal(said, expected, "how the download is protected")
 
 
+_FIXTURES = Path(__file__).parents[2] / "fixtures"
+# Files behind an owner password alone that keep their XMP plain, as `fixtures/plain_xmp.py`
+# writes them, AES-128, AES-256, then AES-128 with its page naming the same XMP.
+_PLAIN_XMP = ["plain_xmp_aes128.pdf", "plain_xmp_aes256.pdf", "plain_xmp_shared.pdf"]
+_PLAIN_XMP_TITLE = "Quarterly report"  # their Info's title, and their page's line
+
+
+def _xmp_objects_in(pdf: pymupdf.Document) -> list[int]:
+    """Each object in the file that's XMP, by number, whatever names it."""
+    return [
+        xref
+        for xref in range(1, pdf.xref_length())
+        if pdf.xref_get_key(xref, "Type") == ("name", "/Metadata")
+    ]
+
+
+@pytest.mark.parametrize("name", _PLAIN_XMP)
+def test_a_protected_files_plain_xmp_is_left_out_of_the_download_and_said(mine, name):
+    """The library may read and write it as encrypted, so it would come out garbled.
+
+    The Info stays.
+    """
+    sent = (_FIXTURES / name).read_bytes()
+    doc = upload(mine, sent).json()
+
+    response = _export(mine, doc, [])
+
+    notices = [notice["type"] for notice in doc["notices"]]
+    assert_in("plain_xmp_dropped", notices, "what the upload said")
+    saved = _opened(response)
+    assert_equal(_xmp_objects_in(saved), [], "the XMP left in the file")
+    assert_equal(_info(saved, "Title"), _PLAIN_XMP_TITLE, "the Info's title")
+    said = _protection_of(response.content)
+    assert_equal(said, _protection_of(sent), "how the download is protected")
+
+
+def _with_version_apart(sent: bytes) -> bytes:
+    """`sent` with an update keeping its protection's version (V 4) in an object of its own.
+
+    Appended as an edit in place appends one: the Encrypt again, then a table and a trailer
+    naming only what changed, and where the table before it is (Prev).
+    """
+    pdf = pymupdf.open(stream=sent, filetype="pdf")
+    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    version = pdf.xref_length()  # the next free object number
+    source = pdf.xref_object(encrypt, compressed=True).replace("/V 4", f"/V {version} 0 R")
+    objects = [f"{encrypt} 0 obj\n{source}\nendobj\n", f"{version} 0 obj\n4\nendobj\n"]
+    offsets = [len(sent), len(sent) + len(objects[0])]
+    table = "".join(
+        f"{n} 1\n{at:010d} 00000 n \n"
+        for n, at in zip((encrypt, version), offsets, strict=True)
+    )
+    trailer = re.sub(r"/Size \d+", f"/Size {version + 1}", pdf.pdf_trailer(compressed=True))
+    entries = trailer.removesuffix(">>")  # left open, for Prev to join
+    previous = re.findall(rb"startxref\s+(\d+)", sent)[-1].decode()
+    table_at = offsets[1] + len(objects[1])
+    update = (
+        f"{''.join(objects)}xref\n{table}trailer\n{entries}/Prev {previous}>>\n"
+        f"startxref\n{table_at}\n%%EOF\n"
+    )
+    return sent + update.encode()
+
+
+def test_a_protected_files_plain_xmp_is_left_out_when_its_version_is_kept_apart(mine):
+    """A version kept in an object of its own is read through it, as any reader reads it."""
+    sent = _with_version_apart((_FIXTURES / _PLAIN_XMP[0]).read_bytes())
+    uploaded = upload(mine, sent)
+
+    assert_equal(uploaded.status_code, 201, uploaded.text[:200])
+    doc = uploaded.json()
+    notices = [notice["type"] for notice in doc["notices"]]
+    assert_in("plain_xmp_dropped", notices, "what the upload said")
+    assert_equal(
+        _xmp_objects_in(_opened(_export(mine, doc, []))), [], "the XMP left in the file"
+    )
+
+
+_RC4_128 = 3  # pymupdf.PDF_ENCRYPT_RC4_128: protection (V2) with no crypt filters
+
+
+def _rc4_asking_plain_xmp(pdf: pymupdf.Document) -> bytes:
+    """`pdf` behind RC4 and an owner password, its protection asking to keep its XMP plain.
+
+    Below V4 the flag means nothing: the XMP is encrypted with the rest. Saved without
+    object streams, the trailer is plain text after every object, so its longer word moves none.
+    """
+    protected = pdf.tobytes(encryption=_RC4_128, owner_pw=_OWNER_PASSWORD, use_objstms=False)
+    return protected.replace(b"/EncryptMetadata true", b"/EncryptMetadata false", 1)
+
+
+@pytest.mark.parametrize(
+    "protect",
+    [
+        lambda pdf: pdf.tobytes(encryption=_AES_128, owner_pw=_OWNER_PASSWORD),
+        lambda pdf: pdf.tobytes(encryption=_AES_256, owner_pw=_OWNER_PASSWORD),
+        _rc4_asking_plain_xmp,
+    ],
+    ids=["AES-128", "AES-256", "RC4 asking plain"],
+)
+def test_a_protected_files_encrypted_xmp_is_kept_and_nothing_is_said(
+    mine, typed_metadata, protect
+):
+    """Only XMP the file keeps plain is left out."""
+    sent = protect(pymupdf.open(stream=typed_metadata, filetype="pdf"))
+    doc = upload(mine, sent).json()
+
+    saved = _opened(_export(mine, doc, []))
+
+    notices = [notice["type"] for notice in doc["notices"]]
+    assert_not_in("plain_xmp_dropped", notices, "what the upload said")
+    assert_equal(saved.get_xml_metadata(), _with_mark(_TYPED_XMP, saved), "the metadata")
+
+
 def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, doc):
     """The body is the file, so what was left out travels beside it, by place in the list."""
     span = span_starting(doc, 1, "Invoices")

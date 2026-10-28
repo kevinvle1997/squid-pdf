@@ -47,6 +47,8 @@ ORIGINAL = "original.pdf"
 _OWNER = "owner"
 # There only when the original had what acts on its own taken out (`drop_active_content`).
 _ACTIVE_CONTENT_DROPPED = "active-content-dropped"
+# There only when the original had XMP it kept plain taken out (`drop_plain_xmp`).
+_PLAIN_XMP_DROPPED = "plain-xmp-dropped"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
 # Bytes of the tuning's digest in file names: enough that two tunings won't share one.
@@ -249,6 +251,16 @@ def keep_active_content_dropped(folder: Path) -> None:
 def active_content_dropped(folder: Path) -> bool:
     """Whether the original had what acts on its own taken out when it came in."""
     return (folder / _ACTIVE_CONTENT_DROPPED).exists()
+
+
+def keep_plain_xmp_dropped(folder: Path) -> None:
+    """Note that the original had XMP it kept plain taken out, for each reply to say."""
+    _write_whole(folder / _PLAIN_XMP_DROPPED, b"")
+
+
+def plain_xmp_dropped(folder: Path) -> bool:
+    """Whether the original had XMP it kept plain taken out when it came in."""
+    return (folder / _PLAIN_XMP_DROPPED).exists()
 
 
 def _write_whole(path: Path, data: bytes) -> None:

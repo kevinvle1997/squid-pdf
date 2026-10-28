@@ -99,6 +99,16 @@ class Engine:
         """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.driver.drop_active_content()
 
+    def drop_plain_xmp(self) -> bool:
+        """Delete the XMP a protected file keeps unencrypted; whether it had any.
+
+        The library may read and write it as encrypted, so it would come out garbled.
+        """
+        if not self.driver.keeps_xmp_plain():
+            return False
+        self.driver.drop_xmp()
+        return True
+
     def holds_signature(self) -> bool:
         """Whether the document holds a signature, which any change to the file breaks."""
         return self.driver.holds_signature()
