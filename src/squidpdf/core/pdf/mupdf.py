@@ -201,7 +201,10 @@ def open_driver(path: str) -> PdfDriver:
     if page_count == 0:  # no page to show or edit: not a document anyone made
         doc.close()
         raise Damaged(debug="no pages")
-    return _MuPDFDriver(doc, pdf_file(doc))
+    file = pdf_file(doc)
+    # Before anything is added: an entry naming no object would take the first one added.
+    file.protection.write_entries_in_place()
+    return _MuPDFDriver(doc, file)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -676,10 +679,8 @@ class _MuPDFDriver:
 
     def _protection_version(self) -> int | None:
         """The version (V) of the file's protection, wherever it's kept; None if no number."""
-        value_type, version = self.doc.xref_get_key(_TRAILER, "Encrypt/V")
-        # In an object of its own: that object is the number.
-        if value_type == "xref":
-            version = self.doc.xref_object(_object_number(version), compressed=True)
+        # The open wrote it in place, where it was kept in an object of its own.
+        _value_type, version = self.doc.xref_get_key(_TRAILER, "Encrypt/V")
         return int(version) if version.isdigit() else None
 
     def drop_xmp(self) -> None:
