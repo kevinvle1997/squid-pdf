@@ -1,4 +1,5 @@
 import {
+  type FocusEvent,
   memo,
   type RefObject,
   useCallback,
@@ -24,7 +25,7 @@ import { useEditor } from "./context";
 import { useFaceOnPage } from "./faceOnPage";
 import { boxOf, newTextBoxOf, newTextWidthIn, newTextWordsStyleOf } from "./geometry";
 import styles from "./NewTextMark.module.css";
-import type { Notes } from "./notes";
+import { isShowing, type Notes } from "./notes";
 
 /** A nudge of new text from the keyboard, in points: Shift takes the larger step. */
 const NUDGE_PT = 1;
@@ -80,7 +81,7 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
   // Its name among the page's notes, apart from every span's, whose ids are hex.
   const note = useNote(notes, `new text ${newTextId}`);
   const drag = useDrag(editor, { newTextId, info, widthPt, mark, onStart: note.hide });
-  const takeFocus = useTakeFocus(mark, takesFocus, note.hide);
+  const takeFocus = useTakeFocus(mark, takesFocus, { focused: note.showFocus, gone: note.hide });
   // A finger has no keys: its note says how to move it without them.
   const touch = useSyncExternalStore(onPointerChange, coarsePointer);
   const { buttonProps } = useButton(
@@ -97,22 +98,18 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
     mark,
   );
   const { focusProps, isFocusVisible } = useFocusRing();
-  // Escape, or a press on it, closes the note focus showed until focus leaves (WCAG 1.4.13, Dismissible).
-  const [dismissed, setDismissed] = useState(false);
 
   const [dx, dy] = drag.by ?? [0, 0];
   const where = { ...text.edit, origin: [text.edit.origin[0] + dx, text.edit.origin[1] + dy] as [number, number] };
   // A reading persisted before the note's sentences were sent has none to show.
   const heading = sentenceOrNothing(sentences.new_text);
   const detail = sentenceOrNothing(touch ? sentences.new_text_moves_touch : sentences.new_text_moves);
-  const showsNote =
-    (note.shown || (isFocusVisible && !dismissed)) && drag.by === null && (heading !== "" || detail !== "");
+  const showsNote = isShowing(note.shown, isFocusVisible) && drag.by === null && (heading !== "" || detail !== "");
   return (
     <>
       <button
-        {...mergeProps(buttonProps, drag.props, note.hoverProps, focusProps, {
+        {...mergeProps(buttonProps, drag.props, note.props, focusProps, {
           onBlur: () => {
-            setDismissed(false);
             if (takesFocus) focusMoved(editor);
           },
         })}
@@ -136,12 +133,8 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
         id={noteId}
         triggerRef={mark}
         isOpen={showsNote}
-        onOpenChange={(isOpen) => {
-          if (isOpen) return;
-          note.hide();
-          if (isFocusVisible) setDismissed(true);
-        }}
-        // The pointer leaving it is no dismissal: a note focus showed stays (WCAG 1.4.13, Persistent).
+        // Escape, or a press on it, closes it until focus comes again (WCAG 1.4.13, Dismissible).
+        onOpenChange={(isOpen) => isOpen || note.hide()}
         onHoverChange={note.hoveredNote}
         heading={heading}
       >
@@ -153,12 +146,20 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
 
 /** The mark's note, shown and closed by the page's notes as a span's is (`view/notes.ts`), known there by `markId`. */
 function useNote(notes: Notes, markId: string) {
-  const shown = useSyncExternalStore(notes.store.subscribe, () => notes.store.get().shown?.markId === markId);
+  const shown = useSyncExternalStore(notes.store.subscribe, () => {
+    const { shown } = notes.store.get();
+    return shown?.markId === markId ? shown : null;
+  });
   const lastTap = useRef(0);
   const hide = useCallback(() => notes.hide(markId), [notes, markId]);
   const { hoverProps, isHovered } = useHover({
     onHoverStart: ({ target }) => notes.show(markId, target, "hover"),
     onHoverEnd: () => notes.hideSoon(markId),
+  });
+  const showFocus = useCallback((mark: Element) => notes.show(markId, mark, "focus"), [notes, markId]);
+  const props = mergeProps(hoverProps, {
+    onFocus: ({ currentTarget }: FocusEvent<Element>) => showFocus(currentTarget),
+    onBlur: hide,
   });
   /** The pointer came onto the note, or left it. */
   function hoveredNote(isHovered: boolean) {
@@ -178,7 +179,7 @@ function useNote(notes: Notes, markId: string) {
     window.addEventListener("pointerdown", hide, { once: true, capture: true });
     return false;
   }
-  return { shown, hovered: isHovered, hoverProps, hide, hoveredNote, tappedTwice };
+  return { shown, hovered: isHovered, props, hide, showFocus, hoveredNote, tappedTwice };
 }
 
 /**
@@ -281,18 +282,25 @@ function useDrag(
 
 /**
  * A ref for the mark: sent focus, it takes it as it's drawn, back from its field or where it stood before a move.
- * Gone, it lets go of its note (`letGo`): the page's notes hear no blur or hover's end from a mark taken away.
+ * Gone, it lets go of its note (`gone`): the page's notes hear no blur or hover's end from a mark taken away. Drawn
+ * again with focus still on it, as a nudge draws it, its note is focus's again (`focused`).
  */
-function useTakeFocus(mark: RefObject<HTMLButtonElement | null>, takesFocus: boolean, letGo: () => void) {
+function useTakeFocus(
+  mark: RefObject<HTMLButtonElement | null>,
+  takesFocus: boolean,
+  { focused, gone }: { focused: (mark: Element) => void; gone: () => void },
+) {
   return useCallback(
     (element: HTMLButtonElement | null) => {
       mark.current = element;
-      if (takesFocus) element?.focus();
+      const focusStays = element !== null && element === document.activeElement;
+      if (focusStays) focused(element);
+      else if (takesFocus) element?.focus();
       return () => {
         mark.current = null;
-        letGo();
+        gone();
       };
     },
-    [mark, takesFocus, letGo],
+    [mark, takesFocus, focused, gone],
   );
 }
