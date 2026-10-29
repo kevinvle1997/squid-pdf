@@ -48,7 +48,7 @@ _TREES = {
 _MODULES = {module: _imports(tree) for module, tree in _TREES.items()}
 
 # The web layer: the `api` extra is optional, so the CLI and pool work must run without it.
-_WEB = ["squidpdf.api", "squidpdf.documents.api", "squidpdf.editing.api"]
+_WEB = ["squidpdf.api", "squidpdf.documents.api", "squidpdf.editing.api", "squidpdf.terms.api"]
 
 
 def _within(name: str, package: str) -> bool:
@@ -65,10 +65,12 @@ def _within(name: str, package: str) -> bool:
         ("squidpdf.core", "squidpdf.documents", []),
         ("squidpdf.core", "squidpdf.api", []),
         ("squidpdf.core", "squidpdf.cli", []),
+        ("squidpdf.core", "squidpdf.terms", []),
         ("squidpdf.documents", "squidpdf.editing", []),
         ("squidpdf", "squidpdf.api", _WEB),
         ("squidpdf", "squidpdf.documents.api", _WEB),
         ("squidpdf", "squidpdf.editing.api", _WEB),
+        ("squidpdf", "squidpdf.terms.api", _WEB),
         ("squidpdf", "fastapi", _WEB),
         ("squidpdf", "starlette", _WEB),
         ("squidpdf", "pydantic", _WEB),
@@ -81,10 +83,12 @@ def _within(name: str, package: str) -> bool:
         "core imports no feature: documents",
         "core imports no feature: the web layer",
         "core imports no feature: the CLI",
+        "core imports no feature: terms",
         "editing builds on documents, never the other way",
         "the web layer stays in api/ and each feature's api.py, so the CLI runs without it",
         "only the web layer imports documents' routes",
         "only the web layer imports editing's routes",
+        "only the web layer imports the terms' route",
         "only the web layer imports FastAPI",
         "only the web layer imports Starlette",
         "only the web layer imports Pydantic",

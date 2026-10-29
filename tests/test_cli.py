@@ -459,3 +459,46 @@ def test_saving_over_the_pdf_being_read_is_refused(pdf, tmp_path, capsys):
     assert_equal(exc.value.code, 2, "exit code of `squidpdf edit` writing over its input")
     assert_in("is the PDF being read", capsys.readouterr().err, "the usage error")
     assert_true(copy.read_bytes() == before, "the PDF being read is unchanged")
+
+
+_TERMS = Path(__file__).parents[1] / "fixtures" / "terms.md"
+
+
+@pytest.mark.parametrize("named", ["as its argument", "by SQUIDPDF_TERMS"])
+def test_terms_checks_a_terms_file_as_the_server_reads_it(monkeypatch, capsys, named):
+    """Run before a restart; it reads what SQUIDPDF_TERMS names, as the server does."""
+    if named == "as its argument":
+        code = main(["terms", str(_TERMS)])
+    else:
+        monkeypatch.setenv("SQUIDPDF_TERMS", str(_TERMS))
+        code = main(["terms"])
+
+    out = capsys.readouterr().out
+    assert_equal(code, 0, "exit code of `squidpdf terms` on terms the page can show")
+    for shown in (
+        "Example terms",
+        "Last changed 1 January 2000",
+        "First lead.",
+        "Second lead.",
+    ):
+        assert_in(shown, out, "what the page will show")
+
+
+def test_terms_says_why_the_server_would_refuse_a_file(tmp_path, capsys):
+    path = tmp_path / "terms.md"
+    path.write_text("# T\n\nNo lead.\n", encoding="utf-8")
+
+    code = main(["terms", str(path)])
+
+    assert_equal(code, 1, "exit code of `squidpdf terms` on terms the page can't show")
+    refusal = words.render(Message("terms_no_lead", {"path": str(path), "line": 3}))
+    assert_in(refusal, capsys.readouterr().err, "why")
+
+
+def test_terms_with_no_file_named_says_so(monkeypatch, capsys):
+    monkeypatch.delenv("SQUIDPDF_TERMS", raising=False)
+
+    code = main(["terms"])
+
+    assert_equal(code, 1, "exit code of `squidpdf terms` with no file")
+    assert_in(words.render(Message("terms_none_named")), capsys.readouterr().err, "why")

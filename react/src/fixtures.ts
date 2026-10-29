@@ -21,6 +21,7 @@ import type {
   SkippedInfo,
   SpanInfo,
   SpanNoticeInfo,
+  Terms,
 } from "./api/types";
 
 /** An A4 page, upright, in points. */
@@ -346,3 +347,20 @@ export function aFontList(): FontList {
     ],
   };
 }
+
+/** A deployment's terms, in placeholder words: a title, when they last changed, and paragraphs, one naming an address. */
+export const TERMS: Terms = {
+  title: "Example terms",
+  last_changed: "Last changed 1 January 2000",
+  paragraphs: [
+    { lead: "First lead.", pieces: [{ kind: "words", text: "The first paragraph." }] },
+    {
+      lead: "Second lead.",
+      pieces: [
+        { kind: "words", text: "Write to " },
+        { kind: "email", address: "someone@example.com" },
+        { kind: "words", text: " about anything." },
+      ],
+    },
+  ],
+};

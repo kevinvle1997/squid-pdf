@@ -42,3 +42,5 @@ export type Problem = Omit<ProblemInfo, "type"> & { type: ProblemInfo["type"] | 
 export type Strategy = Schemas["Strategy"];
 // Not read: `build`, `license`, `same_widths_as`, and each face's `style` and `glyphs`: the browser asks only which faces are handwriting.
 export type FontList = Schemas["FontList"];
+export type Terms = Schemas["Terms"];
+export type TermsPiece = Schemas["TermsWords"] | Schemas["TermsEmail"];

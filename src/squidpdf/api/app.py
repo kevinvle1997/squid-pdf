@@ -25,6 +25,8 @@ from squidpdf.core import LogController
 from squidpdf.documents import api as documents_api
 from squidpdf.documents.store import FOLDER_STORE, DocumentStore
 from squidpdf.editing import api as editing_api
+from squidpdf.terms import api as terms_api
+from squidpdf.terms.terms_file import deployed_terms
 
 # Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
 # `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
@@ -74,10 +76,13 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     )
     # Every controller and job opens its document through it: the driver factory is chosen here.
     app.state.documents = documents
+    # Read once, here: terms the page can't show stop the app starting; `squidpdf terms` checks.
+    app.state.terms = deployed_terms()
     install(app)
     app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing_api.fonts_router, responses=_PROBLEM_RESPONSES)
+    app.include_router(terms_api.router, responses=_PROBLEM_RESPONSES)
     # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
     streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
     streamed_routes = tuple(
