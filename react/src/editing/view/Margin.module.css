@@ -17,10 +17,16 @@
 .note[data-hovered] .undoMark svg, .note[data-focus-visible] .undoMark svg { opacity: 1; transition-duration: var(--dur-quick); }
 /* The words the change took out, struck through in blue pencil, as an editor strikes them on a proof. */
 .old {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline-flex; min-width: 0; overflow: hidden; white-space: nowrap;
   color: var(--ink-lo);
+}
+/* Each run of words struck on its own, ending in an ellipsis of its own where it's cut: the others still show. */
+.run {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
   text-decoration-line: line-through; text-decoration-color: var(--change); text-decoration-thickness: 1.5px;
 }
+/* What sits between two runs was never there: nothing to strike, nor to cut. */
+.between { flex: none; white-space: pre; }
 .note[data-hovered] .old, .note[data-focus-visible] .old { color: var(--change); }
 /* Words only added, in the pencil, after the caret a proof marks an insertion with: nothing struck, since nothing went. */
 .added {
@@ -48,6 +54,9 @@
 }
 .list .bar { grid-row: 1; grid-column: 1; align-self: center; }
 .list .old, .now { grid-column: 2; white-space: normal; }
+/* Under the page a note has the width to wrap: every word shows, struck where it went. */
+.list .old { display: block; }
+.list .run { overflow: visible; }
 .undo {
   grid-row: 1 / span 2; grid-column: 3; align-self: center;
   padding-inline-start: var(--s3); color: var(--ink); font-weight: 500;

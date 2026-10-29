@@ -51,23 +51,34 @@ export function insertedWordsIn(original: string, now: string): string | null {
 /** What one change's note says: its name, for what pressing it undoes, and its words beside the page and under it. */
 export interface NoteWords {
   readonly label: string;
-  readonly struck: string; // the original's words it took out, struck through beside the page
+  // The original's words it took out, struck through beside the page: a run each, an ellipsis between left unstruck.
+  readonly struck: readonly string[];
   readonly inserted: string | null; // the words it only added, nothing taken out: shown with a caret instead
-  readonly was: string; // what the span read, whole, shown with `now` on hover and focus
+  // What the span read, whole, or each run of words a redaction took: struck in the list under the page, and shown
+  // with `now` on hover and focus. None for new text.
+  readonly was: readonly string[];
   readonly now: string; // what the span reads now, in the list under the page
 }
 
+/** Runs of words as one line, an ellipsis between, as a note's name and its hover say them. */
+export function joinedRuns(runs: readonly string[]): string {
+  return runs.join(" … ");
+}
+
 /**
- * The words of the note for `change`. A redaction takes every word out, so the note strikes them all;
- * an edit that only added words shows those, as a proof marks an insertion, rather than striking one it kept.
+ * The words of the note for `change`. A redaction takes its words out, so the note strikes those, only: all of the
+ * line, or each run of words; an edit that only added words shows those, as a proof marks an insertion, rather than
+ * striking one it kept.
  */
 export function noteOf({ span, text, redacted }: SpanReading): NoteWords {
-  const was = span.text;
-  if (redacted) {
-    return { label: `Undo: “${was}” is no longer redacted`, struck: was, inserted: null, was, now: "Redacted" };
+  if (redacted !== null) {
+    const runs = redacted === "whole" ? [span.text] : redacted.map(({ start, end }) => span.text.slice(start, end));
+    const label = `Undo: “${joinedRuns(runs)}” is no longer redacted`;
+    return { label, struck: runs, inserted: null, was: runs, now: "Redacted" };
   }
+  const was = span.text;
   const label = `Undo: “${text}” goes back to “${was}”`;
-  return { label, struck: changedWordsIn(was, text), inserted: insertedWordsIn(was, text), was, now: text };
+  return { label, struck: [changedWordsIn(was, text)], inserted: insertedWordsIn(was, text), was: [was], now: text };
 }
 
 /** How many of `words` from the start, up to `limit`, `now` has too, in the same places. */
@@ -79,7 +90,7 @@ function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], 
 
 /** What new text's note says: its name, for what pressing it undoes, and the words added, marked as a proof marks an insertion. */
 export function newTextNoteOf({ edit }: NewTextReading): NoteWords {
-  return { label: `Undo: take out “${edit.text}”`, struck: "", inserted: edit.text, was: "", now: edit.text };
+  return { label: `Undo: take out “${edit.text}”`, struck: [], inserted: edit.text, was: [], now: edit.text };
 }
 
 /** One note in the margin: what it says, the line it's about, and what pressing it undoes. */

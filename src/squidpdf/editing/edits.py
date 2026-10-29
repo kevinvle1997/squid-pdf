@@ -63,13 +63,15 @@ class Replace:
 
 @dataclass(frozen=True, slots=True)
 class Redact:
-    """Remove a span's text and draw nothing in its place.
+    """Remove a span's text, or the words `range` names, and draw nothing in their place.
 
     A covering box would leave the text extractable underneath, so this deletes it from the
     page itself, and the output is re-read to check.
     """
 
     span_id: str
+    # The words' start and end in the span's text, in code points; None takes all of it.
+    range: tuple[int, int] | None = None
     kind: Literal["redact"] = "redact"
 
 

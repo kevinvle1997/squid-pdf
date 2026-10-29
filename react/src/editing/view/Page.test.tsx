@@ -777,6 +777,32 @@ describe("a page", () => {
     expect(note.element().querySelector("[style*='line-through'], s, del")).toBeNull();
   });
 
+  test("a note for words redacted of a line strikes each run alone, and a long first leaves the next in view", async () => {
+    await page.viewport(1400, 900);
+    const text = "Paid 48,500,000 to the account 9918 today";
+    const bbox = { x0: 72, y0: 100, x1: 400, y1: 124 };
+    openDocument(aDoc({ spans: [aSpan({ id: "line", text, size: 20, bbox })], fonts: [aFont("Times-Roman")] }));
+    for (const selected of [
+      [5, 15],
+      [31, 35],
+    ] as const) {
+      edit(editor, "line", null);
+      redact(editor, null, { selected });
+    }
+    const screen = await draw();
+    const note = screen.getByRole("button", { name: "Undo: “48,500,000 … 9918” is no longer redacted" });
+    await expect.element(note).toBeVisible();
+    const [first, second] = note.element().querySelectorAll("[class*='run']");
+    const between = note.element().querySelector("[class*='between']");
+    expect([first?.textContent, second?.textContent]).toEqual(["48,500,000", "9918"]);
+    for (const run of [first, second]) expect(getComputedStyle(run as Element).textDecorationLine).toBe("line-through");
+    expect(getComputedStyle(between as Element).textDecorationLine).toBe("none");
+    // Cut or not, the second run shows inside the note.
+    const shown = (second as Element).getBoundingClientRect();
+    expect(shown.width).toBeGreaterThan(0);
+    expect(shown.right).toBeLessThanOrEqual(note.element().getBoundingClientRect().right + 0.5);
+  });
+
   test("typing redraws the field alone: the page it's on isn't drawn again", async () => {
     const screen = await draw();
     await editSpan(screen);

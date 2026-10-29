@@ -67,10 +67,19 @@ email_broken = "the email address here no longer reads as one"
 # Said by the browser while the field it's typed in is empty: taking text out isn't a change.
 empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
 # A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
-not_redacted = "This text couldn't be removed, so the file can't be downloaded with this redaction."
+# `{text}` is the words redacted, `{page}` the page they're on, as the line under the bar says it.
+not_redacted = "Couldn't remove “{text}” on page {page}, so the file can't be downloaded with this redaction."
 # A redaction whose words are gone, but whose erase moved other text on the page: the check can't
 # tell what moved from what it was to take, so the download is refused all the same.
-moved_other_text = "Redacting this moved other text on page {page} too, so the file can't be downloaded with this redaction."
+moved_other_text = "Redacting “{text}” on page {page} moved other text there too, so the file can't be downloaded with this redaction."
+# A redaction whose erase set the rest of its line along, where the letters landed couldn't be read:
+# whether they land on other text can't be told, so the download is refused.
+not_checked = "Couldn't check what redacting “{text}” on page {page} did to the text around it, so the file can't be downloaded with this redaction."
+# A redaction of some words of a line whose erase moved the rest of the line, or removed more of
+# it: said before the download, which still comes, since the words are gone. `{text}` is the
+# words redacted, `{page}` the page they were on: two such lines on two pages say each.
+rest_of_line_moved = "Redacting “{text}” on page {page} moved the rest of its line, so it won't look quite as it did."
+rest_of_line_removed = "Redacting “{text}” on page {page} removed other words on its line too."
 # A redaction new text is drawn over: the check reads the new text's words in its box too.
 covered_by_new_text = "New text sits over this redaction, so it can't be checked and the file can't be downloaded with it. Move the new text off it."
 # `{places}` are the places below, each in a word of its own.
@@ -119,6 +128,8 @@ changed_to = "Changed to “{text}”."
 # Put back as the document had it, from its margin note.
 put_back = "Put back “{text}”."
 redacted = "Redacted “{text}”."
+# Said as words already redacted are selected and redacted again: nothing more to take.
+already_redacted = "“{text}” is redacted already."
 # Said to a screen reader as new text changes: put on a page, moved, or taken out, its words quoted
 # as above; set in another face, by the name the slip's list shows it by. Typed into again, it's
 # `changed_to`.
@@ -185,8 +196,9 @@ typed_identical = "This edit will look identical."
 typed_different = "This edit will look different."
 typed_similar = "This edit will use a similar font."
 
-# Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
+# Asked before the user edits text they redacted, all of it or some words: yes goes ahead, no keeps it.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
+undo_redacted_words = "Part of this text is redacted. Editing it undoes the redaction. Edit it anyway?"
 
 # The ways out of an overflow: what each is called, and what it does.
 shrink_label = "Make it slightly smaller"
@@ -213,8 +225,10 @@ not_found = "Nothing here. It may have expired."  # never shown: the browser re-
 no_such_page = "This document doesn't have that page."
 redaction_conflict = "This text has a redaction. Undo it to edit."
 bad_reference = "A redaction points at text that isn't in this document: {span_id}."
+bad_range = "A redaction points at words its line doesn't have: {span_id}."
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 redaction_moved = "Redacting “{text}” on page {page} moved other text there too, so nothing was downloaded."
+redaction_unchecked = "Couldn't check what redacting “{text}” on page {page} did to the text around it, so nothing was downloaded."
 redaction_covered = "New text on page {page} sits over a redaction, so the redaction can't be checked and nothing was downloaded. Move the new text off it."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."
 method_not_allowed = "Something went wrong sending this to us. Reload the page and try again."
@@ -270,7 +284,8 @@ signed_file = "This PDF is signed. Any change breaks the signature, and so does 
 # Beside the field as the first edit of a signed file starts: what this edit does to the signature.
 edit_breaks_signature = "This PDF is signed, so this change breaks its signature."
 
-# Not sentences: what joins a list's items, and what joins several messages in one line.
+# Not sentences: what joins a list's items, the parts of one line (join_parts: a fit's, each no
+# sentence of its own), and whole sentences said at once (join_sentences).
 # A list whose placeholder has no join_<its name> here is joined as items.
 # Punctuation or a symbol in a list of characters, quoted so it reads as one: no “(” in this font.
 quoted = "“{char}”"
@@ -278,6 +293,8 @@ join_chars = " or "
 join_letters = " "
 join_items = ", "
 join_parts = "; "
+# Whole sentences said at once, each ending in its own stop.
+join_sentences = " "
 
 # What sets a number's fraction apart: "3.1" in English, "3,1" in French.
 decimal_separator = "."

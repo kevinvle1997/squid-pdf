@@ -50,7 +50,7 @@ export function editVerdictOf(
   drawn: Drawn,
   { span, font, text, strategy }: { span: SpanInfo; font: FontInfo; text: string; strategy: Strategy | undefined },
 ): Verdict {
-  const now: SpanReading = { span, text, replaced: text !== span.text, strategy, redacted: false };
+  const now: SpanReading = { span, text, replaced: text !== span.text, strategy, redacted: null };
   const live = () => liveVerdictOf(span, { font, text });
   return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }

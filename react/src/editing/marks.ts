@@ -17,7 +17,8 @@ export interface Look {
   readonly formField: boolean; // a form field draws it, not the page: an edit here is left out
   readonly changed: boolean; // the user changed its words
   readonly trouble: boolean; // it went in, but not quite as typed: the server said why
-  readonly redacted: boolean; // its words are to be taken out of the file
+  readonly redacted: boolean; // all of its words are to be taken out of the file, whole
+  readonly wordsRedacted: boolean; // some of its words are, each run of them boxed on its own
   readonly unredacted: boolean; // redacted, but the server found its words still there: the download is refused
   readonly note: Note | null; // nothing at rest, nor for an edit that keeps its font and went in as typed
 }
@@ -34,7 +35,7 @@ interface MarkedSpan {
 
 /** What a span's mark shows, and the note it gives on hover, focus or a tap. */
 export function lookOf({ span, font, reading, fit, redaction, sentences }: MarkedSpan): Look {
-  const redacted = reading?.redacted ?? false;
+  const redacted = reading?.redacted ?? null;
   const changed = reading?.replaced ?? false;
   // A fit counts only while the span is changed: put back, it may linger until its page is drawn again.
   const trouble = changed ? fit?.message : null;
@@ -42,11 +43,12 @@ export function lookOf({ span, font, reading, fit, redaction, sentences }: Marke
     formField: span.form_field,
     changed,
     trouble: Boolean(trouble),
-    redacted,
-    unredacted: redacted && redaction?.verified === false,
+    redacted: redacted === "whole",
+    wordsRedacted: redacted !== null && redacted !== "whole",
+    unredacted: redacted !== null && redaction?.verified === false,
   };
   // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
-  if (redacted) return { ...looks, note: redactionNote(redaction) };
+  if (redacted !== null) return { ...looks, note: redactionNote(redaction) };
   if (trouble) return { ...looks, note: { warn: true, sentence: trouble, why: null } };
   // Untouched, its font's warning waits for an edit; a form field's says an edit there is left out.
   if (!changed && !span.form_field) return { ...looks, note: null };

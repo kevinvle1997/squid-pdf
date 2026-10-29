@@ -28,7 +28,7 @@ from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
 from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
-from tests.api.conftest import BASE_URL, InProcess, upload
+from tests.api.conftest import BASE_URL, InProcess, drawn_page, upload
 from tests.conftest import SIGNED, StoreWith, log_lines, with_hidden_copies
 from tests.helpers import (
     assert_at_least,
@@ -657,6 +657,7 @@ _FILLED_BY_THE_BROWSER = (
     "typed_different",
     "typed_similar",
     "join_parts",
+    "join_sentences",
 )
 
 
@@ -826,3 +827,16 @@ def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
         read_reply | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read"
     )
     assert_at_least(len(doc["spans"]), 1, "spans in the sample")
+
+
+def test_each_span_says_whether_its_line_is_turned(mine):
+    """The browser measures along a level line only: on a turned one, it covers all of it."""
+    drawing = (
+        "BT /F 12 Tf 72 100 Td (Level line) Tj ET "
+        "BT /F 12 Tf 0 1 -1 0 300 300 Tm (Turned line) Tj ET"
+    )
+    doc = upload(mine, drawn_page(drawing)).json()
+
+    turned = {span["text"]: span["turned"] for span in doc["spans"]}
+
+    assert_equal(turned, {"Level line": False, "Turned line": True}, "whether each is turned")

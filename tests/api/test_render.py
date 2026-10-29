@@ -20,12 +20,16 @@ from squidpdf.documents.store import FolderStore
 from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
     InProcess,
+    MovingAfterAnErase,
+    Place,
     around,
+    drawn_page,
     edit_counts,
     export_lines,
     refusing_own_copies,
     span_starting,
     upload,
+    verdicts_of,
 )
 from tests.conftest import NAME_COPIES, REDACTED_NAME, in_a_copy_lacking, with_hidden_copies
 from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
@@ -138,14 +142,17 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
     assert_equal((shrunk["strategy"], shrunk["message"]), ("shrink", None), "a way out taken")
 
 
-# What render says of a redaction whose words a signed file kept in every place.
-_EVERY_PLACE_SAID = words.render_all(
+# What render says of a redaction whose words a signed file kept in every place: two whole
+# sentences, joined as sentences are.
+_EVERY_PLACE_SAID = " ".join(
     [
-        Message(
-            "hidden_copies",
-            {"places": [words.sentence(f"place_{place}") for place in COPY_PLACES]},
+        words.render(
+            Message(
+                "hidden_copies",
+                {"places": [words.sentence(f"place_{place}") for place in COPY_PLACES]},
+            )
         ),
-        Message("signatures_removed"),
+        words.render(Message("signatures_removed")),
     ]
 )
 
@@ -168,7 +175,205 @@ def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
     rendered = _render(mine, doc, [{"kind": "redact", "span_id": name["id"]}], [around(name)])
 
     expected = {"verified": True, "hidden_copies": named, "message": said}
-    assert_equal(rendered.json()["redactions"], {name["id"]: expected}, "what render says")
+    assert_equal(verdicts_of(rendered.json()), {name["id"]: expected}, "what render says")
+
+
+def _said_of(rendered: dict, span: dict, rest: list[Message]) -> str | None:
+    """What render should say of `span`'s redaction: `rest`, then where else its words were.
+
+    Each a whole sentence, so they join as sentences do, not as the parts of one.
+    """
+    places = rendered["redactions"][span["id"]]["hidden_copies"]
+    named = [words.sentence(f"place_{place}", words.ENGLISH) for place in places]
+    hidden = [Message("hidden_copies", {"places": named})] if named else []
+    said = [words.render(message) for message in rest + hidden]
+    return " ".join(said) or None
+
+
+def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
+    app, mine, monkeypatch
+):
+    """On the redaction, and under the bar, where, before the download; and the file goes."""
+    monkeypatch.setattr(app.state, "documents", FolderStore(MovingAfterAnErase(_all_along)))
+    doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}", pages=2)).json()
+    first, second = span_starting(doc, 0, "Acct"), span_starting(doc, 1, "Acct")
+    edits = [
+        {"kind": "redact", "span_id": first["id"], "range": [5, 9]},
+        {"kind": "redact", "span_id": second["id"], "range": [5, 9]},
+    ]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}, {"page": 1}]).json()
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+
+    moved = [
+        Message("rest_of_line_moved", {"text": "1234", "page": 1}),
+        Message("rest_of_line_moved", {"text": "1234", "page": 2}),
+    ]
+    said = rendered["redactions"][first["id"]]
+    assert_equal(
+        said["message"], _said_of(rendered, first, moved[:1]), "what render says of it"
+    )
+    under_the_bar = [notice["detail"] for notice in rendered["notices"]]
+    assert_equal(
+        under_the_bar, [words.render(each) for each in moved], "the lines under the bar"
+    )
+    assert_equal(exported.status_code, 200, "the file, its words gone")
+
+
+def _all_along(_origin: Place) -> Place:
+    """All of the line set along it, as if the erase set the whole line further along."""
+    return (2.0, 0.0)
+
+
+def _rest_along(origin: Place) -> Place:
+    """The rest of the redacted line after its words set along it; what's before, left."""
+    return (2.0, 0.0) if origin[0] > 100 else _STILL
+
+
+def _rest_off(origin: Place) -> Place:
+    """The rest of the redacted line, after its words, set off it."""
+    return (0.0, 3.0) if origin[0] > 100 else _STILL
+
+
+_STILL = (0.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    ("moves", "said"),
+    [
+        (_all_along, "rest_of_line_moved"),
+        (_rest_along, "rest_of_line_moved"),
+        (_rest_off, "moved_other_text"),
+    ],
+    ids=[
+        "all of it along it, said",
+        "after the words along it, before left, said",
+        "off it, refused",
+    ],
+)
+def test_the_rest_of_a_line_set_along_it_downloads_saying_so_and_set_off_it_doesnt(
+    app, mine, monkeypatch, moves, said
+):
+    """Only what's said may move: all the rest of the redacted span's line, along it alike."""
+    monkeypatch.setattr(app.state, "documents", FolderStore(MovingAfterAnErase(moves)))
+    doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}")).json()
+    span = span_starting(doc, 0, "Acct")
+    edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+
+    verdict = rendered["redactions"][span["id"]]
+    expected = words.render(Message(said, {"text": "1234", "page": 1}))
+    assert_equal(verdict["message"], expected, "what render says of it")
+    downloads = said == "rest_of_line_moved"
+    assert_equal((verdict["verified"], exported.status_code == 200), (downloads,) * 2, "goes")
+
+
+_ACCOUNT = "(Acct 1234 Name) Tj ET"  # the line the cases below draw, how each says
+
+
+@pytest.mark.parametrize(
+    ("drawing", "starts", "asked", "rest"),
+    [
+        ("BT /F 12 Tf 72 100 Td [(Acct) -333 (1234) -333 (Name)] TJ ET", "Acct", [5, 9], []),
+        ("BT /F 12 Tf 72 100 Td [(Acct) -333 (1234) -333 (Name)] TJ ET", "Acct", [10, 14], []),
+        ("BT /F 12 Tf 2 Tc 72 100 Td " + _ACCOUNT, "A", [10, 17], []),
+        (
+            f"/Span <</ActualText (Acct 1234 Name)>> BDC BT /F 12 Tf 72 100 Td {_ACCOUNT} EMC",
+            "Acct",
+            [5, 9],
+            [],
+        ),
+        (
+            f"BT /F 12 Tf 72 100 Td {_ACCOUNT} BT /F 12 Tf 72.4 100 Td {_ACCOUNT}",
+            "Acct",
+            [5, 9],
+            [],
+        ),
+        (
+            "BT /F 12 Tf 0.7071 0.7071 -0.7071 0.7071 72 72 Tm " + _ACCOUNT,
+            "Acct",
+            [5, 9],
+            [Message("rest_of_line_removed", {"text": "1234", "page": 1})],
+        ),
+        (
+            "BT /F 12 Tf 72 100 Td (Acct ) Tj /Span <</ActualText (9999)>> BDC (1234) Tj EMC "
+            "( Name) Tj ET",
+            "Acct",
+            [5, 9],
+            [Message("rest_of_line_removed", {"text": "9999", "page": 1})],
+        ),
+    ],
+    ids=[
+        "spaced out with no space drawn",
+        "its last word, spaced out",
+        "letters set apart",
+        "in marked content",
+        "drawn twice over",
+        "at an angle: letters past the words go too",
+        "marked content that says other words: the whole line goes",
+    ],
+)
+def test_what_a_redactions_erase_did_to_the_rest_of_its_line_is_said_only_when_true(
+    mine, drawing, starts, asked, rest
+):
+    """Said of the letters the page draws: nothing of spaces it never drew, or other text."""
+    doc = upload(mine, drawn_page(drawing)).json()
+    span = span_starting(doc, 0, starts)
+    edits = [{"kind": "redact", "span_id": span["id"], "range": asked}]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+
+    said = rendered["redactions"][span["id"]]
+    assert_equal(said["verified"], True, "whether the words are gone")
+    assert_equal(said["message"], _said_of(rendered, span, rest), "what render says of it")
+
+
+@pytest.mark.parametrize(
+    "turn",
+    ["1 0 0 1 72 100 Tm", "0 1 -1 0 100 72 Tm", "-1 0 0 -1 300 100 Tm"],
+    ids=["level", "a quarter turn", "upside down"],
+)
+def test_each_run_of_words_redacted_comes_with_the_box_its_letters_take(mine, turn):
+    """However its line is turned, the browser draws each run where the download takes it."""
+    sent = drawn_page(f"BT /F 12 Tf {turn} (Acct 1234 Name) Tj ET")
+    doc = upload(mine, sent).json()
+    span = span_starting(doc, 0, "Acct")
+    edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+
+    [run] = rendered["redactions"][span["id"]]["runs"]
+    assert_equal(run["range"], [5, 9], "the run's words, by code point")
+    box = run["box"]
+    page = pymupdf.open(stream=sent, filetype="pdf")[0]
+    letters = [
+        char
+        for block in page.get_text("rawdict")["blocks"]
+        for line in block["lines"]
+        for piece in line["spans"]
+        for char in piece["chars"]
+    ]
+    for char in letters:
+        x0, y0, x1, y1 = char["bbox"]
+        middle = ((x0 + x1) / 2, (y0 + y1) / 2)
+        inside = box["x0"] <= middle[0] <= box["x1"] and box["y0"] <= middle[1] <= box["y1"]
+        assert_equal(inside, char["c"] in "1234", f"whether {char['c']!r} is in the box")
+
+
+def test_new_text_over_the_line_moves_none_of_the_rest_of_it(mine):
+    """Its letters, drawn in the line's box, are no letter of the line's moved."""
+    doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}")).json()
+    span = span_starting(doc, 0, "Acct")
+    box = span["bbox"]
+    insert = {**_INSERT, "origin": [box["x0"] + 28, box["y1"] - 3], "text": "XXXX"}
+    edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}, insert]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+
+    said = rendered["redactions"][span["id"]]
+    assert_equal((said["verified"], said["message"]), (True, None), "what render says of it")
 
 
 def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():

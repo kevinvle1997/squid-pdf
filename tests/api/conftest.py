@@ -143,6 +143,17 @@ class _MovingDriver:
         glyphs = self.driver.drawn_glyphs(page)
         return [replace(glyph, origin=self._moved(glyph.origin)) for glyph in glyphs]
 
+    def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
+        """Where the real driver reads them, each set off as its glyph is; or none."""
+        glyphs = self.driver.drawn_glyphs(page)
+        boxes = self.driver.drawn_glyph_boxes(page)
+        if boxes is None:
+            return None
+        return [
+            _set_off(box, glyph.origin, self._moved(glyph.origin))
+            for glyph, box in zip(glyphs, boxes, strict=True)
+        ]
+
     def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
         """Where the real driver reads them, set off as `moves` says once erased."""
         letters = self.driver.letters_in(page, boxes)
@@ -160,6 +171,12 @@ class _MovingDriver:
     def __getattr__(self, name: str) -> Any:
         """Every other call, as the real driver answers it."""
         return getattr(self.driver, name)
+
+
+def _set_off(box: Rect, was: Place, now: Place) -> Rect:
+    """`box`, set off as far as from `was` to `now`."""
+    across, down = now[0] - was[0], now[1] - was[1]
+    return Rect(box.x0 + across, box.y0 + down, box.x1 + across, box.y1 + down)
 
 
 def _any_box(_box: Rect) -> bool:
@@ -187,18 +204,43 @@ class MovingAfterAnErase:
         return cast(PdfDriver, moving)
 
 
-def drawn_page(drawing: str, *, title: str = "") -> bytes:
-    """A page whose drawing is `drawing`, its font Helvetica as `/F`, with `title` its title.
+# The facts of `with_a_card_line`: its one line, and its two numbers, by code point.
+CARD_LINE = "Card 4421 then 9918 ends"
+FIRST_NUMBER = range(5, 9)
+SECOND_NUMBER = range(15, 19)
 
-    Written by hand, to draw text as some files do: in pieces, spaced out, in marked content,
-    twice over, or by a quote, which moves to the next line first.
-    """
+
+def with_a_card_line() -> bytes:
+    """A page whose one line holds two numbers, its title the line's words: a hidden copy."""
     doc = pymupdf.open()
     page = doc.new_page()
-    # A font for the drawing to name: PyMuPDF adds one with the text it writes, off the page.
-    page.insert_text((0, -100), "x", fontname="helv", fontsize=1)
-    [(*_, resource, _referencer)] = page.get_fonts()
-    doc.update_stream(page.get_contents()[0], drawing.replace("/F ", f"/{resource} ").encode())
+    page.insert_text((72, 100), CARD_LINE, fontname="helv", fontsize=12)
+    doc.set_metadata({"title": CARD_LINE})
+    return doc.tobytes()
+
+
+def drawn_page(
+    drawing: str, *, title: str = "", link: tuple[str, str] | None = None, pages: int = 1
+) -> bytes:
+    """`pages` pages whose drawing is `drawing`, in Helvetica as `/F`, with `title` its title.
+
+    `link` is an address, and the words its link sits over on the first. Written by hand, to
+    draw text as some files do: in pieces, spaced out, in marked content, twice over, or by a
+    quote, which moves to the next line first.
+    """
+    doc = pymupdf.open()
+    for _number in range(pages):
+        page = doc.new_page()
+        # A font for the drawing to name: PyMuPDF adds one with the text it writes, off it.
+        page.insert_text((0, -100), "x", fontname="helv", fontsize=1)
+        [(*_, resource, _referencer)] = page.get_fonts()
+        drawn = drawing.replace("/F ", f"/{resource} ").encode()
+        doc.update_stream(page.get_contents()[0], drawn)
+    page = doc[0]
+    if link is not None:
+        address, over = link
+        [box] = page.search_for(over)
+        page.insert_link({"kind": pymupdf.LINK_URI, "from": box, "uri": address})
     doc.set_metadata({"title": title})
     return doc.tobytes()
 
@@ -231,6 +273,14 @@ def doc(mine: TestClient, pdf_bytes: bytes) -> dict:
 def span_starting(doc: dict, page: int, starts: str) -> dict:
     """The span on `page` of an uploaded `doc` whose text starts with `starts`."""
     return next(s for s in doc["spans"] if s["page"] == page and s["text"].startswith(starts))
+
+
+def verdicts_of(rendered: dict) -> dict[str, dict]:
+    """What a render says of each redaction, by span id: its runs' boxes aside."""
+    return {
+        span_id: {key: value for key, value in said.items() if key != "runs"}
+        for span_id, said in rendered["redactions"].items()
+    }
 
 
 def around(span: dict) -> dict:

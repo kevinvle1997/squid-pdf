@@ -41,6 +41,7 @@ export const SENTENCES: Sentences = {
   drawn_in_your_copy: "Edits here use your copy of this font.",
   drawn_in_own_copy: "Edits here use the file's own copy of this font.",
   undo_redaction: "This text is redacted. Editing it undoes the redaction. Edit it anyway?",
+  undo_redacted_words: "Part of this text is redacted. Editing it undoes the redaction. Edit it anyway?",
   reopened: "The server no longer had this document, so it was opened again from this browser.",
   export_left_out: "Downloaded, but some changes were left out: they point at text that isn't in this document.",
   page_left_out: "This page is left out of the download",
@@ -61,6 +62,7 @@ export const SENTENCES: Sentences = {
   changed_to: "Changed to \u201c{text}\u201d.",
   put_back: "Put back \u201c{text}\u201d.",
   redacted: "Redacted \u201c{text}\u201d.",
+  already_redacted: "\u201c{text}\u201d is redacted already.",
   new_text_added: "Added \u201c{text}\u201d.",
   new_text_moved: "Moved \u201c{text}\u201d.",
   new_text_taken_out: "Took out \u201c{text}\u201d.",
@@ -100,6 +102,7 @@ export const SENTENCES: Sentences = {
   typed_different: "This edit will look different.",
   typed_similar: "This edit will use a similar font.",
   join_parts: "; ",
+  join_sentences: " ",
   options: {
     shrink: { label: "Make it slightly smaller", detail: "Reduces the type size just enough to fit." },
     condense: {
@@ -148,6 +151,9 @@ export const PSEUDO_SENTENCES: Sentences = {
   changed_to: shouted(SENTENCES.changed_to),
   put_back: shouted(SENTENCES.put_back),
   redacted: shouted(SENTENCES.redacted),
+  already_redacted: shouted(SENTENCES.already_redacted),
+  undo_redaction: shouted(SENTENCES.undo_redaction),
+  undo_redacted_words: shouted(SENTENCES.undo_redacted_words),
   new_text_added: shouted(SENTENCES.new_text_added),
   new_text_moved: shouted(SENTENCES.new_text_moved),
   new_text_taken_out: shouted(SENTENCES.new_text_taken_out),
@@ -178,6 +184,7 @@ export const PSEUDO_SENTENCES: Sentences = {
   typed_different: shouted(SENTENCES.typed_different),
   typed_similar: shouted(SENTENCES.typed_similar),
   join_parts: " / ",
+  join_sentences: " | ",
 };
 
 /** A line of ten-point Times near the top of the first page, reading "was <id>". */
@@ -199,6 +206,7 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
     letter_spacing_em: 0,
     room_pt: 0,
     form_field: false,
+    turned: false,
     ...fields,
   };
 }
@@ -303,9 +311,9 @@ export function aReplace(spanId: string, text = "now", fields: Partial<Replace> 
   return { kind: "replace", span_id: spanId, text, ...fields };
 }
 
-/** An edit that takes a span's words out of the file. */
-export function aRedact(spanId: string): Redact {
-  return { kind: "redact", span_id: spanId };
+/** An edit that takes a span's words out of the file: all of them, or those its `range` names, by code point. */
+export function aRedact(spanId: string, fields: Partial<Redact> = {}): Redact {
+  return { kind: "redact", span_id: spanId, ...fields };
 }
 
 /** An edit that leaves page `page` out of the file, by its number in the original. */
@@ -320,7 +328,7 @@ export function anInsert(fields: Partial<Insert> = {}): Insert {
 
 /** The server's verdict on a redaction: its words gone, and nothing else to say. */
 export function aRedaction(fields: Partial<RedactionInfo> = {}): RedactionInfo {
-  return { verified: true, hidden_copies: [], message: null, ...fields };
+  return { verified: true, hidden_copies: [], message: null, runs: [], ...fields };
 }
 
 /** What opening the file found, in the server's words, its type its sentence's key as the server sends it. */

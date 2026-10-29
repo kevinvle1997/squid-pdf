@@ -83,7 +83,7 @@ export async function persistedDocument(): Promise<Persisted<unknown> | null> {
     const { bytes, name, type, lastModified } = persistedFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
-      doc: withInFile(renamed(state.doc)),
+      doc: withSpanFields(renamed(state.doc)),
       work: state.work,
       until: state.until,
     };
@@ -112,6 +112,7 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   drawn_in_your_copy: true,
   drawn_in_own_copy: true,
   undo_redaction: true,
+  undo_redacted_words: true,
   reopened: true,
   export_left_out: true,
   page_left_out: true,
@@ -131,6 +132,7 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   changed_to: true,
   put_back: true,
   redacted: true,
+  already_redacted: true,
   new_text_added: true,
   new_text_moved: true,
   new_text_taken_out: true,
@@ -161,6 +163,7 @@ const SENTENCES_READ: Record<keyof Sentences, true> = {
   typed_different: true,
   typed_similar: true,
   join_parts: true,
+  join_sentences: true,
   options: true,
   approximate: true,
   characters: true,
@@ -171,13 +174,23 @@ export function lacksSentences({ sentences }: Pick<Document, "sentences">): bool
   return Object.keys(SENTENCES_READ).some((key) => !(key in sentences));
 }
 
-/** A persisted reading of the document, each span saying whether its file's copy draws it, though stored before they did. */
+/**
+ * A persisted reading of the document, each span saying whether its file's copy draws it and whether its line is turned,
+ * though stored before they did.
+ */
 // Nothing is stored past the server's hour, so this can go once spans have said so that long.
-function withInFile(
-  doc: Omit<Document, "spans"> & { spans: (Omit<SpanInfo, "in_file"> & Partial<Pick<SpanInfo, "in_file">>)[] },
+function withSpanFields(
+  doc: Omit<Document, "spans"> & {
+    spans: (Omit<SpanInfo, "in_file" | "turned"> & Partial<Pick<SpanInfo, "in_file" | "turned">>)[];
+  },
 ): Document {
-  // Taken as drawn by its own copy only where nothing stands in for its font, as was read before.
-  const spans = doc.spans.map((span) => ({ ...span, in_file: span.in_file ?? span.substitute === null }));
+  // Taken as drawn by its own copy only where nothing stands in for its font, as was read before; and as turned,
+  // unknown, so what's redacted of it is drawn over all of it until the server says where.
+  const spans = doc.spans.map((span) => ({
+    ...span,
+    in_file: span.in_file ?? span.substitute === null,
+    turned: span.turned ?? true,
+  }));
   return { ...doc, spans };
 }
 

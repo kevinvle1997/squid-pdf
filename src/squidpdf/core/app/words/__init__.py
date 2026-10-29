@@ -101,8 +101,20 @@ def said(message: Message, language: str) -> SaidInfo:
 
 
 def render_all(messages: Iterable[Message], language: str = ENGLISH) -> str | None:
-    """Several messages as one line, in the order given; None when there are none."""
+    """Several parts of one line, in the order given, as a fit's: None when there are none.
+
+    Joined as parts (join_parts). Whole sentences said at once are `render_sentences`'.
+    """
     joiner = sentence("join_parts", language)
+    return joiner.join(render(message, language) for message in messages) or None
+
+
+def render_sentences(messages: Iterable[Message], language: str = ENGLISH) -> str | None:
+    """Several whole sentences said at once, in the order given; None when there are none.
+
+    Joined as sentences (join_sentences), each ending in its own stop: a redaction's.
+    """
+    joiner = sentence("join_sentences", language)
     return joiner.join(render(message, language) for message in messages) or None
 
 

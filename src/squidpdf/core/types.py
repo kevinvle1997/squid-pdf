@@ -254,6 +254,46 @@ class Span:
         return horizontal < 0 or abs(vertical) > TURN_TOLERANCE
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RedactedRun(Span):
+    """Some words of a span's line a redaction takes, as a span of their own: `run_of`.
+
+    Its id and pieces are the span's; its text the words, its box the one around their letters.
+    `before` and `after` are the line's words beside them, which a hidden copy may join them
+    to ("Acct1234"); empty at its start or end, and for all of a span.
+    """
+
+    before: str
+    after: str
+
+
+def run_of(
+    span: Span, *, text: str, box: Rect, before: str = "", after: str = ""
+) -> RedactedRun:
+    """The words `text` of `span` as a run of their own, in `box`; all of it by default."""
+    return RedactedRun(
+        id=span.id,
+        page=span.page,
+        text=text,
+        font=span.font,
+        font_object=span.font_object,
+        size=span.size,
+        color=span.color,
+        opacity=span.opacity,
+        bbox=box,
+        origin=span.origin,
+        fragments=span.fragments,
+        direction=span.direction,
+        before=before,
+        after=after,
+    )
+
+
+def whole_run(span: Span) -> RedactedRun:
+    """All of `span` as one run: nothing beside it to join it to."""
+    return run_of(span, text=span.text, box=span.bbox)
+
+
 def same_font(text: TextPiece | Span, other: TextPiece | Span) -> bool:
     """Whether two bits of text are in one font: one object, or one name where there's none."""
     return (text.font_object, text.font) == (other.font_object, other.font)
@@ -262,15 +302,34 @@ def same_font(text: TextPiece | Span, other: TextPiece | Span) -> bool:
 EM = 1000  # widths are given per 1000 em, as PDF font widths are
 
 
+# What became of the letters a redaction of some words left of their line, once erased.
+RestOfLine = Literal["in_place", "moved", "removed"]
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedLetter:
+    """A letter as the page draws it, and where: its box, from ascender to descender.
+
+    By its glyph's own letter, not the text a marked content gives in its place (ActualText).
+    """
+
+    letter: str
+    box: Rect
+    origin: tuple[float, float]  # where it starts, on its baseline
+    size: float
+
+
 @dataclass(frozen=True, slots=True)
 class DrawnElsewhere:
-    """What a page draws where it shouldn't after an erase, spaces aside.
+    """What a page draws where it shouldn't after an erase, and the rests of lines asked about.
 
-    Glyphs the erase was to take, still drawn, and text it moved.
+    Spaces aside: glyphs the erase was to take, and text it moved.
     """
 
     taken: list[DrawnGlyph]  # glyphs the erase was to take, still drawn, wherever
     moved: list[DrawnGlyph]  # glyphs it was to leave, drawn somewhere else
+    rests: list[RestOfLine]  # what became of each rest of a line asked about, in order
+    unchecked: bool  # where a rest set along landed couldn't be read: its letters unboxed
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,17 +339,6 @@ class DrawnLine:
     text: str
     origin: tuple[float, float]
     turn_ccw: QuarterTurn
-
-
-@dataclass(frozen=True, slots=True)
-class PlacedLetter:
-    """A letter as the page draws it, and where.
-
-    By its glyph's own letter, not the text a marked content gives in its place (ActualText).
-    """
-
-    letter: str
-    origin: tuple[float, float]  # where it starts, on its baseline
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,16 +489,16 @@ def index_of(spans: Iterable[Span]) -> SpanIndex:
     return SpanIndex({span.id: span for span in spans})
 
 
-def by_page(spans: Iterable[Span]) -> dict[int, list[Span]]:
+def by_page[S: Span](spans: Iterable[S]) -> dict[int, list[S]]:
     """`spans` grouped by page, each page's in the order given."""
-    grouped: dict[int, list[Span]] = {}
+    grouped: dict[int, list[S]] = {}
     for span in spans:
         grouped.setdefault(span.page, []).append(span)
     return grouped
 
 
-def asked_by_page[T](
-    spans: Iterable[Span], ask: Callable[[int, list[Span]], list[T]]
+def asked_by_page[S: Span, T](
+    spans: Iterable[S], ask: Callable[[int, list[S]], list[T]]
 ) -> list[T]:
     """What `ask` answers for each page's share of `spans`, as one list, page by page."""
     return [answer for page, on_page in by_page(spans).items() for answer in ask(page, on_page)]

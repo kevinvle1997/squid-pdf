@@ -502,7 +502,7 @@ describe("find", () => {
         text: "abcdefghijklmnopqrst",
         replaced: true,
         strategy: undefined,
-        redacted: false,
+        redacted: null,
       };
       const edits = { spans: [reading], newTexts: [] };
       const page = {

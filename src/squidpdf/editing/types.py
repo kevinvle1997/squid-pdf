@@ -17,11 +17,15 @@ from squidpdf.core import (
     Message,
     MessageInfo,
     Page,
+    PlacedLetter,
     Rect,
+    RedactedRun,
+    RestOfLine,
     SaidInfo,
+    Span,
     Style,
 )
-from squidpdf.documents.types import ApproximateInfo
+from squidpdf.documents.types import ApproximateInfo, Box
 from squidpdf.editing.edits import Strategy
 from squidpdf.editing.fit import FitReport, Verdict
 
@@ -89,6 +93,22 @@ class Applied:
 
 
 @dataclass(frozen=True, slots=True)
+class Redacted:
+    """What a span's redactions take: its runs of redacted words, and the letters left.
+
+    Each run is a span of its own: its words, and the box around their letters. All of the
+    span is one run, with no `rest`.
+    """
+
+    span: Span  # as the document has it
+    runs: tuple[RedactedRun, ...]
+    ranges: tuple[range, ...]  # each run's, by code point, as asked
+    # The letters it leaves, where the page drew them, spaces aside; None when the words
+    # weren't among its letters, so the whole line goes with them.
+    rest: tuple[PlacedLetter, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
 class EditedPage:
     """What the edits on one page erase, by box, and draw, by line: what a check allows for."""
 
@@ -100,15 +120,20 @@ class EditedPage:
 class Redaction:
     """A redaction drawn: whether its words are gone, where else they were, and why not.
 
-    `hidden_copies` are the places read from the document as it came, then "signatures"
-    if signed.
+    And what its erase did to the rest of its line, and where its runs are. `hidden_copies`
+    are the places read from the document as it came, then "signatures" if signed. `words`
+    and `page` say where it is, as what's said of it does.
     """
 
     verified: bool
     hidden_copies: list[HiddenPlace]
     covered: bool  # its words are left only in its box, under new text sharing one
     moved: bool  # its words are gone, but the erase moved other text on its page
+    unchecked: bool  # its words are gone, but where its line's rest landed can't be read
+    rest: RestOfLine  # what its erase did to the letters it left of its line
+    words: str  # the words it takes, as a sentence quotes them: `runs_text`
     page: int  # its span's page, numbered from 0
+    runs: list[tuple[range, Rect]]  # each run's code points, and the box around its letters
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +228,16 @@ class InsertFitInfo(FitInfo):
     edit: int
 
 
+class RedactedRunInfo(TypedDict):
+    """A run of words a redaction takes: its code points, and the box its letters take.
+
+    The box is in points on the page, however the line is turned.
+    """
+
+    range: list[int]  # start and end
+    box: Box
+
+
 class RedactionInfo(TypedDict):
     """A redaction drawn: whether its words are gone from the file, and where else they were.
 
@@ -213,6 +248,7 @@ class RedactionInfo(TypedDict):
     verified: bool
     hidden_copies: list[HiddenPlace]
     message: str | None
+    runs: list[RedactedRunInfo]
 
 
 class SkippedInfo(MessageInfo):

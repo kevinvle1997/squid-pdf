@@ -18,7 +18,7 @@ import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
-import { keepFocusOnPress } from "./keys";
+import { keepFocusOnPress, selectedIn } from "./keys";
 import { useSlipPlace } from "./slipPlace";
 import { ValueEditor } from "./ValueEditor";
 
@@ -133,8 +133,8 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
             </FileTrigger>
           </span>
         )}
-        {/* Redaction where a pointer or a finger can reach it: a key on the mark is the keyboard's way. */}
-        <Button keepFocus onPress={() => redact(editor, span.id)}>
+        {/* Redaction where a pointer or a finger can reach it, of the words selected in the field, or all of it. */}
+        <Button keepFocus onPress={() => redact(editor, span.id, { selected: selectedIn(field.current) })}>
           Redact
         </Button>
       </span>

@@ -11,7 +11,7 @@ import time
 import zlib
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from functools import partial
 from itertools import accumulate
 from pathlib import Path
@@ -24,13 +24,16 @@ from fontTools.subset import Subsetter
 from fontTools.ttLib import TTFont
 
 from squidpdf.api.pool import WorkerPool, start_pool
-from squidpdf.core import Engine, Message, Rect, words, write_dense
+from squidpdf.core import Engine, Message, Param, Rect, words, write_dense
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
 from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
+    CARD_LINE,
+    FIRST_NUMBER,
+    SECOND_NUMBER,
     InProcess,
     MovingAfterAnErase,
     Place,
@@ -38,6 +41,8 @@ from tests.api.conftest import (
     drawn_page,
     span_starting,
     upload,
+    verdicts_of,
+    with_a_card_line,
 )
 from tests.conftest import (
     CHOSEN,
@@ -542,11 +547,19 @@ def _stored_block(block: bytes, *, last: bool) -> bytes:
     )
 
 
+# What a save writes of its own: the file's id, random, and its dates, the clock's. Either can
+# spell any digits, and neither is the document's words.
+_SAVES_OWN = re.compile(r"/ID\s*\[[^\]]*\]|/(?:CreationDate|ModDate)\s*\([^)]*\)")
+
+
 def _everything_in(pdf: pymupdf.Document) -> str:
-    """Every object in the file and every stream, decoded, as one text."""
-    return " ".join(
-        f"{pdf.xref_object(xref)} {pdf.xref_stream(xref) or b''!r}"
-        for xref in range(1, pdf.xref_length())
+    """Every object in the file and every stream, decoded, as one text, but the save's own."""
+    return _SAVES_OWN.sub(
+        "",
+        " ".join(
+            f"{pdf.xref_object(xref)} {pdf.xref_stream(xref) or b''!r}"
+            for xref in range(1, pdf.xref_length())
+        ),
     )
 
 
@@ -643,9 +656,9 @@ def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refu
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
     exported = _export(mine, doc, edits)
 
-    said = words.sentence("not_redacted")
+    said = words.render(Message("not_redacted", {"text": card["text"], "page": 1}))
     expected = {"verified": False, "hidden_copies": ["screen_reader_text"], "message": said}
-    assert_equal(rendered["redactions"], {card["id"]: expected}, "what render says of it")
+    assert_equal(verdicts_of(rendered), {card["id"]: expected}, "what render says of it")
     notices = [(notice["span_id"], notice["code"]) for notice in rendered["notices"]]
     assert_equal(notices, [(card["id"], "not_redacted")], "render's notices")
     assert_problem(exported, "redaction_failed", 422)
@@ -793,7 +806,7 @@ def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signe
 
     said = words.sentence("signatures_removed")
     told = {"verified": True, "hidden_copies": ["signatures"], "message": said}
-    assert_equal(rendered["redactions"], {name["id"]: told}, "what render says of it")
+    assert_equal(verdicts_of(rendered), {name["id"]: told}, "what render says of it")
     expected = (["null"], "null", "null")
     assert_equal(_signatures_in(_opened(response)), expected, "the signatures, Perms and DSS")
 
@@ -1681,10 +1694,13 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, do
     assert_in("ninety days", _opened(response)[1].get_text(), "the edit that was good")
 
 
-def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc):
+@pytest.mark.parametrize(
+    "asked", [{}, {"range": [0, 4]}], ids=["all of it", "some words of it"]
+)
+def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc, asked):
     """Redaction wins: the list's order must not bring the text back into the file."""
     span = next(s for s in doc["spans"] if s["page"] == 1)
-    redact = {"kind": "redact", "span_id": span["id"]}
+    redact = {"kind": "redact", "span_id": span["id"], **asked}
     replace = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
 
     response = _export(mine, doc, [redact, replace])
@@ -1798,19 +1814,24 @@ def test_a_line_whose_letters_the_erase_misses_downloads_nothing(mine, tmp_path)
 # redacted too, is level with where the second line was, so an erase reached that line.
 _SWAPPED = (
     "BT /F 12 Tf -20 TL 72 60 Td (Acct 1234 Name) ' ET "
-    "BT /F 12 Tf -80 TL 72 40 Td (4321 Acct Name) ' ET "
+    "BT /F 12 Tf -80 TL {x} 40 Td (4321 Acct Name) ' ET "
     "BT /F 12 Tf 300 120 Td (Zed) Tj ET"
 )
 
 
-def test_lines_an_erase_swaps_download_nothing(mine):
+@pytest.mark.parametrize(
+    ("asked", "x"), [(range(5, 9), 98.672), (None, 72)], ids=["some words of it", "all of it"]
+)
+def test_lines_an_erase_swaps_download_nothing(mine, asked, x):
     """The words it was to take land on the other line, still drawn: refused."""
-    doc = upload(mine, drawn_page(_SWAPPED)).json()
+    doc = upload(mine, drawn_page(_SWAPPED.format(x=x))).json()
     account, zed = span_starting(doc, 0, "Acct 1234"), span_starting(doc, 0, "Zed")
-    body = {"edits": [_redact(account), _redact(zed)], "scale": 1, "regions": [{"page": 0}]}
+    redact = _redact(account) if asked is None else _redact_words(account, asked)
+    edits = [redact, _redact(zed)]
+    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(account), _redact(zed)])
+    response = _export(mine, doc, edits)
 
     verified = rendered["redactions"][account["id"]]["verified"]
     assert_equal(verified, False, "whether render said the words were gone")
@@ -1879,10 +1900,25 @@ def _along_below(origin: Place) -> Place:
     return (2.0, 0.0) if origin[1] > _PAGE_HEIGHT - 80 else _STILL
 
 
+def test_the_rest_of_a_redacted_line_set_along_it_downloads_saying_so(app, mine, monkeypatch):
+    """A span further along the line the erase set along it: the rest of it, said; it goes."""
+    moving = MovingAfterAnErase(_along_further_along)
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(moving))
+    doc = upload(mine, drawn_page(_LEVEL_AND_BELOW)).json()
+    account = span_starting(doc, 0, "Acct")
+    body = {"edits": [_redact(account)], "scale": 1, "regions": [{"page": 0}]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, [_redact(account)])
+
+    said = rendered["redactions"][account["id"]]
+    moved = words.render(Message("rest_of_line_moved", {"text": account["text"], "page": 1}))
+    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
+    assert_equal(response.status_code, 200, "the download")
+
+
 @pytest.mark.parametrize(
-    "moves",
-    [_along_further_along, _off_further_along, _along_below],
-    ids=["along the redacted one's line", "off its line", "another line"],
+    "moves", [_off_further_along, _along_below], ids=["off its line", "another line"]
 )
 def test_other_text_an_erase_moves_refuses_the_download_saying_so(
     app, mine, monkeypatch, moves
@@ -1897,38 +1933,52 @@ def test_other_text_an_erase_moves_refuses_the_download_saying_so(
     response = _export(mine, doc, [_redact(account)])
 
     said = rendered["redactions"][account["id"]]
-    moved = words.render(Message("moved_other_text", {"page": 1}))
+    facts = {"text": account["text"], "page": 1}
+    moved = words.render(Message("moved_other_text", facts))
     assert_equal((said["verified"], said["message"]), (False, moved), "what render says")
     assert_problem(response, "redaction_moved", 422)
-    facts = {"text": account["text"], "page": 1}
     assert_equal(response.json()["params"], facts, "the words and the page, unsaid")
 
 
+# A quote moves to the next line first: MuPDF's erase sets the line elsewhere, beside the
+# redacted one where it lands at 74, losing letters to its erase.
+_QUOTED_BELOW = (
+    "BT /F 12 Tf 72 150 Td (Acct 1234 Name) Tj ET "
+    "BT /F 12 Tf 14 TL 72 {below} Td (Other words here) ' ET"
+)
+
+
 @pytest.mark.parametrize(
-    "drawing",
+    ("drawing", "asked"),
     [
-        # A quote moves to the next line first: MuPDF's erase sets the line elsewhere.
-        "BT /F 12 Tf 72 150 Td (Acct 1234 Name) Tj ET "
-        "BT /F 12 Tf 14 TL 72 30 Td (Other words here) ' ET",
+        (_QUOTED_BELOW.format(below=30), None),
+        (_QUOTED_BELOW.format(below=30), range(5, 9)),
+        (_QUOTED_BELOW.format(below=74), range(5, 9)),
     ],
-    ids=["drawn by a quote"],
+    ids=[
+        "drawn by a quote",
+        "drawn by a quote, some words",
+        "drawn by a quote, landing beside them",
+    ],
 )
 def test_a_line_the_erase_moves_beside_the_redaction_refuses_the_download_saying_so(
-    mine, drawing
+    mine, drawing, asked
 ):
     """Its words are gone, but other text on the page moved: refused, and said as it is."""
     doc = upload(mine, drawn_page(drawing)).json()
     account = span_starting(doc, 0, "Acct")
-    body = {"edits": [_redact(account)], "scale": 1, "regions": [around(account)]}
+    redact = _redact(account) if asked is None else _redact_words(account, asked)
+    body = {"edits": [redact], "scale": 1, "regions": [around(account)]}
 
     rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(account)])
+    response = _export(mine, doc, [redact])
 
     said = rendered["redactions"][account["id"]]
-    moved = words.render(Message("moved_other_text", {"page": 1}))
+    facts = {"text": account["text"] if asked is None else "1234", "page": 1}
+    moved = words.render(Message("moved_other_text", facts))
     assert_equal((said["verified"], said["message"]), (False, moved), "what render says")
     assert_problem(response, "redaction_moved", 422)
-    detail = words.render(Message("redaction_moved", {"text": account["text"], "page": 1}))
+    detail = words.render(Message("redaction_moved", facts))
     assert_equal(response.json()["detail"], detail, "what the user reads")
 
 
@@ -1969,6 +2019,210 @@ class _Rewriting:
         return cast(PdfDriver, _RewritingDriver(open_driver(path), self.script))
 
 
+def test_words_an_erase_sets_along_their_line_level_with_others_download_nothing(
+    app, mine, monkeypatch
+):
+    """Set further along, where another column's same words were, the words are still drawn."""
+    drawing = (
+        "BT /F 12 Tf 20 100 Td (Acct ) Tj ET BT /F 12 Tf 46.676 100 Td (1234) Tj ET "
+        "BT /F 12 Tf 73.364 100 Td ( Name) Tj ET "
+        "BT /F 12 Tf 300 100 Td (Ref ) Tj ET BT /F 12 Tf 322.008 100 Td (1234) Tj ET"
+    )
+    # An erase that takes the other column's number, and sets this one further along, drawn.
+    script = (
+        (b"46.676 100 Td (1234)", b"200 100 Td (1234)"),
+        (b"322.008 100 Td (1234)", b"322.008 100 Td ()"),
+    )
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, edits)
+
+    verified = rendered["redactions"][account["id"]]["verified"]
+    assert_equal((verified, response.status_code), (False, 422), "render's answer, export's")
+
+
+# Helvetica at 12: "Acct " is 26.676 wide, each digit 6.672.
+_ACCT_LINE = (
+    "BT /F 12 Tf 20 100 Td (Acct ) Tj ET BT /F 12 Tf 46.676 100 Td (1234) Tj ET "
+    "BT /F 12 Tf 73.364 100 Td ( Name) Tj ET "
+)
+_ERASED = (b"46.676 100 Td (1234)", b"46.676 100 Td ()")  # the number erased, and only it
+_OTHER = "BT /F 12 Tf 20 60 Td (Other) Tj ET "  # drawn between, so moved runs stay apart
+_ZED = "BT /F 12 Tf 200 100 Td (Zed) Tj ET "
+
+
+@pytest.mark.parametrize(
+    ("drawing", "script"),
+    [
+        (
+            _ACCT_LINE + _OTHER + _ZED,
+            (_ERASED, (b"73.364 100 Td", b"83.364 100 Td"), (b"200 100 Td", b"260 100 Td")),
+        ),
+        (
+            _ACCT_LINE + _ZED + _OTHER,
+            (_ERASED, (b"73.364 100 Td", b"83.364 100 Td"), (b"200 100 Td", b"260 100 Td")),
+        ),
+        (
+            _ACCT_LINE + _OTHER + _ZED,
+            (_ERASED, (b"73.364 100 Td", b"240 100 Td"), (b"200 100 Td", b"80 100 Td")),
+        ),
+        (
+            _ACCT_LINE + _OTHER + "BT /F 12 Tf 200 100 Td (Ref 5678) Tj ET",
+            (_ERASED, (b"73.364 100 Td", b"196.664 100 Td")),
+        ),
+    ],
+    ids=["set along two ways", "two ways, drawn together", "swapped", "onto another column"],
+)
+def test_the_rest_of_a_line_set_along_it_but_not_as_one_refuses_the_download_as_moved(
+    app, mine, monkeypatch, drawing, script
+):
+    """One redacted line's rest moves by one shift, in order, onto nothing: else it's moved."""
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+    _assert_refused_as_moved(mine, doc, account, edits, text="1234")
+
+
+def test_the_spans_on_a_whole_redacted_line_swapped_refuse_the_download_as_moved(
+    app, mine, monkeypatch
+):
+    """For all of a span, its line's rest is the other spans on it: swapped, they're moved."""
+    drawing = (
+        "BT /F 12 Tf 20 100 Td (1234) Tj ET " + _OTHER + "BT /F 12 Tf 100 100 Td (Name) Tj ET "
+        "BT /F 12 Tf 20 40 Td (More) Tj ET BT /F 12 Tf 200 100 Td (Zed) Tj ET"
+    )
+    script = (
+        (b"20 100 Td (1234)", b"20 100 Td ()"),
+        (b"100 100 Td (Name)", b"220 100 Td (Name)"),
+        (b"200 100 Td (Zed)", b"100 100 Td (Zed)"),
+    )
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    number = span_starting(doc, 0, "1234")
+    _assert_refused_as_moved(mine, doc, number, [_redact(number)], text="1234")
+
+
+def _assert_refused_as_moved(mine, doc: dict, span: dict, edits: list[dict], *, text: str):
+    """Render and export of `edits` both refuse them, saying other text moved."""
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, edits)
+
+    said = rendered["redactions"][span["id"]]
+    moved = words.render(Message("moved_other_text", {"text": text, "page": 1}))
+    assert_equal((said["verified"], said["message"]), (False, moved), "what render says")
+    assert_problem(response, "redaction_moved", 422)
+
+
+@pytest.mark.parametrize(
+    ("to", "said"),
+    [(b"2046.688", "rest_of_line_removed"), (b"575", "rest_of_line_moved")],
+    ids=["all of it off the page, removed", "some of it still on it, moved"],
+)
+def test_the_rest_of_a_line_set_off_the_page_is_said_removed_unless_some_still_shows(
+    app, mine, monkeypatch, to, said
+):
+    """What the reader sees is said: the rest gone, or moved where some of it still shows."""
+    # The words first on their line, and all the rest of it set along, the page 595 wide.
+    drawing = "BT /F 12 Tf 20 100 Td (1234) Tj ET BT /F 12 Tf 46.688 100 Td ( Name) Tj ET"
+    script = ((b"20 100 Td (1234)", b"20 100 Td ()"), (b"46.688 100 Td", to + b" 100 Td"))
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    line = span_starting(doc, 0, "1234")
+    edits = [_redact_words(line, range(0, 4))]
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, edits)
+
+    verdict = rendered["redactions"][line["id"]]
+    message = words.render(Message(said, {"text": "1234", "page": 1}))
+    assert_equal((verdict["verified"], verdict["message"]), (True, message), "what render says")
+    assert_equal(response.status_code, 200, "the download")
+
+
+@pytest.mark.parametrize(
+    "drawing",
+    [
+        # With no leading, MuPDF's erase of some words drops the T* and sets "Zed" along, onto
+        # "Note": the line would read broken.
+        "BT /F 12 Tf 0 TL 72 100 Td [-10000 (Acct 1234 Name)] TJ T* (Zed) Tj ET "
+        "BT /F 12 Tf 280.7 100 Td (Note) Tj ET",
+    ],
+    ids=["onto other text"],
+)
+def test_text_on_the_redacted_line_moved_but_not_as_its_rest_refuses_the_download_as_moved(
+    mine, drawing
+):
+    """Other glyphs than those redacted moved: refused, said as moved, not as the words left."""
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+    body = {"edits": edits, "scale": 1, "regions": [around(account)]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, edits)
+
+    said = rendered["redactions"][account["id"]]
+    facts: dict[str, Param] = {"text": "1234", "page": 1}
+    moved = words.render(Message("moved_other_text", facts))
+    assert_equal((said["verified"], said["message"]), (False, moved), "what render says")
+    assert_problem(response, "redaction_moved", 422)
+    detail = words.render(Message("redaction_moved", facts))
+    assert_equal(response.json()["detail"], detail, "what the user reads")
+
+
+@pytest.mark.parametrize(
+    ("drawing", "asked", "said", "problem"),
+    [
+        # A quote moves the line, its words still drawn: all of it, a space at its end.
+        (
+            "BT /F 12 Tf 14 TL 20 114 Td (Acct 1234 ) ' ET",
+            [None],
+            "not_redacted",
+            "redaction_failed",
+        ),
+        # Two runs, the words gone but the line below moved: both runs named.
+        (
+            _QUOTED_BELOW.format(below=30),
+            [range(0, 4), range(10, 14)],
+            "moved_other_text",
+            "redaction_moved",
+        ),
+    ],
+    ids=["all of a line", "two runs"],
+)
+def test_render_and_export_quote_the_same_words(mine, drawing, asked, said, problem):
+    """Each run, an ellipsis between, its spaces aside: the words the user redacted."""
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [
+        _redact(account) if each is None else _redact_words(account, each) for each in asked
+    ]
+    body = {"edits": edits, "scale": 1, "regions": [around(account)]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, edits)
+
+    quoted = "Acct 1234" if asked == [None] else "Acct … Name"
+    facts: dict[str, Param] = {"text": quoted, "page": 1}
+    message = rendered["redactions"][account["id"]]["message"]
+    assert_equal(message, words.render(Message(said, facts)), "what render says")
+    assert_problem(response, problem, 422)
+    assert_equal(response.json()["params"]["text"], quoted, "the words export names")
+
+
 def test_words_an_erase_sets_elsewhere_as_another_line_goes_download_nothing(
     app, mine, monkeypatch
 ):
@@ -1993,6 +2247,329 @@ def test_words_an_erase_sets_elsewhere_as_another_line_goes_download_nothing(
     verified = rendered["redactions"][number["id"]]["verified"]
     assert_equal(verified, False, "whether render said the words were gone")
     assert_problem(response, "redaction_failed", 422)
+
+
+@pytest.mark.parametrize(
+    ("drawing", "script", "asked"),
+    [
+        # The number set elsewhere, drawn, while another line holding 1, 2, 3, 4 went.
+        (
+            _ACCT_LINE + "BT /F 12 Tf 20 60 Td (Page 1 of 2, item 3 of 4) Tj ET",
+            (
+                (b"46.676 100 Td (1234)", b"200 140 Td (1234)"),
+                (b"20 60 Td (Page 1 of 2, item 3 of 4)", b"20 60 Td ()"),
+            ),
+            range(5, 9),
+        ),
+        # Two words redacted: the first set along the line, where the rest's same word went.
+        (
+            "BT /F 12 Tf 20 100 Td (Card ) Tj ET BT /F 12 Tf 49.34 100 Td (1234 5678) Tj ET "
+            "BT /F 12 Tf 106.052 100 Td ( ref ) Tj ET BT /F 12 Tf 126.728 100 Td (1234) Tj ET",
+            (
+                (b"126.728 100 Td (1234)", b"126.728 100 Td ()"),
+                (b"49.34 100 Td (1234 5678)", b"186.728 100 Td (1234)"),
+            ),
+            range(5, 14),
+        ),
+    ],
+    ids=["another line's letters gone", "one of two words, where the rest's went"],
+)
+def test_a_redacted_word_drawn_elsewhere_downloads_nothing_whatever_else_went(
+    app, mine, monkeypatch, drawing, script, asked
+):
+    """A run spelling any word redacted is that word still drawn: refused as not removed."""
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    line = doc["spans"][0]
+    edits = [_redact_words(line, asked)]
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, edits)
+
+    verified = rendered["redactions"][line["id"]]["verified"]
+    assert_equal(verified, False, "whether render said the words were gone")
+    assert_problem(response, "redaction_failed", 422)
+
+
+def test_the_same_words_set_along_the_line_are_the_words_still_drawn(mine):
+    """MuPDF's erase sets "ref 1234" along: it spells the number redacted, refused as such."""
+    drawing = "BT /F 12 Tf 0 TL 20 100 Td [-10000 (Acct 1234 paid)] TJ T* (ref 1234) Tj ET"
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+
+    response = _export(mine, doc, edits)
+
+    assert_problem(response, "redaction_failed", 422)
+
+
+# `_ACCT_LINE` again, 0.3 points along, as a bold is faked by drawing a line twice.
+_ACCT_LINE_AGAIN = (
+    "BT /F 12 Tf 20.3 100 Td (Acct ) Tj ET BT /F 12 Tf 46.976 100 Td (1234) Tj ET "
+    "BT /F 12 Tf 73.664 100 Td ( Name) Tj ET "
+)
+# A line 11 points over `_ACCT_LINE`, tighter than solid: its "gy" already touch "Acct" below,
+# and its "o"s, further along, reach down to nothing set under them.
+_TIGHT_ABOVE = "BT /F 12 Tf 20 111 Td (gy oooooooooooo) Tj ET "
+# The rest of the line, " Name", set along onto where "ZED" is drawn.
+_ONTO = (_ERASED, (b"73.364 100 Td", b"140 100 Td"))
+
+
+@pytest.mark.parametrize(
+    "drawing",
+    [
+        _ACCT_LINE + "BT /F 12 Tf 150 101 Td (ZED) Tj ET",
+        _ACCT_LINE + "BT /F 12 Tf 50 Tz 150 95 Td (ZED) Tj ET",
+        _ACCT_LINE + "BT /F 12 Tf 1 0 0 3 150 80 Tm (ZED) Tj ET",
+        _ACCT_LINE.replace("Name", "gypsy") + "BT /F 12 Tf 150 91 Td (ZED) Tj ET",
+    ],
+    ids=[
+        "a point off its baseline",
+        "condensed, 5 points below",
+        "stretched up, 20 points below",
+        "its descenders onto capitals",
+    ],
+)
+def test_the_rest_of_a_line_set_onto_letters_as_drawn_refuses_as_moved(
+    app, mine, monkeypatch, drawing
+):
+    """Letters overlap by their boxes as drawn, descenders too: the page would read broken."""
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(_ONTO)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+    _assert_refused_as_moved(mine, doc, account, edits, text="1234")
+
+
+def test_the_rest_of_a_line_set_onto_a_letter_only_the_words_touched_refuses_as_moved(
+    app, mine, monkeypatch
+):
+    """The words' letters touching it before allow the rest nothing: they're gone."""
+    # "pp ay", set solid over an "Å" the "p"s' tails touch: the "y" set where they were.
+    drawing = (
+        "BT /F 12 Tf 20 112 Td (pp) Tj ET BT /F 12 Tf 33.344 112 Td ( ay) Tj ET "
+        r"BT /F 12 Tf 30 100 Td (\305) Tj ET"
+    )
+    script = ((b"20 112 Td (pp)", b"20 112 Td ()"), (b"33.344 112 Td", b"20 112 Td"))
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    line = span_starting(doc, 0, "pp")
+    _assert_refused_as_moved(mine, doc, line, [_redact_words(line, range(0, 2))], text="pp")
+
+
+# "Åcc 1234 Åsy", whose "g" above, when there is one, touches its first ring: a pair that met.
+_RING_LINE = (
+    r"BT /F 12 Tf 20 100 Td (\305cc ) Tj ET BT /F 12 Tf 43.34 100 Td (1234) Tj ET "
+    r"BT /F 12 Tf 70.028 100 Td ( \305sy) Tj ET BT /F 12 Tf 20 112.5 Td (g) Tj ET "
+)
+# The number erased, and " Åsy" set where it was: its ring at 46.676, its "y" at 60.68.
+_RING_MOVE = ((b"43.34 100 Td (1234)", b"43.34 100 Td ()"), (b"70.028 100 Td", b"43.34 100 Td"))
+
+
+@pytest.mark.parametrize(
+    "drawing",
+    [
+        _RING_LINE + "BT /F 12 Tf 46.376 112.5 Td (_) Tj ET",
+        _RING_LINE.replace("20 112.5", "20 110") + "BT /F 12 Tf 47.676 110 Td (.) Tj ET",
+        # Below, the first "l" touches the line's "y": the second, as deep, never met it.
+        _RING_LINE.replace(r"(\305cc )", r"(\305yc )")
+        + "BT /F 12 Tf 29 89 Td (l) Tj ET BT /F 12 Tf 61.18 89 Td (l) Tj ET",
+    ],
+    ids=["a whole underscore", "a whole full stop", "a letter below, as deep as another met"],
+)
+def test_the_rest_of_a_line_set_onto_a_letter_that_never_met_it_refuses_as_moved(
+    app, mine, monkeypatch, drawing
+):
+    """Another of that line's letters touching it, at its start, allows this one nothing."""
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(_RING_MOVE)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    line = next(span for span in doc["spans"] if "1234" in span["text"])
+    at = line["text"].index("1234")
+    edits = [_redact_words(line, range(at, at + 4))]
+    _assert_refused_as_moved(mine, doc, line, edits, text="1234")
+
+
+@pytest.mark.parametrize(
+    ("drawing", "script"),
+    [
+        (
+            "BT /F 12 Tf 20 112.5 Td (oooogoooooo) Tj ET "
+            "BT /F 12 Tf 20 100 Td (acc ) Tj ET BT /F 12 Tf 42.008 100 Td (1234) Tj ET "
+            r"BT /F 12 Tf 68.696 100 Td ( \305sa) Tj ET ",
+            (
+                (b"42.008 100 Td (1234)", b"42.008 100 Td ()"),
+                (b"68.696 100 Td", b"42.008 100 Td"),
+            ),
+        ),
+        (
+            "BT /F 60 Tf 84 114 Td (|) Tj ET BT /F 12 Tf 20 114 Td (oooooooooooooooo) Tj ET "
+            "BT /F 12 Tf 20 100 Td (acc ) Tj ET BT /F 12 Tf 42.008 100 Td (1234) Tj ET "
+            "BT /F 12 Tf 100 100 Td ( Name) Tj ET ",
+            ((b"42.008 100 Td (1234)", b"42.008 100 Td ()"), (b"100 100 Td", b"68.696 100 Td")),
+        ),
+    ],
+    ids=["a ring onto a descender", "onto a tall bar"],
+)
+def test_the_rest_of_a_line_set_onto_letters_its_line_never_touched_refuses_as_moved(
+    app, mine, monkeypatch, drawing, script
+):
+    """Lines that run side by side, no two of their letters touching: any overlap is landing.
+
+    A tall letter of one and a deep one of the other, apart, aren't letters that met.
+    """
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "acc")
+    edits = [_redact_words(account, range(4, 8))]
+    _assert_refused_as_moved(mine, doc, account, edits, text="1234")
+
+
+@pytest.mark.parametrize(
+    ("drawing", "script"),
+    [
+        (_ACCT_LINE + "BT /F 12 Tf 150 91 Td (ZED) Tj ET", _ONTO),
+        (
+            _TIGHT_ABOVE + _ACCT_LINE,
+            (_ERASED, (b"73.364 100 Td", b"63.364 100 Td")),
+        ),
+        # One "_" stretched over all of the line, low enough to touch its capitals.
+        (
+            "q BT /F 12 Tf 2000 Tz 20 110 Td (_) Tj ET Q " + _ACCT_LINE,
+            (_ERASED, (b"73.364 100 Td", b"63.364 100 Td")),
+        ),
+        (
+            _ACCT_LINE + _ACCT_LINE_AGAIN,
+            (
+                _ERASED,
+                (b"46.976 100 Td (1234)", b"46.976 100 Td ()"),
+                (b"73.364 100 Td", b"63.364 100 Td"),
+                (b"73.664 100 Td", b"63.664 100 Td"),
+            ),
+        ),
+    ],
+    ids=[
+        "clear of capitals below",
+        "under a line set tighter than solid, its letters touching already",
+        "under a rule each letter touched as much before",
+        "drawn twice over, as for bold",
+    ],
+)
+def test_the_rest_of_a_line_set_along_onto_nothing_else_downloads_saying_so(
+    app, mine, monkeypatch, drawing, script
+):
+    """Clear of other letters, or over its own copy set along with it: the rest, said."""
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, edits)
+
+    said = rendered["redactions"][account["id"]]
+    moved = words.render(Message("rest_of_line_moved", {"text": "1234", "page": 1}))
+    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
+    assert_equal(response.status_code, 200, "the download")
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _UnboxedDriver:
+    """A driver whose glyphs' boxes can't be read for every glyph it draws."""
+
+    driver: Any  # the driver it answers for, but its glyphs' boxes
+    fewer: bool  # one box short of the glyphs, as a reading out of step; else none read
+
+    def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
+        """One box short of the glyphs drawn, or none."""
+        return self.driver.drawn_glyph_boxes(page)[:-1] if self.fewer else None
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the driver answers it."""
+        return getattr(self.driver, name)
+
+
+@dataclass(frozen=True, slots=True)
+class _Unboxed:
+    """A driver factory for the store: `_Rewriting`'s, its glyphs' boxes not all read."""
+
+    script: tuple[tuple[bytes, bytes], ...]
+    fewer: bool
+
+    def __call__(self, path: str) -> PdfDriver:
+        """The driver for `path`."""
+        rewriting = _RewritingDriver(open_driver(path), self.script)
+        # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+        return cast(PdfDriver, _UnboxedDriver(rewriting, self.fewer))
+
+
+@pytest.mark.parametrize("fewer", [True, False], ids=["a box short", "none read"])
+def test_a_rest_whose_letters_can_t_be_boxed_refuses_saying_it_couldn_t_be_checked(
+    app, mine, monkeypatch, fewer
+):
+    """Set along, its landing can't be read: nothing downloads, and that's what's said."""
+    script = (_ERASED, (b"73.364 100 Td", b"63.364 100 Td"))
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Unboxed(script, fewer)))
+    doc = upload(mine, drawn_page(_ACCT_LINE)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, edits)
+
+    said = rendered["redactions"][account["id"]]
+    unchecked = words.render(Message("not_checked", {"text": "1234", "page": 1}))
+    assert_equal((said["verified"], said["message"]), (False, unchecked), "what render says")
+    assert_problem(response, "redaction_unchecked", 422)
+    detail = words.render(Message("redaction_unchecked", {"text": "1234", "page": 1}))
+    assert_equal(response.json()["detail"], detail, "what the user reads")
+
+
+def test_a_span_of_the_line_set_into_a_gap_before_another_refuses_as_moved(
+    app, mine, monkeypatch
+):
+    """ "Zed", after "Name", set before it, where the words went: the line's order changed."""
+    script = (
+        (b"46.676 100 Td (1234)", b"46.676 100 Td ()"),
+        (b"200 100 Td (Zed)", b"46.676 100 Td (Zed)"),
+    )
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(_ACCT_LINE + _OTHER + _ZED)).json()
+    account = span_starting(doc, 0, "Acct")
+    edits = [_redact_words(account, range(5, 9))]
+    _assert_refused_as_moved(mine, doc, account, edits, text="1234")
+
+
+def test_the_spans_after_a_whole_redaction_set_along_download_saying_so(app, mine, monkeypatch):
+    """What's before it stays, what's after it moves along by one shift: the rest, said."""
+    drawing = (
+        "BT /F 12 Tf 20 100 Td (Head |) Tj ET BT /F 12 Tf 100 100 Td (1234) Tj ET "
+        + _OTHER
+        + "BT /F 12 Tf 400 100 Td (2024) Tj ET"
+    )
+    script = ((b"100 100 Td (1234)", b"100 100 Td ()"), (b"400 100 Td", b"420 100 Td"))
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
+    doc = upload(mine, drawn_page(drawing)).json()
+    number = span_starting(doc, 0, "1234")
+
+    rendered = mine.post(
+        f"/api/documents/{doc['id']}/render",
+        json={"edits": [_redact(number)], "scale": 1, "regions": [{"page": 0}]},
+    ).json()
+    response = _export(mine, doc, [_redact(number)])
+
+    said = rendered["redactions"][number["id"]]
+    moved = words.render(Message("rest_of_line_moved", {"text": "1234", "page": 1}))
+    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
+    assert_equal(response.status_code, 200, "the download")
 
 
 def _on_zed_line(box: Rect) -> bool:
@@ -2044,6 +2621,236 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     got = response.json()
     expected = ("bad_reference", {"span_id": "nosuchspan00"})
     assert_equal((got["code"], got["params"]), expected, "the problem, unsaid")
+
+
+@pytest.mark.parametrize(
+    "asked",
+    [[19, 99], [9, 5], [5, 5], [4, 5], [-1, 3]],
+    ids=["past its end", "backwards", "empty", "only a space", "before its start"],
+)
+def test_a_redaction_of_words_its_line_does_not_have_fails_the_export(mine, asked):
+    """As one pointing at nothing: skipping it would send the words the user asked to remove."""
+    doc = upload(mine, with_a_card_line()).json()
+    card = span_starting(doc, 0, "Card")
+
+    response = _export(mine, doc, [{"kind": "redact", "span_id": card["id"], "range": asked}])
+
+    assert_problem(response, "bad_range", 422)
+    said = words.sentence("bad_range").format(span_id=card["id"])
+    assert_equal(response.json()["detail"], said, "what the user reads")
+
+
+def _redact_words(span: dict, asked: range) -> dict:
+    """An edit redacting the words of `span` that `asked` names, by code point."""
+    return {"kind": "redact", "span_id": span["id"], "range": [asked.start, asked.stop]}
+
+
+def _letters_drawn(pdf: pymupdf.Document) -> list[tuple[str, float, float]]:
+    """Each letter the first page draws, and where its baseline starts, to 0.01 pt."""
+    return [
+        (char["c"], round(char["origin"][0], 2), round(char["origin"][1], 2))
+        for block in pdf[0].get_text("rawdict")["blocks"]
+        for line in block["lines"]
+        for piece in line["spans"]
+        for char in piece["chars"]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("ranges", "title"),
+    [
+        ([FIRST_NUMBER], "Card then 9918 ends"),
+        ([FIRST_NUMBER, SECOND_NUMBER], "Card then ends"),
+        # "4421 then" and "then 9918", which overlap: one run, from the first to the last.
+        ([range(5, 14), range(10, 19)], "Card ends"),
+    ],
+    ids=["one number", "both numbers", "overlapping words"],
+)
+def test_words_of_a_line_redacted_go_and_the_rest_stays_where_it_was(mine, ranges, title):
+    """Each run goes, from the page and from the title, and every other letter stays put."""
+    _assert_words_go_and_the_rest_stays(mine, ranges, title)
+
+
+class _At:
+    """A clock stopped at 05:44:21, whose save's date writes "4421", the first number."""
+
+    @staticmethod
+    def now(tz: tzinfo | None = None) -> datetime:
+        """That time, on the day this was written."""
+        return datetime(2026, 11, 2, 5, 44, 21, tzinfo=tz)
+
+
+def test_a_save_whose_date_spells_a_word_redacted_is_still_without_it(app, mine, monkeypatch):
+    """The save's own date and id aren't the document's words: they can spell any digits."""
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the clock below reaches it
+    monkeypatch.setattr(export, "datetime", _At)
+    _assert_words_go_and_the_rest_stays(mine, [FIRST_NUMBER, SECOND_NUMBER], "Card then ends")
+
+
+def _assert_words_go_and_the_rest_stays(mine, ranges: list[range], title: str) -> None:
+    """Each of `ranges` of the card line goes, and every other letter stays put."""
+    sent = with_a_card_line()
+    doc = upload(mine, sent).json()
+    card = span_starting(doc, 0, "Card")
+    before = _letters_drawn(pymupdf.open(stream=sent, filetype="pdf"))
+
+    response = _export(mine, doc, [_redact_words(card, asked) for asked in ranges])
+
+    saved = _opened(response)
+    taken = {at for asked in ranges for at in asked}
+    kept = [letter for at, letter in enumerate(before) if at not in taken]
+    assert_equal(_letters_drawn(saved), kept, "the line's other letters, each where it was")
+    assert_equal(_info(saved, "Title"), title, "the title, less the words redacted")
+    everything = _everything_in(saved)
+    for word in re.finditer(r"\S+", CARD_LINE):
+        if taken.issuperset(range(word.start(), word.end())):
+            assert_not_in(word[0], everything, "a word redacted, anywhere in the file")
+
+
+def _glyphs_drawn(pdf: pymupdf.Document) -> str:
+    """The letters the first page's drawing writes, in the order drawn, spaces aside."""
+    letters = (chr(char[0]) for run in pdf[0].get_texttrace() for char in run["chars"])
+    return "".join(letter for letter in letters if not letter.isspace())
+
+
+_ACCOUNT = "BT /F 12 Tf 72 100 Td (Acct 1234 Name) Tj ET"  # a line with a number in it
+
+
+@pytest.mark.parametrize(
+    ("sent", "starts", "size", "asked", "drawn", "title"),
+    [
+        # Marked content that says its glyphs in another order: the glyphs "1234" go.
+        (
+            drawn_page(f"/Span <</ActualText (Name Acct 1234)>> BDC {_ACCOUNT} EMC"),
+            "Name",
+            None,
+            range(10, 14),
+            "AcctName",
+            "null",
+        ),
+        # The same line small, drawn in the big one's box first: only the big line's words go.
+        (
+            drawn_page(
+                "BT /F 6 Tf 74 118 Td (Card 4421 then) Tj ET "
+                "BT /F 30 Tf 72 110 Td (Card 4421 then) Tj ET"
+            ),
+            "Card 4421 then",
+            30,
+            range(5, 9),
+            "Card4421thenCardthen",
+            "null",
+        ),
+        # The same number twice: the second goes, where it's drawn, and the first stays.
+        (
+            drawn_page("BT /F 12 Tf 72 100 Td (1234 and 1234 end) Tj ET"),
+            "1234",
+            None,
+            range(9, 13),
+            "1234andend",
+            "null",
+        ),
+        # A title that joins the number to the word before it.
+        (
+            drawn_page(_ACCOUNT, title="Acct1234 Name"),
+            "Acct",
+            None,
+            range(5, 9),
+            "AcctName",
+            "Acct Name",
+        ),
+        # A title that joins the number to the words beside it, before and after it.
+        (
+            drawn_page(_ACCOUNT, title="Acct1234Name and 1234Acct"),
+            "Acct",
+            None,
+            range(5, 9),
+            "AcctName",
+            "AcctName and Acct",
+        ),
+        # A title that joins the number to a word of the line not beside it: another number.
+        (
+            drawn_page(
+                "BT /F 12 Tf 72 100 Td (Order 20 total 12) Tj ET", title="Order 2012 summary"
+            ),
+            "Order",
+            None,
+            range(15, 17),
+            "Order20total",
+            "Order 2012 summary",
+        ),
+        # A title that joins the number to the same word beside it: neither is left there whole.
+        (
+            drawn_page("BT /F 12 Tf 72 100 Td (Ref 1 - 1 Month) Tj ET", title="Plan 11"),
+            "Ref",
+            None,
+            range(8, 9),
+            "Ref1-Month",
+            "Plan",
+        ),
+        # A range that starts inside a word: the whole word goes, from the title too.
+        (
+            drawn_page(
+                "BT /F 12 Tf 72 100 Td (Acct 1234567 Name) Tj ET", title="Acct 1234567 Name"
+            ),
+            "Acct",
+            None,
+            range(8, 12),
+            "AcctName",
+            "Acct Name",
+        ),
+        # Marked content that says other words than its glyphs: the whole line goes, and the
+        # title and the marked content lose only the words.
+        (
+            drawn_page(
+                "BT /F 12 Tf 72 100 Td (Acct ) Tj "
+                "/Span <</ActualText (9999)>> BDC (1234) Tj EMC ( Name) Tj ET",
+                title="Acct 9999 Name",
+            ),
+            "Acct",
+            None,
+            range(5, 9),
+            "",
+            "Acct Name",
+        ),
+    ],
+    ids=[
+        "said in another order",
+        "a small copy in its box",
+        "the second of two the same",
+        "joined in the title",
+        "joined in the title on either side",
+        "joined in the title to a word not beside it",
+        "joined in the title to the same word beside it",
+        "from inside a word",
+        "said in other words",
+    ],
+)
+def test_the_words_a_redaction_takes_are_its_own_whole_wherever_the_file_has_them(
+    mine, sent, starts, size, asked, drawn, title
+):
+    """The page loses the line's own glyphs for them, and every hidden copy the words."""
+    doc = upload(mine, sent).json()
+    span = next(
+        each
+        for each in doc["spans"]
+        if each["text"].startswith(starts) and size in (None, each["size"])
+    )
+
+    saved = _opened(_export(mine, doc, [_redact_words(span, asked)]))
+
+    assert_equal(_glyphs_drawn(saved), drawn, "the letters drawn, spaces aside")
+    assert_equal(_info(saved, "Title"), title, "the title")
+
+
+def test_a_link_over_the_line_goes_when_it_holds_the_words_redacted(mine):
+    """A mailto: over the line's label carries the address redacted beside it."""
+    line = "BT /F 12 Tf 72 100 Td (Mail jane@acme.com now) Tj ET"
+    doc = upload(mine, drawn_page(line, link=("mailto:jane@acme.com", "Mail"))).json()
+    span = span_starting(doc, 0, "Mail")
+
+    saved = _opened(_export(mine, doc, [_redact_words(span, range(5, 18))]))
+
+    assert_equal(saved[0].get_links(), [], "the links left on the page")
 
 
 @pytest.mark.parametrize(

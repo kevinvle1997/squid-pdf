@@ -178,6 +178,7 @@ export function asSpanOf(insert: Insert, { font, inFile }: { font: FontInfo | un
     letter_spacing_em: 0,
     room_pt: 0,
     form_field: false,
+    turned: false, // drawn level, as the server draws new text
   };
 }
 
