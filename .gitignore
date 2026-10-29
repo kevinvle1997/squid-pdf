@@ -20,6 +20,8 @@ dist/
 # Environment
 .env
 .env.local
+# The terms env.example suggests: a deployment's own words, private until it serves them.
+/terms.md
 
 # OS
 .DS_Store

@@ -213,7 +213,9 @@ jobs:
       # bash by name turns on pipefail, so a failed check isn't hidden by tee.
       - name: Check through the proxy
         shell: bash
-        run: deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
+        run: |
+          deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
+          grep -q '^ok    the deployment names no terms' /tmp/check.txt
 
       - name: The containers' caps
         run: |
@@ -257,6 +259,17 @@ jobs:
           status=$(upload_from "$second")
           [[ $status == "$let_in" ]] || { echo "$second answered $status, not $let_in: one count"; exit 1; }
           echo "$first used up its uploads; $second, in another /64, was still let in"
+
+      # As a deployer names terms (compose.yaml): checked by the app's own user, as it will
+      # read them, then served through the proxy once the app takes them in.
+      - name: Terms, checked and served
+        shell: bash
+        run: |
+          echo 'SQUIDPDF_TERMS=./fixtures/terms.md' >> .env
+          docker compose run --rm --no-deps app squidpdf terms
+          docker compose up --detach --wait
+          deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check-terms.txt
+          grep -q '^ok    the terms are served: Example terms' /tmp/check-terms.txt
 
       # Only a push to main publishes, so only it keeps what it checked, for publish to push.
       # bash by name turns on pipefail, so a failed save isn't hidden by zstd.

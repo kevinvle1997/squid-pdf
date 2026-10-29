@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Mascot } from "./Mascot";
+import { ScreenTop } from "./ScreenTop";
 import { Sheet } from "./Sheet";
 import styles from "./SheetScreen.module.css";
-import { Wordmark } from "./Wordmark";
 
 interface Props {
   title: ReactNode; // the screen's one heading, in the display size
@@ -15,9 +15,7 @@ interface Props {
 export function SheetScreen({ title, children, foot, sheetClassName }: Props) {
   return (
     <div className={styles.screen}>
-      <header className={styles.top}>
-        <Wordmark />
-      </header>
+      <ScreenTop />
       <main className={styles.middle}>
         <div className={styles.stage}>
           <Mascot className={styles.mascot} />
