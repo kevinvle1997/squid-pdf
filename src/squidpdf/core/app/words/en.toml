@@ -68,6 +68,10 @@ email_broken = "the email address here no longer reads as one"
 empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
 # A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
 not_redacted = "This text couldn't be removed, so the file can't be downloaded with this redaction."
+# A redaction of some words of a line whose erase moved the rest of the line, or removed more of
+# it: said before the download, which still comes, since the words are gone.
+rest_of_line_moved = "Redacting these words moved the rest of the line, so it won't look quite as it did."
+rest_of_line_removed = "Redacting these words removed other words on this line too."
 # A redaction new text is drawn over: the check reads the new text's words in its box too.
 covered_by_new_text = "New text sits over this redaction, so it can't be checked and the file can't be downloaded with it. Move the new text off it."
 # `{places}` are the places below, each in a word of its own.
@@ -116,6 +120,8 @@ changed_to = "Changed to “{text}”."
 # Put back as the document had it, from its margin note.
 put_back = "Put back “{text}”."
 redacted = "Redacted “{text}”."
+# Said as words already redacted are selected and redacted again: nothing more to take.
+already_redacted = "“{text}” is redacted already."
 # Said to a screen reader as new text changes: put on a page, moved, or taken out, its words quoted
 # as above; set in another face, by the name the slip's list shows it by. Typed into again, it's
 # `changed_to`.
@@ -182,8 +188,9 @@ typed_identical = "This edit will look identical."
 typed_different = "This edit will look different."
 typed_similar = "This edit will use a similar font."
 
-# Asked before the user edits text they redacted: yes goes ahead, no keeps the redaction.
+# Asked before the user edits text they redacted, all of it or a part: yes goes ahead, no keeps it.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
+undo_part_redaction = "Part of this text is redacted. Editing it undoes the redaction. Edit it anyway?"
 
 # The ways out of an overflow: what each is called, and what it does.
 shrink_label = "Make it slightly smaller"
@@ -210,6 +217,7 @@ not_found = "Nothing here. It may have expired."  # never shown: the browser re-
 no_such_page = "This document doesn't have that page."
 redaction_conflict = "This text has a redaction. Undo it to edit."
 bad_reference = "A redaction points at text that isn't in this document: {span_id}."
+bad_range = "A redaction points at words its line doesn't have: {span_id}."
 redaction_failed = "Couldn't remove “{text}” on page {page}, so nothing was downloaded."
 redaction_covered = "New text on page {page} sits over a redaction, so the redaction can't be checked and nothing was downloaded. Move the new text off it."
 invalid_request = "Something went wrong sending this to us. Reload the page and try again."

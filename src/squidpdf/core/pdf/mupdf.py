@@ -50,6 +50,7 @@ from squidpdf.core.types import (
     HiddenCopy,
     Page,
     PageFont,
+    PlacedLetter,
     QuarterTurn,
     Rect,
     TextPiece,
@@ -82,6 +83,8 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+# The letters as drawn, each by its glyph: a marked content's text in their place aside.
+_DRAWN_FLAGS = _TEXT_FLAGS | pymupdf.TEXT_IGNORE_ACTUALTEXT
 
 # A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
 _KINDS: dict[str, FontKind] = {
@@ -299,6 +302,11 @@ class _MuPDFDriver:
         letters = self._letters(page, near=boxes)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """The letters drawn with their middle in each box, where each is, in reading order."""
+        letters = self._letters(page, near=boxes, flags=_DRAWN_FLAGS)
+        return [[_placed(letter) for letter in letters.inside(box)] for box in boxes]
+
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
         """Each letter the page draws, and the shape its code picked, in the order drawn."""
         return [
@@ -338,12 +346,14 @@ class _MuPDFDriver:
             if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int, *, near: list[Rect]) -> _PageLetters:
+    def _letters(
+        self, page: int, *, near: list[Rect], flags: int = _TEXT_FLAGS
+    ) -> _PageLetters:
         """The letters of each line on the page whose box meets one of `near`, to find by place.
 
         A line's box holds each of its letters' boxes, so a line left out has none inside them.
         """
-        blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
+        blocks = self.doc[page].get_text("rawdict", flags=flags)["blocks"]
         lines = (line for line in _each_line(blocks) if _meets_any(line["bbox"], near))
         return _page_letters(list(_each_letter(lines)))
 
@@ -491,7 +501,8 @@ class _MuPDFDriver:
         takes every letter its box touches, and a letter's box can reach the lines around it.
         A box with letters left is then erased whole, so old text is never left under new.
         """
-        letters = self._letters(page, near=boxes)
+        # As drawn: a marked content's text lies over its glyphs evenly, not where each is.
+        letters = self._letters(page, near=boxes, flags=_DRAWN_FLAGS)
         with self.file.redaction.links_kept(page):
             # No letter's middle inside: erase the whole box, as nothing else would.
             self.file.redaction.redact(
@@ -507,9 +518,11 @@ class _MuPDFDriver:
             self.file.additions.restore_font(page, resource, font_object)
         return left
 
-    def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
-        self.file.redaction.drop_links(page, boxes)
+    def drop_links(
+        self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
+    ) -> None:
+        """Delete every link whose area overlaps one of `boxes`; with `holding`, if it holds."""
+        self.file.redaction.drop_links(page, boxes, holding=holding)
 
     def hidden_copies(self, page: int) -> list[str]:
         """Every hidden copy on the page, as text, and each string MuPDF may miss."""
@@ -838,6 +851,7 @@ class _Letter:
     box: tuple[float, float, float, float]  # x0, y0, x1, y1, from ascender to descender
     origin: tuple[float, float]  # where it starts, on its baseline
     direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
+    size: float  # its piece's
 
 
 # A letter's middle, down then across, and its place in reading order. A plain tuple:
@@ -888,7 +902,12 @@ def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
         for piece in line["spans"]:
             for char in piece["chars"]:
                 origin = (char["origin"][0], char["origin"][1])
-                yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
+                yield _Letter(char["c"], tuple(char["bbox"]), origin, direction, piece["size"])
+
+
+def _placed(letter: _Letter) -> PlacedLetter:
+    """A letter read from the page, as the engine is told of it."""
+    return PlacedLetter(letter.text, Rect(*letter.box), letter.origin, size=letter.size)
 
 
 def _text_piece(

@@ -579,6 +579,106 @@ describe("redaction", () => {
     await expect.element(line).toBeVisible();
   });
 
+  // Its font's widths, which say where in the line each run of words sits.
+  const MEASURED = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
+  const HERE_REDACTED = `was here ${fill(SENTENCES.redacted, { text: "here" })}`;
+
+  /** Open the field on "was here" and Ctrl+Backspace over "he" in it: "here" is redacted. */
+  async function redactHere(screen: Awaited<ReturnType<typeof render>>) {
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: "Change “was here”" });
+    await expect.element(field).toHaveFocus();
+    selectIn(field.element(), 5, 7);
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    const redacted = screen.getByRole("button", { name: HERE_REDACTED });
+    await expect.element(redacted).toHaveFocus();
+    return { field, redacted };
+  }
+
+  const widthOf = (element: Element | undefined) => element?.getBoundingClientRect().width ?? 0;
+
+  test("Ctrl+Backspace over words selected in the field redacts only them, whole, and boxes only them", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+
+    await expect.element(screen.getByRole("status")).toHaveTextContent(fill(SENTENCES.redacted, { text: "here" }));
+    expect(lastRendered()).toEqual([{ kind: "redact", span_id: "s1", range: [4, 8] }]);
+    // Only the word is boxed: the rest of the line still reads.
+    const [words] = document.querySelectorAll("[class*='redactedWords']");
+    expect(widthOf(words)).toBeGreaterThan(0);
+    expect(widthOf(words)).toBeLessThan(widthOf(redacted.element()));
+    // Its change line stays whole while it has focus, as a redaction's does: no fainter than a mark may be.
+    await expect.element(redacted).toHaveAttribute("data-focus-visible");
+    expect(getComputedStyle(redacted.element(), "::after").opacity).toBe("1");
+  });
+
+  test("a line redacted in part opens with its words boxed over the field and said, and typing asks first", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field, redacted } = await redactHere(screen);
+
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    await expect.element(field).toHaveAccessibleDescription(fill(SENTENCES.redacted, { text: "here" }));
+    // Over the field's own white, as the field is over the page: drawn after it, at its height.
+    const [words] = document.querySelectorAll("[class*='redactedWords']");
+    const zIndexOf = (element: Element | undefined) => (element === undefined ? "" : getComputedStyle(element).zIndex);
+    expect(zIndexOf(words)).toBe(zIndexOf(field.element()));
+    await userEvent.keyboard("s");
+    const asked = screen.getByRole("group", { name: SENTENCES.undo_part_redaction });
+    await expect.element(asked).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Keep redaction" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(redacted).toHaveFocus();
+  });
+
+  test("Edit anyway, asked by a letter typed, types it where it was, and the next goes after it", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field } = await redactHere(screen);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("{End}s");
+    await screen.getByRole("button", { name: "Edit anyway" }).click();
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("s");
+    await expect.element(field).toHaveValue("was heress");
+  });
+
+  test("undoing the words leaves no box behind on the mark", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    await redactHere(screen);
+    expect(document.querySelectorAll("[class*='redactedWords']")).toHaveLength(1);
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    expect(document.querySelectorAll("[class*='redactedWords']")).toHaveLength(0);
+  });
+
+  test("Enter, then Ctrl+Backspace over the whole line it selects, redacts all of it: emptied, it's no edit", async () => {
+    const screen = await openEditor();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).toHaveFocus();
+  });
+
+  test("the chip's Redact takes the words selected in the field, as the keys do", async () => {
+    const screen = await openEditor();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: "Change “was here”" });
+    await expect.element(field).toHaveFocus();
+    selectIn(field.element(), 0, 2);
+    await screen.getByRole("button", { name: "Redact" }).click();
+    const said = `was here ${fill(SENTENCES.redacted, { text: "was" })}`;
+    await expect.element(screen.getByRole("button", { name: said })).toBeInTheDocument();
+  });
+
   test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
     const screen = await openEditor();
     const mark = screen.getByRole("button", { name: "was here" });
@@ -1728,6 +1828,12 @@ function newTextSlip() {
   const slip = document.querySelector("[data-slip]");
   if (slip === null) throw new Error("no slip");
   return page.elementLocator(slip);
+}
+
+/** Select from `start` to `end` in a text field, as a drag over its words would. */
+function selectIn(field: Element, start: number, end: number) {
+  if (!(field instanceof HTMLInputElement)) throw new Error("no field");
+  field.setSelectionRange(start, end);
 }
 
 /** The edits the last render asked for. */

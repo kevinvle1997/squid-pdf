@@ -9,7 +9,7 @@ const changeAt = (id: string, y0: number): SpanReading => ({
   text: "now",
   replaced: true,
   strategy: undefined,
-  redacted: false,
+  redacted: null,
 });
 
 test("a note sits level with its line, and one that would overlap the note above moves down", () => {
@@ -63,12 +63,32 @@ describe("what a note says", () => {
   });
 
   test("a redaction's strikes every word, since it takes them all out", () => {
-    const redaction = { ...changeAt("s", 100), span: aSpan({ id: "s", text: "John Smith" }), redacted: true };
+    const redaction = {
+      ...changeAt("s", 100),
+      span: aSpan({ id: "s", text: "John Smith" }),
+      redacted: "whole" as const,
+    };
     expect(noteOf(redaction)).toEqual({
       label: "Undo: “John Smith” is no longer redacted",
       struck: "John Smith",
       inserted: null,
       was: "John Smith",
+      now: "Redacted",
+    });
+  });
+
+  test("a redaction of some words strikes only those, and says they're redacted", () => {
+    const span = aSpan({ id: "s", text: "Card 4421 then 9918 ends" });
+    const runs = [
+      { start: 5, end: 9 },
+      { start: 15, end: 19 },
+    ];
+    const redaction = { ...changeAt("s", 100), span, text: span.text, replaced: false, redacted: runs };
+    expect(noteOf(redaction)).toEqual({
+      label: "Undo: “4421 … 9918” is no longer redacted",
+      struck: "4421 … 9918",
+      inserted: null,
+      was: "4421 … 9918",
       now: "Redacted",
     });
   });

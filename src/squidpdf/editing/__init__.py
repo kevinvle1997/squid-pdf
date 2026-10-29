@@ -20,6 +20,7 @@ from squidpdf.editing.edits import (
     check_text as check_text,
 )
 from squidpdf.editing.errors import (
+    BadRange as BadRange,
     BadReference as BadReference,
     RedactionConflict as RedactionConflict,
     RedactionFailed as RedactionFailed,

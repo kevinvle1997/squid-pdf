@@ -43,11 +43,13 @@ from squidpdf.editing.fit import (
     insert_span,
     replace_fit,
 )
+from squidpdf.editing.redacted_words import merged_words, redacted_of, words_named
 from squidpdf.editing.types import (
     Applied,
     EditedText,
     InsertNotice,
     Notice,
+    Redacted,
     Replaced,
     Skipped,
     SpanNotice,
@@ -87,13 +89,15 @@ class Resolved:
     order: list[int]
     # How far each page the ops turn is turned on top of its own turn, by original number.
     turns: dict[int, QuarterTurn]
+    # What each redacted span loses, worked out once from its page, by id, in edit order.
+    redacted: dict[str, Redacted]
 
 
 @dataclass(frozen=True, slots=True)
 class _Erase:
-    """A redaction: the span's text and its links go, and nothing is drawn in their place."""
+    """A redaction: the words it takes of a span, and their links, go; nothing is drawn."""
 
-    span: Span
+    redacted: Redacted
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -133,14 +137,14 @@ def resolve(
 ) -> Resolved:
     """The list checked against the document: each edit with what it points at.
 
-    A redaction that points at nothing raises BadReference, and a replace after a redaction of
-    the same text raises RedactionConflict: the order can't undo one. A span edited twice is
-    drawn once, as its last edit leaves it, or a Redact after a Replace would show text gone.
+    A redaction of nothing raises BadReference, of words its text lacks BadRange, and a replace
+    after a redaction of the same text RedactionConflict: the order can't undo one. A span
+    edited twice is drawn once, as its last edit leaves it; its redactions take words together.
     """
     page_count = engine.page_count()
     listed = _EditList(
         page_count,
-        spans=_SpanEdits(latest={}),
+        spans=_SpanEdits(latest={}, redacted_words={}),
         pages=_PageOps(order=list(range(page_count)), turns={}),
         inserts=[],
     )
@@ -158,6 +162,10 @@ def resolve(
         page_count=page_count,
         order=listed.pages.order,
         turns=listed.pages.turns,
+        redacted={
+            span_id: redacted_of(engine, listed.spans.latest[span_id].span, words)
+            for span_id, words in listed.spans.redacted_words.items()
+        },
     )
 
 
@@ -198,6 +206,8 @@ class _SpanEdits:
     """The span edits read so far: each span's last, by id, in the order first edited."""
 
     latest: dict[str, _EditedSpan]
+    # The code points each span's redactions so far take, merged, by id, in edit order.
+    redacted_words: dict[str, tuple[range, ...]]
 
     def add(self, edit: SpanEdit, span: Span | None, *, position: int) -> list[Message]:
         """Read one more edit of a span; returns why it's left out, if it is."""
@@ -207,8 +217,12 @@ class _SpanEdits:
         # A replace of text it doesn't have.
         if span is None:
             return [Message("no_span")]
-        # A redaction of text the document has: later edits can't bring it back.
+        # A redaction of text the document has, with the span's others: nothing undoes it.
         if isinstance(edit, Redact):
+            # .get: the span's first redaction.
+            earlier = self.redacted_words.get(edit.span_id, ())
+            words = merged_words([*earlier, words_named(edit, span)])
+            self.redacted_words[edit.span_id] = words
             self.latest[edit.span_id] = _EditedSpan(edit, span)
             return []
         # A replace of redacted text: the browser undoes a redaction by leaving it out.
@@ -292,13 +306,9 @@ def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
     return list(pages)
 
 
-def redacted_in(resolved: Resolved) -> tuple[Span, ...]:
-    """Every span whose last edit is a redaction, numbered as in the original."""
-    return tuple(
-        edited_span.span
-        for edited_span in resolved.span_edits
-        if isinstance(edited_span.edit, Redact)
-    )
+def redacted_in(resolved: Resolved) -> tuple[Redacted, ...]:
+    """What each span whose last edit is a redaction loses, numbered as in the original."""
+    return tuple(resolved.redacted.values())
 
 
 def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
@@ -365,7 +375,7 @@ def plan(
     ]
     turns_ccw = new_text_turns(engine, resolved) if placed else []
     return [
-        *(_step_for(edited_span, fits) for edited_span in shown),
+        *(_step_for(edited_span, fits, redacted=resolved.redacted) for edited_span in shown),
         *(
             _Place(
                 listed.position,
@@ -391,12 +401,14 @@ def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     return any(strip.y0 < bottom and top < strip.y1 for strip in on_page)
 
 
-def _step_for(edited_span: _EditedSpan, fits: LogFits) -> Step:
-    """What one span edit does to the page."""
+def _step_for(
+    edited_span: _EditedSpan, fits: LogFits, *, redacted: Mapping[str, Redacted]
+) -> Step:
+    """What one span edit does to the page; `redacted` is what each redaction takes, by id."""
     edit = edited_span.edit
     span = edited_span.span
     if isinstance(edit, Redact):
-        return _Erase(span)
+        return _Erase(redacted[span.id])
     if isinstance(edit, Replace):
         return _Redraw(span, edit.text, fits.replaces[span.id])
     assert_never(edit)
@@ -422,15 +434,16 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
     Every erase happens in one pass before any draw: PyMuPDF erases a page at a
     time, and an erase after a redraw would take the new text too.
     """
-    erased = [span for span in map(_erased_by, steps) if span is not None]
+    erased = [span for step in steps for span in _erased_by(step)]
     drawn = [line for line in map(_drawn_by, steps) if line is not None]
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
     # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
     stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
     redacted = redacted_by(steps)
-    # A redaction's links (a mailto: can carry its text) and hidden copies go too.
-    engine.unlink(redacted)
-    engine.drop_hidden_copies(redacted)
+    words = words_of(redacted)
+    # A redaction's links (a mailto: can carry its words) and hidden copies go too.
+    engine.unlink(words, lines=[each.span for each in redacted])
+    engine.drop_hidden_copies(words)
     finished = [_finish_step(engine, step, stuck=stuck) for step in steps]
     return Ran(
         [notice for ran in finished for notice in ran.notices],
@@ -441,7 +454,7 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
 
 def edited_text_by(steps: Sequence[Step]) -> dict[int, EditedText]:
     """The text the steps take out and draw, by page: what the redaction check allows for."""
-    erased = [span for span in map(_erased_by, steps) if span is not None]
+    erased = [span for step in steps for span in _erased_by(step)]
     drawn = [line for line in map(_drawn_by, steps) if line is not None]
     return _edited_text(
         [(span.page, span.text) for span in erased],
@@ -452,8 +465,10 @@ def edited_text_by(steps: Sequence[Step]) -> dict[int, EditedText]:
 def edited_text_in(resolved: Resolved) -> dict[int, EditedText]:
     """The text every edit in `resolved` takes out and draws, by page, as `edited_text_by`."""
     span_edits = resolved.span_edits
+    replaced = [edited.span for edited in span_edits if isinstance(edited.edit, Replace)]
+    erased = [*replaced, *words_of(redacted_in(resolved))]
     return _edited_text(
-        [(edited_span.span.page, edited_span.span.text) for edited_span in span_edits],
+        [(span.page, span.text) for span in erased],
         drawn=[
             *(
                 (edited.span.page, text)
@@ -488,18 +503,25 @@ def _drawn_in(edit: SpanEdit) -> list[str]:
     assert_never(edit)
 
 
-def redacted_by(steps: Sequence[Step]) -> list[Span]:
-    """The spans the steps redact, in order."""
-    return [step.span for step in steps if isinstance(step, _Erase)]
+def redacted_by(steps: Sequence[Step]) -> list[Redacted]:
+    """What the steps redact, span by span, in order."""
+    return [step.redacted for step in steps if isinstance(step, _Erase)]
 
 
-def _erased_by(step: Step) -> Span | None:
-    """The span whose text a step erases first; None for one that only draws."""
-    if isinstance(step, _Erase | _Redraw):
-        return step.span
+def words_of(redacted: Sequence[Redacted]) -> list[Span]:
+    """Every run of words the redactions take, each a span of its own, in order."""
+    return [words for each in redacted for words in each.words]
+
+
+def _erased_by(step: Step) -> list[Span]:
+    """The text a step erases first, as spans: none for one that only draws."""
+    if isinstance(step, _Erase):
+        return list(step.redacted.words)
+    if isinstance(step, _Redraw):
+        return [step.span]
     # An insert: there was no text there.
     if isinstance(step, _Place):
-        return None
+        return []
     assert_never(step)
 
 

@@ -1,0 +1,21 @@
+{
+  "about": "What a redaction of part of a span's text takes, by code point. Each `widened` case is a range and the whole words it takes, without spaces at either end, or null where it takes none; each `merged` case is a span's ranges, and the runs they make together. Read by tests/editing/test_redacted_words.py and react/src/editing/redaction.test.ts: the browser widens a selection, and merges a span's redactions, as the server does.",
+  "widened": [
+    { "what": "inside a word: the whole word", "text": "Acct 1234567 Name", "range": [8, 12], "words": [5, 12] },
+    { "what": "across two words: both, whole", "text": "Card 4421 then 9918", "range": [6, 12], "words": [5, 14] },
+    { "what": "a space either side: no word to take", "text": "Card 4421 then", "range": [4, 10], "words": [5, 9] },
+    { "what": "punctuation selected stays, and isn't widened past", "text": "Tel.: 555-1234", "range": [11, 14], "words": [10, 14] },
+    { "what": "a mark on a letter is part of its word", "text": "José 1234", "range": [0, 2], "words": [0, 5] },
+    { "what": "a letter past the first 65,536 is one code point", "text": "𝐀x 4421", "range": [3, 5], "words": [3, 7] },
+    { "what": "only a space: none", "text": "Card 4421", "range": [4, 5], "words": null },
+    { "what": "only a next line (U+0085), a space to the server: none", "text": "a \u0085 b", "range": [2, 3], "words": null },
+    { "what": "only a file separator (U+001C), a space to the server: none", "text": "a \u001c b", "range": [2, 3], "words": null },
+    { "what": "a zero-width no-break space isn't one: it stays", "text": "a ﻿ b", "range": [2, 3], "words": [2, 3] }
+  ],
+  "merged": [
+    { "what": "apart: each its own run, in the text's order", "ranges": [[10, 14], [0, 4]], "runs": [[0, 4], [10, 14]] },
+    { "what": "overlapping: one run", "ranges": [[2, 4], [3, 7]], "runs": [[2, 7]] },
+    { "what": "meeting end to start: one run", "ranges": [[5, 9], [9, 14]], "runs": [[5, 14]] },
+    { "what": "one inside another: the outer", "ranges": [[2, 10], [4, 6]], "runs": [[2, 10]] }
+  ]
+}

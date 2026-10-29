@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/page_order_cases.json";
+import merged from "../../../tests/editing/redacted_words_cases.json";
 import type { Edit, Insert } from "../api/types";
 import { A4, aDeletePage, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
@@ -25,8 +26,49 @@ const read = (history: History, previous?: Reading) =>
 describe("what differs from a page's strips", () => {
   test("a redaction is a span to draw bare, and one put back reads as the original again", () => {
     const redacted = read(add(EMPTY_HISTORY, aRedact("a"))).pages.get(0);
-    expect(differing(redacted, undefined)).toEqual([{ span: SPANS[0], text: "was a", redacted: true }]);
-    expect(differing(undefined, redacted)).toEqual([{ span: SPANS[0], text: "was a", redacted: false }]);
+    expect(differing(redacted, undefined)).toEqual([{ span: SPANS[0], text: "was a", redacted: "whole" }]);
+    expect(differing(undefined, redacted)).toEqual([{ span: SPANS[0], text: "was a", redacted: null }]);
+  });
+});
+
+describe("a redaction of some words of a span", () => {
+  // The first letter is one code point, and two of the field's units.
+  const card = aSpan({ id: "card", text: "\u{1D400} 12 34 56" });
+  const readCard = (...edits: Edit[]) =>
+    project({ spans: [card], pages: [A4] }, entriesOf(add(EMPTY_HISTORY, ...edits)));
+
+  test("reads by the field's units, each run of words that overlap or meet as one, and each is sent", () => {
+    const reading = readCard(
+      aRedact("card", { range: [2, 4] }),
+      aRedact("card", { range: [3, 7] }),
+      aRedact("card", { range: [8, 10] }),
+    );
+    expect(reading.spans.get("card")?.redacted).toEqual([
+      { start: 3, end: 8 },
+      { start: 9, end: 11 },
+    ]);
+    expect(reading.spans.get("card")?.text).toBe(card.text);
+    expect(reading.edits).toHaveLength(3);
+  });
+
+  test("one of all of it takes the runs in, as runs that make all of it do", () => {
+    expect(readCard(aRedact("card", { range: [2, 4] }), aRedact("card")).spans.get("card")?.redacted).toBe("whole");
+    expect(
+      readCard(aRedact("card", { range: [0, 5] }), aRedact("card", { range: [5, 10] })).spans.get("card")?.redacted,
+    ).toBe("whole");
+  });
+
+  test.each(merged.merged)("runs merge as the server merges them: $what", ({ ranges, runs }) => {
+    const line = aSpan({ id: "line", text: "abcdefghijklmnopqrstuvwxyz" });
+    const edits = ranges.map(([start = 0, end = 0]) => aRedact("line", { range: [start, end] }));
+    const reading = project({ spans: [line], pages: [A4] }, entriesOf(add(EMPTY_HISTORY, ...edits)));
+    expect(reading.spans.get("line")?.redacted).toEqual(runs.map(([start, end]) => ({ start, end })));
+  });
+
+  test("redrawn alike only with the same runs", () => {
+    const one = readCard(aRedact("card", { range: [2, 4] }));
+    expect(sameSpan(one.spans.get("card"), readCard(aRedact("card", { range: [2, 4] })).spans.get("card"))).toBe(true);
+    expect(sameSpan(one.spans.get("card"), readCard(aRedact("card", { range: [5, 7] })).spans.get("card"))).toBe(false);
   });
 });
 
@@ -61,7 +103,7 @@ describe("what the document reads as", () => {
 
   test("a redaction takes the span out, and is always sent", () => {
     const reading = read(add(EMPTY_HISTORY, aRedact("b")));
-    expect(reading.spans.get("b")).toMatchObject({ redacted: true, replaced: false, text: "was b" });
+    expect(reading.spans.get("b")).toMatchObject({ redacted: "whole", replaced: false, text: "was b" });
     expect(reading.edits).toEqual([{ kind: "redact", span_id: "b" }]);
   });
 

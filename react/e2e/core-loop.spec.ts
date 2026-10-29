@@ -310,6 +310,31 @@ test("Cmd+Delete redacts a line, and the file downloaded no longer has its words
   expect(wordsOf(redacted)).not.toContain("This agreement is made");
 });
 
+test("Words selected in a line's field are all Cmd+Delete redacts, and the file keeps the rest of the line", async ({
+  page,
+}) => {
+  await open(page);
+  await page.getByRole("button", { name: LINE }).focus();
+  await page.keyboard.press("Enter");
+  const field = page.getByRole("textbox", { name: `Change “${LINE}”` });
+  await expect(field).toBeFocused();
+  const date = "14 March 2026";
+  const start = LINE.indexOf(date);
+  const selected = { start, end: start + date.length };
+  await field.evaluate((input: HTMLInputElement, at) => input.setSelectionRange(at.start, at.end), selected);
+  await page.keyboard.press("ControlOrMeta+Backspace");
+  await expect(page.getByRole("button", { name: `${LINE} Redacted “${date}”.` })).toBeFocused();
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const words = wordsOf(await reread(page, await bytesOf(await downloading)));
+  expect(words).toContain("This agreement is made on");
+  expect(words).toContain("between Wescott");
+  // Only the second page's own date is left: the line's went.
+  expect(words.split(date)).toHaveLength(2);
+});
+
 test("Split here downloads two files, each with only its pages, and the edit in the one it's on", async ({ page }) => {
   await open(page);
   await edit(page, "This agreement is made on 9 June 2026 between");

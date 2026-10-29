@@ -23,6 +23,7 @@ from squidpdf.core.types import (
     HiddenCopy,
     Page,
     PageFont,
+    PlacedLetter,
     QuarterTurn,
     Rect,
     TextPiece,
@@ -104,6 +105,10 @@ class PdfDriver(Protocol):
         """The letters inside each box on the page, in reading order."""
         ...
 
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """The letters drawn with their middle in each box, where each is, in reading order."""
+        ...
+
     def drawn_boxes(self, page: int) -> list[Rect]:
         """The box around each thing the page draws but text: lines, shapes and pictures.
 
@@ -171,8 +176,13 @@ class PdfDriver(Protocol):
         """
         ...
 
-    def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+    def drop_links(
+        self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
+    ) -> None:
+        """Delete every link whose area overlaps one of `boxes`, whatever it does.
+
+        With `holding`, only one whose action holds text it's true of: an address, a file name.
+        """
         ...
 
     def hidden_copies(self, page: int) -> list[str]:

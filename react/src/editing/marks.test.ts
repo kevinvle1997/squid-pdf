@@ -4,7 +4,7 @@ import { editNote, lookOf } from "./marks";
 import { shortWarningOf } from "./verdicts";
 
 const span = aSpan({ id: "s1" });
-const changed = { span, text: "is s1", replaced: true, strategy: undefined, redacted: false };
+const changed = { span, text: "is s1", replaced: true, strategy: undefined, redacted: null };
 const ownFont = aFont("Times-Roman");
 const substitutedFont = aFont("Arial", {
   substitute: "Liberation Sans Regular",
@@ -31,6 +31,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
       changed: false,
       trouble: false,
       redacted: false,
+      redactedInPart: false,
       unredacted: false,
       note: null,
     });
@@ -108,7 +109,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("a redaction says nothing until it's drawn, then what the server found, warned", () => {
-    const redacted = { ...changed, replaced: false, redacted: true };
+    const redacted = { ...changed, replaced: false, redacted: "whole" as const };
     const before = lookAt({ span, font: ownFont, reading: redacted });
     const signed = aRedaction({ hidden_copies: ["signatures"], message: "No signatures in the download." });
     const after = lookAt({ span, font: ownFont, reading: redacted, redaction: signed });
@@ -118,7 +119,7 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("a redaction the server found still there is marked as a warning, and says so", () => {
-    const redacted = { ...changed, replaced: false, redacted: true };
+    const redacted = { ...changed, replaced: false, redacted: "whole" as const };
     const left = aRedaction({ verified: false, message: "This text couldn't be removed." });
     const look = lookAt({ span, font: ownFont, reading: redacted, redaction: left });
     expect(look).toMatchObject({ redacted: true, unredacted: true });
@@ -140,7 +141,7 @@ describe("an edit's own verdict, after the edit", () => {
     same_widths: true,
     glyphs: halfWideGlyphs("Total 0123456789"),
   });
-  const typed = (text: string) => ({ span: lacking, text, replaced: true, strategy: undefined, redacted: false });
+  const typed = (text: string) => ({ span: lacking, text, replaced: true, strategy: undefined, redacted: null });
   const similar = "Edits here use Liberation Serif Regular, whose letters are the same width as the original's.";
 
   test("a span a similar font drew at upload, changed into words its own copy draws, has no note once its render says so", () => {

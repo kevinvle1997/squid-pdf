@@ -23,7 +23,7 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "Add text on the line below", keys: [`${COMMAND}Enter`] },
   { what: "Move new text, a point or ten", keys: ["←↑↓→", "Shift ←↑↓→"] },
   { what: "Undo, or redo", keys: [`${COMMAND}Z`, `${COMMAND}Shift Z`] },
-  { what: "Redact the line", keys: [`${COMMAND}Delete`] },
+  { what: "Redact the words selected in a line you edit, or the whole line", keys: [`${COMMAND}Delete`] },
   { what: "Export", keys: [`${COMMAND}S`] },
   { what: "This list", keys: ["?"] },
 ];

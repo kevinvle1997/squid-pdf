@@ -23,6 +23,10 @@ SAME_WIDTH = 1.0
 # ...and only when they share at least this many letters: a few can agree by chance.
 SAME_FONT_SHARED = 3
 
+# A letter a redaction left further than this from where it was has moved: past the rounding
+# of a rewritten line, well short of anything a reader sees.
+MOVED_PT = 0.05
+
 # Fit. The server's check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
 # Past its room by less than this, a line isn't too long: the warning, to a tenth of a

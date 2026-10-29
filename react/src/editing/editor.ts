@@ -36,7 +36,7 @@ import {
 } from "./notices";
 import { leftOutSentence, putBackSentence } from "./pageDeletion";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
-import { project, type Reading, type SpanReading, textIn, UNEDITED } from "./project";
+import { project, type Reading, type Redacted, redactedBetween, type SpanReading, textIn, UNEDITED } from "./project";
 import { type Drawn, landedFitOf, landedNewTextFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NO_SHIPPED_FACES, type ShippedFaces } from "./shippedFaces";
 import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
@@ -102,6 +102,13 @@ export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusFi
 export interface Unredacting {
   readonly spanId: string;
   readonly press: Press | null; // the press that asked: where the caret goes, if it's edited
+  readonly typed: Typed | null; // what was typed in it that asked, if typing did: typed in once it's edited
+}
+
+/** What a field reads as typed, and where the caret was: typed in again once the field opens. */
+export interface Typed {
+  readonly text: string;
+  readonly caret: number | null; // in the field's units; none known
 }
 
 /** Words for a screen reader, counted: the same words announced again are heard again. */
@@ -387,12 +394,36 @@ function stepped(
     change(editor, action);
     return;
   }
-  const span = editor.store.get().layout.spans.get(spanId);
+  const { layout, reading: before } = editor.store.get();
+  const span = layout.spans.get(spanId);
+  const redacting = step.some(({ edit }) => edit.kind === "redact");
+  // A redaction is said by the words it puts back or takes out, not by the line, which may keep others redacted.
+  const was = redacting ? (before.spans.get(spanId)?.redacted ?? null) : undefined;
   change(editor, action, ({ reading, doc }) => ({
-    announcement: announcing(fill(doc.sentences[key], { text: span === undefined ? "" : textIn(reading, span) })),
+    announcement: announcing(saidOfStep(doc.sentences, { key, span, reading, was })),
     scrollTo: scrollingTo(spanId),
     ...(on.marginNote && { focusTo: { spanId } }),
   }));
+}
+
+/**
+ * What an undo or redo of an edit of `span` says: what it reads now; of a redaction, `was` what it took before, the
+ * words the undo puts back, or the redo takes out.
+ */
+function saidOfStep(
+  sentences: Sentences,
+  {
+    key,
+    span,
+    reading,
+    was,
+  }: { key: "back_to" | "changed_to"; span: SpanInfo | undefined; reading: Reading; was: Redacted | null | undefined },
+): string {
+  if (span === undefined) return fill(sentences[key], { text: "" });
+  if (was === undefined) return fill(sentences[key], { text: textIn(reading, span) });
+  const now = reading.spans.get(span.id)?.redacted ?? null;
+  if (key === "back_to") return fill(sentences.put_back, { text: redactedBetween(span.text, { from: was, to: now }) });
+  return fill(sentences.redacted, { text: redactedBetween(span.text, { from: now, to: was }) });
 }
 
 /**

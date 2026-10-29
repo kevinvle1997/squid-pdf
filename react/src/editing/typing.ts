@@ -32,6 +32,7 @@ export interface SpanDraft {
   readonly spanId: string;
   readonly page: number;
   readonly press: Press | null; // the press that opened it, if one did: where the caret goes
+  readonly caret: number | null; // where the caret goes as it opens, in the field's units, if typing put it there
   readonly text: string;
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
   readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
@@ -46,15 +47,18 @@ export function spanDraftOf(state: Pick<EditorState, "draft">): SpanDraft | null
   return state.draft?.kind === "span" ? state.draft : null;
 }
 
-/** Start typing into a span, from what it reads now. A redacted span asks first, in place. */
+/**
+ * Start typing into a span, from what it reads now. A redacted span asks first, in place; one redacted in part opens,
+ * for more of its words to be selected, and asks as typing would change it.
+ */
 export function edit(editor: Editor, spanId: string, press: Press | null): void {
   const { store } = editor;
   const { layout, reading, doc } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
   // Un-redacting by accident is a leak: the one edit that asks first (quality.md, Modals and prompts).
-  if (reading.spans.get(spanId)?.redacted) {
-    store.set({ unredacting: { spanId, press }, announcement: announcing(doc.sentences.undo_redaction) });
+  if (reading.spans.get(spanId)?.redacted === "whole") {
+    store.set({ unredacting: { spanId, press, typed: null }, announcement: announcing(doc.sentences.undo_redaction) });
     return;
   }
   readDocumentDates(editor);
@@ -73,6 +77,7 @@ export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; 
     spanId: span.id,
     page: span.page,
     press,
+    caret: null,
     text,
     strategy: now?.strategy,
     valueEditorOpen: false,
@@ -213,12 +218,24 @@ const SPACING_CONTROL = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
 // The rest of what check_text (editing/edits.py) refuses draws nothing, so it's dropped.
 const NOT_ON_A_LINE = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u202A-\u202E\u2066-\u2069]/gu;
 
-/** Type `typed` into the field: what it warns of is heard as it changes. */
-export function typeInto(editor: Editor, typed: string): void {
+/**
+ * Type `typed` into the field, the caret left at `caret`: what it warns of is heard as it changes. In a span redacted in
+ * part, it asks first, and what's typed waits for the answer.
+ */
+export function typeInto(editor: Editor, typed: string, { caret = null }: { caret?: number | null } = {}): void {
   const state = editor.store.get();
   const { draft } = state;
   if (draft === null) return;
   if (draft.kind === "span") {
+    // Typing in a span redacted in part would undo it: it asks first, the field shut, as opening a redacted one does.
+    const undoesRedaction = state.reading.spans.get(draft.spanId)?.redacted != null && typed !== draft.text;
+    if (undoesRedaction) {
+      const unredacting = { spanId: draft.spanId, press: null, typed: { text: lineOf(typed), caret } };
+      finish(editor, false, {
+        also: { unredacting, announcement: announcing(state.doc.sentences.undo_part_redaction) },
+      });
+      return;
+    }
     editor.store.set(typedState({ ...state, draft }, typed));
     return;
   }

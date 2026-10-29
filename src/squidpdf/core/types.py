@@ -258,6 +258,23 @@ def same_font(text: TextPiece | Span, other: TextPiece | Span) -> bool:
 EM = 1000  # widths are given per 1000 em, as PDF font widths are
 
 
+# What became of the letters a redaction of some words left of their line, once erased.
+RestOfLine = Literal["in_place", "moved", "removed"]
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedLetter:
+    """A letter as the page draws it, and where: its box, from ascender to descender.
+
+    By its glyph's own letter, not the text a marked content gives in its place (ActualText).
+    """
+
+    letter: str
+    box: Rect
+    origin: tuple[float, float]  # where it starts, on its baseline
+    size: float
+
+
 @dataclass(frozen=True, slots=True)
 class DrawnGlyph:
     """A letter as the page draws it: the shape its code picked, and where it starts."""

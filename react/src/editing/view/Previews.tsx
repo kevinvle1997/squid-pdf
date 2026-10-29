@@ -1,11 +1,13 @@
 // What the browser draws over a page until the server's render shows it: a span's new words, a
 // redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
+import { Fragment } from "react";
 import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
 import { newTextFaceOf } from "../newText";
 import type { PageState } from "../page";
 import { differing } from "../project";
+import { redactedWordsAcross } from "../redaction";
 import { isUnderStrip, stripBoxOf } from "../redrawRegions";
 import type { Strip } from "../render";
 import { fontOf } from "../spanFonts";
@@ -93,7 +95,7 @@ export function Previews({
   const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
   return previews.map(({ span, text, redacted, strategy }) => {
     // A redaction leaves the page bare where its words were, as the download will.
-    if (redacted) {
+    if (redacted === "whole") {
       return (
         <span
           key={span.id}
@@ -102,6 +104,26 @@ export function Previews({
           data-preview=""
           style={boxOf(span.bbox, info)}
         />
+      );
+    }
+    // Bare where its words were: over the page's own pixels, where a strip still shows words since put back.
+    if (redacted !== null) {
+      const glyphs = fontOf(page.fonts, span)?.glyphs;
+      return (
+        <Fragment key={span.id}>
+          {isUnderStrip(span.bbox, { strips, info }) && (
+            <Original box={stripBoxOf(span, info)} info={info} src={page.src} />
+          )}
+          {redactedWordsAcross(span, { runs: redacted, glyphs }).map(({ x0, x1 }) => (
+            <span
+              key={x0}
+              className={styles.preview}
+              aria-hidden="true"
+              data-preview=""
+              style={boxOf({ ...span.bbox, x0, x1 }, info)}
+            />
+          ))}
+        </Fragment>
       );
     }
     // Put back: the page's own pixels are exactly right, under any strip still drawn over its row.

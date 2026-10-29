@@ -49,3 +49,8 @@
   .roomEnds { border-color: CanvasText; }
   .valueRing { outline-color: Highlight; }
 }
+/* Words redacted already, over their letters in the field as on the page, above it: its clicks go through. */
+.redactedWords {
+  composes: redacted from "../../ui/Redacted.module.css";
+  position: absolute; z-index: var(--z-field); pointer-events: none;
+}

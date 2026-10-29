@@ -29,10 +29,15 @@ from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
 from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
+    CARD_LINE,
+    FIRST_NUMBER,
+    SECOND_NUMBER,
     InProcess,
     around,
+    drawn_page,
     span_starting,
     upload,
+    with_a_card_line,
 )
 from tests.conftest import (
     CHOSEN,
@@ -1675,10 +1680,11 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, do
     assert_in("ninety days", _opened(response)[1].get_text(), "the edit that was good")
 
 
-def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc):
+@pytest.mark.parametrize("part", [{}, {"range": [0, 4]}], ids=["all of it", "part of it"])
+def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc, part):
     """Redaction wins: the list's order must not bring the text back into the file."""
     span = next(s for s in doc["spans"] if s["page"] == 1)
-    redact = {"kind": "redact", "span_id": span["id"]}
+    redact = {"kind": "redact", "span_id": span["id"], **part}
     replace = {"kind": "replace", "span_id": span["id"], "text": span["text"]}
 
     response = _export(mine, doc, [redact, replace])
@@ -1728,6 +1734,169 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     got = response.json()
     expected = ("bad_reference", {"span_id": "nosuchspan00"})
     assert_equal((got["code"], got["params"]), expected, "the problem, unsaid")
+
+
+@pytest.mark.parametrize(
+    "part",
+    [[19, 99], [9, 5], [5, 5], [4, 5], [-1, 3]],
+    ids=["past its end", "backwards", "empty", "only a space", "before its start"],
+)
+def test_a_redaction_of_words_its_line_does_not_have_fails_the_export(mine, part):
+    """As one pointing at nothing: skipping it would send the words the user asked to remove."""
+    doc = upload(mine, with_a_card_line()).json()
+    card = span_starting(doc, 0, "Card")
+
+    response = _export(mine, doc, [{"kind": "redact", "span_id": card["id"], "range": part}])
+
+    assert_problem(response, "bad_range", 422)
+    said = words.sentence("bad_range").format(span_id=card["id"])
+    assert_equal(response.json()["detail"], said, "what the user reads")
+
+
+def _redact_words(span: dict, part: range) -> dict:
+    """An edit redacting the words of `span` that `part` names, by code point."""
+    return {"kind": "redact", "span_id": span["id"], "range": [part.start, part.stop]}
+
+
+def _letters_drawn(pdf: pymupdf.Document) -> list[tuple[str, float, float]]:
+    """Each letter the first page draws, and where its baseline starts, to 0.01 pt."""
+    return [
+        (char["c"], round(char["origin"][0], 2), round(char["origin"][1], 2))
+        for block in pdf[0].get_text("rawdict")["blocks"]
+        for line in block["lines"]
+        for piece in line["spans"]
+        for char in piece["chars"]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parts", "title"),
+    [
+        ([FIRST_NUMBER], "Card then 9918 ends"),
+        ([FIRST_NUMBER, SECOND_NUMBER], "Card then ends"),
+        # "4421 then" and "then 9918", which overlap: one run, from the first to the last.
+        ([range(5, 14), range(10, 19)], "Card ends"),
+    ],
+    ids=["one number", "both numbers", "overlapping words"],
+)
+def test_words_of_a_line_redacted_go_and_the_rest_stays_where_it_was(mine, parts, title):
+    """Each run goes, from the page and from the title, and every other letter stays put."""
+    sent = with_a_card_line()
+    doc = upload(mine, sent).json()
+    card = span_starting(doc, 0, "Card")
+    before = _letters_drawn(pymupdf.open(stream=sent, filetype="pdf"))
+
+    response = _export(mine, doc, [_redact_words(card, part) for part in parts])
+
+    saved = _opened(response)
+    taken = {at for part in parts for at in part}
+    kept = [letter for at, letter in enumerate(before) if at not in taken]
+    assert_equal(_letters_drawn(saved), kept, "the line's other letters, each where it was")
+    assert_equal(_info(saved, "Title"), title, "the title, less the words redacted")
+    everything = _everything_in(saved)
+    for word in re.finditer(r"\S+", CARD_LINE):
+        if taken.issuperset(range(word.start(), word.end())):
+            assert_not_in(word[0], everything, "a word redacted, anywhere in the file")
+
+
+def _glyphs_drawn(pdf: pymupdf.Document) -> str:
+    """The letters the first page's drawing writes, in the order drawn, spaces aside."""
+    letters = (chr(char[0]) for run in pdf[0].get_texttrace() for char in run["chars"])
+    return "".join(letter for letter in letters if not letter.isspace())
+
+
+_ACCOUNT = "BT /F 12 Tf 72 100 Td (Acct 1234 Name) Tj ET"  # a line with a number in it
+
+
+@pytest.mark.parametrize(
+    ("sent", "starts", "part", "drawn", "title"),
+    [
+        # Marked content that says its glyphs in another order: the glyphs "1234" go.
+        (
+            drawn_page(f"/Span <</ActualText (Name Acct 1234)>> BDC {_ACCOUNT} EMC"),
+            "Name",
+            range(10, 14),
+            "AcctName",
+            "null",
+        ),
+        # The same line small, drawn in the big one's box first: only the big line's words go.
+        (
+            drawn_page(
+                "BT /F 6 Tf 74 118 Td (Card 4421 then) Tj ET "
+                "BT /F 30 Tf 72 110 Td (Card 4421 then) Tj ET"
+            ),
+            "Card 4421 then@30",
+            range(5, 9),
+            "Card4421thenCardthen",
+            "null",
+        ),
+        # A title that joins the number to the word before it.
+        (
+            drawn_page(_ACCOUNT, title="Acct1234 Name"),
+            "Acct",
+            range(5, 9),
+            "AcctName",
+            "Acct Name",
+        ),
+        # A range that starts inside a word: the whole word goes, from the title too.
+        (
+            drawn_page(
+                "BT /F 12 Tf 72 100 Td (Acct 1234567 Name) Tj ET", title="Acct 1234567 Name"
+            ),
+            "Acct",
+            range(8, 12),
+            "AcctName",
+            "Acct Name",
+        ),
+        # Marked content that says other words than its glyphs: the whole line goes, and the
+        # title and the marked content lose only the words.
+        (
+            drawn_page(
+                "BT /F 12 Tf 72 100 Td (Acct ) Tj "
+                "/Span <</ActualText (9999)>> BDC (1234) Tj EMC ( Name) Tj ET",
+                title="Acct 9999 Name",
+            ),
+            "Acct",
+            range(5, 9),
+            "",
+            "Acct Name",
+        ),
+    ],
+    ids=[
+        "said in another order",
+        "a small copy in its box",
+        "joined in the title",
+        "from inside a word",
+        "said in other words",
+    ],
+)
+def test_the_words_a_redaction_takes_are_its_own_whole_wherever_the_file_has_them(
+    mine, sent, starts, part, drawn, title
+):
+    """The page loses the line's own glyphs for them, and every hidden copy the words."""
+    doc = upload(mine, sent).json()
+    text, _at, size = starts.partition("@")
+    span = next(
+        each
+        for each in doc["spans"]
+        if each["text"].startswith(text) and (not size or each["size"] == float(size))
+    )
+
+    saved = _opened(_export(mine, doc, [_redact_words(span, part)]))
+
+    assert_equal(_glyphs_drawn(saved), drawn, "the letters drawn, spaces aside")
+    assert_equal(_info(saved, "Title"), title, "the title")
+
+
+def test_a_link_over_the_line_goes_when_it_holds_the_words_redacted(mine):
+    """A mailto: over the line's label carries the address redacted beside it."""
+    line = "BT /F 12 Tf 72 100 Td (Mail jane@acme.com now) Tj ET"
+    doc = upload(mine, drawn_page(line, link=("mailto:jane@acme.com", "Mail"))).json()
+    span = span_starting(doc, 0, "Mail")
+
+    saved = _opened(_export(mine, doc, [_redact_words(span, range(5, 18))]))
+
+    assert_equal(saved[0].get_links(), [], "the links left on the page")
 
 
 @pytest.mark.parametrize(

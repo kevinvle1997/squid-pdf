@@ -14,6 +14,7 @@ import { retryImages } from "../images";
 import { noticeLines } from "../notices";
 import { neverEdited } from "../page";
 import { pagesShown } from "../project";
+import { takesSelection } from "../redaction";
 import { loadShippedFaces } from "../shippedFaces";
 import { isWork, readStoredAgain, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
 import { Bar } from "./Bar";
@@ -22,7 +23,7 @@ import { DeletedPage } from "./DeletePage";
 import styles from "./EditorShell.module.css";
 import { FindBar } from "./FindBar";
 import { HowToStart } from "./HowToStart";
-import { isOnMarginNote, isTyping, newTextOn, pageOn, spanOn } from "./keys";
+import { isOnMarginNote, isTyping, newTextOn, pageOn, selectedIn, spanOn } from "./keys";
 import { Page } from "./Page";
 import { PageList } from "./PageList";
 import { SplitHere } from "./SplitHere";
@@ -61,12 +62,15 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
     resumeWork(editor);
     announceOpening(editor);
     const key = (event: KeyboardEvent) => {
-      const command = commandFor(event, isTyping(event.target));
+      const { target } = event;
+      const selected = selectedIn(target);
+      const selecting = selected !== null && takesSelection(editor.store.get(), selected);
+      const command = commandFor(event, isTyping(target), { selecting });
       if (command === undefined) return;
       event.preventDefault();
-      const { target } = event;
       const marginNote = isOnMarginNote(target);
-      command.run(editor, { spanId: spanOn(target), page: pageOn(target), newTextId: newTextOn(target), marginNote });
+      const pressedOn = { page: pageOn(target), newTextId: newTextOn(target), marginNote };
+      command.run(editor, { ...pressedOn, spanId: spanOn(target), selected });
     };
     const online = () => {
       editor.queue.retry();

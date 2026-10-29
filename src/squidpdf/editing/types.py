@@ -16,7 +16,10 @@ from squidpdf.core import (
     Message,
     MessageInfo,
     Page,
+    PlacedLetter,
+    RestOfLine,
     SaidInfo,
+    Span,
     Style,
 )
 from squidpdf.documents.types import ApproximateInfo
@@ -87,6 +90,21 @@ class Applied:
 
 
 @dataclass(frozen=True, slots=True)
+class Redacted:
+    """What a span's redactions take: its redacted words, where the page draws them, the rest.
+
+    Each run of redacted words in `words` is a span of its own: its words, and the box round
+    their letters, keeping the line's pieces. All of the span is one, with no `rest`.
+    """
+
+    span: Span  # as the document has it
+    words: tuple[Span, ...]
+    # The letters it leaves, where the page drew them, spaces aside; None when the words
+    # weren't among its letters, so the whole line goes with them.
+    rest: tuple[PlacedLetter, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
 class EditedText:
     """The text the edits on one page take out, and the text they draw in its place or anew."""
 
@@ -105,6 +123,7 @@ class Redaction:
     verified: bool
     hidden_copies: list[HiddenPlace]
     covered: bool  # its words are left only in its box, under new text sharing one
+    rest: RestOfLine  # what its erase did to the letters it left of its line
 
 
 @dataclass(frozen=True, slots=True)

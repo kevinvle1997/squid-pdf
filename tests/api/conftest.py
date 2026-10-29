@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+import pymupdf
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -115,6 +116,41 @@ class InProcess:
 
     async def run(self, _timeout, task):
         return task()
+
+
+# The facts of `with_a_card_line`: its one line, and its two numbers, by code point.
+CARD_LINE = "Card 4421 then 9918 ends"
+FIRST_NUMBER = range(5, 9)
+SECOND_NUMBER = range(15, 19)
+
+
+def with_a_card_line() -> bytes:
+    """A page whose one line holds two numbers, its title the line's words: a hidden copy."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), CARD_LINE, fontname="helv", fontsize=12)
+    doc.set_metadata({"title": CARD_LINE})
+    return doc.tobytes()
+
+
+def drawn_page(drawing: str, *, title: str = "", link: tuple[str, str] | None = None) -> bytes:
+    """A page whose drawing is `drawing`, its font Helvetica as `/F`, with `title` its title.
+
+    `link` is an address, and the words its link sits over. Written by hand, to draw text as
+    some files do: in pieces, spaced out, in marked content, or twice over.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # A font for the drawing to name: PyMuPDF adds one with the text it writes, off the page.
+    page.insert_text((0, -100), "x", fontname="helv", fontsize=1)
+    [(*_, resource, _referencer)] = page.get_fonts()
+    doc.update_stream(page.get_contents()[0], drawing.replace("/F ", f"/{resource} ").encode())
+    if link is not None:
+        address, over = link
+        [box] = page.search_for(over)
+        page.insert_link({"kind": pymupdf.LINK_URI, "from": box, "uri": address})
+    doc.set_metadata({"title": title})
+    return doc.tobytes()
 
 
 def upload(client: TestClient, body: bytes) -> Response:

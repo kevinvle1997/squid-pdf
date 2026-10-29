@@ -6,7 +6,9 @@ import base64
 import itertools
 import json
 import random
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any, cast
 
 import pymupdf
 import pytest
@@ -14,18 +16,22 @@ import pytest
 from squidpdf.api import constants as api_constants
 from squidpdf.core import COPY_PLACES, Engine, Message, words, write_dense
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
+from squidpdf.core.types import PlacedLetter, Rect
 from squidpdf.documents import store
 from squidpdf.documents.store import FolderStore
 from squidpdf.editing import constants as editing_constants
 from tests.api.conftest import (
     InProcess,
     around,
+    drawn_page,
     edit_counts,
     export_lines,
     refusing_own_copies,
     span_starting,
     upload,
+    with_a_card_line,
 )
 from tests.conftest import NAME_COPIES, REDACTED_NAME, in_a_copy_lacking, with_hidden_copies
 from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
@@ -169,6 +175,153 @@ def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
 
     expected = {"verified": True, "hidden_copies": named, "message": said}
     assert_equal(rendered.json()["redactions"], {name["id"]: expected}, "what render says")
+
+
+_MOVED_PT = 2.0  # how far along `_MovingDriver` reads each letter once text is erased
+
+
+@dataclass(slots=True)
+class _MovingDriver:
+    """MuPDF's driver, reading each letter further along once text is erased: a line moved.
+
+    No file found moves the rest of a line and keeps its words: the one that moves a line
+    keeps the words too, and the check refuses it.
+    """
+
+    driver: PdfDriver
+    erased: bool = False
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
+        """The real erase, noted."""
+        self.erased = True
+        return self.driver.erase_text(page, boxes)
+
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """Where the real driver reads them, moved along once anything is erased."""
+        letters = self.driver.letters_in(page, boxes)
+        if not self.erased:
+            return letters
+        return [
+            [replace(letter, origin=_along(letter.origin)) for letter in box] for box in letters
+        ]
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _along(point: tuple[float, float]) -> tuple[float, float]:
+    """`point`, moved along its line."""
+    x, y = point
+    return (x + _MOVED_PT, y)
+
+
+def _moving_after_an_erase(path: str) -> PdfDriver:
+    """A driver factory for the store: MuPDF's, as if each erase moved the rest of its line."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _MovingDriver(open_driver(path)))
+
+
+def _said_of(rendered: dict, span: dict, rest: list[Message]) -> str | None:
+    """What render should say of `span`'s redaction: `rest`, then where else its words were."""
+    places = rendered["redactions"][span["id"]]["hidden_copies"]
+    named = [words.sentence(f"place_{place}", words.ENGLISH) for place in places]
+    hidden = [Message("hidden_copies", {"places": named})] if named else []
+    return words.render_all(rest + hidden, words.ENGLISH)
+
+
+def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
+    app, mine, monkeypatch
+):
+    """On the redaction, and under the bar, before the download; and the file still goes."""
+    monkeypatch.setattr(app.state, "documents", FolderStore(_moving_after_an_erase))
+    doc = upload(mine, with_a_card_line()).json()
+    card = span_starting(doc, 0, "Card")
+    edits = [{"kind": "redact", "span_id": card["id"], "range": [5, 9]}]
+
+    rendered = _render(mine, doc, edits, [around(card)]).json()
+    exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+
+    moved = Message("rest_of_line_moved")
+    said = rendered["redactions"][card["id"]]
+    assert_equal(said["message"], _said_of(rendered, card, [moved]), "what render says of it")
+    under_the_bar = [notice["detail"] for notice in rendered["notices"]]
+    assert_equal(under_the_bar, [words.render(moved)], "the lines under the bar")
+    assert_equal(exported.status_code, 200, "the file, its words gone")
+
+
+_ACCOUNT = "(Acct 1234 Name) Tj ET"  # the line the cases below draw, how each says
+
+
+@pytest.mark.parametrize(
+    ("drawing", "starts", "part", "rest"),
+    [
+        ("BT /F 12 Tf 72 100 Td [(Acct) -333 (1234) -333 (Name)] TJ ET", "Acct", [5, 9], []),
+        ("BT /F 12 Tf 72 100 Td [(Acct) -333 (1234) -333 (Name)] TJ ET", "Acct", [10, 14], []),
+        ("BT /F 12 Tf 2 Tc 72 100 Td " + _ACCOUNT, "A", [10, 17], []),
+        (
+            f"/Span <</ActualText (Acct 1234 Name)>> BDC BT /F 12 Tf 72 100 Td {_ACCOUNT} EMC",
+            "Acct",
+            [5, 9],
+            [],
+        ),
+        (
+            f"BT /F 12 Tf 72 100 Td {_ACCOUNT} BT /F 12 Tf 72.4 100 Td {_ACCOUNT}",
+            "Acct",
+            [5, 9],
+            [],
+        ),
+        (
+            "BT /F 12 Tf 0.7071 0.7071 -0.7071 0.7071 72 72 Tm " + _ACCOUNT,
+            "Acct",
+            [5, 9],
+            [Message("rest_of_line_removed")],
+        ),
+        (
+            "BT /F 12 Tf 72 100 Td (Acct ) Tj /Span <</ActualText (9999)>> BDC (1234) Tj EMC "
+            "( Name) Tj ET",
+            "Acct",
+            [5, 9],
+            [Message("rest_of_line_removed")],
+        ),
+    ],
+    ids=[
+        "spaced out with no space drawn",
+        "its last word, spaced out",
+        "letters set apart",
+        "in marked content",
+        "drawn twice over",
+        "at an angle: letters past the words go too",
+        "marked content that says other words: the whole line goes",
+    ],
+)
+def test_what_a_redactions_erase_did_to_the_rest_of_its_line_is_said_only_when_true(
+    mine, drawing, starts, part, rest
+):
+    """Said of the letters the page draws: nothing of spaces it never drew, or other text."""
+    doc = upload(mine, drawn_page(drawing)).json()
+    span = span_starting(doc, 0, starts)
+    edits = [{"kind": "redact", "span_id": span["id"], "range": part}]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+
+    said = rendered["redactions"][span["id"]]
+    assert_equal(said["verified"], True, "whether the words are gone")
+    assert_equal(said["message"], _said_of(rendered, span, rest), "what render says of it")
+
+
+def test_new_text_over_the_line_moves_none_of_the_rest_of_it(mine):
+    """Its letters, drawn in the line's box, are no letter of the line's moved."""
+    doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}")).json()
+    span = span_starting(doc, 0, "Acct")
+    box = span["bbox"]
+    insert = {**_INSERT, "origin": [box["x0"] + 28, box["y1"] - 3], "text": "XXXX"}
+    edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}, insert]
+
+    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+
+    said = rendered["redactions"][span["id"]]
+    assert_equal((said["verified"], said["message"]), (True, None), "what render says of it")
 
 
 def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():

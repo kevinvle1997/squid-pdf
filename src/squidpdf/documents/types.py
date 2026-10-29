@@ -168,6 +168,7 @@ class Sentences(TypedDict):
     drawn_in_your_copy: str  # a font the user attached their own copy of
     drawn_in_own_copy: str  # a font whose copy in the file draws edits
     undo_redaction: str
+    undo_part_redaction: str  # as undo_redaction, of a span redacted in part
     reopened: str
     export_left_out: str
     page_left_out: str  # a page deleted in the editor, said on the slip in its place
@@ -188,6 +189,7 @@ class Sentences(TypedDict):
     changed_to: str  # typed and kept, or done again
     put_back: str  # put back as the document had it, from its margin note
     redacted: str
+    already_redacted: str
     new_text_added: str  # new text put on a page
     new_text_moved: str
     new_text_taken_out: str  # from its note, emptied, or undone

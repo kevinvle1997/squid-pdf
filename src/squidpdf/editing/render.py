@@ -47,6 +47,7 @@ from squidpdf.editing.replies import (
     fit_info,
     notice_info,
     redaction_info,
+    rest_of_line_said,
     skipped_info,
     why_unredacted,
 )
@@ -157,21 +158,28 @@ def _draw_regions(
         verdicts=verdicts.replaces,
         insert_verdicts=verdicts.inserts,
         skipped=resolved.skipped,
-        notices=ran.notices + _said_unredacted(redaction_per_span),
+        notices=ran.notices + _said_of_redactions(redaction_per_span),
         redactions=redaction_per_span,
     )
 
 
-def _said_unredacted(redactions: dict[str, Redaction]) -> list[Notice]:
-    """A notice for each redaction drawn whose words are still in the file, on the page or not.
+def _said_of_redactions(redactions: dict[str, Redaction]) -> list[Notice]:
+    """A notice for each redaction drawn whose words are left, or whose erase changed its line.
 
-    Said now, while the user can still undo it: export refuses the file.
+    Said now, under the bar, while the user can still undo it: export refuses the first kind.
     """
-    return [
+    unredacted: list[Notice] = [
         SpanNotice(span_id, why_unredacted(redaction))
         for span_id, redaction in redactions.items()
         if not redaction.verified
     ]
+    line_changed = [
+        SpanNotice(span_id, said)
+        for span_id, redaction in redactions.items()
+        if redaction.verified
+        for said in rest_of_line_said(redaction.rest)
+    ]
+    return unredacted + line_changed
 
 
 def _check_region_count(regions: list[Region]) -> None:

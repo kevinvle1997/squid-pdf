@@ -72,7 +72,7 @@ describe("the places a shown row marks on a page", () => {
 
   test("after a change, only the changes in it, as the list then counts them", () => {
     const readings = new Map([
-      ["a", { span: arial, text: "is a", replaced: true, strategy: undefined, redacted: false }],
+      ["a", { span: arial, text: "is a", replaced: true, strategy: undefined, redacted: null }],
     ]);
     const shown = shownAmong(spans, { ...facts, readings, shown: new Set(["font:Arial"]), changed: true });
     expect(shown.map((span) => span.id)).toEqual(["a"]);
@@ -93,7 +93,7 @@ describe("a changed span, as the bar counts it", () => {
     text,
     replaced: true,
     strategy: undefined,
-    redacted: false,
+    redacted: null,
   });
 
   test("drawn in its own font, as its render says, a span a similar font drew at upload is no place", () => {

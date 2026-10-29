@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { isFileDropItem, useDrop } from "react-aria";
-import { Input, TextField } from "react-aria-components";
+import { Input, Text, TextField } from "react-aria-components";
 import { createPortal } from "react-dom";
 import type { PageInfo, SpanInfo } from "../../api/types";
 import { selectionAt } from "../caret";
@@ -21,7 +21,8 @@ import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { fitOf, runsPast, settingOf } from "../fit";
 import { attachDropped } from "../fonts";
 import { editableValueIn } from "../formattedValues";
-import { textIn } from "../project";
+import { redactedWordsOf, textIn } from "../project";
+import { redactedSaid } from "../redaction";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
 import { enter, fieldFocused, finish, spanDraftOf, stepWayOut, troublesIn, typeInto } from "../typing";
@@ -42,6 +43,10 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const text = useEditorState((state) => spanDraftOf(state)?.text ?? "");
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const start = useEditorState((state) => textIn(state.reading, span));
+  // Words of it redacted already, boxed as on the page and said: what's left can be selected for more.
+  const reading = useEditorState((state) => state.reading.spans.get(span.id));
+  const runs = redactedWordsOf(reading);
+  const sentences = useEditorState((state) => state.doc.sentences);
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
   // A letter the look-alike lacks sends the line to its broadest face, put on the page only once one does.
   useEffect(() => addFaces([face]), [face]);
@@ -69,7 +74,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   // Held once its editor is opened or the field typed in, so the dates read later never swap it from under the user.
   const held = useEditorState((state) => spanDraftOf(state)?.value ?? null);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
-  const value = editableValueIn(text, { dates, at, held });
+  // None in a span redacted in part: any change to its words asks first, which typing does.
+  const value = runs.length > 0 ? undefined : editableValueIn(text, { dates, at, held });
   // Sent back from the value's editor in the slip, the field takes focus again.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;
@@ -128,8 +134,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     if (placed.current) return;
     placed.current = true;
     const input = event.currentTarget;
-    const press = spanDraftOf(editor.store.get())?.press;
-    if (press == null) input.select();
+    const draft = spanDraftOf(editor.store.get());
+    const press = draft?.press;
+    // Typed in as it opened, after asking: the caret where the typing left it.
+    if (draft?.caret != null) input.setSelectionRange(draft.caret, draft.caret);
+    else if (press == null) input.select();
     else input.setSelectionRange(...selectionAt(start, press, { glyphs, span }));
     fieldFocused(editor);
   }
@@ -160,7 +169,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
       <TextField
         aria-label={`Change “${start}”`}
         value={text}
-        onChange={(next) => typeInto(editor, next)}
+        onChange={(next) => typeInto(editor, next, { caret: field.current?.selectionStart ?? null })}
         className={styles.field}
       >
         <Input
@@ -170,6 +179,8 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           onDragLeave={filesOnly(dropProps.onDragLeave)}
           onDrop={filesOnly(dropProps.onDrop)}
           ref={watchPage}
+          // A key pressed over words selected here may redact them (`selectedIn`).
+          data-span-field=""
           autoFocus
           onFocus={place}
           className={trouble !== "" ? styles.troubleInput : styles.input}
@@ -192,6 +203,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
             "--field-narrow": setting.scaleX,
           }}
         />
+        {runs.length > 0 && (
+          <Text slot="description" className="vh">
+            {redactedSaid(sentences, { text: span.text, runs })}
+          </Text>
+        )}
       </TextField>
       {pastRoom && (
         <span
@@ -200,6 +216,14 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           style={boxOf({ ...span.bbox, x0: span.bbox.x1 + span.room_pt, x1: span.bbox.x1 + span.room_pt }, info)}
         />
       )}
+      {runs.map((run) => (
+        <span
+          key={run.start}
+          className={styles.redactedWords}
+          aria-hidden="true"
+          style={boxOf(fieldPartOf(span, { text, ...run, face, scale: setting }), info)}
+        />
+      ))}
       {value !== undefined && (
         // The part the value's editor rewrites, ringed as Find rings the place it went to.
         <span

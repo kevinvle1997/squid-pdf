@@ -53,18 +53,29 @@ export interface NoteWords {
   readonly label: string;
   readonly struck: string; // the original's words it took out, struck through beside the page
   readonly inserted: string | null; // the words it only added, nothing taken out: shown with a caret instead
-  readonly was: string; // what the span read, whole, shown with `now` on hover and focus
+  readonly was: string; // what the span read, whole, or the words a redaction took, shown with `now` on hover and focus
   readonly now: string; // what the span reads now, in the list under the page
 }
 
 /**
- * The words of the note for `change`. A redaction takes every word out, so the note strikes them all;
- * an edit that only added words shows those, as a proof marks an insertion, rather than striking one it kept.
+ * The words of the note for `change`. A redaction takes its words out, so the note strikes those, only: all of the
+ * line, or each run of words, an ellipsis between; an edit that only added words shows those, as a proof marks an
+ * insertion, rather than striking one it kept.
  */
 export function noteOf({ span, text, redacted }: SpanReading): NoteWords {
   const was = span.text;
-  if (redacted) {
+  if (redacted === "whole") {
     return { label: `Undo: “${was}” is no longer redacted`, struck: was, inserted: null, was, now: "Redacted" };
+  }
+  if (redacted !== null) {
+    const words = redacted.map(({ start, end }) => was.slice(start, end)).join(" … ");
+    return {
+      label: `Undo: “${words}” is no longer redacted`,
+      struck: words,
+      inserted: null,
+      was: words,
+      now: "Redacted",
+    };
   }
   const label = `Undo: “${text}” goes back to “${was}”`;
   return { label, struck: changedWordsIn(was, text), inserted: insertedWordsIn(was, text), was, now: text };

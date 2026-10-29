@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import assert_never
 
-from squidpdf.core import COPY_PLACES, Message, reason_of, words
+from squidpdf.core import COPY_PLACES, Message, RestOfLine, reason_of, words
 from squidpdf.documents.types import ApproximateInfo
 from squidpdf.editing.fit import FitReport, Verdict
 from squidpdf.editing.types import (
@@ -57,17 +57,31 @@ def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:
 
 
 def _said_of(redaction: Redaction, language: str) -> list[Message]:
-    """What to say of a redaction drawn: its words still there, else where else they were."""
+    """What to say of a redaction drawn: its words still there, else what else it changed."""
     # Still in the file: the download is refused.
     if not redaction.verified:
         return [why_unredacted(redaction)]
+    # What the erase did to the rest of its line: said first, as it's on the page.
+    said = rest_of_line_said(redaction.rest)
     copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
     named = [words.sentence(f"place_{place}", language) for place in copy_places]
-    said = [Message("hidden_copies", {"places": named})] if named else []
+    if named:
+        said.append(Message("hidden_copies", {"places": named}))
     # A signed file: the redaction takes every signature, whatever it holds.
     if "signatures" in redaction.hidden_copies:
         said.append(Message("signatures_removed"))
     return said
+
+
+def rest_of_line_said(rest: RestOfLine) -> list[Message]:
+    """What to say of what a redaction's erase did to the rest of its line; nothing in place."""
+    if rest == "in_place":
+        return []
+    if rest == "moved":
+        return [Message("rest_of_line_moved")]
+    if rest == "removed":
+        return [Message("rest_of_line_removed")]
+    assert_never(rest)
 
 
 def why_unredacted(redaction: Redaction) -> Message:

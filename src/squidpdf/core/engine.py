@@ -29,7 +29,7 @@ from squidpdf.core.pdf.driver import DriverFactory, PdfDriver
 # The one import that names the library: its driver is `open_pdf`'s default.
 from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
-from squidpdf.core.redaction import RedactionCheck, any_word_left, whole_words, without
+from squidpdf.core.redaction import RedactionCheck, any_word_left, holds, whole_words, without
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.room import rooms_on
 from squidpdf.core.text.spans import build_index
@@ -266,10 +266,16 @@ class Engine:
             if line.plan is None:
                 self.plans.plan_for(line.span, line.text)
 
-    def unlink(self, spans: list[Span]) -> None:
-        """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
+    def unlink(self, spans: list[Span], *, lines: Sequence[Span] = ()) -> None:
+        """Delete every link over these spans, and over `lines` each whose action holds a word.
+
+        A link can carry the text it's on (a mailto:), or text on its line beside it.
+        """
         for page, on_page in by_page(spans).items():
             self.driver.drop_links(page, [span.bbox for span in on_page])
+            holding = partial(holds, whole_words(on_page))
+            around = [line.bbox for line in lines if line.page == page]
+            self.driver.drop_links(page, around, holding=holding)
 
     def drop_hidden_copies(self, spans: list[Span]) -> None:
         """Delete these spans' words from every hidden copy, as whole words, and all signatures.

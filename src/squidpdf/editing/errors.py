@@ -21,6 +21,17 @@ class BadReference(Problem):
         return str(self.fill["span_id"])
 
 
+class BadRange(Problem):
+    """A redaction names words its span's text doesn't have. Skipping it would be a leak."""
+
+    type = "bad_range"
+    status = 422
+
+    def __init__(self, span_id: str, debug: str | None = None) -> None:
+        """Name the span the redaction asked for; `debug`, the range and the text's length."""
+        super().__init__(debug, span_id=span_id)
+
+
 class RedactionFailed(Problem):
     """A redacted span's text is still in the saved file, so no file is sent."""
 
