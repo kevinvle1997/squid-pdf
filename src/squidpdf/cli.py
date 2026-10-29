@@ -51,6 +51,7 @@ from squidpdf.core import (
 from squidpdf.editing import (
     Redact,
     RedactionFailed,
+    RedactionMoved,
     Replace,
     Strategy,
     check_text,
@@ -340,7 +341,8 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                     to=to,
                     driver_factory=DEFAULT_DRIVER_FACTORY,
                 )
-        except RedactionFailed as failed:  # the text was still in the file, so none was kept
+        # The text was still in the file, or the erase moved other text: none was kept.
+        except (RedactionFailed, RedactionMoved) as failed:
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
     for said in (

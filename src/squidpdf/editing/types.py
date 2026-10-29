@@ -11,11 +11,13 @@ from typing import Literal, TypedDict
 
 from squidpdf.core import (
     Category,
+    DrawnLine,
     Fidelity,
     HiddenPlace,
     Message,
     MessageInfo,
     Page,
+    Rect,
     SaidInfo,
     Style,
 )
@@ -87,6 +89,14 @@ class Applied:
 
 
 @dataclass(frozen=True, slots=True)
+class EditedPage:
+    """What the edits on one page erase, by box, and draw, by line: what a check allows for."""
+
+    erased: list[Rect]
+    drawn: list[DrawnLine]
+
+
+@dataclass(frozen=True, slots=True)
 class Redaction:
     """A redaction drawn: whether its words are gone, where else they were, and why not.
 
@@ -97,6 +107,8 @@ class Redaction:
     verified: bool
     hidden_copies: list[HiddenPlace]
     covered: bool  # its words are left only in its box, under new text sharing one
+    moved: bool  # its words are gone, but the erase moved other text on its page
+    page: int  # its span's page, numbered from 0
 
 
 @dataclass(frozen=True, slots=True)

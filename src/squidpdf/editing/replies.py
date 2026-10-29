@@ -71,10 +71,12 @@ def _said_of(redaction: Redaction, language: str) -> list[Message]:
 
 
 def why_unredacted(redaction: Redaction) -> Message:
-    """Why a redaction's words are still in the file: new text drawn over it, or not removed."""
+    """Why a redaction can't download: new text over it, its words left, or other text moved."""
     # What the check read in the box may be the new text's: the user's to move.
     if redaction.covered:
         return Message("covered_by_new_text")
+    if redaction.moved:
+        return Message("moved_other_text", {"page": redaction.page + 1})
     return Message("not_redacted")
 
 

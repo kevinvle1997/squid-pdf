@@ -23,6 +23,7 @@ from squidpdf.core.types import (
     HiddenCopy,
     Page,
     PageFont,
+    PlacedLetter,
     QuarterTurn,
     Rect,
     TextPiece,
@@ -104,6 +105,10 @@ class PdfDriver(Protocol):
         """The letters inside each box on the page, in reading order."""
         ...
 
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """The letters drawn with their middle in each box, where each is, in reading order."""
+        ...
+
     def drawn_boxes(self, page: int) -> list[Rect]:
         """The box around each thing the page draws but text: lines, shapes and pictures.
 
@@ -112,7 +117,10 @@ class PdfDriver(Protocol):
         ...
 
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
-        """Each letter the page draws, and the shape its code picked, in the order drawn."""
+        """Each letter the page's own drawing writes, on it or off it, and the shape picked.
+
+        In the order drawn. Not a comment's or a field's, which draw their own.
+        """
         ...
 
     def form_fields(self, page: int) -> list[FormField]:

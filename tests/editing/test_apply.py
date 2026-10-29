@@ -36,17 +36,23 @@ from squidpdf.editing import (
     Notice,
     Redact,
     RedactionConflict,
-    RedactionController,
     RedactionFailed,
     Replace,
     RotatePage,
     apply_edits,
     insert_fit,
+    redactions_of,
     replace_fit,
     resolve,
     save_edited,
 )
-from squidpdf.editing.apply import Resolved, page_order, redacted_in
+from squidpdf.editing.apply import (
+    Resolved,
+    edited_by,
+    page_order,
+    planned_of,
+    redacted_in,
+)
 from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
 from tests.conftest import (
     EMBEDDED_PAGE,
@@ -85,7 +91,8 @@ def _resolved(engine, index: SpanIndex, edits: Sequence[Edit]) -> Resolved:
 
 def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
     """Apply `edits` on every page in memory, as export does before it saves."""
-    return apply_edits(engine, _resolved(engine, index, edits))
+    resolved = _resolved(engine, index, edits)
+    return apply_edits(engine, resolved, planned_of(engine, resolved))
 
 
 def _drawn(path, page: int, needle: str) -> dict:
@@ -153,14 +160,15 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     index = engine.index()
     span = next(s for s in index if s.page == 1)
     edits = [Redact(span.id)]
+    resolved = _resolved(engine, index, edits)
+    planned = planned_of(engine, resolved)
+    edited = edited_by(planned.steps)
+    redactions = redactions_of(engine, resolved, redacted_in(resolved), edited=edited)
 
-    _apply(engine, edits, index)
+    apply_edits(engine, resolved, planned)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    redacted = redacted_in(_resolved(engine, index, edits))
-    drawn = RedactionController(redacted, covered=frozenset()).drawn(
-        engine, hidden={span.id: []}
-    )
+    drawn = redactions.drawn(engine, hidden={span.id: []})
     assert_true(drawn[span.id].verified, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())
@@ -845,14 +853,15 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         [secret] = [span for span in index if span.text.startswith("SECRET")]
         resolved = _resolved(engine, index, [Redact(secret.id)])
         order = page_order(resolved, [1, 2])  # the cover page left out
-        apply_edits(engine, resolved)
+        planned = planned_of(engine, resolved)
+        edited = edited_by(planned.steps)
+        redactions = redactions_of(engine, resolved, redacted_in(resolved), edited=edited)
+        apply_edits(engine, resolved, planned)
         engine.keep_pages(order)
         engine.save(out)
 
     with pytest.raises(RedactionFailed) as failed:
-        RedactionController(redacted_in(resolved), covered=frozenset()).check_saved(
-            out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY
-        )
+        redactions.check_saved(out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY)
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)
     assert_equal(failed.value.detail, said, "what the user reads, naming its original page")
 
