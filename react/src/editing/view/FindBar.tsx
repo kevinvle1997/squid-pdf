@@ -63,7 +63,7 @@ function FindFields() {
   const searched = find.searched !== "" && find.searched === find.query;
   const at = useEditorState(placeAt);
   // Change all follows the count beside it: shown, with words to change to, and a place it changes.
-  const changeToTyped = find.replacement !== "";
+  const changeToTyped = find.judgedReplacement !== "";
   const placesChanged = count.places - count.leftAsTheyAre;
   const canChange = searched && changeToTyped && placesChanged > 0;
   return (
