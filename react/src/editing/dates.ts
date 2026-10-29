@@ -66,6 +66,17 @@ const ALONE_BEFORE = String.raw`(?<![\p{L}\p{N}])`;
 const ALONE_AFTER = String.raw`(?![\p{L}\p{N}])`;
 // Not run on into more numbers: "Lun 16/03" is no date in "Lun 16/03/2026".
 const NO_MORE_NUMBERS = String.raw`(?![./-]\p{N})`;
+// A range's first day and what joins it to the next, ending the text before a date: "14-", "14th – ", "14 and ".
+// The day starts the text or follows a space, never a mark or a letter: "1.2 – ", "#12 - ", "10:30 – ", "v2 – ".
+const RANGE_DAY_BEFORE = /(?:^|\s)\d{1,2}(?:\p{L}{1,2}|\.)?(?:\s*[-–\u2014‐‑/&]\s*|\s+(?:and|to)\s+)$/u;
+// The word that ends a text, and a full stop after it: "Rev." in "Rev.", "held" in "is held".
+const WORD_ENDING = /(\p{L}+)(\.?)$/u;
+// Words in lower case that number what follows them, as "of" in "Page 1 of 3", "de" in "página 1 de 3".
+const NUMBERING_WORDS = new Set(["of", "de", "di", "du", "sur", "von", "van", "no", "nr", "nº"]);
+// The word after a date: "March" after "14 March - 15", which makes 15 a range's last day, and no year.
+const WORD_AFTER = /^\s*(\p{L}+)/u;
+// A four digit year after a date: "15, 2026" after "March 14", which makes 15 a range's last day.
+const YEAR_AFTER = /^,?\s*\d{4}(?!\p{N})/u;
 
 /** The patterns of a date with its month named, each with its parts in the order they come. */
 const NAMED: readonly { readonly order: DateFormat["order"]; readonly pattern: RegExp }[] = [
@@ -217,6 +228,8 @@ function namedDateOf(
   const date = dayOf({ year, month: monthOnly.month.index, day: Number(day.digits) });
   if (date === undefined) return undefined;
   const weekday = asWeekday(before, date);
+  // A range of days: an editor would rewrite only one end of it.
+  if (inDayRange(match, { order, date, weekday })) return UNSETTLED;
   const settled = weekday === undefined ? monthOnly : settledNames({ ...monthOnlyWords, weekday }, reading);
   // The month settles alone, but not with the weekday before it.
   if (settled?.month === undefined) return UNSETTLED;
@@ -230,6 +243,64 @@ function namedDateOf(
     weekday: settled.weekday === undefined ? null : weekdayBeforeOf(settled.weekday, { before, beforeSpace }),
   };
   return located({ date, format }, { match, whole, before: weekday === undefined ? before + beforeSpace : "" });
+}
+
+/** Whether a named date's match is one end of a range of days: "14-15 March", "Fri 13 – Sat 14 March", "March 14/15". */
+function inDayRange(
+  match: RegExpMatchArray,
+  { order, date, weekday }: { order: DateFormat["order"]; date: CalendarDay; weekday: WeekdayWord | undefined },
+): boolean {
+  const { whole, before, beforeSpace, parts, between } = partsOf(match);
+  const text = match.input ?? "";
+  const at = match.index ?? 0;
+  if (order[0] === "month") return endsInDayRange({ parts, between, after: text.slice(at + whole.length) });
+  if (order[0] !== "day") return false;
+  const dayAt = at + (weekday === undefined ? before.length + beforeSpace.length : 0);
+  return followsRangeDay(text.slice(0, dayAt), date) || yearIsNextDay({ parts, after: text.slice(at + whole.length) });
+}
+
+/**
+ * Whether a date with its month first ends in a range's last day, read as a two digit year: "March 14-15, 2026",
+ * "March 14, 15, 2026". Joined by dashes throughout and with no year after, "Mar-14-26", it's a date.
+ */
+function endsInDayRange({
+  parts,
+  between,
+  after,
+}: {
+  parts: readonly string[];
+  between: readonly [string, string];
+  after: string;
+}): boolean {
+  if (parts[2]?.length !== 2) return false;
+  const [monthToDay, dayToYear] = between;
+  const joinedApart = /^\s?[-/]\s?$/.test(dayToYear) && monthToDay !== dayToYear;
+  return joinedApart || YEAR_AFTER.test(after);
+}
+
+/**
+ * Whether `before`, the text before a date's day or its weekday, ends in a range's first day: "14-" in "14-15 March".
+ * Only where nothing but a range can be meant: the number starts the text, or follows its own weekday in `date`'s
+ * month, "Fri 13 – Sat 14", or a word in lower case that numbers nothing, "held 13 – 15". After "Page 2 - " or
+ * "Pt. 3 – " it's a label's.
+ */
+function followsRangeDay(before: string, date: CalendarDay): boolean {
+  const day = RANGE_DAY_BEFORE.exec(before);
+  if (day === null) return false;
+  const ahead = before.slice(0, day.index).trimEnd();
+  if (ahead === "") return true;
+  const [, word = "", stop = ""] = WORD_ENDING.exec(ahead) ?? [];
+  if (word === "") return false;
+  const first = { ...date, day: Number(/\d+/.exec(day[0])?.[0]) };
+  if (asWeekday(word, first) !== undefined) return true;
+  const inLowerCase = stop === "" && word === word.toLowerCase();
+  return inLowerCase && !NUMBERING_WORDS.has(word);
+}
+
+/** Whether a day-first date's two digit year is a range's last day, a month named after it: "14 March - 15 March". */
+function yearIsNextDay({ parts, after }: { parts: readonly string[]; after: string }): boolean {
+  const next = WORD_AFTER.exec(after)?.[1];
+  return parts[2]?.length === 2 && next !== undefined && namesOf(next, "month").length > 0;
 }
 
 /** A date written in numbers alone: year first, or a day and month in the order they can only read in, or the document's. */

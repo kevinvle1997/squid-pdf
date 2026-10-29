@@ -211,6 +211,78 @@ describe("a date's long forms", () => {
   });
 });
 
+describe("a range of days", () => {
+  test("is no date to edit: an editor would rewrite only its last day", () => {
+    const english = readingOf([], ["en-US"]);
+    for (const text of ["14-15 March 2026", "14th-15th March 2026", "14 – 15 March 2026", "March 14-15, 2026"]) {
+      expect(dateIn(text, english)).toBeUndefined();
+    }
+    expect(dateIn("14.-15. März 2026", readingOf([], ["de-DE"]))).toBeUndefined();
+  });
+
+  test("with a weekday before each day, is no date to edit, not even its last day alone", () => {
+    const english = readingOf([], ["en-US"]);
+    for (const text of ["Fri 13 – Sat 14 March 2026", "Friday 13 - Saturday 14 March 2026"]) {
+      expect(dateIn(text, english)).toBeUndefined();
+    }
+  });
+
+  test("joined by a slash, an ampersand, “and”, “to” or any dash, is no date to edit", () => {
+    const english = readingOf([], ["en-US"]);
+    for (const text of [
+      "14 and 15 March 2026",
+      "14 & 15 March 2026",
+      "14 to 15 March 2026",
+      "14/15 March 2026",
+      "14\u201415 March 2026",
+      "14\u201015 March 2026",
+      "March 14/15, 2026",
+      "March 14, 15, 2026",
+    ]) {
+      expect(dateIn(text, english)).toBeUndefined();
+    }
+  });
+
+  test("after a word in lower case, is no date to edit", () => {
+    expect(dateIn("The fair is held 13 – 15 March 2026", readingOf([], ["en-US"]))).toBeUndefined();
+  });
+
+  test("is told apart from a date after a number, or written with dashes throughout", () => {
+    const english = readingOf([], ["en-US"]);
+    expect(asSecondOf("Ref 123 - 14 March 2026", { month: 4, reading: english })).toBe("Ref 123 - 2 April 2026");
+    expect(asSecondOf("14-Mar-2026", { month: 4, reading: english })).toBe("2-Apr-2026");
+    expect(asSecondOf("Mar-14-26", { month: 4, reading: english })).toBe("Apr-2-26");
+  });
+
+  test("is told apart from a date after any other number: a version's, a page's, a time", () => {
+    const english = readingOf([], ["en-US"]);
+    for (const label of [
+      "Version 3 – ",
+      "Page 2 - ",
+      "Rev. 4 - ",
+      "Version 1.2 – ",
+      "Rev 1.0 - ",
+      "Draft v2 – ",
+      "Page 1 of 3 – ",
+      "Invoice #12 - ",
+      "Section 4.2 - ",
+      "Updated 10:30 – ",
+      "Revision: 2 – ",
+      "Pt. 3 – ",
+    ]) {
+      expect(asSecondOf(`${label}14 March 2026`, { month: 4, reading: english })).toBe(`${label}2 April 2026`);
+    }
+    const french = readingOf([], ["fr-FR"]);
+    expect(asSecondOf("Facture n° 12 – 14 mars 2026", { month: 4, reading: french })).toBe(
+      "Facture n° 12 – 2 avril 2026",
+    );
+  });
+
+  test("with no year on its first date, is no date to edit, not one whose year is the next day", () => {
+    expect(dateIn("14 March - 15 March 2026", readingOf([], ["en-US"]))).toBeUndefined();
+  });
+});
+
 describe("a CJK date", () => {
   test("is written back in its own marks and spaces, its parts with no zero unless the page wrote one", () => {
     const reading = readingOf([]);
