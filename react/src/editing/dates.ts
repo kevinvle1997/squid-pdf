@@ -10,6 +10,7 @@ import {
   namesOf,
   wordsBetweenIn,
 } from "./dateNames";
+import { type DateInText, inDayRange, yearIsAnotherDatesDay } from "./dayRanges";
 import type { Extent } from "./formattedValues";
 import {
   type DayOrdinal,
@@ -149,7 +150,8 @@ export function dateReadingOf(
 
 /** The month a date's pattern matched, in lower case, where it names one and its day is written as a language does. */
 function monthWordIn(match: RegExpMatchArray, order: DateFormat["order"]): string | undefined {
-  const { parts } = partsOf(match);
+  const { parts, between } = partsOf(match);
+  if (yearIsAnotherDatesDay({ order, parts, between, after: textAfter(match) })) return undefined;
   const word = parts[order.indexOf("month")]?.replace(/\.$/, "") ?? "";
   const { ordinal } = writtenDayOf(parts[order.indexOf("day")] ?? "");
   const named = isNameOf(word, "month") && (ordinal === undefined || someLanguageWrites(ordinal));
@@ -213,6 +215,8 @@ function namedDateOf(
   { order, reading }: { order: DateFormat["order"]; reading: DateReading },
 ): DateValue | undefined | typeof UNSETTLED {
   const { whole, before, beforeSpace, parts, between } = partsOf(match);
+  // Its two digit year another date's day: that other date is the one read.
+  if (yearIsAnotherDatesDay({ order, parts, between, after: textAfter(match) })) return undefined;
   const at = order.indexOf("month");
   let monthWord = parts[at] ?? "";
   let betweenParts: [string, string] = [between[0], between[1]];
@@ -228,6 +232,8 @@ function namedDateOf(
   const date = dayOf({ year, month: monthOnly.month.index, day: Number(day.digits) });
   if (date === undefined) return undefined;
   const weekday = asWeekday(before, date);
+  // A range of days: an editor would rewrite only one end of it.
+  if (inDayRange(date, dateInTextOf(match, { order, weekday, language: monthOnly.language }))) return UNSETTLED;
   const settled = weekday === undefined ? monthOnly : settledNames({ ...monthOnlyWords, weekday }, reading);
   // The month settles alone, but not with the weekday before it.
   if (settled?.month === undefined) return UNSETTLED;
@@ -241,6 +247,24 @@ function namedDateOf(
     weekday: settled.weekday === undefined ? null : leadingWeekdayFormat(settled.weekday, { before, beforeSpace }),
   };
   return located({ date, format }, { match, whole, before: weekday === undefined ? before + beforeSpace : "" });
+}
+
+/** Where a named date's match lies in its text, as the day ranges around it are read. */
+function dateInTextOf(
+  match: RegExpMatchArray,
+  { order, weekday, language }: { order: DateFormat["order"]; weekday: WeekdayWord | undefined; language: string },
+): DateInText {
+  const { before, beforeSpace, parts, between } = partsOf(match);
+  const at = match.index ?? 0;
+  const dateAt = at + (weekday === undefined ? before.length + beforeSpace.length : 0);
+  const hasWeekday = weekday !== undefined;
+  const textBefore = (match.input ?? "").slice(0, dateAt);
+  return { order, parts, between, before: textBefore, after: textAfter(match), hasWeekday, language };
+}
+
+/** The text after a match. */
+function textAfter(match: RegExpMatchArray): string {
+  return (match.input ?? "").slice((match.index ?? 0) + match[0].length);
 }
 
 /** A date written in numbers alone: year first, or a day and month in the order they can only read in, or the document's. */
