@@ -87,6 +87,14 @@ class Applied:
 
 
 @dataclass(frozen=True, slots=True)
+class EditedText:
+    """The text the edits on one page take out, and the text they draw in its place or anew."""
+
+    erased: list[str]
+    drawn: list[str]
+
+
+@dataclass(frozen=True, slots=True)
 class Redaction:
     """A redaction drawn: whether its words are gone, where else they were, and why not.
 

@@ -79,6 +79,8 @@ from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.redaction import (
     RedactionCheck as RedactionCheck,
     any_word_left as any_word_left,
+    counted_words as counted_words,
+    times_in as times_in,
 )
 from squidpdf.core.text.fidelity import (
     APPROXIMATE_REASONS as APPROXIMATE_REASONS,

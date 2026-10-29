@@ -1686,6 +1686,41 @@ def test_an_edit_after_a_redaction_on_the_same_text_fails_the_export(mine, doc):
     assert_problem(response, "redaction_conflict", 422)
 
 
+def _drawn_by_quote(operator: str) -> bytes:
+    """A page whose one line is drawn by `operator`, a quote: to the next line, then the text.
+
+    `"` sets word and letter spacing first. MuPDF's erase rewrites either so the line lands
+    above the page, its letters still drawn.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # A font for the line to name: PyMuPDF adds one with the text it writes, off the page.
+    page.insert_text((0, -100), "x", fontname="helv", fontsize=1)
+    [(*_, resource, _referencer)] = page.get_fonts()
+    spacing = "6 1 " if operator == '"' else ""
+    drawn = f"BT /{resource} 12 Tf 14 TL 72 114 Td {spacing}({_QUOTED}) {operator} ET"
+    doc.update_stream(page.get_contents()[0], drawn.encode())
+    return doc.tobytes()
+
+
+_QUOTED = "Acct 1234 Name"  # the line `_drawn_by_quote` draws
+
+
+@pytest.mark.parametrize("operator", ['"', "'"])
+def test_a_line_the_erase_moves_off_the_page_downloads_nothing(mine, operator):
+    """The check reads every letter the page draws, on it or off it: no word slips away."""
+    doc = upload(mine, _drawn_by_quote(operator)).json()
+    [span] = doc["spans"]
+    body = {"edits": [_redact(span)], "scale": 1, "regions": [around(span)]}
+
+    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    response = _export(mine, doc, [_redact(span)])
+
+    verified = rendered["redactions"][span["id"]]["verified"]
+    assert_equal(verified, False, "whether render said the words were gone")
+    assert_problem(response, "redaction_failed", 422)
+
+
 def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
     """Skipping it would send the text the user asked to remove."""
     response = _export(mine, doc, [{"kind": "redact", "span_id": "nosuchspan00"}])

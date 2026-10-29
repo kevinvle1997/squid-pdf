@@ -33,7 +33,7 @@ from squidpdf.editing.fit import (
     options_for as options_for,
     replace_fit as replace_fit,
 )
-from squidpdf.editing.redaction import RedactionController as RedactionController
+from squidpdf.editing.redaction import redactions_of as redactions_of
 from squidpdf.editing.types import (
     Applied as Applied,
     Notice as Notice,

@@ -17,13 +17,15 @@ from squidpdf.core import (
     Rect,
     Span,
     any_word_left,
+    counted_words,
     open_pdf,
+    times_in,
 )
 from squidpdf.editing.apply import Resolved, new_text_turns
 from squidpdf.editing.edits import Insert
 from squidpdf.editing.errors import RedactionCovered, RedactionFailed
 from squidpdf.editing.fit import insert_span
-from squidpdf.editing.types import Redaction
+from squidpdf.editing.types import EditedText, Redaction
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -32,6 +34,8 @@ class RedactionController:
 
     redacted: tuple[Span, ...]  # the spans it follows, numbered as in the original
     covered: frozenset[str]  # those new text sharing a word with is drawn over, by id
+    # How many times each span's page drew each of its `counted_words` before the edits, by id.
+    drawn_before: dict[str, list[int]]
 
     def hidden_places(self, engine: Engine) -> dict[str, list[HiddenPlace]]:
         """Where else each redacted span's words have a hidden copy, by span id.
@@ -41,15 +45,20 @@ class RedactionController:
         return engine.redaction.hidden_places(self.redacted)
 
     def drawn(
-        self, engine: Engine, *, hidden: dict[str, list[HiddenPlace]]
+        self,
+        engine: Engine,
+        *,
+        hidden: dict[str, list[HiddenPlace]],
+        edited: dict[int, EditedText],
     ) -> dict[str, Redaction]:
         """Each redaction as the document in memory has it, by span id.
 
         Render's early run of export's check, on pages still numbered as in the original.
-        `hidden` is what `hidden_places` said before the edits.
+        `hidden` is what `hidden_places` said before the edits; `edited`, what they changed.
         """
         redacted = list(self.redacted)
-        left = _words_left(engine, redacted, redacted=redacted)
+        most = self._most_drawn(edited)
+        left = _words_left(engine, redacted, redacted=redacted, most_drawn=most)
         still_there = {span.id for span in left.spans}
         blamed = self._blamed_on_new_text(left)
         return {
@@ -60,17 +69,23 @@ class RedactionController:
         }
 
     def check_saved(
-        self, path: str, *, pages: Sequence[int], driver_factory: DriverFactory
+        self,
+        path: str,
+        *,
+        pages: Sequence[int],
+        edited: dict[int, EditedText],
+        driver_factory: DriverFactory,
     ) -> None:
         """Re-open the file saved at `path` and confirm each redacted span's text is gone.
 
-        Read in `driver_factory`'s driver, which drew the edits. `pages` is the saved file's
-        page order, by original number. Raises RedactionFailed naming a span still there, by
+        Read in `driver_factory`'s driver; `pages` is the saved order, by original number, and
+        `edited` what the edits changed. Raises RedactionFailed naming a span still there, by
         its original page, or RedactionCovered when each one left may be new text's.
         """
         as_saved = list(_as_saved(self.redacted, pages))
+        most = self._most_drawn(edited)
         with open_pdf(path, driver_factory=driver_factory) as saved:
-            left = _words_left(saved, as_saved, redacted=self.redacted)
+            left = _words_left(saved, as_saved, redacted=self.redacted, most_drawn=most)
         # Every redacted span's words are gone.
         if not left.spans:
             return
@@ -83,6 +98,24 @@ class RedactionController:
         if refused.id in blamed:
             raise RedactionCovered(refused.id, refused.page + 1)
         raise RedactionFailed(refused.id, refused.text, refused.page + 1)
+
+    def _most_drawn(self, edited: dict[int, EditedText]) -> dict[str, list[int]]:
+        """How many times each span's page may draw each of its words once `edited`, by id.
+
+        As often as before, less each time the edits took one out, and each time they drew one.
+        """
+        most: dict[str, list[int]] = {}
+        for span in self.redacted:
+            words = counted_words(span.text)
+            on_page = edited[span.page]
+            taken = _times_in_all(on_page.erased, words)
+            added = _times_in_all(on_page.drawn, words)
+            before = self.drawn_before[span.id]
+            most[span.id] = [
+                max(0, was - out) + more
+                for was, out, more in zip(before, taken, added, strict=True)
+            ]
+        return most
 
     def _blamed_on_new_text(self, left: _WordsLeft) -> set[str]:
         """The spans left only in their box, where new text sharing a word with them is drawn.
@@ -104,7 +137,25 @@ def redactions_of(
 
     Call it before the edits run: erasing can drop the fonts new text is measured with.
     """
-    return RedactionController(tuple(redacted), covered=_covered_in(engine, resolved, redacted))
+    return RedactionController(
+        tuple(redacted),
+        covered=_covered_in(engine, resolved, redacted),
+        drawn_before=_drawn_before(engine, redacted),
+    )
+
+
+def _drawn_before(engine: Engine, redacted: Sequence[Span]) -> dict[str, list[int]]:
+    """How many times each span's page draws each of its `counted_words` now, by id."""
+    drawn = {
+        page: engine.redaction.drawn_text(page) for page in {span.page for span in redacted}
+    }
+    return {span.id: times_in(drawn[span.page], counted_words(span.text)) for span in redacted}
+
+
+def _times_in_all(texts: Sequence[str], words: Sequence[str]) -> list[int]:
+    """How many times `texts`, together, hold each of `words`."""
+    counts = [times_in(text, words) for text in texts]
+    return [sum(each) for each in zip(*counts, strict=True)] if counts else [0] * len(words)
 
 
 def _covered_in(engine: Engine, resolved: Resolved, redacted: Sequence[Span]) -> frozenset[str]:
@@ -151,29 +202,50 @@ def _drawn_box(engine: Engine, insert: Insert, *, turn_ccw: QuarterTurn) -> Rect
 
 @dataclass(frozen=True, slots=True)
 class _WordsLeft:
-    """The spans with words still in the file: in their box, and in a hidden copy."""
+    """The spans with words still in the file: in their box, in a hidden copy, or elsewhere."""
 
     in_box: list[Span]
     hidden: list[Span]
+    elsewhere: list[Span]  # drawn more often than the edits leave room for: moved off their box
 
     @property
     def spans(self) -> list[Span]:
-        """Every span with words left, those in their box first; one may be in both."""
-        return self.in_box + self.hidden
+        """Every span with words left, those in their box first; one may be in several."""
+        return self.in_box + self.hidden + self.elsewhere
 
 
-def _words_left(engine: Engine, placed: list[Span], *, redacted: Sequence[Span]) -> _WordsLeft:
-    """The spans with words still in the file: in their box, or a hidden copy anywhere.
+def _words_left(
+    engine: Engine,
+    placed: list[Span],
+    *,
+    redacted: Sequence[Span],
+    most_drawn: dict[str, list[int]],
+) -> _WordsLeft:
+    """The spans with words still in the file: in their box, a hidden copy, or drawn elsewhere.
 
     Render and export share it, so the warning and the refusal can't drift apart. `placed`
     are the spans on the pages they're read on, for boxes and pages' copies; `redacted`,
-    pages kept or not, for the document's own.
+    pages kept or not, for the document's own. `most_drawn` is `_most_drawn`'s, by id.
     """
     hidden = engine.redaction.still_hidden(placed)
+    drawn = {page: engine.redaction.drawn_text(page) for page in {span.page for span in placed}}
+    elsewhere = [
+        span
+        for span in placed
+        if _drawn_more(
+            times_in(drawn[span.page], counted_words(span.text)), most_drawn[span.id]
+        )
+    ]
     return _WordsLeft(
         engine.redaction.still_there(placed),
         hidden=hidden + engine.redaction.still_hidden_in_document(redacted),
+        elsewhere=elsewhere,
     )
+
+
+def _drawn_more(times: list[int], most: list[int]) -> bool:
+    """Whether any word is drawn more `times` than the `most` it may be."""
+    return any(now > allowed for now, allowed in zip(times, most, strict=True))
 
 
 def _as_saved(redacted: Sequence[Span], pages: Sequence[int]) -> Iterator[Span]:

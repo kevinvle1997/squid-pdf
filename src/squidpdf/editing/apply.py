@@ -43,7 +43,15 @@ from squidpdf.editing.fit import (
     insert_span,
     replace_fit,
 )
-from squidpdf.editing.types import Applied, InsertNotice, Notice, Replaced, Skipped, SpanNotice
+from squidpdf.editing.types import (
+    Applied,
+    EditedText,
+    InsertNotice,
+    Notice,
+    Replaced,
+    Skipped,
+    SpanNotice,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,6 +437,55 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
         redrawn={span_id: face for ran in finished for span_id, face in ran.redrawn.items()},
         placed={position: face for ran in finished for position, face in ran.placed.items()},
     )
+
+
+def edited_text_by(steps: Sequence[Step]) -> dict[int, EditedText]:
+    """The text the steps take out and draw, by page: what the redaction check allows for."""
+    erased = [span for span in map(_erased_by, steps) if span is not None]
+    drawn = [line for line in map(_drawn_by, steps) if line is not None]
+    return _edited_text(
+        [(span.page, span.text) for span in erased],
+        drawn=[(line.span.page, line.text) for line in drawn],
+    )
+
+
+def edited_text_in(resolved: Resolved) -> dict[int, EditedText]:
+    """The text every edit in `resolved` takes out and draws, by page, as `edited_text_by`."""
+    span_edits = resolved.span_edits
+    return _edited_text(
+        [(edited_span.span.page, edited_span.span.text) for edited_span in span_edits],
+        drawn=[
+            *(
+                (edited.span.page, text)
+                for edited in span_edits
+                for text in _drawn_in(edited.edit)
+            ),
+            *((listed.insert.page, listed.insert.text) for listed in resolved.inserts),
+        ],
+    )
+
+
+def _edited_text(
+    erased: list[tuple[int, str]], *, drawn: list[tuple[int, str]]
+) -> dict[int, EditedText]:
+    """The text taken out and drawn, each given with its page, gathered by page."""
+    pages = {page for page, _text in [*erased, *drawn]}
+    return {
+        page: EditedText(
+            [text for on, text in erased if on == page],
+            drawn=[text for on, text in drawn if on == page],
+        )
+        for page in pages
+    }
+
+
+def _drawn_in(edit: SpanEdit) -> list[str]:
+    """The text a span edit draws: its replacement's, or none for a redaction."""
+    if isinstance(edit, Replace):
+        return [edit.text]
+    if isinstance(edit, Redact):
+        return []
+    assert_never(edit)
 
 
 def redacted_by(steps: Sequence[Step]) -> list[Span]:

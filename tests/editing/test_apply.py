@@ -36,17 +36,17 @@ from squidpdf.editing import (
     Notice,
     Redact,
     RedactionConflict,
-    RedactionController,
     RedactionFailed,
     Replace,
     RotatePage,
     apply_edits,
     insert_fit,
+    redactions_of,
     replace_fit,
     resolve,
     save_edited,
 )
-from squidpdf.editing.apply import Resolved, page_order, redacted_in
+from squidpdf.editing.apply import Resolved, edited_text_in, page_order, redacted_in
 from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
 from tests.conftest import (
     EMBEDDED_PAGE,
@@ -153,14 +153,14 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     index = engine.index()
     span = next(s for s in index if s.page == 1)
     edits = [Redact(span.id)]
+    resolved = _resolved(engine, index, edits)
+    redactions = redactions_of(engine, resolved, redacted_in(resolved))
 
     _apply(engine, edits, index)
     engine.save(str(tmp_path / "redacted.pdf"))
 
-    redacted = redacted_in(_resolved(engine, index, edits))
-    drawn = RedactionController(redacted, covered=frozenset()).drawn(
-        engine, hidden={span.id: []}
-    )
+    edited = edited_text_in(resolved)
+    drawn = redactions.drawn(engine, hidden={span.id: []}, edited=edited)
     assert_true(drawn[span.id].verified, "the in-memory verdict on the redacted span")
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())
@@ -845,13 +845,17 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         [secret] = [span for span in index if span.text.startswith("SECRET")]
         resolved = _resolved(engine, index, [Redact(secret.id)])
         order = page_order(resolved, [1, 2])  # the cover page left out
+        redactions = redactions_of(engine, resolved, redacted_in(resolved))
         apply_edits(engine, resolved)
         engine.keep_pages(order)
         engine.save(out)
 
     with pytest.raises(RedactionFailed) as failed:
-        RedactionController(redacted_in(resolved), covered=frozenset()).check_saved(
-            out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY
+        redactions.check_saved(
+            out,
+            pages=order,
+            edited=edited_text_in(resolved),
+            driver_factory=DEFAULT_DRIVER_FACTORY,
         )
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)
     assert_equal(failed.value.detail, said, "what the user reads, naming its original page")

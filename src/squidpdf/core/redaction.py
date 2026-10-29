@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 
@@ -77,6 +77,13 @@ class RedactionCheck:
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 
+    def drawn_text(self, page: int) -> str:
+        """Every letter the page's drawing writes, in the order drawn, on the page or off it.
+
+        Wherever a letter lands, it's read: an erase that moves a line can't hide its words.
+        """
+        return "".join(glyph.letter for glyph in self.driver.drawn_glyphs(page))
+
     def still_hidden(self, spans: Iterable[Span]) -> list[Span]:
         """The spans with a word of their text still in a hidden copy on their page.
 
@@ -116,6 +123,23 @@ def any_word_left(text: str, left: str) -> bool:
     leftover = "".join(left.split())
     words = [word for word in text.split() if len(word) > 1]
     return any(word in leftover for word in [*words, "".join(text.split())])
+
+
+def counted_words(text: str) -> list[str]:
+    """The words of `text` a count looks for, as `any_word_left` does, spaces aside, NFKC."""
+    words = [word for word in text.split() if len(word) > 1]
+    return [_spaceless(word) for word in [*words, text]]
+
+
+def times_in(text: str, words: Sequence[str]) -> list[int]:
+    """How many times `text` holds each of `counted_words`' words, spaces aside."""
+    spaceless = _spaceless(text)
+    return [spaceless.count(word) for word in words]
+
+
+def _spaceless(text: str) -> str:
+    """`text` with no spaces, each ligature as its letters: two spellings of a line compare."""
+    return "".join(_comparable(text).split())
 
 
 def whole_words(spans: Iterable[Span]) -> re.Pattern[str]:

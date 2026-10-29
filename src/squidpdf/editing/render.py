@@ -32,6 +32,7 @@ from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
 from squidpdf.editing.apply import (
+    edited_text_by,
     is_page,
     log_fits,
     plan,
@@ -145,7 +146,8 @@ def _draw_regions(
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         ran = run(engine, steps)
         verdicts = verdicts_of(fits, ran)
-        redaction_per_span = redactions.drawn(engine, hidden=hidden)
+        edited = edited_text_by(steps)
+        redaction_per_span = redactions.drawn(engine, hidden=hidden, edited=edited)
         images = _draw(engine, regions, drawn_pages=drawn_pages)
 
     return Rendered(

@@ -37,7 +37,14 @@ from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
+from squidpdf.editing.apply import (
+    apply_edits,
+    edited_text_in,
+    is_page,
+    page_order,
+    redacted_in,
+    resolve,
+)
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import RedactionCovered, RedactionFailed
@@ -202,7 +209,9 @@ def save_edited(
         notices += engine.keep_pages(order)
     notices += engine.save(to)
     try:
-        redactions.check_saved(to, pages=order, driver_factory=driver_factory)
+        redactions.check_saved(
+            to, pages=order, edited=edited_text_in(resolved), driver_factory=driver_factory
+        )
     except RedactionFailed, RedactionCovered:  # refused: never leave the file lying around
         Path(to).unlink()
         raise
