@@ -1779,6 +1779,36 @@ describe("a page", () => {
     expect(note.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(Math.round(ringTop));
   });
 
+  test("new text's margin note, its words past its room, ends in an ellipsis, its undo arrow inside its focus ring", async () => {
+    await page.viewport(1440, 900);
+    const words = "Signed for and on behalf of M. Halvorsen Jr";
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    openNewTextAt(editor, 0, [300, 300]);
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard(`${words}{Enter}`);
+    const note = screen.getByRole("button", { name: `Undo: take out “${words}”` });
+    await expect.element(note).toBeVisible();
+    // The box its words are set in: an ellipsis is drawn at the end of a block's line, not a flex box's.
+    const shown = [...note.element().querySelectorAll("span")].find((box) =>
+      [...box.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent === words),
+    );
+    if (shown === undefined) throw new Error("no box holds the note's words");
+    expect(shown.scrollWidth).toBeGreaterThan(shown.clientWidth);
+    const style = getComputedStyle(shown);
+    expect(style.textOverflow).toBe("ellipsis");
+    expect(style.display).toBe("block");
+    await expect.element(note).toHaveAttribute("aria-label", `Undo: take out “${words}”`);
+
+    await focusFromKeyboard(note.element());
+    await expect.element(note).toHaveAttribute("data-focus-visible");
+    const arrow = note.element().querySelector("svg")?.getBoundingClientRect();
+    if (arrow === undefined) throw new Error("no undo arrow");
+    const ring = note.element().getBoundingClientRect();
+    expect(arrow.left).toBeGreaterThanOrEqual(ring.left);
+    expect(arrow.right).toBeLessThanOrEqual(ring.right);
+  });
+
   test("a margin note's note takes the pointer only where it's drawn, not in the gap to the note above", async () => {
     await page.viewport(1400, 900);
     const lineAt = (id: string, y0: number) =>

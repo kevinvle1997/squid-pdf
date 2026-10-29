@@ -45,7 +45,7 @@ export function Margin({ info, changes, newTexts, noteHeightPt, pageNumber }: Pr
                 // Words only added: they're marked as a proof marks an insertion, not one kept struck.
                 <span className={styles.added}>
                   <InsertMark />
-                  {note.inserted}
+                  <span className={styles.addedWords}>{note.inserted}</span>
                 </span>
               )}
             </UndoNote>
