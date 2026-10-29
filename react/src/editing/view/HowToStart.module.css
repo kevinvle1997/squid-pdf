@@ -14,9 +14,11 @@
   position: relative;
   top: calc(min(var(--ticks) * var(--hit) + var(--s7), 100vh - 2 * var(--bar-height) - var(--s7)) + var(--s5));
   width: max-content;
+  /* No wider than the room from the window's gutter to the margin's edge, past the pages' padding: its words wrap
+     where a narrow window leaves the page little room beside it. */
+  max-width: calc(var(--page-start) + var(--s5) - var(--s4) + var(--margin-width));
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1);
 }
-.beside .words { white-space: nowrap; }
 .squid { width: 90px; height: 90px; margin-inline-end: var(--s4); }
 .above { display: none; }
 /* No margin beside the page: the words go above the first page, and the squid stays out of the way. */

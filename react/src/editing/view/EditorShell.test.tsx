@@ -2452,6 +2452,19 @@ describe("how to start", () => {
     }
   });
 
+  test.each([821, 900, 1080, 1440])(
+    "at %i px, the words beside the first page sit whole in the window, the gutter in",
+    async (wide) => {
+      await inWindow(wide, 900, async () => {
+        await openEditor();
+        await expect.poll(() => shownLine(SENTENCES.how_to_add)).toBeDefined();
+        const words = shownLine(SENTENCES.how_to_add)?.parentElement?.getBoundingClientRect() ?? new DOMRect();
+        expect(words.left).toBeGreaterThanOrEqual(16);
+        expect(words.right).toBeLessThanOrEqual(wide - 16);
+      });
+    },
+  );
+
   test("on a narrow screen, where there's no margin, the same line sits above the first page", async () => {
     const [wide, tall] = [window.innerWidth, window.innerHeight];
     await page.viewport(390, 844);
