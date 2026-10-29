@@ -135,6 +135,11 @@ export function namesOf(word: string, kind: NameKind): readonly DateName[] {
   return [...(byName.get(key) ?? []), ...stopped].filter((name) => name.kind === kind);
 }
 
+/** Whether `word` is the name of a `kind` in some language learnt so far. */
+export function isNameOf(word: string, kind: NameKind): boolean {
+  return namesOf(word, kind).length > 0;
+}
+
 /** The twelve months' names in `language`, then its seven weekdays', long then short, as each is written in a date. */
 function namesInLanguage(language: string): readonly DateName[] {
   const cached = namesIn.get(language);
@@ -179,7 +184,8 @@ export function nameFor(kind: NameKind, index: number, { language, width, letter
   return inCase(stopLeftOff ? name.replace(/\.$/, "") : name, { letterCase, language });
 }
 
-function inCase(name: string, { letterCase, language }: { letterCase: LetterCase; language: string }): string {
+/** `name` in `letterCase`, as `language` sets the case of its letters. */
+export function inCase(name: string, { letterCase, language }: { letterCase: LetterCase; language: string }): string {
   switch (letterCase) {
     case "as-the-language":
       return name;
