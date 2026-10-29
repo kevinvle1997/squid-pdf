@@ -749,6 +749,29 @@ describe("undo and redo", () => {
   });
 });
 
+describe("the change list under the page, on a phone", () => {
+  test("a change Tab reaches under the zoom control shows whole, its focus ring clear of it", async () => {
+    await inWindow(390, 700, async () => {
+      await emulateTouchScreen();
+      const screen = await openEditor({ doc: { ...DOC, pages: [A4, A4] } });
+      await changeSpan(screen, "is here");
+      const mark = screen.getByRole("button", { name: "is here" });
+      await expect.element(mark).toHaveFocus();
+      const note = screen.getByRole("button", { name: "Undo: “is here” goes back to “was here”" });
+      await expect.element(note).toBeVisible();
+      const zoom = screen.getByRole("group", { name: "Zoom" }).element().getBoundingClientRect();
+      scrollFootTo(note.element(), zoom.bottom);
+      await userEvent.tab();
+
+      await expect.element(note).toHaveFocus();
+      const { outlineWidth, outlineOffset } = getComputedStyle(note.element());
+      const ringFoot =
+        note.element().getBoundingClientRect().bottom + parseFloat(outlineWidth) + parseFloat(outlineOffset);
+      expect(ringFoot).toBeLessThanOrEqual(zoom.top);
+    });
+  });
+});
+
 async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>, file = FONT_FILE) {
   await screen.getByRole("button", { name: "Fonts" }).click();
   await expect.element(screen.getByRole("button", { name: "Use your copy of Arial" })).toBeVisible();

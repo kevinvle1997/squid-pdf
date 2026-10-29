@@ -42,6 +42,9 @@
   align-items: baseline; align-content: center; gap: var(--s1) var(--s2);
   padding-block: var(--s1);
   text-align: start;
+  /* Focus brings a row into view clear of the zoom slip at the window's foot, its ring too: the slip's gap to the
+     foot and a control's height, then its padding and the ring, with room to spare. */
+  scroll-margin-block-end: calc(var(--s4) + var(--hit) + var(--s7) + env(safe-area-inset-bottom, 0px));
 }
 .list .bar { grid-row: 1; grid-column: 1; align-self: center; }
 .list .old, .now { grid-column: 2; white-space: normal; }
