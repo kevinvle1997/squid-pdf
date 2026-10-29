@@ -105,9 +105,9 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const [focusedIn, setFocusedIn] = useState(false);
   const [slipLayer, setSlipLayer] = useState<HTMLDivElement | null>(null);
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
-  // The page being typed in keeps its marks, and so the field, however far it's scrolled; so does the
-  // page whose mark has focus, or focus would fall to the document as its mark went.
-  const keepMarks = sheet.near || page.typingIn !== null || focusedIn;
+  // Its marks stay far off while it's typed in, focused or sent focus: else the words or focus go, or focus comes late.
+  const sentFocus = page.focusTo !== null || page.focusNewText !== null;
+  const keepMarks = sheet.near || page.typingIn !== null || focusedIn || sentFocus;
   // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
   const notes = keepMarks ? changes : NO_CHANGES;
   const newTextNotes = keepMarks ? newTexts : NO_NEW_TEXTS;

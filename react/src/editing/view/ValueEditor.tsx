@@ -38,7 +38,7 @@ import { isUndoOrRedo } from "../commands";
 import type { DateValue } from "../dates";
 import { announce, focusMoved } from "../editor";
 import type { EditableValue } from "../formattedValues";
-import { finish, spanDraftOf } from "../typing";
+import { spanDraftOf } from "../typing";
 import {
   amountFormatOptions,
   chooseAmount,
@@ -51,6 +51,7 @@ import {
 } from "../valueEditor";
 import { useEditor, useEditorState } from "./context";
 import { ALT } from "./keys";
+import { useLeaveTyping } from "./leaveTyping";
 import styles from "./ValueEditor.module.css";
 
 // The control names the value's kind: the reader's word for it.
@@ -64,13 +65,14 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   const editor = useEditor();
   const open = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
   const coarse = useSyncExternalStore(onPointerChange, coarsePointer);
+  const leave = useLeaveTyping();
   // Leaving the editor for anywhere but the field ends the typing, as leaving the field does.
   const { focusWithinProps } = useFocusWithin({
     onBlurWithin: (event: FocusEvent) => {
       if (event.relatedTarget === field.current) return;
       // On its way back to the field, from a choice or Escape.
       if (editor.store.get().focusTo !== null) return;
-      if (document.hasFocus()) finish(editor, true);
+      leave(event);
     },
   });
   const controlId = useId();

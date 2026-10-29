@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { isFileDropItem, useDrop, useFocusVisible } from "react-aria";
+import { isFileDropItem, useDrop } from "react-aria";
 import { Input, TextField } from "react-aria-components";
 import { createPortal } from "react-dom";
 import type { PageInfo, SpanInfo } from "../../api/types";
@@ -30,6 +30,7 @@ import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
 import { boxOf, fieldPartOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
+import { useLeaveTyping } from "./leaveTyping";
 
 /**
  * Typing in place: the span's text in the face that will draw it, checked as it's typed.
@@ -80,7 +81,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const slipLayer = useContext(SlipLayerContext);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
-  const { isFocusVisible } = useFocusVisible();
+  const leave = useLeaveTyping();
   // As the page is shown wider or narrower, what the field scales by to show the span's size.
   const watchPage = useCallback(
     (input: HTMLInputElement | null) => {
@@ -175,14 +176,11 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           spellCheck={false}
           autoComplete="off"
           onKeyDown={onKeyDown}
-          // Only leaving the field ends the typing: a file picker takes the window's focus, not the field's,
-          // and the value's editor in the slip goes on with it.
+          // Only leaving the field ends the typing: the value's editor in the slip goes on with it.
           onBlur={(event) => {
             const to = event.relatedTarget;
             if (to instanceof Node && chip.current?.contains(to)) return;
-            // Tabbed past all there is, focus would fall to the document: it goes to the span, as Enter sends it.
-            const tabbedOut = to === null && isFocusVisible;
-            if (document.hasFocus()) finish(editor, true, { returnFocus: tabbedOut });
+            leave(event);
           }}
           style={{
             ...where,

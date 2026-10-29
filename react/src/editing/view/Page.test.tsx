@@ -31,6 +31,7 @@ import { redact } from "../redaction";
 import { loadShippedFaces } from "../shippedFaces";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
+import { onBarePaper } from "./keys";
 import { Page } from "./Page";
 
 // What's persisted in this browser is the App's to test, in the browser's real storage.
@@ -157,18 +158,28 @@ async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS)
   await userEvent.keyboard("{Enter}");
 }
 
-/** Press, by mouse or finger, the bare background of the slip `within` is on: in its padding, halfway along its top. */
+/**
+ * Press, by mouse or finger, the bare background of the slip `within` is on, the chip or the redaction prompt: in its
+ * padding, halfway along its top.
+ */
 async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
-  const box = within.closest("[data-slip]")?.getBoundingClientRect();
+  const box = within.closest("[data-slip], [role=group]")?.getBoundingClientRect();
   if (box === undefined) throw new Error("no slip");
-  const at = { x: box.left + box.width / 2, y: box.top + 4 };
-  if (pointer === "finger") {
-    await tapAt(at);
-    return;
-  }
-  const press = { ...at, button: "left" as const, clickCount: 1 };
-  await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...press });
-  await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
+  await pressBy(pointer, { x: box.left + box.width / 2, y: box.top + 4 });
+}
+
+/** Press the page's bare paper at `at`, in the window, by mouse or finger: nothing is there but the page's image. */
+async function pressBarePaper(at: { x: number; y: number }, pointer: "mouse" | "finger") {
+  const layer = document.querySelector("section img")?.parentElement;
+  if (layer == null) throw new Error("the page's layer holds its image");
+  expect(onBarePaper(document.elementFromPoint(at.x, at.y), layer)).toBe(true);
+  await pressBy(pointer, at);
+}
+
+/** Press at `at`, in the window, with the mouse's left button or a finger. */
+async function pressBy(pointer: "mouse" | "finger", at: { x: number; y: number }) {
+  if (pointer === "finger") await tapAt(at);
+  else await pressMouse(at);
 }
 
 /**
@@ -215,6 +226,14 @@ async function hoveredUnderALine() {
   await expect.element(screen.getByRole("tooltip")).toBeVisible();
   await expect.element(mark).toHaveAttribute("aria-describedby");
   return { screen, above, mark, start };
+}
+
+/** Wait for an open slip to come to rest, its faces loaded: measured again as it grows, it brings itself into view. */
+async function slipSettled() {
+  await document.fonts.ready;
+  await animationsDone();
+  await new Promise(requestAnimationFrame);
+  await new Promise(requestAnimationFrame);
 }
 
 /** Scroll the page far enough away that it's past the margin pages are drawn within. */
@@ -539,6 +558,75 @@ describe("a page", () => {
       await expect.element(field).toHaveValue(`${WORDS} now`);
     },
   );
+
+  test.each(["mouse", "finger"] as const)(
+    "a press by %s on the redaction prompt's bare background keeps it open, focus in it",
+    async (pointer) => {
+      if (pointer === "finger") await emulateTouchScreen();
+      redact(editor, "s1");
+      const screen = await draw();
+      await editSpan(screen, `${WORDS} (redacted)`);
+      const keep = screen.getByRole("button", { name: "Keep redaction" });
+      await expect.element(keep).toHaveFocus();
+      // Pressed where it comes to rest: the prompt arrives moving.
+      await animationsDone();
+      await pressBareSlip(keep.element(), pointer);
+      await expect.element(keep).toHaveFocus();
+    },
+  );
+
+  test("a press on Use your copy while a font is being attached keeps the edit open, focus in the field", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    // A letter the font lacks: the slip offers the user's copy.
+    await userEvent.keyboard("{ArrowRight} Yes");
+    const offer = screen.getByRole("button", { name: "Use your copy" });
+    await expect.element(offer).toBeVisible();
+    editor.store.set({ attaching: "Times-Roman" });
+    await expect.element(offer).toBeDisabled();
+    await animationsDone();
+    await pressMouse(middleOf(offer.element().getBoundingClientRect()));
+    const field = screen.getByRole("textbox");
+    await expect.element(field).toHaveFocus();
+    await expect.element(field).toHaveValue(`${WORDS} Yes`);
+  });
+
+  test.each(["mouse", "finger"] as const)(
+    "a press by %s on bare paper while typing keeps the edit, focus on the span, and the page stays where it is",
+    async (pointer) => {
+      if (pointer === "finger") await emulateTouchScreen();
+      await page.viewport(1400, 400);
+      const screen = await draw();
+      await editSpan(screen);
+      await userEvent.keyboard("{ArrowRight} now");
+      await slipSettled();
+      // Scrolled on while typing, the line out of sight above.
+      const field = screen.getByRole("textbox").element();
+      window.scrollBy(0, field.getBoundingClientRect().bottom + 40);
+      const scrolled = window.scrollY;
+      const sheet = sheetOf(field).getBoundingClientRect();
+      await pressBarePaper({ x: sheet.left + sheet.width / 2, y: 200 }, pointer);
+      await expect.element(screen.getByRole("button", { name: `${WORDS} now` })).toHaveFocus();
+      expect(window.scrollY).toBe(scrolled);
+    },
+  );
+
+  test("a press on nothing while typing, the page scrolled far away, puts focus on the span, and nothing scrolls", async () => {
+    const screen = await draw();
+    await editSpan(screen);
+    await userEvent.keyboard("{ArrowRight} now");
+    await slipSettled();
+    farAway();
+    const sheet = screen.getByRole("region", { name: "Page 1" }).element();
+    await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
+    // What's in view: the browser keeps it still as the far page grows its change, so the window's scroll may not.
+    const inView = () => spacer?.getBoundingClientRect().top;
+    const before = inView();
+    await pressMouse({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    await expect.element(screen.getByRole("button", { name: `${WORDS} now` })).toHaveFocus();
+    // To the pixel: the browser keeps it there in fractions of one.
+    expect(inView()).toBeCloseTo(before ?? Number.NaN, 0);
+  });
 
   test("Shift+Tab from the field, with nothing before it to go to, keeps the edit and puts focus on the span", async () => {
     // One page, so the page's Delete is off: nothing comes before the field.
@@ -1151,6 +1239,49 @@ describe("a page", () => {
       },
     );
 
+    test("a finger's tap on a font in new text's slip sets it in that font, the typing open, focus in the field", async () => {
+      await page.viewport(1400, 900);
+      await emulateTouchScreen();
+      const { field, faces } = await openNewText(A4, [300, 300], { words: "Signed" });
+      const option = faces.getByRole("option", { name: "Caveat Bold" });
+      option.element().scrollIntoView({ block: "center" });
+      await tapAt(middleOf(option.element().getBoundingClientRect()));
+      await expect.element(option).toHaveAttribute("aria-selected", "true");
+      await expect.element(field).toHaveFocus();
+      await expect.element(field).toHaveValue("Signed");
+    });
+
+    test.each(["mouse", "finger"] as const)(
+      "a press by %s on bare paper while new text is typed keeps it, focus on it",
+      async (pointer) => {
+        if (pointer === "finger") await emulateTouchScreen();
+        const { screen, field } = await openNewText(A4, [300, 300], { words: "Signed" });
+        const sheet = sheetOf(field.element()).getBoundingClientRect();
+        // Over the page's one line, away from the slip that hangs under the field.
+        await pressBarePaper({ x: sheet.left + sheet.width / 2, y: sheet.top + sheet.height * 0.05 }, pointer);
+        await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
+      },
+    );
+
+    test.each(["mouse", "finger"] as const)(
+      "a press by %s on bare paper while new text is typed, none yet and no text on its page, puts focus on the page's Delete, and nothing scrolls",
+      async (pointer) => {
+        if (pointer === "finger") await emulateTouchScreen();
+        await page.viewport(1400, 400);
+        // Page 1 has no text; page 2 has a line, so page 1's Delete is on.
+        const doc = aDoc({ spans: [elsewhere], fonts: DOC.fonts });
+        const { screen, field } = await openNewText(A4, [300, 760], { doc });
+        await slipSettled();
+        const scrolled = window.scrollY;
+        const sheet = sheetOf(field.element()).getBoundingClientRect();
+        await pressBarePaper({ x: sheet.left + 30, y: 60 }, pointer);
+        await expect.element(screen.getByRole("button", { name: "Delete page 1" })).toHaveFocus();
+        // The slip gone from under the page's foot, the window may scroll back as far as the page has shrunk: no further.
+        const most = document.documentElement.scrollHeight - window.innerHeight;
+        expect(window.scrollY).toBeCloseTo(Math.min(scrolled, most), 0);
+      },
+    );
+
     test("Shift+Tab from new text's field, with nothing before it to go to, keeps it and puts focus on it", async () => {
       // On one page, so the page's Delete is off, and above its line: nothing comes before the field.
       const doc = aDoc({ spans: [span], fonts: DOC.fonts });
@@ -1457,6 +1588,21 @@ describe("a page", () => {
     again.element().blur();
     await pressMouse({ x: 1, y: 1 });
 
+    await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  test("new text clicked to type into again, its note a hover showed, then a click on bare paper: focus on it, its note shut", async () => {
+    const { screen, newTextMark } = await signedBesideAField();
+    const on = middleOf(newTextMark.element().getBoundingClientRect());
+    await moveMouse(on, on);
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    await pressMouse(on);
+    await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
+    await userEvent.keyboard("{End}X");
+    const sheet = sheetOf(screen.getByRole("textbox").element()).getBoundingClientRect();
+    await pressBarePaper({ x: sheet.left + 30, y: sheet.top + 30 }, "mouse");
+
+    await expect.element(screen.getByRole("button", { name: "SignedX" })).toHaveFocus();
     await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
   });
 

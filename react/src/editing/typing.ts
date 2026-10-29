@@ -3,7 +3,7 @@
 import type { FitRules, FontInfo, Insert, Replace, SpanInfo, Strategy } from "../api/types";
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
-import { type Also, announce, announcing, change, type Editor, type EditorState } from "./editor";
+import { type Also, announce, announcing, change, type Editor, type EditorState, type FocusTo } from "./editor";
 import { type Fit, fitOf, letterTroublesOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
 import { editableValueIn, emailCountIn, type HeldValue, heldOf, heldThrough, heldValueIn } from "./formattedValues";
 import type { HistoryAction } from "./history";
@@ -374,18 +374,18 @@ export function keptEditOf(state: EditorState): Replace | null {
 
 /**
  * What ending the typing makes, for an action to make in its own update: the step it adds, with no
- * edit unless `keep` and the words changed, and the rest it sets. `returnFocus` is `finish`'s.
+ * edit unless `keep` and the words changed, and the rest it sets. `returnFocus` and `inPlace` are `finish`'s.
  */
 export function typingEnd(
   state: EditorState,
   keep: boolean,
-  { returnFocus = false } = {},
+  { returnFocus = false, inPlace = false } = {},
 ): { typed: HistoryAction; ended: Partial<EditorState> } {
   const { draft, doc } = state;
   const nothing: HistoryAction = { kind: "add", edits: [] };
   if (draft === null) return { typed: nothing, ended: {} };
-  if (draft.kind === "newText") return newTextTypingEnd(state, draft, { keep, returnFocus });
-  const ended = { draft: null, ...(returnFocus && { focusTo: { spanId: draft.spanId } }) };
+  if (draft.kind === "newText") return newTextTypingEnd(state, draft, { keep, returnFocus, inPlace });
+  const ended = { draft: null, ...(returnFocus && { focusTo: sentBack({ spanId: draft.spanId }, inPlace) }) };
   const replace = keptEditOf(state);
   if (!keep || replace === null) return { typed: nothing, ended };
   return {
@@ -394,23 +394,32 @@ export function typingEnd(
   };
 }
 
+/** Focus sent back to `target` as the typing ends: a mark, or a page's control, takes it where the view is, `inPlace`. */
+function sentBack(target: FocusTo | null, inPlace: boolean): FocusTo | null {
+  const takesItInPlace = target !== null && ("spanId" in target || "newTextId" in target || "page" in target);
+  if (!inPlace || !takesItInPlace) return target;
+  return { ...target, inPlace };
+}
+
 /** What ending new text's typing makes: the text, its next version, nothing, or, emptied, its taking out. */
 function newTextTypingEnd(
   state: EditorState,
   draft: NewTextDraft,
-  { keep, returnFocus }: { keep: boolean; returnFocus: boolean },
+  { keep, returnFocus, inPlace }: { keep: boolean; returnFocus: boolean; inPlace: boolean },
 ): { typed: HistoryAction; ended: Partial<EditorState> } {
   const nothing: HistoryAction = { kind: "add", edits: [] };
   const back = {
     draft: null,
-    ...(returnFocus && { focusTo: draft.of === null ? draft.back : { newTextId: draft.of.newTextId } }),
+    ...(returnFocus && {
+      focusTo: sentBack(draft.of === null ? draft.back : { newTextId: draft.of.newTextId }, inPlace),
+    }),
   };
   const edit = insertOf(draft);
   const unchanged = draft.of !== null && sameInsert(draft.of.edit, edit);
   if (!keep || unchanged || (draft.of === null && isEmpty(draft.text))) return { typed: nothing, ended: back };
   if (draft.of === null) {
     const added = {
-      ...(returnFocus && { focusTo: { newTextId: state.history.next } }),
+      ...(returnFocus && { focusTo: sentBack({ newTextId: state.history.next }, inPlace) }),
       announcement: announcing(fill(state.doc.sentences.new_text_added, { text: draft.text })),
     };
     return { typed: { kind: "add", edits: [edit] }, ended: { ...back, ...added } };
@@ -419,7 +428,7 @@ function newTextTypingEnd(
   // Its words all taken out, it's gone, and its mark with it.
   if (isEmpty(draft.text)) {
     const out = {
-      ...(returnFocus && { focusTo: draft.back }),
+      ...(returnFocus && { focusTo: sentBack(draft.back, inPlace) }),
       announcement: announcing(fill(state.doc.sentences.new_text_taken_out, { text: draft.of.edit.text })),
     };
     return { typed, ended: { ...back, ...out } };
@@ -430,14 +439,14 @@ function newTextTypingEnd(
 
 /**
  * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
- * the span, as Enter and Escape do; leaving the field any other way has put it somewhere already.
- * `also` is the rest of the action that ends it, made in the same update.
+ * the span, as Enter and Escape do; leaving the field for somewhere has put it there already.
+ * `inPlace`, it's taken where the view is. `also` is the rest of the action that ends it, made in the same update.
  */
 export function finish(
   editor: Editor,
   keep: boolean,
-  { returnFocus = false, also = {} }: { returnFocus?: boolean; also?: Also } = {},
+  { returnFocus = false, inPlace = false, also = {} }: { returnFocus?: boolean; inPlace?: boolean; also?: Also } = {},
 ): void {
-  const { typed, ended } = typingEnd(editor.store.get(), keep, { returnFocus });
+  const { typed, ended } = typingEnd(editor.store.get(), keep, { returnFocus, inPlace });
   change(editor, typed, (next) => ({ ...ended, ...(typeof also === "function" ? also(next) : also) }));
 }

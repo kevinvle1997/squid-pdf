@@ -1,5 +1,5 @@
 // The keyboard as the page has it: what this platform calls the key a shortcut is held with, and
-// where a key or a press landed. Read off the DOM, which node hasn't, so tested in the browser.
+// where a key, a press or focus landed. Read off the DOM, which node hasn't, so tested in the browser.
 const APPLE = /Mac|iPhone|iPad/.test(navigator.userAgent);
 export const COMMAND = APPLE ? "⌘" : "Ctrl ";
 export const ALT = APPLE ? "⌥" : "Alt ";
@@ -19,11 +19,21 @@ export function onBarePaper(target: EventTarget | null, layer: Element): boolean
 }
 
 /**
- * A press on a slip leaves focus where it is, in the field typed into, unless it's into a field of the slip's own (the
- * amount's). Not React Aria's `preventFocusOnPress`, which would keep that field from taking focus too.
+ * A press on a slip leaves focus where it is, in the field typed into or on the redaction prompt's button, unless it's
+ * into a field of the slip's own (the amount's). Not React Aria's `preventFocusOnPress`, which would keep that field
+ * from taking focus too.
  */
 export function keepFocusOnPress(event: Pick<MouseEvent, "target" | "preventDefault">): void {
   if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+}
+
+/**
+ * Whether focus leaving `target` fell to nothing: to the document, or to a box that holds it, such as the pages', as Tab
+ * past all there is or a press on bare paper leaves it.
+ */
+export function fellToNothing({ target, relatedTarget }: Pick<FocusEvent, "target" | "relatedTarget">): boolean {
+  const holdsIt = relatedTarget instanceof Node && target instanceof Node && relatedTarget.contains(target);
+  return relatedTarget === null || holdsIt;
 }
 
 /** The page a key was pressed on, anything on it or its tick in the page list: each says which, as `data-page`. */

@@ -96,6 +96,14 @@ describe("a date in the field", () => {
     await expect.element(screen.getByText("looks identical")).toBeVisible();
   });
 
+  test("Tab on out of the open calendar, with nothing after it to go to, keeps the edit and puts focus on the span", async () => {
+    const { screen } = await openField();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(screen.getByRole("button", { name: WORDS })).toHaveFocus();
+  });
+
   test("a day the font can't write is marked, and says why in a few words before it's chosen", async () => {
     const { screen } = await openField();
     await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");

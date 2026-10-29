@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { mergeRefs, useFocusVisible } from "react-aria";
+import { mergeRefs } from "react-aria";
 import { Input, TextField } from "react-aria-components";
 import { createPortal } from "react-dom";
 import type { Insert, PageInfo } from "../../api/types";
@@ -54,6 +54,7 @@ import {
   points,
 } from "./geometry";
 import { keepFocusOnPress } from "./keys";
+import { useLeaveTyping } from "./leaveTyping";
 import { useSlipPlace } from "./slipPlace";
 
 /**
@@ -75,7 +76,7 @@ export function NewTextField({ info }: { info: PageInfo }) {
   // The page's layer for slips, which its sheet doesn't clip: a slip near the foot hangs past it, over the next page.
   const slipLayer = useContext(SlipLayerContext);
   const placed = useRef(false);
-  const { isFocusVisible } = useFocusVisible();
+  const leave = useLeaveTyping();
   if (draft === null || insert === null || face === null) return null;
 
   // Once, as the field takes focus: what's here already is heard, and what an edit in its font warns of.
@@ -85,13 +86,11 @@ export function NewTextField({ info }: { info: PageInfo }) {
     fieldFocused(editor);
   }
 
-  // Leaving the field and its slip ends the typing, but not a file picker taking the window's focus.
+  // Leaving the field and its slip ends the typing.
   function leaving(event: FocusEvent) {
     const to = event.relatedTarget;
     if (to instanceof Node && (scaled.field.current?.contains(to) || slip.current?.contains(to))) return;
-    // Tabbed past all there is, focus would fall to the document: it goes to the new text, as Enter sends it.
-    const tabbedOut = to === null && isFocusVisible;
-    if (document.hasFocus()) finish(editor, true, { returnFocus: tabbedOut });
+    leave(event);
   }
 
   function onKeyDown(event: KeyboardEvent) {

@@ -1,6 +1,6 @@
 // A view test though nothing's drawn: what a key was pressed on is an element, which only a browser has.
 import { describe, expect, test } from "vitest";
-import { isOnMarginNote, isTyping, keepFocusOnPress, pageOn, spanOn } from "./keys";
+import { fellToNothing, isOnMarginNote, isTyping, keepFocusOnPress, pageOn, spanOn } from "./keys";
 
 describe("where a key was pressed", () => {
   test("in a text field, whose keys are its own, or anywhere else", () => {
@@ -58,5 +58,16 @@ describe("a press on a slip", () => {
     } finally {
       slip.remove();
     }
+  });
+});
+
+describe("where focus fell", () => {
+  test("to nothing: the document, or a box that holds what lost it; anything else was somewhere chosen", () => {
+    const pages = document.createElement("main");
+    const field = pages.appendChild(document.createElement("input"));
+    const elsewhere = pages.appendChild(document.createElement("button"));
+    expect(fellToNothing({ target: field, relatedTarget: null })).toBe(true);
+    expect(fellToNothing({ target: field, relatedTarget: pages })).toBe(true);
+    expect(fellToNothing({ target: field, relatedTarget: elsewhere })).toBe(false);
   });
 });

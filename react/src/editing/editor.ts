@@ -53,15 +53,17 @@ import { FITTED, type Zoom } from "./zoom";
  */
 export interface FocusSpan {
   readonly spanId: string;
+  readonly inPlace?: boolean; // taken where the view is, never scrolled to: a pointer's press away from its field sent it
 }
 
 /**
  * A page whose own control takes focus as soon as it's drawn: its delete button, or its deleted page's
- * Put back, whichever is there. Brought into view at `block`.
+ * Put back, whichever is there. Brought into view at `block`, unless taken `inPlace`.
  */
 export interface FocusPage {
   readonly page: number;
   readonly block: ScrollLogicalPosition; // "nearest" where the control replaced the one pressed; "start" for a page gone to
+  readonly inPlace?: boolean; // taken where the view is, as a span's can be
 }
 
 /** A page's tick in the page list, taking focus as soon as it's drawn: the only page left, whose delete button can't be pressed. */
@@ -72,6 +74,7 @@ export interface FocusTick {
 /** New text whose mark takes focus as soon as it's drawn: back from its field, or moved. */
 export interface FocusNewText {
   readonly newTextId: number;
+  readonly inPlace?: boolean; // taken where the view is, as a span's can be
 }
 
 /** The field new text is typed in, taking focus back from its slip: a face chosen with a pointer leaves the typing there. */

@@ -3,7 +3,14 @@
 import { pageUrl } from "../api/client";
 import type { FitRules, Sentences, SpanInfo } from "../api/types";
 import { NEW_TEXT_ASCENT_EM } from "./constants";
-import { changedWordsCount, type EditorState, type FocusSpan, type Layout, type ScrollTo } from "./editor";
+import {
+  changedWordsCount,
+  type EditorState,
+  type FocusNewText,
+  type FocusSpan,
+  type Layout,
+  type ScrollTo,
+} from "./editor";
 import type { FailedImage } from "./images";
 import type { Match } from "./matching";
 import { keptNewTexts, type NewTextDraft, type PagePoint } from "./newText";
@@ -38,7 +45,7 @@ export interface PageState {
   readonly newTextTypedAgain: number | null; // the new text typed into again, if that's what's typed here
   readonly unredacting: string | null; // the redacted span asking before it's edited, when it's here
   readonly focusTo: FocusSpan | null; // the span focus is sent to, when it's here
-  readonly focusNewText: number | null; // the new text focus is sent to, when it's here
+  readonly focusNewText: FocusNewText | null; // the new text focus is sent to, when it's here
   readonly howToStart: boolean; // the first page, before any edit: its margin says how to start
   readonly scrollTo: ScrollTo | null; // the span brought into view, when it's here
   // What every mark shows, selected once here rather than by each mark.
@@ -93,9 +100,10 @@ function newTextDraftOn(state: EditorState, index: number): NewTextDraft | null 
 }
 
 /** The new text on page `index` focus is sent to, if any. */
-function focusNewTextOn(state: EditorState, index: number): number | null {
-  const sent = state.focusTo !== null && "newTextId" in state.focusTo ? state.focusTo.newTextId : null;
-  const text = sent === null ? undefined : keptNewTexts(state.reading).find((each) => each.newTextId === sent);
+function focusNewTextOn(state: EditorState, index: number): FocusNewText | null {
+  const sent = state.focusTo !== null && "newTextId" in state.focusTo ? state.focusTo : null;
+  if (sent === null) return null;
+  const text = keptNewTexts(state.reading).find((each) => each.newTextId === sent.newTextId);
   return text?.edit.page === index ? sent : null;
 }
 

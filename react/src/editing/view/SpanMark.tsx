@@ -43,7 +43,7 @@ export const SpanMark = memo(function SpanMark(props: Props) {
   // Sent focus, the mark takes it as it's drawn: in the field's place, or where it already stood.
   const takeFocus = useCallback(
     (mark: HTMLButtonElement | null) => {
-      if (focusTo !== null) mark?.focus();
+      if (focusTo !== null) mark?.focus({ preventScroll: focusTo.inPlace });
     },
     [focusTo],
   );
