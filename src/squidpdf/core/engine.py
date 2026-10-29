@@ -15,7 +15,7 @@ from typing import assert_never
 
 from squidpdf.core.app.errors import ErrorController
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION
+from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION, ROUNDED_PT
 from squidpdf.core.fit import LineFit
 from squidpdf.core.fonts.attached import AttachedFonts
 from squidpdf.core.fonts.catalog import face_bytes_anew
@@ -249,7 +249,7 @@ class Engine:
 
     def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Erase `spans`, all on `page`; returns those with any word of their text left."""
-        texts = self.driver.erase_text(page, [span.bbox for span in spans])
+        texts = self.driver.erase_text(page, [span.bbox.grown(ROUNDED_PT) for span in spans])
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 

@@ -23,6 +23,7 @@ from squidpdf.editing.errors import (
     BadReference as BadReference,
     RedactionConflict as RedactionConflict,
     RedactionFailed as RedactionFailed,
+    RedactionMoved as RedactionMoved,
 )
 from squidpdf.editing.export import (
     save_edited as save_edited,
@@ -33,7 +34,7 @@ from squidpdf.editing.fit import (
     options_for as options_for,
     replace_fit as replace_fit,
 )
-from squidpdf.editing.redaction import RedactionController as RedactionController
+from squidpdf.editing.redaction import redactions_of as redactions_of
 from squidpdf.editing.types import (
     Applied as Applied,
     Notice as Notice,

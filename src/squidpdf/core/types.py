@@ -74,6 +74,10 @@ class Rect:
         down = self.y0 < other.y1 and other.y0 < self.y1
         return across and down
 
+    def grown(self, by: float) -> Rect:
+        """This box, `by` points further out on every side."""
+        return Rect(self.x0 - by, self.y0 - by, self.x1 + by, self.y1 + by)
+
     def union(self, other: Rect) -> Rect:
         """The smallest box that covers both this one and `other`."""
         return Rect(
@@ -259,6 +263,37 @@ EM = 1000  # widths are given per 1000 em, as PDF font widths are
 
 
 @dataclass(frozen=True, slots=True)
+class DrawnElsewhere:
+    """What a page draws where it shouldn't after an erase, spaces aside.
+
+    Glyphs the erase was to take, still drawn, and text it moved.
+    """
+
+    taken: list[DrawnGlyph]  # glyphs the erase was to take, still drawn, wherever
+    moved: list[DrawnGlyph]  # glyphs it was to leave, drawn somewhere else
+
+
+@dataclass(frozen=True, slots=True)
+class DrawnLine:
+    """A line an edit draws: its text, where its baseline starts, and how far it's turned."""
+
+    text: str
+    origin: tuple[float, float]
+    turn_ccw: QuarterTurn
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedLetter:
+    """A letter as the page draws it, and where.
+
+    By its glyph's own letter, not the text a marked content gives in its place (ActualText).
+    """
+
+    letter: str
+    origin: tuple[float, float]  # where it starts, on its baseline
+
+
+@dataclass(frozen=True, slots=True)
 class DrawnGlyph:
     """A letter as the page draws it: the shape its code picked, and where it starts."""
 
@@ -266,6 +301,7 @@ class DrawnGlyph:
     glyph: GlyphId  # as `FontCode.glyph`; -1 for a ligature's later letters
     origin: tuple[float, float]
     width: float  # how far its font moves the pen, in points, before any letter spacing
+    direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
+import pymupdf
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -17,7 +18,7 @@ from squidpdf.api.app import create_app
 from squidpdf.core import Message, Problem
 from squidpdf.core.pdf.driver import DriverError, PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
-from squidpdf.core.types import FontResource
+from squidpdf.core.types import DrawnGlyph, FontResource, PlacedLetter, Rect
 from tests.conftest import log_lines
 from tests.helpers import assert_equal
 
@@ -115,6 +116,91 @@ class InProcess:
 
     async def run(self, _timeout, task):
         return task()
+
+
+type Place = tuple[float, float]  # where a glyph starts, on its baseline
+
+
+@dataclass(slots=True)
+class _MovingDriver:
+    """MuPDF's driver, reading each glyph set off as `moves` says once text is erased.
+
+    As MuPDF's rewrite of a page can set a line further along, or elsewhere.
+    """
+
+    driver: PdfDriver
+    moves: Callable[[Place], Place]
+    when: Callable[[Rect], bool]
+    erased: bool
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
+        """The real erase, noted if it erases a box `when` picks."""
+        self.erased = self.erased or any(self.when(box) for box in boxes)
+        return self.driver.erase_text(page, boxes)
+
+    def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
+        """Where the real driver reads them, set off as `moves` says once erased."""
+        glyphs = self.driver.drawn_glyphs(page)
+        return [replace(glyph, origin=self._moved(glyph.origin)) for glyph in glyphs]
+
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """Where the real driver reads them, set off as `moves` says once erased."""
+        letters = self.driver.letters_in(page, boxes)
+        return [
+            [replace(each, origin=self._moved(each.origin)) for each in box] for box in letters
+        ]
+
+    def _moved(self, origin: Place) -> Place:
+        """`origin`, set off as `moves` says once anything is erased."""
+        if not self.erased:
+            return origin
+        shift = self.moves(origin)
+        return (origin[0] + shift[0], origin[1] + shift[1])
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _any_box(_box: Rect) -> bool:
+    """Every erase."""
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class MovingAfterAnErase:
+    """A driver factory for the store: MuPDF's, as if each erase set glyphs off as `moves` says.
+
+    A worker opens the file, so the factory is sent there: no closure.
+    """
+
+    # How far a glyph that started at a place is set off: (0, 0) for one left where it was.
+    # A function of a module's own, to be sent, as `when` is.
+    moves: Callable[[Place], Place]
+    when: Callable[[Rect], bool] = _any_box  # the erases that set glyphs off
+
+    def __call__(self, path: str) -> PdfDriver:
+        """The driver for `path`. A file but the original is one the edits saved: erased."""
+        erased = Path(path).name != "original.pdf"
+        # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+        moving = _MovingDriver(open_driver(path), self.moves, self.when, erased)
+        return cast(PdfDriver, moving)
+
+
+def drawn_page(drawing: str, *, title: str = "") -> bytes:
+    """A page whose drawing is `drawing`, its font Helvetica as `/F`, with `title` its title.
+
+    Written by hand, to draw text as some files do: in pieces, spaced out, in marked content,
+    twice over, or by a quote, which moves to the next line first.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # A font for the drawing to name: PyMuPDF adds one with the text it writes, off the page.
+    page.insert_text((0, -100), "x", fontname="helv", fontsize=1)
+    [(*_, resource, _referencer)] = page.get_fonts()
+    doc.update_stream(page.get_contents()[0], drawing.replace("/F ", f"/{resource} ").encode())
+    doc.set_metadata({"title": title})
+    return doc.tobytes()
 
 
 def upload(client: TestClient, body: bytes) -> Response:

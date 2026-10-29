@@ -32,6 +32,7 @@ from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
 from squidpdf.editing.apply import (
+    edited_by,
     is_page,
     log_fits,
     plan,
@@ -141,7 +142,9 @@ def _draw_regions(
         fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)
         # Before run too: erasing can drop the fonts new text is measured with.
-        redactions = redactions_of(engine, resolved, redacted_by(steps))
+        redactions = redactions_of(
+            engine, resolved, redacted_by(steps), edited=edited_by(steps)
+        )
         hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         ran = run(engine, steps)
         verdicts = verdicts_of(fits, ran)

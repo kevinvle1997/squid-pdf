@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from typing import assert_never
 
 from squidpdf.core import (
+    DrawnLine,
     Engine,
     Face,
     InvalidRequest,
@@ -43,7 +44,15 @@ from squidpdf.editing.fit import (
     insert_span,
     replace_fit,
 )
-from squidpdf.editing.types import Applied, InsertNotice, Notice, Replaced, Skipped, SpanNotice
+from squidpdf.editing.types import (
+    Applied,
+    EditedPage,
+    InsertNotice,
+    Notice,
+    Replaced,
+    Skipped,
+    SpanNotice,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,14 +352,22 @@ def plan(
 ) -> list[Step]:
     """The steps the edits shown take, each drawn with its fit's plan.
 
-    `strips` are the rows drawn, by page, or None to draw every edit. A span
-    edit shows where its rows meet a strip; turned text, whose redraw is level,
-    and inserts show anywhere on a drawn page.
+    `strips` are the rows drawn, by page, or None for every edit. A span edit shows where
+    its rows meet a strip; turned text, redrawn level, and inserts anywhere on a drawn page.
+    A page with a redaction shown runs all its span edits: the check's answer is export's.
     """
     shown = [
         edited_span
         for edited_span in resolved.span_edits
         if strips is None or _shows(strips, edited_span.span)
+    ]
+    checked = {edited.span.page for edited in shown if isinstance(edited.edit, Redact)}
+    shown = [
+        edited_span
+        for edited_span in resolved.span_edits
+        if strips is None
+        or _shows(strips, edited_span.span)
+        or edited_span.span.page in checked
     ]
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
@@ -431,6 +448,35 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
     )
 
 
+def edited_by(steps: Sequence[Step]) -> dict[int, EditedPage]:
+    """What the steps erase and draw, by page: what the redaction check allows for."""
+    erased = [span for span in map(_erased_by, steps) if span is not None]
+    drawn = [_line_drawn_by(step) for step in steps]
+    lines = [line for line in drawn if line is not None]
+    pages = {span.page for span in erased} | {page for page, _line in lines}
+    return {
+        page: EditedPage(
+            [span.bbox for span in erased if span.page == page],
+            drawn=[line for on, line in lines if on == page],
+        )
+        for page in pages
+    }
+
+
+def _line_drawn_by(step: Step) -> tuple[int, DrawnLine] | None:
+    """The line a step draws, and its page; None for one that only erases."""
+    if isinstance(step, _Erase):
+        return None
+    # A replace is redrawn level, at its span's start.
+    if isinstance(step, _Redraw):
+        return step.span.page, DrawnLine(step.text, step.span.origin, turn_ccw=0)
+    if isinstance(step, _Place):
+        return step.span.page, DrawnLine(
+            step.span.text, step.span.origin, turn_ccw=step.turn_ccw
+        )
+    assert_never(step)
+
+
 def redacted_by(steps: Sequence[Step]) -> list[Span]:
     """The spans the steps redact, in order."""
     return [step.span for step in steps if isinstance(step, _Erase)]
@@ -493,13 +539,27 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
     assert_never(step)
 
 
-def apply_edits(engine: Engine, resolved: Resolved) -> Applied:
-    """Apply every edit on every page, in memory. Nothing is written."""
-    fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+@dataclass(frozen=True, slots=True, eq=False)
+class Planned:
+    """Every edit's fit, and the steps they take on every page: worked out once, then run."""
+
+    fits: LogFits
+    steps: list[Step]
+
+
+def planned_of(engine: Engine, resolved: Resolved) -> Planned:
+    """The fits and the steps of every edit. Before any is run: erasing can drop fonts."""
+    fits = log_fits(engine, resolved)
+    return Planned(fits, plan(engine, resolved, fits))
+
+
+def apply_edits(engine: Engine, resolved: Resolved, planned: Planned) -> Applied:
+    """Apply every edit on every page, as `planned`, in memory. Nothing is written."""
+    fits = planned.fits
     rewritten = _rewritten(resolved)
-    # Before run too, for the same reason.
+    # Before run: erasing can drop the fonts a font's name is read from.
     shown_names = {span.id: engine.shown_name(span) for span in rewritten}
-    ran = run(engine, plan(engine, resolved, fits))
+    ran = run(engine, planned.steps)
     verdicts = verdicts_of(fits, ran)
     replaced = [
         Replaced(verdicts.replaces[span.id], shown_names[span.id])

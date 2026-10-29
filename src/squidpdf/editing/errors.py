@@ -32,6 +32,17 @@ class RedactionFailed(Problem):
         super().__init__(span_id=span_id, text=text, page=page)
 
 
+class RedactionMoved(Problem):
+    """Each redacted span's words are gone, but the erase moved other text: no file."""
+
+    type = "redaction_moved"
+    status = 422
+
+    def __init__(self, text: str, page: int) -> None:
+        """Name the words redacted on the page where other text moved, and the page from 1."""
+        super().__init__(text=text, page=page)
+
+
 class RedactionCovered(Problem):
     """New text sits over a redacted span, so the check reads its letters there: no file."""
 

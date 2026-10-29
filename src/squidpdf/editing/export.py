@@ -37,10 +37,18 @@ from squidpdf.documents.errors import NoSuchPage
 from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
-from squidpdf.editing.apply import apply_edits, is_page, page_order, redacted_in, resolve
+from squidpdf.editing.apply import (
+    apply_edits,
+    edited_by,
+    is_page,
+    page_order,
+    planned_of,
+    redacted_in,
+    resolve,
+)
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
-from squidpdf.editing.errors import RedactionCovered, RedactionFailed
+from squidpdf.editing.errors import RedactionCovered, RedactionFailed, RedactionMoved
 from squidpdf.editing.redaction import redactions_of
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
@@ -184,15 +192,18 @@ def save_edited(
     """Apply the edits, keep `pages`, save to `to` naming squidpdf, and check the redactions.
 
     Raises RedactionFailed or RedactionCovered, deleting the file, if a redacted span's words
-    are left. The CLI saves this way too. `rooms` has each edited span's, from `Engine.rooms`.
+    are left, or RedactionMoved if the erase moved other text. The CLI saves this way too.
+    `rooms` has each edited span's, from `Engine.rooms`.
     """
     resolved = resolve(engine, index, rooms=rooms, edits=edits)
     order = page_order(resolved, pages)
     # Before the edits: erasing can drop the fonts new text is measured with.
-    redactions = redactions_of(engine, resolved, redacted_in(resolved))
+    planned = planned_of(engine, resolved)
+    edited = edited_by(planned.steps)
+    redactions = redactions_of(engine, resolved, redacted_in(resolved), edited=edited)
     # Before the edits: a redaction takes its words out of the mark as from every hidden copy.
     engine.mark_changed_by(_PRODUCER, datetime.now(UTC))
-    applied = apply_edits(engine, resolved)
+    applied = apply_edits(engine, resolved, planned)
     notices: list[Message] = []
     # By their numbers in the original, so before any page is renumbered.
     engine.turn_pages(resolved.turns)
@@ -203,7 +214,7 @@ def save_edited(
     notices += engine.save(to)
     try:
         redactions.check_saved(to, pages=order, driver_factory=driver_factory)
-    except RedactionFailed, RedactionCovered:  # refused: never leave the file lying around
+    except RedactionFailed, RedactionCovered, RedactionMoved:  # refused: never leave the file
         Path(to).unlink()
         raise
     return Saved(applied, notices)

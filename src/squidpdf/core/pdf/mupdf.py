@@ -50,6 +50,7 @@ from squidpdf.core.types import (
     HiddenCopy,
     Page,
     PageFont,
+    PlacedLetter,
     QuarterTurn,
     Rect,
     TextPiece,
@@ -82,6 +83,8 @@ _FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+# The letters as drawn, each by its glyph: a marked content's text in their place aside.
+_DRAWN_FLAGS = _TEXT_FLAGS | pymupdf.TEXT_IGNORE_ACTUALTEXT
 
 # A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
 _KINDS: dict[str, FontKind] = {
@@ -299,11 +302,22 @@ class _MuPDFDriver:
         letters = self._letters(page, near=boxes)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
+        """The letters drawn with their middle in each box, where each is, in reading order."""
+        letters = self._letters(page, near=boxes, flags=_DRAWN_FLAGS)
+        return [[_placed(letter) for letter in letters.inside(box)] for box in boxes]
+
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
-        """Each letter the page draws, and the shape its code picked, in the order drawn."""
+        """Each letter the page's own drawing writes, on it or off it, and the shape picked."""
         return [
-            DrawnGlyph(chr(letter), GlyphId(glyph), (origin[0], origin[1]), box[2] - box[0])
-            for run in self.doc[page].get_texttrace()
+            DrawnGlyph(
+                chr(letter),
+                GlyphId(glyph),
+                (origin[0], origin[1]),
+                box[2] - box[0],
+                direction=(run["dir"][0], run["dir"][1]),
+            )
+            for run in self.file.glyphs.drawn(page)
             for letter, glyph, origin, box in run["chars"]
         ]
 
@@ -338,12 +352,14 @@ class _MuPDFDriver:
             if _shows_text(field.field_type_string, field.field_value)
         ]
 
-    def _letters(self, page: int, *, near: list[Rect]) -> _PageLetters:
+    def _letters(
+        self, page: int, *, near: list[Rect], flags: int = _TEXT_FLAGS
+    ) -> _PageLetters:
         """The letters of each line on the page whose box meets one of `near`, to find by place.
 
         A line's box holds each of its letters' boxes, so a line left out has none inside them.
         """
-        blocks = self.doc[page].get_text("rawdict", flags=_TEXT_FLAGS)["blocks"]
+        blocks = self.doc[page].get_text("rawdict", flags=flags)["blocks"]
         lines = (line for line in _each_line(blocks) if _meets_any(line["bbox"], near))
         return _page_letters(list(_each_letter(lines)))
 
@@ -889,6 +905,11 @@ def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
             for char in piece["chars"]:
                 origin = (char["origin"][0], char["origin"][1])
                 yield _Letter(char["c"], tuple(char["bbox"]), origin, direction)
+
+
+def _placed(letter: _Letter) -> PlacedLetter:
+    """A letter read from the page, as the engine is told of it."""
+    return PlacedLetter(letter.text, letter.origin)
 
 
 def _text_piece(
