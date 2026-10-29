@@ -11,6 +11,7 @@ export type DocumentNoticeInfo = Schemas["DocumentNoticeInfo"];
 export type PageInfo = Schemas["PageInfo"];
 // Not read: `origin`, since the preview sits in the span's box only until the strip, drawn at `origin`, replaces it.
 export type SpanInfo = Schemas["SpanInfo"];
+export type Box = Schemas["Box"];
 // Not read: `why_code` and `why_params`. The note says `why`, the server's sentence, as it is.
 export type FontInfo = Schemas["FontInfo"];
 export type Sentences = Schemas["Sentences"];

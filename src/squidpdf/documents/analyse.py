@@ -216,4 +216,5 @@ def _span_info(
         "letter_spacing_em": round(report.letter_spacing, _SPACING_DP),
         "room_pt": round(room_pt, 2),
         "form_field": form_field,
+        "turned": span.turned,
     }

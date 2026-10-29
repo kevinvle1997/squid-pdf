@@ -610,7 +610,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "method_not_allowed" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
+            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "method_not_allowed" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -629,7 +629,7 @@ export interface components {
         };
         /**
          * Redact
-         * @description Remove a span's text and draw nothing in its place.
+         * @description Remove a span's text, or the words `range` names, and draw nothing in their place.
          *
          *     A covering box would leave the text extractable underneath, so this deletes it from the
          *     page itself, and the output is re-read to check.
@@ -637,11 +637,27 @@ export interface components {
         Redact: {
             /** Span Id */
             span_id: string;
+            /** Range */
+            range?: [
+                number,
+                number
+            ] | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "redact";
+        };
+        /**
+         * RedactedRunInfo
+         * @description A run of words a redaction takes: its code points, and the box its letters take.
+         *
+         *     The box is in points on the page, however the line is turned.
+         */
+        RedactedRunInfo: {
+            /** Range */
+            range: number[];
+            box: components["schemas"]["Box"];
         };
         /**
          * RedactionInfo
@@ -657,6 +673,8 @@ export interface components {
             hidden_copies: ("title" | "metadata" | "bookmarks" | "comments" | "form_fields" | "screen_reader_text" | "signatures")[];
             /** Message */
             message: string | null;
+            /** Runs */
+            runs: components["schemas"]["RedactedRunInfo"][];
         };
         /**
          * Region
@@ -769,6 +787,8 @@ export interface components {
             drawn_in_own_copy: string;
             /** Undo Redaction */
             undo_redaction: string;
+            /** Undo Redacted Words */
+            undo_redacted_words: string;
             /** Reopened */
             reopened: string;
             /** Export Left Out */
@@ -807,6 +827,8 @@ export interface components {
             put_back: string;
             /** Redacted */
             redacted: string;
+            /** Already Redacted */
+            already_redacted: string;
             /** New Text Added */
             new_text_added: string;
             /** New Text Moved */
@@ -851,6 +873,8 @@ export interface components {
             typed_similar: string;
             /** Join Parts */
             join_parts: string;
+            /** Join Sentences */
+            join_sentences: string;
             /** Options */
             options: {
                 [key: string]: {
@@ -929,6 +953,8 @@ export interface components {
             room_pt: number;
             /** Form Field */
             form_field: boolean;
+            /** Turned */
+            turned: boolean;
         };
         /**
          * SpanNoticeInfo

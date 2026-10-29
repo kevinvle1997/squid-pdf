@@ -123,6 +123,15 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
+        """The box each of `drawn_glyphs` takes as drawn, in its order: its ink, descenders too.
+
+        Through all of its text's matrix: a letter condensed or stretched up is as tall as it
+        shows. A glyph that draws nothing, as a space, has an empty box where it starts. None
+        where the page's text can't be read through for them.
+        """
+        ...
+
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
 
@@ -179,8 +188,13 @@ class PdfDriver(Protocol):
         """
         ...
 
-    def drop_links(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every link whose area overlaps one of `boxes`, whatever it does."""
+    def drop_links(
+        self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
+    ) -> None:
+        """Delete every link whose area overlaps one of `boxes`, whatever it does.
+
+        With `holding`, only one whose action holds text it's true of: an address, a file name.
+        """
         ...
 
     def hidden_copies(self, page: int) -> list[str]:

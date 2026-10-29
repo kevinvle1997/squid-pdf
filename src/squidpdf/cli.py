@@ -44,6 +44,7 @@ from squidpdf.core import (
     green_rate,
     open_pdf,
     result_of,
+    whole_run,
     words,
     write_dense,
     write_sample,
@@ -52,6 +53,7 @@ from squidpdf.editing import (
     Redact,
     RedactionFailed,
     RedactionMoved,
+    RedactionUnchecked,
     Replace,
     Strategy,
     check_text,
@@ -328,7 +330,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         # Before the hidden copies are read, which would read that XMP garbled.
         plain_xmp_dropped = opened.engine.drop_plain_xmp()
         # Asked before the save takes the signatures out, as render asks.
-        hidden = opened.engine.redaction.hidden_places([span])[span.id]
+        hidden = opened.engine.redaction.hidden_places([whole_run(span)])[span.id]
         removal_notices = [Message("signatures_removed")] if "signatures" in hidden else []
         # The same save and check a download gets.
         try:
@@ -341,8 +343,9 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                     to=to,
                     driver_factory=DEFAULT_DRIVER_FACTORY,
                 )
-        # The text was still in the file, or the erase moved other text: none was kept.
-        except (RedactionFailed, RedactionMoved) as failed:
+        # The text was still in the file, or the erase moved other text, or that couldn't be
+        # checked: none was kept.
+        except (RedactionFailed, RedactionMoved, RedactionUnchecked) as failed:
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
     for said in (

@@ -68,6 +68,7 @@ class SpanInfo(TypedDict):
     )
     room_pt: float  # the free space after it on its line: too long is only past it
     form_field: bool
+    turned: bool  # its line isn't level: the browser can't measure along it, as on a level one
 
 
 class FontFacts(TypedDict):
@@ -168,6 +169,7 @@ class Sentences(TypedDict):
     drawn_in_your_copy: str  # a font the user attached their own copy of
     drawn_in_own_copy: str  # a font whose copy in the file draws edits
     undo_redaction: str
+    undo_redacted_words: str  # as undo_redaction, of a span with some words redacted
     reopened: str
     export_left_out: str
     page_left_out: str  # a page deleted in the editor, said on the slip in its place
@@ -188,6 +190,7 @@ class Sentences(TypedDict):
     changed_to: str  # typed and kept, or done again
     put_back: str  # put back as the document had it, from its margin note
     redacted: str
+    already_redacted: str
     new_text_added: str  # new text put on a page
     new_text_moved: str
     new_text_taken_out: str  # from its note, emptied, or undone
@@ -225,6 +228,7 @@ class Sentences(TypedDict):
     typed_different: str
     typed_similar: str
     join_parts: str  # what joins sentences said at once
+    join_sentences: str  # what joins whole sentences, each ending in its stop
     options: dict[str, dict[str, str]]
     # Each way a span can be approximate, by its `why` code.
     approximate: dict[ApproximateReason, str]

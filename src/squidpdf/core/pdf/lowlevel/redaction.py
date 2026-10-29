@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
 import pymupdf
 
-from squidpdf.core.pdf.lowlevel.objects import items_of, pdf_of
+from squidpdf.core.pdf.lowlevel.objects import (
+    bytes_of,
+    each_reached,
+    items_of,
+    pdf_of,
+    text_of,
+    values_of,
+)
 from squidpdf.core.pdf.lowlevel.pages import (
     to_pdf_matrix,
     unturned,
@@ -92,11 +99,14 @@ class PageRedaction:
         _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
         _sync_links(self.doc, page)
 
-    def drop_links(self, page: int, boxes: list[Rect]) -> None:
+    def drop_links(
+        self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
+    ) -> None:
         """Delete every link whose area overlaps one of `boxes`, whatever it does.
 
-        Read from the page's own list of annotations (its Annots): PyMuPDF's list
-        of links leaves out what MuPDF can't follow, a script or a form reset.
+        With `holding`, only one whose actions hold text it's true of. Read from the page's
+        own list of annotations (its Annots): PyMuPDF's list of links leaves out what MuPDF
+        can't follow, a script or a form reset.
         """
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
@@ -112,9 +122,37 @@ class PageRedaction:
                 continue
             rect = mu.pdf_to_rect(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Rect))
             link_area = pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y1) * to_page
-            if any(link_area.intersects(box) for box in boxes_shown):
+            over = any(link_area.intersects(box) for box in boxes_shown)
+            held = holding is None or any(map(holding, _texts_of_link(annotation)))
+            if over and held:
                 mu.pdf_array_delete(listed, place)
         _sync_links(self.doc, page)
+
+
+def _texts_of_link(annotation: pymupdf.mupdf.PdfObj) -> list[str]:
+    """The text a link's actions hold: an address, a file's name, a script, each written apart.
+
+    Its action and each that follows (Next), and a file named in one by its own description.
+    """
+    mu = pymupdf.mupdf
+    texts: list[str] = []
+    for action in each_reached(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_A), ("Next",)):
+        for value in values_of(action):
+            # A file's description, written in the action: its names are strings in it.
+            held = values_of(value) if mu.pdf_is_dict(value) else [value]
+            texts += [
+                _text_held(item)
+                for item in held
+                if mu.pdf_is_string(item) or mu.pdf_is_stream(item)
+            ]
+    return texts
+
+
+def _text_held(item: pymupdf.mupdf.PdfObj) -> str:
+    """A string's text, or a stream's (a script) read as single bytes."""
+    if pymupdf.mupdf.pdf_is_string(item):
+        return text_of(item)
+    return bytes_of(item).decode("latin-1")
 
 
 def _put_back(

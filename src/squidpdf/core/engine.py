@@ -29,7 +29,7 @@ from squidpdf.core.pdf.driver import DriverFactory, PdfDriver
 # The one import that names the library: its driver is `open_pdf`'s default.
 from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, open_face
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
-from squidpdf.core.redaction import RedactionCheck, any_word_left, whole_words, without
+from squidpdf.core.redaction import RedactionCheck, any_word_left, holds, whole_words, without
 from squidpdf.core.text.fidelity import FidelityReport
 from squidpdf.core.text.room import rooms_on
 from squidpdf.core.text.spans import build_index
@@ -39,6 +39,7 @@ from squidpdf.core.types import (
     Page,
     QuarterTurn,
     Rect,
+    RedactedRun,
     Span,
     SpanIndex,
     asked_by_page,
@@ -266,23 +267,29 @@ class Engine:
             if line.plan is None:
                 self.plans.plan_for(line.span, line.text)
 
-    def unlink(self, spans: list[Span]) -> None:
-        """Delete every link over these spans: a link can carry the text it's on (a mailto:)."""
-        for page, on_page in by_page(spans).items():
-            self.driver.drop_links(page, [span.bbox for span in on_page])
+    def unlink(self, runs: list[RedactedRun], *, lines: Sequence[Span] = ()) -> None:
+        """Delete every link over these runs, and over `lines` each whose action holds a word.
 
-    def drop_hidden_copies(self, spans: list[Span]) -> None:
-        """Delete these spans' words from every hidden copy, as whole words, and all signatures.
+        A link can carry the text it's on (a mailto:), or text on its line beside it.
+        """
+        for page, on_page in by_page(runs).items():
+            self.driver.drop_links(page, [run.bbox for run in on_page])
+            holding = partial(holds, whole_words(on_page))
+            around = [line.bbox for line in lines if line.page == page]
+            self.driver.drop_links(page, around, holding=holding)
+
+    def drop_hidden_copies(self, runs: list[RedactedRun]) -> None:
+        """Delete these runs' words from every hidden copy, as whole words, and all signatures.
 
         A signature goes whatever it holds: the redaction rewrites the file, so none would hold.
         """
         # Nothing to delete, signatures included: a pattern of no words would match everywhere.
-        if not spans:
+        if not runs:
             return
-        for page, on_page in by_page(spans).items():
+        for page, on_page in by_page(runs).items():
             words = whole_words(on_page)
             self.driver.rewrite_hidden_copies(page, partial(without, words))
-        self.driver.rewrite_document_hidden_copies(partial(without, whole_words(spans)))
+        self.driver.rewrite_document_hidden_copies(partial(without, whole_words(runs)))
         self.driver.drop_signatures()
 
     def draw(

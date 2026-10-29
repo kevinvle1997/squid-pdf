@@ -12,6 +12,7 @@ import { shownAmong } from "../mismatches";
 import { shownNewTextsAmong } from "../newText";
 import { inPageOrder, type PageState, placedOnPage, spanIn } from "../page";
 import type { SpanReading } from "../project";
+import { undoQuestionOf } from "../redaction";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
@@ -175,6 +176,7 @@ function UndoRedactionAt({
   readings: ReadonlyMap<string, SpanReading>;
 }) {
   const span = spanIn(page, spanId);
-  if (span === undefined || !readings.get(spanId)?.redacted) return null;
-  return <UndoRedaction span={span} info={info} sentences={page.sentences} />;
+  const redacted = readings.get(spanId)?.redacted ?? null;
+  if (span === undefined || redacted === null) return null;
+  return <UndoRedaction span={span} info={info} question={undoQuestionOf(page.sentences, redacted)} />;
 }

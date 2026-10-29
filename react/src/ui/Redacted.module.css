@@ -1,0 +1,7 @@
+/* Words redacted, as they export: the page's white where they were, boxed in the pencil so they read as gone,
+   not as blank paper. The wash stays what's pointed at or found, never this at rest. */
+.redacted { background: var(--sheet); box-shadow: inset 0 0 0 1.5px var(--mark-change); }
+/* The tint and the shadow go in this mode: an outline keeps it a box, so it still reads as more than a change. */
+@media (forced-colors: active) {
+  .redacted { outline: 1px solid Highlight; }
+}

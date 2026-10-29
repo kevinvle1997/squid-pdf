@@ -79,6 +79,8 @@ from squidpdf.core.plan import DrawPlan as DrawPlan
 from squidpdf.core.redaction import (
     RedactionCheck as RedactionCheck,
     any_word_left as any_word_left,
+    words_around as words_around,
+    words_beside as words_beside,
 )
 from squidpdf.core.text.fidelity import (
     APPROXIMATE_REASONS as APPROXIMATE_REASONS,
@@ -102,6 +104,8 @@ from squidpdf.core.types import (
     PlacedLetter as PlacedLetter,
     QuarterTurn as QuarterTurn,
     Rect as Rect,
+    RedactedRun as RedactedRun,
+    RestOfLine as RestOfLine,
     Span as Span,
     SpanIndex as SpanIndex,
     Style as Style,
@@ -111,5 +115,7 @@ from squidpdf.core.types import (
     new_text as new_text,
     pages_as_json as pages_as_json,
     pages_from_json as pages_from_json,
+    run_of as run_of,
     turn_added as turn_added,
+    whole_run as whole_run,
 )

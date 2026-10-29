@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Tip } from "../../ui/Tooltip";
 import type { Editor } from "../editor";
-import { marginNotesOf, notePlaces } from "../margin";
+import { joinedRuns, marginNotesOf, notePlaces } from "../margin";
 import type { NewTextReading, SpanReading } from "../project";
 import { sentenceOrNothing } from "../words";
 import { useEditor, useEditorState } from "./context";
@@ -35,12 +35,12 @@ export function Margin({ info, changes, newTexts, noteHeightPt, pageNumber }: Pr
     <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
       {notes.map(({ key, note, undo }, index) => (
         <div key={key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-          <Tip heading={note.was === "" ? newText : `Was “${note.was}”`} detail={`Now “${note.now}”`}>
+          <Tip heading={note.was.length === 0 ? newText : `Was “${joinedRuns(note.was)}”`} detail={`Now “${note.now}”`}>
             <UndoNote label={note.label} undo={undo}>
               {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
               <UndoMark />
               {note.inserted === null ? (
-                <span className={styles.old}>{note.struck}</span>
+                <Struck runs={note.struck} />
               ) : (
                 // Words only added: they're marked as a proof marks an insertion, not one kept struck.
                 <span className={styles.added}>
@@ -53,6 +53,24 @@ export function Margin({ info, changes, newTexts, noteHeightPt, pageNumber }: Pr
         </div>
       ))}
     </Group>
+  );
+}
+
+/**
+ * Words taken out, struck through: each run on its own, the ellipsis between them not, since it was never there.
+ * Beside the page each run shrinks to its share, so a long first run can't hide the next.
+ */
+function Struck({ runs }: { runs: readonly string[] }) {
+  return (
+    <span className={styles.old}>
+      {runs.map((run, index) => (
+        // By its place in the line: two runs may read the same.
+        <Fragment key={index}>
+          {index > 0 && <span className={styles.between}> … </span>}
+          <span className={styles.run}>{run}</span>
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -74,13 +92,13 @@ export function ChangeList({
         {marginNotesOf(changes, newTexts).map(({ key, note, undo }) => (
           <li key={key}>
             <UndoNote label={note.label} undo={undo}>
-              {note.was === "" ? (
+              {note.was.length === 0 ? (
                 <span className={styles.added}>
                   <InsertMark />
                   {newText}
                 </span>
               ) : (
-                <span className={styles.old}>{note.was}</span>
+                <Struck runs={note.was} />
               )}
               <span className={styles.now}>{note.now}</span>
               {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}

@@ -48,7 +48,12 @@ from squidpdf.editing.apply import (
 )
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
-from squidpdf.editing.errors import RedactionCovered, RedactionFailed, RedactionMoved
+from squidpdf.editing.errors import (
+    RedactionCovered,
+    RedactionFailed,
+    RedactionMoved,
+    RedactionUnchecked,
+)
 from squidpdf.editing.redaction import redactions_of
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
@@ -191,9 +196,9 @@ def save_edited(
 ) -> Saved:
     """Apply the edits, keep `pages`, save to `to` naming squidpdf, and check the redactions.
 
-    Raises RedactionFailed or RedactionCovered, deleting the file, if a redacted span's words
-    are left, or RedactionMoved if the erase moved other text. The CLI saves this way too.
-    `rooms` has each edited span's, from `Engine.rooms`.
+    Raises, deleting the file, RedactionFailed or RedactionCovered if a redacted span's words
+    are left, RedactionMoved if the erase moved other text, or RedactionUnchecked if where it
+    set a rest can't be read. The CLI saves this way too. `rooms`: from `Engine.rooms`.
     """
     resolved = resolve(engine, index, rooms=rooms, edits=edits)
     order = page_order(resolved, pages)
@@ -214,7 +219,8 @@ def save_edited(
     notices += engine.save(to)
     try:
         redactions.check_saved(to, pages=order, driver_factory=driver_factory)
-    except RedactionFailed, RedactionCovered, RedactionMoved:  # refused: never leave the file
+    # Refused: never leave the file.
+    except RedactionFailed, RedactionCovered, RedactionMoved, RedactionUnchecked:
         Path(to).unlink()
         raise
     return Saved(applied, notices)

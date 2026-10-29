@@ -1,7 +1,7 @@
 import { useContext, useId } from "react";
 import { Group } from "react-aria-components";
 import { createPortal } from "react-dom";
-import type { PageInfo, Sentences, SpanInfo } from "../../api/types";
+import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Warn } from "../../ui/Warn";
 import { onEscape } from "../commands";
@@ -16,7 +16,7 @@ import styles from "./UndoRedaction.module.css";
  * editor has, since un-redacting by accident is a leak. Focus starts on keeping it; Escape keeps it too.
  * On the page's layer for slips, as the field's chip is: near the page's foot it hangs past it, over the next page.
  */
-export function UndoRedaction({ span, info, sentences }: { span: SpanInfo; info: PageInfo; sentences: Sentences }) {
+export function UndoRedaction({ span, info, question }: { span: SpanInfo; info: PageInfo; question: string }) {
   const editor = useEditor();
   const asked = useId();
   const keepOnEscape = onEscape(() => keepRedaction(editor));
@@ -34,7 +34,7 @@ export function UndoRedaction({ span, info, sentences }: { span: SpanInfo; info:
       onMouseDown={keepFocusOnPress}
     >
       <span id={asked} className={styles.asked}>
-        <Warn mark>{sentences.undo_redaction}</Warn>
+        <Warn mark>{question}</Warn>
       </span>
       <span className={styles.choices}>
         <Button onPress={() => editAnyway(editor)} onKeyDown={keepOnEscape}>

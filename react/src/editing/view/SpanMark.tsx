@@ -7,7 +7,8 @@ import { isShortcutPress, onEscape, passShortcut } from "../commands";
 import { DOUBLE_TAP_MS } from "../constants";
 import { type FocusSpan, focusMoved } from "../editor";
 import { lookOf } from "../marks";
-import type { SpanReading } from "../project";
+import { redactedRangesOf, type SpanReading } from "../project";
+import { redactedBoxes, redactedSentences } from "../redaction";
 import { edit } from "../typing";
 import { useEditor } from "./context";
 import { boxOf, markBoxOf } from "./geometry";
@@ -97,32 +98,47 @@ export const SpanMark = memo(function SpanMark(props: Props) {
     look.changed && styles.changed,
     look.trouble && styles.trouble,
     look.redacted && styles.redacted,
+    look.wordsRedacted && styles.wordsRedacted,
     look.unredacted && styles.unredacted,
   );
+  const ranges = redactedRangesOf(reading);
 
   return (
-    <Button
-      ref={takeFocus}
-      className={className}
-      data-span={span.id}
-      data-warned={look.trouble ? "" : undefined}
-      style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
-      aria-describedby={described ? noteId : undefined}
-      onPress={pressed}
-      // Cmd+Enter goes on to the window's shortcuts, which open new text below: the mark would keep it.
-      onPressStart={passShortcut}
-      onHoverStart={(event) => showNote(event.target, "hover")}
-      // Not at once: the pointer may be on its way to the note, to read it (WCAG 1.4.13, Hoverable).
-      onHoverEnd={() => notes.hideSoon(span.id)}
-      onFocus={(event) => showNote(event.target, "focus")}
-      onBlur={() => {
-        notes.hide(span.id);
-        if (focusTo !== null) focusMoved(editor);
-      }}
-      onKeyDown={onEscape(() => notes.hide(span.id))}
-    >
-      <span className="vh">{reading?.text ?? span.text}</span>
-      {look.redacted && <span className="vh"> (redacted)</span>}
-    </Button>
+    <>
+      <Button
+        ref={takeFocus}
+        className={className}
+        data-span={span.id}
+        data-warned={look.trouble ? "" : undefined}
+        style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
+        aria-describedby={described ? noteId : undefined}
+        onPress={pressed}
+        // Cmd+Enter goes on to the window's shortcuts, which open new text below: the mark would keep it.
+        onPressStart={passShortcut}
+        onHoverStart={(event) => showNote(event.target, "hover")}
+        // Not at once: the pointer may be on its way to the note, to read it (WCAG 1.4.13, Hoverable).
+        onHoverEnd={() => notes.hideSoon(span.id)}
+        onFocus={(event) => showNote(event.target, "focus")}
+        onBlur={() => {
+          notes.hide(span.id);
+          if (focusTo !== null) focusMoved(editor);
+        }}
+        onKeyDown={onEscape(() => notes.hide(span.id))}
+      >
+        <span className="vh">{reading?.text ?? span.text}</span>
+        {look.redacted && <span className="vh"> (redacted)</span>}
+        {ranges.length > 0 && <span className="vh"> {redactedSentences(sentences, { text: span.text, ranges })}</span>}
+      </Button>
+      {redactedBoxes(span, { ranges, glyphs: font?.glyphs, redaction }).map((box, index) => (
+        <span
+          // By its place in the line: the ranges don't overlap, and keep their order.
+          key={ranges[index]?.start}
+          className={styles.redactedRun}
+          aria-hidden="true"
+          data-unredacted={look.unredacted ? "" : undefined}
+          style={boxOf(box, info)}
+        />
+      ))}
+    </>
   );
 });

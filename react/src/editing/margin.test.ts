@@ -9,7 +9,7 @@ const changeAt = (id: string, y0: number): SpanReading => ({
   text: "now",
   replaced: true,
   strategy: undefined,
-  redacted: false,
+  redacted: null,
 });
 
 test("a note sits level with its line, and one that would overlap the note above moves down", () => {
@@ -55,20 +55,40 @@ describe("what a note says", () => {
     };
     expect(noteOf(change)).toEqual({
       label: "Undo: “Paid on 2 April” goes back to “Paid on 14 March”",
-      struck: "14 March",
+      struck: ["14 March"],
       inserted: null,
-      was: "Paid on 14 March",
+      was: ["Paid on 14 March"],
       now: "Paid on 2 April",
     });
   });
 
   test("a redaction's strikes every word, since it takes them all out", () => {
-    const redaction = { ...changeAt("s", 100), span: aSpan({ id: "s", text: "John Smith" }), redacted: true };
+    const redaction = {
+      ...changeAt("s", 100),
+      span: aSpan({ id: "s", text: "John Smith" }),
+      redacted: "whole" as const,
+    };
     expect(noteOf(redaction)).toEqual({
       label: "Undo: “John Smith” is no longer redacted",
-      struck: "John Smith",
+      struck: ["John Smith"],
       inserted: null,
-      was: "John Smith",
+      was: ["John Smith"],
+      now: "Redacted",
+    });
+  });
+
+  test("a redaction of some words strikes only those, each run on its own, and says they're redacted", () => {
+    const span = aSpan({ id: "s", text: "Card 4421 then 9918 ends" });
+    const runs = [
+      { start: 5, end: 9 },
+      { start: 15, end: 19 },
+    ];
+    const redaction = { ...changeAt("s", 100), span, text: span.text, replaced: false, redacted: runs };
+    expect(noteOf(redaction)).toEqual({
+      label: "Undo: “4421 … 9918” is no longer redacted",
+      struck: ["4421", "9918"],
+      inserted: null,
+      was: ["4421", "9918"],
       now: "Redacted",
     });
   });
@@ -79,7 +99,7 @@ describe("what a note says", () => {
       span: aSpan({ id: "s", text: "SERVICES AGREEMENT" }),
       text: "SERVICES AGREEMENT ✓",
     };
-    expect(noteOf(change)).toMatchObject({ struck: "AGREEMENT", inserted: "✓" });
+    expect(noteOf(change)).toMatchObject({ struck: ["AGREEMENT"], inserted: "✓" });
     expect(insertedWordsIn("was here", "now was here")).toBe("now");
     expect(insertedWordsIn("was here", "was very much here")).toBe("very much");
     // A word changed or taken out: nothing was only added.
@@ -94,6 +114,6 @@ describe("a page's margin notes", () => {
     const notes = marginNotesOf([changeAt("one", 100)], [newText]);
     expect(notes.map(({ key }) => key)).toEqual(["one", "new text 2"]);
     expect(notes[1]?.line).toMatchObject({ y0: 400 - 10 * NEW_TEXT_ASCENT_EM, y1: 400 + 10 * NEW_TEXT_DESCENT_EM });
-    expect(notes[1]?.note).toMatchObject({ label: "Undo: take out “Signed”", inserted: "Signed", was: "" });
+    expect(notes[1]?.note).toMatchObject({ label: "Undo: take out “Signed”", inserted: "Signed", was: [] });
   });
 });

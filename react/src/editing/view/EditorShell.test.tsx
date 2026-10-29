@@ -24,6 +24,7 @@ import {
   aFont,
   aFontList,
   aProblem,
+  aRedaction,
   aReplace,
   aReply,
   aSkipped,
@@ -577,6 +578,226 @@ describe("redaction", () => {
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     await expect.element(line).toBeVisible();
+  });
+
+  // Its font's widths, which say where in the line each run of words sits.
+  const MEASURED = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
+  const HERE_REDACTED = `was here ${fill(SENTENCES.redacted, { text: "here" })}`;
+
+  /** Open the field on "was here" and Ctrl+Backspace over "he" in it: "here" is redacted. */
+  async function redactHere(screen: Awaited<ReturnType<typeof render>>) {
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: "Change “was here”" });
+    await expect.element(field).toHaveFocus();
+    selectIn(field.element(), 5, 7);
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    const redacted = screen.getByRole("button", { name: HERE_REDACTED });
+    await expect.element(redacted).toHaveFocus();
+    return { field, redacted };
+  }
+
+  const widthOf = (element: Element | undefined) => element?.getBoundingClientRect().width ?? 0;
+
+  test("Ctrl+Backspace over words selected in the field redacts only them, whole, and boxes only them", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+
+    await expect.element(screen.getByRole("status")).toHaveTextContent(fill(SENTENCES.redacted, { text: "here" }));
+    expect(lastRendered()).toEqual([{ kind: "redact", span_id: "s1", range: [4, 8] }]);
+    // Only the word is boxed: the rest of the line still reads.
+    const [words] = document.querySelectorAll("[class*='redactedRun']");
+    expect(widthOf(words)).toBeGreaterThan(0);
+    expect(widthOf(words)).toBeLessThan(widthOf(redacted.element()));
+    // Its change line stays whole while it has focus, as a redaction's does: no fainter than a mark may be.
+    await expect.element(redacted).toHaveAttribute("data-focus-visible");
+    expect(getComputedStyle(redacted.element(), "::after").opacity).toBe("1");
+  });
+
+  test("a line with some words redacted opens with them boxed over the field and said, and typing asks first", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field, redacted } = await redactHere(screen);
+
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    await expect.element(field).toHaveAccessibleDescription(fill(SENTENCES.redacted, { text: "here" }));
+    // Over the field's own white, as the field is over the page: drawn after it, at its height.
+    const [words] = document.querySelectorAll("[class*='redactedRun']");
+    const zIndexOf = (element: Element | undefined) => (element === undefined ? "" : getComputedStyle(element).zIndex);
+    expect(zIndexOf(words)).toBe(zIndexOf(field.element()));
+    await userEvent.keyboard("s");
+    const asked = screen.getByRole("group", { name: SENTENCES.undo_redacted_words });
+    await expect.element(asked).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Keep redaction" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(redacted).toHaveFocus();
+  });
+
+  test("Edit anyway, asked by a letter typed, types it where it was, and the next goes after it", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field } = await redactHere(screen);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("{End}s");
+    await screen.getByRole("button", { name: "Edit anyway" }).click();
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("s");
+    await expect.element(field).toHaveValue("was heress");
+  });
+
+  test("undoing the words leaves no box behind on the mark", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    await redactHere(screen);
+    expect(document.querySelectorAll("[class*='redactedRun']")).toHaveLength(1);
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    expect(document.querySelectorAll("[class*='redactedRun']")).toHaveLength(0);
+  });
+
+  test("its words still in the file, the line under it is the warning's colour under keyboard focus (Rule 3)", async () => {
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({ redactions: { s1: aRedaction({ verified: false, message: "This text couldn't be removed." }) } }),
+    );
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+
+    await expect.element(redacted).toHaveAttribute("data-focus-visible");
+    // The boxes take the warning's wash once the server says the words are still there.
+    await expect.poll(() => document.querySelector("[data-unredacted]")).not.toBeNull();
+    expect(getComputedStyle(redacted.element(), "::after").backgroundColor).toBe(colorOf("--mark-warn"));
+    // The run's box too: no blue edge on it, focused or not.
+    const run = document.querySelector("[data-unredacted]") as Element;
+    expect(getComputedStyle(run).boxShadow).toContain(colorOf("--mark-warn"));
+    expect(getComputedStyle(run).boxShadow).not.toContain(colorOf("--mark-change"));
+  });
+
+  test("each run's box goes where the server's check found its letters, as a turned line has them", async () => {
+    const below = { x0: span.bbox.x0, y0: span.bbox.y1 + 40, x1: span.bbox.x0 + 10, y1: span.bbox.y1 + 80 };
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({ redactions: { s1: aRedaction({ runs: [{ range: [4, 8], box: below }] }) } }),
+    );
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+
+    const run = () => document.querySelector("[class*='redactedRun']")?.getBoundingClientRect();
+    // Taller than wide, under the line: where the server put it, not across the line.
+    await expect.poll(() => (run()?.top ?? 0) > redacted.element().getBoundingClientRect().bottom).toBe(true);
+    expect((run()?.height ?? 0) > (run()?.width ?? 0)).toBe(true);
+  });
+
+  test("all of a line redacted, its words still in the file, its box is the warning's, focused or not (Rule 3)", async () => {
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({ redactions: { s1: aRedaction({ verified: false, message: "This text couldn't be removed." }) } }),
+    );
+    const screen = await openEditor();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    const redacted = screen.getByRole("button", { name: "was here (redacted)" });
+    await expect.element(redacted).toHaveAttribute("data-focus-visible");
+    await expect.poll(() => getComputedStyle(redacted.element()).boxShadow).toContain(colorOf("--mark-warn"));
+    expect(getComputedStyle(redacted.element()).boxShadow).not.toContain(colorOf("--mark-change"));
+    redacted.element().blur();
+    expect(getComputedStyle(redacted.element()).boxShadow).toContain(colorOf("--mark-warn"));
+  });
+
+  test("hovered, its line holds full strength, as a redaction's does", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+
+    await redacted.hover();
+    await expect.element(redacted).toHaveAttribute("data-hovered");
+    expect(getComputedStyle(redacted.element(), "::after").opacity).toBe("1");
+  });
+
+  test("hovered, its words still in the file, it takes the warning's wash, never the pencil's (Rule 3)", async () => {
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({ redactions: { s1: aRedaction({ verified: false, message: "This text couldn't be removed." }) } }),
+    );
+    const screen = await openEditor({ doc: MEASURED });
+    const { redacted } = await redactHere(screen);
+    await expect.poll(() => document.querySelector("[data-unredacted]")).not.toBeNull();
+
+    await redacted.hover();
+    await expect.element(redacted).toHaveAttribute("data-hovered");
+    expect(getComputedStyle(redacted.element()).backgroundColor).toBe(colorOf("--mark-warn-soft"));
+  });
+
+  test("what the erase did to the rest of the line shows under the bar as soon as it's drawn, and is heard", async () => {
+    // In the server's words: it says where, so two on two pages are two lines.
+    const moved = "Redacting “here” on page 1 moved the rest of its line, so it won't look quite as it did.";
+    vi.mocked(renderStrips).mockResolvedValue(
+      aReply({
+        redactions: { s1: aRedaction({ message: moved }) },
+        notices: [aSpanNotice(moved, "s1")],
+      }),
+    );
+    const screen = await openEditor({ doc: MEASURED });
+    await redactHere(screen);
+
+    await expect.element(screen.getByText(moved, { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByRole("status")).toHaveTextContent(moved);
+  });
+
+  test.each([
+    { what: "a letter typed inside the line", at: [3, 3], typed: "wasXY here" },
+    { what: "a word typed over a selection", at: [0, 3], typed: "XY here" },
+  ])("Edit anyway after $what keeps it, the caret after it", async ({ at: [start = 0, end = 0], typed }) => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field } = await redactHere(screen);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    (field.element() as HTMLInputElement).setSelectionRange(start, end);
+    await userEvent.keyboard("X");
+    await screen.getByRole("button", { name: "Edit anyway" }).click();
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("Y");
+    await expect.element(field).toHaveValue(typed);
+  });
+
+  test("Ctrl+Backspace twice over words redacted already says so each time, and takes nothing", async () => {
+    const screen = await openEditor({ doc: MEASURED });
+    const { field } = await redactHere(screen);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(field).toHaveFocus();
+    selectIn(field.element(), 5, 8);
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent(fill(SENTENCES.already_redacted, { text: "here" }));
+    const first = screen.getByRole("status").element().firstElementChild;
+    selectIn(field.element(), 5, 8);
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    // Said again: a new announcement, which a screen reader hears though its words are the same.
+    await expect.poll(() => screen.getByRole("status").element().firstElementChild).not.toBe(first);
+    await expect.element(field).toHaveValue("was here");
+  });
+
+  test("Enter, then Ctrl+Backspace over the whole line it selects, redacts all of it: emptied, it's no edit", async () => {
+    const screen = await openEditor();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+    await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).toHaveFocus();
+  });
+
+  test("the chip's Redact takes the words selected in the field, as the keys do", async () => {
+    const screen = await openEditor();
+    const mark = screen.getByRole("button", { name: "was here" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: "Change “was here”" });
+    await expect.element(field).toHaveFocus();
+    selectIn(field.element(), 0, 2);
+    await screen.getByRole("button", { name: "Redact" }).click();
+    const said = `was here ${fill(SENTENCES.redacted, { text: "was" })}`;
+    await expect.element(screen.getByRole("button", { name: said })).toBeInTheDocument();
   });
 
   test("Ctrl+Backspace while typing deletes in the field, as it does anywhere, and redacts nothing", async () => {
@@ -1728,6 +1949,12 @@ function newTextSlip() {
   const slip = document.querySelector("[data-slip]");
   if (slip === null) throw new Error("no slip");
   return page.elementLocator(slip);
+}
+
+/** Select from `start` to `end` in a text field, as a drag over its words would. */
+function selectIn(field: Element, start: number, end: number) {
+  if (!(field instanceof HTMLInputElement)) throw new Error("no field");
+  field.setSelectionRange(start, end);
 }
 
 /** The edits the last render asked for. */

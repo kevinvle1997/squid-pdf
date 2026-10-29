@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import assert_never
 
-from squidpdf.core import COPY_PLACES, Message, reason_of, words
+from squidpdf.core import COPY_PLACES, Message, Param, reason_of, words
 from squidpdf.documents.types import ApproximateInfo
 from squidpdf.editing.fit import FitReport, Verdict
 from squidpdf.editing.types import (
@@ -52,22 +52,48 @@ def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:
     return {
         "verified": redaction.verified,
         "hidden_copies": redaction.hidden_copies,
-        "message": words.render_all(_said_of(redaction, language), language),
+        "message": words.render_sentences(_said_of(redaction, language), language),
+        "runs": [
+            {
+                "range": [asked.start, asked.stop],
+                "box": {"x0": box.x0, "y0": box.y0, "x1": box.x1, "y1": box.y1},
+            }
+            for asked, box in redaction.runs
+        ],
     }
 
 
 def _said_of(redaction: Redaction, language: str) -> list[Message]:
-    """What to say of a redaction drawn: its words still there, else where else they were."""
+    """What to say of a redaction drawn: its words still there, else what else it changed."""
     # Still in the file: the download is refused.
     if not redaction.verified:
         return [why_unredacted(redaction)]
+    # What the erase did to the rest of its line: said first, as it's on the page.
+    said = rest_of_line_said(redaction)
     copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
     named = [words.sentence(f"place_{place}", language) for place in copy_places]
-    said = [Message("hidden_copies", {"places": named})] if named else []
+    if named:
+        said.append(Message("hidden_copies", {"places": named}))
     # A signed file: the redaction takes every signature, whatever it holds.
     if "signatures" in redaction.hidden_copies:
         said.append(Message("signatures_removed"))
     return said
+
+
+def rest_of_line_said(redaction: Redaction) -> list[Message]:
+    """What to say of what a redaction's erase did to the rest of its line; nothing in place.
+
+    Where: its words, and its page, as the reader counts them.
+    """
+    rest = redaction.rest
+    where: dict[str, Param] = {"text": redaction.words, "page": redaction.page + 1}
+    if rest == "in_place":
+        return []
+    if rest == "moved":
+        return [Message("rest_of_line_moved", where)]
+    if rest == "removed":
+        return [Message("rest_of_line_removed", where)]
+    assert_never(rest)
 
 
 def why_unredacted(redaction: Redaction) -> Message:
@@ -75,9 +101,12 @@ def why_unredacted(redaction: Redaction) -> Message:
     # What the check read in the box may be the new text's: the user's to move.
     if redaction.covered:
         return Message("covered_by_new_text")
+    where: dict[str, Param] = {"text": redaction.words, "page": redaction.page + 1}
     if redaction.moved:
-        return Message("moved_other_text", {"page": redaction.page + 1})
-    return Message("not_redacted")
+        return Message("moved_other_text", where)
+    if redaction.unchecked:
+        return Message("not_checked", where)
+    return Message("not_redacted", where)
 
 
 def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:
