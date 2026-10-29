@@ -7,6 +7,7 @@ import { Warn } from "../../ui/Warn";
 import { onEscape } from "../commands";
 import { editAnyway, keepRedaction } from "../redaction";
 import { SlipLayerContext, useEditor } from "./context";
+import { keepFocusOnPress } from "./keys";
 import { useSlipPlace } from "./slipPlace";
 import styles from "./UndoRedaction.module.css";
 
@@ -24,7 +25,14 @@ export function UndoRedaction({ span, info, sentences }: { span: SpanInfo; info:
   const { slipRef, style } = useSlipPlace(span.bbox, { page: info });
   if (slipLayer === null) return null;
   return createPortal(
-    <Group ref={slipRef} className={styles.prompt} aria-labelledby={asked} style={style}>
+    <Group
+      ref={slipRef}
+      className={styles.prompt}
+      aria-labelledby={asked}
+      style={style}
+      // A press on it, between its buttons, leaves focus on the one it was on.
+      onMouseDown={keepFocusOnPress}
+    >
       <span id={asked} className={styles.asked}>
         <Warn mark>{sentences.undo_redaction}</Warn>
       </span>

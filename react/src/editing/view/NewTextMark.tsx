@@ -16,7 +16,7 @@ import { classes } from "../../ui/classes";
 import { coarsePointer, onPointerChange } from "../../ui/pointer";
 import { Tooltip } from "../../ui/Tooltip";
 import { DOUBLE_TAP_MS } from "../constants";
-import { type Editor, focusMoved } from "../editor";
+import { type Editor, type FocusNewText, focusMoved } from "../editor";
 import { moveNewText, moveOnPage, newTextFaceOf, openNewTextAgain, type PagePoint } from "../newText";
 import type { PageState } from "../page";
 import type { NewTextReading } from "../project";
@@ -51,7 +51,7 @@ export function RestingNewText({
       info={info}
       face={face}
       widthPt={newTextWidthIn(page.layout, text.edit)}
-      takesFocus={page.focusNewText === text.newTextId}
+      focusTo={page.focusNewText?.newTextId === text.newTextId ? page.focusNewText : null}
       sentences={page.sentences}
       notes={notes}
     />
@@ -63,7 +63,7 @@ interface Props {
   info: PageInfo;
   face: string; // the face it previews in, for its words while it's dragged
   widthPt: number; // how wide it draws
-  takesFocus: boolean; // focus is sent here: back from its field, or moved
+  focusTo: FocusNewText | null; // focus is sent here: back from its field, or moved
   sentences: Sentences;
   notes: Notes; // the page's, which shows one mark's note at a time
 }
@@ -73,7 +73,7 @@ interface Props {
  * nudge it, a point a press or ten with Shift; Enter or a click types into it again. Its note says so, on hover,
  * focus and a tap; on a touch screen, a second tap types into it.
  */
-const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takesFocus, sentences, notes }: Props) {
+const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, focusTo, sentences, notes }: Props) {
   const editor = useEditor();
   const { newTextId } = text;
   const mark = useRef<HTMLButtonElement | null>(null);
@@ -81,7 +81,7 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
   // Its name among the page's notes, apart from every span's, whose ids are hex.
   const note = useNote(notes, `new text ${newTextId}`);
   const drag = useDrag(editor, { newTextId, info, widthPt, mark, onStart: note.hide });
-  const takeFocus = useTakeFocus(mark, takesFocus, { focused: note.showFocus, gone: note.hide });
+  const takeFocus = useTakeFocus(mark, focusTo, { focused: note.showFocus, gone: note.hide });
   // A finger has no keys: its note says how to move it without them.
   const touch = useSyncExternalStore(onPointerChange, coarsePointer);
   const { buttonProps } = useButton(
@@ -110,7 +110,7 @@ const NewTextMark = memo(function NewTextMark({ text, info, face, widthPt, takes
       <button
         {...mergeProps(buttonProps, drag.props, note.props, focusProps, {
           onBlur: () => {
-            if (takesFocus) focusMoved(editor);
+            if (focusTo !== null) focusMoved(editor);
           },
         })}
         ref={takeFocus}
@@ -287,7 +287,7 @@ function useDrag(
  */
 function useTakeFocus(
   mark: RefObject<HTMLButtonElement | null>,
-  takesFocus: boolean,
+  focusTo: FocusNewText | null,
   { focused, gone }: { focused: (mark: Element) => void; gone: () => void },
 ) {
   return useCallback(
@@ -295,12 +295,12 @@ function useTakeFocus(
       mark.current = element;
       const focusStays = element !== null && element === document.activeElement;
       if (focusStays) focused(element);
-      else if (takesFocus) element?.focus();
+      else if (focusTo !== null) element?.focus({ preventScroll: focusTo.inPlace });
       return () => {
         mark.current = null;
         gone();
       };
     },
-    [mark, takesFocus, focused, gone],
+    [mark, focusTo, focused, gone],
   );
 }

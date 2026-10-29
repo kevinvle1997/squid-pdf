@@ -22,7 +22,7 @@ function useFocusSent(page: number) {
       if (sent === null || button === null) return;
       // Brought into view as asked, not as focus would: a page gone to shows from its top.
       button.focus({ preventScroll: true });
-      button.scrollIntoView({ block: sent.block, inline: "nearest" });
+      if (!sent.inPlace) button.scrollIntoView({ block: sent.block, inline: "nearest" });
       focusMoved(editor);
     },
     [sent, editor],

@@ -9,6 +9,8 @@
   /* The whole slip takes a press, which leaves focus in the field (Chip.tsx): one through it would end the typing. */
   pointer-events: auto;
 }
+/* A control it can't press now takes none: the press is the slip's, which leaves focus in the field. */
+.chip :disabled { pointer-events: none; }
 /* What an edit here warns of, in full, as typing starts, and muting it under that: above the edit's own facts. */
 .note {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);

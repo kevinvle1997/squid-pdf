@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aFont, aSpan, halfWideGlyphs, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
+import { A4, aDoc, aFont, aSpan, halfWideGlyphs, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { createEditor, type Editor, undo } from "./editor";
 import { setWarningMuted } from "./mutedWarnings";
+import { openNewTextAt } from "./newText";
 import { deletePage } from "./pageDeletion";
-import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto } from "./typing";
+import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto, typeIntoNewText } from "./typing";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
@@ -218,6 +219,24 @@ describe("an edit", () => {
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("now");
     expect(editor.store.get().focusTo).toEqual({ spanId: "own" });
+  });
+
+  test("focus sent back in place goes to the span's mark, new text's, or a page's control, to be taken where the view is", () => {
+    edit(editor, "own", null);
+    typeInto(editor, "now");
+    finish(editor, true, { returnFocus: true, inPlace: true });
+    expect(editor.store.get().focusTo).toEqual({ spanId: "own", inPlace: true });
+
+    openNewTextAt(editor, 0, [300, 300]);
+    typeIntoNewText(editor, "Signed", { widthOf: () => 0 });
+    finish(editor, true, { returnFocus: true, inPlace: true });
+    expect(editor.store.get().focusTo).toEqual({ newTextId: 2, inPlace: true });
+
+    // Nothing typed, on a page with no text: its own control.
+    editor = createEditor(FILE, { ...DOC, pages: [A4, A4] }, 2);
+    openNewTextAt(editor, 1, [300, 300]);
+    finish(editor, true, { returnFocus: true, inPlace: true });
+    expect(editor.store.get().focusTo).toEqual({ page: 1, block: "nearest", inPlace: true });
   });
 
   test("Escape, the same words, or nothing at all put nothing in the history", () => {

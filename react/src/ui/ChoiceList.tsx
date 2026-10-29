@@ -28,7 +28,8 @@ interface Props {
 
 /**
  * One choice of many, listed open, the one chosen ticked in ink and softly filled: never blue, which is for what
- * changed. The arrow keys choose as they go, as React Aria's list does; a pointer's press chooses at once.
+ * changed. The arrow keys choose as they go, as React Aria's list does; a pointer's press chooses at once, a finger's
+ * too. Enter is heard as the choice's own press, not as React Aria's action, which a tap would be.
  */
 export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointerChoice, listRef }: Props) {
   return (
@@ -47,7 +48,6 @@ export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointer
         const [id] = [...(keys === "all" ? [] : keys)];
         if (typeof id === "string" && id !== chosen) onChoose(id);
       }}
-      onAction={onEnter}
     >
       {groups.map((group) => (
         <ListBoxSection key={group.name} className={styles.group} aria-label={group.shown ? undefined : group.name}>
@@ -58,7 +58,11 @@ export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointer
               id={choice.id}
               textValue={choice.label}
               className={styles.choice}
-              onPress={({ pointerType }) => {
+              onPress={({ pointerType, key }) => {
+                if (key === "Enter") {
+                  onEnter();
+                  return;
+                }
                 if (pointerType !== "keyboard" && pointerType !== "virtual") onPointerChoice?.();
               }}
             >
