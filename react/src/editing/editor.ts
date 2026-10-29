@@ -178,7 +178,7 @@ export interface Editor {
   readonly queue: RenderQueue;
   readonly near: Set<number>; // the pages near the screen, as each one's sheet finds: drawn first
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
-  readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found
+  readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found, and "Change to" counted
   readonly ahead: ExportAhead; // the export started on the way to pressing Export
   readonly persistence: Persistence; // what's persisted of it in this browser
 }

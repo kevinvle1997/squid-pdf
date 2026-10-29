@@ -17,7 +17,9 @@ import { fillCounted, sentenceOrNothing } from "./words";
 export interface FindState extends FindOptions {
   readonly open: boolean;
   readonly query: string; // what's typed in "Find", echoed at once
-  readonly replacement: string; // what's typed in "Change to"
+  readonly replacement: string; // what's typed in "Change to", echoed at once
+  readonly judgedReplacement: string; // what the count judges each place's change by, once typing in "Change to" stopped
+  readonly announcedCount: string; // the count as last announced: "Change to" announces it again only once it differs
   readonly searched: string; // what was found, once typing in "Find" stopped
   readonly matches: ReadonlyMap<number, ReadonlyMap<string, readonly Match[]>>; // by page: each span found, and where in what it reads
   readonly current: string | null; // the place gone to with Enter, by span, while it's still found
@@ -34,6 +36,8 @@ export const FIND_CLOSED: FindState = {
   wholeWords: false,
   query: "",
   replacement: "",
+  judgedReplacement: "",
+  announcedCount: "",
   searched: "",
   matches: new Map(),
   current: null,
@@ -204,29 +208,28 @@ function placeAfter(places: readonly string[], current: string | null, step: 1 |
 
 /** Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and announced. */
 export function stepFind(editor: Editor, step: 1 | -1): void {
-  const { find: before } = editor.store.get();
-  if (!before.open) return;
-  // What's typed but not yet found is what the user sees in "Find": find it first, and not again after.
-  if (before.searched !== before.query) {
-    clearTimeout(editor.finding.timer);
-    search(editor);
-  }
   const state = editor.store.get();
-  const { find } = state;
-  const places = placesIn(state);
+  if (!state.find.open) return;
+  // What's typed but not yet found or counted is what the user sees: caught up first, its count heard with the place.
+  clearTimeout(editor.finding.timer);
+  const { find, heard } = caughtUpCount(state);
+  const places = placesIn({ ...state, find });
   const current = placeAfter(places, find.current, step);
-  if (current === undefined) return;
-  const at = places.indexOf(current) + 1;
+  if (current === undefined) {
+    editor.store.set(hearing({ find, heard }));
+    return;
+  }
+  const place = `${places.indexOf(current) + 1} of ${places.length}`;
   editor.store.set({
     find: { ...find, current },
     scrollTo: scrollingTo(current, "center"),
-    announcement: announcing(`${at} of ${places.length}`),
+    announcement: announcing(heard === "" ? place : [heard, place].join(state.doc.sentences.join_parts)),
   });
 }
 
-/** The find bar searching what "Find" shows now, though typing in it may not have stopped. */
-function searchingQuery(find: FindState): FindState {
-  return { ...find, searched: find.query };
+/** The find bar finding and counting what its fields show now, though typing in them may not have stopped. */
+function caughtUp(find: FindState): FindState {
+  return { ...find, searched: find.query, judgedReplacement: find.replacement };
 }
 
 /** The find bar once the history changes: found again while it's open, and what Change all did no longer shown. */
@@ -269,8 +272,8 @@ function looksDifferent(
 export function findCount(state: EditorState): FindCount {
   const { find, doc, layout, drawn } = state;
   const found = foundNow(state);
-  const changing = found.filter((each) => !wouldEmpty(each, find.replacement));
-  const judging = { drawn, fonts: layout.fonts, replacement: find.replacement, rules: doc.fit };
+  const changing = found.filter((each) => !wouldEmpty(each, find.judgedReplacement));
+  const judging = { drawn, fonts: layout.fonts, replacement: find.judgedReplacement, rules: doc.fit };
   const mismatches = changing.filter((each) => looksDifferent(each, judging)).length;
   return { places: found.length, mismatches, leftAsTheyAre: found.length - changing.length };
 }
@@ -320,9 +323,10 @@ export function closeFind(editor: Editor, { fromInside = false }: { fromInside?:
   clearTimeout(editor.finding.timer);
   const { find } = editor.store.get();
   const closed = find.closed + (fromInside ? 1 : 0);
+  // What's typed but not yet found or counted is caught up, so the bar opens again on what its fields show.
   // Opened again, it puts focus in "Find", as every open does, not where the last Change all left it.
   const ended = { open: false, matches: new Map(), current: null, closed, changedAll: 0 };
-  editor.store.set({ find: { ...find, ...ended } });
+  editor.store.set({ find: { ...caughtUp(find), ...ended } });
 }
 
 /** Typing in "Find": echoed at once, and found once typing stops for a moment. */
@@ -333,10 +337,45 @@ export function typeQuery(editor: Editor, query: string): void {
   editor.finding.timer = setTimeout(() => search(editor), FIND_DELAY_MS);
 }
 
-/** Typing in "Change to": the count follows at once, since it finds nothing new. */
+/** Typing in "Change to": echoed at once, and counted once typing stops for a moment, as "Find" is found. */
 export function typeReplacement(editor: Editor, replacement: string): void {
   const { find } = editor.store.get();
   editor.store.set({ find: { ...find, replacement, changed: null } });
+  clearTimeout(editor.finding.timer);
+  editor.finding.timer = setTimeout(() => countReplacement(editor), FIND_DELAY_MS);
+}
+
+/** Count what "Change to" shows: the count, and its announcement where it differs from the last, in one update. */
+function countReplacement(editor: Editor): void {
+  editor.store.set(hearing(caughtUpCount(editor.store.get())));
+}
+
+/** The find bar as it finds and counts, and its count to hear with it: "" where there's none. */
+interface Counted {
+  readonly find: FindState;
+  readonly heard: string;
+}
+
+/** The find bar caught up with what its fields show: a search's count heard always, a "Change to"'s once it differs. */
+function caughtUpCount(state: EditorState): Counted {
+  const { find } = state;
+  // The fields share one wait: what "Find" shows but hasn't found is found too.
+  if (find.searched !== find.query) return searched(state);
+  if (find.judgedReplacement !== find.replacement) return counted(state, caughtUp(find));
+  return { find, heard: "" };
+}
+
+/** The find bar as `find`, its count heard where it differs from the one last heard. */
+function counted(state: EditorState, find: FindState): Counted {
+  const sentence = countSentence(findCount({ ...state, find }), state.doc.sentences);
+  // Nothing found yet shows no count to hear; one heard already isn't heard again.
+  if (find.searched === "" || sentence === find.announcedCount) return { find, heard: "" };
+  return { find: { ...find, announcedCount: sentence }, heard: sentence };
+}
+
+/** The find bar, and its count as the announcement where there's one to hear. */
+function hearing({ find, heard }: Counted): Pick<EditorState, "find"> & Partial<EditorState> {
+  return heard === "" ? { find } : { find, announcement: announcing(heard) };
 }
 
 /** Match case on or off: found again at once, since nothing is being typed. */
@@ -351,38 +390,46 @@ export function setWholeWords(editor: Editor, wholeWords: boolean): void {
 
 /** Find what "Find" shows, matched as `asked` says: marked, and the count announced, in one update. */
 function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
-  const state = editor.store.get();
-  const searching = { ...searchingQuery({ ...state.find, ...asked }), changed: null, current: null };
+  editor.store.set(hearing(searched(editor.store.get(), asked)));
+}
+
+/** The find bar finding what "Find" shows from the top, matched as `asked` says, and its count to hear. */
+function searched(state: EditorState, asked: Partial<FindOptions> = {}): Counted {
+  const searching = { ...caughtUp({ ...state.find, ...asked }), changed: null, current: null };
   const find = refound({ ...state, find: searching }, state.reading);
-  const heard = find.searched !== "" && {
-    announcement: announcing(countSentence(findCount({ ...state, find }), state.doc.sentences)),
-  };
-  editor.store.set({ find, ...heard });
+  if (find.searched === "") return { find, heard: "" };
+  const heard = countSentence(findCount({ ...state, find }), state.doc.sentences);
+  return { find: { ...find, announcedCount: heard }, heard };
 }
 
 /** Change every place found, as one step in the history. Words being typed on the page are kept first, as their own. */
 export function changeAll(editor: Editor): void {
   const state = editor.store.get();
   const { typed, ended } = typingEnd(state, true);
-  // What's typed but not yet found is what the user sees in "Find": find it first.
-  const find = { ...searchingQuery(state.find), changedAll: state.find.changedAll + 1 };
+  // What's typed but not yet found or counted is what the user sees: find and count it first.
+  const find = { ...caughtUp(state.find), changedAll: state.find.changedAll + 1 };
   // Nothing to change to, since emptying a span is redaction's job. Found as the count finds, in the words typed.
   const found = find.replacement === "" ? [] : foundNow({ ...state, find });
   // A span it would leave empty stays as it is, as typing leaves it.
   const changing = found.filter((each) => !wouldEmpty(each, find.replacement));
+  clearTimeout(editor.finding.timer);
+  // Nothing changes: the count, caught up, says why.
   if (changing.length === 0) {
-    change(editor, typed, { ...ended, find: { ...state.find, changedAll: find.changedAll } });
+    change(editor, typed, (next) => ({
+      ...ended,
+      ...hearing(counted(next, refound({ ...next, find }, next.reading))),
+    }));
     return;
   }
-  clearTimeout(editor.finding.timer);
   const edits = changing.map(({ span, text, matches }) => ({
     kind: "replace" as const,
     span_id: span.id,
     text: replacedIn(text, matches, find.replacement),
   }));
+  // What changed is heard last, not a count: the next count is heard, whatever it says.
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
     announcement: announcing(changedSentence(changing.length, state.doc.sentences)),
-    find: { ...refound({ ...next, find }, next.reading), changed: changing.length },
+    find: { ...refound({ ...next, find }, next.reading), changed: changing.length, announcedCount: "" },
   }));
 }
