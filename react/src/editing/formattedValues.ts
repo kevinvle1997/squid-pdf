@@ -1,7 +1,7 @@
 // Dates, amounts and emails in a span's text, read from the text alone: a date or an amount to be written
 // back as the page wrote it (dates.ts, amounts.ts), an email only to be checked as it's typed.
 import { type AmountValue, amountsIn } from "./amounts";
-import { type DateReading, type DateValue, datesIn } from "./dates";
+import { type DateFormat, type DateReading, type DateValue, datesIn } from "./dates";
 
 /** Where a formatted value lies in its text, in UTF-16 units as `slice` takes them. */
 export interface Extent {
@@ -39,10 +39,13 @@ export function formattedValuesIn(text: string, { dates }: { dates: DateReading 
   return kept;
 }
 
-/** Which value an editor is offered for, its kind and where it lies: held as the text changes, and the dates are read. */
-export interface HeldValue extends Extent {
-  readonly kind: EditableValue["kind"];
-}
+/**
+ * Which value an editor is offered for, its kind and where it lies: held as the text changes, and the dates are
+ * read. A date's also holds its form, and the words it was last read from or written as.
+ */
+export type HeldValue =
+  | (Extent & { readonly kind: "amount" })
+  | (Extent & { readonly kind: "date"; readonly format: DateFormat; readonly written: string });
 
 /**
  * The value a date or amount editor opens on: the one `held` (`heldValueIn`), else the one at `at` in the text,
@@ -57,13 +60,20 @@ export function editableValueIn(
   return heldValueIn(text, { dates, held }) ?? under ?? editable[0];
 }
 
-/** The value of `held`'s kind where it lies in `text`: none with none held, or once it's gone from the text. */
+/**
+ * The value of `held`'s kind where it lies in `text`: none with none held, or once it's gone from the text. A date
+ * still reading as it was written keeps the form held: "2 avril", read again, has lost the "1er" it was written for.
+ */
 export function heldValueIn(
   text: string,
   { dates, held }: { dates: DateReading | null; held: HeldValue | null },
 ): EditableValue | undefined {
   if (held === null) return undefined;
-  return editableIn(text, { dates }).find((value) => value.kind === held.kind && overlap(value, held));
+  const found = editableIn(text, { dates }).find((value) => value.kind === held.kind && overlap(value, held));
+  const asWritten =
+    found?.kind === "date" && held.kind === "date" && text.slice(found.start, found.end) === held.written;
+  if (asWritten) return { ...found, format: held.format };
+  return found;
 }
 
 function editableIn(text: string, { dates }: { dates: DateReading | null }): EditableValue[] {
@@ -86,12 +96,19 @@ export function heldThrough(held: HeldValue, { before, after }: { before: string
   const moved = after.length - before.length;
   const start = held.start >= changedUpTo ? held.start + moved : Math.min(held.start, ahead);
   const end = held.end <= ahead ? held.end : Math.max(held.end, changedUpTo) + moved;
-  return { kind: held.kind, start, end };
+  return { ...held, start, end };
 }
 
-/** What's held of `value` while its editor is offered. */
-export function heldOf({ kind, start, end }: EditableValue): HeldValue {
-  return { kind, start, end };
+/** What's held of `value`, read in `text`, while its editor is offered. */
+export function heldOf(value: EditableValue, text: string): HeldValue {
+  const { start, end } = value;
+  if (value.kind === "amount") return { kind: "amount", start, end };
+  return { kind: "date", start, end, format: value.format, written: text.slice(start, end) };
+}
+
+/** What's held of `value` once its editor has written over it, the text reading `after` for `before`. */
+export function heldWritten(value: EditableValue, { before, after }: { before: string; after: string }): HeldValue {
+  return heldOf({ ...value, end: value.end + after.length - before.length }, after);
 }
 
 function overlap(a: Extent, b: Extent): boolean {

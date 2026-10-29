@@ -4,7 +4,7 @@ import { type AmountValue, withAmount } from "./amounts";
 import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
 import type { Editor, EditorState } from "./editor";
 import { type Fit, fitOf, troublesAddedOf } from "./fit";
-import { type EditableValue, heldOf } from "./formattedValues";
+import { type EditableValue, heldOf, heldWritten } from "./formattedValues";
 import { draftSpanOf, spanDraftOf, typedState } from "./typing";
 
 /**
@@ -15,7 +15,7 @@ export function openValueEditor(editor: Editor, value: EditableValue | undefined
   const draft = spanDraftOf(editor.store.get());
   if (draft === null || value === undefined) return false;
   editor.store.set({
-    draft: { ...draft, valueEditorOpen: true, value: heldOf(value) },
+    draft: { ...draft, valueEditorOpen: true, value: heldOf(value, draft.text) },
     ...(draft.valueEditorOpen && { focusTo: { valueEditor: draft.spanId } }),
   });
   return true;
@@ -30,7 +30,7 @@ export function closeValueEditor(editor: Editor): void {
 
 /** The day chosen in the calendar, written into the field as the page writes dates, and focus back in it. */
 export function chooseDate(editor: Editor, value: DateValue, date: CalendarDay): void {
-  writeValue(editor, (text) => withDate(text, value, date));
+  writeValue(editor, value, { write: (text) => withDate(text, value, date) });
 }
 
 /** The amount given, written into the field as the page writes amounts, and focus back in it unless it's `leaving`. */
@@ -39,18 +39,24 @@ export function chooseAmount(
   value: AmountValue,
   { amount, leaving }: { amount: number; leaving: boolean },
 ): void {
-  writeValue(editor, (text) => withAmount(text, value, amount), { returnFocus: !leaving });
+  writeValue(editor, value, { write: (text) => withAmount(text, value, amount), returnFocus: !leaving });
 }
 
-function writeValue(editor: Editor, write: (text: string) => string, { returnFocus = true } = {}): void {
+/** Write `value` into the field with `write`, held in the form written until the field is written over by hand. */
+function writeValue(
+  editor: Editor,
+  value: EditableValue,
+  { write, returnFocus = true }: { write: (text: string) => string; returnFocus?: boolean },
+): void {
   const state = editor.store.get();
   const draft = spanDraftOf(state);
   // Closed already, by Escape: what it held then is left out.
   if (draft === null || !draft.valueEditorOpen) return;
   const typed = typedState({ ...state, draft }, write(draft.text));
+  const held = heldWritten(value, { before: draft.text, after: typed.draft.text });
   editor.store.set({
     ...typed,
-    draft: { ...typed.draft, valueEditorOpen: false },
+    draft: { ...typed.draft, valueEditorOpen: false, value: held },
     ...(returnFocus && { focusTo: { spanId: draft.spanId } }),
   });
 }

@@ -97,7 +97,7 @@ function heldIn(state: EditorState & { draft: SpanDraft }, text: string): { valu
   const value = editableValueIn(text, { dates, at, held });
   const lost = held !== null && heldValueIn(text, { dates, held }) === undefined;
   if (lost) return { value: held, lost };
-  return { value: value === undefined ? null : heldOf(value), lost };
+  return { value: value === undefined ? null : heldOf(value, text), lost };
 }
 
 /** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */

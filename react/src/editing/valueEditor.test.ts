@@ -4,11 +4,18 @@ import type { Render } from "../api/types";
 import { aDoc, aFont, aSpan, halfWideGlyphs, SENTENCES } from "../fixtures";
 import { type AmountValue, amountsIn } from "./amounts";
 import { learnDateLanguages } from "./dateNames";
-import { dateReadingOf, datesIn } from "./dates";
+import { type CalendarDay, dateReadingOf, datesIn } from "./dates";
 import { createEditor } from "./editor";
 import { editableValueIn } from "./formattedValues";
 import { edit, spanDraftOf, typeInto } from "./typing";
-import { amountFormatOptions, markedDays, openValueEditor, reasonsAnyDayGives, shownDayAfter } from "./valueEditor";
+import {
+  amountFormatOptions,
+  chooseDate,
+  markedDays,
+  openValueEditor,
+  reasonsAnyDayGives,
+  shownDayAfter,
+} from "./valueEditor";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
@@ -184,6 +191,56 @@ describe("the value its editor is open on", () => {
     const retyped = "Due 14 March 2027, total 1.250,00 €";
     typeInto(editor, retyped);
     expect(offered(retyped)?.kind).toBe("date");
+  });
+});
+
+describe("a date chosen twice in one edit", () => {
+  /** An editor typing into `words`, and its date's editor opened on what the field reads, as Alt+Down does. */
+  async function editing(words: string) {
+    vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
+    const span = aSpan({ id: "s", text: words, room_pt: 400 });
+    const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(words) })] });
+    const editor = createEditor(new File(["%PDF-"], "invoice.pdf"), doc, 2);
+    edit(editor, "s", null);
+    await vi.waitFor(() => expect(editor.store.get().dates).not.toBeNull());
+    const offered = () => {
+      const state = editor.store.get();
+      const held = spanDraftOf(state)?.value ?? null;
+      return editableValueIn(spanDraftOf(state)?.text ?? "", { dates: state.dates, at: undefined, held });
+    };
+    /** Choose `date` in the date's editor, and what the field reads then. */
+    const choose = (date: CalendarDay) => {
+      const value = offered();
+      if (value?.kind !== "date" || !openValueEditor(editor, value)) throw new Error("no date");
+      chooseDate(editor, value, date);
+      return spanDraftOf(editor.store.get())?.text;
+    };
+    return { editor, offered, choose };
+  }
+
+  test("keeps the form it was opened with: a French first of the month is “1er” again", async () => {
+    const { choose } = await editing("Payé le 1er mars 2026");
+    expect(choose({ year: 2026, month: 4, day: 2 })).toBe("Payé le 2 avril 2026");
+    expect(choose({ year: 2026, month: 4, day: 1 })).toBe("Payé le 1er avril 2026");
+  });
+
+  test.each([
+    ["Saturday, 14 March 2026", "16 March 2026", "17 March 2026"],
+    ["Due 14 March 2026", "Due Monday, 16 March 2026", "Due Tuesday, 17 March 2026"],
+    ["Due 14 March 2026", "Due 16 Mar 2026", "Due 17 Mar 2026"],
+    ["Due 14 March 2026", "Due 2026-03-16", "Due 2026-03-17"],
+  ])("written over by hand between the two, “%s” takes the form typed: “%s”", async (words, typed, comesTo) => {
+    const { editor, choose } = await editing(words);
+    choose({ year: 2026, month: 3, day: 16 });
+    typeInto(editor, typed);
+    expect(choose({ year: 2026, month: 3, day: 17 })).toBe(comesTo);
+  });
+
+  test("given a bracket that holds more than its weekday by hand, offers its editor no more", async () => {
+    const { editor, offered, choose } = await editing("2026年3月14日(土)");
+    expect(choose({ year: 2026, month: 3, day: 16 })).toBe("2026年3月16日(月)");
+    typeInto(editor, "2026年3月16日(月・祝)");
+    expect(offered()).toBeUndefined();
   });
 });
 

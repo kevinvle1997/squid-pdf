@@ -46,6 +46,17 @@ describe("a date", () => {
     expect(withDate("14. März 2026", date, { year: 2026, month: 2, day: 3 })).toBe("3. Februar 2026");
   });
 
+  test("written in CJK's marks, or with its day as an ordinal, is found and written back so", () => {
+    for (const [text, written] of [
+      ["期限 2026年3月14日(土)", "期限 2026年4月2日(木)"],
+      ["기한 2026년 3월 14일", "기한 2026년 4월 2일"],
+      ["Due 14th March 2026, net 30", "Due 2nd April 2026, net 30"],
+      ["Payé le 1er mars 2026", "Payé le 2 avril 2026"],
+    ] as const) {
+      expect(withDate(text, dateIn(text), { year: 2026, month: 4, day: 2 })).toBe(written);
+    }
+  });
+
   test("written in numbers that read both ways offers nothing alone, and is read day first beside one past 12", () => {
     expect(formattedValuesIn("03/04/2026", { dates: readingOf("03/04/2026") })).toEqual([]);
     const date = dateIn("03/04/2026", readingOf("03/04/2026", "Signed 25/12/2026"));

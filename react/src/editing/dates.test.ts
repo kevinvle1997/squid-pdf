@@ -191,6 +191,11 @@ describe("a date's own marks", () => {
   test("a weekday no language settles on leaves the date with no editor", () => {
     expect(dateIn("Lördag 14 mars 2026", readingOf([], ["ja-JP"]))).toBeUndefined();
   });
+
+  test("a weekday beside a month in numbers is settled by itself, whatever months the document names", () => {
+    const reading = readingOf(["Sat 14/03/2026", "Payé le 14 mars 2026"], ["en-US"]);
+    expect(asDayOf("Sat 14/03/2026", { day: 16, reading })).toBe("Mon 16/03/2026");
+  });
 });
 
 describe("a date's long forms", () => {
@@ -203,5 +208,177 @@ describe("a date's long forms", () => {
 
   test("a named month after its year", () => {
     expect(asSecondOf("2026. március 14.", { month: 4, reading: readingOf([]) })).toBe("2026. április 2.");
+  });
+});
+
+describe("a CJK date", () => {
+  test("is written back in its own marks and spaces, its parts with no zero unless the page wrote one", () => {
+    const reading = readingOf([]);
+    expect(asSecondOf("2026年3月14日", { month: 4, reading })).toBe("2026年4月2日");
+    expect(asSecondOf("2026년 3월 14일", { month: 4, reading })).toBe("2026년 4월 2일");
+    expect(asSecondOf("2026年12月14日", { month: 1, reading })).toBe("2026年1月2日");
+    expect(asSecondOf("2026年03月14日", { month: 11, reading })).toBe("2026年11月02日");
+  });
+
+  test("is read inside a sentence that runs on with no space after it", () => {
+    const text = "支払期限は2026年3月14日までです";
+    const date = dateIn(text, readingOf([]));
+    if (date === undefined) throw new Error("no date");
+    expect(text.slice(date.start, date.end)).toBe("2026年3月14日");
+    expect(withDate(text, date, { year: 2026, month: 4, day: 2 })).toBe("支払期限は2026年4月2日までです");
+  });
+
+  test("its weekday after it is written for the new date, in its language and length", () => {
+    const reading = readingOf([]);
+    expect(asDayOf("2026年3月14日(土)", { day: 16, reading })).toBe("2026年3月16日(月)");
+    expect(asDayOf("2026年3月14日（土曜日）", { day: 16, reading })).toBe("2026年3月16日（月曜日）");
+    expect(asDayOf("2026年3月14日土曜日まで", { day: 16, reading })).toBe("2026年3月16日月曜日まで");
+    expect(asDayOf("2026年3月14日 星期六", { day: 16, reading })).toBe("2026年3月16日 星期一");
+    expect(asDayOf("2026년 3월 14일 토요일", { day: 16, reading })).toBe("2026년 3월 16일 월요일");
+    expect(asDayOf("2026년 3월 14일 토", { day: 16, reading })).toBe("2026년 3월 16일 월");
+  });
+
+  test("a bracket after it that holds more than its weekday leaves it with no editor", () => {
+    // Rewritten or left, what else the bracket says may no longer hold: 祝 marks a holiday.
+    const reading = readingOf([], ["en-US"]);
+    for (const text of ["2026年3月14日(土・祝)", "2026年3月14日(土曜日まで)", "2026年3月14日 (Sat, holiday)"]) {
+      expect(dateIn(text, reading)).toBeUndefined();
+    }
+  });
+
+  test("a weekday in brackets after it that no language settles on leaves it with no editor, though a word alone keeps it", () => {
+    // The 19th is a Thursday, "to" in Finnish and in Nynorsk, which write the next day apart.
+    const reading = readingOf([], ["en-US"]);
+    expect(dateIn("2026年3月19日 (to)", reading)).toBeUndefined();
+    expect(asDayOf("2026年3月19日 to Friday", { day: 20, reading })).toBe("2026年3月20日 to Friday");
+  });
+
+  test("its weekday in other letters is written for the new date, in brackets or as a word alone", () => {
+    const reading = readingOf([], ["en-US"]);
+    expect(asDayOf("2026年3月14日 (Sat)", { day: 16, reading })).toBe("2026年3月16日 (Mon)");
+    expect(asDayOf("2026年3月14日(Sat)", { day: 16, reading })).toBe("2026年3月16日(Mon)");
+    expect(asDayOf("2026年3月14日 Sat", { day: 16, reading })).toBe("2026年3月16日 Mon");
+    expect(asDayOf("2026年3月14日 Saturday.", { day: 16, reading })).toBe("2026年3月16日 Monday.");
+  });
+
+  test("its weekday's full stop in a bracket is the weekday's own", () => {
+    const reading = readingOf([], ["en-US"]);
+    expect(asDayOf("2026年3月14日 (Sat.)", { day: 16, reading })).toBe("2026年3月16日 (Mon.)");
+  });
+
+  test("its weekday in square or lenticular brackets is in brackets too", () => {
+    const reading = readingOf([], ["en-US"]);
+    expect(asDayOf("2026年3月14日[土]", { day: 16, reading })).toBe("2026年3月16日[月]");
+    expect(asDayOf("2026年3月14日［土］", { day: 16, reading })).toBe("2026年3月16日［月］");
+    expect(asDayOf("2026年3月14日【土】", { day: 16, reading })).toBe("2026年3月16日【月】");
+    expect(dateIn("2026年3月14日[土・祝]", reading)).toBeUndefined();
+  });
+
+  test("a time after it, joined by a dash, is no range's last day", () => {
+    expect(asDayOf("2026年3月14日 - 10:00", { day: 16, reading: readingOf([]) })).toBe("2026年3月16日 - 10:00");
+  });
+
+  test("a range of days that runs on from it leaves it with no editor, though a range of two dates keeps both", () => {
+    const reading = readingOf([]);
+    for (const text of [
+      "2026年3月14日～15日",
+      "2026年3月14日(土)～15日(日)",
+      "2026年3月14日-15日",
+      "2026年3月14日から15日まで",
+      "2026年3月14日〜3月20日",
+      "2026년 3월 14일~15일",
+    ]) {
+      expect(dateIn(text, reading)).toBeUndefined();
+    }
+    expect(datesIn("2026年3月14日～2026年3月20日", reading)).toHaveLength(2);
+  });
+
+  test("its weekday is settled by itself, whatever months the document names", () => {
+    const reading = readingOf(["期限 2026年3月14日(土)", "Due 14 March 2026"]);
+    expect(asDayOf("期限 2026年3月14日(土)", { day: 16, reading })).toBe("期限 2026年3月16日(月)");
+  });
+
+  test("a word in other letters after it is no weekday, though it starts with the date's own", () => {
+    // The 16th is a Monday, the 18th a Wednesday.
+    const reading = readingOf([]);
+    expect(asDayOf("2026年3月16日 Monthly report", { day: 17, reading })).toBe("2026年3月17日 Monthly report");
+    expect(asDayOf("2026年3月18日 Wedding", { day: 19, reading })).toBe("2026年3月19日 Wedding");
+  });
+
+  test("a word in other letters after it doesn't take its editor, though it is or starts with a weekday elsewhere", () => {
+    // The 14th is a Saturday ("Sa" in German), the 16th a Monday ("ma" in Dutch), the 19th a Thursday ("to" in
+    // Finnish and Nynorsk, which write the next day apart).
+    const reading = readingOf([]);
+    expect(asDayOf("2026年3月14日 Sales report", { day: 16, reading })).toBe("2026年3月16日 Sales report");
+    expect(asDayOf("2026年3月16日 manager", { day: 17, reading })).toBe("2026年3月17日 manager");
+    const range = "2026年3月19日 to 2026年3月21日";
+    expect(datesIn(range, readingOf([range])).map(({ start, end }) => range.slice(start, end))).toEqual([
+      "2026年3月19日",
+      "2026年3月21日",
+    ]);
+  });
+
+  test("a letter after it that only starts a word is no weekday, though it names the date's own", () => {
+    // The 15th is a Sunday, 日 in Japanese, and 日本 is Japan.
+    expect(asDayOf("2026年3月15日日本にて", { day: 16, reading: readingOf([]) })).toBe("2026年3月16日日本にて");
+    expect(asDayOf("2026년 3월 15일 일정", { day: 16, reading: readingOf([]) })).toBe("2026년 3월 16일 일정");
+  });
+
+  test("settles nothing, so a named date beside it keeps its editor", () => {
+    const reading = readingOf(["2026年3月14日", "Due 14 March 2026"]);
+    expect(reading.monthWords).toEqual(["march"]);
+    expect(asSecondOf("Due 14 March 2026", { month: 4, reading })).toBe("Due 2 April 2026");
+    expect(asSecondOf("2026年3月14日", { month: 4, reading })).toBe("2026年4月2日");
+  });
+
+  test("an era's year, a year in two digits, or a date the calendar lacks is no date to edit", () => {
+    const reading = readingOf([]);
+    for (const text of ["令和8年3月14日", "26年3月14日", "2026年3月", "2026年13月1日", "2026年2月30日"]) {
+      expect(dateIn(text, reading)).toBeUndefined();
+    }
+  });
+});
+
+describe("a day written as an ordinal", () => {
+  test("is written for the new day as its language writes it, in the page's case", () => {
+    const reading = readingOf([]);
+    expect(asSecondOf("14th March 2026", { month: 4, reading })).toBe("2nd April 2026");
+    expect(asSecondOf("March 14th, 2026", { month: 4, reading })).toBe("April 2nd, 2026");
+    expect(asSecondOf("21ST MARCH 2026", { month: 4, reading })).toBe("2ND APRIL 2026");
+    for (const [day, written] of [
+      [1, "1st"],
+      [3, "3rd"],
+      [11, "11th"],
+      [12, "12th"],
+      [13, "13th"],
+      [22, "22nd"],
+      [31, "31st"],
+    ] as const) {
+      expect(asDayOf("14th March 2026", { day, reading })).toBe(`${written} March 2026`);
+    }
+  });
+
+  test("with its weekday before it", () => {
+    expect(asDayOf("Saturday, 14th March 2026", { day: 16, reading: readingOf([]) })).toBe("Monday, 16th March 2026");
+  });
+
+  test("settles its date's language: “1er” is French's alone, which writes the other days plain", () => {
+    const reading = readingOf([], ["en-US"]);
+    const date = dateIn("1er mars 2026", reading);
+    if (date === undefined) throw new Error("no date");
+    expect(withDate("1er mars 2026", date, { year: 2026, month: 4, day: 2 })).toBe("2 avril 2026");
+    expect(withDate("1er mars 2026", date, { year: 2026, month: 4, day: 1 })).toBe("1er avril 2026");
+  });
+
+  test("a document's dates with one count their month", () => {
+    expect(readingOf(["Signed 2nd January 2026"]).monthWords).toEqual(["january"]);
+    expect(readingOf(["Flat 4B May 2026"]).monthWords).toEqual([]);
+  });
+
+  test("not one its month's language writes, or none a language here writes, is no date to edit", () => {
+    const reading = readingOf([], ["en-US", "fr-FR", "nl-NL"]);
+    for (const text of ["1er March 2026", "14th mars 2026", "2st March 2026", "14e maart 2026", "4B May 2026"]) {
+      expect(dateIn(text, reading)).toBeUndefined();
+    }
   });
 });

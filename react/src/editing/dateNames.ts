@@ -179,7 +179,8 @@ export function nameFor(kind: NameKind, index: number, { language, width, letter
   return inCase(stopLeftOff ? name.replace(/\.$/, "") : name, { letterCase, language });
 }
 
-function inCase(name: string, { letterCase, language }: { letterCase: LetterCase; language: string }): string {
+/** `name` in `letterCase`, as `language` sets the case of its letters. */
+export function inCase(name: string, { letterCase, language }: { letterCase: LetterCase; language: string }): string {
   switch (letterCase) {
     case "as-the-language":
       return name;
