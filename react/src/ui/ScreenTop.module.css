@@ -1,0 +1,8 @@
+/* Where the editor's bar puts the wordmark, so it stays put when a document opens. */
+.top {
+  composes: ground from "./Ground.module.css";
+  display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4);
+  color: var(--ink);
+}
+/* As tall as a target must be, its fill reaching past the wordmark without moving it. */
+.home { composes: name from "./Link.module.css"; display: inline-flex; align-items: center; min-block-size: var(--hit); }

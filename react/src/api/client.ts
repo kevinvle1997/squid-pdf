@@ -1,5 +1,15 @@
 // Every call the browser makes. Routes are in decisions/api.md; shapes come from schema.d.ts.
-import type { Document, Edit, FileNoticeInfo, FontList, Problem, ProblemInfo, Render, RenderBody } from "./types";
+import type {
+  Document,
+  Edit,
+  FileNoticeInfo,
+  FontList,
+  Problem,
+  ProblemInfo,
+  Render,
+  RenderBody,
+  Terms,
+} from "./types";
 
 /** What the server said went wrong. `detail` is shown to the user as it is. */
 export class ProblemError extends Error {
@@ -108,6 +118,12 @@ export async function deleteFont(docId: string, fontName: string): Promise<Docum
 export async function fontList(build: string): Promise<FontList> {
   const response = await send(`/api/fonts?${new URLSearchParams({ build })}`, { method: "GET" });
   return (await response.json()) as FontList;
+}
+
+/** The service's terms, as its deployment wrote them; null where it wrote none, as a self-hosted copy has. */
+export async function terms(): Promise<Terms | null> {
+  const response = await send("/api/terms", { method: "GET" });
+  return (await response.json()) as Terms | null;
 }
 
 /** A page of the original, unrotated, `scale` pixels per point. Cached for the hour. */

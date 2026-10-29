@@ -65,12 +65,12 @@ describe("the browser's layers", () => {
   });
 
   test("base components know nothing of the API or any feature", () => {
-    const outside = ["api", "documents", "editing"];
+    const outside = ["api", "documents", "editing", "terms"];
     expect(breaking(({ path }, spec) => path.startsWith("ui/") && outside.includes(slice(spec)))).toEqual([]);
   });
 
   test("the API's client knows no feature and nothing drawn", () => {
-    const outside = ["documents", "editing", "ui"];
+    const outside = ["documents", "editing", "terms", "ui"];
     expect(breaking(({ path }, spec) => path.startsWith("api/") && outside.includes(slice(spec)))).toEqual([]);
   });
 

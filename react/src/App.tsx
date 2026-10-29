@@ -3,6 +3,8 @@ import styles from "./App.module.css";
 import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
 import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
+import { isTermsPath, type TermsAnswer, termsAnswer, termsHrefOf } from "./terms/terms";
+import { TermsScreen } from "./terms/view/TermsScreen";
 import { Button } from "./ui/Button";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SheetScreen } from "./ui/SheetScreen";
@@ -11,7 +13,7 @@ import { SheetScreen } from "./ui/SheetScreen";
 const loadEditor = () => import("./editing/view/EditorShell");
 const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
-/** The landing, which takes a dropped PDF; once a file is open, the editor. */
+/** The landing, which takes a dropped PDF; once a file is open, the editor; and the service's terms, at their own path. */
 export function App() {
   return (
     <ErrorBoundary fallback={<Crashed />}>
@@ -30,11 +32,18 @@ function Screens() {
   const [screen, setScreen] = useState<Screen>({ kind: "waiting" });
   const [persisted, setPersisted] = useState<Persisted<unknown> | null>(null);
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
+  const [terms, setTerms] = useState<TermsAnswer>({ kind: "asking" });
+  const [fontLoaded, setFontLoaded] = useState(false);
 
-  // Read as the landing first shows: it's outside React, in the browser's storage.
+  // Read as the landing first shows: it's outside React, in the browser's storage, and on the server.
   useEffect(() => {
     // Refused (a private window, say): nothing persisted, so nothing to offer.
     persistedDocument().then(setPersisted, () => undefined);
+    termsAnswer().then(setTerms);
+    // The terms' link waits for the interface's font: in a stand-in its line can wrap, and jump back as the
+    // font comes. A font that fails to load leaves the stand-in for good, so the link comes anyway.
+    const loaded = () => setFontLoaded(true);
+    document.fonts.load(`1em ${getComputedStyle(document.body).fontFamily}`).then(loaded, loaded);
   }, []);
 
   function reopen() {
@@ -74,10 +83,13 @@ function Screens() {
     setScreen(opening);
   }
 
+  // A deployment with no terms has no such page: the path shows the landing, as any other does.
+  if (isTermsPath(window.location.pathname) && terms.kind !== "none") return <TermsScreen answer={terms} />;
   if (screen.kind !== "open") {
     return (
       <Drop
         landing={screen}
+        termsHref={fontLoaded ? termsHrefOf(terms) : null}
         persisted={persisted}
         forgetFailed={forgetting?.kind === "failed" ? forgetting.detail : null}
         onChoose={(file) => void open(file)}

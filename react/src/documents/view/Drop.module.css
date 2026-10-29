@@ -48,9 +48,15 @@
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
 .promiseSentence { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
-/* The code that keeps the promise: a link in the line's own colour, underlined, as a document's link is. */
-.source { color: inherit; text-underline-offset: 0.2em; }
-.source:hover { text-decoration-thickness: 2px; }
+/* The code that keeps the promise, and the service's terms beside it, which break as one. */
+.source { composes: link from "../../ui/Link.module.css"; }
+.terms { composes: source; position: relative; white-space: nowrap; }
+/* Its target grows past its words to a touch's size, without moving what you see. */
+.terms::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: max(100%, var(--hit)); height: max(100%, var(--hit));
+  transform: translate(-50%, -50%);
+}
 .factList {
   margin: 0; padding: 0; list-style: none;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6);

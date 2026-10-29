@@ -7,6 +7,7 @@ squidpdf redact  file.pdf ID -o out.pdf
 squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
 squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
+squidpdf terms   [terms.md]            check a terms file as the server will read it
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
@@ -56,6 +57,7 @@ from squidpdf.editing import (
     replace_fit,
     save_edited,
 )
+from squidpdf.terms.terms_file import TermsUnreadable, named_terms_file, terms_in
 
 # A terminal's colours: dim, red, green, yellow, and back to plain.
 _COLORS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
@@ -442,6 +444,28 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _terms_arguments(command: argparse.ArgumentParser) -> None:
+    """`terms`: the file to check, else the one SQUIDPDF_TERMS names, as the server reads."""
+    command.add_argument("file", nargs="?", type=Path, default=named_terms_file())
+
+
+def _cmd_terms(args: argparse.Namespace) -> int:
+    """Read a terms file as the server will as it starts, and list what the page shows."""
+    if args.file is None:
+        return _fail(words.render(Message("terms_none_named")))
+    try:
+        terms = terms_in(args.file)
+    except TermsUnreadable as refused:  # terms_in: the page can't show the file, and why
+        return _fail(str(refused), hint="(the app won't start on it)")
+    print(f"  {terms['title']}")
+    if terms["last_changed"] is not None:
+        print(f"  {_DIM}{terms['last_changed']}{_OFF}")
+    for paragraph in terms["paragraphs"]:
+        print(f"    {paragraph['lead']}")
+    print(f"  {_GREEN}the server can show these terms{_OFF}")
+    return 0
+
+
 def _fail(said: str, *, hint: str = "") -> int:
     """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colors_of(sys.stderr)
@@ -506,6 +530,9 @@ _COMMANDS = (
     _Command("redact", "remove a span and verify it is gone", _redact_arguments, _cmd_redact),
     _Command("report", "green rate across a corpus", _report_arguments, _cmd_report),
     _Command("fixture", "write a sample PDF to try", _fixture_arguments, _cmd_fixture),
+    _Command(
+        "terms", "check a terms file as the server reads it", _terms_arguments, _cmd_terms
+    ),
 )
 
 

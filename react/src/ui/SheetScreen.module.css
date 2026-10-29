@@ -1,12 +1,6 @@
 /* The landing's composition, and the crash screen's: the wordmark, then the mascot standing on the sheet in
    the middle, on the editor's mat, and whatever the screen adds under the sheet. */
 .screen { min-height: 100dvh; display: flex; flex-direction: column; }
-/* Where the editor's bar puts the wordmark, so it stays put when a document opens. */
-.top {
-  composes: ground from "./Ground.module.css";
-  display: flex; align-items: center; min-height: var(--bar-height); padding-inline: var(--s4);
-  color: var(--ink);
-}
 .middle {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s7);
@@ -19,11 +13,7 @@
   position: relative; display: block; width: var(--mascot-size); height: var(--mascot-size);
   margin-block-end: calc(-1 * var(--s5));
 }
-.title {
-  margin: 0;
-  font-family: var(--display); font-size: var(--fs-display); font-weight: 800; letter-spacing: -0.035em; line-height: 1.3;
-  text-wrap: balance;
-}
+.title { composes: display from "./Heading.module.css"; }
 /* The word a heading marks, as the editor shows a word being typed into: the blue pencil's line under it and
    its wash round it. The caret after it is the screen's to add (`ui/Caret`). */
 .title mark {

@@ -4,8 +4,8 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import { userEvent } from "vitest/browser";
 import { App } from "./App";
-import { upload } from "./api/client";
-import type { Render } from "./api/types";
+import { ProblemError, terms, upload } from "./api/client";
+import type { Render, Terms } from "./api/types";
 import { SOMETHING_WENT_WRONG } from "./bugs";
 import {
   forgetOrSayWhy,
@@ -15,7 +15,8 @@ import {
   persistState,
 } from "./documents/localPersistence";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
-import { aDoc, aFont, aSpan } from "./fixtures";
+import { aDoc, aFont, aProblem, aSpan, TERMS } from "./fixtures";
+import { animationsDone, emulateTouchScreen } from "./testing";
 
 vi.mock(import("./api/client"), async (original) => ({
   ...(await original()),
@@ -23,6 +24,7 @@ vi.mock(import("./api/client"), async (original) => ({
   renderStrips: vi.fn(() => new Promise<Render>(() => undefined)),
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
+  terms: vi.fn(async () => null),
 }));
 // The browser's real storage, but a delete can be held under way.
 vi.mock(import("./documents/localPersistence"), async (original) => {
@@ -32,6 +34,8 @@ vi.mock(import("./documents/localPersistence"), async (original) => {
 
 beforeEach(async () => {
   vi.mocked(upload).mockReset();
+  // Reset, so the calls a test reads are its own.
+  vi.mocked(terms).mockReset().mockResolvedValue(null);
   // The browser's real storage, one test at a time: each starts with nothing persisted.
   await forgetPersisted();
 });
@@ -197,4 +201,149 @@ test("one past the server's hour isn't offered, and is forgotten", async () => {
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
   await expect.poll(() => persistedDocument()).toBeNull();
   await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
+});
+
+/** The app opened at `path`, as a link to it opens it, until the test ends. */
+function openedAt(path: string) {
+  const before = window.location.pathname;
+  window.history.replaceState(null, "", path);
+  onTestFinished(() => window.history.replaceState(null, "", before));
+}
+
+/** The server's answer to the ask for the terms, held until the test gives it, or fails it. */
+function termsHeld() {
+  let resolve: (answer: Terms | null) => void = () => undefined;
+  let reject: (failure: unknown) => void = () => undefined;
+  vi.mocked(terms).mockReturnValue(
+    new Promise((given, refused) => {
+      resolve = given;
+      reject = refused;
+    }),
+  );
+  return { resolve, reject };
+}
+
+test("the landing links the service's terms beside its code's link, where its deployment has them", async () => {
+  vi.mocked(terms).mockResolvedValue(TERMS);
+  const screen = await render(<App />);
+  const link = screen.getByRole("link", { name: "Terms of use" });
+  await expect.element(link).toHaveAttribute("href", "/terms");
+  const code = screen.getByRole("link", { name: "read the code that does it" });
+  expect(link.element().parentElement).toBe(code.element().parentElement);
+});
+
+test("a deployment with no terms, as a self-hosted copy, links none", async () => {
+  const answer = termsHeld();
+  const screen = await render(<App />);
+  answer.resolve(null);
+  await vi.mocked(terms).mock.results[0]?.value;
+  // Drawn again inside React's act, which draws the answer first, so the link can't be still to come.
+  await screen.rerender(<App />);
+  await expect.element(screen.getByRole("link", { name: "read the code that does it" })).toBeVisible();
+  await expect.element(screen.getByRole("link", { name: "Terms of use" })).not.toBeInTheDocument();
+});
+
+test("a landing that can't learn whether there are terms links none, as a self-hosted copy's", async () => {
+  vi.mocked(terms).mockRejectedValue(new ProblemError(aProblem(0, "Couldn't reach the server.")));
+  const screen = await render(<App />);
+  await vi.mocked(terms).mock.results[0]?.value.catch(() => undefined);
+  await screen.rerender(<App />);
+  const code = screen.getByRole("link", { name: "read the code that does it" });
+  // The sentence ends where it always has: nothing kept for a link that isn't there.
+  expect(code.element().parentElement?.textContent?.endsWith("read the code that does it.")).toBe(true);
+});
+
+test("on a touch screen, the terms' link is a touch's size, though its words are smaller", async () => {
+  await emulateTouchScreen();
+  vi.mocked(terms).mockResolvedValue(TERMS);
+  const screen = await render(<App />);
+  const link = screen.getByRole("link", { name: "Terms of use" });
+  await expect.element(link).toBeVisible();
+  const box = link.element().getBoundingClientRect();
+  const below = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2 + 20);
+  expect(below).toBe(link.element());
+});
+
+test("the terms' link waits for the interface's font, so a stand-in's wrapping never jumps back as it comes", async () => {
+  let loaded: (faces: FontFace[]) => void = () => undefined;
+  const font = new Promise<FontFace[]>((resolve) => {
+    loaded = resolve;
+  });
+  const loading = vi.spyOn(document.fonts, "load").mockReturnValue(font);
+  onTestFinished(() => loading.mockRestore());
+  vi.mocked(terms).mockResolvedValue(TERMS);
+  const screen = await render(<App />);
+  await vi.mocked(terms).mock.results[0]?.value;
+  await screen.rerender(<App />);
+  await expect.element(screen.getByRole("link", { name: "Terms of use" })).not.toBeInTheDocument();
+  loaded([]);
+  await expect.element(screen.getByRole("link", { name: "Terms of use" })).toBeVisible();
+});
+
+test("the landing settles within the layout shift budget as the terms' link comes", async () => {
+  const answer = termsHeld();
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
+  const shifts: number[] = [];
+  const observer = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) shifts.push((entry as PerformanceEntry & { value: number }).value);
+  });
+  observer.observe({ type: "layout-shift" });
+  answer.resolve(TERMS);
+  await expect.element(screen.getByRole("link", { name: "Terms of use" })).toBeVisible();
+  await animationsDone();
+  observer.disconnect();
+  expect(shifts.reduce((sum, shift) => sum + shift, 0)).toBeLessThan(0.1);
+});
+
+test("the terms' own page says them: the title, when they last changed, each paragraph led in bold", async () => {
+  openedAt("/terms");
+  vi.mocked(terms).mockResolvedValue(TERMS);
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName("Example terms");
+  await expect.element(screen.getByText("Last changed 1 January 2000")).toBeVisible();
+  const leads = [...screen.container.querySelectorAll("strong")].map((lead) => lead.textContent);
+  expect(leads).toEqual(["First lead.", "Second lead."]);
+  await expect
+    .element(screen.getByRole("link", { name: "someone@example.com" }))
+    .toHaveAttribute("href", "mailto:someone@example.com");
+  expect(document.title).toBe("Example terms · squid-pdf");
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).not.toBeInTheDocument();
+});
+
+test("the terms' page leads home at its top and its foot, and is found with a trailing slash", async () => {
+  openedAt("/terms/");
+  vi.mocked(terms).mockResolvedValue(TERMS);
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("link", { name: "squid-pdf", exact: true })).toHaveAttribute("href", "/");
+  await expect.element(screen.getByRole("link", { name: "Back to squid-pdf" })).toHaveAttribute("href", "/");
+});
+
+test("the terms' page shows its heading at once, and past a moment says it's reading them", async () => {
+  openedAt("/terms");
+  termsHeld();
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("heading", { level: 1, name: "Terms of use" })).toBeVisible();
+  expect(document.title).toBe("Terms of use · squid-pdf");
+  await expect.element(screen.getByRole("status")).toHaveTextContent("Reading the terms");
+});
+
+test("the terms' page, in a deployment with none, is the landing, as any other path is", async () => {
+  openedAt("/terms");
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
+});
+
+test("the terms' page says why it can't read them in the status that was waiting for them, and offers Reload", async () => {
+  openedAt("/terms");
+  const answer = termsHeld();
+  const screen = await render(<App />);
+  const waiting = screen.getByRole("status");
+  await expect.element(waiting).toBeInTheDocument();
+  const region = waiting.element();
+  answer.reject(new ProblemError(aProblem(0, "Couldn't reach the server.")));
+  await expect.element(waiting).toHaveTextContent("Couldn't reach the server.");
+  // The same region, so a screen reader hears the words as they come.
+  expect(waiting.element()).toBe(region);
+  await expect.element(screen.getByRole("button", { name: "Reload" })).toBeVisible();
 });

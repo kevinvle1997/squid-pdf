@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Proves a running stack serves through its gate: the gate refuses a stranger,
-# then with the password the browser app, the health check, an upload, an export
-# with one edit, compression, the security headers and a delete all work. Needs
-# curl and jq.
+# then with the password the browser app, the health check, the terms where the
+# deployment names them, an upload, an export with one edit, compression, the
+# security headers and a delete all work. Needs curl and jq.
 #
 #   deploy/check.sh https://your.domain user [root.crt]
 #
@@ -93,6 +93,22 @@ pass "the page's policy allows a style by its hash, as React Aria's needs"
 pass "the page is checked again on each visit"
 
 script=$(grep -o '/assets/index-[^"]*\.js' "$work/body" | head -n 1)
+
+read -r status seconds < <(call "${signed_in[@]}" "$base/api/terms")
+[[ $status == 200 ]] || fail "/api/terms answered $status: $(head -c "$shown_bytes" "$work/body")"
+if jq -e '. == null' "$work/body" >/dev/null; then
+  pass "the deployment names no terms, so the landing links none"
+else
+  title=$(jq -er .title "$work/body") || fail "the terms have no title: $(head -c "$shown_bytes" "$work/body")"
+  pass "the terms are served: $title, $(jq '.paragraphs | length' "$work/body") paragraphs"
+  # The app's own page, which asks for them: under the same policy as the landing.
+  read -r status seconds < <(call "${signed_in[@]}" "$base/terms")
+  [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
+    fail "the terms' page answered $status: $(head -c "$shown_bytes" "$work/body")"
+  [[ $(header content-security-policy) == *"default-src'none'"* ]] ||
+    fail "the terms' page's Content-Security-Policy is '$(header content-security-policy)'"
+  pass "the terms' page is the app's own, under its Content-Security-Policy"
+fi
 read -r status seconds < <(call "${signed_in[@]}" --header 'accept-encoding: br, gzip' "$base$script")
 [[ $status == 200 && $(header content-encoding) == br ]] ||
   fail "the app's script answered $status, content-encoding '$(header content-encoding)'"

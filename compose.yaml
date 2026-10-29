@@ -17,6 +17,13 @@
 #   SQUIDPDF_TAG=local SQUIDPDF_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
 # The published images are linux/amd64; another architecture builds from source.
 #
+# The service's terms, which the landing links, are a file on the server that .env names, as
+# env.example says. The app reads it as it starts and won't start on terms its page can't show,
+# so check the file first, while the running app still serves:
+#   docker compose run --rm --no-deps app squidpdf terms
+# Then `docker compose restart app` takes in a changed file, and `up -d` one newly named in .env.
+# Inside the app it's /etc/squidpdf/terms.md, the name the check and the app's log give it.
+#
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
 name: squidpdf
@@ -44,8 +51,18 @@ services:
       # The app believes X-Forwarded-For from Caddy alone, so no one else can fake an address.
       # Not in the image: run alone with its port open, anyone could fake the header.
       FORWARDED_ALLOW_IPS: 172.31.255.2,fd52:74a:91b1::2
+      # The terms file .env names, mounted below; empty when it names none, so the app has none.
+      SQUIDPDF_TERMS: ${SQUIDPDF_TERMS:+/etc/squidpdf/terms.md}
     volumes:
       - documents:/data
+      # Compose can't leave a mount out, so with no terms named it mounts an empty file, never read.
+      # Never made where it's missing, as Docker would make a folder: `up` stops and says so.
+      - type: bind
+        source: ${SQUIDPDF_TERMS:-/dev/null}
+        target: /etc/squidpdf/terms.md
+        read_only: true
+        bind:
+          create_host_path: false
     # No ports: only Caddy, on this network, reaches the app.
     # The app's whole memory, /tmp included: no default, as it follows the host (env.example).
     mem_limit: ${SQUIDPDF_APP_MEMORY:?set it in .env from the host's memory, as env.example says}

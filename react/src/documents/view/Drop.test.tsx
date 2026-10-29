@@ -10,6 +10,7 @@ function waiting() {
   return render(
     <Drop
       landing={{ kind: "waiting" }}
+      termsHref={null}
       persisted={null}
       forgetFailed={null}
       onChoose={vi.fn()}
@@ -44,6 +45,7 @@ test("a document persisted here is offered to open again, with deleting it quiet
   const screen = await render(
     <Drop
       landing={{ kind: "waiting" }}
+      termsHref={null}
       persisted={persisted}
       forgetFailed={null}
       onChoose={vi.fn()}

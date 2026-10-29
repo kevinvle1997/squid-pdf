@@ -152,6 +152,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Terms
+         * @description The service's terms, as its deployment wrote them; null where it wrote none.
+         */
+        get: operations["terms_api_terms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -935,6 +955,54 @@ export interface components {
         Strategy: "as-is" | "shrink" | "condense";
         /** @enum {string} */
         Style: "regular" | "bold" | "italic" | "bold-italic";
+        /**
+         * Terms
+         * @description The service's terms, as its deployment wrote them.
+         */
+        Terms: {
+            /** Title */
+            title: string;
+            /** Last Changed */
+            last_changed: string | null;
+            /** Paragraphs */
+            paragraphs: components["schemas"]["TermsParagraph"][];
+        };
+        /**
+         * TermsEmail
+         * @description An email address in a paragraph, shown as a link to write to it.
+         */
+        TermsEmail: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "email";
+            /** Address */
+            address: string;
+        };
+        /**
+         * TermsParagraph
+         * @description One paragraph: its lead, set bold, then the rest in pieces.
+         */
+        TermsParagraph: {
+            /** Lead */
+            lead: string;
+            /** Pieces */
+            pieces: (components["schemas"]["TermsWords"] | components["schemas"]["TermsEmail"])[];
+        };
+        /**
+         * TermsWords
+         * @description Words of a paragraph, shown as they're written.
+         */
+        TermsWords: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "words";
+            /** Text */
+            text: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1234,6 +1302,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FontList"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    terms_api_terms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Terms"] | null;
                 };
             };
             /** @description Problem Details: what went wrong, in the reader's words */

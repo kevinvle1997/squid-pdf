@@ -1,0 +1,29 @@
+/* The terms on the mat, which themes as the app does, at a reading measure. */
+.screen { min-height: 100dvh; display: flex; flex-direction: column; }
+/* Set in the paragraphs' size, so the measure's ch is theirs: 56 of them hold 65 to 75 letters a line. */
+.terms {
+  composes: ground from "../../ui/Ground.module.css";
+  width: min(100%, calc(56ch + 2 * var(--s4))); margin-inline: auto;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s4);
+  padding: var(--s6) var(--s4) var(--s8);
+  font-size: var(--fs-lg); line-height: 1.5; color: var(--ink);
+}
+/* More room under the title and its date than between paragraphs. */
+.titled { display: flex; flex-direction: column; gap: var(--s1); margin-block-end: var(--s2); }
+.title { composes: display from "../../ui/Heading.module.css"; }
+.lastChanged { margin: 0; font-size: var(--fs-base); color: var(--ink-lo); }
+.paragraph { margin: 0; }
+.lead { font-weight: 600; }
+.email { composes: link from "../../ui/Link.module.css"; }
+.status { margin: 0; }
+/* Bars where the paragraphs' lines will be, a line apart, in the dividers' colour. */
+.shape { align-self: stretch; display: flex; flex-direction: column; gap: var(--s4); }
+.shapedParagraph {
+  height: 4em;
+  background: repeating-linear-gradient(var(--rule) 0 0.5em, transparent 0.5em 1.5em);
+}
+.shapedParagraph:last-child { width: 60%; }
+.reload { margin-block-start: var(--s2); }
+/* The way home, at the end of terms a phone scrolls through, as tall as a target must be. */
+.foot { margin: var(--s4) 0 0; }
+.home { composes: link from "../../ui/Link.module.css"; display: inline-flex; align-items: center; min-block-size: var(--hit); }

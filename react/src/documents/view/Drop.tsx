@@ -13,6 +13,7 @@ const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" 
 
 interface Props {
   landing: Landing;
+  termsHref: string | null; // where the service's terms are read, once the server says it has them
   persisted: Persisted<unknown> | null; // offered while the landing waits
   forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
   onChoose: (file: File) => void;
@@ -21,7 +22,7 @@ interface Props {
 }
 
 /** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is told under the sheet. No sign-in. */
-export function Drop({ landing, persisted, forgetFailed, onChoose, onReopen, onForget }: Props) {
+export function Drop({ landing, termsHref, persisted, forgetFailed, onChoose, onReopen, onForget }: Props) {
   const offered = landing.kind === "waiting" ? persisted : null;
   return (
     <DropZone
@@ -40,7 +41,7 @@ export function Drop({ landing, persisted, forgetFailed, onChoose, onReopen, onF
           </>
         }
         sheetClassName={styles.sheet}
-        foot={<Facts />}
+        foot={<Facts termsHref={termsHref} />}
       >
         <p className={styles.then}>Then click any word to fix it.</p>
         <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
@@ -72,8 +73,8 @@ export function Drop({ landing, persisted, forgetFailed, onChoose, onReopen, onF
   );
 }
 
-/** What becomes of the file, told first and largest under the sheet with the code that does it, then what the tool does, in two facts. */
-function Facts() {
+/** What becomes of the file, told first and largest under the sheet with the code that does it and any terms, then what the tool does, in two facts. */
+function Facts({ termsHref }: { termsHref: string | null }) {
   return (
     <div className={styles.facts}>
       <div className={styles.promise}>
@@ -87,6 +88,14 @@ function Facts() {
             read the code that does it
           </a>
           .
+          {termsHref !== null && (
+            <>
+              {" "}
+              <a className={styles.terms} href={termsHref}>
+                Terms of use
+              </a>
+            </>
+          )}
         </p>
       </div>
       <ul className={styles.factList}>

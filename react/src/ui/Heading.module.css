@@ -1,0 +1,6 @@
+/* A screen's one heading, in the display face at the display step: the landing's, the crash screen's, the terms'. */
+.display {
+  margin: 0;
+  font-family: var(--display); font-size: var(--fs-display); font-weight: 800; letter-spacing: -0.035em; line-height: 1.3;
+  text-wrap: balance;
+}
