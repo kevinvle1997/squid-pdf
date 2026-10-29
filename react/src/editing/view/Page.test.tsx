@@ -171,6 +171,15 @@ async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
 }
 
+/**
+ * Focus `element` as the keyboard would: a key pressed first, one React Aria counts as the keyboard's, which Shift
+ * alone isn't, and which nothing open hears. A mouse moved since leaves focus the pointer's.
+ */
+async function focusFromKeyboard(element: HTMLElement | SVGElement) {
+  await userEvent.keyboard("{Escape}");
+  element.focus();
+}
+
 /** Move the mouse from `from` to `to` a few pixels at a time, as a hand does, over whatever lies between. */
 async function moveMouse(from: { x: number; y: number }, to: { x: number; y: number }) {
   const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 2));
@@ -1237,9 +1246,7 @@ describe("a page", () => {
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
-    // Focus from the keyboard: a key pressed first, as Tab would be.
-    await userEvent.keyboard("{Shift}");
-    mark.element().focus();
+    await focusFromKeyboard(mark.element());
     const note = screen.getByText(SENTENCES.form_field_not_edited, { exact: false });
     await expect.element(note).toBeVisible();
     await expect.element(mark).toHaveAccessibleDescription(SENTENCES.form_field_not_edited);
@@ -1469,6 +1476,37 @@ describe("a page", () => {
     await expect.element(spanMark).toHaveAttribute("aria-describedby");
   });
 
+  test("new text undone while its note focus holds is under another's hover: the next hover still waits", async () => {
+    const { spanMark, newTextMark } = await signedBesideAField();
+    await focusFromKeyboard(newTextMark.element());
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    const onSpan = middleOf(spanMark.element().getBoundingClientRect());
+    await moveMouse({ x: 1, y: onSpan.y }, onSpan);
+    await expect.element(spanMark).toHaveAttribute("aria-describedby");
+    flushSync(() => undo(editor));
+    await expect.element(newTextMark).not.toBeInTheDocument();
+    await moveMouse(onSpan, { x: 1, y: onSpan.y });
+    await expect.element(spanMark, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toHaveAttribute("aria-describedby");
+    await pastNoteDelay();
+    await moveMouse(onSpan, onSpan);
+    await new Promise(requestAnimationFrame);
+
+    expect(spanMark.element()).not.toHaveAttribute("aria-describedby");
+    await expect.element(spanMark).toHaveAttribute("aria-describedby");
+  });
+
+  test("new text nudged from the keyboard keeps the note focus showed", async () => {
+    const { newTextMark } = await signedBesideAField();
+    await focusFromKeyboard(newTextMark.element());
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.keyboard("{ArrowRight}");
+
+    await expect.element(newTextMark).toHaveFocus();
+    await expect.element(newTextMark).toHaveAttribute("aria-describedby");
+    await expect.element(page.getByRole("tooltip")).toBeVisible();
+  });
+
   test("a press on a span's note, over the line above, closes it, and the next press there edits that line", async () => {
     const { screen, mark, start } = await hoveredUnderALine();
     // Just above the hovered line: where the line above is drawn, under the note.
@@ -1500,15 +1538,92 @@ describe("a page", () => {
     await expect.element(field).not.toBeInTheDocument();
   });
 
+  test("a span's note keyboard focus showed stays as the pointer passes over it and leaves (WCAG 1.4.13, Persistent)", async () => {
+    const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
+    openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(mark).toBeInTheDocument();
+    await focusFromKeyboard(mark.element());
+    const note = screen.getByRole("tooltip");
+    await expect.element(note).toBeVisible();
+    await animationsDone();
+    const noteBox = note.element().getBoundingClientRect();
+    const onNote = middleOf(noteBox);
+    await moveMouse(onNote, onNote);
+    await moveMouse(onNote, { x: 1, y: noteBox.top - 40 });
+    const leftAt = performance.now();
+    // Past the delay a note closes after, and its fade: still there, focus still on its mark.
+    await expect
+      .poll(() => performance.now() - leftAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
+      .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
+    await expect.element(mark).toHaveFocus();
+    await expect.element(note).toBeVisible();
+    expect(note.element()).not.toHaveAttribute("data-exiting");
+    await expect.element(mark).toHaveAttribute("aria-describedby");
+  });
+
+  test("a span's note keyboard focus showed comes back once another mark's a hover showed closes (WCAG 1.4.13, Persistent)", async () => {
+    const fieldAt = (id: string, y0: number) =>
+      aSpan({ id, text: `SSN ${id}`, form_field: true, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 } });
+    openDocument(aDoc({ spans: [fieldAt("above", 200), fieldAt("below", 400)], fonts: [aFont("Times-Roman")] }));
+    const screen = await draw();
+    const above = screen.getByRole("button", { name: "SSN above" });
+    const below = screen.getByRole("button", { name: "SSN below" });
+    await expect.element(below).toBeInTheDocument();
+    await focusFromKeyboard(above.element());
+    await expect.element(above).toHaveAttribute("aria-describedby");
+    const on = middleOf(below.element().getBoundingClientRect());
+    await moveMouse({ x: 1, y: on.y }, on);
+    await expect.element(below).toHaveAttribute("aria-describedby");
+    await moveMouse(on, { x: 1, y: on.y + 200 });
+
+    await expect.element(below, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toHaveAttribute("aria-describedby");
+    await expect.element(above).toHaveFocus();
+    await expect.element(above).toHaveAttribute("aria-describedby");
+    await expect.element(screen.getByRole("tooltip")).toHaveTextContent(SENTENCES.form_field_not_edited);
+  });
+
+  test.each([
+    ["new text's", "the span"],
+    ["the span's", "new text"],
+  ])("%s note keyboard focus showed, %s hovered: the page shows one note, the hovered one's", async (focused) => {
+    const formField = aSpan({
+      id: "s3",
+      text: "SSN 078",
+      form_field: true,
+      bbox: { x0: 72, y0: 300, x1: 152, y1: 324 },
+    });
+    openDocument(aDoc({ spans: [formField], fonts: [aFont("Times-Roman")] }));
+    await loadShippedFaces(editor);
+    const screen = await draw();
+    const spanMark = screen.getByRole("button", { name: "SSN 078" });
+    await expect.element(spanMark).toBeInTheDocument();
+    openNewTextAt(editor, 0, [300, 500]);
+    await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
+    await userEvent.keyboard("Signed{Enter}");
+    const newTextMark = screen.getByRole("button", { name: "Signed" });
+    await expect.element(newTextMark).toHaveFocus();
+    newTextMark.element().blur();
+    const [focusedMark, hoveredMark] = focused === "new text's" ? [newTextMark, spanMark] : [spanMark, newTextMark];
+    await focusFromKeyboard(focusedMark.element());
+    await expect.element(focusedMark).toHaveAttribute("aria-describedby");
+    const on = middleOf(hoveredMark.element().getBoundingClientRect());
+    await moveMouse({ x: 1, y: on.y }, on);
+
+    await expect.element(hoveredMark).toHaveAttribute("aria-describedby");
+    expect(focusedMark.element()).not.toHaveAttribute("aria-describedby");
+    const open = [...document.querySelectorAll("[role=tooltip]")].filter((note) => !note.hasAttribute("data-exiting"));
+    expect(open).toHaveLength(1);
+  });
+
   test("a span's note keyboard focus shows sits clear of the mark's focus ring", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
     openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman")] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
-    // Focus from the keyboard: a key pressed first, as Tab would be.
-    await userEvent.keyboard("{Shift}");
-    mark.element().focus();
+    await focusFromKeyboard(mark.element());
     const note = screen.getByRole("tooltip");
     await expect.element(note).toBeVisible();
     await animationsDone();

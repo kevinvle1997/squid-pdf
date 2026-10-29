@@ -19,7 +19,7 @@ import { boxOf, markBoxOf, newTextBoxIn } from "./geometry";
 import styles from "./Marks.module.css";
 import { NewTextField } from "./NewTextField";
 import { RestingNewText } from "./NewTextMark";
-import { createNotes, type Notes } from "./notes";
+import { createNotes, isShowing, type Notes } from "./notes";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
 
@@ -133,7 +133,6 @@ function PageNote({
   fits: PageFits; // each as its span reads now, once drawn so
 }) {
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
-  // Focus shows the note only when it's the keyboard's: a click's focus leaves it to the click.
   const { isFocusVisible } = useFocusVisible();
   // New text's note is its own mark's to draw.
   const span = last === null ? undefined : spanIn(page, last.markId);
@@ -152,7 +151,7 @@ function PageNote({
       key={last.markId}
       id={id}
       triggerRef={{ current: last.anchor }}
-      isOpen={shown !== null && (shown.via !== "focus" || isFocusVisible)}
+      isOpen={isShowing(shown, isFocusVisible)}
       onOpenChange={(isOpen) => isOpen || notes.hide(last.markId)}
       onHoverChange={(isHovered) => (isHovered ? notes.keep(last.markId) : notes.hideSoon(last.markId))}
       heading={note.sentence}
