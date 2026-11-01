@@ -188,6 +188,43 @@ describe("a date's own marks", () => {
     expect(asSecondOf("Due 14 March 2026", { month: 3, reading: english })).toBe("Due 2 March 2026");
   });
 
+  test("its weekday's full stop, where its language writes none, is the page's, and stays", () => {
+    const text = "Sat. 14 March 2026";
+    expect(asSecondOf(text, { month: 4, reading: readingOf([text], ["en-US"]) })).toBe("Thu. 2 April 2026");
+  });
+
+  test("its weekday's full stop, where its language writes one, is the language's, written as it writes the next", () => {
+    // Romanian writes "sâm." but "joi", Galician "sáb." but "luns", German "Sa." and "Mo." alike.
+    const cases = [
+      ["sâm. 14 mar. 2026", "ro-RO", "joi 2 apr. 2026"],
+      ["sâm., 14 mar. 2026", "ro-RO", "joi, 2 apr. 2026"],
+      ["sâm. 14.03.2026", "ro-RO", "joi 02.04.2026"],
+      ["Sa., 14. März 2026", "de-DE", "Do., 2. April 2026"],
+    ] as const;
+    for (const [text, reader, comesTo] of cases) {
+      expect(asSecondOf(text, { month: 4, reading: readingOf([text], [reader]) })).toBe(comesTo);
+    }
+    const galician = "sáb. 14 mar. 2026";
+    expect(asDayOf(galician, { day: 16, reading: readingOf([galician], ["gl-ES"]) })).toBe("luns 16 mar. 2026");
+  });
+
+  test("a weekday before it is no other date's month, though a language names one so", () => {
+    // "Sat" is a month in Hausa: "2 - Sat 14" read as a date of its own would take the 14th's weekday.
+    for (const label of ["Rev 2 - ", "Page 2 - "]) {
+      const text = `${label}Sat 14 Mar 2026`;
+      expect(asSecondOf(text, { month: 4, reading: readingOf([text], ["en-GB"]) })).toBe(`${label}Thu 2 Apr 2026`);
+    }
+  });
+
+  test("a weekday before it, a month in another language, takes no editor from the document's other dates", () => {
+    const document = ["Rev 2 - Sat 14 Mar 2026", "Due 14 March 2026"];
+    expect(asSecondOf("Due 14 March 2026", { month: 4, reading: readingOf(document, ["en-GB"]) })).toBe(
+      "Due 2 April 2026",
+    );
+    // "Sen" is Monday in Indonesian and September in Uzbek: the document's months are "Mac" alone, Malay's March.
+    expect(readingOf(["Rev 2 - Sen 16 Mac 2026"], ["ms-MY"]).monthWords).toEqual(["mac"]);
+  });
+
   test("a weekday no language settles on leaves the date with no editor", () => {
     expect(dateIn("Lördag 14 mars 2026", readingOf([], ["ja-JP"]))).toBeUndefined();
   });
@@ -243,9 +280,13 @@ describe("a range of days", () => {
   });
 
   test("with a weekday before each day, is no date to edit, not even its last day alone", () => {
-    const english = readingOf([], ["en-US"]);
-    for (const text of ["Fri 13 – Sat 14 March 2026", "Friday 13 - Saturday 14 March 2026"]) {
-      expect(dateIn(text, english)).toBeUndefined();
+    for (const text of [
+      "Fri 13 – Sat 14 March 2026",
+      "Fri 13 - Sat 14 March 2026",
+      "Friday 13 - Saturday 14 March 2026",
+      "Fri. 13 – Sat. 14 March 2026",
+    ]) {
+      expect(dateIn(text, readingOf([text], ["en-GB"]))).toBeUndefined();
     }
   });
 

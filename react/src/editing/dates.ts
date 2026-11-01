@@ -70,10 +70,13 @@ const NAME = String.raw`\p{L}+\.?`;
 // A day, perhaps an ordinal: 14th.
 const DAY = String.raw`\d{1,2}\p{L}{0,2}`;
 const YEAR = String.raw`\d{4}|\d{2}`;
-// A word before a date, perhaps its weekday, and what's between them: "Saturday, ".
-const BEFORE = String.raw`(?:(\p{L}+\.?)(,?[\s\u00a0\u202f]+))?`;
+// A word before a date, perhaps its weekday, and what's between them, a full stop after it with them: "Sat. ",
+// where English writes none and German writes "Sa." its own.
+const BEFORE = String.raw`(?:(\p{L}+)(\.?,?[\s\u00a0\u202f]+))?`;
 const ALONE_BEFORE = String.raw`(?<![\p{L}\p{N}])`;
 const ALONE_AFTER = String.raw`(?![\p{L}\p{N}])`;
+// The rest of a longer date after a match, a month's name and a year: " Mar 2026" after "2 - Sat 14".
+const LONGER_DATE_REST = /^\s*(\p{L}+)\.?,?\s+(?:\d{4}|\d{2})(?!\p{N})/u;
 // Not run on into more numbers: "Lun 16/03" is no date in "Lun 16/03/2026".
 const NO_MORE_NUMBERS = String.raw`(?![./-]\p{N})`;
 
@@ -153,6 +156,7 @@ function monthWordIn(match: RegExpMatchArray, order: DateFormat["order"]): strin
   const { parts, between } = partsOf(match);
   if (yearIsAnotherDatesDay({ order, parts, between, after: textAfter(match) })) return undefined;
   const word = parts[order.indexOf("month")]?.replace(/\.$/, "") ?? "";
+  if (startsLongerDate(match, word)) return undefined;
   const { ordinal } = writtenDayOf(parts[order.indexOf("day")] ?? "");
   const named = isNameOf(word, "month") && (ordinal === undefined || someLanguageWrites(ordinal));
   return named ? word.toLowerCase() : undefined;
@@ -224,6 +228,8 @@ function namedDateOf(
     monthWord = monthWord.slice(0, -1);
     betweenParts = at === 0 ? [`.${betweenParts[0]}`, betweenParts[1]] : [betweenParts[0], `.${betweenParts[1]}`];
   }
+  // The weekday of a longer date that starts at its month, "Rev 2 - Sat 14 Mar 2026": the longer reading wins.
+  if (startsLongerDate(match, monthWord)) return undefined;
   const day = writtenDayOf(parts[order.indexOf("day")] ?? "");
   const monthOnlyWords = { month: monthWord, between: betweenParts, ordinal: day.ordinal };
   const monthOnly = settledNames(monthOnlyWords, reading);
@@ -247,6 +253,15 @@ function namedDateOf(
     weekday: settled.weekday === undefined ? null : leadingWeekdayFormat(settled.weekday, { before, beforeSpace }),
   };
   return located({ date, format }, { match, whole, before: weekday === undefined ? before + beforeSpace : "" });
+}
+
+/**
+ * Whether a match's month is a weekday starting a longer date: a word some language names a month and another a
+ * weekday, as Hausa and English name "Sat", with a month's name and a year after the match.
+ */
+function startsLongerDate(match: RegExpMatchArray, monthWord: string): boolean {
+  const restIsMonth = isNameOf(LONGER_DATE_REST.exec(textAfter(match))?.[1] ?? "", "month");
+  return isNameOf(monthWord, "weekday") && restIsMonth;
 }
 
 /** Where a named date's match lies in its text, as the day ranges around it are read. */
@@ -350,12 +365,17 @@ function settledWeekday(weekday: WeekdayWord, reading: DateReading): DateName | 
   return settledNames({ weekday, between: [] }, reading)?.weekday ?? UNSETTLED;
 }
 
-/** How the page wrote a weekday before its date: "Saturday, ". */
+/**
+ * How the page wrote a weekday before its date: "Saturday, ". A full stop after it is the language's own where its
+ * name ends in one, so the next weekday is written as the language writes it ("sâm." but "joi"); else the page's.
+ */
 function leadingWeekdayFormat(
   name: DateName,
   { before, beforeSpace }: { before: string; beforeSpace: string },
 ): WeekdayFormat {
-  return { word: wordOf(name, before), side: "before", around: ["", beforeSpace] };
+  const ownStop = name.name.endsWith(".") && beforeSpace.startsWith(".");
+  const written = ownStop ? `${before}.` : before;
+  return { word: wordOf(name, written), side: "before", around: ["", ownStop ? beforeSpace.slice(1) : beforeSpace] };
 }
 
 /** How the page wrote a weekday after its date: "(土)". */
