@@ -24,7 +24,7 @@ from squidpdf.documents.types import KeptAnalysis
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
-_DIGEST_CHARS = 16  # of a file's SHA-256 a meter keeps: 64 bits, so two files never share one
+_DIGEST_CHARS = 16  # of a file's SHA-256 a meter keeps: 64 bits, too many to meet by chance
 
 
 @dataclass(slots=True)
