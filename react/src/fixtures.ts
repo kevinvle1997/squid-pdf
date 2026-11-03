@@ -1,6 +1,7 @@
 // Made-up API replies for tests, whole and typed. A field the server adds breaks here, where
 // `npm run types` brings it in, instead of hiding behind a cast in every test. Tests only.
 import type {
+  AccountState,
   CountedSentence,
   DeletePage,
   Document,
@@ -372,3 +373,8 @@ export const TERMS: Terms = {
     },
   ],
 };
+
+/** A server that keeps accounts, anyone may sign in to, and this browser isn't signed in to. */
+export function anAccount(fields: Partial<AccountState> = {}): AccountState {
+  return { offered: true, invite_only: false, signed_in: null, ...fields };
+}

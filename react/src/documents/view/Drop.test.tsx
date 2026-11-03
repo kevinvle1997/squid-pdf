@@ -13,6 +13,8 @@ function waiting() {
       termsHref={null}
       persisted={null}
       forgetFailed={null}
+      signedInAs={null}
+      onSignOut={vi.fn()}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
       onForget={vi.fn()}
@@ -48,6 +50,8 @@ test("a document persisted here is offered to open again, with deleting it quiet
       termsHref={null}
       persisted={persisted}
       forgetFailed={null}
+      signedInAs={null}
+      onSignOut={vi.fn()}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
       onForget={vi.fn()}

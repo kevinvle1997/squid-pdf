@@ -1,4 +1,4 @@
-# The one way in: HTTPS, compression, and a password until the app opens to the public.
+# The one way in: HTTPS and compression. Who may open documents is the app's to say (accounts).
 {
 	# Nothing here needs to trust a local run's certificate, and the container is read-only.
 	skip_install_trust
@@ -15,11 +15,6 @@
 {$SQUIDPDF_DOMAIN} {
 	# Render's JSON carries its images as base64, which gzip wins back. PDFs are left alone.
 	encode zstd gzip
-
-	# Every path, /api/health too. The app never knows, so opening up deletes this block.
-	basic_auth {
-		{$SQUIDPDF_USER} {$SQUIDPDF_PASSWORD_HASH}
-	}
 
 	header {
 		# HTTPS only for a year: a browser that has been here never tries plain HTTP.

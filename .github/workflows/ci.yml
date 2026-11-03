@@ -174,16 +174,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Hashed by the Caddy the proxy is built on, named once in react/Dockerfile.
-      - name: Throwaway password
-        run: |
-          caddy=$(sed -n 's/^FROM \(caddy:.*\)/\1/p' react/Dockerfile)
-          password=$(openssl rand -hex 16)
-          echo "::add-mask::$password"
-          # Through stdin, where no other process can read it; caddy reads one line, and fails without its newline.
-          hash=$(printf '%s\n' "$password" | docker run --rm --interactive "$caddy" caddy hash-password)
-          printf "SQUIDPDF_DOMAIN=localhost\nSQUIDPDF_USER=ci\nSQUIDPDF_PASSWORD_HASH='%s'\n" "$hash" > .env
-          echo "SQUIDPDF_PASSWORD=$password" >> "$GITHUB_ENV"
+      - name: Domain
+        run: echo 'SQUIDPDF_DOMAIN=localhost' > .env
 
       # The worst case for the runner's cores (env.example), which the runner's memory holds.
       - name: Memory for the runner's cores
@@ -214,7 +206,7 @@ jobs:
       - name: Check through the proxy
         shell: bash
         run: |
-          deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check.txt
+          deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check.txt
           grep -q '^ok    the deployment names no terms' /tmp/check.txt
 
       - name: The containers' caps
@@ -240,12 +232,10 @@ jobs:
           second=fd8b:2c41:e0d5:2::1
           sudo ip -6 addr add "$first/128" dev lo
           sudo ip -6 addr add "$second/128" dev lo
-          # In a file, not on the command line, where any process could read it.
-          (umask 077 && printf 'user = "ci:%s"\n' "$SQUIDPDF_PASSWORD" > /tmp/login)
           # An empty upload is counted before its body is read, and costs the app nothing.
           upload_from() {
             curl --silent --output /dev/null --write-out '%{http_code}' --cacert /tmp/root.crt \
-              --config /tmp/login --interface "$1" --resolve "localhost:443:[$1]" \
+              --interface "$1" --resolve "localhost:443:[$1]" \
               --header 'content-type: application/pdf' --data-binary '' https://localhost/api/documents || true
           }
           # What the app answers an empty upload it lets in; 000, had curl not reached it.
@@ -268,8 +258,26 @@ jobs:
           echo 'SQUIDPDF_TERMS=./fixtures/terms.md' >> .env
           docker compose run --rm --no-deps app squidpdf terms
           docker compose up --detach --wait
-          deploy/check.sh https://localhost ci /tmp/root.crt 2>&1 | tee /tmp/check-terms.txt
+          deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-terms.txt
           grep -q '^ok    the terms are served: Example terms' /tmp/check-terms.txt
+
+      # As a deployer opens to invited people (env.example): no mail server is reached, as a
+      # stranger's address gets no link, and inviting someone writes the accounts volume.
+      - name: Invite only, checked
+        shell: bash
+        run: |
+          secret=$(openssl rand -base64 32)
+          echo "::add-mask::$secret"
+          {
+            echo "SQUIDPDF_SECRET=$secret"
+            printf 'SQUIDPDF_SMTP_%s\n' HOST=mail.invalid PORT=587 SECURITY=starttls USER=ci PASSWORD=unused
+            echo 'SQUIDPDF_MAIL_FROM=sign-in@example.com'
+            echo 'SQUIDPDF_INVITE_ONLY=yes'
+          } >> .env
+          docker compose up --detach --wait
+          docker compose exec app squidpdf invite friend@example.com --unlimited
+          deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
+          grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
       # Only a push to main publishes, so only it keeps what it checked, for publish to push.
       # bash by name turns on pipefail, so a failed save isn't hidden by zstd.
@@ -350,8 +358,6 @@ jobs:
     env:
       SQUIDPDF_TAG: ${{ github.sha }}
       SQUIDPDF_DOMAIN: unused
-      SQUIDPDF_USER: unused
-      SQUIDPDF_PASSWORD_HASH: unused
       SQUIDPDF_APP_MEMORY: 1g
       SQUIDPDF_APP_SCRATCH: 1m
     steps:

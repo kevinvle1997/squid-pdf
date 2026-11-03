@@ -19,6 +19,8 @@ _DATABASE = "SQUIDPDF_DATABASE"
 # Signs every link and sign-in: generated, never chosen (env.example says how).
 _SECRET = "SQUIDPDF_SECRET"
 _SITE = "SQUIDPDF_SITE"  # the https:// address a link opens, as https://pdf.example.com
+# Set to anything, only those `squidpdf invite` let in sign in and open documents.
+_INVITE_ONLY = "SQUIDPDF_INVITE_ONLY"
 _SMTP = (
     "SQUIDPDF_SMTP_HOST",
     "SQUIDPDF_SMTP_PORT",
@@ -44,6 +46,7 @@ class Accounts:
     mailer: Mailer
     secret: bytes  # signs links and the signed-in cookie
     site: str  # where a link sends its reader, with no slash at the end
+    invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
 
 
 def named_users() -> UserStore | None:
@@ -66,7 +69,13 @@ def deployed_accounts() -> Accounts | None:
     site = os.environ[_SITE].rstrip("/")
     if not site.startswith("https://"):
         raise AccountsUnset(f"{_SITE} must start with https://, as a link it opens must")
-    return Accounts(users, _mailer(), secret=secret.encode(), site=site)
+    return Accounts(
+        users,
+        _mailer(),
+        secret=secret.encode(),
+        site=site,
+        invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in
+    )
 
 
 def _mailer() -> SmtpMailer:

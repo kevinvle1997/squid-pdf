@@ -16,6 +16,7 @@ class AccountState(TypedDict):
     """Whether this server offers accounts, and which this browser is signed in to."""
 
     offered: bool  # false on a server that keeps none, as a self-hosted copy
+    invite_only: bool  # only invited people may sign in, and only they open documents
     signed_in: SignedIn | None
 
 

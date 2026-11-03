@@ -45,3 +45,7 @@ export type Strategy = Schemas["Strategy"];
 export type FontList = Schemas["FontList"];
 export type Terms = Schemas["Terms"];
 export type TermsPiece = Schemas["TermsWords"] | Schemas["TermsEmail"];
+// Not read: `is_unlimited`, until the landing says what's left of a limit.
+export type SignedIn = Schemas["SignedIn"];
+export type AccountState = Schemas["AccountState"];
+export type LinkSent = Schemas["LinkSent"];

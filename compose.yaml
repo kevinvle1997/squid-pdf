@@ -53,8 +53,20 @@ services:
       FORWARDED_ALLOW_IPS: 172.31.255.2,fd52:74a:91b1::2
       # The terms file .env names, mounted below; empty when it names none, so the app has none.
       SQUIDPDF_TERMS: ${SQUIDPDF_TERMS:+/etc/squidpdf/terms.md}
+      # Accounts where .env sets a secret, kept in the volume below; none where it sets none.
+      SQUIDPDF_DATABASE: ${SQUIDPDF_SECRET:+/accounts/users.sqlite3}
+      SQUIDPDF_SECRET: ${SQUIDPDF_SECRET:-}
+      SQUIDPDF_SITE: https://${SQUIDPDF_DOMAIN:?set it in .env}
+      SQUIDPDF_SMTP_HOST: ${SQUIDPDF_SMTP_HOST:-}
+      SQUIDPDF_SMTP_PORT: ${SQUIDPDF_SMTP_PORT:-}
+      SQUIDPDF_SMTP_SECURITY: ${SQUIDPDF_SMTP_SECURITY:-}
+      SQUIDPDF_SMTP_USER: ${SQUIDPDF_SMTP_USER:-}
+      SQUIDPDF_SMTP_PASSWORD: ${SQUIDPDF_SMTP_PASSWORD:-}
+      SQUIDPDF_MAIL_FROM: ${SQUIDPDF_MAIL_FROM:-}
+      SQUIDPDF_INVITE_ONLY: ${SQUIDPDF_INVITE_ONLY:-}
     volumes:
       - documents:/data
+      - accounts:/accounts
       # Compose can't leave a mount out, so with no terms named it mounts an empty file, never read.
       # Never made where it's missing, as Docker would make a folder: `up` stops and says so.
       - type: bind
@@ -72,7 +84,7 @@ services:
     # Far above the app's own threads and workers, far below a parser bug that forks without
     # end: that stops here, not at the host's limit, where Caddy and sshd couldn't fork either.
     pids_limit: 1024
-    # Only /data and /tmp are written; /tmp holds an export a worker, so it's sized by cores.
+    # Only /data, /accounts and /tmp are written; /tmp holds an export a worker, so it's sized by cores.
     read_only: true
     tmpfs:
       - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
@@ -99,8 +111,6 @@ services:
       - "443:443/udp" # HTTP/3
     environment:
       SQUIDPDF_DOMAIN: ${SQUIDPDF_DOMAIN:?set it in .env}
-      SQUIDPDF_USER: ${SQUIDPDF_USER:?set it in .env}
-      SQUIDPDF_PASSWORD_HASH: ${SQUIDPDF_PASSWORD_HASH:?set it in .env}
     networks:
       default:
         # Fixed, so the app knows which addresses are Caddy's.
@@ -112,7 +122,7 @@ services:
       - caddy-config:/config
     # It streams bodies through rather than holding them.
     mem_limit: 512m
-    # A core at most: a wrong password costs a bcrypt compare, so guessing can't take the app's cores.
+    # A core at most: a flood of TLS handshakes costs Caddy, so it can't take the app's cores.
     cpus: 1
     # Only the right to listen on 80 and 443: its program carries it, and won't start without.
     cap_drop: [ALL]
@@ -137,5 +147,7 @@ networks:
 volumes:
   # Uploaded documents, each deleted after an hour untouched.
   documents:
+  # Accounts: each person's address, kept until taken off. The one volume worth a backup.
+  accounts:
   caddy-data:
   caddy-config:
