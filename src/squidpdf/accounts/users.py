@@ -91,10 +91,10 @@ class UserStore:
 
     def _required(self, email: str) -> User:
         """The account under `email`, which was just written."""
-        user = self.find(email)
-        if user is None:
-            raise RuntimeError(f"no account just after writing one for {email!r}")
-        return user
+        with self.database.connect() as connection:
+            return _user_from(
+                connection.execute(select(_USERS).where(_USERS.c.email == email)).one()
+            )
 
     def _one(self, query: Any) -> User | None:
         """The one account `query` finds; None if it finds none."""
