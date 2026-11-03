@@ -31,11 +31,24 @@ _SMTP = (
 )
 # Each way the environment may name how the connection is secured.
 _SECURITIES: dict[str, Security] = {"tls": "tls", "starttls": "starttls"}
+# How many documents a browser opens without an account, and an account opens a month. No
+# default: the numbers are the business's, so each lives in the deployment's .env alone.
+_FREE_DOCUMENTS = "SQUIDPDF_FREE_DOCUMENTS"
+_DOCUMENTS_A_MONTH = "SQUIDPDF_DOCUMENTS_A_MONTH"
+_ALLOWANCE = (_FREE_DOCUMENTS, _DOCUMENTS_A_MONTH)
 _MIN_SECRET_CHARS = 32  # 192 bits as base64, the least; env.example's command writes 256
 
 
 class AccountsUnset(RuntimeError):
     """A database is named, but something accounts need isn't set, or isn't usable."""
+
+
+@dataclass(frozen=True, slots=True)
+class Allowance:
+    """How many documents a browser opens: without an account, then with one, a month."""
+
+    anonymous: int
+    monthly: int
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -47,6 +60,7 @@ class Accounts:
     secret: bytes  # signs links and the signed-in cookie
     site: str  # where a link sends its reader, with no slash at the end
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
+    allowance: Allowance | None  # None where the deployment meters nothing
 
 
 def named_users() -> UserStore | None:
@@ -61,6 +75,7 @@ def deployed_accounts() -> Accounts | None:
     """Accounts as the environment sets them up; None where it names no database."""
     users = named_users()
     if users is None:
+        _refuse_metering_without_accounts()
         return None
     _require(_SECRET, _SITE, *_SMTP)
     secret = os.environ[_SECRET]
@@ -75,7 +90,33 @@ def deployed_accounts() -> Accounts | None:
         secret=secret.encode(),
         site=site,
         invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in
+        allowance=_allowance(),
     )
+
+
+def _allowance() -> Allowance | None:
+    """The allowance the environment sets; None where it sets neither number."""
+    named = [os.environ.get(name) for name in _ALLOWANCE]  # .get: unset meters nothing
+    if not any(named):
+        return None
+    if not all(named):
+        raise AccountsUnset(f"metering needs both {' and '.join(_ALLOWANCE)}, or neither")
+    anonymous, monthly = (_count_in(name) for name in _ALLOWANCE)
+    return Allowance(anonymous, monthly)
+
+
+def _refuse_metering_without_accounts() -> None:
+    """Raise AccountsUnset if an allowance is set with no database to keep accounts in."""
+    if any(os.environ.get(name) for name in _ALLOWANCE):  # .get: unset is the usual case
+        raise AccountsUnset(f"metering asks for an account, so it needs {_DATABASE} too")
+
+
+def _count_in(name: str) -> int:
+    """The number of documents the variable `name` sets, or AccountsUnset if it isn't one."""
+    value = os.environ[name]
+    if not value.isdigit():
+        raise AccountsUnset(f"{name} is {value!r}, not a number of documents")
+    return int(value)
 
 
 def _mailer() -> SmtpMailer:

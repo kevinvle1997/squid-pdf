@@ -14,8 +14,9 @@ from typing import Literal
 
 import orjson
 
-# What a value is signed for: a link that signs someone in, or the cookie that says they are.
-Purpose = Literal["link", "signed_in"]
+# What a value is signed for: a link that signs someone in, the cookie that says they are, or
+# the cookie listing the files a browser opened without an account.
+Purpose = Literal["link", "signed_in", "counted"]
 _SEPARATOR = "."
 
 

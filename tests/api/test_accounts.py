@@ -9,8 +9,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from squidpdf.accounts.deployment import Accounts, AccountsUnset
+from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance
 from squidpdf.accounts.mail import Letter, Mailer, SmtpMailer
+from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
 from squidpdf.api import constants as limits
@@ -33,7 +34,9 @@ class _NotedMail:
         self.letters.append(letter)
 
 
-def _accounts(tmp_path, mailer: Mailer, *, invite_only: bool = False) -> Accounts:
+def _accounts(
+    tmp_path, mailer: Mailer, *, invite_only: bool = False, allowance: Allowance | None = None
+) -> Accounts:
     """Accounts kept in a fresh table, their letters sent through `mailer`."""
     return Accounts(
         open_users(tmp_path / "users.sqlite3"),
@@ -41,15 +44,27 @@ def _accounts(tmp_path, mailer: Mailer, *, invite_only: bool = False) -> Account
         secret=_SECRET,
         site=_SITE,
         invite_only=invite_only,
+        allowance=allowance,
     )
 
 
-def _keeping_accounts(app: FastAPI, tmp_path, monkeypatch, *, invite_only: bool) -> _NotedMail:
-    """The app keeping accounts in a fresh table, its letters noted rather than sent."""
+def _keeping_accounts(
+    app: FastAPI,
+    tmp_path,
+    monkeypatch,
+    *,
+    invite_only: bool,
+    allowance: Allowance | None = None,
+) -> _NotedMail:
+    """The app keeping accounts in a fresh table, its letters noted rather than sent.
+
+    With an allowance, each upload is metered against it, as the app does when it starts.
+    """
     noted = _NotedMail()
-    monkeypatch.setattr(
-        app.state, "accounts", _accounts(tmp_path, noted, invite_only=invite_only)
-    )
+    accounts = _accounts(tmp_path, noted, invite_only=invite_only, allowance=allowance)
+    monkeypatch.setattr(app.state, "accounts", accounts)
+    if allowance is not None:
+        monkeypatch.setattr(app.state, "meters", AccountMeters(accounts, allowance))
     return noted
 
 
@@ -254,3 +269,129 @@ def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
     token = signed("stranger@example.com", purpose="link", until=2**40, secret=_SECRET)
     refused = browser().post("/api/account/sign-in", json={"token": token})
     assert_problem(refused, "not_invited", 403)
+
+
+@pytest.fixture
+def metered_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
+    """The app opening two documents without an account and three a month with one."""
+    allowance = Allowance(anonymous=2, monthly=3)
+    return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False, allowance=allowance)
+
+
+def _files(pdf_bytes: bytes, count: int) -> list[bytes]:
+    """`count` different files that each open: the sample, a comment after its end apiece."""
+    return [pdf_bytes + f"\n% file {number}\n".encode() for number in range(count)]
+
+
+def _sign_in(reader: TestClient, mail: _NotedMail, email: str = _EMAIL) -> None:
+    """Sign `reader` in as `email`, by the link the server mails there."""
+    reader.post("/api/account/link", json={"email": email})
+    signed_in = reader.post("/api/account/sign-in", json={"token": _token_in(mail.letters[-1])})
+    assert_equal(signed_in.status_code, 200, "signed in")
+
+
+def test_with_no_account_a_browser_opens_its_free_documents_once_each_then_must_sign_in(
+    metered_mail, browser: Callable[[], TestClient], pdf_bytes
+):
+    reader = browser()
+    first, second, third = _files(pdf_bytes, 3)
+    for opened in (first, first, second, first):
+        # One opened again, as a browser does once the server's hour is up, isn't counted again.
+        assert_equal(upload(reader, opened).status_code, 201, "opened")
+    refused = upload(reader, third)
+    assert_problem(refused, "free_documents_used", 403)
+    assert_in("opens 3 a month", refused.json()["detail"], "says what an account opens")
+    assert_equal(upload(browser(), third).status_code, 201, "another browser has its own")
+
+
+def test_a_file_that_doesnt_open_costs_none_of_the_allowance(
+    metered_mail, browser: Callable[[], TestClient], pdf_bytes
+):
+    reader = browser()
+    damaged = b"%PDF-1.7\nnot a PDF past its first line\n"
+    assert_equal(upload(reader, damaged).status_code // 100, 4, "refused")
+    for opened in _files(pdf_bytes, 2):
+        assert_equal(upload(reader, opened).status_code, 201, "both free ones are left")
+
+
+def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
+    metered_mail, browser: Callable[[], TestClient], pdf_bytes
+):
+    """Signing up is rewarded: what the browser opened without an account isn't carried over."""
+    reader = browser()
+    files = _files(pdf_bytes, 6)
+    for opened in files[:2]:
+        upload(reader, opened)
+    _sign_in(reader, metered_mail)
+    for opened in (*files[:2], files[2]):
+        assert_equal(upload(reader, opened).status_code, 201, "this month's three")
+    assert_equal(upload(reader, files[0]).status_code, 201, "one counted, opened again")
+    assert_problem(upload(reader, files[3]), "monthly_documents_used", 403)
+    # The same account in another browser has used the same month.
+    elsewhere = browser()
+    _sign_in(elsewhere, metered_mail)
+    assert_problem(upload(elsewhere, files[4]), "monthly_documents_used", 403)
+
+
+def test_an_unlimited_friend_opens_as_many_as_they_like(
+    metered_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
+):
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=True)
+    reader = browser()
+    _sign_in(reader, metered_mail)
+    for opened in _files(pdf_bytes, 5):
+        assert_equal(upload(reader, opened).status_code, 201, "past the month's three")
+
+
+def test_a_months_count_starts_afresh_in_the_next(tmp_path):
+    """The API can't wait a month, so the table is asked directly."""
+    users = open_users(tmp_path / "users.sqlite3")
+    user = users.joined(_EMAIL, now=0)
+    users.count(user.id, "a", month="2026-10")
+    users.count(user.id, "b", month="2026-10")
+    assert_equal(users.counted_in(user.id, month="2026-10"), {"a", "b"}, "October's")
+    assert_equal(users.counted_in(user.id, month="2026-11"), set(), "November's, before any")
+    users.count(user.id, "c", month="2026-11")
+    assert_equal(users.counted_in(user.id, month="2026-11"), {"c"}, "November's, after one")
+
+
+@pytest.mark.parametrize(
+    ("named", "refused_for"),
+    [
+        (
+            {"SQUIDPDF_FREE_DOCUMENTS": "3", "SQUIDPDF_DOCUMENTS_A_MONTH": "10"},
+            "SQUIDPDF_DATABASE",
+        ),
+        ({"SQUIDPDF_DATABASE": "users.sqlite3", "SQUIDPDF_FREE_DOCUMENTS": "3"}, "neither"),
+        (
+            {
+                "SQUIDPDF_DATABASE": "users.sqlite3",
+                "SQUIDPDF_FREE_DOCUMENTS": "three",
+                "SQUIDPDF_DOCUMENTS_A_MONTH": "10",
+            },
+            "not a number",
+        ),
+    ],
+    ids=["with no accounts", "with one number of two", "with a word for a number"],
+)
+def test_an_allowance_set_half_or_without_accounts_stops_the_start(
+    tmp_path, monkeypatch, named, refused_for
+):
+    """Metering asks for an account, so a server keeping none can't meter: said as it starts."""
+    accounts_need = {
+        "SQUIDPDF_SECRET": _SECRET.decode(),
+        "SQUIDPDF_SITE": _SITE,
+        "SQUIDPDF_SMTP_HOST": "mail.example.com",
+        "SQUIDPDF_SMTP_PORT": "587",
+        "SQUIDPDF_SMTP_SECURITY": "starttls",
+        "SQUIDPDF_SMTP_USER": "squid",
+        "SQUIDPDF_SMTP_PASSWORD": "secret",
+        "SQUIDPDF_MAIL_FROM": "sign-in@example.com",
+    }
+    monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
+    for name, value in (accounts_need | named).items():
+        monkeypatch.setenv(
+            name, str(tmp_path / value) if name == "SQUIDPDF_DATABASE" else value
+        )
+    with pytest.raises(AccountsUnset, match=refused_for):
+        create_app()

@@ -41,8 +41,8 @@ _USERS = Table(
     Column("created_at", Integer, nullable=False),  # Unix seconds
     # Uses as many documents as they like: friends and family, given it with `squidpdf invite`.
     Column("is_unlimited", Boolean, nullable=False, default=False),
-    # Read once metering lands, stacked on this: the month `counted` is for, as "2026-11", and
-    # each file counted in it, by its digest. Here now, so a table made before needs no change.
+    # Metering's: the month `counted` is for, as "2026-11", and each file counted in it, by its
+    # digest, a space apart (`metering.py`).
     Column("month", Text, nullable=True),
     Column("counted", Text, nullable=False, default=""),
 )
@@ -88,6 +88,22 @@ class UserStore:
         with self.database.begin() as connection:
             connection.execute(kept)
         return self._required(email)
+
+    def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
+        """The files the account opened in `month`, by digest: none, once a new one starts."""
+        query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
+        with self.database.connect() as connection:
+            row = connection.execute(query).one()
+        return _counted_from(row.month, row.counted, month=month)
+
+    def count(self, user_id: str, digest: str, *, month: str) -> None:
+        """Count the file `digest` against the account in `month`, a new month afresh."""
+        query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
+        with self.database.begin() as connection:
+            row = connection.execute(query).one()
+            counted = _counted_from(row.month, row.counted, month=month) | {digest}
+            kept = {"month": month, "counted": " ".join(sorted(counted))}
+            connection.execute(_USERS.update().where(_USERS.c.id == user_id).values(kept))
 
     def _required(self, email: str) -> User:
         """The account under `email`, which was just written."""
@@ -137,6 +153,13 @@ def _new_row(email: str, *, now: int, is_unlimited: bool) -> dict[str, Any]:
         "created_at": now,
         "is_unlimited": is_unlimited,
     }
+
+
+def _counted_from(counted_month: str | None, counted: str, *, month: str) -> frozenset[str]:
+    """What a row counted in `month`; nothing if it last counted in another, or never."""
+    if counted_month != month:
+        return frozenset()
+    return frozenset(counted.split())
 
 
 def _user_from(row: Row[Any]) -> User:

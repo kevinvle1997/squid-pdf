@@ -3,7 +3,7 @@ import styles from "./App.module.css";
 import { type AccountAnswer, accountAtStart, mustSignIn, signedInAs, signedOut, tokenIn } from "./accounts/account";
 import { SignInScreen } from "./accounts/view/SignInScreen";
 import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
-import { type Landing, type Opened, openFile } from "./documents/open";
+import { type Landing, type Opened, openFile, type SignInFirst } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
 import { isTermsPath, type TermsAnswer, termsAnswer, termsHrefOf } from "./terms/terms";
 import { TermsScreen } from "./terms/view/TermsScreen";
@@ -28,7 +28,7 @@ export function App() {
 }
 
 /** The landing, or the document open in the editor: opened again from this browser, with its work persisted. */
-type Screen = Landing | { kind: "open"; opened: Opened; persisted?: PersistedWork<unknown> };
+type Screen = Landing | SignInFirst | { kind: "open"; opened: Opened; persisted?: PersistedWork<unknown> };
 
 /** Deleting what this browser persisted: under way, or why it's still there. */
 type Forgetting = { kind: "under way" } | { kind: "failed"; detail: string };
@@ -114,6 +114,8 @@ function Screens() {
     return <SignInScreen why={INVITED_ONLY} signingIn failed={null} />;
   }
   if (mustSignIn(account)) return <SignInScreen why={INVITED_ONLY} signingIn={false} failed={linkFailed} />;
+  // Past the documents a browser opens without an account: the server's sentence says why to sign in.
+  if (screen.kind === "sign in") return <SignInScreen why={screen.detail} signingIn={false} failed={null} home />;
   if (screen.kind !== "open") {
     // A link that failed where anyone may open a document: said on the landing, until something else is.
     const landing =

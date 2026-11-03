@@ -17,6 +17,7 @@ from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
 from squidpdf.core import LogController, LogEvent, NotFound
+from squidpdf.documents.allowance import Meter, Meters
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
 from squidpdf.documents.fonts import AttachController, DetachController
@@ -37,6 +38,12 @@ _PDF = "application/pdf"  # the type the browser sends an upload as
 def documents_of(request: Request) -> DocumentStore:
     """The store the app keeps its documents in."""
     return request.app.state.documents
+
+
+def meter_of(request: Request) -> Meter:
+    """This browser's allowance of documents, from the meters the app was started with."""
+    meters: Meters = request.app.state.meters
+    return meters.meter_for(request.cookies)
 
 
 def load(doc_id: str, request: Request) -> Loaded:
@@ -78,6 +85,7 @@ async def upload(
     request: Request,
     *,
     token: Annotated[str, Depends(owner.token)],
+    meter: Annotated[Meter, Depends(meter_of)],
     upload_controller: Annotated[
         UploadController, Depends(controller_with_workers(UploadController))
     ],
@@ -87,6 +95,7 @@ async def upload(
     """A raw PDF sent as application/pdf, no filename. Answers with every span judged."""
     reply = await upload_controller.upload(
         owner.digest(token),
+        meter=meter,
         declared=declared_size(request),
         chunks=request.stream(),
         language=language,

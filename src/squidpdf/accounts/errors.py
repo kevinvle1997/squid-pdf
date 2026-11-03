@@ -45,3 +45,25 @@ class InvitedOnly(Problem):
 
     type = "invited_only"
     status = 401
+
+
+class FreeDocumentsUsed(Problem):
+    """A browser with no account has opened the documents it may: signing in opens more."""
+
+    type = "free_documents_used"
+    status = 403
+
+    def __init__(self, *, monthly: int) -> None:
+        """Name how many an account opens a month."""
+        super().__init__(monthly=monthly)
+
+
+class MonthlyDocumentsUsed(Problem):
+    """An account has opened this month's documents: more open next month."""
+
+    type = "monthly_documents_used"
+    status = 403
+
+    def __init__(self, *, monthly: int) -> None:
+        """Name how many it opens a month."""
+        super().__init__(monthly=monthly)

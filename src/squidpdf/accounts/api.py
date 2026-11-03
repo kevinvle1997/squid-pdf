@@ -13,10 +13,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 
+from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import InvitedOnly, NoAccounts
 from squidpdf.accounts.sign_in import (
-    SIGNED_IN_COOKIE,
     LinkController,
     SignInController,
     signed_in_id,
@@ -66,9 +66,7 @@ async def signed_in(
     if accounts is None:
         return None
     # Off the loop: it reads the table.
-    return await asyncio.to_thread(
-        signed_in_user, accounts, request.cookies.get(SIGNED_IN_COOKIE)
-    )
+    return await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
 
 
 async def admit_invited(
@@ -81,7 +79,7 @@ async def admit_invited(
     """
     if accounts is None or not accounts.invite_only:
         return
-    if signed_in_id(accounts, request.cookies.get(SIGNED_IN_COOKIE)) is None:
+    if signed_in_id(accounts, request.cookies.get(SIGNED_IN)) is None:
         raise InvitedOnly()
 
 

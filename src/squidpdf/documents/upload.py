@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import shutil
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -14,6 +15,7 @@ from typing import BinaryIO
 
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, disk, store
+from squidpdf.documents.allowance import Meter
 from squidpdf.documents.analyse import analyse_upload
 from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
 from squidpdf.documents.replies import document_json
@@ -22,6 +24,7 @@ from squidpdf.documents.types import KeptAnalysis
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
+_DIGEST_CHARS = 16  # of a file's SHA-256 a meter keeps: 64 bits, so two files never share one
 
 
 @dataclass(slots=True)
@@ -78,6 +81,7 @@ class UploadController:
         self,
         owner_digest: str,
         *,
+        meter: Meter,
         declared: int | None,
         chunks: AsyncIterable[bytes],
         language: str,
@@ -86,7 +90,8 @@ class UploadController:
 
         `declared` is the size the request states, None when it streams without
         one. Refuses a file too large or not a PDF, and keeps nothing then. Refuses
-        any file while the disk is nearly full, or if it fills up anyway.
+        any file while the disk is nearly full, or if it fills up anyway. A new file
+        `meter` has no room for is refused before it's read; one that opens is counted.
         """
         # Read as module attributes, so a test can lower the limit.
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
@@ -98,6 +103,11 @@ class UploadController:
                 await self._deleted_if_it_fails(
                     folder, _save_original(chunks, to=folder / store.ORIGINAL)
                 )
+        # Off the server's thread: a file of the size limit takes a moment to digest.
+        digest = await self._deleted_if_it_fails(
+            folder, asyncio.to_thread(_digest_of, folder / store.ORIGINAL)
+        )
+        await self._deleted_if_it_fails(folder, asyncio.to_thread(meter.check, digest))
         kept = await self._deleted_if_it_fails(folder, self._enqueue_analyse(folder))
         # Deleted if it fails too: a browser that leaves first never gets the id.
         expires_at = await self._deleted_if_it_fails(
@@ -110,7 +120,11 @@ class UploadController:
                 document_json, doc_id, expires_at=expires_at, kept=kept, language=language
             ),
         )
-        return Reply(body, words.language_headers(language), HTTPStatus.CREATED)
+        # Counted only once it opens: a damaged file costs none of the allowance.
+        counted = await self._deleted_if_it_fails(
+            folder, asyncio.to_thread(meter.count, digest)
+        )
+        return Reply(body, words.language_headers(language) | counted, HTTPStatus.CREATED)
 
     async def _deleted_if_it_fails[T](self, folder: Path, step: Awaitable[T]) -> T:
         """What `step` gives; if it fails, the document in `folder` is deleted first."""
@@ -124,6 +138,12 @@ class UploadController:
         """Analyse the document on a worker."""
         task = partial(analyse_upload, self.documents, folder, constants.MAX_PAGES)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
+
+
+def _digest_of(path: Path) -> str:
+    """The file at `path` by its contents, as a meter counts it: one file, one digest."""
+    with path.open("rb") as file:
+        return hashlib.file_digest(file, "sha256").hexdigest()[:_DIGEST_CHARS]
 
 
 def _documents_disk_free() -> int:
