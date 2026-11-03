@@ -1,8 +1,8 @@
 """Accounts as the deployment configures them, from its environment (env.example).
 
 None of it is set on a self-hosted copy, which then keeps no accounts. Naming the database
-but not the rest stops the app starting, saying what's missing, rather than failing on
-the first sign-in.
+but not the rest, or an allowance with no database or only half of it, stops the app
+starting, saying what's missing, rather than failing on the first sign-in or upload.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ _MIN_SECRET_CHARS = 32  # 192 bits as base64, the least; env.example's command w
 
 
 class AccountsUnset(RuntimeError):
-    """A database is named, but something accounts need isn't set, or isn't usable."""
+    """Accounts or metering half set up, or set up with something unusable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +53,7 @@ class Allowance:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Accounts:
-    """What accounts need: the table, a way to send a link, the secret, the address, who may."""
+    """What accounts need: the table, the mail, the secret and address, who may, how many."""
 
     users: UserStore
     mailer: Mailer
