@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts.deployment import Accounts, AccountsUnset
-from squidpdf.accounts.mail import Letter, SmtpMailer
+from squidpdf.accounts.mail import Letter, Mailer, SmtpMailer
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
 from squidpdf.api import constants as limits
@@ -33,17 +33,23 @@ class _NotedMail:
         self.letters.append(letter)
 
 
-def _keeping_accounts(app: FastAPI, tmp_path, monkeypatch, *, invite_only: bool) -> _NotedMail:
-    """The app keeping accounts in a fresh table, its letters noted rather than sent."""
-    noted = _NotedMail()
-    accounts = Accounts(
+def _accounts(tmp_path, mailer: Mailer, *, invite_only: bool = False) -> Accounts:
+    """Accounts kept in a fresh table, their letters sent through `mailer`."""
+    return Accounts(
         open_users(tmp_path / "users.sqlite3"),
-        noted,
+        mailer,
         secret=_SECRET,
         site=_SITE,
         invite_only=invite_only,
     )
-    monkeypatch.setattr(app.state, "accounts", accounts)
+
+
+def _keeping_accounts(app: FastAPI, tmp_path, monkeypatch, *, invite_only: bool) -> _NotedMail:
+    """The app keeping accounts in a fresh table, its letters noted rather than sent."""
+    noted = _NotedMail()
+    monkeypatch.setattr(
+        app.state, "accounts", _accounts(tmp_path, noted, invite_only=invite_only)
+    )
     return noted
 
 
@@ -141,14 +147,7 @@ def test_a_mail_server_that_cannot_be_reached_says_the_link_was_not_sent(
     unreachable = SmtpMailer(
         "127.0.0.1", 1, security="starttls", user="u", password="p", sender="from@example.com"
     )
-    accounts = Accounts(
-        open_users(tmp_path / "users.sqlite3"),
-        unreachable,
-        secret=_SECRET,
-        site=_SITE,
-        invite_only=False,
-    )
-    monkeypatch.setattr(app.state, "accounts", accounts)
+    monkeypatch.setattr(app.state, "accounts", _accounts(tmp_path, unreachable))
     refused = browser().post("/api/account/link", json={"email": _EMAIL})
     assert_problem(refused, "mail_not_sent", 503)
 
@@ -170,13 +169,7 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatc
     monkeypatch.setattr(limits, "LINKS_PER_MINUTE", 1)
     noted = _NotedMail()
     app = create_app()
-    app.state.accounts = Accounts(
-        open_users(tmp_path / "users.sqlite3"),
-        noted,
-        secret=_SECRET,
-        site=_SITE,
-        invite_only=False,
-    )
+    app.state.accounts = _accounts(tmp_path, noted)
     with TestClient(app) as server:  # runs the lifespan, which makes the counts
         reader = browser_on(server, client=("192.0.2.1", 1))
         neighbour = browser_on(server, client=("198.51.100.7", 1))

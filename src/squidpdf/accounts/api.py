@@ -71,13 +71,13 @@ async def signed_in(
     )
 
 
-def admit_invited(
+async def admit_invited(
     request: Request, accounts: Annotated[Accounts | None, Depends(accounts_of)]
 ) -> None:
     """Raise invited_only unless this browser is signed in, where only the invited may work.
 
-    On every route that does work on a document, before any of its body is read. The
-    cookie's signature is enough: only the invited can sign in there.
+    On every route that works on a document, before any body is read. Async, so it runs
+    on the event loop: the cookie's signature is enough, as only the invited can sign in.
     """
     if accounts is None or not accounts.invite_only:
         return

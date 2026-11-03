@@ -24,7 +24,7 @@ from squidpdf.core import Message, Reply, words
 # The signed-in cookie. __Host-: only this host can set it, so no subdomain plants one.
 SIGNED_IN_COOKIE = "__Host-signed-in"
 _LINK_PATH = "/sign-in#"  # the browser's page that trades a link's token, kept out of logs
-_LINK_MINUTES = constants.LINK_VALID_S // 60  # as a link's email and its reply say it
+_SECONDS_A_MINUTE = 60
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -42,7 +42,7 @@ class LinkController:
         email = checked_email(typed)
         said = "link_sent_if_invited" if self.accounts.invite_only else "link_sent"
         sentence = words.render(
-            Message(said, {"email": email, "minutes": _LINK_MINUTES}), language
+            Message(said, {"email": email, "minutes": _link_minutes()}), language
         )
         reply = Reply(
             LinkSent(sentence=sentence), words.language_headers(language), HTTPStatus.ACCEPTED
@@ -65,7 +65,7 @@ class LinkController:
             email,
             subject=words.render(Message("sign_in_subject"), language),
             body=words.render(
-                Message("sign_in_letter", {"link": link, "minutes": _LINK_MINUTES}), language
+                Message("sign_in_letter", {"link": link, "minutes": _link_minutes()}), language
             ),
         )
 
@@ -97,10 +97,15 @@ class SignInController:
         if not self.accounts.invite_only:
             return self.accounts.users.joined(email, now=now)
         invited = self.accounts.users.find(email)
-        # A link sent while anyone could sign in, or to someone since taken off the table.
+        # A link sent while anyone could sign in.
         if invited is None:
             raise NotInvited()
         return invited
+
+
+def _link_minutes() -> int:
+    """How long a link works, in the minutes its email and its reply say."""
+    return constants.LINK_VALID_S // _SECONDS_A_MINUTE
 
 
 def signed_in_user(accounts: Accounts, cookie: str | None) -> User | None:
