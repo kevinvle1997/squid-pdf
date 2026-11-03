@@ -47,7 +47,7 @@ class AccountsUnset(RuntimeError):
 class Allowance:
     """How many documents a browser opens: without an account, then with one, a month."""
 
-    anonymous: int
+    free: int  # documents a browser opens without an account
     monthly: int
 
 
@@ -101,8 +101,8 @@ def _allowance() -> Allowance | None:
         return None
     if not all(named):
         raise AccountsUnset(f"metering needs both {' and '.join(_ALLOWANCE)}, or neither")
-    anonymous, monthly = (_count_in(name) for name in _ALLOWANCE)
-    return Allowance(anonymous, monthly)
+    free, monthly = (_count_in(name) for name in _ALLOWANCE)
+    return Allowance(free, monthly)
 
 
 def _refuse_metering_without_accounts() -> None:

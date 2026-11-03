@@ -18,7 +18,7 @@ from squidpdf.accounts.deployment import Accounts, Allowance
 from squidpdf.accounts.errors import FreeDocumentsUsed, MonthlyDocumentsUsed
 from squidpdf.accounts.sign_in import signed_in_id
 from squidpdf.accounts.signed import signed, value_of
-from squidpdf.documents.allowance import Meter
+from squidpdf.documents.meters import Meter
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -55,11 +55,7 @@ class _AccountMeter:
 
     def check(self, digest: str) -> None:
         """Raise MonthlyDocumentsUsed if `digest` is new and the month's are used."""
-        user = self.accounts.users.get(self.user_id)
-        # Taken off the table since it signed in: it opens nothing more.
-        if user is None:
-            raise MonthlyDocumentsUsed(monthly=self.allowance.monthly)
-        if user.is_unlimited:
+        if self.accounts.users.is_unlimited(self.user_id):
             return
         counted = self.accounts.users.counted_in(self.user_id, month=_this_month())
         is_new = digest not in counted
@@ -83,7 +79,7 @@ class _BrowserMeter:
     def check(self, digest: str) -> None:
         """Raise FreeDocumentsUsed if `digest` is new and the free ones are used."""
         is_new = digest not in self.counted
-        if is_new and len(self.counted) >= self.allowance.anonymous:
+        if is_new and len(self.counted) >= self.allowance.free:
             raise FreeDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:

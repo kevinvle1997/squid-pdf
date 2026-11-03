@@ -17,10 +17,10 @@ from squidpdf.api.body import declared_size
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import controller_with_workers, listed_header, response_of
 from squidpdf.core import LogController, LogEvent, NotFound
-from squidpdf.documents.allowance import Meter, Meters
 from squidpdf.documents.constants import SWEEP_EVERY_S
 from squidpdf.documents.errors import NotSentAsPdf
 from squidpdf.documents.fonts import AttachController, DetachController
+from squidpdf.documents.meters import Meter, Meters
 from squidpdf.documents.page_image import PageController
 from squidpdf.documents.read import EXPIRES_HEADER, ReadController
 from squidpdf.documents.store import DocumentStore

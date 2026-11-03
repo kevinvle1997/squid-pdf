@@ -274,7 +274,7 @@ def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
 @pytest.fixture
 def metered_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
     """The app opening two documents without an account and three a month with one."""
-    allowance = Allowance(anonymous=2, monthly=3)
+    allowance = Allowance(free=2, monthly=3)
     return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False, allowance=allowance)
 
 

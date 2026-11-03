@@ -26,7 +26,7 @@ from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentStarts, Turns
 from squidpdf.core import LogController
 from squidpdf.documents import api as documents_api
-from squidpdf.documents.allowance import UNMETERED
+from squidpdf.documents.meters import UNMETERED
 from squidpdf.documents.store import FOLDER_STORE, DocumentStore
 from squidpdf.editing import api as editing_api
 from squidpdf.terms import api as terms_api
