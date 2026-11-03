@@ -451,3 +451,14 @@ test("Sign out on the landing signs this browser out, and the landing no longer 
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toHaveFocus();
   expect(signOut).toHaveBeenCalledOnce();
 });
+
+test("a file past those a browser opens without an account asks it to sign in, in the server's words, with the way back", async () => {
+  const free = "You've opened the documents you can without an account. Sign in to open more.";
+  vi.mocked(account).mockResolvedValue(anAccount());
+  vi.mocked(upload).mockRejectedValue(new ProblemError({ ...aProblem(403, free), type: "free_documents_used" }));
+  const screen = await render(<App />);
+  choose(screen.container, "contract.pdf");
+  await expect.element(screen.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect.element(screen.getByText(free)).toBeVisible();
+  await expect.element(screen.getByRole("link", { name: "squid-pdf" })).toHaveAttribute("href", "/");
+});

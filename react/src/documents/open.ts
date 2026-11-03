@@ -1,5 +1,5 @@
 // Opening a PDF: it goes to the server, which reads its text and answers with the document.
-import { upload } from "../api/client";
+import { ProblemError, upload } from "../api/client";
 import type { Document } from "../api/types";
 import { sentenceOf } from "../bugs";
 
@@ -15,14 +15,19 @@ export type Landing =
   | { kind: "opening"; name: string; sent: number; total: number }
   | { kind: "failed"; detail: string };
 
+/** The browser has opened the documents it may without an account: signing in opens more, as `detail` says. */
+export type SignInFirst = { kind: "sign in"; detail: string };
+
 /** The document opened, or why it didn't, in words for the user. */
-type Opening = { kind: "open"; opened: Opened } | Extract<Landing, { kind: "failed" }>;
+type Opening = { kind: "open"; opened: Opened } | Extract<Landing, { kind: "failed" }> | SignInFirst;
 
 /** Send `file` to the server, which reads its text: the document opened, or why it didn't. */
 export async function openFile(file: File, onProgress: (sent: number, total: number) => void): Promise<Opening> {
   try {
     return { kind: "open", opened: { file, doc: await upload(file, onProgress) } };
   } catch (error) {
+    const signInFirst = error instanceof ProblemError && error.problem.type === "free_documents_used";
+    if (signInFirst) return { kind: "sign in", detail: error.problem.detail };
     return { kind: "failed", detail: sentenceOf(error) };
   }
 }

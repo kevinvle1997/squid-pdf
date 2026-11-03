@@ -9,13 +9,14 @@ interface Props {
   children: ReactNode; // what the sheet holds under its heading
   foot?: ReactNode; // what sits under the sheet
   sheetClassName?: string;
+  home?: boolean; // the wordmark leads to the landing, from a screen the landing led to
 }
 
 /** A screen with no document on it: the wordmark at the top, and the mascot over one sheet in the middle. */
-export function SheetScreen({ title, children, foot, sheetClassName }: Props) {
+export function SheetScreen({ title, children, foot, sheetClassName, home = false }: Props) {
   return (
     <div className={styles.screen}>
-      <ScreenTop />
+      <ScreenTop home={home} />
       <main className={styles.middle}>
         <div className={styles.stage}>
           <Mascot className={styles.mascot} />

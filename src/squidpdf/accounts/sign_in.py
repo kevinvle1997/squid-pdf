@@ -10,9 +10,9 @@ import asyncio
 import time
 from dataclasses import dataclass
 from http import HTTPStatus
-from http.cookies import SimpleCookie
 
 from squidpdf.accounts import constants
+from squidpdf.accounts.cookies import SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import LinkExpired, NotInvited
 from squidpdf.accounts.mail import Letter
@@ -21,8 +21,6 @@ from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
 from squidpdf.accounts.users import User, checked_email
 from squidpdf.core import Message, Reply, words
 
-# The signed-in cookie. __Host-: only this host can set it, so no subdomain plants one.
-SIGNED_IN_COOKIE = "__Host-signed-in"
 _LINK_PATH = "/sign-in#"  # the browser's page that trades a link's token, kept out of logs
 _SECONDS_A_MINUTE = 60
 
@@ -89,7 +87,9 @@ class SignInController:
         user = await asyncio.to_thread(self._user_signing_in, email, now=now)
         until = now + constants.SIGNED_IN_S
         cookie = signed(user.id, purpose="signed_in", until=until, secret=self.accounts.secret)
-        headers = {"Set-Cookie": _cookie_header(cookie, max_age=constants.SIGNED_IN_S)}
+        headers = {
+            "Set-Cookie": cookie_header(SIGNED_IN, cookie, max_age=constants.SIGNED_IN_S)
+        }
         return Reply(state_of(self.accounts, user), headers, HTTPStatus.OK)
 
     def _user_signing_in(self, email: str, *, now: int) -> User:
@@ -137,21 +137,5 @@ def state_of(accounts: Accounts, user: User | None) -> AccountState:
 
 def signed_out(accounts: Accounts) -> Reply[AccountState]:
     """The reply to signing out: the cookie cleared, and no account."""
-    headers = {"Set-Cookie": _cookie_header("", max_age=0)}
+    headers = {"Set-Cookie": cookie_header(SIGNED_IN, "", max_age=0)}
     return Reply(state_of(accounts, None), headers, HTTPStatus.OK)
-
-
-def _cookie_header(value: str, *, max_age: int) -> str:
-    """The Set-Cookie header for the signed-in cookie: only over HTTPS, never read by script.
-
-    SameSite=Strict: another site's page never sends a request as the signed-in browser.
-    """
-    cookie: SimpleCookie = SimpleCookie()
-    cookie[SIGNED_IN_COOKIE] = value
-    kept = cookie[SIGNED_IN_COOKIE]
-    kept["path"] = "/"
-    kept["max-age"] = max_age
-    kept["secure"] = True
-    kept["httponly"] = True
-    kept["samesite"] = "Strict"
-    return kept.OutputString()

@@ -16,6 +16,7 @@ from fastapi.routing import APIRoute
 
 from squidpdf.accounts import api as accounts_api
 from squidpdf.accounts.deployment import deployed_accounts
+from squidpdf.accounts.metering import AccountMeters
 from squidpdf.api.access import AccessLog
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
@@ -25,6 +26,7 @@ from squidpdf.api.pool import WorkerPool, current, start_pool
 from squidpdf.api.rate import RecentStarts, Turns
 from squidpdf.core import LogController
 from squidpdf.documents import api as documents_api
+from squidpdf.documents.allowance import UNMETERED
 from squidpdf.documents.store import FOLDER_STORE, DocumentStore
 from squidpdf.editing import api as editing_api
 from squidpdf.terms import api as terms_api
@@ -82,7 +84,13 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     # Read once, here: terms the page can't show stop the app starting; `squidpdf terms` checks.
     app.state.terms = deployed_terms()
     # Read once, here too: a database named without the rest accounts need stops the start.
-    app.state.accounts = deployed_accounts()
+    accounts = app.state.accounts = deployed_accounts()
+    # Each upload asks its browser's meter: accounts' where the deployment sets an allowance.
+    app.state.meters = (
+        UNMETERED
+        if accounts is None or accounts.allowance is None
+        else AccountMeters(accounts, accounts.allowance)
+    )
     install(app)
     # Where only the invited may, each route that works asks first, before any body is read.
     invited = [Depends(accounts_api.admit_invited)]

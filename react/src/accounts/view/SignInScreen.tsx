@@ -11,10 +11,11 @@ interface Props {
   why: string; // why this browser must sign in first, in plain words
   signingIn: boolean; // a link's token is being traded for a sign-in
   failed: string | null; // why a link or the server didn't sign this browser in, in the server's words
+  home?: boolean; // the wordmark leads back to the landing, where the landing led here
 }
 
 /** Signing in on a screen of its own: an address typed, and a link sent there that signs this browser in. */
-export function SignInScreen({ why, signingIn, failed }: Props) {
+export function SignInScreen({ why, signingIn, failed, home = false }: Props) {
   const [email, setEmail] = useState("");
   const [signing, setSigning] = useState<Signing>({ kind: "idle" });
 
@@ -27,7 +28,7 @@ export function SignInScreen({ why, signingIn, failed }: Props) {
   }
 
   return (
-    <SheetScreen title="Sign in">
+    <SheetScreen title="Sign in" home={home}>
       <p className={styles.why}>{why}</p>
       <form className={styles.form} onSubmit={(event) => void ask(event)}>
         <TextField className={styles.field} type="email" value={email} onChange={setEmail} isRequired>

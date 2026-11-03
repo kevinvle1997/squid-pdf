@@ -359,6 +359,9 @@ sign_in_letter = """Open this link to sign in to squid-pdf:
 {link}
 
 It works for {minutes} minutes. If you didn't ask for it, you can ignore this email."""
+# How many documents a browser opens, without an account, then with one.
+free_documents_used = "You've opened the documents you can without an account. Sign in to open more: an account is free, and opens {monthly} a month."
+monthly_documents_used = "Your account has opened all {monthly} of this month's documents. More open at the start of next month."
 # What `squidpdf invite` says.
 invited = "{email} is invited."
 invited_unlimited = "{email} is invited, and may use as many documents as they like."
