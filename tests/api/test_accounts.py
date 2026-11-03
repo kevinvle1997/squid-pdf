@@ -15,7 +15,7 @@ from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
 from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
-from tests.api.conftest import BASE_URL, browser_on
+from tests.api.conftest import BASE_URL, browser_on, upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SECRET = b"a test's secret, long enough to sign with"
@@ -33,15 +33,30 @@ class _NotedMail:
         self.letters.append(letter)
 
 
-@pytest.fixture
-def mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
-    """The app keeping accounts in a fresh table, its letters noted here rather than sent."""
+def _keeping_accounts(app: FastAPI, tmp_path, monkeypatch, *, invite_only: bool) -> _NotedMail:
+    """The app keeping accounts in a fresh table, its letters noted rather than sent."""
     noted = _NotedMail()
     accounts = Accounts(
-        open_users(tmp_path / "users.sqlite3"), noted, secret=_SECRET, site=_SITE
+        open_users(tmp_path / "users.sqlite3"),
+        noted,
+        secret=_SECRET,
+        site=_SITE,
+        invite_only=invite_only,
     )
     monkeypatch.setattr(app.state, "accounts", accounts)
     return noted
+
+
+@pytest.fixture
+def mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
+    """The app keeping accounts anyone may sign in to, its letters noted here."""
+    return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False)
+
+
+@pytest.fixture
+def invited_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
+    """The app open to invited people only, its letters noted here."""
+    return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=True)
 
 
 def _token_in(letter: Letter) -> str:
@@ -58,7 +73,9 @@ def test_a_link_by_email_signs_a_browser_in_and_makes_its_account(
 ):
     reader, other = browser(), browser()
     assert_equal(
-        reader.get("/api/account").json(), {"offered": True, "signed_in": None}, "before"
+        reader.get("/api/account").json(),
+        {"offered": True, "invite_only": False, "signed_in": None},
+        "before",
     )
     sent = reader.post("/api/account/link", json={"email": f"  {_EMAIL.upper()} "})
     assert_equal(sent.status_code, 202, "the link is on its way")
@@ -66,7 +83,11 @@ def test_a_link_by_email_signs_a_browser_in_and_makes_its_account(
     [letter] = mail.letters
     assert_equal(letter.to, _EMAIL, "the address, trimmed and in lower case")
     signed_in = reader.post("/api/account/sign-in", json={"token": _token_in(letter)})
-    expected = {"offered": True, "signed_in": {"email": _EMAIL, "is_unlimited": False}}
+    expected = {
+        "offered": True,
+        "invite_only": False,
+        "signed_in": {"email": _EMAIL, "is_unlimited": False},
+    }
     assert_equal(signed_in.json(), expected, "signed in")
     assert_in("HttpOnly", signed_in.headers["set-cookie"], "script never reads the cookie")
     assert_in("SameSite=Strict", signed_in.headers["set-cookie"], "no other site sends it")
@@ -121,7 +142,11 @@ def test_a_mail_server_that_cannot_be_reached_says_the_link_was_not_sent(
         "127.0.0.1", 1, security="starttls", user="u", password="p", sender="from@example.com"
     )
     accounts = Accounts(
-        open_users(tmp_path / "users.sqlite3"), unreachable, secret=_SECRET, site=_SITE
+        open_users(tmp_path / "users.sqlite3"),
+        unreachable,
+        secret=_SECRET,
+        site=_SITE,
+        invite_only=False,
     )
     monkeypatch.setattr(app.state, "accounts", accounts)
     refused = browser().post("/api/account/link", json={"email": _EMAIL})
@@ -131,7 +156,9 @@ def test_a_mail_server_that_cannot_be_reached_says_the_link_was_not_sent(
 def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], TestClient]):
     reader = browser()
     assert_equal(
-        reader.get("/api/account").json(), {"offered": False, "signed_in": None}, "state"
+        reader.get("/api/account").json(),
+        {"offered": False, "invite_only": False, "signed_in": None},
+        "state",
     )
     assert_problem(reader.post("/api/account/link", json={"email": _EMAIL}), "no_accounts", 404)
     assert_problem(reader.post("/api/account/sign-in", json={"token": "x"}), "no_accounts", 404)
@@ -144,7 +171,11 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatc
     noted = _NotedMail()
     app = create_app()
     app.state.accounts = Accounts(
-        open_users(tmp_path / "users.sqlite3"), noted, secret=_SECRET, site=_SITE
+        open_users(tmp_path / "users.sqlite3"),
+        noted,
+        secret=_SECRET,
+        site=_SITE,
+        invite_only=False,
     )
     with TestClient(app) as server:  # runs the lifespan, which makes the counts
         reader = browser_on(server, client=("192.0.2.1", 1))
@@ -189,3 +220,44 @@ def test_a_database_named_without_what_accounts_need_stops_the_start(
     monkeypatch.delenv(missing)
     with pytest.raises(AccountsUnset, match=missing):
         create_app()
+
+
+def test_invite_only_a_stranger_opens_nothing_until_invited_and_signed_in(
+    invited_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
+):
+    reader = browser()
+    state = reader.get("/api/account").json()
+    assert_equal(state["invite_only"], True, "the landing knows to ask for a sign-in")
+    assert_problem(upload(reader, pdf_bytes), "invited_only", 401)
+    assert_problem(reader.get("/api/fonts"), "invited_only", 401)
+    # What the landing needs before anyone signs in.
+    for open_path in ("/api/health", "/api/terms", "/api/account"):
+        assert_equal(reader.get(open_path).status_code, 200, open_path)
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    reader.post("/api/account/link", json={"email": _EMAIL})
+    reader.post("/api/account/sign-in", json={"token": _token_in(invited_mail.letters[0])})
+    assert_equal(upload(reader, pdf_bytes).status_code, 201, "signed in, the upload is read")
+    reader.post("/api/account/sign-out")
+    assert_problem(upload(reader, pdf_bytes), "invited_only", 401)
+
+
+def test_invite_only_an_address_no_one_invited_gets_no_link_and_hears_what_the_invited_do(
+    invited_mail, app: FastAPI, browser: Callable[[], TestClient]
+):
+    """Whether someone is invited is theirs and the server's to know, no one else's."""
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    stranger = browser().post("/api/account/link", json={"email": "stranger@example.com"})
+    invited = browser().post("/api/account/link", json={"email": _EMAIL})
+    for sent in (stranger, invited):
+        assert_equal(sent.status_code, 202, "the same reply")
+        assert_in("If ", sent.json()["sentence"], "said as a condition")
+    assert_equal([letter.to for letter in invited_mail.letters], [_EMAIL], "letters sent")
+
+
+def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
+    invited_mail, browser: Callable[[], TestClient]
+):
+    """As a link sent before the server was invite-only would be."""
+    token = signed("stranger@example.com", purpose="link", until=2**40, secret=_SECRET)
+    refused = browser().post("/api/account/sign-in", json={"token": token})
+    assert_problem(refused, "not_invited", 403)

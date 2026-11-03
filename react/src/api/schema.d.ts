@@ -283,6 +283,8 @@ export interface components {
         AccountState: {
             /** Offered */
             offered: boolean;
+            /** Invite Only */
+            invite_only: boolean;
             signed_in: components["schemas"]["SignedIn"] | null;
         };
         /**
@@ -715,7 +717,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "link_expired" | "mail_not_sent" | "method_not_allowed" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
+            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "invited_only" | "link_expired" | "mail_not_sent" | "method_not_allowed" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_invited" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */

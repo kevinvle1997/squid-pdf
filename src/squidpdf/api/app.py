@@ -84,9 +84,13 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     # Read once, here too: a database named without the rest accounts need stops the start.
     app.state.accounts = deployed_accounts()
     install(app)
-    app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES)
-    app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES)
-    app.include_router(editing_api.fonts_router, responses=_PROBLEM_RESPONSES)
+    # Where only the invited may, each route that works asks first, before any body is read.
+    invited = [Depends(accounts_api.admit_invited)]
+    app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
+    app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
+    app.include_router(
+        editing_api.fonts_router, responses=_PROBLEM_RESPONSES, dependencies=invited
+    )
     app.include_router(terms_api.router, responses=_PROBLEM_RESPONSES)
     app.include_router(accounts_api.router, responses=_PROBLEM_RESPONSES)
     # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.

@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import styles from "./App.module.css";
+import { type AccountAnswer, accountAtStart, mustSignIn, signedInAs, signedOut, tokenIn } from "./accounts/account";
+import { SignInScreen } from "./accounts/view/SignInScreen";
 import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
 import { type Landing, type Opened, openFile } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
@@ -13,7 +15,10 @@ import { SheetScreen } from "./ui/SheetScreen";
 const loadEditor = () => import("./editing/view/EditorShell");
 const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
-/** The landing, which takes a dropped PDF; once a file is open, the editor; and the service's terms, at their own path. */
+// Why a server open to invited people asks for a sign-in before the landing.
+const INVITED_ONLY = "squid-pdf is open to invited people for now. We'll email you a link that signs you in.";
+
+/** The landing, which takes a dropped PDF; once a file is open, the editor; the service's terms, at their own path; and signing in, where the server asks for it. */
 export function App() {
   return (
     <ErrorBoundary fallback={<Crashed />}>
@@ -34,17 +39,37 @@ function Screens() {
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
   const [terms, setTerms] = useState<TermsAnswer>({ kind: "asking" });
   const [fontLoaded, setFontLoaded] = useState(false);
+  const [account, setAccount] = useState<AccountAnswer>({ kind: "asking" });
+  // A sign-in link's token, read once as the app starts: the link's page is left for the landing at once.
+  const [linkToken] = useState(() => tokenIn(window.location.pathname, window.location.hash));
+  const [linkFailed, setLinkFailed] = useState<string | null>(null);
 
   // Read as the landing first shows: it's outside React, in the browser's storage, and on the server.
   useEffect(() => {
     // Refused (a private window, say): nothing persisted, so nothing to offer.
     persistedDocument().then(setPersisted, () => undefined);
     termsAnswer().then(setTerms);
+    accountAtStart(linkToken).then((started) => {
+      // The landing's address: the token leaves the address bar, and a reload doesn't trade it again.
+      if (linkToken !== null) window.history.replaceState(null, "", "/");
+      setLinkFailed(started.linkFailed);
+      setAccount(started.account);
+    });
     // The terms' link waits for the interface's font: in a stand-in its line can wrap, and jump back as the
     // font comes. A font that fails to load leaves the stand-in for good, so the link comes anyway.
     const loaded = () => setFontLoaded(true);
     document.fonts.load(`1em ${getComputedStyle(document.body).fontFamily}`).then(loaded, loaded);
-  }, []);
+  }, [linkToken]);
+
+  async function signOut() {
+    const answer = await signedOut();
+    // Still signed in, so said where the landing says what went wrong.
+    if (answer.kind === "failed") {
+      setScreen({ kind: "failed", detail: answer.detail });
+      return;
+    }
+    setAccount(answer);
+  }
 
   function reopen() {
     // A delete under way would take the work from under the editor.
@@ -85,10 +110,19 @@ function Screens() {
 
   // A deployment with no terms has no such page: the path shows the landing, as any other does.
   if (isTermsPath(window.location.pathname) && terms.kind !== "none") return <TermsScreen answer={terms} />;
+  if (linkToken !== null && account.kind === "asking") {
+    return <SignInScreen why={INVITED_ONLY} signingIn failed={null} />;
+  }
+  if (mustSignIn(account)) return <SignInScreen why={INVITED_ONLY} signingIn={false} failed={linkFailed} />;
   if (screen.kind !== "open") {
+    // A link that failed where anyone may open a document: said on the landing, until something else is.
+    const landing =
+      screen.kind === "waiting" && linkFailed !== null ? { kind: "failed" as const, detail: linkFailed } : screen;
     return (
       <Drop
-        landing={screen}
+        landing={landing}
+        signedInAs={signedInAs(account)}
+        onSignOut={() => void signOut()}
         termsHref={fontLoaded ? termsHrefOf(terms) : null}
         persisted={persisted}
         forgetFailed={forgetting?.kind === "failed" ? forgetting.detail : null}

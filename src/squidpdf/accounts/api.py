@@ -1,7 +1,8 @@
 """Accounts over HTTP: asking for a sign-in link, signing in with it, and signing out.
 
 Routes are HTTP only: read the request, call the action's controller, send what it hands
-back. Reading the account and signing out have none: each is one look at the cookie.
+back. Reading the account and signing out have none: each is one look at the cookie. Also
+`admit_invited`, the gate every route that works on a document goes through.
 """
 
 from __future__ import annotations
@@ -13,11 +14,12 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 
 from squidpdf.accounts.deployment import Accounts
-from squidpdf.accounts.errors import NoAccounts
+from squidpdf.accounts.errors import InvitedOnly, NoAccounts
 from squidpdf.accounts.sign_in import (
     SIGNED_IN_COOKIE,
     LinkController,
     SignInController,
+    signed_in_id,
     signed_in_user,
     signed_out,
     state_of,
@@ -69,6 +71,20 @@ async def signed_in(
     )
 
 
+def admit_invited(
+    request: Request, accounts: Annotated[Accounts | None, Depends(accounts_of)]
+) -> None:
+    """Raise invited_only unless this browser is signed in, where only the invited may work.
+
+    On every route that does work on a document, before any of its body is read. The
+    cookie's signature is enough: only the invited can sign in there.
+    """
+    if accounts is None or not accounts.invite_only:
+        return
+    if signed_in_id(accounts, request.cookies.get(SIGNED_IN_COOKIE)) is None:
+        raise InvitedOnly()
+
+
 @router.get("")
 async def account(
     accounts: Annotated[Accounts | None, Depends(accounts_of)],
@@ -76,8 +92,8 @@ async def account(
 ) -> AccountState:
     """Whether this server offers accounts, and which this browser is signed in to."""
     if accounts is None:
-        return AccountState(offered=False, signed_in=None)
-    return state_of(user)
+        return AccountState(offered=False, invite_only=False, signed_in=None)
+    return state_of(accounts, user)
 
 
 @router.post(
@@ -102,7 +118,7 @@ async def sign_in(
     return response_of(reply, media_type=_JSON)
 
 
-@router.post("/sign-out", response_model=AccountState, dependencies=[Depends(offered_accounts)])
-async def sign_out() -> Response:
+@router.post("/sign-out", response_model=AccountState)
+async def sign_out(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> Response:
     """Sign this browser out: its signed-in cookie cleared."""
-    return response_of(signed_out(), media_type=_JSON)
+    return response_of(signed_out(accounts), media_type=_JSON)

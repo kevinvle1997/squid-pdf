@@ -1,0 +1,16 @@
+/* A field typed into, in the chrome or on a sheet: the same box wherever it is. Its edge is a line, not a
+   hairline: it's what shows where to type, so it holds 3:1. */
+.input {
+  font: inherit; font-size: var(--fs-input); color: var(--ink);
+  padding: var(--s1) var(--s3);
+  background: var(--field); border: 1px solid var(--ink-faint); border-radius: var(--r-2);
+}
+.input[data-focused] { outline: none; border-color: var(--change); box-shadow: inset 0 0 0 1px var(--change); }
+/* The focus's border colour and shadow are both dropped here, so an outline shows it instead. */
+@media (forced-colors: active) {
+  .input[data-focused] { outline: 2px solid Highlight; outline-offset: -2px; }
+}
+/* A finger's size on a touch screen. */
+@media (pointer: coarse) {
+  .input { min-height: var(--hit); }
+}

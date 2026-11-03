@@ -8,12 +8,13 @@ FROM python:3.14-slim-bookworm AS base
 COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
 
 # Uploaded PDFs are hostile input, so nothing here runs as root. /data holds the
-# documents for their hour; a volume mounted there takes its owner from here.
+# documents for their hour, /accounts the accounts; a volume mounted on either takes its
+# owner from here.
 # 999 by name: what useradd --system gave it before it was pinned, so a volume
 # made then stays writable, and a rebuild can't hand it another number.
 RUN groupadd --system --gid 999 squid \
     && useradd --system --uid 999 --gid squid --create-home squid \
-    && mkdir /app /data && chown squid /app /data
+    && mkdir /app /data /accounts && chown squid /app /data /accounts
 USER squid
 WORKDIR /app
 

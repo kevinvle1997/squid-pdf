@@ -1,9 +1,11 @@
 // Every call the browser makes. Routes are in decisions/api.md; shapes come from schema.d.ts.
 import type {
+  AccountState,
   Document,
   Edit,
   FileNoticeInfo,
   FontList,
+  LinkSent,
   Problem,
   ProblemInfo,
   Render,
@@ -124,6 +126,35 @@ export async function fontList(build: string): Promise<FontList> {
 export async function terms(): Promise<Terms | null> {
   const response = await send("/api/terms", { method: "GET" });
   return (await response.json()) as Terms | null;
+}
+
+/** Whether this server keeps accounts, whether only the invited may open documents, and who's signed in here. */
+export async function account(): Promise<AccountState> {
+  const response = await send("/api/account", { method: "GET" });
+  return (await response.json()) as AccountState;
+}
+
+/** Ask for a link that signs in as `email`, sent there; the server's sentence saying where it went. */
+export async function askForLink(email: string): Promise<LinkSent> {
+  const response = await send("/api/account/link", json({ email }));
+  return (await response.json()) as LinkSent;
+}
+
+/** Sign this browser in with the token a link carried; the account it's now signed in to. */
+export async function signIn(token: string): Promise<AccountState> {
+  const response = await send("/api/account/sign-in", json({ token }));
+  return (await response.json()) as AccountState;
+}
+
+/** Sign this browser out. */
+export async function signOut(): Promise<AccountState> {
+  const response = await send("/api/account/sign-out", { method: "POST" });
+  return (await response.json()) as AccountState;
+}
+
+/** A POST of `body` as JSON. */
+function json(body: object): RequestInit {
+  return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
 }
 
 /** A page of the original, unrotated, `scale` pixels per point. Cached for the hour. */

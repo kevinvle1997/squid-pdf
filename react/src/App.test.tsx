@@ -4,7 +4,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import { userEvent } from "vitest/browser";
 import { App } from "./App";
-import { ProblemError, terms, upload } from "./api/client";
+import { account, askForLink, ProblemError, signIn, signOut, terms, upload } from "./api/client";
 import type { Render, Terms } from "./api/types";
 import { SOMETHING_WENT_WRONG } from "./bugs";
 import {
@@ -15,7 +15,7 @@ import {
   persistState,
 } from "./documents/localPersistence";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
-import { aDoc, aFont, aProblem, aSpan, TERMS } from "./fixtures";
+import { aDoc, aFont, anAccount, aProblem, aSpan, TERMS } from "./fixtures";
 import { animationsDone, emulateTouchScreen } from "./testing";
 
 vi.mock(import("./api/client"), async (original) => ({
@@ -25,6 +25,10 @@ vi.mock(import("./api/client"), async (original) => ({
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
   terms: vi.fn(async () => null),
+  account: vi.fn(),
+  askForLink: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 }));
 // The browser's real storage, but a delete can be held under way.
 vi.mock(import("./documents/localPersistence"), async (original) => {
@@ -36,6 +40,13 @@ beforeEach(async () => {
   vi.mocked(upload).mockReset();
   // Reset, so the calls a test reads are its own.
   vi.mocked(terms).mockReset().mockResolvedValue(null);
+  // A server that keeps no accounts, as a self-hosted copy: the landing as it always was.
+  vi.mocked(account)
+    .mockReset()
+    .mockResolvedValue(anAccount({ offered: false }));
+  vi.mocked(askForLink).mockReset();
+  vi.mocked(signIn).mockReset();
+  vi.mocked(signOut).mockReset();
   // The browser's real storage, one test at a time: each starts with nothing persisted.
   await forgetPersisted();
 });
@@ -381,4 +392,60 @@ test("the terms' page says why it can't read them in the status that was waiting
   // The same region, so a screen reader hears the words as they come.
   expect(waiting.element()).toBe(region);
   await expect.element(screen.getByRole("button", { name: "Reload" })).toBeVisible();
+});
+
+const INVITED = { email: "friend@example.com", is_unlimited: false };
+const LINK_SENT = "If friend@example.com is invited, a link is on its way.";
+
+test("open to invited people only, a browser not signed in is asked to, and told where its link went", async () => {
+  vi.mocked(account).mockResolvedValue(anAccount({ invite_only: true }));
+  vi.mocked(askForLink).mockResolvedValue({ sentence: LINK_SENT });
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect.element(screen.getByText("open to invited people for now", { exact: false })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).not.toBeInTheDocument();
+  await userEvent.fill(screen.getByRole("textbox", { name: "Email" }), "friend@example.com");
+  await userEvent.click(screen.getByRole("button", { name: "Email me a link" }));
+  await expect.element(screen.getByRole("status")).toHaveTextContent(LINK_SENT);
+  expect(askForLink).toHaveBeenCalledExactlyOnceWith("friend@example.com");
+});
+
+test("a sign-in link's page trades its token, then is the landing, signed in, with the token gone from the address", async () => {
+  window.history.replaceState(null, "", "/sign-in#the-token");
+  onTestFinished(() => window.history.replaceState(null, "", "/"));
+  vi.mocked(signIn).mockResolvedValue(anAccount({ invite_only: true, signed_in: INVITED }));
+  const screen = await render(<App />);
+  await expect.element(screen.getByText("Signed in as friend@example.com")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
+  expect(signIn).toHaveBeenCalledExactlyOnceWith("the-token");
+  expect(`${window.location.pathname}${window.location.hash}`).toBe("/");
+});
+
+test("a sign-in link past its time says so, open to invited people only, beside the way to ask for another", async () => {
+  window.history.replaceState(null, "", "/sign-in#old-token");
+  onTestFinished(() => window.history.replaceState(null, "", "/"));
+  vi.mocked(signIn).mockRejectedValue(new ProblemError(aProblem(400, "This sign-in link has run out.")));
+  vi.mocked(account).mockResolvedValue(anAccount({ invite_only: true }));
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("status")).toHaveTextContent("This sign-in link has run out.");
+  await expect.element(screen.getByRole("button", { name: "Email me a link" })).toBeVisible();
+});
+
+test("a sign-in link past its time, where anyone may open a document, says so on the landing", async () => {
+  window.history.replaceState(null, "", "/sign-in#old-token");
+  onTestFinished(() => window.history.replaceState(null, "", "/"));
+  vi.mocked(signIn).mockRejectedValue(new ProblemError(aProblem(400, "This sign-in link has run out.")));
+  vi.mocked(account).mockResolvedValue(anAccount());
+  const screen = await render(<App />);
+  await expect.element(screen.getByText("This sign-in link has run out.")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
+});
+
+test("Sign out on the landing signs this browser out, and the landing no longer names it", async () => {
+  vi.mocked(account).mockResolvedValue(anAccount({ signed_in: INVITED }));
+  vi.mocked(signOut).mockResolvedValue(anAccount());
+  const screen = await render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  await expect.element(screen.getByText("Signed in as", { exact: false })).not.toBeInTheDocument();
+  expect(signOut).toHaveBeenCalledOnce();
 });

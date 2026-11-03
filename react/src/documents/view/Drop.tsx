@@ -16,13 +16,25 @@ interface Props {
   termsHref: string | null; // where the service's terms are read, once the server says it has them
   persisted: Persisted<unknown> | null; // offered while the landing waits
   forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
+  signedInAs: string | null; // the address this browser is signed in as, on a server that keeps accounts
+  onSignOut: () => void;
   onChoose: (file: File) => void;
   onReopen: () => void; // the document persisted here opens again, with its changes
   onForget: () => void; // the document persisted here is deleted from this browser
 }
 
-/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is told under the sheet. No sign-in. */
-export function Drop({ landing, termsHref, persisted, forgetFailed, onChoose, onReopen, onForget }: Props) {
+/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is told under the sheet. No sign-in unless the server asks for one. */
+export function Drop({
+  landing,
+  termsHref,
+  persisted,
+  forgetFailed,
+  signedInAs,
+  onSignOut,
+  onChoose,
+  onReopen,
+  onForget,
+}: Props) {
   const offered = landing.kind === "waiting" ? persisted : null;
   return (
     <DropZone
@@ -67,6 +79,15 @@ export function Drop({ landing, termsHref, persisted, forgetFailed, onChoose, on
               </Button>
             </div>
           </div>
+        )}
+        {signedInAs !== null && (
+          <p className={styles.signedIn}>
+            <span>Signed in as {signedInAs}</span>
+            {/* Quiet: the sheet's one action is choosing a PDF. */}
+            <Button variant="quiet" onPress={onSignOut}>
+              Sign out
+            </Button>
+          </p>
         )}
       </SheetScreen>
     </DropZone>

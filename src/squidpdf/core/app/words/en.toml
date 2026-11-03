@@ -349,6 +349,10 @@ link_expired = "This sign-in link has run out, or isn't whole. Ask for a new one
 mail_not_sent = "The sign-in email couldn't be sent just now. Try again in a minute."
 no_accounts = "This copy of squid-pdf keeps no accounts, so there's nothing to sign in to."
 link_sent = "A sign-in link is on its way to {email}. It works for {minutes} minutes."
+# Said whether or not the address is invited, so no one learns who is.
+link_sent_if_invited = "If {email} is invited, a sign-in link is on its way to it. It works for {minutes} minutes."
+not_invited = "This address isn't invited. squid-pdf is open to invited people for now."
+invited_only = "squid-pdf is open to invited people for now. Sign in with the address you were invited at."
 sign_in_subject = "Your squid-pdf sign-in link"
 sign_in_letter = """Open this link to sign in to squid-pdf:
 

@@ -31,3 +31,17 @@ class NoAccounts(Problem):
 
     type = "no_accounts"
     status = 404
+
+
+class NotInvited(Problem):
+    """A link for an address no one invited, on a server open to invited people only."""
+
+    type = "not_invited"
+    status = 403
+
+
+class InvitedOnly(Problem):
+    """Opening a document needs signing in, on a server open to invited people only."""
+
+    type = "invited_only"
+    status = 401

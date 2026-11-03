@@ -1,0 +1,9 @@
+/* Under the heading: why this browser signs in first, as the landing says what happens once a file is open. */
+.why { margin: var(--s3) 0 0; font-size: var(--fs-lg); color: var(--ink-lo); text-wrap: balance; }
+/* The address, then the one call to act under it, centred as the landing's are. */
+.form { display: flex; flex-direction: column; align-items: center; width: min(100%, 36ch); margin-block-start: var(--s5); }
+.field { display: flex; flex-direction: column; gap: var(--s1); width: 100%; text-align: start; font-size: var(--fs-sm); color: var(--ink-lo); }
+.input { composes: input from "../../ui/Input.module.css"; width: 100%; }
+.act { composes: act from "../../ui/Sheet.module.css"; }
+/* Its line is kept when empty, so the sentence showing up moves nothing. */
+.status { margin: var(--s3) 0 0; min-height: 1.5em; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
