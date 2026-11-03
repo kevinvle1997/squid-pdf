@@ -1,4 +1,4 @@
-"""How many documents a browser may open: asked of a meter before a new file is read.
+"""The meters that say how many documents a browser may open, asked before a file is read.
 
 A server with no metering, as a self-hosted copy, lets every file in (`UNMETERED`). The
 hosted one's meter is accounts' (`accounts/metering.py`), handed to the app as it starts.

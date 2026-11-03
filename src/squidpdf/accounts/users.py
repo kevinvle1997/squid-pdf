@@ -89,6 +89,12 @@ class UserStore:
             connection.execute(kept)
         return self._required(email)
 
+    def is_unlimited(self, user_id: str) -> bool:
+        """Whether the account with `user_id` opens as many documents as it likes."""
+        query = select(_USERS.c.is_unlimited).where(_USERS.c.id == user_id)
+        with self.database.connect() as connection:
+            return connection.execute(query).scalar_one()
+
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
         """The files the account opened in `month`, by digest: none, once a new one starts."""
         query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)

@@ -15,9 +15,9 @@ from typing import BinaryIO
 
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, disk, store
-from squidpdf.documents.allowance import Meter
 from squidpdf.documents.analyse import analyse_upload
 from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
+from squidpdf.documents.meters import Meter
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis
@@ -88,10 +88,8 @@ class UploadController:
     ) -> Reply[bytes]:
         """Keep `chunks` as a new document for this owner, and answer with every span judged.
 
-        `declared` is the size the request states, None when it streams without
-        one. Refuses a file too large or not a PDF, and keeps nothing then. Refuses
-        any file while the disk is nearly full, or if it fills up anyway. A new file
-        `meter` has no room for is refused before it's read; one that opens is counted.
+        `declared` is the size stated, or None. Refuses a file too large, not a PDF, or with the
+        disk nearly full, and a new one `meter` has no room for; counts one that opens.
         """
         # Read as module attributes, so a test can lower the limit.
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
