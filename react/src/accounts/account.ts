@@ -23,12 +23,8 @@ export type Signing =
 export type AccountAnswered = Exclude<AccountAnswer, { kind: "asking" }>;
 
 /** What the server answers when asked who this browser is, a failure included. */
-export async function accountAnswer(): Promise<AccountAnswered> {
-  try {
-    return { kind: "read", state: await account() };
-  } catch (error) {
-    return { kind: "failed", detail: sentenceOf(error) };
-  }
+export function accountAnswer(): Promise<AccountAnswered> {
+  return answered(account);
 }
 
 /** Ask for a link that signs in as `email`: the server's sentence saying where it went, or why it didn't. */
@@ -41,18 +37,19 @@ export async function linkAsked(email: string): Promise<Signing> {
 }
 
 /** Trade a link's token for a sign-in: the account it signed in to, or why it didn't. */
-export async function signedInWith(token: string): Promise<AccountAnswered> {
-  try {
-    return { kind: "read", state: await signIn(token) };
-  } catch (error) {
-    return { kind: "failed", detail: sentenceOf(error) };
-  }
+export function signedInWith(token: string): Promise<AccountAnswered> {
+  return answered(() => signIn(token));
 }
 
 /** Sign this browser out: the account as it now reads, or why it couldn't. */
-export async function signedOut(): Promise<AccountAnswered> {
+export function signedOut(): Promise<AccountAnswered> {
+  return answered(signOut);
+}
+
+/** The account `call` answers with, or why it didn't, in words for the user. */
+async function answered(call: () => Promise<AccountState>): Promise<AccountAnswered> {
   try {
-    return { kind: "read", state: await signOut() };
+    return { kind: "read", state: await call() };
   } catch (error) {
     return { kind: "failed", detail: sentenceOf(error) };
   }
