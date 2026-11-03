@@ -29,7 +29,7 @@ _SMTP = (
 )
 # Each way the environment may name how the connection is secured.
 _SECURITIES: dict[str, Security] = {"tls": "tls", "starttls": "starttls"}
-_MIN_SECRET_CHARS = 32  # what `openssl rand -base64 24` writes: 192 bits
+_MIN_SECRET_CHARS = 32  # 192 bits as base64, the least; env.example's command writes 256
 
 
 class AccountsUnset(RuntimeError):

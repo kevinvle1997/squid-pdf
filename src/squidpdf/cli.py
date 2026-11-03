@@ -8,7 +8,7 @@ squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
 squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 squidpdf terms   [terms.md]            check a terms file as the server will read it
-squidpdf invite  email [--unlimited]  let someone in; --unlimited lifts their document limit
+squidpdf invite  email [--unlimited]   let someone in; --unlimited lifts their document limit
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
