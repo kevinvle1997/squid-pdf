@@ -40,7 +40,7 @@ class AccountsUnset(RuntimeError):
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Accounts:
-    """What signing in needs: the table, a way to send a link, the secret and the address."""
+    """What accounts need: the table, a way to send a link, the secret, the address, who may."""
 
     users: UserStore
     mailer: Mailer
