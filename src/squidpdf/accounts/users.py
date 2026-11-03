@@ -43,7 +43,7 @@ _USERS = Table(
     Column("is_unlimited", Boolean, nullable=False, default=False),
     # Read once metering lands, stacked on this: the month `counted` is for, as "2026-11", and
     # each file counted in it, by its digest. Here now, so a table made before needs no change.
-    Column("period", Text, nullable=True),
+    Column("month", Text, nullable=True),
     Column("counted", Text, nullable=False, default=""),
 )
 
@@ -69,7 +69,7 @@ class UserStore:
         return self._one(select(_USERS).where(_USERS.c.email == email))
 
     def get(self, user_id: str) -> User | None:
-        """The account with `user_id`; None if there's none, as after it's deleted."""
+        """The account with `user_id`; None if there's none."""
         return self._one(select(_USERS).where(_USERS.c.id == user_id))
 
     def joined(self, email: str, *, now: int) -> User:
