@@ -447,5 +447,7 @@ test("Sign out on the landing signs this browser out, and the landing no longer 
   const screen = await render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await expect.element(screen.getByText("Signed in as", { exact: false })).not.toBeInTheDocument();
+  // The button pressed has gone: focus is on the sheet's one action, not lost to the page.
+  await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toHaveFocus();
   expect(signOut).toHaveBeenCalledOnce();
 });

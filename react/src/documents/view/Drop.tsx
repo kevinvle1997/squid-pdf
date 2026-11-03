@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
 import { AfterDelay } from "../../ui/AfterDelay";
 import { Button } from "../../ui/Button";
@@ -36,6 +37,7 @@ export function Drop({
   onForget,
 }: Props) {
   const offered = landing.kind === "waiting" ? persisted : null;
+  const choose = useRef<HTMLButtonElement>(null);
   return (
     <DropZone
       className={styles.zone}
@@ -57,7 +59,7 @@ export function Drop({
       >
         <p className={styles.then}>Then click any word to fix it.</p>
         <FileTrigger acceptedFileTypes={["application/pdf"]} onSelect={(files) => files?.[0] && onChoose(files[0])}>
-          <Button variant="primary" className={styles.choose} isDisabled={landing.kind === "opening"}>
+          <Button ref={choose} variant="primary" className={styles.choose} isDisabled={landing.kind === "opening"}>
             Choose a PDF
           </Button>
         </FileTrigger>
@@ -84,7 +86,14 @@ export function Drop({
           <p className={styles.signedIn}>
             <span>Signed in as {signedInAs}</span>
             {/* Quiet: the sheet's one action is choosing a PDF. */}
-            <Button variant="quiet" onPress={onSignOut}>
+            {/* Its line goes once signed out, so focus goes on to the sheet's one action, never to body. */}
+            <Button
+              variant="quiet"
+              onPress={() => {
+                choose.current?.focus();
+                onSignOut();
+              }}
+            >
               Sign out
             </Button>
           </p>
