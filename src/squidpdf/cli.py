@@ -8,6 +8,7 @@ squidpdf report  file.pdf [...]        the one number that matters
 squidpdf fixture out.pdf               a sample document to try it on
 squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 squidpdf terms   [terms.md]            check a terms file as the server will read it
+squidpdf invite  email [--unlimited]  let someone in; --unlimited lifts their document limit
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
@@ -20,6 +21,7 @@ import posixpath
 import shutil
 import sys
 import tempfile
+import time
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -28,6 +30,8 @@ from functools import partial
 from pathlib import Path
 from typing import TextIO, get_args
 
+from squidpdf.accounts.deployment import named_users
+from squidpdf.accounts.users import checked_email
 from squidpdf.core import (
     DEFAULT_DRIVER_FACTORY,
     GREEN_RATE_TARGET,
@@ -471,6 +475,28 @@ def _cmd_terms(args: argparse.Namespace) -> int:
     return 0
 
 
+def _invite_arguments(command: argparse.ArgumentParser) -> None:
+    """`invite`: the address, and whether they use as many documents as they like."""
+    command.add_argument("email")
+    command.add_argument(
+        "--unlimited",
+        action="store_true",
+        help="no document limit, for friends and family; invite again without it to end that",
+    )
+
+
+def _cmd_invite(args: argparse.Namespace) -> int:
+    """Invite `email` to the accounts SQUIDPDF_DATABASE names, unlimited or not."""
+    users = named_users()
+    if users is None:
+        return _fail(words.render(Message("no_database")))
+    email = checked_email(args.email)
+    user = users.invite(email, now=int(time.time()), is_unlimited=args.unlimited)
+    said = "invited_unlimited" if user.is_unlimited else "invited"
+    print(f"  {_GREEN}{words.render(Message(said, {'email': user.email}))}{_OFF}")
+    return 0
+
+
 def _fail(said: str, *, hint: str = "") -> int:
     """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colors_of(sys.stderr)
@@ -538,6 +564,7 @@ _COMMANDS = (
     _Command(
         "terms", "check a terms file as the server reads it", _terms_arguments, _cmd_terms
     ),
+    _Command("invite", "let someone sign in, limited or not", _invite_arguments, _cmd_invite),
 )
 
 

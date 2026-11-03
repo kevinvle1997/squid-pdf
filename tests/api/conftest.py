@@ -69,6 +69,7 @@ def session_app(tmp_path_factory) -> Iterator[FastAPI]:
         env.setattr(api_constants, "UPLOADS_PER_MINUTE", _SUITE_UPLOADS_PER_MINUTE)
         env.setattr(api_constants, "UPLOADS_UNDER_WAY", _SUITE_AT_ONCE)
         env.setattr(api_constants, "JOBS_AT_WORK", _SUITE_AT_ONCE)
+        env.setattr(api_constants, "LINKS_PER_MINUTE", _SUITE_UPLOADS_PER_MINUTE)
         app = create_app()
         app.include_router(_crashes())
         yield app

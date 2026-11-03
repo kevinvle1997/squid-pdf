@@ -172,6 +172,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account
+         * @description Whether this server offers accounts, and which this browser is signed in to.
+         */
+        get: operations["account_api_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Link
+         * @description Email a link that signs this browser in as `email`; say where it went.
+         */
+        post: operations["send_link_api_account_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign In
+         * @description Sign this browser in with a link's token, its account made on first use.
+         */
+        post: operations["sign_in_api_account_sign_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Out
+         * @description Sign this browser out: its signed-in cookie cleared.
+         */
+        post: operations["sign_out_api_account_sign_out_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -196,6 +276,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccountState
+         * @description Whether this server offers accounts, and which this browser is signed in to.
+         */
+        AccountState: {
+            /** Offered */
+            offered: boolean;
+            signed_in: components["schemas"]["SignedIn"] | null;
+        };
         /**
          * ApproximateInfo
          * @description How an approximate span would come back unlike itself, in no language.
@@ -556,6 +645,22 @@ export interface components {
             edit: number;
         };
         /**
+         * LinkBody
+         * @description Where to send a sign-in link: the address as it was typed.
+         */
+        LinkBody: {
+            /** Email */
+            email: string;
+        };
+        /**
+         * LinkSent
+         * @description A sign-in link is on its way: where, in the reader's words.
+         */
+        LinkSent: {
+            /** Sentence */
+            sentence: string;
+        };
+        /**
          * MessageInfo
          * @description A Message as JSON: the sentence's key as `code`, and the facts that fill it.
          */
@@ -610,7 +715,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "method_not_allowed" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
+            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "invalid_request" | "link_expired" | "mail_not_sent" | "method_not_allowed" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -889,6 +994,24 @@ export interface components {
             characters: {
                 [key: string]: string;
             };
+        };
+        /**
+         * SignInBody
+         * @description The token a sign-in link carried, as the browser read it from the link.
+         */
+        SignInBody: {
+            /** Token */
+            token: string;
+        };
+        /**
+         * SignedIn
+         * @description The account this browser is signed in to.
+         */
+        SignedIn: {
+            /** Email */
+            email: string;
+            /** Is Unlimited */
+            is_unlimited: boolean;
         };
         /**
          * SkippedInfo
@@ -1358,6 +1481,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Terms"] | null;
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    account_api_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountState"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    send_link_api_account_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkSent"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    sign_in_api_account_sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountState"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    sign_out_api_account_sign_out_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountState"];
                 };
             };
             /** @description Problem Details: what went wrong, in the reader's words */

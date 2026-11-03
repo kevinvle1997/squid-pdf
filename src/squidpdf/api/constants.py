@@ -24,6 +24,10 @@ UPLOADS_PER_MINUTE = 20  # per IP
 # Per IP, PDFs and copies of fonts together: each holds disk against the floor until it's in.
 UPLOADS_UNDER_WAY = 2
 
+# Sign-in links an address may ask for a minute: one mistyped address asks twice, and a page
+# sending one to every address it can think of is stopped before it fills an inbox.
+LINKS_PER_MINUTE = 3
+
 # Every request body but an upload's or a font's, which check their own size.
 MAX_BODY_BYTES = 5 * _MB
 

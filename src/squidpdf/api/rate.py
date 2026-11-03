@@ -1,4 +1,4 @@
-"""What each address may have going: uploads a minute, uploads at once, jobs at once.
+"""What each address may have going: uploads and links a minute, uploads and jobs at once.
 
 Each is checked before any of the body is read. An IPv6 address counts with the
 rest of its /64, the block one home or machine is given: counted apart, each
@@ -27,8 +27,8 @@ _IPV6_BLOCK_BITS = 64  # an IPv6 address's block: the /64 one home or machine is
 
 
 @dataclass(slots=True)
-class RecentUploads:
-    """When each address started its uploads of the last minute, oldest first.
+class RecentStarts:
+    """When each address started its requests of one kind in the last minute, oldest first.
 
     An address is as `_counted_as` gives it: an IPv6 one is its /64.
     """
@@ -37,7 +37,7 @@ class RecentUploads:
     forgotten_at: float = 0.0  # when addresses quiet for a minute were last dropped
 
     def admit(self, address: str, *, now: float, limit: int) -> bool:
-        """Count an upload from `address` at `now`, unless it started `limit` this minute."""
+        """Count a request from `address` at `now`, unless it started `limit` this minute."""
         since = now - _WINDOW_S
         # Once a minute, drop every address quiet for one, so a flood of them can't pile up.
         if self.forgotten_at < since:
@@ -51,7 +51,7 @@ class RecentUploads:
         return True
 
     def forget_quiet(self, now: float) -> None:
-        """Drop every address that started no upload in the minute before `now`."""
+        """Drop every address that started no request in the minute before `now`."""
         since = now - _WINDOW_S
         self.started = {
             key: times for key, times in self.started.items() if times and times[-1] > since
@@ -129,10 +129,24 @@ async def admit_upload(request: Request) -> None:
     A dependency of the upload route, so it runs before any of the body is
     read. Async, so it runs on the event loop and two uploads never count at once.
     """
-    recent_uploads: RecentUploads = request.app.state.recent_uploads  # made in the lifespan
+    recent_uploads: RecentStarts = request.app.state.recent_uploads  # made in the lifespan
     # Read as a module attribute, so a test can change the limit.
     admitted = recent_uploads.admit(
         _address_of(request), now=time.monotonic(), limit=constants.UPLOADS_PER_MINUTE
+    )
+    if not admitted:
+        raise RateLimited()
+
+
+async def admit_link(request: Request) -> None:
+    """Raise rate_limited if this address asked for LINKS_PER_MINUTE sign-in links this minute.
+
+    Before the link is sent, so a page can't fill someone's inbox from one address.
+    """
+    recent_links: RecentStarts = request.app.state.recent_links  # made in the lifespan
+    # Read as a module attribute, so a test can change the limit.
+    admitted = recent_links.admit(
+        _address_of(request), now=time.monotonic(), limit=constants.LINKS_PER_MINUTE
     )
     if not admitted:
         raise RateLimited()

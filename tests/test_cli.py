@@ -18,6 +18,7 @@ from typing import Literal, get_args
 import pymupdf
 import pytest
 
+from squidpdf.accounts.users import open_users
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
 from tests.conftest import OTHER_LINE, named_only, with_hidden_copies
@@ -502,3 +503,23 @@ def test_terms_with_no_file_named_says_so(monkeypatch, capsys):
 
     assert_equal(code, 1, "exit code of `squidpdf terms` with no file")
     assert_in(words.render(Message("terms_none_named")), capsys.readouterr().err, "why")
+
+
+def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_again(
+    tmp_path, monkeypatch, capsys
+):
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    assert_equal(main(["invite", " Friend@Example.com", "--unlimited"]), 0, "exit code")
+    assert_in("friend@example.com is invited, and may use", capsys.readouterr().out, "said")
+    friend = open_users(database).find("friend@example.com")
+    assert_equal(friend and friend.is_unlimited, True, "no document limit")
+    assert_equal(main(["invite", "friend@example.com"]), 0, "invited again, without it")
+    again = open_users(database).find("friend@example.com")
+    assert_equal(again and again.is_unlimited, False, "the limit is back")
+
+
+def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
+    monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
+    assert_equal(main(["invite", "friend@example.com"]), 1, "exit code")
+    assert_in("SQUIDPDF_DATABASE names no database", capsys.readouterr().err, "said")
