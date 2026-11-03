@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
-from squidpdf.api.rate import RecentUploads
+from squidpdf.api.rate import RecentStarts
 from squidpdf.documents import store
 from tests.api.conftest import browser_on, upload
 from tests.helpers import (
@@ -80,7 +80,7 @@ def test_an_ipv6_address_counts_with_the_rest_of_its_64(one_upload_a_minute):
 
 
 def test_an_address_may_upload_again_a_minute_after_its_first():
-    recent = RecentUploads()
+    recent = RecentStarts()
     assert_true(recent.admit(_ONE, now=0.0, limit=2), "the first upload")
     assert_true(recent.admit(_ONE, now=30.0, limit=2), "the second, half a minute on")
     assert_false(recent.admit(_ONE, now=59.0, limit=2), "a third within the minute")
@@ -92,7 +92,7 @@ def test_an_address_may_upload_again_a_minute_after_its_first():
 
 def test_addresses_quiet_for_a_minute_are_forgotten():
     """A flood from many addresses leaves nothing behind once it stops."""
-    recent = RecentUploads()
+    recent = RecentStarts()
     for n in range(100):
         recent.admit(f"192.0.2.{n}", now=0.0, limit=1)
     recent.admit(_OTHER, now=2 * _MINUTE_S, limit=1)
@@ -101,12 +101,12 @@ def test_addresses_quiet_for_a_minute_are_forgotten():
 
 def test_uploads_that_forget_quiet_addresses_equal_fresh_ones_but_for_the_clock():
     """A forget notes when it ran, so that alone differs from a fresh record."""
-    recent = RecentUploads()
+    recent = RecentStarts()
     recent.admit(_ONE, now=2 * _MINUTE_S, limit=1)
-    assert_every_field_filled(recent, RecentUploads(), "the record once one upload is counted")
+    assert_every_field_filled(recent, RecentStarts(), "the record once one upload is counted")
 
     recent.forget_quiet(4 * _MINUTE_S)
 
-    fresh = RecentUploads()
+    fresh = RecentStarts()
     as_if_fresh = replace(recent, forgotten_at=fresh.forgotten_at)
     assert_equal(as_if_fresh, fresh, "the record once it forgot, its clock aside")

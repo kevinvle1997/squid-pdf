@@ -342,3 +342,20 @@ char_u0030 = "zero"
 char_u0049 = "capital I"
 char_u004f = "capital O"
 char_u006c = "lowercase l"
+
+# Signing in.
+not_an_email = "That isn't an email address a sign-in link could reach."
+link_expired = "This sign-in link has run out, or isn't whole. Ask for a new one."
+mail_not_sent = "The sign-in email couldn't be sent just now. Try again in a minute."
+no_accounts = "This copy of squid-pdf keeps no accounts, so there's nothing to sign in to."
+link_sent = "A sign-in link is on its way to {email}. It works for {minutes} minutes."
+sign_in_subject = "Your squid-pdf sign-in link"
+sign_in_letter = """Open this link to sign in to squid-pdf:
+
+{link}
+
+It works for {minutes} minutes. If you didn't ask for it, you can ignore this email."""
+# What `squidpdf invite` says.
+invited = "{email} is invited."
+invited_unlimited = "{email} is invited, and may use as many documents as they like."
+no_database = "SQUIDPDF_DATABASE names no database, so this server keeps no accounts."

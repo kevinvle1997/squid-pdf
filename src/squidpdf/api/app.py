@@ -14,13 +14,15 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRoute
 
+from squidpdf.accounts import api as accounts_api
+from squidpdf.accounts.deployment import deployed_accounts
 from squidpdf.api.access import AccessLog
 from squidpdf.api.body import BodyLimit
 from squidpdf.api.disconnect import CancelOnDisconnect
 from squidpdf.api.errors import NoWorkers
 from squidpdf.api.errors.http import BugBoundary, ProblemInfo, install
 from squidpdf.api.pool import WorkerPool, current, start_pool
-from squidpdf.api.rate import RecentUploads, Turns
+from squidpdf.api.rate import RecentStarts, Turns
 from squidpdf.core import LogController
 from squidpdf.documents import api as documents_api
 from squidpdf.documents.store import FOLDER_STORE, DocumentStore
@@ -47,7 +49,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = start_pool()
     # What each address has going, kept per app, so each app (a test's too) counts its own.
-    app.state.recent_uploads = RecentUploads()
+    app.state.recent_uploads = RecentStarts()
+    app.state.recent_links = RecentStarts()
     app.state.upload_turns = Turns()
     app.state.job_turns = Turns()
     sweeper = asyncio.create_task(documents_api.sweep_forever(app.state.documents))
@@ -78,11 +81,14 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     app.state.documents = documents
     # Read once, here: terms the page can't show stop the app starting; `squidpdf terms` checks.
     app.state.terms = deployed_terms()
+    # Read once, here too: a database named without the rest accounts need stops the start.
+    app.state.accounts = deployed_accounts()
     install(app)
     app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES)
     app.include_router(editing_api.fonts_router, responses=_PROBLEM_RESPONSES)
     app.include_router(terms_api.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(accounts_api.router, responses=_PROBLEM_RESPONSES)
     # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
     streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
     streamed_routes = tuple(
