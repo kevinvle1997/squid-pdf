@@ -129,10 +129,13 @@ def test_a_link_past_its_time_altered_or_not_a_link_signs_no_one_in(
     reader.post("/api/account/link", json={"email": _EMAIL})
     whole = _token_in(mail.letters[0])
     altered = whole[:-2] + ("AA" if not whole.endswith("AA") else "BB")
-    for token in (past, cookie, altered, "not a token"):
+    for token in (past, cookie, altered, "not a token", "a.\u00e9"):
         refused = reader.post("/api/account/sign-in", json={"token": token})
         assert_problem(refused, "link_expired", 400)
     assert_equal(reader.get("/api/account").json()["signed_in"], None, "nobody signed in")
+    # A cookie anyone could send, a letter past ASCII in it: read as no one, not a server error.
+    reader.cookies.set("__Host-signed-in", "a.\u00e9", domain="testserver")
+    assert_equal(reader.get("/api/account").json()["signed_in"], None, "a forged cookie")
 
 
 def test_what_cannot_be_an_email_address_is_refused_before_anything_is_sent(

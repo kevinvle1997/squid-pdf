@@ -30,7 +30,8 @@ def value_of(token: str, *, purpose: Purpose, now: int, secret: bytes) -> str | 
     """The value `token` was signed with for `purpose`; None if past, altered or not ours."""
     payload, _, signature = token.partition(_SEPARATOR)
     expected = _signature(payload, purpose=purpose, secret=secret)
-    if not hmac.compare_digest(signature, expected):
+    # As bytes: compare_digest raises, not answers, for text with a letter past ASCII.
+    if not hmac.compare_digest(signature.encode(), expected.encode()):
         return None
     try:
         read = orjson.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
