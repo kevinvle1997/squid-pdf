@@ -25,8 +25,8 @@
 # Inside the app it's /etc/squidpdf/terms.md, the name the check and the app's log give it.
 #
 # The accounts' database is the one thing here worth a backup; with COMPOSE_PROFILES=backup in
-# .env, Litestream keeps a copy of it in object storage. On a new server, or after the accounts
-# volume is lost, put it back before the first `up`: deploy/restore-accounts.sh
+# .env, Litestream keeps a copy of it in object storage, and `up` puts it back by itself where
+# the accounts volume has none: on a new server, or after the volume was lost.
 #
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
@@ -44,6 +44,12 @@ services:
   app:
     build: .
     image: ghcr.io/kevinvle1997/squidpdf:${SQUIDPDF_TAG:-latest}
+    # Where the backup is on, the accounts are put back before the app makes a database of its
+    # own; where it's off, there's no such service, and nothing waits.
+    depends_on:
+      restore:
+        condition: service_completed_successfully
+        required: false
     restart: unless-stopped
     logging: *logging
     # Reaps the pool's exited helper processes and passes stop signals on.
@@ -95,38 +101,72 @@ services:
     tmpfs:
       - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
 
-  # A copy of the accounts' database in object storage, kept as it changes (Litestream), so a
-  # lost server loses no one's account. Only with COMPOSE_PROFILES=backup in .env (env.example).
+  # The backup, with COMPOSE_PROFILES=backup in .env (env.example): a copy of the accounts'
+  # database in object storage, kept as it changes (Litestream), so a lost server loses no
+  # one's account. Three services, in order: the volume made the app's, the copy put back
+  # where there's no database, then, with the app up, the copying.
+  #
+  # A new volume takes its owner from the image that mounts it first: the app's, here, so
+  # Litestream, running as the app's user, can write in it.
+  accounts-owner:
+    image: ghcr.io/kevinvle1997/squidpdf:${SQUIDPDF_TAG:-latest}
+    profiles: [backup]
+    command: ["true"]
+    logging: *logging
+    volumes:
+      - accounts:/accounts
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+
+  # Before the app starts, where the volume has no database: on a new server, or after the
+  # volume was lost. Otherwise the app would make an empty one, and Litestream copy that
+  # over the backup. With no backup yet, as on the first deploy, it does nothing; with no
+  # URL, it fails, and the app doesn't start, so a backup turned on is never skipped unseen.
+  restore:
+    image: litestream/litestream:0.5.17
+    profiles: [backup]
+    command:
+      [restore, -if-db-not-exists, -if-replica-exists, -o, /accounts/users.sqlite3,
+       "${SQUIDPDF_BACKUP_URL:-}"]
+    logging: *logging
+    depends_on:
+      accounts-owner:
+        condition: service_completed_successfully
+    environment:
+      LITESTREAM_ACCESS_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${SQUIDPDF_BACKUP_SECRET:-}
+    # The app's own user: the database it restores is the app's to write.
+    user: "999:999"
+    volumes:
+      - accounts:/accounts
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+
+  # Copies each change to the URL .env names. The URL is an argument, not a settings file,
+  # so the container stays read-only: Compose can't write a config into one.
   backup:
     image: litestream/litestream:0.5.17
     profiles: [backup]
     restart: unless-stopped
+    command: [replicate, /accounts/users.sqlite3, "${SQUIDPDF_BACKUP_URL:-}"]
     logging: *logging
-    command: replicate
-    # The app makes the database as it starts; Litestream copies a file that's there.
     depends_on:
       app:
         condition: service_healthy
     environment:
-      # Read by its settings below: empty, it says why and stops, and `docker compose ps` shows it.
-      SQUIDPDF_BACKUP_URL: ${SQUIDPDF_BACKUP_URL:-}
-      SQUIDPDF_BACKUP_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
-      SQUIDPDF_BACKUP_SECRET: ${SQUIDPDF_BACKUP_SECRET:-}
-    configs:
-      - source: litestream
-        target: /etc/litestream.yml
-    volumes:
-      - accounts:/accounts
+      LITESTREAM_ACCESS_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${SQUIDPDF_BACKUP_SECRET:-}
     # The app's own user: the database is its, and Litestream writes its own files beside it.
     user: "999:999"
+    volumes:
+      - accounts:/accounts
     # A file of a few people's addresses, and its changes in flight: far below what it may take.
     mem_limit: 256m
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # Only /accounts is written, and /tmp, for what it stages on the way out.
     read_only: true
-    tmpfs:
-      - /tmp:size=64m
 
   # Caddy, with the browser app built into it: see react/Dockerfile.
   proxy:
@@ -182,18 +222,6 @@ networks:
         # A private range (ULA), drawn at random as RFC 4193 asks, halved the same way.
         - subnet: fd52:74a:91b1::/64
           ip_range: fd52:74a:91b1:0:8000::/65
-
-# Litestream's settings, here so the deploy check's hash of this file covers them. $$ leaves
-# each ${...} for Litestream to read from the service's environment.
-configs:
-  litestream:
-    content: |
-      dbs:
-        - path: /accounts/users.sqlite3
-          replica:
-            url: $${SQUIDPDF_BACKUP_URL}
-            access-key-id: $${SQUIDPDF_BACKUP_KEY_ID}
-            secret-access-key: $${SQUIDPDF_BACKUP_SECRET}
 
 volumes:
   # Uploaded documents, each deleted after an hour untouched.
