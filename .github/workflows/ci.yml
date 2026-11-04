@@ -287,7 +287,7 @@ jobs:
 
       # As a deployer turns the backup on (env.example), to a folder on the runner in place of a
       # bucket: the same services and Litestream, one replica kind apart. The accounts volume is
-      # then lost on purpose, and a plain `up` has to put it back.
+      # then lost on purpose, and a plain `up` has to put it back, or not start the app.
       - name: Accounts, backed up and restored
         shell: bash
         run: |
@@ -295,14 +295,14 @@ jobs:
           mount='    volumes: ["/tmp/ci-backups:/backups"]'
           printf 'services:\n  restore:\n%s\n  backup:\n%s\n' "$mount" "$mount" > /tmp/backup-ci.yaml
           {
-            echo 'COMPOSE_FILE=compose.yaml:/tmp/backup-ci.yaml'
-            echo 'COMPOSE_PROFILES=backup'
+            echo 'COMPOSE_FILE=compose.yaml:compose.backup.yaml:/tmp/backup-ci.yaml'
             echo 'SQUIDPDF_BACKUP_URL=file:///backups/accounts'
           } >> .env
           docker compose up --detach --wait
           emails() { docker compose exec -T backup sqlite3 -readonly /accounts/users.sqlite3 'select email from users'; }
           copied() { find /tmp/ci-backups -type f -printf '%s %p\n' | sort | sha256sum; }
-          # Until the copy of what's there now settles, a change in it says nothing of the invite.
+          # A quiet spell first, so a change after the invite is more likely its own; the restore
+          # below, which needs kept@ back, is what proves it was copied.
           for _ in $(seq 15); do was=$(copied); sleep 2; [[ $(copied) == "$was" ]] && break; done
           before=$(copied)
           deploy/invite.sh kept@example.com
@@ -310,12 +310,19 @@ jobs:
           [[ $(copied) != "$before" ]] || { echo "Litestream copied nothing of the invite in 30s"; exit 1; }
           docker compose down
           docker volume rm squidpdf_accounts
+          # A copy it can't read: the restore fails, so the app never makes an empty database.
+          chmod 000 /tmp/ci-backups
+          if docker compose up --detach 2>/tmp/up-unread.txt; then echo "up started with no copy to restore"; exit 1; fi
+          running=$(docker compose ps --status running --services)
+          grep -qx app <<<"$running" && { echo "the app started though the restore failed"; exit 1; }
+          chmod 777 /tmp/ci-backups
           docker compose up --detach --wait
           restored=$(emails)
           for email in friend@example.com kept@example.com; do
             grep -qx "$email" <<<"$restored" || { echo "the restored accounts lack $email: $restored"; exit 1; }
           done
-          # Over a database that's there, every later `up` leaves it as it is.
+          # Over a database that's there, a later up keeps what the copy hasn't got.
+          docker compose stop backup
           deploy/invite.sh later@example.com
           docker compose up --detach --wait --force-recreate
           grep -qx later@example.com <<<"$(emails)" || { echo "a later up restored over the database"; exit 1; }
@@ -327,7 +334,8 @@ jobs:
         if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          mapfile -t images < <(docker compose config --images)
+          # The images publish pushes: compose.yaml's, not the backup's Litestream.
+          mapfile -t images < <(COMPOSE_FILE=compose.yaml docker compose config --images)
           docker save "${images[@]}" | zstd -T0 -o /tmp/images.tar.zst
 
       - name: Upload the checked images
