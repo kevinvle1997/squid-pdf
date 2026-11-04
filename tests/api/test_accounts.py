@@ -395,3 +395,33 @@ def test_an_allowance_set_half_or_without_accounts_stops_the_start(
         )
     with pytest.raises(AccountsUnset, match=refused_for):
         create_app()
+
+
+def test_invite_only_a_removed_friend_is_let_go_from_every_browser_at_once(
+    invited_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
+):
+    users = app.state.accounts.users
+    users.invite(_EMAIL, now=0, is_unlimited=False)
+    laptop, phone = browser(), browser()
+    for signed_in in (laptop, phone):
+        _sign_in(signed_in, invited_mail)
+        assert_equal(upload(signed_in, pdf_bytes).status_code, 201, "in, before removal")
+    assert_true(users.remove(_EMAIL), "the account was there to remove")
+    for signed_in in (laptop, phone):
+        assert_problem(upload(signed_in, pdf_bytes), "invited_only", 401)
+        assert_equal(signed_in.get("/api/account").json()["signed_in"], None, "signed out")
+    laptop.post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(len(invited_mail.letters), 2, "no link for an address no longer invited")
+
+
+def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(
+    metered_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
+):
+    """Never a server error: the meter finds no account, so the browser's own count applies."""
+    reader = browser()
+    _sign_in(reader, metered_mail)
+    app.state.accounts.users.remove(_EMAIL)
+    first, second, third = _files(pdf_bytes, 3)
+    for opened in (first, second):
+        assert_equal(upload(reader, opened).status_code, 201, "the free documents")
+    assert_problem(upload(reader, third), "free_documents_used", 403)

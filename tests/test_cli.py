@@ -523,3 +523,18 @@ def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
     monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
     assert_equal(main(["invite", "friend@example.com"]), 1, "exit code")
     assert_in("SQUIDPDF_DATABASE names no database", capsys.readouterr().err, "said")
+
+
+def test_remove_takes_an_account_off_and_says_when_there_was_none(
+    tmp_path, monkeypatch, capsys
+):
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    main(["invite", "friend@example.com", "--unlimited"])
+    capsys.readouterr()
+    assert_equal(main(["remove", " Friend@Example.com"]), 0, "exit code")
+    assert_in("friend@example.com is removed", capsys.readouterr().out, "said")
+    assert_equal(open_users(database).find("friend@example.com"), None, "no account kept")
+    # A typo, or someone removed already: said, so it isn't taken for done.
+    assert_equal(main(["remove", "friend@example.com"]), 1, "exit code, removed again")
+    assert_in("has no account here", capsys.readouterr().err, "said")

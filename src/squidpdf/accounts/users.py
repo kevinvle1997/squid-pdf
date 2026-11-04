@@ -60,7 +60,11 @@ class User:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class UserStore:
-    """The users table: who's invited, who has signed in, and who has no document limit."""
+    """The users table: who's invited, who has signed in, and who has no document limit.
+
+    An account taken off with `remove` is gone from every browser signed in to it: each asks
+    the table, so its signed-in cookie names no one.
+    """
 
     database: Engine
 
@@ -89,11 +93,11 @@ class UserStore:
             connection.execute(kept)
         return self._required(email)
 
-    def is_unlimited(self, user_id: str) -> bool:
-        """Whether the account with `user_id` opens as many documents as it likes."""
-        query = select(_USERS.c.is_unlimited).where(_USERS.c.id == user_id)
-        with self.database.connect() as connection:
-            return connection.execute(query).scalar_one()
+    def remove(self, email: str) -> bool:
+        """Take the account under `email` off the table, its count too; whether it had one."""
+        with self.database.begin() as connection:
+            removed = connection.execute(_USERS.delete().where(_USERS.c.email == email))
+        return removed.rowcount > 0
 
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
         """The files the account opened in `month`, by digest: none, once a new one starts."""

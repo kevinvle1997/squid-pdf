@@ -41,7 +41,10 @@ def documents_of(request: Request) -> DocumentStore:
 
 
 def meter_of(request: Request) -> Meter:
-    """This browser's allowance of documents, from the meters the app was started with."""
+    """This browser's allowance of documents, from the meters the app was started with.
+
+    A plain def, so FastAPI runs it in a thread: a meter may read a table.
+    """
     meters: Meters = request.app.state.meters
     return meters.meter_for(request.cookies)
 

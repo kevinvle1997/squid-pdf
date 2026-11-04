@@ -9,6 +9,7 @@ squidpdf fixture out.pdf               a sample document to try it on
 squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 squidpdf terms   [terms.md]            check a terms file as the server will read it
 squidpdf invite  email [--unlimited]   let someone in; --unlimited lifts their document limit
+squidpdf remove  email                 take someone's account off, and sign them out everywhere
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
@@ -497,6 +498,24 @@ def _cmd_invite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _remove_arguments(command: argparse.ArgumentParser) -> None:
+    """`remove`: the address whose account goes."""
+    command.add_argument("email")
+
+
+def _cmd_remove(args: argparse.Namespace) -> int:
+    """Take the account under `email` off the table SQUIDPDF_DATABASE names."""
+    users = named_users()
+    if users is None:
+        return _fail(words.render(Message("no_database")))
+    email = checked_email(args.email)
+    # A typo leaves the person still in: said, so it's caught.
+    if not users.remove(email):
+        return _fail(words.render(Message("no_account", {"email": email})))
+    print(f"  {_GREEN}{words.render(Message('removed', {'email': email}))}{_OFF}")
+    return 0
+
+
 def _fail(said: str, *, hint: str = "") -> int:
     """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colors_of(sys.stderr)
@@ -565,6 +584,7 @@ _COMMANDS = (
         "terms", "check a terms file as the server reads it", _terms_arguments, _cmd_terms
     ),
     _Command("invite", "let someone sign in, limited or not", _invite_arguments, _cmd_invite),
+    _Command("remove", "take someone's account off", _remove_arguments, _cmd_remove),
 )
 
 
