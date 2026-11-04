@@ -276,9 +276,12 @@ jobs:
           } >> .env
           docker compose up --detach --wait
           deploy/invite.sh --unlimited friend@example.com family@example.com
-          if deploy/invite.sh not-an-address 2>/dev/null; then echo "invite.sh let in what isn't an address"; exit 1; fi
+          # Each refused for its own reason, said: any other failure, a dead container say, isn't one.
+          refused=$(deploy/invite.sh not-an-address 2>&1) && { echo "invite.sh let in what isn't an address"; exit 1; }
+          grep -q "isn't an email address" <<<"$refused" || { echo "invite.sh failed otherwise: $refused"; exit 1; }
           deploy/remove.sh family@example.com
-          if deploy/remove.sh family@example.com 2>/dev/null; then echo "remove.sh took off an account twice"; exit 1; fi
+          refused=$(deploy/remove.sh family@example.com 2>&1) && { echo "remove.sh took off an account twice"; exit 1; }
+          grep -q "has no account here" <<<"$refused" || { echo "remove.sh failed otherwise: $refused"; exit 1; }
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
           grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
