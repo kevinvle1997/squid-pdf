@@ -83,7 +83,7 @@ class UserStore:
         added = insert(_USERS).values(_new_row(email, now=now, is_unlimited=False))
         with self.database.begin() as connection:
             connection.execute(added.on_conflict_do_nothing(index_elements=[_USERS.c.email]))
-            return _written(connection, email)
+            return _user_written(connection, email)
 
     def invite(self, email: str, *, now: int, is_unlimited: bool) -> User:
         """The account under `email`, made if need be, with or without a document limit."""
@@ -93,7 +93,7 @@ class UserStore:
         )
         with self.database.begin() as connection:
             connection.execute(kept)
-            return _written(connection, email)
+            return _user_written(connection, email)
 
     def remove(self, email: str) -> bool:
         """Take the account under `email` off the table, its count too; whether it had one."""
@@ -104,7 +104,7 @@ class UserStore:
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
         """The files the account opened in `month`, by digest: none, once a new one starts.
 
-        None either for an account removed while its request was under way.
+        Nothing, too, for an account removed while its request was under way.
         """
         query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
         with self.database.connect() as connection:
@@ -137,7 +137,7 @@ def open_users(path: Path) -> UserStore:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A connection per use, closed after: a file opens in microseconds, and none is left open.
     database = create_engine(f"sqlite:///{path}", poolclass=NullPool)
-    event.listen(database, "connect", _write_ahead)
+    event.listen(database, "connect", _set_up_connection)
     _TABLES.create_all(database)
     return UserStore(database)
 
@@ -154,7 +154,7 @@ def checked_email(typed: str) -> str:
     return email
 
 
-def _write_ahead(connection: Any, _record: Any) -> None:
+def _set_up_connection(connection: Any, _record: Any) -> None:
     """Each connection logs ahead, and overwrites what it deletes.
 
     Logging ahead, a reader never waits on a writer. Overwritten, an account removed
@@ -164,7 +164,7 @@ def _write_ahead(connection: Any, _record: Any) -> None:
     connection.execute("PRAGMA secure_delete=ON")
 
 
-def _written(connection: Any, email: str) -> User:
+def _user_written(connection: Any, email: str) -> User:
     """The account under `email`, read in the transaction that wrote it: no removal between."""
     return _user_from(connection.execute(select(_USERS).where(_USERS.c.email == email)).one())
 
