@@ -366,3 +366,6 @@ monthly_documents_used = "Your account has opened all {monthly} of this month's 
 invited = "{email} is invited."
 invited_unlimited = "{email} is invited, and may use as many documents as they like."
 no_database = "SQUIDPDF_DATABASE names no database, so this server keeps no accounts."
+# What `squidpdf remove` says.
+removed = "{email} is removed: signed out everywhere, with nothing of theirs kept."
+no_account = "{email} has no account here, so nothing was removed."

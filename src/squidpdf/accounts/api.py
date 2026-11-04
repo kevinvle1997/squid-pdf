@@ -19,7 +19,6 @@ from squidpdf.accounts.errors import InvitedOnly, NoAccounts
 from squidpdf.accounts.sign_in import (
     LinkController,
     SignInController,
-    signed_in_id,
     signed_in_user,
     signed_out,
     state_of,
@@ -74,12 +73,14 @@ async def admit_invited(
 ) -> None:
     """Raise invited_only unless this browser is signed in, where only the invited may work.
 
-    On every route that works on a document, before any body is read. Async, so it runs
-    on the event loop: the cookie's signature is enough, as only the invited can sign in.
+    On every route that works on a document, before any body is read. It asks the table,
+    so an account `squidpdf remove` took off is let go from every browser at once.
     """
     if accounts is None or not accounts.invite_only:
         return
-    if signed_in_id(accounts, request.cookies.get(SIGNED_IN)) is None:
+    # Off the loop: it reads the table.
+    user = await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
+    if user is None:
         raise InvitedOnly()
 
 

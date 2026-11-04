@@ -16,8 +16,9 @@ from squidpdf.accounts import constants
 from squidpdf.accounts.cookies import COUNTED, SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts, Allowance
 from squidpdf.accounts.errors import FreeDocumentsUsed, MonthlyDocumentsUsed
-from squidpdf.accounts.sign_in import signed_in_id
+from squidpdf.accounts.sign_in import signed_in_user
 from squidpdf.accounts.signed import signed, value_of
+from squidpdf.accounts.users import User
 from squidpdf.documents.meters import Meter
 
 
@@ -29,10 +30,14 @@ class AccountMeters:
     allowance: Allowance
 
     def meter_for(self, cookies: Mapping[str, str]) -> Meter:
-        """The meter of the browser that sent `cookies`: its account's, or its own."""
-        user_id = signed_in_id(self.accounts, cookies.get(SIGNED_IN))
-        if user_id is not None:
-            return _AccountMeter(self.accounts, self.allowance, user_id=user_id)
+        """The meter of the browser that sent `cookies`: its account's, or its own.
+
+        Reads the table: a browser signed in to an account since removed counts as one
+        with none.
+        """
+        user = signed_in_user(self.accounts, cookies.get(SIGNED_IN))
+        if user is not None:
+            return _AccountMeter(self.accounts, self.allowance, user=user)
         return _BrowserMeter(self.accounts, self.allowance, counted=self._counted_in(cookies))
 
     def _counted_in(self, cookies: Mapping[str, str]) -> frozenset[str]:
@@ -51,20 +56,20 @@ class _AccountMeter:
 
     accounts: Accounts
     allowance: Allowance
-    user_id: str
+    user: User
 
     def check(self, digest: str) -> None:
         """Raise MonthlyDocumentsUsed if `digest` is new and the month's are used."""
-        if self.accounts.users.is_unlimited(self.user_id):
+        if self.user.is_unlimited:
             return
-        counted = self.accounts.users.counted_in(self.user_id, month=_this_month())
+        counted = self.accounts.users.counted_in(self.user.id, month=_this_month())
         is_new = digest not in counted
         if is_new and len(counted) >= self.allowance.monthly:
             raise MonthlyDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:
         """Count `digest` against this month's, kept in the table: no header needed."""
-        self.accounts.users.count(self.user_id, digest, month=_this_month())
+        self.accounts.users.count(self.user.id, digest, month=_this_month())
         return {}
 
 

@@ -113,13 +113,13 @@ def signed_in_user(accounts: Accounts, cookie: str | None) -> User | None:
 
     Reads the table: a coroutine calls it in a thread.
     """
-    user_id = signed_in_id(accounts, cookie)
+    user_id = _signed_in_id(accounts, cookie)
     if user_id is None:
         return None
     return accounts.users.get(user_id)
 
 
-def signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
+def _signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
     """The account id a signed-in cookie names, by its signature alone; None if none holds."""
     if cookie is None:
         return None

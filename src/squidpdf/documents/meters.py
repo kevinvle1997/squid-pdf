@@ -28,7 +28,7 @@ class Meters(Protocol):
     """Where each browser's meter comes from."""
 
     def meter_for(self, cookies: Mapping[str, str]) -> Meter:
-        """The meter of the browser that sent `cookies`."""
+        """The meter of the browser that sent `cookies`: it may read a table: off the loop."""
         ...
 
 
