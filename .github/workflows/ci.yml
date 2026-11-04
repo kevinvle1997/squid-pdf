@@ -313,6 +313,7 @@ jobs:
           # A copy it can't read: the restore fails, so the app never makes an empty database.
           chmod 000 /tmp/ci-backups
           if docker compose up --detach 2>/tmp/up-unread.txt; then echo "up started with no copy to restore"; exit 1; fi
+          tail -n 5 /tmp/up-unread.txt
           running=$(docker compose ps --status running --services)
           grep -qx app <<<"$running" && { echo "the app started though the restore failed"; exit 1; }
           chmod 777 /tmp/ci-backups
@@ -356,7 +357,7 @@ jobs:
         run: |
           {
             echo '### Served behind the proxy'
-            echo "Image: $(docker image inspect "$(docker compose config --images app)" --format '{{.Size}}' | numfmt --to=iec)"
+            echo "Image: $(docker image inspect "$(COMPOSE_FILE=compose.yaml docker compose config --images app)" --format '{{.Size}}' | numfmt --to=iec)"
             echo "Up and healthy in ${STARTED_MS} ms"
             echo '```'
             cat /tmp/check.txt
