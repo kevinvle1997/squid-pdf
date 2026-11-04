@@ -5,8 +5,8 @@
 # env.example says, then the images CI built and checked for it:
 #   docker compose pull && deploy/check-compose.sh && docker compose up -d --no-build
 # The Caddyfile is built into the proxy image, so its policy moves with the app it allows.
-# The checkout moves only when this file or env.example changed: the check then stops the
-# deploy and says so, as the proxy image names the two it was built beside.
+# The checkout moves only when this file, compose.backup.yaml or env.example changed: the check
+# then stops the deploy and says so, as the proxy image names the three it was built beside.
 # An image older than the check names neither, so it's refused: its own commit's header deploys it.
 # --no-build: a missing image fails, rather than building on the server beside the app.
 # To roll back, name an earlier commit the package pages list: not every one has images.
@@ -24,9 +24,9 @@
 # Then `docker compose restart app` takes in a changed file, and `up -d` one newly named in .env.
 # Inside the app it's /etc/squidpdf/terms.md, the name the check and the app's log give it.
 #
-# The accounts' database is the one thing here worth a backup; with COMPOSE_PROFILES=backup in
-# .env, Litestream keeps a copy of it in object storage, and `up` puts it back by itself where
-# the accounts volume has none: on a new server, or after the volume was lost.
+# The accounts' database is the one thing here worth a backup: compose.backup.yaml, turned on
+# in .env as env.example says, keeps a copy of it in object storage, and puts it back where the
+# accounts volume has none before the app starts.
 #
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
@@ -44,12 +44,6 @@ services:
   app:
     build: .
     image: ghcr.io/kevinvle1997/squidpdf:${SQUIDPDF_TAG:-latest}
-    # Where the backup is on, the accounts are put back before the app makes a database of its
-    # own; where it's off, there's no such service, and nothing waits.
-    depends_on:
-      restore:
-        condition: service_completed_successfully
-        required: false
     restart: unless-stopped
     logging: *logging
     # Reaps the pool's exited helper processes and passes stop signals on.
@@ -100,73 +94,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
-
-  # The backup, with COMPOSE_PROFILES=backup in .env (env.example): a copy of the accounts'
-  # database in object storage, kept as it changes (Litestream), so a lost server loses no
-  # one's account. Three services, in order: the volume made the app's, the copy put back
-  # where there's no database, then, with the app up, the copying.
-  #
-  # A new volume takes its owner from the image that mounts it first: the app's, here, so
-  # Litestream, running as the app's user, can write in it.
-  accounts-owner:
-    image: ghcr.io/kevinvle1997/squidpdf:${SQUIDPDF_TAG:-latest}
-    profiles: [backup]
-    command: ["true"]
-    logging: *logging
-    volumes:
-      - accounts:/accounts
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    read_only: true
-
-  # Before the app starts, where the volume has no database: on a new server, or after the
-  # volume was lost. Otherwise the app would make an empty one, and Litestream copy that
-  # over the backup. With no backup yet, as on the first deploy, it does nothing; with no
-  # URL, it fails, and the app doesn't start, so a backup turned on is never skipped unseen.
-  restore:
-    image: litestream/litestream:0.5.17
-    profiles: [backup]
-    command:
-      [restore, -if-db-not-exists, -if-replica-exists, -o, /accounts/users.sqlite3,
-       "${SQUIDPDF_BACKUP_URL:-}"]
-    logging: *logging
-    depends_on:
-      accounts-owner:
-        condition: service_completed_successfully
-    environment:
-      LITESTREAM_ACCESS_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
-      LITESTREAM_SECRET_ACCESS_KEY: ${SQUIDPDF_BACKUP_SECRET:-}
-    # The app's own user: the database it restores is the app's to write.
-    user: "999:999"
-    volumes:
-      - accounts:/accounts
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    read_only: true
-
-  # Copies each change to the URL .env names. The URL is an argument, not a settings file,
-  # so the container stays read-only: Compose can't write a config into one.
-  backup:
-    image: litestream/litestream:0.5.17
-    profiles: [backup]
-    restart: unless-stopped
-    command: [replicate, /accounts/users.sqlite3, "${SQUIDPDF_BACKUP_URL:-}"]
-    logging: *logging
-    depends_on:
-      app:
-        condition: service_healthy
-    environment:
-      LITESTREAM_ACCESS_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
-      LITESTREAM_SECRET_ACCESS_KEY: ${SQUIDPDF_BACKUP_SECRET:-}
-    # The app's own user: the database is its, and Litestream writes its own files beside it.
-    user: "999:999"
-    volumes:
-      - accounts:/accounts
-    # A file of a few people's addresses, and its changes in flight: far below what it may take.
-    mem_limit: 256m
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    read_only: true
 
   # Caddy, with the browser app built into it: see react/Dockerfile.
   proxy:

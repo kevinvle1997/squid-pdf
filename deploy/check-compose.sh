@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Proves the proxy image .env names was built beside this checkout's compose.yaml and
-# env.example, so a deploy by tag alone never runs an image under files it wasn't checked
-# with. Run beside .env, after `docker compose pull` and before `up` (compose.yaml).
+# Proves the proxy image .env names was built beside this checkout's compose.yaml,
+# compose.backup.yaml and env.example, so a deploy by tag alone never runs an image under
+# files it wasn't checked with. Run beside .env, after `docker compose pull` and before `up`
+# (compose.yaml).
 #
 #   deploy/check-compose.sh          checks the image
 #   deploy/check-compose.sh --hash   prints the hash a build labels the image with
@@ -11,7 +12,9 @@ cd "$(dirname "$0")/.."
 label=squidpdf.compose-hash
 
 # Each file is hashed under its name, so a line moved from one to the other still counts.
-compose_hash() { sha256sum compose.yaml env.example | sha256sum | cut -d' ' -f1; }
+compose_hash() {
+  sha256sum compose.yaml compose.backup.yaml env.example | sha256sum | cut -d' ' -f1
+}
 
 if [[ ${1:-} == --hash ]]; then
   compose_hash
@@ -34,7 +37,7 @@ tag=${image##*:}
 # `with`, so a label missing from an image with no labels at all prints nothing, as an empty one does.
 built_beside=$(docker image inspect "$image" --format "{{ with index .Config.Labels \"$label\" }}{{ . }}{{ end }}")
 if [[ $built_beside == "$(compose_hash)" ]]; then
-  printf 'ok    %s was built beside this compose.yaml and env.example\n' "$image"
+  printf 'ok    %s was built beside these compose files and env.example\n' "$image"
   exit 0
 fi
 # This checkout's compose.yaml mounts no Caddyfile, so such a proxy would serve Caddy's own page.
@@ -43,9 +46,9 @@ if [[ -z $built_beside ]]; then
     "Deploy it as its own commit's compose.yaml header says, checkout and all."
 fi
 if [[ $tag == latest ]]; then
-  fail "$image was built beside another compose.yaml or env.example than these." \
+  fail "$image was built beside other compose files or env.example than these." \
     "Set SQUIDPDF_TAG in .env to a commit on main, then pull and run this again."
 fi
-fail "$image was built beside another compose.yaml or env.example than these." \
+fail "$image was built beside other compose files or env.example than these." \
   "Move this checkout to its commit (git switch --detach $tag), add to .env what its" \
   "env.example adds, then pull and run this again."
