@@ -285,6 +285,38 @@ jobs:
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
           grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
+      # As a deployer turns the backup on (env.example), to a folder on the runner in place of a
+      # bucket: the same settings and Litestream, one replica kind apart. The accounts volume is
+      # then lost on purpose, and the script that puts it back is the one a deployer runs.
+      - name: Accounts, backed up and restored
+        shell: bash
+        run: |
+          mkdir -m 777 /tmp/ci-backups
+          printf 'services:\n  backup:\n    volumes: ["/tmp/ci-backups:/backups"]\n' > /tmp/backup-ci.yaml
+          {
+            echo 'COMPOSE_FILE=compose.yaml:/tmp/backup-ci.yaml'
+            echo 'COMPOSE_PROFILES=backup'
+            echo 'SQUIDPDF_BACKUP_URL=file:///backups/accounts'
+          } >> .env
+          docker compose up --detach --wait
+          copied() { find /tmp/ci-backups -type f -printf '%s %p\n' | sort | sha256sum; }
+          before=$(copied)
+          deploy/invite.sh kept@example.com
+          # Litestream copies a change within seconds; until it has, the restore below would race it.
+          for _ in $(seq 30); do [[ $(copied) != "$before" ]] && break; sleep 1; done
+          [[ $(copied) != "$before" ]] || { echo "Litestream copied nothing of the invite in 30s"; exit 1; }
+          docker compose down
+          docker volume rm squidpdf_accounts
+          deploy/restore-accounts.sh
+          restored=$(docker compose run --rm --no-deps --entrypoint sqlite3 backup /accounts/users.sqlite3 'select email from users')
+          for email in friend@example.com kept@example.com; do
+            grep -qx "$email" <<<"$restored" || { echo "the restored accounts lack $email: $restored"; exit 1; }
+          done
+          # Over a database that's there, the script changes nothing.
+          deploy/restore-accounts.sh
+          docker compose up --detach --wait
+          deploy/check.sh https://localhost /tmp/root.crt
+
       # Only a push to main publishes, so only it keeps what it checked, for publish to push.
       # bash by name turns on pipefail, so a failed save isn't hidden by zstd.
       - name: Save the checked images
