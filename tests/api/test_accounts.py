@@ -142,7 +142,19 @@ def test_what_cannot_be_an_email_address_is_refused_before_anything_is_sent(
     mail, browser: Callable[[], TestClient]
 ):
     reader = browser()
-    for typed in ("reader", "reader@localhost", "two words@example.com", "@example.com"):
+    # A comma or a bracket makes a To: header two addresses, or a name and an address.
+    several = (
+        "a@example.com,b@example.com",
+        "a@example.com;b@example.com",
+        "Name <a@example.com>",
+    )
+    for typed in (
+        "reader",
+        "reader@localhost",
+        "two words@example.com",
+        "@example.com",
+        *several,
+    ):
         refused = reader.post("/api/account/link", json={"email": typed})
         assert_problem(refused, "not_an_email", 422)
     assert_equal(mail.letters, [], "letters sent")
