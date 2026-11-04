@@ -428,3 +428,29 @@ def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(
     for opened in (first, second):
         assert_equal(upload(reader, opened).status_code, 201, "the free documents")
     assert_problem(upload(reader, third), "free_documents_used", 403)
+
+
+def test_an_account_removed_while_its_upload_is_under_way_has_nothing_counted_and_no_error(
+    tmp_path,
+):
+    """Its request read the account before the removal: what follows finds no row, and goes on.
+
+    The table is asked directly: the API can't stop an upload half way without faking it.
+    """
+    users = open_users(tmp_path / "users.sqlite3")
+    user = users.joined(_EMAIL, now=0)
+    users.count(user.id, "a", month="2026-11")
+    users.remove(_EMAIL)
+    assert_equal(users.counted_in(user.id, month="2026-11"), set(), "none counted")
+    users.count(user.id, "b", month="2026-11")
+    assert_equal(users.get(user.id), None, "and no account made by counting")
+
+
+def test_a_removed_address_is_gone_from_the_file_not_only_the_table(tmp_path):
+    """A deletion leaves its bytes in the file's free space unless they're overwritten."""
+    database = tmp_path / "users.sqlite3"
+    users = open_users(database)
+    users.invite("secret-person@example.com", now=0, is_unlimited=False)
+    users.remove("secret-person@example.com")
+    kept = b"".join(path.read_bytes() for path in tmp_path.iterdir() if path.is_file())
+    assert_equal(b"secret-person@example.com" in kept, False, "the address on disk")

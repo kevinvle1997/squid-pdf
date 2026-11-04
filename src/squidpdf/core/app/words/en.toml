@@ -367,5 +367,5 @@ invited = "{email} is invited."
 invited_unlimited = "{email} is invited, and may use as many documents as they like."
 no_database = "SQUIDPDF_DATABASE names no database, so this server keeps no accounts."
 # What `squidpdf remove` says.
-removed = "{email} is removed: signed out everywhere, with nothing of theirs kept."
+removed = "{email} is removed and signed out everywhere. Their documents go when their hour runs out, as everyone's do."
 no_account = "{email} has no account here, so nothing was removed."
