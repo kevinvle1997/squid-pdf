@@ -24,6 +24,10 @@
 # Then `docker compose restart app` takes in a changed file, and `up -d` one newly named in .env.
 # Inside the app it's /etc/squidpdf/terms.md, the name the check and the app's log give it.
 #
+# The accounts' database is the one thing here worth a backup; with COMPOSE_PROFILES=backup in
+# .env, Litestream keeps a copy of it in object storage. On a new server, or after the accounts
+# volume is lost, put it back before the first `up`: deploy/restore-accounts.sh
+#
 # The host's Docker needs ip6tables on, the default from Docker 27. Without it, a
 # published port hands every IPv6 client on from one address, and they share one count.
 name: squidpdf
@@ -91,6 +95,39 @@ services:
     tmpfs:
       - /tmp:size=${SQUIDPDF_APP_SCRATCH:?set it in .env from the host's cores, as env.example says}
 
+  # A copy of the accounts' database in object storage, kept as it changes (Litestream), so a
+  # lost server loses no one's account. Only with COMPOSE_PROFILES=backup in .env (env.example).
+  backup:
+    image: litestream/litestream:0.5.17
+    profiles: [backup]
+    restart: unless-stopped
+    logging: *logging
+    command: replicate
+    # The app makes the database as it starts; Litestream copies a file that's there.
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      # Read by its settings below: empty, it says why and stops, and `docker compose ps` shows it.
+      SQUIDPDF_BACKUP_URL: ${SQUIDPDF_BACKUP_URL:-}
+      SQUIDPDF_BACKUP_KEY_ID: ${SQUIDPDF_BACKUP_KEY_ID:-}
+      SQUIDPDF_BACKUP_SECRET: ${SQUIDPDF_BACKUP_SECRET:-}
+    configs:
+      - source: litestream
+        target: /etc/litestream.yml
+    volumes:
+      - accounts:/accounts
+    # The app's own user: the database is its, and Litestream writes its own files beside it.
+    user: "999:999"
+    # A file of a few people's addresses, and its changes in flight: far below what it may take.
+    mem_limit: 256m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Only /accounts is written, and /tmp, for what it stages on the way out.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+
   # Caddy, with the browser app built into it: see react/Dockerfile.
   proxy:
     build:
@@ -145,6 +182,18 @@ networks:
         # A private range (ULA), drawn at random as RFC 4193 asks, halved the same way.
         - subnet: fd52:74a:91b1::/64
           ip_range: fd52:74a:91b1:0:8000::/65
+
+# Litestream's settings, here so the deploy check's hash of this file covers them. $$ leaves
+# each ${...} for Litestream to read from the service's environment.
+configs:
+  litestream:
+    content: |
+      dbs:
+        - path: /accounts/users.sqlite3
+          replica:
+            url: $${SQUIDPDF_BACKUP_URL}
+            access-key-id: $${SQUIDPDF_BACKUP_KEY_ID}
+            secret-access-key: $${SQUIDPDF_BACKUP_SECRET}
 
 volumes:
   # Uploaded documents, each deleted after an hour untouched.
