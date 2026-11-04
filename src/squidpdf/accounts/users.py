@@ -81,7 +81,7 @@ class UserStore:
         added = insert(_USERS).values(_new_row(email, now=now, is_unlimited=False))
         with self.database.begin() as connection:
             connection.execute(added.on_conflict_do_nothing(index_elements=[_USERS.c.email]))
-        return self._required(email)
+            return _written(connection, email)
 
     def invite(self, email: str, *, now: int, is_unlimited: bool) -> User:
         """The account under `email`, made if need be, with or without a document limit."""
@@ -91,7 +91,7 @@ class UserStore:
         )
         with self.database.begin() as connection:
             connection.execute(kept)
-        return self._required(email)
+            return _written(connection, email)
 
     def remove(self, email: str) -> bool:
         """Take the account under `email` off the table, its count too; whether it had one."""
@@ -100,27 +100,28 @@ class UserStore:
         return removed.rowcount > 0
 
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
-        """The files the account opened in `month`, by digest: none, once a new one starts."""
+        """The files the account opened in `month`, by digest: none, once a new one starts.
+
+        None either for an account removed while its request was under way.
+        """
         query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
         with self.database.connect() as connection:
-            row = connection.execute(query).one()
+            row = connection.execute(query).first()
+        if row is None:
+            return frozenset()
         return _counted_from(row.month, row.counted, month=month)
 
     def count(self, user_id: str, digest: str, *, month: str) -> None:
         """Count the file `digest` against the account in `month`, a new month afresh."""
         query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
         with self.database.begin() as connection:
-            row = connection.execute(query).one()
+            row = connection.execute(query).first()
+            # Removed while its upload was under way: there's no count left to add to.
+            if row is None:
+                return
             counted = _counted_from(row.month, row.counted, month=month) | {digest}
             kept = {"month": month, "counted": " ".join(sorted(counted))}
             connection.execute(_USERS.update().where(_USERS.c.id == user_id).values(kept))
-
-    def _required(self, email: str) -> User:
-        """The account under `email`, which was just written."""
-        with self.database.connect() as connection:
-            return _user_from(
-                connection.execute(select(_USERS).where(_USERS.c.email == email)).one()
-            )
 
     def _one(self, query: Any) -> User | None:
         """The one account `query` finds; None if it finds none."""
@@ -151,8 +152,18 @@ def checked_email(typed: str) -> str:
 
 
 def _write_ahead(connection: Any, _record: Any) -> None:
-    """Each connection logs ahead, so a reader never waits on a writer."""
+    """Each connection logs ahead, and overwrites what it deletes.
+
+    Logging ahead, a reader never waits on a writer. Overwritten, an account removed
+    leaves no address in the file's free space.
+    """
     connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA secure_delete=ON")
+
+
+def _written(connection: Any, email: str) -> User:
+    """The account under `email`, read in the transaction that wrote it: no removal between."""
+    return _user_from(connection.execute(select(_USERS).where(_USERS.c.email == email)).one())
 
 
 def _new_row(email: str, *, now: int, is_unlimited: bool) -> dict[str, Any]:
