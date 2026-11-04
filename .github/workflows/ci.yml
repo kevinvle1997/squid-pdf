@@ -262,7 +262,7 @@ jobs:
           grep -q '^ok    the terms are served: Example terms' /tmp/check-terms.txt
 
       # As a deployer opens to invited people (env.example): no mail server is reached, as a
-      # stranger's address gets no link, and inviting someone writes the accounts volume.
+      # stranger's address gets no link, and deploy/invite.sh writes the accounts volume.
       - name: Invite only, checked
         shell: bash
         run: |
@@ -275,7 +275,8 @@ jobs:
             echo 'SQUIDPDF_INVITE_ONLY=yes'
           } >> .env
           docker compose up --detach --wait
-          docker compose exec app squidpdf invite friend@example.com --unlimited
+          deploy/invite.sh --unlimited friend@example.com family@example.com
+          if deploy/invite.sh not-an-address 2>/dev/null; then echo "invite.sh let in what isn't an address"; exit 1; fi
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
           grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
