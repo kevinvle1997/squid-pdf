@@ -31,6 +31,8 @@ from squidpdf.accounts import constants
 from squidpdf.accounts.errors import NotAnEmail
 
 _ID_BYTES = 16
+# What a To: header reads as one address ending and another, or a name, beginning.
+_SEPARATORS = frozenset(',;<>()[]"\\:')
 
 _TABLES = MetaData()
 _USERS = Table(
@@ -144,8 +146,9 @@ def checked_email(typed: str) -> str:
     """`typed` as the table keeps it, trimmed, lower case; NotAnEmail if no mail reaches it."""
     email = typed.strip().lower()
     local, at, domain = email.rpartition("@")
-    has_space = any(character.isspace() for character in email)
-    looks_whole = bool(local and at) and "." in domain and not has_space
+    # A space, or what a mail header reads as a second address or a name, sends to others too.
+    has_separator = any(character.isspace() or character in _SEPARATORS for character in email)
+    looks_whole = bool(local and at) and "." in domain and not has_separator
     if not looks_whole or len(email) > constants.MAX_EMAIL_CHARS:
         raise NotAnEmail(debug=f"{len(email)} characters")
     return email
