@@ -61,6 +61,19 @@ function Screens() {
     document.fonts.load(`1em ${getComputedStyle(document.body).fontFamily}`).then(loaded, loaded);
   }, [linkToken]);
 
+  // The offer lasts as long as it says: as the server's hour runs out while the landing is open, the copy goes.
+  useEffect(() => {
+    if (persisted === null) return;
+    const forgetting = setTimeout(
+      () => {
+        setPersisted(null);
+        void forgetOrSayWhy(persisted.file.name);
+      },
+      Math.max(0, persisted.until - Date.now()),
+    );
+    return () => clearTimeout(forgetting);
+  }, [persisted]);
+
   async function signOut() {
     const answer = await signedOut();
     // Still signed in, so said where the landing says what went wrong.
@@ -69,6 +82,8 @@ function Screens() {
       return;
     }
     setAccount(answer);
+    // Signing out is leaving this browser to others: the document persisted here goes too.
+    await forget();
   }
 
   function reopen() {

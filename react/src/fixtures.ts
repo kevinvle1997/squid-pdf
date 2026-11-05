@@ -230,6 +230,11 @@ export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
   };
 }
 
+/** When the server forgets a document read now, as its hour has not run out: the browser forgets its copy once it has. */
+function anHourOn(): string {
+  return new Date(Date.now() + 3_600_000).toISOString();
+}
+
 /** A document of A4 pages, as many as its spans are on, unless `pages` says. */
 export function aDoc(fields: Partial<Document> = {}): Document {
   const spans = fields.spans ?? [];
@@ -237,7 +242,7 @@ export function aDoc(fields: Partial<Document> = {}): Document {
   return {
     id: "doc",
     build: "build",
-    expires_at: "2026-01-01T00:00:00Z",
+    expires_at: anHourOn(),
     pages: Array.from({ length: pageCount }, () => A4),
     spans,
     fonts: [],
@@ -277,7 +282,7 @@ export function aReply(fields: Partial<Render> = {}): Render {
     skipped: [],
     notices: [],
     build: "build",
-    expires_at: "2026-01-01T00:00:00Z",
+    expires_at: anHourOn(),
     ...fields,
   };
 }
