@@ -13,7 +13,7 @@ class NotAnEmail(Problem):
 
 
 class LinkExpired(Problem):
-    """A sign-in link past its time, or not whole: its signature doesn't hold."""
+    """A sign-in link past its time, used already, or not whole, its signature not holding."""
 
     type = "link_expired"
     status = 400

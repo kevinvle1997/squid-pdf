@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI
 from fastapi.routing import APIRoute
 
 from squidpdf.accounts import api as accounts_api
+from squidpdf.accounts.constants import LINK_VALID_S
 from squidpdf.accounts.deployment import deployed_accounts
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.api.access import AccessLog
@@ -53,6 +54,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # What each address has going, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentStarts()
     app.state.recent_links = RecentStarts()
+    # What each inbox was sent, counted as long as a link works.
+    app.state.recent_links_to = RecentStarts(window_s=LINK_VALID_S)
     app.state.upload_turns = Turns()
     app.state.job_turns = Turns()
     sweeper = asyncio.create_task(documents_api.sweep_forever(app.state.documents))

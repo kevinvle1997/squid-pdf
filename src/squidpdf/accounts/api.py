@@ -8,6 +8,7 @@ back. Reading the account and signing out have none: each is one look at the coo
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import Annotated
 
@@ -26,9 +27,11 @@ from squidpdf.accounts.sign_in import (
     state_of,
 )
 from squidpdf.accounts.types import AccountState, LinkSent, MailEvent
-from squidpdf.accounts.users import User
-from squidpdf.api import rate
+from squidpdf.accounts.users import User, checked_email
+from squidpdf.api import constants as limits, rate
+from squidpdf.api.errors import RateLimited
 from squidpdf.api.language import ReaderLanguage
+from squidpdf.api.rate import RecentStarts
 from squidpdf.api.routing import response_of
 from squidpdf.core import NotFound
 
@@ -101,6 +104,29 @@ async def admit_invited(
         raise InvitedOnly()
 
 
+def link_body(body: LinkBody) -> LinkBody:
+    """The request's body, read once: the route and the gate on its inbox both take it here."""
+    return body
+
+
+async def admit_link_to(
+    request: Request, body: Annotated[LinkBody, Depends(link_body)]
+) -> None:
+    """Raise rate_limited if the inbox was sent LINKS_PER_INBOX links while one still works.
+
+    From every address together, after `rate.admit_link` counts this one: a flood of
+    addresses can't fill one inbox from our sender. Async, so two asked at once never count
+    as one. The address is checked first, so what can't be one counts nothing.
+    """
+    recent_links_to: RecentStarts = request.app.state.recent_links_to  # made in the lifespan
+    # Read as a module attribute, so a test can change the limit.
+    admitted = recent_links_to.admit(
+        checked_email(body.email), now=time.monotonic(), limit=limits.LINKS_PER_INBOX
+    )
+    if not admitted:
+        raise RateLimited()
+
+
 def admit_brevo(
     accounts: Annotated[Accounts, Depends(offered_accounts)],
     authorization: Annotated[str | None, Header()] = None,
@@ -126,10 +152,13 @@ async def account(
 
 
 @router.post(
-    "/link", status_code=202, response_model=LinkSent, dependencies=[Depends(rate.admit_link)]
+    "/link",
+    status_code=202,
+    response_model=LinkSent,
+    dependencies=[Depends(rate.admit_link), Depends(admit_link_to)],
 )
 async def send_link(
-    body: LinkBody,
+    body: Annotated[LinkBody, Depends(link_body)],
     link_controller: Annotated[
         LinkController, Depends(controller_with_accounts(LinkController))
     ],

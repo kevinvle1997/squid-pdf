@@ -1,7 +1,8 @@
 """Signing in: a link sent by email, then the link's token traded for a signed-in cookie.
 
 No web framework here. Nothing is stored but the account: the link and the cookie are
-each a signed value with a time limit (`signed.py`).
+each a signed value with a time limit (`signed.py`), and the account notes the last link
+used, so none signs in twice.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from squidpdf.accounts import constants
 from squidpdf.accounts.cookies import SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import LinkExpired, MailLimitReached, MailNotSent, NotInvited
-from squidpdf.accounts.signed import signed, value_of
+from squidpdf.accounts.signed import Signed, read_signed, signed
 from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
 from squidpdf.accounts.users import User, checked_email
 from squidpdf.core import LogController, LogEvent, Message, Reply, words
@@ -86,14 +87,14 @@ class SignInController:
     async def sign_in(self, token: str) -> Reply[AccountState]:
         """Sign in as the email `token` was signed for, making its account on first use.
 
-        Raises LinkExpired for a token past its time, altered, or not a link's; NotInvited,
-        invite-only, for an address no one invited.
+        Raises LinkExpired for a token past its time, used already, altered, or not a link's;
+        NotInvited, invite-only, for an address no one invited.
         """
         now = int(time.time())
-        email = value_of(token, purpose="link", now=now, secret=self.accounts.secret)
-        if email is None:
+        link = read_signed(token, purpose="link", now=now, secret=self.accounts.secret)
+        if link is None:
             raise LinkExpired()
-        user = await asyncio.to_thread(self._user_signing_in, email, now=now)
+        user = await asyncio.to_thread(self._user_signing_in, link, now=now)
         until = now + constants.SIGNED_IN_S
         cookie = signed(user.id, purpose="signed_in", until=until, secret=self.accounts.secret)
         headers = {
@@ -101,8 +102,16 @@ class SignInController:
         }
         return Reply(state_of(self.accounts, user), headers, HTTPStatus.OK)
 
-    def _user_signing_in(self, email: str, *, now: int) -> User:
-        """The account signing in as `email`: made on first use, unless only the invited may."""
+    def _user_signing_in(self, link: Signed, *, now: int) -> User:
+        """The account `link` signs in to, the link used up; LinkExpired if it was already."""
+        user = self._account_of(link.value, now=now)
+        # Used already, by this browser or another the link reached: it signs no one in again.
+        if not self.accounts.users.spend_link(link.value, until=link.until):
+            raise LinkExpired()
+        return user
+
+    def _account_of(self, email: str, *, now: int) -> User:
+        """The account under `email`: made on first use, unless only the invited may."""
         if not self.accounts.invite_only:
             return self.accounts.users.joined(email, now=now)
         invited = self.accounts.users.find(email)
@@ -133,7 +142,8 @@ def _signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
     if cookie is None:
         return None
     now = int(time.time())
-    return value_of(cookie, purpose="signed_in", now=now, secret=accounts.secret)
+    read = read_signed(cookie, purpose="signed_in", now=now, secret=accounts.secret)
+    return None if read is None else read.value
 
 
 def state_of(accounts: Accounts, user: User | None) -> AccountState:

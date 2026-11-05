@@ -17,7 +17,7 @@ from squidpdf.accounts.cookies import COUNTED, SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts, Allowance
 from squidpdf.accounts.errors import FreeDocumentsUsed, MonthlyDocumentsUsed
 from squidpdf.accounts.sign_in import signed_in_user
-from squidpdf.accounts.signed import signed, value_of
+from squidpdf.accounts.signed import read_signed, signed
 from squidpdf.accounts.users import User
 from squidpdf.documents.meters import Meter
 
@@ -47,8 +47,8 @@ class AccountMeters:
         if cookie is None:
             return frozenset()
         now = int(time.time())
-        listed = value_of(cookie, purpose="counted", now=now, secret=self.accounts.secret)
-        return frozenset() if listed is None else frozenset(listed.split())
+        listed = read_signed(cookie, purpose="counted", now=now, secret=self.accounts.secret)
+        return frozenset() if listed is None else frozenset(listed.value.split())
 
 
 @dataclass(frozen=True, slots=True, eq=False)
