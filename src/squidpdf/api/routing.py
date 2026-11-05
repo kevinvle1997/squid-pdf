@@ -5,14 +5,21 @@ A header of our own is listed in the route's `responses`, so the OpenAPI says it
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+import io
+import os
+from collections.abc import AsyncIterator, Callable
 from typing import Annotated, Any
 
 import orjson
 from fastapi import Depends, Request, Response
+from fastapi.responses import StreamingResponse
 
 from squidpdf.api import pool, rate
 from squidpdf.core import Reply, Workers
+
+# What a streamed file is read in: large enough that a file takes few trips to a thread.
+_PIECE_BYTES = 1024 * 1024
 
 
 def controller_with_workers[C](
@@ -53,19 +60,44 @@ def response_of[T](
 ) -> Response:
     """`reply` as the Response the route sends, typed `media_type`.
 
-    Bytes go out as they are; anything else is written out as JSON. `set_by`
-    is the Response a route's dependencies set headers on, such as a new
-    cookie: FastAPI adds those only to data it writes out itself.
+    Bytes go out as they are, an open file is streamed, anything else is JSON. `set_by` is
+    the Response a route's dependencies set headers on, such as a new cookie: FastAPI adds
+    those only to data it writes out itself.
     """
-    body = reply.body if isinstance(reply.body, bytes) else orjson.dumps(reply.body)
-    # No body, no body's type: a 304 says the browser's copy is current.
-    body_type = media_type if body else None
-    response = Response(
-        body, status_code=reply.status, headers=reply.headers, media_type=body_type
-    )
+    response = _response_of(reply, media_type=media_type)
     if set_by is not None:
         response.raw_headers.extend(set_by.raw_headers)
     return response
+
+
+def _response_of[T](reply: Reply[T], *, media_type: str) -> Response:
+    """`reply` as a Response: an open file streamed, bytes as they are, anything else JSON."""
+    if isinstance(reply.body, io.BufferedIOBase):
+        return _streamed(reply.body, reply=reply, media_type=media_type)
+    body = reply.body if isinstance(reply.body, bytes) else orjson.dumps(reply.body)
+    # No body, no body's type: a 304 says the browser's copy is current.
+    body_type = media_type if body else None
+    return Response(body, status_code=reply.status, headers=reply.headers, media_type=body_type)
+
+
+def _streamed(
+    opened: io.BufferedIOBase, *, reply: Reply[Any], media_type: str
+) -> StreamingResponse:
+    """The open file `opened` sent a piece at a time, its size said, then closed."""
+    size = os.fstat(opened.fileno()).st_size
+    headers = reply.headers | {"Content-Length": str(size)}
+    return StreamingResponse(
+        _pieces_of(opened), status_code=reply.status, headers=headers, media_type=media_type
+    )
+
+
+async def _pieces_of(opened: io.BufferedIOBase) -> AsyncIterator[bytes]:
+    """`opened`, read off the loop a piece at a time, closed however the sending ends."""
+    try:
+        while piece := await asyncio.to_thread(opened.read, _PIECE_BYTES):
+            yield piece
+    finally:
+        await asyncio.to_thread(opened.close)
 
 
 def listed_header(says: str) -> dict[str, Any]:
