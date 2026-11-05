@@ -6,6 +6,7 @@ import base64
 import itertools
 import json
 import random
+import re
 from pathlib import Path
 
 import pymupdf
@@ -38,6 +39,8 @@ _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
 _LOWERED = 3  # the region limit, lowered so a short list goes over it
+# The browser's editing code, where it says how many pages it asks a render for.
+_REACT_EDITING = Path(__file__).parents[2] / "react" / "src" / "editing"
 _WIDEST_PT = 14_400  # the longest side a PDF's page can have
 _SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
 _STACKED = 4  # copies of the long contract's page, stacked on one tall page
@@ -529,6 +532,26 @@ def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypat
 
     assert_problem(response, "invalid_request", 400)
     assert_in("regions", response.json()["debug"], "what a developer reads")
+
+
+def test_regions_on_more_pages_than_a_render_draws_are_a_bad_request(mine, doc, monkeypatch):
+    """The browser asks for its pages a few at a time, so its images cross in one answer."""
+    monkeypatch.setattr(editing_constants, "MAX_RENDER_PAGES", 1)
+    pages = [{"page": 0, "y0": 100, "y1": 150}, {"page": 1, "y0": 100, "y1": 150}]
+
+    response = _render(mine, doc, [], pages)
+
+    assert_problem(response, "invalid_request", 400)
+    assert_in("pages", response.json()["debug"], "what a developer reads")
+
+
+def test_the_browser_asks_for_no_more_pages_than_a_render_draws():
+    """Its batch is its own constant, read here, so the two can't drift apart."""
+    constants_ts = (_REACT_EDITING / "constants.ts").read_text()
+    batch = re.search(r"export const RENDER_PAGES_AT_ONCE = (\d+);", constants_ts)
+    assert_true(batch is not None, "react/src/editing/constants.ts names RENDER_PAGES_AT_ONCE")
+    said = "pages the browser asks for at once (RENDER_PAGES_AT_ONCE) beside the server's limit"
+    assert_equal(int(batch[1]) if batch else None, editing_constants.MAX_RENDER_PAGES, said)
 
 
 @pytest.mark.parametrize(
