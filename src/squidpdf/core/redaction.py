@@ -42,6 +42,9 @@ _WORD = re.compile(r"[^\W_]+")
 # A box around everything a page can draw: to read all of its letters.
 _EVERYWHERE = Rect(-math.inf, -math.inf, math.inf, math.inf)
 
+# A run drawn after an erase, and the glyphs of the line before it that it was set along.
+type _RunAlong = tuple[list[DrawnGlyph], list[DrawnGlyph]]
+
 
 @dataclass(frozen=True, slots=True, eq=False)
 class RedactionCheck:
@@ -143,10 +146,7 @@ class RedactionCheck:
         on_lines = [glyph for glyph in gone if any(_holds(each, glyph) for each in went)]
         rest_lines = _runs(on_lines, among=kept)
         runs = _runs(_not_on(new, lines), among=now)
-        # Spelling words the erase takes, a run is those words, whatever other letters went.
-        # The page's reading, for where it puts spaces: read only if a glyph is out of place.
-        reading = self.driver.letters_in(page, [_EVERYWHERE])[0] if runs else []
-        spelling = [run for run in runs if _spells_any(_spelled(run, reading), words)]
+        spelling = self._spelling(page, runs, words=words)
         others = [run for run in runs if not any(run is each for each in spelling)]
         along = [
             (run, matched)
@@ -158,24 +158,7 @@ class RedactionCheck:
             for run, matched in along
             if _one_line(matched, along, went=went, before=before)
         ]
-        # Read only where some rest moved: a box for each glyph costs a reading of its own.
-        box_of = _by_glyph(drawn, self.driver.drawn_glyph_boxes(page)) if lined else {}
-        # None read, or out of step with the glyphs: where the rest landed can't be told.
-        unchecked = box_of is None
-        box_now = box_of or {}
-        # Before the erase, as far as now tells: each rest's glyphs set back by its shift.
-        box_then = box_now | {
-            id(glyph): _set_off(box_now[id(glyph)], _offset(run[0], matched[0]))
-            for run, matched in ([] if unchecked else lined)
-            for glyph in run
-        }
-        # Unchecked, a rest is still the rest, not other text: said so, and refused for it.
-        rest = [
-            (run, matched)
-            for run, matched in lined
-            if unchecked
-            or not _lands_on(run, matched, lined=lined, now=now, boxes=(box_now, box_then))
-        ]
+        rest, unchecked = self._rests_landed(page, lined, drawn=drawn, now=now)
         off = [run for run in others if not any(run is each for each, _matched in rest)]
         gone_lines = _runs(gone, among=kept)
         moved = [run for run in off if _part_of(run, gone_lines) is not None]
@@ -195,6 +178,46 @@ class RedactionCheck:
             rests=[_rest_now(each, found=found, shown=shown) for each in went],
             unchecked=unchecked,
         )
+
+    def _spelling(
+        self, page: int, runs: list[list[DrawnGlyph]], *, words: Sequence[str]
+    ) -> list[list[DrawnGlyph]]:
+        """Those of `runs` that spell words the erase takes: those words, whatever else went."""
+        # The page's reading, for where it puts spaces: read only if a glyph is out of place.
+        reading = self.driver.letters_in(page, [_EVERYWHERE])[0] if runs else []
+        return [run for run in runs if _spells_any(_spelled(run, reading), words)]
+
+    def _rests_landed(
+        self,
+        page: int,
+        lined: list[_RunAlong],
+        *,
+        drawn: list[DrawnGlyph],
+        now: list[DrawnGlyph],
+    ) -> tuple[list[_RunAlong], bool]:
+        """Those of `lined` that are a rest of the line, and whether where they landed was read.
+
+        A run set along its line is a rest unless it now lands on other text.
+        """
+        # Read only where some rest moved: a box for each glyph costs a reading of its own.
+        box_of = _by_glyph(drawn, self.driver.drawn_glyph_boxes(page)) if lined else {}
+        # None read, or out of step with the glyphs: where the rest landed can't be told.
+        unchecked = box_of is None
+        box_now = box_of or {}
+        # Before the erase, as far as now tells: each rest's glyphs set back by its shift.
+        box_then = box_now | {
+            id(glyph): _set_off(box_now[id(glyph)], _offset(run[0], matched[0]))
+            for run, matched in ([] if unchecked else lined)
+            for glyph in run
+        }
+        # Unchecked, a rest is still the rest, not other text: said so, and refused for it.
+        rest = [
+            (run, matched)
+            for run, matched in lined
+            if unchecked
+            or not _lands_on(run, matched, lined=lined, now=now, boxes=(box_now, box_then))
+        ]
+        return rest, unchecked
 
     def still_hidden(self, runs: Iterable[RedactedRun]) -> list[RedactedRun]:
         """The runs with a word of theirs still in a hidden copy on their page.
@@ -488,7 +511,7 @@ def _rest_now(
 
 def _one_line(
     matched: list[DrawnGlyph],
-    along: list[tuple[list[DrawnGlyph], list[DrawnGlyph]]],
+    along: list[_RunAlong],
     *,
     went: list[list[DrawnGlyph]],
     before: list[list[DrawnGlyph]],
@@ -533,7 +556,7 @@ def _lands_on(
     run: list[DrawnGlyph],
     was: list[DrawnGlyph],
     *,
-    lined: list[tuple[list[DrawnGlyph], list[DrawnGlyph]]],
+    lined: list[_RunAlong],
     now: list[DrawnGlyph],
     boxes: tuple[dict[int, Rect], dict[int, Rect]],
 ) -> bool:
