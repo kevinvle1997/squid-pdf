@@ -18,8 +18,10 @@ from sqlalchemy import (
     Integer,
     MetaData,
     Row,
+    Select,
     Table,
     Text,
+    case,
     create_engine,
     event,
     select,
@@ -127,18 +129,27 @@ class UserStore:
         return _counted_from(row.month, row.counted, month=month)
 
     def count(self, user_id: str, digest: str, *, month: str) -> None:
-        """Count the file `digest` against the account in `month`, a new month afresh."""
-        query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
-        with self.database.begin() as connection:
-            row = connection.execute(query).first()
-            # Removed while its upload was under way: there's no count left to add to.
-            if row is None:
-                return
-            counted = _counted_from(row.month, row.counted, month=month) | {digest}
-            kept = {"month": month, "counted": " ".join(sorted(counted))}
-            connection.execute(_USERS.update().where(_USERS.c.id == user_id).values(kept))
+        """Count the file `digest` against the account in `month`, a new month afresh.
 
-    def _one(self, query: Any) -> User | None:
+        One statement, so two uploads counted at once both count: SQLite's driver starts
+        a transaction only at the write, so a read before it could be overwritten.
+        """
+        this_month = _USERS.c.month == month
+        listed = (" " + _USERS.c.counted + " ").contains(f" {digest} ", autoescape=True)
+        added = case(
+            (this_month & (_USERS.c.counted != ""), _USERS.c.counted + " " + digest),
+            else_=digest,
+        )
+        # No row for an account removed while its upload was under way: nothing to add to.
+        counting = (
+            _USERS.update()
+            .where(_USERS.c.id == user_id, ~(this_month & listed))
+            .values(month=month, counted=added)
+        )
+        with self.database.begin() as connection:
+            connection.execute(counting)
+
+    def _one(self, query: Select[Any]) -> User | None:
         """The one account `query` finds; None if it finds none."""
         with self.database.connect() as connection:
             row = connection.execute(query).first()
