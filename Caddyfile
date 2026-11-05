@@ -17,8 +17,8 @@
 	encode zstd gzip
 
 	header {
-		# HTTPS only for a year: a browser that has been here never tries plain HTTP.
-		Strict-Transport-Security "max-age=31536000"
+		# HTTPS only for a year, on every subdomain too: a browser that has been here never tries plain HTTP.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		# Each reply is the type it says: a browser never guesses a PDF or PNG is a page.
 		X-Content-Type-Options "nosniff"
 		# Only the app's own files and render's strips (data: URLs), so injected script never runs.

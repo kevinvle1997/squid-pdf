@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install
         uses: ./.github/actions/uv
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Build
         run: docker build --target test -t squidpdf-test .
@@ -58,13 +58,13 @@ jobs:
       run:
         working-directory: react
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install the API
         uses: ./.github/actions/uv
 
       - name: Install Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
@@ -90,7 +90,7 @@ jobs:
       # Playwright pins its browsers, so its version alone decides what the cache holds.
       - name: Browser cache
         id: browser
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -108,7 +108,7 @@ jobs:
 
       - name: Traces
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-traces-chromium
           path: react/test-results/
@@ -120,7 +120,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           sparse-checkout: react/package-lock.json
           sparse-checkout-cone-mode: false
@@ -139,7 +139,7 @@ jobs:
       run:
         working-directory: react
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # git refuses a checkout another user owns, and the build would then link main, not this commit.
       - name: Trust the checkout
@@ -149,7 +149,7 @@ jobs:
         uses: ./.github/actions/uv
 
       - name: Install Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
@@ -163,7 +163,7 @@ jobs:
 
       - name: Traces
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-traces-webkit
           path: react/test-results/
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Domain
         run: echo 'SQUIDPDF_DOMAIN=localhost' > .env
@@ -341,7 +341,7 @@ jobs:
 
       - name: Upload the checked images
         if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: checked-images
           path: /tmp/images.tar.zst
@@ -374,7 +374,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # The CLI as a user installs it: no `api` extra and no dev tools, so it proves it runs
       # without them. `uv run --no-dev` keeps them out, where plain `uv run` would add the tools.
@@ -412,11 +412,11 @@ jobs:
       SQUIDPDF_APP_MEMORY: 1g
       SQUIDPDF_APP_SCRATCH: 1m
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Not a rebuild: that may pull a moved base tag, and its layers would be new bytes.
       - name: Download the checked images
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: checked-images
           path: /tmp
