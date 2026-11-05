@@ -23,8 +23,10 @@ from sqlalchemy import (
     create_engine,
     event,
     select,
+    text,
 )
 from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
 
 from squidpdf.accounts import constants
@@ -47,6 +49,8 @@ _USERS = Table(
     # digest, a space apart (`metering.py`).
     Column("month", Text, nullable=True),
     Column("counted", Text, nullable=False, default=""),
+    # When mail to the address last came back as never deliverable; None if it never has.
+    Column("bounced_at", Integer, nullable=True),
 )
 
 
@@ -58,6 +62,7 @@ class User:
     email: str
     created_at: int
     is_unlimited: bool
+    bounced_at: int | None  # mail to them came back as never deliverable, so none is sent
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -89,11 +94,19 @@ class UserStore:
         """The account under `email`, made if need be, with or without a document limit."""
         added = insert(_USERS).values(_new_row(email, now=now, is_unlimited=is_unlimited))
         kept = added.on_conflict_do_update(
-            index_elements=[_USERS.c.email], set_={"is_unlimited": is_unlimited}
+            index_elements=[_USERS.c.email],
+            # Invited again, they're trusted to have mended their address.
+            set_={"is_unlimited": is_unlimited, "bounced_at": None},
         )
         with self.database.begin() as connection:
             connection.execute(kept)
             return _user_written(connection, email)
+
+    def note_bounce(self, email: str, *, now: int) -> bool:
+        """Note that mail to `email` can never be delivered; whether an account has it."""
+        noted = _USERS.update().where(_USERS.c.email == email).values(bounced_at=now)
+        with self.database.begin() as connection:
+            return connection.execute(noted).rowcount > 0
 
     def remove(self, email: str) -> bool:
         """Take the account under `email` off the table, its count too; whether it had one."""
@@ -139,6 +152,7 @@ def open_users(path: Path) -> UserStore:
     database = create_engine(f"sqlite:///{path}", poolclass=NullPool)
     event.listen(database, "connect", _set_up_connection)
     _TABLES.create_all(database)
+    _add_bounced_at(database)
     return UserStore(database)
 
 
@@ -162,6 +176,20 @@ def _set_up_connection(connection: Any, _record: Any) -> None:
     """
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA secure_delete=ON")
+
+
+def _add_bounced_at(database: Engine) -> None:
+    """Add `bounced_at` to a table made before bounces were kept; its rows read None.
+
+    Tried on every open: SQLite has no ADD COLUMN IF NOT EXISTS, and a look first
+    would race the app and the command line opening the file at once.
+    """
+    try:
+        with database.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN bounced_at INTEGER"))
+    except OperationalError as refused:  # raised by SQLite, as a column already there is
+        if "duplicate column name" not in str(refused):
+            raise
 
 
 def _user_written(connection: Any, email: str) -> User:
@@ -188,4 +216,10 @@ def _counted_from(counted_month: str | None, counted: str, *, month: str) -> fro
 
 def _user_from(row: Row[Any]) -> User:
     """A row of the table, read by name."""
-    return User(row.id, row.email, created_at=row.created_at, is_unlimited=row.is_unlimited)
+    return User(
+        row.id,
+        row.email,
+        created_at=row.created_at,
+        is_unlimited=row.is_unlimited,
+        bounced_at=row.bounced_at,
+    )

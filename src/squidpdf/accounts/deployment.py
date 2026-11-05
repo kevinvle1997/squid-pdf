@@ -27,6 +27,8 @@ _MAIL_FROM = "SQUIDPDF_MAIL_FROM"  # the address links come from, however they'r
 # Set, links go through Brevo's API, and the SMTP lines stay empty.
 _BREVO_KEY = "SQUIDPDF_BREVO_KEY"
 _SMTP_HOST = "SQUIDPDF_SMTP_HOST"  # names the mail server; set, the SMTP lines send
+# Set, Brevo's webhook may say which addresses bounce, sending it as its bearer token.
+_BREVO_WEBHOOK_TOKEN = "SQUIDPDF_BREVO_WEBHOOK_TOKEN"
 _SMTP = (
     _SMTP_HOST,
     "SQUIDPDF_SMTP_PORT",
@@ -58,7 +60,10 @@ class Allowance:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Accounts:
-    """What accounts need: the table, the mail, the secret and address, who may, how many."""
+    """What accounts need: the table, the mail, the secret and address, who may, how many.
+
+    And the token Brevo's webhook sends, to say which addresses bounce.
+    """
 
     users: UserStore
     mail: MailController
@@ -66,6 +71,7 @@ class Accounts:
     site: str  # where a link sends its reader, with no slash at the end
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
     allowance: Allowance | None  # None where the deployment meters nothing
+    webhook_token: bytes | None  # what Brevo's webhook sends; None where it has none
 
 
 def named_users() -> UserStore | None:
@@ -83,20 +89,34 @@ def deployed_accounts() -> Accounts | None:
         _refuse_metering_without_accounts()
         return None
     _require(_SECRET, _SITE, _MAIL_FROM)
-    secret = os.environ[_SECRET]
-    if len(secret) < _MIN_SECRET_CHARS:
-        raise AccountsUnset(f"{_SECRET} is shorter than {_MIN_SECRET_CHARS} characters")
+    secret = _secret_in(_SECRET)
     site = os.environ[_SITE].rstrip("/")
     if not site.startswith("https://"):
         raise AccountsUnset(f"{_SITE} must start with https://, as a link it opens must")
     return Accounts(
         users,
-        MailController(_mailer()),
-        secret=secret.encode(),
+        MailController(_mailer(), users),
+        secret=secret,
         site=site,
         invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in
         allowance=_allowance(),
+        webhook_token=_webhook_token(),
     )
+
+
+def _secret_in(name: str) -> bytes:
+    """The secret the variable `name` holds, or AccountsUnset if it's too short to be one."""
+    value = os.environ[name]
+    if len(value) < _MIN_SECRET_CHARS:
+        raise AccountsUnset(f"{name} is shorter than {_MIN_SECRET_CHARS} characters")
+    return value.encode()
+
+
+def _webhook_token() -> bytes | None:
+    """The token Brevo's webhook sends; None where the environment sets none."""
+    if not os.environ.get(_BREVO_WEBHOOK_TOKEN):  # .get: unset, no webhook is heard
+        return None
+    return _secret_in(_BREVO_WEBHOOK_TOKEN)
 
 
 def _allowance() -> Allowance | None:

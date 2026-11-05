@@ -1,7 +1,8 @@
-"""What the browser is told about accounts."""
+"""What the browser is told about accounts, and what Brevo's webhook tells the server."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TypedDict
 
 
@@ -24,3 +25,11 @@ class LinkSent(TypedDict):
     """A sign-in link is on its way: where, in the reader's words."""
 
     sentence: str
+
+
+@dataclass(frozen=True, slots=True)
+class MailEvent:
+    """What Brevo's webhook says happened to an email: its word for it, and the address."""
+
+    event: str
+    email: str

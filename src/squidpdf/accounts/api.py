@@ -1,4 +1,4 @@
-"""Accounts over HTTP: asking for a sign-in link, signing in with it, and signing out.
+"""Accounts over HTTP: a sign-in link asked for and used, signing out, and Brevo's bounces.
 
 Routes are HTTP only: read the request, call the action's controller, send what it hands
 back. Reading the account and signing out have none: each is one look at the cookie. Also
@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 
+from squidpdf.accounts.bounces import BounceController, is_brevo
 from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import InvitedOnly, NoAccounts
@@ -23,11 +24,12 @@ from squidpdf.accounts.sign_in import (
     signed_out,
     state_of,
 )
-from squidpdf.accounts.types import AccountState, LinkSent
+from squidpdf.accounts.types import AccountState, LinkSent, MailEvent
 from squidpdf.accounts.users import User
 from squidpdf.api import rate
 from squidpdf.api.language import ReaderLanguage
 from squidpdf.api.routing import response_of
+from squidpdf.core import NotFound
 
 router = APIRouter(prefix="/api/account")
 
@@ -121,3 +123,27 @@ async def sign_in(
 async def sign_out(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> Response:
     """Sign this browser out: its signed-in cookie cleared."""
     return response_of(signed_out(accounts), media_type=_JSON)
+
+
+def admit_brevo(
+    accounts: Annotated[Accounts, Depends(offered_accounts)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> Accounts:
+    """The app's accounts, or not_found unless this is Brevo's webhook, with its token.
+
+    Asked before the body is checked, so a stranger's is never read.
+    """
+    if not is_brevo(accounts, authorization):
+        raise NotFound()
+    return accounts
+
+
+@router.post("/mail-events", status_code=204)
+async def mail_events(
+    # Brevo sends one event, or a list where its webhook batches them.
+    body: MailEvent | list[MailEvent],
+    accounts: Annotated[Accounts, Depends(admit_brevo)],
+) -> Response:
+    """Brevo's webhook: note each address mail can never reach."""
+    events = body if isinstance(body, list) else [body]
+    return response_of(await BounceController(accounts).note(events), media_type=_JSON)
