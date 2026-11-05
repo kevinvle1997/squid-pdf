@@ -18,6 +18,7 @@ from squidpdf.core import ErrorController, Failure, Problem
 _SEND_URL = "https://api.brevo.com/v3/smtp/email"  # Brevo's address for one transactional email
 # Brevo's answers that its account sends no more for now: past its sending limit, or too fast.
 _LIMIT_STATUSES = frozenset({HTTPStatus.PAYMENT_REQUIRED, HTTPStatus.TOO_MANY_REQUESTS})
+_NO_CODE = "no code"  # what the log says where an answer names no code
 
 
 def _problem_of_refusal(failure: Exception) -> Problem:
@@ -32,13 +33,13 @@ def _problem_of_refusal(failure: Exception) -> Problem:
 
 
 def _code_in(answer: httpx.Response) -> str:
-    """Brevo's word for why it refused, as its JSON names it; "no code" where it names none."""
+    """Brevo's word for why it refused, as its JSON names it; _NO_CODE where it names none."""
     try:
         said = answer.json()
     except ValueError:  # raised by the JSON reader: a proxy's page, not Brevo's answer
-        return "no code"
+        return _NO_CODE
     # .get: its JSON names the code, but a proxy's may not.
-    return str(said.get("code", "no code")) if isinstance(said, dict) else "no code"
+    return str(said.get("code", _NO_CODE)) if isinstance(said, dict) else _NO_CODE
 
 
 # Brevo's failures. Its refusal first: an HTTPStatusError is an HTTPError too.
