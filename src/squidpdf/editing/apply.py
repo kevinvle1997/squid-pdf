@@ -270,6 +270,7 @@ class _PageOps:
             return []
         # On top of any earlier ones, a whole turn coming back to none.
         if isinstance(op, RotatePage):
+            # .get: the page's first turn.
             self.turns[op.page] = turn_added(self.turns.get(op.page, 0), op.degrees)
             return []
         # The last page left: a file can't have none.
@@ -320,6 +321,7 @@ def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
 
     Turned back as far as its page turns, an edit's turn included.
     """
+    # .get: most pages have no turn among the edits.
     return [
         turn_added(page.turn_cw, resolved.turns.get(number, 0))
         for number, page in enumerate(engine.pages())

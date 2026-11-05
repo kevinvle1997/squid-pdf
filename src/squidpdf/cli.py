@@ -189,6 +189,7 @@ def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
     """
     with _opened(pdf) as engine:
         index = engine.index()
+        # .get: the id is typed on the command line, so the file may have no such span.
         span = index.get(span_id)
         if span is None:
             raise _UnknownSpan(span_id)
