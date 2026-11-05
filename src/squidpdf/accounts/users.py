@@ -53,7 +53,12 @@ _USERS = Table(
     Column("counted", Text, nullable=False, default=""),
     # When mail to the address last came back as never deliverable; None if it never has.
     Column("bounced_at", Integer, nullable=True),
+    # Until when the last sign-in link used held (Unix seconds); None until one is used. A link
+    # is used once, and an older one is used up with it.
+    Column("link_until", Integer, nullable=True),
 )
+# Columns added since the table was first made, each added to a table from before it.
+_ADDED_COLUMNS = ("bounced_at", "link_until")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +115,19 @@ class UserStore:
         with self.database.begin() as connection:
             return connection.execute(noted).rowcount > 0
 
+    def spend_link(self, email: str, *, until: int) -> bool:
+        """Use up the link that holds `until` for `email`'s account; whether it was unused.
+
+        One statement, so a link traded twice at once signs in once. An older link is used
+        up with a newer one, so a link left in an inbox works once, and only the newest.
+        """
+        unused = _USERS.c.link_until.is_(None) | (_USERS.c.link_until < until)
+        spending = (
+            _USERS.update().where(_USERS.c.email == email, unused).values(link_until=until)
+        )
+        with self.database.begin() as connection:
+            return connection.execute(spending).rowcount > 0
+
     def remove(self, email: str) -> bool:
         """Take the account under `email` off the table, its count too; whether it had one."""
         with self.database.begin() as connection:
@@ -163,7 +181,8 @@ def open_users(path: Path) -> UserStore:
     database = create_engine(f"sqlite:///{path}", poolclass=NullPool)
     event.listen(database, "connect", _set_up_connection)
     _TABLES.create_all(database)
-    _add_bounced_at(database)
+    for column in _ADDED_COLUMNS:
+        _add_column(database, column)
     return UserStore(database)
 
 
@@ -189,15 +208,15 @@ def _set_up_connection(connection: Any, _record: Any) -> None:
     connection.execute("PRAGMA secure_delete=ON")
 
 
-def _add_bounced_at(database: Engine) -> None:
-    """Add `bounced_at` to a table made before bounces were kept; its rows read None.
+def _add_column(database: Engine, column: str) -> None:
+    """Add the nullable integer `column` to a table made before it was one; its rows read None.
 
     Tried on every open: SQLite has no ADD COLUMN IF NOT EXISTS, and a look first
     would race the app and the command line opening the file at once.
     """
     try:
         with database.begin() as connection:
-            connection.execute(text("ALTER TABLE users ADD COLUMN bounced_at INTEGER"))
+            connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} INTEGER"))
     except OperationalError as refused:  # raised by SQLite, as a column already there is
         if "duplicate column name" not in str(refused):
             raise

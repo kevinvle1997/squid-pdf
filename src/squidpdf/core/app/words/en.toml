@@ -345,7 +345,7 @@ char_u006c = "lowercase l"
 
 # Signing in.
 not_an_email = "That isn't an email address a sign-in link could reach."
-link_expired = "This sign-in link has run out, or isn't whole. Ask for a new one."
+link_expired = "This sign-in link has been used or has run out, or isn't whole. Ask for a new one."
 mail_not_sent = "The sign-in email couldn't be sent just now. Try again in a minute."
 mail_limit_reached = "squid-pdf has sent all the sign-in emails it can for now. Try again later."
 no_accounts = "This copy of squid-pdf keeps no accounts, so there's nothing to sign in to."

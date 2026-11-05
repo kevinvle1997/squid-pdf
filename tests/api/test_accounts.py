@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -142,6 +143,28 @@ def test_a_link_past_its_time_altered_or_not_a_link_signs_no_one_in(
     # A cookie anyone could send, a letter past ASCII in it: read as no one, not a server error.
     reader.cookies.set("__Host-signed-in", "a.\u00e9", domain="testserver")
     assert_equal(reader.get("/api/account").json()["signed_in"], None, "a forged cookie")
+
+
+def test_a_link_signs_in_once_and_uses_up_the_links_sent_before_it(
+    mail, browser: Callable[[], TestClient]
+):
+    """A link left in an inbox, or seen by a mail scanner, signs no second browser in."""
+    reader, other = browser(), browser()
+    # Sent before the one the reader uses, as a first attempt whose mail was slow.
+    earlier = signed(_EMAIL, purpose="link", until=int(time.time()) + 100, secret=_SECRET)
+    reader.post("/api/account/link", json={"email": _EMAIL})
+    token = _token_in(mail.letters[0])
+    assert_equal(
+        reader.post("/api/account/sign-in", json={"token": token}).status_code, 200, "1"
+    )
+    assert_problem(
+        other.post("/api/account/sign-in", json={"token": token}), "link_expired", 400
+    )
+    assert_equal(other.get("/api/account").json()["signed_in"], None, "the second browser")
+    assert_problem(
+        reader.post("/api/account/sign-in", json={"token": earlier}), "link_expired", 400
+    )
+    assert_equal(reader.get("/api/account").json()["signed_in"]["email"], _EMAIL, "still in")
 
 
 def test_what_cannot_be_an_email_address_is_refused_before_anything_is_sent(
@@ -317,8 +340,8 @@ def test_a_hard_bounce_stops_links_to_the_address_until_it_is_invited_again(
     assert_equal(len(invited_mail.letters), 2, "invited again, links go to it again")
 
 
-def test_a_table_made_before_bounces_were_kept_opens_with_none(tmp_path):
-    """An account kept from before bounced_at was a column: its row reads as never bounced."""
+def test_a_table_made_before_bounces_and_used_links_were_kept_opens_with_none(tmp_path):
+    """An account from before bounced_at and link_until were columns reads as it had neither."""
     path = tmp_path / "users.sqlite3"
     with sqlite3.connect(path) as old:
         old.execute(
@@ -331,7 +354,8 @@ def test_a_table_made_before_bounces_were_kept_opens_with_none(tmp_path):
     kept = open_users(path).find(_EMAIL)
     assert_equal(kept is None, False, "the account is kept")
     assert_equal(None if kept is None else kept.bounced_at, None, "never bounced")
-    open_users(path)  # opened again: the column it added is there now
+    assert_true(open_users(path).spend_link(_EMAIL, until=1), "its first link is unused")
+    open_users(path)  # opened again: the columns it added are there now
 
 
 def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], TestClient]):
@@ -364,6 +388,33 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatc
             neighbour.post("/api/account/link", json={"email": _EMAIL}).status_code, 202, "2"
         )
     assert_equal(len(noted.letters), 2, "letters sent")
+
+
+def test_an_inbox_sent_its_links_while_one_works_is_told_to_wait_from_any_address(
+    tmp_path, monkeypatch
+):
+    """Its own app: every other test asks for the one test address."""
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "data"))
+    monkeypatch.setattr(limits, "LINKS_PER_INBOX", 1)
+    noted = _NotedMail()
+    app = create_app()
+    app.state.accounts = _accounts(tmp_path, noted)
+    with TestClient(app) as server:  # runs the lifespan, which makes the counts
+        reader = browser_on(server, client=("192.0.2.1", 1))
+        neighbour = browser_on(server, client=("198.51.100.7", 1))
+        assert_equal(
+            reader.post("/api/account/link", json={"email": _EMAIL}).status_code, 202, "1"
+        )
+        # The same inbox, however the address is typed, from another address.
+        again = neighbour.post("/api/account/link", json={"email": _EMAIL.upper()})
+        assert_problem(again, "rate_limited", 429)
+        other_inbox = neighbour.post("/api/account/link", json={"email": "other@example.com"})
+        assert_equal(other_inbox.status_code, 202, "another inbox")
+        # What can't be an address is refused as one, and counts nothing.
+        assert_problem(
+            neighbour.post("/api/account/link", json={"email": "nobody"}), "not_an_email", 422
+        )
+    assert_equal([letter.to for letter in noted.letters], [_EMAIL, "other@example.com"], "sent")
 
 
 @pytest.mark.parametrize(
@@ -457,6 +508,16 @@ def _sign_in(reader: TestClient, mail: _NotedMail, email: str = _EMAIL) -> None:
     assert_equal(signed_in.status_code, 200, "signed in")
 
 
+def _sign_in_a_moment_later(reader: TestClient, email: str = _EMAIL) -> None:
+    """Sign `reader` in as `email` by a link asked for a moment after another browser's.
+
+    Asked for in the same second, it would be the very same link, and used already.
+    """
+    later = signed(email, purpose="link", until=int(time.time()) + 1000, secret=_SECRET)
+    signed_in = reader.post("/api/account/sign-in", json={"token": later})
+    assert_equal(signed_in.status_code, 200, "signed in")
+
+
 def test_with_no_account_a_browser_opens_its_free_documents_once_each_then_must_sign_in(
     metered_mail, browser: Callable[[], TestClient], pdf_bytes
 ):
@@ -496,7 +557,7 @@ def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
     assert_problem(upload(reader, files[3]), "monthly_documents_used", 403)
     # The same account in another browser has used the same month.
     elsewhere = browser()
-    _sign_in(elsewhere, metered_mail)
+    _sign_in_a_moment_later(elsewhere)
     assert_problem(upload(elsewhere, files[4]), "monthly_documents_used", 403)
 
 
@@ -570,15 +631,16 @@ def test_invite_only_a_removed_friend_is_let_go_from_every_browser_at_once(
     users = app.state.accounts.users
     users.invite(_EMAIL, now=0, is_unlimited=False)
     laptop, phone = browser(), browser()
+    _sign_in(laptop, invited_mail)
+    _sign_in_a_moment_later(phone)
     for signed_in in (laptop, phone):
-        _sign_in(signed_in, invited_mail)
         assert_equal(upload(signed_in, pdf_bytes).status_code, 201, "in, before removal")
     assert_true(users.remove(_EMAIL), "the account was there to remove")
     for signed_in in (laptop, phone):
         assert_problem(upload(signed_in, pdf_bytes), "invited_only", 401)
         assert_equal(signed_in.get("/api/account").json()["signed_in"], None, "signed out")
     laptop.post("/api/account/link", json={"email": _EMAIL})
-    assert_equal(len(invited_mail.letters), 2, "no link for an address no longer invited")
+    assert_equal(len(invited_mail.letters), 1, "no link for an address no longer invited")
 
 
 def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(

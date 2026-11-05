@@ -90,6 +90,16 @@ def test_an_address_may_upload_again_a_minute_after_its_first():
     )
 
 
+def test_a_record_made_with_its_own_window_counts_a_start_that_long():
+    """What an inbox is sent counts as long as a link works, not for a minute."""
+    recent = RecentStarts(window_s=15 * _MINUTE_S)
+    assert_true(recent.admit(_ONE, now=0.0, limit=1), "the first")
+    assert_false(recent.admit(_ONE, now=14 * _MINUTE_S, limit=1), "another, well past a minute")
+    assert_true(
+        recent.admit(_ONE, now=15 * _MINUTE_S + 1, limit=1), "once the window has passed"
+    )
+
+
 def test_addresses_quiet_for_a_minute_are_forgotten():
     """A flood from many addresses leaves nothing behind once it stops."""
     recent = RecentStarts()
@@ -100,13 +110,13 @@ def test_addresses_quiet_for_a_minute_are_forgotten():
 
 
 def test_uploads_that_forget_quiet_addresses_equal_fresh_ones_but_for_the_clock():
-    """A forget notes when it ran, so that alone differs from a fresh record."""
-    recent = RecentStarts()
-    recent.admit(_ONE, now=2 * _MINUTE_S, limit=1)
+    """A forget notes when it ran, so that alone differs from a fresh record with its window."""
+    recent = RecentStarts(window_s=2 * _MINUTE_S)
+    recent.admit(_ONE, now=3 * _MINUTE_S, limit=1)
     assert_every_field_filled(recent, RecentStarts(), "the record once one upload is counted")
 
-    recent.forget_quiet(4 * _MINUTE_S)
+    recent.forget_quiet(5 * _MINUTE_S)
 
-    fresh = RecentStarts()
+    fresh = RecentStarts(window_s=2 * _MINUTE_S)
     as_if_fresh = replace(recent, forgotten_at=fresh.forgotten_at)
     assert_equal(as_if_fresh, fresh, "the record once it forgot, its clock aside")

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+from dataclasses import dataclass
 from typing import Literal
 
 import orjson
@@ -20,14 +21,22 @@ Purpose = Literal["link", "signed_in", "counted"]
 _SEPARATOR = "."
 
 
+@dataclass(frozen=True, slots=True)
+class Signed:
+    """What a token was signed with: its value, and until when it holds (Unix seconds)."""
+
+    value: str
+    until: int
+
+
 def signed(value: str, *, purpose: Purpose, until: int, secret: bytes) -> str:
     """`value`, good for `purpose` until `until` (Unix seconds), as text safe in a URL."""
     payload = _encoded(orjson.dumps({"value": value, "until": until}))
     return f"{payload}{_SEPARATOR}{_signature(payload, purpose=purpose, secret=secret)}"
 
 
-def value_of(token: str, *, purpose: Purpose, now: int, secret: bytes) -> str | None:
-    """The value `token` was signed with for `purpose`; None if past, altered or not ours."""
+def read_signed(token: str, *, purpose: Purpose, now: int, secret: bytes) -> Signed | None:
+    """What `token` was signed with for `purpose`; None if past, altered or not ours."""
     payload, _, signature = token.partition(_SEPARATOR)
     expected = _signature(payload, purpose=purpose, secret=secret)
     # As bytes: compare_digest raises, not answers, for text with a letter past ASCII.
@@ -40,7 +49,7 @@ def value_of(token: str, *, purpose: Purpose, now: int, secret: bytes) -> str | 
     # Its time is past.
     if read["until"] <= now:
         return None
-    return read["value"]
+    return Signed(read["value"], read["until"])
 
 
 def _signature(payload: str, *, purpose: Purpose, secret: bytes) -> str:
