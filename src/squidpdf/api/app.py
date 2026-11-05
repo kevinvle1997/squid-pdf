@@ -92,26 +92,8 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
         else AccountMeters(accounts, accounts.allowance)
     )
     install(app)
-    # Where only the invited may, each route that works asks first, before any body is read.
-    invited = [Depends(accounts_api.admit_invited)]
-    app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
-    app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
-    app.include_router(
-        editing_api.fonts_router, responses=_PROBLEM_RESPONSES, dependencies=invited
-    )
-    app.include_router(terms_api.router, responses=_PROBLEM_RESPONSES)
-    app.include_router(accounts_api.router, responses=_PROBLEM_RESPONSES)
-    # By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
-    streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
-    streamed_routes = tuple(
-        route
-        for route in documents_api.router.routes
-        if isinstance(route, APIRoute) and route.name in streamed
-    )
-    # A name that no longer finds its route would hold that body to the edit list's limit.
-    if len(streamed_routes) != len(streamed):
-        raise RuntimeError(f"routes that stream their own body: {sorted(streamed)}, not found")
-    app.add_middleware(BodyLimit, streamed=streamed_routes)
+    _include_features(app)
+    app.add_middleware(BodyLimit, streamed=_streamed_routes())
     # Outside BodyLimit, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
@@ -130,3 +112,33 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     # 30 s isn't: a failing one shows in `docker ps`.
     app.add_middleware(AccessLog, unlogged=frozenset([app.url_path_for(health.__name__)]))
     return app
+
+
+def _include_features(app: FastAPI) -> None:
+    """Each feature's routes, every one able to answer with a Problem."""
+    # Where only the invited may, each route that works asks first, before any body is read.
+    invited = [Depends(accounts_api.admit_invited)]
+    app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
+    app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
+    app.include_router(
+        editing_api.fonts_router, responses=_PROBLEM_RESPONSES, dependencies=invited
+    )
+    app.include_router(terms_api.router, responses=_PROBLEM_RESPONSES)
+    app.include_router(accounts_api.router, responses=_PROBLEM_RESPONSES)
+
+
+def _streamed_routes() -> tuple[APIRoute, ...]:
+    """The routes that stream their own body, and check its size themselves: upload's two.
+
+    By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
+    """
+    streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
+    routes = tuple(
+        route
+        for route in documents_api.router.routes
+        if isinstance(route, APIRoute) and route.name in streamed
+    )
+    # A name that no longer finds its route would hold that body to the edit list's limit.
+    if len(routes) != len(streamed):
+        raise RuntimeError(f"routes that stream their own body: {sorted(streamed)}, not found")
+    return routes
