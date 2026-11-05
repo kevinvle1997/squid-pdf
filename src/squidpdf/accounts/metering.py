@@ -35,6 +35,7 @@ class AccountMeters:
         Reads the table: a browser signed in to an account since removed counts as one
         with none.
         """
+        # .get: a browser that never signed in has no cookie.
         user = signed_in_user(self.accounts, cookies.get(SIGNED_IN))
         if user is not None:
             return _AccountMeter(self.accounts, self.allowance, user=user)
