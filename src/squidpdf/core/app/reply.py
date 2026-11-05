@@ -12,8 +12,8 @@ from http import HTTPStatus
 
 @dataclass(frozen=True, slots=True)
 class Reply[T]:
-    """A reply ready to send: `body` is the bytes, or the data the framework writes out."""
+    """A reply ready to send: `body` is the bytes, a file to stream, or the data written out."""
 
-    body: T = field(repr=False)  # a PNG, a PDF or a whole JSON body
+    body: T = field(repr=False)  # a PNG, an open PDF, or a whole JSON body
     headers: dict[str, str]
     status: int = HTTPStatus.OK

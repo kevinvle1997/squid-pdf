@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
+from io import BufferedReader
 from pathlib import Path
 
 from squidpdf.core import (
@@ -58,7 +59,7 @@ from squidpdf.editing.redaction import redactions_of
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
 
-_EXPORTED = "export.pdf"  # the file saved and checked by the worker, then read by the server
+_EXPORTED = "export.pdf"  # saved and checked by the worker, then streamed by the server
 _PRODUCER = "squidpdf"  # the Producer an exported file names: the program that changed it last
 _UNLISTED = "unlisted"  # the font logged for one none of our lists name: its name is the file's
 
@@ -85,8 +86,8 @@ class ExportController:
 
     async def export(
         self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, language: str
-    ) -> Reply[bytes]:
-        """The edited PDF, every page or `pages` in that order, and headers for the rest.
+    ) -> Reply[BufferedReader]:
+        """The edited PDF, open to stream, every page or `pages` in that order, and headers.
 
         Refuses edits over the limits and pages the document lacks. A
         redaction still in the saved file fails the whole request.
@@ -103,12 +104,12 @@ class ExportController:
             exported = await self._enqueue_make_pdf(
                 doc.folder, scratch, edits=edits, pages=pages
             )
-            # Read here, not sent back: a large file in pebble's one result pipe would hold
-            # up every other worker's answer while it crossed.
-            pdf = await asyncio.to_thread((scratch / _EXPORTED).read_bytes)
+            # Opened here, not sent back: a large file in pebble's one result pipe would hold
+            # up every other worker's answer. Streamed from the handle, never held whole.
+            pdf = await asyncio.to_thread(_opened_to_read, scratch / _EXPORTED)
         finally:
-            # In a thread: it may hold the whole file. The thread finishes even if the
-            # request is cancelled again. Nothing to keep, so a failure is ignored.
+            # In a thread: it may hold the whole file. An open file outlives its folder, so
+            # the reply still streams it. Nothing to keep, so a failure is ignored.
             await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
         return Reply(pdf, _reply_headers(exported, language))
 
@@ -118,6 +119,11 @@ class ExportController:
         """Make the PDF on a worker."""
         task = partial(_make_pdf, self.documents, folder, scratch, edits=edits, pages=pages)
         return await self.workers.run(EXPORT_TIMEOUT_S, task)
+
+
+def _opened_to_read(path: Path) -> BufferedReader:
+    """`path`, opened to be read from its start."""
+    return path.open("rb")
 
 
 def _make_pdf(
