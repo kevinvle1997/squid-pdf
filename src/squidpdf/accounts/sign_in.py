@@ -14,11 +14,13 @@ from http import HTTPStatus
 from squidpdf.accounts import constants
 from squidpdf.accounts.cookies import SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts
-from squidpdf.accounts.errors import LinkExpired, NotInvited
+from squidpdf.accounts.errors import LinkExpired, MailLimitReached, MailNotSent, NotInvited
 from squidpdf.accounts.signed import signed, value_of
 from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
 from squidpdf.accounts.users import User, checked_email
-from squidpdf.core import Message, Reply, words
+from squidpdf.core import LogController, LogEvent, Message, Reply, words
+
+_log = LogController.for_module(__name__)
 
 _LINK_PATH = "/sign-in#"  # the browser's page that trades a link's token, kept out of logs
 _SECONDS_A_MINUTE = 60
@@ -49,14 +51,20 @@ class LinkController:
             # No one invited them: nothing is sent, and the reply is what the invited get.
             if invited is None:
                 return reply
-        # Off the server's thread: a mail server can take seconds to answer.
-        await asyncio.to_thread(
-            self.accounts.mail.send_sign_in_link,
-            email,
-            link=self._link_for(email),
-            minutes=_link_minutes(),
-            language=language,
-        )
+        try:
+            # Off the server's thread: a mailer can take seconds to answer.
+            await asyncio.to_thread(
+                self.accounts.mail.send_sign_in_link,
+                email,
+                link=self._link_for(email),
+                minutes=_link_minutes(),
+                language=language,
+            )
+        except (MailNotSent, MailLimitReached) as refused:  # raised by the mailer
+            # Said only to the invited, a refusal would tell anyone who is: the log keeps it.
+            if not self.accounts.invite_only:
+                raise
+            _log.write(LogEvent.LINK_NOT_SENT_UNSAID, refused)
         return reply
 
     def _link_for(self, email: str) -> str:

@@ -11,7 +11,7 @@ SIGNED_IN_S = 30 * 24 * 60 * 60
 # The files a browser opened without an account are kept counted this long: a year, past
 # which someone back with no account is as good as new.
 COUNTED_KEPT_S = 365 * 24 * 60 * 60
-# How long the mail server has to answer, each step: a hung one holds a thread, not the app.
+# How long the mailer has to answer, each step: a hung one holds a thread, not the app.
 MAIL_TIMEOUT_S = 20
 # Longest address a mail server takes (RFC 5321's path, less its brackets).
 MAX_EMAIL_CHARS = 254

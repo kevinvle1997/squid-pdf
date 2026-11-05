@@ -116,6 +116,7 @@ class LogEvent(Enum):
     GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
     GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
     EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", NOTED, INFO)
+    LINK_NOT_SENT_UNSAID = _EventFacts("link_not_sent_unsaid", FAILED, WARN)
 
 
 @dataclass(frozen=True, slots=True)

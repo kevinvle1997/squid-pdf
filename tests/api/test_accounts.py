@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance
-from squidpdf.accounts.mail import Letter, MailController, Mailer, SmtpMailer
+from squidpdf.accounts.mail import Letter, MailController, Mailer, SmtpMailer, brevo_mailer
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
@@ -180,6 +182,107 @@ def test_a_mail_server_that_cannot_be_reached_says_the_link_was_not_sent(
     monkeypatch.setattr(app.state, "accounts", _accounts(tmp_path, unreachable))
     refused = browser().post("/api/account/link", json={"email": _EMAIL})
     assert_problem(refused, "mail_not_sent", 503)
+
+
+def test_a_link_sent_through_brevo_goes_as_its_api_asks(
+    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient]
+):
+    asked: list[httpx.Request] = []
+
+    def brevo(request: httpx.Request) -> httpx.Response:
+        asked.append(request)
+        return httpx.Response(201, json={"messageId": "<1@smtp-relay.mailin.fr>"})
+
+    mailer = brevo_mailer(
+        "a-brevo-key",
+        sender="squid-pdf <sign-in@example.com>",
+        transport=httpx.MockTransport(brevo),
+    )
+    monkeypatch.setattr(app.state, "accounts", _accounts(tmp_path, mailer))
+    sent = browser().post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(sent.status_code, 202, "the link is on its way")
+    [request] = asked
+    assert_equal(str(request.url), "https://api.brevo.com/v3/smtp/email", "where it went")
+    assert_equal(request.headers["api-key"], "a-brevo-key", "the account's key")
+    body = json.loads(request.content)
+    assert_equal(body["sender"], {"name": "squid-pdf", "email": "sign-in@example.com"}, "from")
+    assert_equal(body["to"], [{"email": _EMAIL}], "to")
+    assert_in(f"{_SITE}/sign-in#", body["textContent"], "the link, in the letter")
+
+
+@pytest.mark.parametrize(
+    ("answer", "said"),
+    [
+        (httpx.Response(401, json={"code": "unauthorized"}), "mail_not_sent"),
+        (httpx.Response(402, json={"code": "not_enough_credits"}), "mail_limit_reached"),
+        (httpx.ConnectError("no route to Brevo"), "mail_not_sent"),
+    ],
+    ids=["a key it refuses", "past its sending limit", "unreachable"],
+)
+def test_brevo_refusing_a_link_says_whether_to_wait(
+    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient], answer, said
+):
+    """Past its sending limit, waiting a minute won't help, so the sentence says so."""
+
+    def brevo(request: httpx.Request) -> httpx.Response:
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    mailer = brevo_mailer(
+        "k", sender="sign-in@example.com", transport=httpx.MockTransport(brevo)
+    )
+    monkeypatch.setattr(app.state, "accounts", _accounts(tmp_path, mailer))
+    assert_problem(browser().post("/api/account/link", json={"email": _EMAIL}), said, 503)
+
+
+def test_invite_only_a_refused_link_is_said_as_any_address_is(
+    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient]
+):
+    """Refused only for the invited, it would tell anyone who is invited."""
+
+    def brevo(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(402, json={"code": "not_enough_credits"})
+
+    mailer = brevo_mailer(
+        "k", sender="sign-in@example.com", transport=httpx.MockTransport(brevo)
+    )
+    accounts = _accounts(tmp_path, mailer, invite_only=True)
+    accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    monkeypatch.setattr(app.state, "accounts", accounts)
+    reader = browser()
+    invited = reader.post("/api/account/link", json={"email": _EMAIL})
+    stranger = reader.post("/api/account/link", json={"email": "stranger@example.com"})
+    assert_equal(invited.status_code, 202, "the invited, refused")
+    assert_equal(
+        invited.json()["sentence"].replace(_EMAIL, "<email>"),
+        stranger.json()["sentence"].replace("stranger@example.com", "<email>"),
+        "the same words for both",
+    )
+
+
+def test_a_brevo_key_sends_without_smtp_but_never_beside_it(tmp_path, monkeypatch):
+    """Said as the server starts: which way sends, and from what, is the deployer's to say."""
+    for name, value in {
+        "SQUIDPDF_DATABASE": str(tmp_path / "users.sqlite3"),
+        "SQUIDPDF_SECRET": _SECRET.decode(),
+        "SQUIDPDF_SITE": _SITE,
+        "SQUIDPDF_MAIL_FROM": "sign-in@example.com",
+        "SQUIDPDF_BREVO_KEY": "a-brevo-key",
+    }.items():
+        monkeypatch.setenv(name, value)
+    assert_equal(
+        TestClient(create_app(), base_url=BASE_URL).get("/api/account").json()["offered"],
+        True,
+        "with a key and no mail server",
+    )
+    monkeypatch.setenv("SQUIDPDF_MAIL_FROM", "squid-pdf sign-in@example.com")
+    with pytest.raises(AccountsUnset, match="not one address"):
+        create_app()
+    monkeypatch.setenv("SQUIDPDF_MAIL_FROM", "squid-pdf <sign-in@example.com>")
+    monkeypatch.setenv("SQUIDPDF_SMTP_HOST", "mail.example.com")
+    with pytest.raises(AccountsUnset, match="both name a way to send mail"):
+        create_app()
 
 
 def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], TestClient]):

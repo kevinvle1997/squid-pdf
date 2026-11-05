@@ -18,10 +18,10 @@ class Letter:
 
 
 class Mailer(Protocol):
-    """What sends a letter: a mail server, or a test's double noting what it was given."""
+    """What sends an email: SMTP, Brevo's API, or a test's double noting what it was given."""
 
     def send(self, letter: Letter) -> None:
-        """Send `letter`, or raise MailNotSent saying the server didn't take it."""
+        """Send `letter`, or raise the Problem saying why it wasn't sent."""
         ...
 
 
@@ -32,7 +32,7 @@ class MailController:
     mailer: Mailer
 
     def send_sign_in_link(self, email: str, *, link: str, minutes: int, language: str) -> None:
-        """Send `email` the `link` signing it in for `minutes`, or raise MailNotSent."""
+        """Send `email` the `link` signing it in for `minutes`, or raise why it wasn't."""
         subject = words.render(Message("sign_in_subject"), language)
         body = words.render(
             Message("sign_in_letter", {"link": link, "minutes": minutes}), language
