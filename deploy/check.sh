@@ -43,7 +43,8 @@ read -r status seconds < <(call "${browser[@]}" --retry 10 --retry-all-errors --
 [[ $status == 200 ]] && jq -e '.status == "ok"' "$work/body" >/dev/null ||
   fail "/api/health answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "/api/health answers a stranger, with no password: $status in ${seconds}s"
-[[ $(header strict-transport-security) == max-age=31536000 ]] ||
+# header() drops spaces, so the directive is matched without them.
+[[ $(header strict-transport-security) == "max-age=31536000;includeSubDomains" ]] ||
   fail "the reply's Strict-Transport-Security is '$(header strict-transport-security)'"
 [[ $(header x-content-type-options) == nosniff ]] ||
   fail "the reply's X-Content-Type-Options is '$(header x-content-type-options)'"
