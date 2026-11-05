@@ -117,6 +117,8 @@ class LogEvent(Enum):
     GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
     EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", NOTED, INFO)
     LINK_NOT_SENT_UNSAID = _EventFacts("link_not_sent_unsaid", FAILED, WARN)
+    MAIL_BOUNCE_NOTED = _EventFacts("mail_bounce_noted", NOTED, INFO)
+    MAIL_TO_BOUNCED_SKIPPED = _EventFacts("mail_to_bounced_skipped", SKIPPED, INFO)
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,8 +5,8 @@
 #   deploy/invite.sh them@example.com [more@example.com ...]
 #   deploy/invite.sh --unlimited friend@example.com [...]   no document limit
 #
-# Inviting someone again without --unlimited ends theirs. Stops at the first address the
-# app refuses; those before it are in, and inviting them again changes nothing.
+# Inviting someone again without --unlimited ends theirs, and clears a bounce. Stops at the
+# first address the app refuses; those before it are in, and inviting them again is harmless.
 set -euo pipefail
 
 usage() {

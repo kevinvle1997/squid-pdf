@@ -252,6 +252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/mail-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mail Events
+         * @description Brevo's webhook: note each address mail can never reach.
+         */
+        post: operations["mail_events_api_account_mail_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -661,6 +681,16 @@ export interface components {
         LinkSent: {
             /** Sentence */
             sentence: string;
+        };
+        /**
+         * MailEvent
+         * @description What Brevo's webhook says happened to an email: its word for it, and the address.
+         */
+        MailEvent: {
+            /** Event */
+            event: string;
+            /** Email */
+            email: string;
         };
         /**
          * MessageInfo
@@ -1612,6 +1642,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AccountState"];
                 };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    mail_events_api_account_mail_events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailEvent"] | components["schemas"]["MailEvent"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Problem Details: what went wrong, in the reader's words */
             default: {

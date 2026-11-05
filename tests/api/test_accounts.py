@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -24,6 +25,7 @@ from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 _SECRET = b"a test's secret, long enough to sign with"
 _SITE = "https://pdf.example.com"
 _EMAIL = "reader@example.com"
+_WEBHOOK_TOKEN = b"the token Brevo's webhook sends, long enough"
 
 
 @dataclass(slots=True)
@@ -39,14 +41,16 @@ class _NotedMail:
 def _accounts(
     tmp_path, mailer: Mailer, *, invite_only: bool = False, allowance: Allowance | None = None
 ) -> Accounts:
-    """Accounts kept in a fresh table, their letters sent through `mailer`."""
+    """Accounts kept in a fresh table, their letters sent through `mailer`, bounces heard."""
+    users = open_users(tmp_path / "users.sqlite3")
     return Accounts(
-        open_users(tmp_path / "users.sqlite3"),
-        MailController(mailer),
+        users,
+        MailController(mailer, users),
         secret=_SECRET,
         site=_SITE,
         invite_only=invite_only,
         allowance=allowance,
+        webhook_token=_WEBHOOK_TOKEN,
     )
 
 
@@ -283,6 +287,51 @@ def test_a_brevo_key_sends_without_smtp_but_never_beside_it(tmp_path, monkeypatc
     monkeypatch.setenv("SQUIDPDF_SMTP_HOST", "mail.example.com")
     with pytest.raises(AccountsUnset, match="both name a way to send mail"):
         create_app()
+
+
+def test_a_hard_bounce_stops_links_to_the_address_until_it_is_invited_again(
+    invited_mail, app: FastAPI, browser: Callable[[], TestClient]
+):
+    users = app.state.accounts.users
+    users.invite(_EMAIL, now=0, is_unlimited=False)
+    reader, brevo = browser(), browser()
+    bearer = {"Authorization": f"Bearer {_WEBHOOK_TOKEN.decode()}"}
+    bounced = {"event": "hard_bounce", "email": _EMAIL.upper(), "reason": "no such mailbox"}
+    for stranger in ({}, {"Authorization": "Bearer a guess"}):
+        for body in (bounced, {"not": "an event"}):
+            refused = brevo.post("/api/account/mail-events", json=body, headers=stranger)
+            assert_problem(refused, "not_found", 404)
+    delivered = {"event": "delivered", "email": _EMAIL}
+    noted = brevo.post("/api/account/mail-events", json=delivered, headers=bearer)
+    assert_equal(noted.status_code, 204, "heard, and no news")
+    reader.post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(len(invited_mail.letters), 1, "a delivered letter stops nothing")
+    # Batched, as Brevo's webhook may send them.
+    noted = brevo.post("/api/account/mail-events", json=[delivered, bounced], headers=bearer)
+    assert_equal(noted.status_code, 204, "noted")
+    sent = reader.post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(sent.status_code, 202, "said the same as any address")
+    assert_equal(len(invited_mail.letters), 1, "nothing more went to a bounced address")
+    users.invite(_EMAIL, now=1, is_unlimited=False)
+    reader.post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(len(invited_mail.letters), 2, "invited again, links go to it again")
+
+
+def test_a_table_made_before_bounces_were_kept_opens_with_none(tmp_path):
+    """An account kept from before bounced_at was a column: its row reads as never bounced."""
+    path = tmp_path / "users.sqlite3"
+    with sqlite3.connect(path) as old:
+        old.execute(
+            "CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL,"
+            " created_at INTEGER NOT NULL, is_unlimited BOOLEAN NOT NULL,"
+            " month TEXT, counted TEXT NOT NULL)"
+        )
+        old.execute("INSERT INTO users VALUES ('an-id', ?, 0, 0, NULL, '')", (_EMAIL,))
+    old.close()
+    kept = open_users(path).find(_EMAIL)
+    assert_equal(kept is None, False, "the account is kept")
+    assert_equal(None if kept is None else kept.bounced_at, None, "never bounced")
+    open_users(path)  # opened again: the column it added is there now
 
 
 def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], TestClient]):
