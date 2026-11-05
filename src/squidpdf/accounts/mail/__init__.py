@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from squidpdf.accounts.mail.brevo import (
+    BrevoMailer as BrevoMailer,
+    brevo_mailer as brevo_mailer,
+)
 from squidpdf.accounts.mail.sending import (
     Letter as Letter,
     MailController as MailController,

@@ -20,9 +20,16 @@ class LinkExpired(Problem):
 
 
 class MailNotSent(Problem):
-    """The mail server didn't take the link: down, refusing, or too slow."""
+    """The mailer didn't take the link: down, refusing, or too slow."""
 
     type = "mail_not_sent"
+    status = 503
+
+
+class MailLimitReached(Problem):
+    """The mailer sends no more for now: past its sending limit, or asked too fast."""
+
+    type = "mail_limit_reached"
     status = 503
 
 

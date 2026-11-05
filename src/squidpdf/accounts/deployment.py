@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from email.utils import parseaddr
 from pathlib import Path
 
-from squidpdf.accounts.mail import MailController, Security, SmtpMailer
-from squidpdf.accounts.users import UserStore, open_users
+from squidpdf.accounts.errors import NotAnEmail
+from squidpdf.accounts.mail import MailController, Mailer, Security, SmtpMailer, brevo_mailer
+from squidpdf.accounts.users import UserStore, checked_email, open_users
 
 # The SQLite file accounts are kept in; unset or empty, the server keeps none.
 _DATABASE = "SQUIDPDF_DATABASE"
@@ -21,13 +23,16 @@ _SECRET = "SQUIDPDF_SECRET"
 _SITE = "SQUIDPDF_SITE"  # the https:// address a link opens, as https://pdf.example.com
 # Set to anything, only those `squidpdf invite` let in sign in and open documents.
 _INVITE_ONLY = "SQUIDPDF_INVITE_ONLY"
+_MAIL_FROM = "SQUIDPDF_MAIL_FROM"  # the address links come from, however they're sent
+# Set, links go through Brevo's API, and the SMTP lines stay empty.
+_BREVO_KEY = "SQUIDPDF_BREVO_KEY"
+_SMTP_HOST = "SQUIDPDF_SMTP_HOST"  # names the mail server; set, the SMTP lines send
 _SMTP = (
-    "SQUIDPDF_SMTP_HOST",
+    _SMTP_HOST,
     "SQUIDPDF_SMTP_PORT",
     "SQUIDPDF_SMTP_SECURITY",
     "SQUIDPDF_SMTP_USER",
     "SQUIDPDF_SMTP_PASSWORD",
-    "SQUIDPDF_MAIL_FROM",
 )
 # Each way the environment may name how the connection is secured.
 _SECURITIES: dict[str, Security] = {"tls": "tls", "starttls": "starttls"}
@@ -77,7 +82,7 @@ def deployed_accounts() -> Accounts | None:
     if users is None:
         _refuse_metering_without_accounts()
         return None
-    _require(_SECRET, _SITE, *_SMTP)
+    _require(_SECRET, _SITE, _MAIL_FROM)
     secret = os.environ[_SECRET]
     if len(secret) < _MIN_SECRET_CHARS:
         raise AccountsUnset(f"{_SECRET} is shorter than {_MIN_SECRET_CHARS} characters")
@@ -119,9 +124,32 @@ def _count_in(name: str) -> int:
     return int(value)
 
 
-def _mailer() -> SmtpMailer:
-    """The mail server the environment names."""
-    host, port, security, user, password, sender = (os.environ[name] for name in _SMTP)
+def _mailer() -> Mailer:
+    """What sends the links: Brevo's API where the environment sets its key, else SMTP."""
+    sender = _sender()
+    key = os.environ.get(_BREVO_KEY)  # .get: unset, links go by SMTP
+    if not key:
+        _require(*_SMTP)
+        return _smtp_mailer(sender)
+    # Both named: which sends is the deployer's to say, not ours to guess.
+    if os.environ.get(_SMTP_HOST):  # .get: unset is the case with a key
+        raise AccountsUnset(f"{_BREVO_KEY} and {_SMTP_HOST} both name a way to send mail")
+    return brevo_mailer(key, sender=sender)
+
+
+def _sender() -> str:
+    """The From: address the environment names; AccountsUnset unless it holds one address."""
+    sender = os.environ[_MAIL_FROM]
+    try:
+        checked_email(parseaddr(sender)[1])
+    except NotAnEmail:  # raised by checked_email: no address, or two, or a name unbracketed
+        raise AccountsUnset(f"{_MAIL_FROM} is {sender!r}, not one address") from None
+    return sender
+
+
+def _smtp_mailer(sender: str) -> SmtpMailer:
+    """The mail server the environment names, sending as `sender`."""
+    host, port, security, user, password = (os.environ[name] for name in _SMTP)
     secured = _SECURITIES.get(security)  # None for a word that names neither
     if secured is None:
         raise AccountsUnset(f"SQUIDPDF_SMTP_SECURITY is {security!r}, not tls or starttls")
