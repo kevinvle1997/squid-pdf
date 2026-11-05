@@ -86,6 +86,19 @@ async def admit_invited(
         raise InvitedOnly()
 
 
+def admit_brevo(
+    accounts: Annotated[Accounts, Depends(offered_accounts)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> Accounts:
+    """The app's accounts, or not_found unless this is Brevo's webhook, with its token.
+
+    Asked before the body is checked, so a stranger's is never read.
+    """
+    if not is_brevo(accounts, authorization):
+        raise NotFound()
+    return accounts
+
+
 @router.get("")
 async def account(
     accounts: Annotated[Accounts | None, Depends(accounts_of)],
@@ -123,19 +136,6 @@ async def sign_in(
 async def sign_out(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> Response:
     """Sign this browser out: its signed-in cookie cleared."""
     return response_of(signed_out(accounts), media_type=_JSON)
-
-
-def admit_brevo(
-    accounts: Annotated[Accounts, Depends(offered_accounts)],
-    authorization: Annotated[str | None, Header()] = None,
-) -> Accounts:
-    """The app's accounts, or not_found unless this is Brevo's webhook, with its token.
-
-    Asked before the body is checked, so a stranger's is never read.
-    """
-    if not is_brevo(accounts, authorization):
-        raise NotFound()
-    return accounts
 
 
 @router.post("/mail-events", status_code=204)
