@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from functools import partial
 from http import HTTPStatus
 
 from squidpdf.accounts import constants
@@ -52,14 +53,16 @@ class LinkController:
             if invited is None:
                 return reply
         try:
-            # Off the server's thread: a mailer can take seconds to answer.
-            await asyncio.to_thread(
+            # On mail's own threads: a mailer can take seconds to answer, or hang.
+            sending = partial(
                 self.accounts.mail.send_sign_in_link,
                 email,
                 link=self._link_for(email),
                 minutes=_link_minutes(),
                 language=language,
             )
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(self.accounts.mail_threads, sending)
         except (MailNotSent, MailLimitReached) as refused:  # raised by the mailer
             # Said only to the invited, a refusal would tell anyone who is: the log keeps it.
             if not self.accounts.invite_only:

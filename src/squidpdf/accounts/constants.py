@@ -13,5 +13,8 @@ SIGNED_IN_S = 30 * 24 * 60 * 60
 COUNTED_KEPT_S = 365 * 24 * 60 * 60
 # How long the mailer has to answer, each step: a hung one holds a thread, not the app.
 MAIL_TIMEOUT_S = 20
+# Letters sent at once. A link waits its turn behind them, so a hung mail server holds
+# these alone, never the threads the server's disk work shares: a few, as links are rare.
+MAIL_THREADS = 2
 # Longest address a mail server takes (RFC 5321's path, less its brackets).
 MAX_EMAIL_CHARS = 254

@@ -51,5 +51,9 @@ class SmtpMailer:
         if self.security == "tls":
             return smtplib.SMTP_SSL(self.host, self.port, timeout=constants.MAIL_TIMEOUT_S)
         smtp = smtplib.SMTP(self.host, self.port, timeout=constants.MAIL_TIMEOUT_S)
-        smtp.starttls()
+        try:
+            smtp.starttls()
+        except BaseException:  # raised by a refusal or the timeout: no connection left open
+            smtp.close()
+            raise
         return smtp
