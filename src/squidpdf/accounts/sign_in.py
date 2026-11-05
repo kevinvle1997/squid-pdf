@@ -15,7 +15,6 @@ from squidpdf.accounts import constants
 from squidpdf.accounts.cookies import SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import LinkExpired, NotInvited
-from squidpdf.accounts.mail import Letter
 from squidpdf.accounts.signed import signed, value_of
 from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
 from squidpdf.accounts.users import User, checked_email
@@ -51,21 +50,20 @@ class LinkController:
             if invited is None:
                 return reply
         # Off the server's thread: a mail server can take seconds to answer.
-        await asyncio.to_thread(self.accounts.mailer.send, self._letter_to(email, language))
+        await asyncio.to_thread(
+            self.accounts.mail.send_sign_in_link,
+            email,
+            link=self._link_for(email),
+            minutes=_link_minutes(),
+            language=language,
+        )
         return reply
 
-    def _letter_to(self, email: str, language: str) -> Letter:
-        """The email carrying a link that signs in as `email` until LINK_VALID_S from now."""
+    def _link_for(self, email: str) -> str:
+        """The link that signs in as `email` until LINK_VALID_S from now."""
         until = int(time.time()) + constants.LINK_VALID_S
         token = signed(email, purpose="link", until=until, secret=self.accounts.secret)
-        link = f"{self.accounts.site}{_LINK_PATH}{token}"
-        return Letter(
-            email,
-            subject=words.render(Message("sign_in_subject"), language),
-            body=words.render(
-                Message("sign_in_letter", {"link": link, "minutes": _link_minutes()}), language
-            ),
-        )
+        return f"{self.accounts.site}{_LINK_PATH}{token}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)

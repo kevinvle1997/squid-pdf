@@ -1,4 +1,4 @@
-"""Sending a sign-in link by email, through the mail server the deployment names."""
+"""Sending a letter through a mail server, over SMTP."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 from functools import partial
-from typing import Literal, Protocol
+from typing import Literal
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.errors import MailNotSent
+from squidpdf.accounts.mail.sending import Letter
 from squidpdf.core import ErrorController, Failure
 
 # smtplib's own failures, a refusal or a lost connection, are OSErrors, as a timeout is.
@@ -17,23 +18,6 @@ _SMTP_FAILURES = ErrorController((Failure(OSError, MailNotSent),))
 
 # How the connection is secured: TLS from the start (port 465), or upgraded (587).
 Security = Literal["tls", "starttls"]
-
-
-@dataclass(frozen=True, slots=True)
-class Letter:
-    """One email: who it's to, its subject and its words."""
-
-    to: str
-    subject: str
-    body: str
-
-
-class Mailer(Protocol):
-    """What sends a letter. The app's sends through SMTP; a test's notes what it was given."""
-
-    def send(self, letter: Letter) -> None:
-        """Send `letter`, or raise MailNotSent saying the server didn't take it."""
-        ...
 
 
 @dataclass(frozen=True, slots=True)

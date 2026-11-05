@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from squidpdf.accounts.mail import Mailer, Security, SmtpMailer
+from squidpdf.accounts.mail import MailController, Security, SmtpMailer
 from squidpdf.accounts.users import UserStore, open_users
 
 # The SQLite file accounts are kept in; unset or empty, the server keeps none.
@@ -56,7 +56,7 @@ class Accounts:
     """What accounts need: the table, the mail, the secret and address, who may, how many."""
 
     users: UserStore
-    mailer: Mailer
+    mail: MailController
     secret: bytes  # signs links and the signed-in cookie
     site: str  # where a link sends its reader, with no slash at the end
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
@@ -86,7 +86,7 @@ def deployed_accounts() -> Accounts | None:
         raise AccountsUnset(f"{_SITE} must start with https://, as a link it opens must")
     return Accounts(
         users,
-        _mailer(),
+        MailController(_mailer()),
         secret=secret.encode(),
         site=site,
         invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in

@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance
-from squidpdf.accounts.mail import Letter, Mailer, SmtpMailer
+from squidpdf.accounts.mail import Letter, MailController, Mailer, SmtpMailer
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
@@ -40,7 +40,7 @@ def _accounts(
     """Accounts kept in a fresh table, their letters sent through `mailer`."""
     return Accounts(
         open_users(tmp_path / "users.sqlite3"),
-        mailer,
+        MailController(mailer),
         secret=_SECRET,
         site=_SITE,
         invite_only=invite_only,
