@@ -8,6 +8,7 @@ back. Reading the account and signing out have none: each is one look at the coo
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request, Response
@@ -60,13 +61,27 @@ def offered_accounts(accounts: Annotated[Accounts | None, Depends(accounts_of)])
     return accounts
 
 
+def controller_with_accounts[C](cls: Callable[[Accounts], C]) -> Callable[[Accounts], C]:
+    """A route's dependency: a new `cls` for each request, with the app's accounts.
+
+    Used as `Depends(controller_with_accounts(LinkController))`, as a document's routes use
+    `controller_with_workers`; no_accounts on a server that keeps none.
+    """
+
+    def with_the_apps_accounts(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> C:
+        """The controller, built with the app's accounts."""
+        return cls(accounts)
+
+    return with_the_apps_accounts
+
+
 async def signed_in(
     request: Request, accounts: Annotated[Accounts | None, Depends(accounts_of)]
 ) -> User | None:
     """The account this browser is signed in to; None if none, or the server keeps none."""
     if accounts is None:
         return None
-    # Off the loop: it reads the table.
+    # Off the loop: it reads the table. .get: a browser that never signed in has no cookie.
     return await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
 
 
@@ -80,7 +95,7 @@ async def admit_invited(
     """
     if accounts is None or not accounts.invite_only:
         return
-    # Off the loop: it reads the table.
+    # Off the loop: it reads the table. .get: a browser that never signed in has no cookie.
     user = await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
     if user is None:
         raise InvitedOnly()
@@ -115,20 +130,25 @@ async def account(
 )
 async def send_link(
     body: LinkBody,
-    accounts: Annotated[Accounts, Depends(offered_accounts)],
+    link_controller: Annotated[
+        LinkController, Depends(controller_with_accounts(LinkController))
+    ],
     language: ReaderLanguage,
 ) -> Response:
     """Email a link that signs this browser in as `email`; say where it went."""
-    reply = await LinkController(accounts).send(body.email, language=language)
+    reply = await link_controller.send(body.email, language=language)
     return response_of(reply, media_type=_JSON)
 
 
 @router.post("/sign-in", response_model=AccountState)
 async def sign_in(
-    body: SignInBody, accounts: Annotated[Accounts, Depends(offered_accounts)]
+    body: SignInBody,
+    sign_in_controller: Annotated[
+        SignInController, Depends(controller_with_accounts(SignInController))
+    ],
 ) -> Response:
     """Sign this browser in with a link's token, its account made on first use."""
-    reply = await SignInController(accounts).sign_in(body.token)
+    reply = await sign_in_controller.sign_in(body.token)
     return response_of(reply, media_type=_JSON)
 
 
