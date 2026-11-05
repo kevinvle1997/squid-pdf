@@ -4,6 +4,7 @@ import { renderStrips } from "../api/client";
 import type { Edit, FitInfo, ImageInfo, NoticeInfo, RedactionInfo, Region, Render, SkippedInfo } from "../api/types";
 import { sentenceOf } from "../bugs";
 import type { Reopener } from "../documents/reopen";
+import { RENDER_PAGES_AT_ONCE } from "./constants";
 import { differing, type NewTextReading, type PageEdits, type Reading, type SpanReading, sameSpan } from "./project";
 import { bottomOf, regionsFor, stalePages } from "./redrawRegions";
 
@@ -208,7 +209,7 @@ export class RenderQueue {
     if (bare.length > 0) this.#landed(reading, bare, { landing: [], reply: null });
     // The pages near the screen on their own: a render of every page waits on the slowest.
     const shown = [...stale.keys()].filter((page) => near.has(page));
-    const drawing = shown.length > 0 ? shown : [...stale.keys()];
+    const drawing = (shown.length > 0 ? shown : [...stale.keys()]).slice(0, RENDER_PAGES_AT_ONCE);
     if (drawing.length === 0) return;
     const regions = drawing.flatMap((page) => stale.get(page) ?? []);
 

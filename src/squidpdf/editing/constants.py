@@ -13,6 +13,9 @@ MAX_REGIONS = MAX_EDITS
 # A page's strips, out to whole pixel rows, total at most this many times its image's rows.
 # The browser's (redrawRegions.ts) share no rows and are padded past one, so none is in three.
 MAX_STRIP_ROWS_PER_PAGE_ROW = 2
+# Pages one render draws: with the rows above, the bound on its images, which cross from the
+# worker in one answer. The browser asks this many at a time (RENDER_PAGES_AT_ONCE).
+MAX_RENDER_PAGES = 8
 
 # Render redraws only the edits whose rows it shows. A redraw can reach this far past
 # its span's box, in its size: an accent above a capital, a substitute's longer tail.

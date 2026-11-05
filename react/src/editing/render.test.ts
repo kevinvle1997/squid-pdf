@@ -16,6 +16,7 @@ import {
   aSpanNotice,
   halfWideGlyphs,
 } from "../fixtures";
+import { RENDER_PAGES_AT_ONCE } from "./constants";
 import { layoutOf } from "./editor";
 import { EMPTY_HISTORY, entriesOf, historyReducer } from "./history";
 import { newTextVerdictOf } from "./newText";
@@ -139,6 +140,29 @@ describe("the render queue", () => {
     await settle();
     expect(queue.drawn.strips.get(0)).toEqual([shown(0)]);
     expect(fake.asked).toHaveLength(2);
+  });
+
+  test("a render asks for at most RENDER_PAGES_AT_ONCE pages, then the rest", async () => {
+    const spans = Array.from({ length: RENDER_PAGES_AT_ONCE + 1 }, (_, page) => aSpan({ id: `on ${page}`, page }));
+    const doc = aDoc({ spans });
+    queue = new RenderQueue({
+      reopener: { doc, withDocument: (use) => use(doc) },
+      scale: 2,
+      drawn: (now) => drawn.push(now),
+      render: fake.render,
+      load: async (image) => image.image,
+      near: new Set(),
+    });
+    const edits = spans.map((span) => aReplace(span.id));
+    queue.draw(project(doc, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits }))));
+    await settle();
+    const pagesAsked = (asked: number) => new Set(fake.asked[asked]?.body.regions.map((region) => region.page));
+    expect(pagesAsked(0).size).toBe(RENDER_PAGES_AT_ONCE);
+
+    const first = [...pagesAsked(0)];
+    fake.asked[0]?.answer(fake.reply(first));
+    await settle();
+    expect(pagesAsked(1).size).toBe(1);
   });
 
   test("a page with nothing left on it goes back to its image at once, without asking", async () => {

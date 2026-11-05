@@ -13,6 +13,8 @@ from functools import partial
 from itertools import pairwise
 from pathlib import Path
 
+import orjson
+
 from squidpdf.core import (
     BUILD,
     Engine,
@@ -78,7 +80,7 @@ class RenderController:
         regions: list[Region],
         scale: int,
         language: str,
-    ) -> Reply[Render]:
+    ) -> Reply[bytes]:
         """Each region drawn with its page's edits, a fit per edit, and what was skipped.
 
         A redaction pointing at nothing fails the whole request.
@@ -98,7 +100,10 @@ class RenderController:
         rendered = await self._enqueue_draw_regions(
             doc.folder, edits=edits, regions=regions, strips=strips, drawn_pages=drawn_pages
         )
-        body = _reply_body(rendered, doc.expires_at, language)
+        # Off the server's thread: the images make it a large reply.
+        body = await asyncio.to_thread(
+            _reply_json, rendered, expires_at=doc.expires_at, language=language
+        )
         return Reply(body, words.language_headers(language))
 
     async def _enqueue_draw_regions(
@@ -203,6 +208,9 @@ def _checked_strips(regions: list[Region], pages: list[Page]) -> dict[int, list[
             debug = f"regions: y0 above y1, and on page {region.page}'s 0 to {page.height:g}"
             raise InvalidRequest(debug=debug)
         strips.setdefault(region.page, []).append(strip)
+    if len(strips) > constants.MAX_RENDER_PAGES:
+        debug = f"regions: on {len(strips)} pages, at most {constants.MAX_RENDER_PAGES}"
+        raise InvalidRequest(debug=debug)
     for page_number, page_strips in strips.items():
         _check_apart(page_number, page_strips)
     return strips
@@ -239,7 +247,12 @@ def _strip_of(region: Region, page: Page) -> Rect:
     return Rect(0.0, top, page.width, bottom)
 
 
-def _reply_body(rendered: Rendered, expires_at: float, language: str) -> Render:
+def _reply_json(rendered: Rendered, *, expires_at: float, language: str) -> bytes:
+    """What render worked out, as the JSON the browser gets, in the reader's words."""
+    return orjson.dumps(_reply_body(rendered, expires_at=expires_at, language=language))
+
+
+def _reply_body(rendered: Rendered, *, expires_at: float, language: str) -> Render:
     """What render worked out, as the browser gets it, in the reader's words."""
     return {
         "images": rendered.images,

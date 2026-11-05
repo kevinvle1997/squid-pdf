@@ -10,6 +10,9 @@ export const MAX_SCALE = 4;
 /** A strip reaches this far past a span's box, so accents and underlines come with it. */
 export const STRIP_PAD_PT = 2;
 
+/** Pages one render asks for, the rest after it: the most the server draws at once (`MAX_RENDER_PAGES`). */
+export const RENDER_PAGES_AT_ONCE = 8;
+
 /** A slip under a span, the field's chip or the redaction prompt, starts this far below it: clear of the mark under it. */
 export const SLIP_GAP_PT = 4;
 
