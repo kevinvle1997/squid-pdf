@@ -62,7 +62,9 @@ export async function accountAtStart(
   if (token === null) return { account: await accountAnswer(), linkFailed: null };
   const signedIn = await signedInWith(token);
   if (signedIn.kind === "read") return { account: signedIn, linkFailed: null };
-  return { account: await accountAnswer(), linkFailed: signedIn.detail };
+  const account = await accountAnswer();
+  // Signed in after all, as a reload that trades a link again is: the failure is no news.
+  return { account, linkFailed: signedInAs(account) === null ? signedIn.detail : null };
 }
 
 /** The token a sign-in link carried, from the page's `#`; null where there's none. */

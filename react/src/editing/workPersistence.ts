@@ -2,7 +2,13 @@
 // so a reload or a closed tab loses none of it; and the editor restored from work persisted before.
 
 import { sentenceOf } from "../bugs";
-import { lacksSentences, type PersistedWork, persistFile, persistState } from "../documents/localPersistence";
+import {
+  forgetPersisted,
+  lacksSentences,
+  type PersistedWork,
+  persistFile,
+  persistState,
+} from "../documents/localPersistence";
 import { announcing, type Editor, layoutOf } from "./editor";
 import { unexported } from "./export";
 import { addOwnFace } from "./faces";
@@ -41,6 +47,7 @@ export interface Persistence {
   file: boolean;
   history: History | null;
   until: number; // when the server forgets the document, in ms since the epoch: persisted here as long
+  forgetting: ReturnType<typeof setTimeout> | null; // forgets what's persisted here at `until`, while the page is open
 }
 
 /** Whether what was persisted is work this editor can start from. */
@@ -65,6 +72,7 @@ export async function persistWork(editor: Editor): Promise<void> {
     const fonts = await persistedFonts(editor.attached);
     await persistState({ doc, work: { history, fonts, quietFonts: [...mutedFonts] }, until: persistence.until });
     persistence.history = history;
+    forgetAtUntil(persistence);
   } catch {
     // The browser stores nothing (a private window, or no room): leaving asks first instead.
     if (firstTime) persistence.file = false;
@@ -75,6 +83,28 @@ export async function persistWork(editor: Editor): Promise<void> {
 export function persistUntil(editor: Editor, expiresAt: string): void {
   editor.persistence.until = Date.parse(expiresAt);
   if (editor.persistence.file) void persistWork(editor);
+}
+
+/**
+ * Forget what's persisted here as the server's hour runs out while the page is open, so the copy lasts as long as
+ * the landing says. The next change persists afresh, file and all; until then, leaving asks first.
+ */
+export function forgetAtUntil(persistence: Persistence): void {
+  if (persistence.forgetting !== null) clearTimeout(persistence.forgetting);
+  persistence.forgetting = setTimeout(
+    () => {
+      Object.assign(persistence, { file: false, history: null, forgetting: null });
+      // Refused by the browser's storage: there was nothing persisted to forget.
+      forgetPersisted().catch(() => undefined);
+    },
+    Math.max(0, persistence.until - Date.now()),
+  );
+}
+
+/** The editor is closing: what's persisted here stays for the landing to offer, so nothing forgets it now. */
+export function stopForgetting(persistence: Persistence): void {
+  if (persistence.forgetting !== null) clearTimeout(persistence.forgetting);
+  persistence.forgetting = null;
 }
 
 /** Whether leaving now would lose work: changes no export took, not yet persisted here, or words still being typed. */
@@ -93,6 +123,7 @@ export function restorePersisted(editor: Editor, { work, until }: PersistedWork<
   });
   for (const [fontName, { bytes, type }] of work.fonts) editor.attached.set(fontName, new Blob([bytes], { type }));
   Object.assign(editor.persistence, { file: true, history: work.history, until });
+  forgetAtUntil(editor.persistence);
 }
 
 /** The editor restored from persisted work: what it reads is drawn, the user's copies of its fonts preview, and a stale reading is read again. */

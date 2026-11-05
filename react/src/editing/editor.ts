@@ -43,7 +43,7 @@ import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFo
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { fill, fillCounted } from "./words";
-import { type Persistence, persistUntil, persistWork } from "./workPersistence";
+import { type Persistence, persistUntil, persistWork, stopForgetting } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
 /**
@@ -261,7 +261,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     retries: new Map(),
     finding: {},
     ahead: {},
-    persistence: { file: false, history: null, until: Date.parse(opened.expires_at) },
+    persistence: { file: false, history: null, until: Date.parse(opened.expires_at), forgetting: null },
   };
   return editor;
 }
@@ -496,6 +496,7 @@ export function closeEditor(editor: Editor): void {
   clearTimeout(editor.finding.timer);
   clearTimeout(editor.ahead.timer);
   editor.ahead.started?.ask.abort();
+  stopForgetting(editor.persistence);
 }
 
 /** Tell a screen reader, for what the page doesn't show. */

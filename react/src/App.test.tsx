@@ -152,6 +152,14 @@ test("a document persisted before the server's sentences were renamed comes back
   expect((await persistedDocument())?.doc.sentences).toEqual(PERSISTED_DOC.sentences);
 });
 
+test("the offer to open a document again goes as the server's hour runs out, and the copy kept here with it", async () => {
+  await persistedHere(Date.now() + 500);
+  const screen = await render(<App />);
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
+  expect(forgetOrSayWhy).toHaveBeenCalledExactlyOnceWith("contract.pdf");
+});
+
 test("Delete it now forgets the document persisted here, file and all", async () => {
   await persistedHere(Date.now() + 60_000);
   const screen = await render(<App />);
@@ -441,12 +449,27 @@ test("a sign-in link past its time, where anyone may open a document, says so on
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeVisible();
 });
 
-test("Sign out on the landing signs this browser out, and the landing no longer names it", async () => {
+test("a sign-in link traded again, as a reload trades it, says nothing where the browser is signed in after all", async () => {
+  window.history.replaceState(null, "", "/sign-in#used-token");
+  onTestFinished(() => window.history.replaceState(null, "", "/"));
+  vi.mocked(signIn).mockRejectedValue(new ProblemError(aProblem(400, "This sign-in link has been used.")));
+  vi.mocked(account).mockResolvedValue(anAccount({ invite_only: true, signed_in: INVITED }));
+  const screen = await render(<App />);
+  await expect.element(screen.getByText("Signed in as friend@example.com")).toBeVisible();
+  await expect.element(screen.getByText("This sign-in link has been used.")).not.toBeInTheDocument();
+});
+
+test("Sign out on the landing signs this browser out, and the landing no longer names it, nor keeps a document", async () => {
+  await persistedHere(Date.now() + 60_000);
   vi.mocked(account).mockResolvedValue(anAccount({ signed_in: INVITED }));
   vi.mocked(signOut).mockResolvedValue(anAccount());
   const screen = await render(<App />);
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await expect.element(screen.getByText("Signed in as", { exact: false })).not.toBeInTheDocument();
+  // Leaving this browser to others: the document kept here goes with the account.
+  await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
+  await expect.poll(() => persistedDocument()).toBeNull();
   // The button pressed has gone: focus is on the sheet's one action, not lost to the page.
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toHaveFocus();
   expect(signOut).toHaveBeenCalledOnce();
