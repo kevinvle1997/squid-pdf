@@ -8,10 +8,12 @@ starting, saying what's missing, rather than failing on the first sign-in or upl
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from email.utils import parseaddr
 from pathlib import Path
 
+from squidpdf.accounts import constants
 from squidpdf.accounts.errors import NotAnEmail
 from squidpdf.accounts.mail import MailController, Mailer, Security, SmtpMailer, brevo_mailer
 from squidpdf.accounts.users import UserStore, checked_email, open_users
@@ -58,6 +60,11 @@ class Allowance:
     monthly: int
 
 
+def _mail_threads() -> ThreadPoolExecutor:
+    """The threads sign-in links are sent on, MAIL_THREADS of them."""
+    return ThreadPoolExecutor(constants.MAIL_THREADS, thread_name_prefix="mail")
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class Accounts:
     """What accounts need: the table, the mail, the secret and address, who may, how many.
@@ -72,6 +79,9 @@ class Accounts:
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
     allowance: Allowance | None  # None where the deployment meters nothing
     webhook_token: bytes | None  # what Brevo's webhook sends; None where it has none
+    # Letters go out on threads of their own: a mail server that hangs holds these, never
+    # the threads every upload and read share.
+    mail_threads: ThreadPoolExecutor = field(default_factory=_mail_threads, repr=False)
 
 
 def named_users() -> UserStore | None:
