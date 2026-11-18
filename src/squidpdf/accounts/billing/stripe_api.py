@@ -18,7 +18,7 @@ import httpx
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.errors import PaymentsUnavailable
-from squidpdf.accounts.types import Subscriptions
+from squidpdf.accounts.types import OwnSubscription, Subscriptions
 from squidpdf.core import ErrorController, Failure, LogController, LogEvent, OwnText, Problem
 
 _log = LogController.for_module(__name__)
@@ -131,11 +131,39 @@ class StripeApi:
                 self.client.build_request("GET", "/v1/subscriptions", params=params)
             )
         except NotAtStripe:  # raised by _answer_to: a customer Stripe hasn't got pays nothing
-            return Subscriptions(paid_until=None, unended=0)
+            return Subscriptions(paid_until=None, unended=0, own_unended=())
         listing = listed["data"]
-        unended = sum(each["status"] not in _ENDED_STATUSES for each in listing)
-        paid_until = _paid_until_in(listing, account=account)
-        return Subscriptions(paid_until=paid_until, unended=unended)
+        billing = [each for each in listing if each["status"] not in _ENDED_STATUSES]
+        own = [each for each in billing if _is_own(each, account=account)]
+        return Subscriptions(
+            paid_until=_paid_until_in(listing, account=account),
+            unended=len(billing),
+            own_unended=tuple(
+                OwnSubscription(each["id"], created=each["created"]) for each in own
+            ),
+        )
+
+    def customer_of_charge(self, charge: str) -> str | None:
+        """The customer Stripe made `charge` to, by its id; None for a charge to none."""
+        try:
+            made = self._call(self.client.build_request("GET", f"/v1/charges/{charge}"))
+        except NotAtStripe:  # raised by _answer_to: a charge Stripe hasn't got was to no one
+            return None
+        return made["customer"]
+
+    def cancel_subscription(self, subscription: str, *, why: str) -> None:
+        """End `subscription` now, `why` kept on it in Stripe; one ended already stays so.
+
+        Stripe has no subscription it ended: a try whose answer was lost finds it gone.
+        """
+        path = f"/v1/subscriptions/{subscription}"
+        form = {"cancellation_details[comment]": why}
+        try:
+            self._call(self.client.build_request("DELETE", path, data=form))
+        except NotAtStripe:  # raised by _answer_to: ended already, it bills nothing
+            _log.write(LogEvent.STRIPE_CANCELLED, call=OwnText(path), already=True)
+            return
+        _log.write(LogEvent.STRIPE_CANCELLED, call=OwnText(path), already=False)
 
     def _post(self, path: str, *, form: dict[str, str], key: str) -> dict[str, Any]:
         """What Stripe made of `form` at `path`, made once for `key` however often it's sent."""
@@ -229,8 +257,13 @@ def _paid_until_in(subscriptions: list[dict[str, Any]], *, account: str) -> int 
 
 def _pays_for(subscription: dict[str, Any], *, account: str) -> bool:
     """Whether `subscription` is `account`'s own, its month paid, and still being collected."""
-    # .get: one made elsewhere, as in Stripe's dashboard, may carry no account.
-    is_own = subscription["metadata"].get("account") == account
     # Its collection paused in Stripe: it stays active, but nothing is charged.
     is_collected = subscription.get("pause_collection") is None  # .get: unpaused, it's absent
-    return is_own and is_collected and subscription["status"] in _PAID_STATUSES
+    is_paid = subscription["status"] in _PAID_STATUSES
+    return _is_own(subscription, account=account) and is_collected and is_paid
+
+
+def _is_own(subscription: dict[str, Any], *, account: str) -> bool:
+    """Whether `account`'s checkout made `subscription`."""
+    # .get: one made elsewhere, as in Stripe's dashboard, may carry no account.
+    return subscription["metadata"].get("account") == account

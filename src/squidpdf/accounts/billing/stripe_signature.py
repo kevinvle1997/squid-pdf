@@ -59,10 +59,13 @@ def _event_from(said: dict[str, Any]) -> StripeEvent:
     about = said["data"]["object"]
     # .get: an event about something no customer has, as a price, names none.
     customer = about.get("customer")
+    # .get: of the events billing reads, only a dispute names a charge.
+    charge = about.get("charge")
     return StripeEvent(
         said["id"],
         type=said["type"],
         created=said["created"],
-        # A webhook names its customer by id; anything else is no customer billing knows.
+        # A webhook names a customer and a charge by id; anything else is none billing knows.
         customer=customer if isinstance(customer, str) else None,
+        charge=charge if isinstance(charge, str) else None,
     )

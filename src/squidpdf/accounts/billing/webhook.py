@@ -8,7 +8,7 @@ twice, late or out of order sets the same. `resync` asks again by hand, kept as 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from http import HTTPStatus
 
@@ -34,8 +34,10 @@ _PAYMENT_EVENTS = frozenset(
         "invoice.payment_failed",
     }
 )
-# A dispute leaves the subscription billing: whoever runs the server decides, in Stripe.
+# Every event about a dispute, which whoever runs the server answers in Stripe.
 _DISPUTE_EVENTS = "charge.dispute."
+# A dispute opened: its account's own subscriptions end at once, so no charge follows it.
+_DISPUTE_OPENED = "charge.dispute.created"
 # What a resync by hand is kept in the ledger as, beside Stripe's own events.
 _RESYNC = "squidpdf.resync"
 
@@ -74,7 +76,11 @@ def resync(
     """
     now = int(time.time())
     asked = StripeEvent(
-        f"{_RESYNC}-{now}-{account.id}", type=_RESYNC, created=now, customer=customer
+        f"{_RESYNC}-{now}-{account.id}",
+        type=_RESYNC,
+        created=now,
+        customer=customer,
+        charge=None,
     )
     paid = _paid_event(billing, asked, account=account, customer=customer)
     return users.apply_billing(paid, now=now)
@@ -94,15 +100,53 @@ def _apply(users: UserStore, billing: Billing, event: StripeEvent) -> None:
 
 def _billing_event(users: UserStore, billing: Billing, event: StripeEvent) -> BillingEvent:
     """What `event` does: the paid time Stripe says its customer's account has now, if any."""
+    if event.type == _DISPUTE_OPENED:
+        return _disputed(users, billing, event)
     if event.type not in _PAYMENT_EVENTS or event.customer is None:
         return _kept(event, outcome="ignored")
-    account = users.find_by_customer(event.customer)
+    account = _account_of(users, event.customer)
+    if account is None:
+        return _kept(event, outcome="no_account")
+    return _paid_event(billing, event, account=account, customer=event.customer)
+
+
+def _disputed(users: UserStore, billing: Billing, dispute: StripeEvent) -> BillingEvent:
+    """What a dispute opened does: its account's own subscriptions ended, its paid time read."""
+    # A dispute names its charge, not its customer: Stripe is asked whose the charge was.
+    charge = dispute.charge
+    customer = None if charge is None else billing.stripe.customer_of_charge(charge)
+    with_customer = replace(dispute, customer=customer)  # so the ledger keeps whose it was
+    # A charge to no customer: none of the server's checkouts made it.
+    if customer is None:
+        return _kept(with_customer, outcome="ignored")
+    account = _account_of(users, customer)
+    if account is None:
+        return _kept(with_customer, outcome="no_account")
+    _cancel_own(billing, with_customer, account=account, customer=customer)
+    return _paid_event(billing, with_customer, account=account, customer=customer)
+
+
+def _account_of(users: UserStore, customer: str) -> User | None:
+    """The account Stripe's `customer` is; None, said in the log, for one no account has."""
+    account = users.find_by_customer(customer)
     # A customer made in Stripe's dashboard, or kept by an account removed since: it may be
     # billed with no account to show for it, so whoever runs the server looks in Stripe.
     if account is None:
         _log.write(LogEvent.BILLING_CUSTOMER_UNKNOWN)
-        return _kept(event, outcome="no_account")
-    return _paid_event(billing, event, account=account, customer=event.customer)
+    return account
+
+
+def _cancel_own(billing: Billing, event: StripeEvent, *, account: User, customer: str) -> None:
+    """End each of `account`'s own subscriptions made before the dispute that bills, or may yet.
+
+    Stripe sends a dispute again until it hears back: one bought since is paid for afresh.
+    """
+    own = billing.stripe.subscriptions(customer, account=account.id).own_unended
+    # The event's id ties Stripe's record of each to the ledger's row.
+    why = f"squidpdf: a charge was disputed ({event.id})"
+    for subscription in own:
+        if subscription.created <= event.created:
+            billing.stripe.cancel_subscription(subscription.id, why=why)
 
 
 def _paid_event(

@@ -52,14 +52,24 @@ class StripeEvent:
     type: str  # Stripe's word for it, as invoice.paid
     created: int  # when Stripe made it, Unix seconds
     customer: str | None  # the Stripe customer it's about; None for one about none
+    charge: str | None  # the charge it's about, as a dispute names one; None for one about none
+
+
+@dataclass(frozen=True, slots=True)
+class OwnSubscription:
+    """An account's own subscription that bills, or may yet: Stripe's id, and its age."""
+
+    id: str
+    created: int  # when Stripe made it, Unix seconds
 
 
 @dataclass(frozen=True, slots=True)
 class Subscriptions:
-    """What Stripe has of an account's subscriptions now: until when paid, and how many bill."""
+    """What Stripe has of an account's subscriptions now: paid time, how many bill, its own."""
 
     paid_until: int | None  # the latest paid month's end of the account's own; None if none
     unended: int  # its customer's not cancelled or expired, which bill, or may yet
+    own_unended: tuple[OwnSubscription, ...]  # the account's own of those
 
 
 # What a billing event did, as the ledger keeps it: superseded is Stripe asked before the
