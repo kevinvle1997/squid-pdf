@@ -15,7 +15,7 @@ AccountRemoval = Removal | Literal["unchecked"]
 
 
 def remove_account(
-    users: UserStore, email: str, *, billing_here: Callable[[], Billing | None]
+    users: UserStore, email: str, *, secret: bytes, billing_here: Callable[[], Billing | None]
 ) -> AccountRemoval:
     """Take the account under `email` off, unless Stripe bills it still, or can't be asked.
 
@@ -25,10 +25,10 @@ def remove_account(
     account = users.find(email)
     # No customer at Stripe: nothing there bills it.
     if account is None or account.stripe_customer is None:
-        return users.remove(email, now=int(time.time()))
+        return users.remove(email, now=int(time.time()), secret=secret)
     billing = billing_here()
     if billing is None:
         return "unchecked"
     if billing.stripe.subscriptions(account.stripe_customer, account=account.id).unended > 0:
         return "paying"
-    return users.remove(email, now=int(time.time()))
+    return users.remove(email, now=int(time.time()), secret=secret)

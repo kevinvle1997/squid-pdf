@@ -401,6 +401,21 @@ def test_where_anyone_may_sign_in_an_address_with_no_account_that_bounced_gets_n
     assert_equal(stranger.encode() in kept, False, "the address on disk")
 
 
+def test_an_account_taken_off_keeps_its_bounce_so_its_address_gets_no_more_links(
+    mail, app: FastAPI, browser: Callable[[], TestClient]
+):
+    """Where anyone may sign in, taking it off would otherwise send its address mail again."""
+    reader, brevo = browser(), browser()
+    _sign_in(reader, mail)
+    bearer = {"Authorization": f"Bearer {_WEBHOOK_TOKEN.decode()}"}
+    bounced = {"event": "hard_bounce", "email": _EMAIL}
+    brevo.post("/api/account/mail-events", json=bounced, headers=bearer)
+    app.state.accounts.users.remove(_EMAIL, now=0, secret=_SECRET)
+    sent = reader.post("/api/account/link", json={"email": _EMAIL})
+    assert_equal(sent.status_code, 202, "said the same as any address")
+    assert_equal(len(mail.letters), 1, "the sign-in's link alone")
+
+
 def test_a_table_made_before_bounces_used_links_and_billing_were_kept_opens_with_none(tmp_path):
     """An account from before the columns added since reads as it had none of them."""
     path = tmp_path / "users.sqlite3"
@@ -741,7 +756,11 @@ def test_invite_only_a_removed_friend_is_let_go_from_every_browser_at_once(
     _sign_in_a_moment_later(phone)
     for signed_in in (laptop, phone):
         assert_equal(upload(signed_in, pdf_bytes).status_code, 201, "in, before removal")
-    assert_equal(users.remove(_EMAIL, now=0), "removed", "the account was there to remove")
+    assert_equal(
+        users.remove(_EMAIL, now=0, secret=_SECRET),
+        "removed",
+        "the account was there to remove",
+    )
     for signed_in in (laptop, phone):
         assert_problem(upload(signed_in, pdf_bytes), "invited_only", 401)
         assert_equal(signed_in.get("/api/account").json()["signed_in"], None, "signed out")
@@ -755,7 +774,7 @@ def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(
     """Never a server error: the meter finds no account, so the browser's own count applies."""
     reader = browser()
     _sign_in(reader, metered_mail)
-    app.state.accounts.users.remove(_EMAIL, now=0)
+    app.state.accounts.users.remove(_EMAIL, now=0, secret=_SECRET)
     first, second, third = _files(pdf_bytes, 3)
     for opened in (first, second):
         assert_equal(upload(reader, opened).status_code, 201, "the free documents")
@@ -772,7 +791,7 @@ def test_an_account_removed_while_its_upload_is_under_way_has_nothing_counted_an
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
     users.count(user.id, "a", month="2026-11", limit=None)
-    users.remove(_EMAIL, now=0)
+    users.remove(_EMAIL, now=0, secret=_SECRET)
     assert_equal(users.counted_in(user.id, month="2026-11"), set(), "none counted")
     users.count(user.id, "b", month="2026-11", limit=None)
     assert_equal(users.get(user.id), None, "and no account made by counting")
@@ -783,6 +802,6 @@ def test_a_removed_address_is_gone_from_the_file_not_only_the_table(tmp_path):
     database = tmp_path / "users.sqlite3"
     users = open_users(database)
     users.invite("secret-person@example.com", now=0, is_unlimited=False, secret=_SECRET)
-    users.remove("secret-person@example.com", now=0)
+    users.remove("secret-person@example.com", now=0, secret=_SECRET)
     kept = b"".join(path.read_bytes() for path in tmp_path.iterdir() if path.is_file())
     assert_equal(b"secret-person@example.com" in kept, False, "the address on disk")

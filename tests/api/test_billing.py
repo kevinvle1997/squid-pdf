@@ -533,9 +533,17 @@ def test_an_account_stripe_bills_still_is_kept_and_one_it_bills_nothing_removed(
     until = int(time.time()) + _MONTH_S
     stripe.subscriptions[_CUSTOMER] = [_subscription("past_due", until=until, account=account)]
     stripe_here = lambda: billing  # noqa: E731 (the server's Stripe, as the CLI would find it)
-    assert_equal(remove_account(paying, _EMAIL, billing_here=stripe_here), "paying", "billed")
+    assert_equal(
+        remove_account(paying, _EMAIL, secret=_SECRET, billing_here=stripe_here),
+        "paying",
+        "billed",
+    )
     stripe.subscriptions[_CUSTOMER] = [_subscription("canceled", until=until, account=account)]
-    assert_equal(remove_account(paying, _EMAIL, billing_here=stripe_here), "removed", "not")
+    assert_equal(
+        remove_account(paying, _EMAIL, secret=_SECRET, billing_here=stripe_here),
+        "removed",
+        "not",
+    )
 
 
 def test_a_resync_asks_stripe_again_and_keeps_its_answer_in_the_ledger(

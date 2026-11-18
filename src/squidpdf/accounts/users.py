@@ -33,7 +33,7 @@ from sqlalchemy import (
     text,
     true,
 )
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.sqlite import Insert, insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateTable
@@ -183,18 +183,10 @@ class UserStore:
         An address no account has is kept only as a digest keyed with `secret`.
         """
         noted = _USERS.update().where(_USERS.c.email == email).values(bounced_at=now)
-        digest = _bounce_digest(email, secret=secret)
-        kept = (
-            insert(_BOUNCED_ADDRESSES)
-            .values(digest=digest, bounced_at=now)
-            .on_conflict_do_update(
-                index_elements=[_BOUNCED_ADDRESSES.c.digest], set_={"bounced_at": now}
-            )
-        )
         with self.database.begin() as connection:
             if connection.execute(noted).rowcount > 0:
                 return True
-            connection.execute(kept)
+            connection.execute(_address_bounced(email, secret=secret, at=now))
             return False
 
     def has_bounced(self, email: str, *, secret: bytes) -> bool:
@@ -223,18 +215,28 @@ class UserStore:
         with self.database.begin() as connection:
             return connection.execute(spending).rowcount > 0
 
-    def remove(self, email: str, *, now: int) -> Removal:
+    def remove(self, email: str, *, now: int, secret: bytes) -> Removal:
         """Take the account under `email` off the table, its count too, unless it's paying.
 
         One transaction, so paid time a webhook sets can't land between the look and the
-        delete: an account whose month is paid would be charged for nothing.
+        delete: an account whose month is paid would be charged for nothing. A bounce it had
+        stays, kept by `secret` as an address with no account's is.
         """
         unpaid = _USERS.c.paid_until.is_(None) | (
             _USERS.c.paid_until <= now - constants.RENEWAL_LEEWAY_S
         )
+        deleted = (
+            _USERS.delete()
+            .where(_USERS.c.email == email, unpaid)
+            .returning(_USERS.c.bounced_at)
+        )
         with self.database.begin() as connection:
-            removed = connection.execute(_USERS.delete().where(_USERS.c.email == email, unpaid))
-            if removed.rowcount > 0:
+            removed = connection.execute(deleted).first()
+            if removed is not None and removed.bounced_at is not None:
+                connection.execute(
+                    _address_bounced(email, secret=secret, at=removed.bounced_at)
+                )
+            if removed is not None:
                 return "removed"
             kept = connection.execute(select(_USERS.c.id).where(_USERS.c.email == email))
             return "no_account" if kept.first() is None else "paying"
@@ -382,6 +384,18 @@ def open_users(path: Path) -> UserStore:
 def this_month() -> str:
     """The month a count is for, as "2026-11", in UTC: the same for every server."""
     return datetime.now(UTC).strftime("%Y-%m")
+
+
+def _address_bounced(email: str, *, secret: bytes, at: int) -> Insert:
+    """The statement keeping `email`'s bounce at `at` as its digest, kept by `secret`."""
+    digest = _bounce_digest(email, secret=secret)
+    return (
+        insert(_BOUNCED_ADDRESSES)
+        .values(digest=digest, bounced_at=at)
+        .on_conflict_do_update(
+            index_elements=[_BOUNCED_ADDRESSES.c.digest], set_={"bounced_at": at}
+        )
+    )
 
 
 def _bounce_digest(email: str, *, secret: bytes) -> str:

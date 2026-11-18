@@ -554,7 +554,11 @@ def _cmd_remove(args: argparse.Namespace) -> int:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
     try:
-        removal = remove_account(users, email, billing_here=_billing_here)
+        secret = named_secret()
+    except AccountsUnset as unset:  # raised by named_secret: none set, or one too short
+        return _fail(words.render(Message("no_secret", {"email": email})), hint=f"({unset})")
+    try:
+        removal = remove_account(users, email, secret=secret, billing_here=_billing_here)
     except PaymentsUnavailable as unasked:  # raised by Stripe's client: nothing was removed
         return _fail(unasked.detail)
     except AccountsUnset as unset:  # raised by _billing_here: set up in part, Stripe unasked
