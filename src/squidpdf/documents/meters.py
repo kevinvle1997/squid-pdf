@@ -20,7 +20,10 @@ class Meter(Protocol):
         ...
 
     def count(self, digest: str) -> dict[str, str]:
-        """Count the file `digest`, once only; the headers that keep the count, a cookie say."""
+        """Count the file `digest`, once only; the headers that keep the count, a cookie say.
+
+        Raises a Problem saying why, as `check` does, if it's new and none are left now.
+        """
         ...
 
 
@@ -40,7 +43,7 @@ class _Unmetered:
         """Every file is let in."""
 
     def count(self, digest: str) -> dict[str, str]:
-        """Nothing is counted, so nothing is kept."""
+        """Nothing is counted, so nothing is kept, and every file is let in."""
         return {}
 
     def meter_for(self, cookies: Mapping[str, str]) -> Meter:
