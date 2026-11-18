@@ -103,7 +103,7 @@ def test_a_link_by_email_signs_a_browser_in_and_makes_its_account(
     reader, other = browser(), browser()
     assert_equal(
         reader.get("/api/account").json(),
-        {"offered": True, "invite_only": False, "signed_in": None},
+        {"offered": True, "invite_only": False, "takes_payment": False, "signed_in": None},
         "before",
     )
     sent = reader.post("/api/account/link", json={"email": f"  {_EMAIL.upper()} "})
@@ -115,7 +115,13 @@ def test_a_link_by_email_signs_a_browser_in_and_makes_its_account(
     expected = {
         "offered": True,
         "invite_only": False,
-        "signed_in": {"email": _EMAIL, "is_unlimited": False},
+        "takes_payment": False,
+        "signed_in": {
+            "email": _EMAIL,
+            "is_unlimited": False,
+            "paid_until": None,
+            "has_billing": False,
+        },
     }
     assert_equal(signed_in.json(), expected, "signed in")
     assert_in("HttpOnly", signed_in.headers["set-cookie"], "script never reads the cookie")
@@ -364,7 +370,7 @@ def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], Test
     reader = browser()
     assert_equal(
         reader.get("/api/account").json(),
-        {"offered": False, "invite_only": False, "signed_in": None},
+        {"offered": False, "invite_only": False, "takes_payment": False, "signed_in": None},
         "state",
     )
     assert_problem(reader.post("/api/account/link", json={"email": _EMAIL}), "no_accounts", 404)

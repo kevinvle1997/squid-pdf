@@ -116,6 +116,7 @@ class LogEvent(Enum):
     GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
     GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
     EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", NOTED, INFO)
+    STRIPE_POSTED = _EventFacts("stripe_posted", NOTED, INFO)
     STRIPE_RETRIED = _EventFacts("stripe_retried", SKIPPED, WARN)
     STRIPE_SIGNATURE_REFUSED = _EventFacts("stripe_signature_refused", SKIPPED, WARN)
     BILLING_EVENT_NOTED = _EventFacts("billing_event_noted", NOTED, INFO)

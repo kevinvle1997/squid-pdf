@@ -15,6 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 
+from squidpdf.accounts.billing.checkout import BillingPortalController, CheckoutController
 from squidpdf.accounts.billing.events import BillingEventController
 from squidpdf.accounts.bounces import BounceController, is_brevo
 from squidpdf.accounts.cookies import SIGNED_IN
@@ -27,7 +28,7 @@ from squidpdf.accounts.sign_in import (
     signed_out,
     state_of,
 )
-from squidpdf.accounts.types import AccountState, LinkSent, MailEvent
+from squidpdf.accounts.types import AccountState, LinkSent, MailEvent, PaymentPage
 from squidpdf.accounts.users import User, checked_email
 from squidpdf.api import constants as limits, rate
 from squidpdf.api.errors import RateLimited
@@ -148,7 +149,9 @@ async def account(
 ) -> AccountState:
     """Whether this server offers accounts, and which this browser is signed in to."""
     if accounts is None:
-        return AccountState(offered=False, invite_only=False, signed_in=None)
+        return AccountState(
+            offered=False, invite_only=False, takes_payment=False, signed_in=None
+        )
     return state_of(accounts, user)
 
 
@@ -197,6 +200,28 @@ async def mail_events(
     """Brevo's webhook: note each address mail can never reach."""
     events = body if isinstance(body, list) else [body]
     return response_of(await BounceController(accounts).note(events), media_type=_JSON)
+
+
+@router.post("/checkout", response_model=PaymentPage)
+async def checkout(
+    checkout_controller: Annotated[
+        CheckoutController, Depends(controller_with_accounts(CheckoutController))
+    ],
+    user: Annotated[User | None, Depends(signed_in)],
+) -> Response:
+    """Where this browser's account pays monthly for no document limit: Stripe's checkout."""
+    return response_of(await checkout_controller.checkout(user), media_type=_JSON)
+
+
+@router.post("/billing-portal", response_model=PaymentPage)
+async def billing_portal(
+    billing_portal_controller: Annotated[
+        BillingPortalController, Depends(controller_with_accounts(BillingPortalController))
+    ],
+    user: Annotated[User | None, Depends(signed_in)],
+) -> Response:
+    """Where this browser's account manages what it pays: Stripe's portal."""
+    return response_of(await billing_portal_controller.portal(user), media_type=_JSON)
 
 
 @router.post("/billing-events", status_code=204)

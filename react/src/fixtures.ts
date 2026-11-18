@@ -19,6 +19,7 @@ import type {
   Render,
   Replace,
   Sentences,
+  SignedIn,
   SkippedInfo,
   SpanInfo,
   SpanNoticeInfo,
@@ -381,5 +382,10 @@ export const TERMS: Terms = {
 
 /** A server that keeps accounts, anyone may sign in to, and this browser isn't signed in to. */
 export function anAccount(fields: Partial<AccountState> = {}): AccountState {
-  return { offered: true, invite_only: false, signed_in: null, ...fields };
+  return { offered: true, invite_only: false, takes_payment: false, signed_in: null, ...fields };
+}
+
+/** An account signed in to, with a document limit, that has never gone to pay. */
+export function aSignedIn(fields: Partial<SignedIn> = {}): SignedIn {
+  return { email: "friend@example.com", is_unlimited: false, paid_until: null, has_billing: false, ...fields };
 }

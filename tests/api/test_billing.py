@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -35,7 +36,21 @@ _SECRET = b"a test's secret, long enough to sign with"
 _EMAIL = "payer@example.com"
 _WEBHOOK_SECRET = b"whsec_a test's signing secret"
 _CUSTOMER = "cus_test"
+_PRICE = "price_monthly"
 _MONTH_S = 30 * 24 * 60 * 60
+_SITE = "https://pdf.example.com"
+# What Stripe answers each POST with, as far as billing reads it.
+_MADE = {
+    "/v1/customers": {"id": "cus_made"},
+    "/v1/checkout/sessions": {"url": "https://checkout.stripe.com/c/pay/cs_test"},
+    "/v1/billing_portal/sessions": {"url": "https://billing.stripe.com/p/session/test"},
+}
+# Payment set up whole in the environment, as env.example says.
+_STRIPE = {
+    "SQUIDPDF_STRIPE_KEY": "sk_test_key",
+    "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "whsec_x",
+    "SQUIDPDF_STRIPE_PRICE": "price_monthly",
+}
 
 
 class _NoMail:
@@ -64,9 +79,19 @@ class _Stripe:
             if isinstance(trouble, Exception):
                 raise trouble
             return trouble
+        if request.method == "POST":
+            return httpx.Response(200, json=_MADE[request.url.path])
         customer = request.url.params["customer"]
         listed = self.subscriptions.get(customer, [])
         return httpx.Response(200, json={"object": "list", "data": listed, "has_more": False})
+
+    def posted(self) -> list[tuple[str, dict[str, list[str]], str]]:
+        """Each POST Stripe was sent: its path, its form, and its idempotency key."""
+        return [
+            (each.url.path, parse_qs(each.content.decode()), each.headers["Idempotency-Key"])
+            for each in self.asked
+            if each.method == "POST"
+        ]
 
 
 def _keeping_accounts(
@@ -79,7 +104,7 @@ def _keeping_accounts(
         store,
         MailController(_NoMail(), store),
         secret=_SECRET,
-        site="https://pdf.example.com",
+        site=_SITE,
         invite_only=False,
         allowance=allowance,
         webhook_token=None,
@@ -107,7 +132,7 @@ def paying(app: FastAPI, tmp_path, monkeypatch, stripe: _Stripe) -> UserStore:
     """Accounts on a server that takes payment through `stripe`, retrying without a wait."""
     monkeypatch.setattr(constants, "STRIPE_FIRST_WAIT_S", 0)
     api = stripe_api("sk_test_key", transport=httpx.MockTransport(stripe.answer))
-    billing = Billing(api, webhook_secret=_WEBHOOK_SECRET)
+    billing = Billing(api, webhook_secret=_WEBHOOK_SECRET, price=_PRICE)
     return _keeping_accounts(app, tmp_path, monkeypatch, billing=billing)
 
 
@@ -407,17 +432,12 @@ def test_a_resync_asks_stripe_again_and_keeps_its_answer_in_the_ledger(
 @pytest.mark.parametrize(
     ("named", "refused_for"),
     [
-        ({"SQUIDPDF_STRIPE_KEY": "sk_test_key"}, "both"),
-        (
-            {"SQUIDPDF_STRIPE_KEY": "pk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "whsec_x"},
-            "no Stripe secret key",
-        ),
-        (
-            {"SQUIDPDF_STRIPE_KEY": "sk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "x"},
-            "no signing secret",
-        ),
+        ({"SQUIDPDF_STRIPE_KEY": "sk_test_key"}, "all of"),
+        (_STRIPE | {"SQUIDPDF_STRIPE_KEY": "pk_test_key"}, "no Stripe secret key"),
+        (_STRIPE | {"SQUIDPDF_STRIPE_WEBHOOK_SECRET": "x"}, "no signing secret"),
+        (_STRIPE | {"SQUIDPDF_STRIPE_PRICE": "prod_monthly"}, "no Stripe price"),
     ],
-    ids=["one of two", "a publishable key", "no signing secret"],
+    ids=["one of three", "a publishable key", "no signing secret", "a product, not a price"],
 )
 def test_payments_set_half_or_with_the_wrong_keys_stop_the_start(
     tmp_path, monkeypatch, named, refused_for
@@ -440,8 +460,7 @@ def test_payments_set_half_or_with_the_wrong_keys_stop_the_start(
 
 
 def test_payments_with_nothing_to_lift_or_no_accounts_stop_the_start(tmp_path, monkeypatch):
-    stripe = {"SQUIDPDF_STRIPE_KEY": "sk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "whsec_x"}
-    for name, value in stripe.items():
+    for name, value in _STRIPE.items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
     with pytest.raises(AccountsUnset, match="an account is what pays"):
@@ -456,3 +475,93 @@ def test_payments_with_nothing_to_lift_or_no_accounts_stop_the_start(tmp_path, m
         monkeypatch.setenv(name, value)
     with pytest.raises(AccountsUnset, match="payment lifts a limit"):
         create_app()
+
+
+def test_an_account_goes_to_stripes_checkout_its_customer_made_once(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    went = reader.post("/api/account/checkout")
+    assert_equal(went.json(), {"url": _MADE["/v1/checkout/sessions"]["url"]}, "Stripe's page")
+    (made, made_form, made_key), (paid, paid_form, first_key) = stripe.posted()
+    assert_equal(made, "/v1/customers", "a customer first")
+    assert_equal(made_form["email"], [_EMAIL], "their address, for receipts")
+    assert_equal(made_key, f"squidpdf-customer-{account}", "made once for the account")
+    assert_equal(paid, "/v1/checkout/sessions", "then the checkout")
+    for name, value in {
+        "customer": "cus_made",
+        "mode": "subscription",
+        "line_items[0][price]": _PRICE,
+        "automatic_tax[enabled]": "true",
+        "success_url": f"{_SITE}/?billing=paid",
+    }.items():
+        assert_equal(paid_form[name], [value], name)
+    reader.post("/api/account/checkout")
+    *_, (again, _again_form, second_key) = stripe.posted()
+    assert_equal(len(stripe.posted()), 3, "no second customer")
+    assert_equal(second_key == first_key, False, "a checkout asked for again is a new one")
+    state = reader.get("/api/account").json()
+    assert_equal(state["takes_payment"], True, "the browser offers payment")
+    assert_equal(state["signed_in"]["has_billing"], True, "and billing to manage")
+
+
+def test_a_call_with_no_answer_is_sent_again_with_its_key_so_stripe_does_it_once(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """Timed out, the customer may have been made: the same key gets Stripe's same answer."""
+    reader = browser()
+    _signed_in_as(reader, paying)
+    stripe.troubles = [httpx.ReadTimeout("Stripe was slow to answer")]
+    assert_equal(reader.post("/api/account/checkout").status_code, 200, "paid, on the retry")
+    tried, retried, _checkout = stripe.posted()
+    assert_equal(tried, retried, "the same call, key and all")
+
+
+def test_paying_again_or_for_an_unlimited_friend_is_refused_and_stripe_isnt_asked(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    friend = browser()
+    paying.invite("friend@example.com", now=0, is_unlimited=True)
+    _signed_in_as(friend, paying, "friend@example.com")
+    assert_problem(friend.post("/api/account/checkout"), "already_unlimited", 409)
+    payer = browser()
+    account = _signed_in_as(payer, paying)
+    now = int(time.time())
+    paying.apply_billing(
+        _paid(account, event="evt_paid", until=now + _MONTH_S, read_at=1), now=now
+    )
+    assert_problem(payer.post("/api/account/checkout"), "already_unlimited", 409)
+    assert_equal(
+        payer.get("/api/account").json()["signed_in"]["paid_until"], now + _MONTH_S, ""
+    )
+    assert_equal(stripe.asked, [], "Stripe asked")
+
+
+def test_going_to_pay_signed_out_is_refused(paying, browser: Callable[[], TestClient]):
+    for path in ("/api/account/checkout", "/api/account/billing-portal"):
+        assert_problem(browser().post(path), "sign_in_to_pay", 401)
+
+
+def test_a_server_that_takes_no_payment_says_so(users, browser: Callable[[], TestClient]):
+    reader = browser()
+    _signed_in_as(reader, users)
+    for path in ("/api/account/checkout", "/api/account/billing-portal"):
+        assert_problem(reader.post(path), "no_payments", 404)
+    assert_problem(_webhook(reader, "evt_any"), "not_found", 404)
+    assert_equal(reader.get("/api/account").json()["takes_payment"], False, "offered")
+
+
+def test_the_portal_opens_for_an_account_that_went_to_pay_and_not_one_that_never_did(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    assert_problem(reader.post("/api/account/billing-portal"), "never_paid", 404)
+    paying.keep_customer(account, _CUSTOMER)
+    opened = reader.post("/api/account/billing-portal")
+    assert_equal(opened.json(), {"url": _MADE["/v1/billing_portal/sessions"]["url"]}, "portal")
+    [(path, form, key)] = stripe.posted()
+    assert_equal((path, form["customer"]), ("/v1/billing_portal/sessions", [_CUSTOMER]), "")
+    assert_equal(form["return_url"], [f"{_SITE}/"], "back to the app")
+    assert_equal(key.startswith("squidpdf-portal-"), True, "its own key")

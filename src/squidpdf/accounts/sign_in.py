@@ -148,10 +148,23 @@ def _signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
 
 def state_of(accounts: Accounts, user: User | None) -> AccountState:
     """What the browser is told of an account on a server that offers them."""
-    signed_in = (
-        None if user is None else SignedIn(email=user.email, is_unlimited=user.is_unlimited)
+    return AccountState(
+        offered=True,
+        invite_only=accounts.invite_only,
+        takes_payment=accounts.billing is not None,
+        signed_in=None if user is None else _signed_in_as(user),
     )
-    return AccountState(offered=True, invite_only=accounts.invite_only, signed_in=signed_in)
+
+
+def _signed_in_as(user: User) -> SignedIn:
+    """What the browser is told of the account it's signed in to."""
+    paid = user.is_paid_at(int(time.time()))
+    return SignedIn(
+        email=user.email,
+        is_unlimited=user.is_unlimited,
+        paid_until=user.paid_until if paid else None,
+        has_billing=user.stripe_customer is not None,
+    )
 
 
 def signed_out(accounts: Accounts) -> Reply[AccountState]:

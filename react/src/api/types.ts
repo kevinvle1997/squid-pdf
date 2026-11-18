@@ -45,7 +45,8 @@ export type Strategy = Schemas["Strategy"];
 export type FontList = Schemas["FontList"];
 export type Terms = Schemas["Terms"];
 export type TermsPiece = Schemas["TermsWords"] | Schemas["TermsEmail"];
-// Not read: `is_unlimited`, until the landing says what's left of a limit.
+// Not read: `is_unlimited`, `paid_until` and `has_billing`, until the landing says what's left of a limit.
 export type SignedIn = Schemas["SignedIn"];
+// Not read: `takes_payment`, until the landing offers payment.
 export type AccountState = Schemas["AccountState"];
 export type LinkSent = Schemas["LinkSent"];
