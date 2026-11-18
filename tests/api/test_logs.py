@@ -28,6 +28,7 @@ from tests.helpers import (
     assert_equal,
     assert_in,
     assert_not_in,
+    assert_problem,
     assert_true,
 )
 
@@ -195,6 +196,8 @@ def test_a_bug_logs_its_traceback_once_as_an_error_with_the_id_its_reply_carries
     logged again by the server without its request, fails the test.
     """
     crashed = browser().get("/api/crash")
+    assert_problem(crashed, "server_error", 500)
+    assert_not_in("a bug nobody caught", crashed.text, "the body of a crash")
 
     output = capsys.readouterr().out
     request = crashed.headers[_HEADER]

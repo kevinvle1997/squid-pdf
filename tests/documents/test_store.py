@@ -203,17 +203,17 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
         )
 
 
-def test_a_worker_reads_an_index_once(engine):
+def test_a_worker_reads_an_index_once(engine, kept_indexes):
     """Every render and export needs it, and parsing it was most of a render's time."""
     _, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, engine.index())
-    store._kept_indexes.forget()  # as a worker that didn't save it: from its file
+    kept_indexes.forget()  # as a worker that didn't save it: from its file
     first = store.require_index(folder)
     assert_true(store.require_index(folder) is first, "the index was read from disk again")
 
 
 def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
-    engine, monkeypatch
+    engine, monkeypatch, kept_indexes
 ):
     """Renders of several documents take turns on each worker; past the bound, memory wins.
 
@@ -225,7 +225,7 @@ def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
     _, third = FOLDER_STORE.create("owner")
     for folder in (first, second, third):
         store.save_index(folder, index)  # the same index, so each file is the same size
-    store._kept_indexes.forget()  # as a worker that saved none of them: each from its file
+    kept_indexes.forget()  # as a worker that saved none of them: each from its file
     monkeypatch.setattr(constants, "KEPT_INDEX_BYTES", 2 * len(index_as_json(index)))
 
     first_read = store.require_index(first)
@@ -250,7 +250,7 @@ def test_a_kept_index_never_outlives_its_file(engine):
         store.require_index(folder)
 
 
-def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
+def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was(kept_indexes):
     """A span's id and facts never change, so what's kept must read back whole.
 
     Every field is off a blank one's, so one added later and left at its default fails here.
@@ -283,7 +283,7 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was():
     _, folder = FOLDER_STORE.create("owner")
 
     store.save_index(folder, index_of([span]))
-    store._kept_indexes.forget()  # as a worker that didn't save it: from its file
+    kept_indexes.forget()  # as a worker that didn't save it: from its file
     store.save_pages(folder, [page])
 
     assert_equal(list(store.require_index(folder)), [span], "the spans read back")
@@ -300,12 +300,11 @@ def test_every_room_kept_reads_back_to_the_last_bit():
     assert_equal(store.load_rooms(folder, "a-build"), rooms, "the rooms read back")
 
 
-def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path):
+def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path, kept_indexes):
     """What a worker keeps between requests: forgotten, nothing of any index stays."""
     store.save_index(tmp_path, engine.index())  # kept by the worker that saved it
-    kept = store._kept_indexes
-    assert_every_field_filled(kept, _KeptIndexes(), "the record once it keeps an index")
+    assert_every_field_filled(kept_indexes, _KeptIndexes(), "the record once it keeps an index")
 
-    kept.forget()
+    kept_indexes.forget()
 
-    assert_equal(kept, _KeptIndexes(), "the record once it forgot")
+    assert_equal(kept_indexes, _KeptIndexes(), "the record once it forgot")

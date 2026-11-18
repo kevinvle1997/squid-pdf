@@ -670,7 +670,9 @@ def test_paying_again_or_for_an_unlimited_friend_is_refused_and_stripe_isnt_aske
     )
     assert_problem(payer.post("/api/account/checkout"), "already_unlimited", 409)
     assert_equal(
-        payer.get("/api/account").json()["signed_in"]["paid_until"], now + _MONTH_S, ""
+        payer.get("/api/account").json()["signed_in"]["paid_until"],
+        now + _MONTH_S,
+        "when the payer's paid time ends",
     )
     assert_equal(stripe.asked, [], "Stripe asked")
 

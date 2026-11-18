@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 
 import httpx
 import pytest
@@ -25,6 +26,7 @@ _BROWSERS = 2  # two first visits, at the same moment
 _MEASURING_S = 0.2
 
 
+@dataclass(slots=True)
 class _StandInWorkers:
     """Workers that measure an empty font list after a moment, counting each measurement.
 
@@ -32,15 +34,13 @@ class _StandInWorkers:
     what's in it: the real list is checked in test_documents.
     """
 
-    def __init__(self, *, too_slow: int = 0) -> None:
-        """Run out of time on the first `too_slow` measurements."""
-        self.runs = 0
-        self._too_slow = too_slow
+    too_slow: int = 0  # the first measurements, this many, run out of time
+    runs: int = 0  # measurements asked for so far
 
     async def run(self, timeout: float, task: Callable[[], FontList]) -> FontList:
         """Count the measurement, then give an empty list, or run out of time."""
         self.runs += 1
-        if self.runs <= self._too_slow:
+        if self.runs <= self.too_slow:
             raise TooSlow()
         await asyncio.sleep(_MEASURING_S)
         return {"build": BUILD, "families": []}
@@ -52,6 +52,7 @@ class _StandInWorkers:
 @pytest.fixture
 def unlisted() -> Iterator[None]:
     """A server that hasn't listed its fonts yet; after, the stand-in's list is forgotten."""
+    # The server keeps its list for the process, so the shared app's start measured it.
     font_list._font_list_task.forget()
     yield
     font_list._font_list_task.forget()
@@ -60,8 +61,8 @@ def unlisted() -> Iterator[None]:
 async def _ask_at_once(app: FastAPI) -> list[httpx.Response]:
     """The font list, asked for by several browsers on one server at the same moment.
 
-    Through one event loop, as the server runs: a TestClient gives each
-    request a loop of its own.
+    Run in the app's own loop, as the server runs: a TestClient sends each
+    request whole before the next, and these overlap.
     """
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url=BASE_URL) as browser:
@@ -70,12 +71,14 @@ async def _ask_at_once(app: FastAPI) -> list[httpx.Response]:
 
 
 def test_browsers_asking_for_the_font_list_at_once_wait_for_one_measurement(
-    app, monkeypatch, unlisted
+    app, server: TestClient, monkeypatch, unlisted
 ):
     workers = _StandInWorkers()
     monkeypatch.setattr(app.state, "pool", workers)
 
-    replies = asyncio.run(_ask_at_once(app))
+    if server.portal is None:
+        pytest.fail("the app isn't started")
+    replies = server.portal.call(_ask_at_once, app)
 
     assert_equal([reply.status_code for reply in replies], [200] * _BROWSERS, "statuses")
     assert_equal(workers.runs, 1, "measurements")
@@ -99,17 +102,16 @@ def test_a_font_list_that_ran_out_of_time_is_measured_again(
     ("too_slow", "logged", "measurements"), [(0, False, 1), (1, True, 2)], ids=["ran", "failed"]
 )
 def test_a_server_measures_its_font_list_as_it_starts(
-    tmp_path, monkeypatch, unlisted, capsys, too_slow, logged, measurements
+    own_app, monkeypatch, unlisted, capsys, too_slow, logged, measurements
 ):
     """So the first browser after a deploy finds it measured, or under way, and starts none.
 
     One that fails is logged, since no request waits for it, and the first ask measures again.
     """
     workers = _StandInWorkers(too_slow=too_slow)
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     # Its own app, so its start runs here, with workers that count each measurement.
     monkeypatch.setattr(api_app, "start_pool", lambda: workers)
-    with TestClient(api_app.create_app(), base_url=BASE_URL) as server:
+    with own_app.started() as server:
         if server.portal is None:
             pytest.fail("the client hasn't started the app")
         # A turn of the app's loop: whatever its start began has begun by then.

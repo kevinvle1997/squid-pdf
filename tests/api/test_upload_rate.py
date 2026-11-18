@@ -9,11 +9,9 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-from squidpdf.api import constants as limits
-from squidpdf.api.app import create_app
 from squidpdf.api.rate import RecentStarts
 from squidpdf.documents import store
-from tests.api.conftest import NOT_A_PDF, ONE_ADDRESS, OTHER_ADDRESS, browser_on, upload
+from tests.api.conftest import NOT_A_PDF, ONE_ADDRESS, OTHER_ADDRESS, OwnApp, browser_on, upload
 from tests.helpers import (
     assert_equal,
     assert_every_field_filled,
@@ -26,14 +24,12 @@ _MINUTE_S = 60.0
 
 
 @pytest.fixture
-def one_upload_a_minute(tmp_path, monkeypatch) -> Iterator[TestClient]:
+def one_upload_a_minute(own_app: OwnApp) -> Iterator[TestClient]:
     """An app of its own, started, taking one upload a minute from each address.
 
     Its own: every other test uploads from the one test address.
     """
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
-    monkeypatch.setattr(limits, "UPLOADS_PER_MINUTE", 1)
-    with TestClient(create_app()) as server:  # runs the lifespan: the pool and the sweeper
+    with own_app.started(UPLOADS_PER_MINUTE=1) as server:
         yield server
 
 

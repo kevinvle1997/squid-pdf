@@ -24,7 +24,14 @@ from squidpdf.accounts.users import open_users
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
 from tests.conftest import OTHER_LINE, named_only, with_hidden_copies
-from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_equal,
+    assert_false,
+    assert_in,
+    assert_not_in,
+    assert_true,
+)
 
 # What the server signs and keys bounces with, as the environment would set it.
 _SECRET = b"a test's secret, long enough to sign with"
@@ -139,7 +146,7 @@ def test_a_rate_below_the_warning_line_is_red_wherever_it_is_shown(tmp_path, com
     said = _run_in_a_terminal([command, named], terminal="stdout")
 
     red = "\033[31m"
-    assert_in(f"{red}0%", said["stdout"], f"the green rate `squidpdf {command}` gives")
+    assert_in(f"{red}0%", said["stdout"], f"the red rate `squidpdf {command}` gives")
 
 
 def test_new_text_on_two_lines_is_a_usage_error(pdf, capsys):
@@ -170,6 +177,9 @@ def test_check_explains_an_edit_that_will_not_fit(pdf, capsys):
     out = capsys.readouterr().out
     assert_equal(code, 0, "exit code of `squidpdf check`: it only reports, never fails")
     assert_not_in("fits in place", out, "the check output for a far longer edit")
+    _percent, too_long = words.sentence("too_long").split("{percent}%")
+    assert_in(too_long, out, "how much too long it is, for its place")
+    assert_in("as-is", out, "the way out it offers")
 
 
 def test_edit_replaces_the_text_and_saves(pdf, tmp_path, capsys):
@@ -227,7 +237,7 @@ def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys
 
     assert_equal(code, 1, "exit code of `squidpdf edit` for an edit that will not fit")
     assert_in("--force", capsys.readouterr().err, "the refusal names the way past it")
-    assert_true(not out_pdf.exists(), "no file is written when the edit is refused")
+    assert_false(out_pdf.exists(), "no file is written when the edit is refused")
 
 
 def test_edit_takes_a_way_out_check_offered_without_force(pdf, tmp_path, capsys):
@@ -416,7 +426,7 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
     with open_pdf(str(out_pdf)) as engine:
         spans = engine.index()
     assert_equal({span.page for span in spans}, {0, 1, 2}, "the pages the spans are on")
-    assert_true(len(spans) > 3 * 40, f"a contract's page is full, got {len(spans)} spans")
+    assert_at_least(len(spans.by_id), 3 * 40 + 1, "spans on three of a contract's full pages")
     assert_in("This agreement is made on 14 March 2026 between", _text(out_pdf), "page 1")
 
 
@@ -510,12 +520,18 @@ def test_terms_with_no_file_named_says_so(monkeypatch, capsys):
     assert_in(words.render(Message("terms_none_named")), capsys.readouterr().err, "why")
 
 
-def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_again(
-    tmp_path, monkeypatch, capsys
-):
+@pytest.fixture
+def database(tmp_path, monkeypatch) -> Path:
+    """A users' database of this test's own for the commands, and the server's secret."""
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
+    return database
+
+
+def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_again(
+    database, capsys
+):
     assert_equal(main(["invite", " Friend@Example.com", "--unlimited"]), 0, "exit code")
     assert_in("friend@example.com is invited, and may use", capsys.readouterr().out, "said")
     friend = open_users(database).find("friend@example.com")
@@ -526,11 +542,9 @@ def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_ag
 
 
 def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends(
-    tmp_path, monkeypatch, capsys
+    database, capsys
 ):
     """Removed while paying, they'd be charged for an account that's gone."""
-    database = tmp_path / "users.sqlite3"
-    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     users = open_users(database)
     account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     now = int(time.time())
@@ -556,11 +570,7 @@ def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends
     assert_equal(main(["remove", "payer@example.com"]), 0, "exit code, cancelled")
 
 
-def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(
-    tmp_path, monkeypatch, capsys
-):
-    database = tmp_path / "users.sqlite3"
-    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(database, capsys):
     users = open_users(database)
     account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     users.keep_customer(account, "cus_test")
@@ -585,10 +595,8 @@ def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(
     assert_equal(main(["billing", "stranger@example.com"]), 1, "exit code, no account")
 
 
-def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(tmp_path, monkeypatch, capsys):
+def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(database, capsys):
     """Without Stripe's keys, the command line can't ask Stripe, so it changes nothing."""
-    database = tmp_path / "users.sqlite3"
-    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     users = open_users(database)
     account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     users.keep_customer(account, "cus_test")
@@ -599,13 +607,8 @@ def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(tmp_path, monkey
     assert_in("isn't set up to ask Stripe", capsys.readouterr().err, "said")
 
 
-def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(
-    tmp_path, monkeypatch
-):
+def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(database):
     """Invited, the address is trusted mended: its account, taken off later, blocks nothing."""
-    database = tmp_path / "users.sqlite3"
-    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
-    monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
     users = open_users(database)
     users.note_bounce("friend@example.com", secret=_SECRET, now=0)
     assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), True, "bounced")
@@ -633,12 +636,7 @@ def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
     assert_in("SQUIDPDF_DATABASE names no database", capsys.readouterr().err, "said")
 
 
-def test_remove_takes_an_account_off_and_says_when_there_was_none(
-    tmp_path, monkeypatch, capsys
-):
-    database = tmp_path / "users.sqlite3"
-    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
-    monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
+def test_remove_takes_an_account_off_and_says_when_there_was_none(database, capsys):
     main(["invite", "friend@example.com", "--unlimited"])
     capsys.readouterr()
     assert_equal(main(["remove", " Friend@Example.com"]), 0, "exit code")

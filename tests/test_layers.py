@@ -130,8 +130,8 @@ def test_only_logcontroller_calls_the_event_loops_exception_handler():
     assert_equal(breaking, [], "modules calling the event loop's exception handler")
 
 
-def _in_body(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:
-    """Every node a coroutine runs itself, not those of a function defined inside it."""
+def _in_body(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
+    """Every node a function runs itself, not those of a function defined inside it."""
     waiting: list[ast.AST] = list(function.body)
     while waiting:
         node = waiting.pop()
@@ -163,19 +163,49 @@ def _disk_name_called(node: ast.AST) -> str | None:
     return None
 
 
+def _helper_called(node: ast.AST) -> str | None:
+    """The plain function a node calls by name, as `_read(folder)`; None if not such a call."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id
+    return None
+
+
+def _disk_helpers(functions: list[ast.FunctionDef]) -> dict[str, str]:
+    """Each of these sync functions that reaches the disk, itself or through another of them."""
+    reaching: dict[str, str] = {}
+    while True:
+        found = {
+            function.name: name
+            for function in functions
+            if function.name not in reaching
+            for node in _in_body(function)
+            if (name := _disk_name_called(node) or reaching.get(_helper_called(node) or ""))
+        }
+        if not found:
+            return reaching
+        reaching |= found
+
+
 def _disk_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
-    """Each coroutine in `tree`, and each disk module's function it calls on the loop."""
+    """Each coroutine in `tree`, and each disk call it makes on the loop, or a helper of it."""
+    module_level = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
     for function in ast.walk(tree):
         if not isinstance(function, ast.AsyncFunctionDef):
             continue
+        # Sync functions it may call by name: the module's, and those it defines.
+        defined = [node for node in ast.walk(function) if isinstance(node, ast.FunctionDef)]
+        helpers = _disk_helpers(module_level + defined)
         for node in _in_body(function):
+            helper = _helper_called(node)
             name = _disk_name_called(node)
             if name is not None:
                 yield function.name, name
+            if helper in helpers:
+                yield function.name, f"{helper}, which calls {helpers[helper]}"
 
 
 def test_a_coroutine_reaches_the_store_only_through_a_thread():
-    """A coroutine never calls the store itself, nor the font copies: both read the disk."""
+    """A coroutine never calls the store, nor the font copies, itself or through a helper."""
     breaking = [
         f"{module}.{coroutine}: {name}"
         for module, tree in _TREES.items()
@@ -339,7 +369,19 @@ def test_each_core_package_imports_only_those_before_it_in_one_order():
     assert_equal(breaking, [], "core modules importing a package that builds on theirs")
 
 
-# How a class holds its state (rules/readable.md, Data): in public fields, set when it's
+def test_every_core_module_is_in_a_package_the_order_lists():
+    """One the order leaves out would read as core's top row, and escape the check above."""
+    unlisted = [
+        module
+        for module in _MODULES
+        if _within(module, "squidpdf.core")
+        and module != "squidpdf.core"
+        and _core_package(module) == "squidpdf.core"
+    ]
+    assert_equal(unlisted, [], "core modules in no package of _CORE_ORDER")
+
+
+# How a class holds its state (rules/backend/python.md, Data): in public fields, set when it's
 # made, and changed later only by a holder of changing state, through its own methods.
 
 _EXCEPTIONS_BUILT_IN = {

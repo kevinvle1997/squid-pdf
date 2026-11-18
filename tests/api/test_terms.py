@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from squidpdf.api.app import create_app
 from squidpdf.core import Message, words
@@ -42,7 +43,7 @@ _SERVED = {
 }
 
 
-def _terms_answered(monkeypatch, named: str | None):
+def _terms_answered(monkeypatch: pytest.MonkeyPatch, named: str | None) -> Response:
     """What GET /api/terms answers on an app started with `SQUIDPDF_TERMS` set to `named`."""
     if named is None:
         monkeypatch.delenv("SQUIDPDF_TERMS", raising=False)

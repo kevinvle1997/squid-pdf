@@ -6,20 +6,19 @@ import json
 from pathlib import Path
 from typing import get_args
 
+import orjson
 import pytest
 
 from squidpdf.core import (
-    CONDENSE_LIMIT,
     OPTION_KEYS,
-    ROOM_SLACK_PT,
-    SHRINK_FLOOR,
-    TOLERANCE_PT,
     Message,
     QuarterTurn,
     open_pdf,
     reason_of,
     words,
 )
+from squidpdf.documents.replies import document_json
+from squidpdf.documents.types import AnalysisFacts, KeptAnalysis
 from squidpdf.editing import FitReport, Strategy, options_for, replace_fit
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, in_a_copy_lacking
 from tests.helpers import assert_equal, assert_false, assert_in, assert_true
@@ -37,7 +36,7 @@ def test_check_reports_overflow_with_options(engine):
     assert_in("too long", words.render_all(fit.describe()) or "", "the overflow description")
     offered = {o.name for o in fit.options}
     missing = {"shrink", "as-is"} - offered
-    assert_true(not missing, f"options offered ({offered}) are missing {missing}")
+    assert_equal(missing, set(), f"ways out missing from those offered ({offered})")
 
     # A letter only the substitute has, and one nothing has: both said, each its way.
     fit = replace_fit(engine, span, longer + " é 中", room_pt=0.0).report
@@ -81,19 +80,24 @@ def test_every_way_out_has_its_sentences():
     assert_equal(set(get_args(Strategy.__value__)), set(OPTION_KEYS), "the ways out")
 
 
-# The cases the browser's fit check is tested on too (react/src/editing/fit.test.ts).
+# The browser's fit check is tested on these too: react/src/editing/{fit,verdicts}.test.ts.
 _SHARED = json.loads(Path(__file__).with_name("fit_cases.json").read_text())
 
 
 def test_the_shared_cases_use_the_servers_rules():
-    """The browser gets these rules from the server; its test reads them from the cases."""
-    rules = {
-        "tolerance_pt": TOLERANCE_PT,
-        "room_slack_pt": ROOM_SLACK_PT,
-        "condense_limit": CONDENSE_LIMIT,
-        "shrink_floor": SHRINK_FLOOR,
+    """The browser gets these rules in a document's reply; its tests, from the cases."""
+    # A file with no pages and no fonts: only the reply's rules are read.
+    facts: AnalysisFacts = {
+        "build": "a-build",
+        "active_content_dropped": False,
+        "plain_xmp_dropped": False,
+        "signed": False,
+        "pages": [],
+        "fonts": [],
     }
-    assert_equal(_SHARED["rules"], rules, "the rules the shared cases are judged by")
+    kept = KeptAnalysis(orjson.dumps(facts), b"[]", "its-digest")
+    reply = orjson.loads(document_json("a-doc", expires_at=0.0, kept=kept, language="en"))
+    assert_equal(_SHARED["rules"], reply["fit"], "the rules the shared cases are judged by")
 
 
 @pytest.mark.parametrize("case", _SHARED["cases"], ids=lambda case: case["what"])

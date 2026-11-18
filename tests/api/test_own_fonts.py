@@ -9,6 +9,7 @@ from urllib.parse import quote
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from squidpdf.api import constants as limits
 from squidpdf.core.fonts.catalog import FACES, face_bytes
@@ -40,7 +41,7 @@ def _font_url(doc: dict, font_name: str) -> str:
     return f"/api/documents/{doc['id']}/fonts/{quote(font_name, safe='')}"
 
 
-def _attach(client: TestClient, doc: dict, font_name: str, font_file: bytes):
+def _attach(client: TestClient, doc: dict, font_name: str, font_file: bytes) -> Response:
     """Send a font file as the user's copy of `font_name`, raw, as the browser does."""
     return client.put(_font_url(doc, font_name), content=font_file)
 

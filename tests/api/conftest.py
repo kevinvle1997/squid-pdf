@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
@@ -121,10 +122,37 @@ def browser(app: FastAPI, server: TestClient) -> Callable[[], TestClient]:
     return lambda: browser_on(server)
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class OwnApp:
+    """An app of its own, not started yet, keeping its documents in a fresh folder.
+
+    For a test that breaks the pool or tests a limit, which the shared app raises.
+    """
+
+    app: FastAPI  # its state is the test's to set before it starts
+    monkeypatch: pytest.MonkeyPatch  # the test's, so each limit comes undone with it
+
+    @contextmanager
+    def started(self, **limits: int) -> Iterator[TestClient]:
+        """The app started, its pool and sweeper with it, each of `limits` set in the API's."""
+        for name, value in limits.items():
+            self.monkeypatch.setattr(api_constants, name, value)
+        with TestClient(self.app, base_url=BASE_URL) as server:  # runs the lifespan
+            yield server
+
+
+@pytest.fixture
+def own_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> OwnApp:
+    """An app of this test's own, its documents under `tmp_path`, to start once it's set."""
+    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "data"))
+    return OwnApp(create_app(), monkeypatch)
+
+
 class InProcess:
     """Runs pool work in the test's own process, where a monkeypatch reaches it."""
 
-    async def run(self, _timeout, task):
+    async def run[T](self, _timeout: float, task: Callable[[], T]) -> T:
+        """`task`, run here and now."""
         return task()
 
 

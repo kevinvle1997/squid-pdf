@@ -588,8 +588,8 @@ _NOT_XML = {
 }
 
 
-def with_hidden_copies(copies: Collection[str]) -> bytes:
-    """A page that shows a name, and keeps a hidden copy of it as each of `copies` too.
+def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
+    """A page that shows a name, and keeps a hidden copy of it as each of `hidden_copies` too.
 
     The comments and fields sit apart from the lines, so erasing the name's letters
     can't reach them.
@@ -599,91 +599,91 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
     page.insert_text((72, 100), REDACTED_NAME, fontname="helv", fontsize=12)
     page.insert_text((72, 130), OTHER_LINE, fontname="helv", fontsize=12)
     info = {}  # what the file says about itself
-    if "title" in copies:
+    if "title" in hidden_copies:
         info["title"] = f"Notes on {REDACTED_NAME}"
-    if "author" in copies:
+    if "author" in hidden_copies:
         info["author"] = REDACTED_NAME
     doc.set_metadata(info)
-    if "xmp" in copies:
+    if "xmp" in hidden_copies:
         doc.set_xml_metadata(_XMP.format(name=REDACTED_NAME))
-    if "page_xmp" in copies:
+    if "page_xmp" in hidden_copies:
         # The page's own metadata, apart from the catalog's: any object may name one.
         doc.xref_set_key(page.xref, "Metadata", f"{_new_xmp(doc)} 0 R")
     for kind, written in _NOT_XML.items():
-        if kind in copies:
+        if kind in hidden_copies:
             _set_metadata_bytes(doc, written)
-    if "bookmark" in copies:
+    if "bookmark" in hidden_copies:
         doc.set_toc([[1, f"Visit by {REDACTED_NAME}", 1], [1, REDACTED_NAME, 1]])
-    if "note" in copies:
+    if "note" in hidden_copies:
         note = page.add_text_annot((500, 700), f"Call {REDACTED_NAME}")
         note.set_info(title=REDACTED_NAME, subject="Visit")
         note.update()
         doc.xref_set_key(note.xref, "RC", f"(<body><p>Call {REDACTED_NAME}</p></body>)")
-    if "free_text" in copies:
+    if "free_text" in hidden_copies:
         page.add_freetext_annot(
             pymupdf.Rect(72, 300, 300, 320), f"Ask {REDACTED_NAME}", fontsize=12
         )
-    if "stale_free_text" in copies:
+    if "stale_free_text" in hidden_copies:
         stale = page.add_freetext_annot(
             pymupdf.Rect(320, 300, 560, 320), f"Ring {REDACTED_NAME}", fontsize=12
         )
         # Its words lose the name, but its drawing, not drawn again, keeps it.
         doc.xref_set_key(stale.xref, "Contents", "(Ring)")
-    if "field" in copies:
+    if "field" in hidden_copies:
         field = _add_field(page, "who", REDACTED_NAME, top=400)
         doc.xref_set_key(field, "DV", f"({REDACTED_NAME})")
         doc.xref_set_key(field, "RV", f"(<body><p>{REDACTED_NAME}</p></body>)")
-    if "undrawable_field" in copies:
+    if "undrawable_field" in hidden_copies:
         undrawable = _add_field(page, "sealed", REDACTED_NAME, top=400, left=320)
         # No kind (FT), so MuPDF can't draw it again; a viewer shows its old drawing.
         doc.xref_set_key(undrawable, "FT", "null")
-    if "choice" in copies:
+    if "choice" in hidden_copies:
         choice = _add_field(page, "pick", CHOSEN, top=450, kind=_CHOICE_FIELD)
         doc.xref_set_key(choice, "Opt", f"[({CHOSEN}) [(2) ({REDACTED_NAME})]]")
-    if "multi_choice" in copies:
+    if "multi_choice" in hidden_copies:
         both = f"[({CHOSEN}) ({REDACTED_NAME})]"
         listed = _add_field(page, "team", CHOSEN, top=450, left=320, kind=_LIST_FIELD)
         doc.xref_set_key(listed, "Ff", str(_MULTI_SELECT))
         doc.xref_set_key(listed, "Opt", both)
         doc.xref_set_key(listed, "V", both)
         doc.xref_set_key(listed, "I", "[0 1]")
-    if "unlisted_field" in copies:
+    if "unlisted_field" in hidden_copies:
         unlisted = _add_field(page, "signed", REDACTED_NAME, top=500)
         # Off the form's list, as a half-flattened form leaves one.
         _kind, listed_fields = doc.xref_get_key(doc.pdf_catalog(), "AcroForm/Fields")
         left = listed_fields.replace(f"{unlisted} 0 R", "")
         doc.xref_set_key(doc.pdf_catalog(), "AcroForm/Fields", left)
-    if "tooltip" in copies:
+    if "tooltip" in hidden_copies:
         described = _add_field(page, "described", "", top=500, left=320)
         doc.xref_set_key(described, "TU", f"(Signature of {REDACTED_NAME})")
-    if "widget_contents" in copies:
+    if "widget_contents" in hidden_copies:
         phone = _add_field(page, "phone", "", top=700)
         doc.xref_set_key(phone, "Contents", f"(Phone of {REDACTED_NAME})")
-    if "seed_value" in copies:
+    if "seed_value" in hidden_copies:
         to_sign = _add_signature_field(page, name="to_sign", at=(320, 660))
         signer = f"<</Cert<</SubjectDN[<</CN({REDACTED_NAME})>>]>>>>"
         doc.xref_set_key(to_sign, "SV", signer)
-    if "button" in copies:
+    if "button" in hidden_copies:
         _add_button(page, f"Email {REDACTED_NAME}")
-    if "stamp" in copies:
+    if "stamp" in hidden_copies:
         _stamp(doc, page, f"Seen by {REDACTED_NAME}")
-    if "stamp_in_image" in copies:
+    if "stamp_in_image" in hidden_copies:
         _stamp(doc, page, f"Seen by {REDACTED_NAME}", in_image=True)
-    if "signature" in copies:
+    if "signature" in hidden_copies:
         _sign(doc, page, name="signed_by", at=(72, 550))
-    if "certified" in copies:
+    if "certified" in hidden_copies:
         certifying = _sign(doc, page, name="certified_by", at=(320, 550))
         doc.xref_set_key(doc.pdf_catalog(), "Perms", f"<</DocMDP {certifying} 0 R>>")
-    if "dss" in copies:
+    if "dss" in hidden_copies:
         _sign(doc, page, name="kept_checkable", at=(72, 660))
         certificate = new_stream(doc, _SIGNED_BYTES)
         by_signature = f"/VRI<</{'A' * 40} <</Cert[{certificate} 0 R]>>>>"  # by its hash
         doc.xref_set_key(
             doc.pdf_catalog(), "DSS", f"<</Certs[{certificate} 0 R]{by_signature}>>"
         )
-    if "tag" in copies:
+    if "tag" in hidden_copies:
         _tag_a_picture(doc, f"Photo of {REDACTED_NAME}")
-    if "annotation_xmp" in copies:
+    if "annotation_xmp" in hidden_copies:
         # A comment naming metadata of its own, written in the page's list of comments
         # itself, not as an object of its own. Last: it writes that list again, whole.
         value_type, listed = doc.xref_get_key(page.xref, "Annots")

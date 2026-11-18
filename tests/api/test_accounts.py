@@ -21,7 +21,6 @@ from squidpdf.accounts.mail import Letter, MailController, Mailer, SmtpMailer, b
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
-from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
 from tests.api.conftest import BASE_URL, ONE_ADDRESS, OTHER_ADDRESS, browser_on, upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
@@ -39,6 +38,7 @@ class _NotedMail:
     letters: list[Letter] = field(default_factory=list)
 
     def send(self, letter: Letter) -> None:
+        """Note the letter."""
         self.letters.append(letter)
 
 
@@ -250,6 +250,7 @@ def test_a_link_sent_through_brevo_goes_as_its_api_asks(
     asked: list[httpx.Request] = []
 
     def brevo(request: httpx.Request) -> httpx.Response:
+        """Brevo, noting each request and sending the letter."""
         asked.append(request)
         return httpx.Response(201, json={"messageId": "<1@smtp-relay.mailin.fr>"})
 
@@ -285,6 +286,7 @@ def test_brevo_refusing_a_link_says_whether_to_wait(
     """Past its sending limit, waiting a minute won't help, so the sentence says so."""
 
     def brevo(request: httpx.Request) -> httpx.Response:
+        """Brevo, answering `answer`, or failing with it."""
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -302,6 +304,7 @@ def test_invite_only_a_refused_link_is_said_as_any_address_is(
     """Refused only for the invited, it would tell anyone who is invited."""
 
     def brevo(request: httpx.Request) -> httpx.Response:
+        """Brevo, out of credits to send with."""
         return httpx.Response(402, json={"code": "not_enough_credits"})
 
     mailer = brevo_mailer(
@@ -427,14 +430,11 @@ def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], Test
     assert_problem(reader.post("/api/account/sign-in", json={"token": "x"}), "no_accounts", 404)
 
 
-def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatch):
+def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, own_app):
     """Its own app: every other test asks from the one test address."""
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "data"))
-    monkeypatch.setattr(limits, "LINKS_PER_MINUTE", 1)
     noted = _NotedMail()
-    app = create_app()
-    app.state.accounts = _accounts(tmp_path, noted)
-    with TestClient(app) as server:  # runs the lifespan, which makes the counts
+    own_app.app.state.accounts = _accounts(tmp_path, noted)
+    with own_app.started(LINKS_PER_MINUTE=1) as server:  # its start makes the counts
         reader = browser_on(server, client=(ONE_ADDRESS, 1))
         neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(
@@ -449,15 +449,12 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatc
 
 
 def test_an_inbox_sent_its_links_while_one_works_is_told_to_wait_from_any_address(
-    tmp_path, monkeypatch
+    tmp_path, own_app
 ):
     """Its own app: every other test asks for the one test address."""
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "data"))
-    monkeypatch.setattr(limits, "LINKS_PER_INBOX", 1)
     noted = _NotedMail()
-    app = create_app()
-    app.state.accounts = _accounts(tmp_path, noted)
-    with TestClient(app) as server:  # runs the lifespan, which makes the counts
+    own_app.app.state.accounts = _accounts(tmp_path, noted)
+    with own_app.started(LINKS_PER_INBOX=1) as server:  # its start makes the counts
         reader = browser_on(server, client=(ONE_ADDRESS, 1))
         neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(

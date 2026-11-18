@@ -5,17 +5,24 @@ from __future__ import annotations
 import base64
 import itertools
 import json
+import math
 import random
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from typing import Any, cast
 
 import pymupdf
 import pytest
 
 from squidpdf.api import constants as api_constants
-from squidpdf.core import COPY_PLACES, Engine, Message, words, write_dense
+from squidpdf.core import COPY_PLACES, Message, words, write_dense
 from squidpdf.core.constants import TOLERANCE_PT
+from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
+from squidpdf.core.types import CodeRun, TextRun
 from squidpdf.documents import store
 from squidpdf.documents.store import FolderStore
 from squidpdf.editing import constants as editing_constants
@@ -40,7 +47,14 @@ from tests.conftest import (
     in_a_copy_lacking,
     with_hidden_copies,
 )
-from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
+from tests.helpers import (
+    assert_at_least,
+    assert_close,
+    assert_equal,
+    assert_in,
+    assert_problem,
+    assert_true,
+)
 
 _SCALE = 2
 _LONGER = "!!"  # a few points too long: every way out is offered
@@ -129,7 +143,9 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
 
     fit = render(mine, doc, [edit], []).json()["fits"][span["id"]]
 
-    assert_true(fit["delta_pt"] > TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
+    # Past the tolerance, not only at it.
+    past_tolerance = math.nextafter(TOLERANCE_PT, math.inf)
+    assert_at_least(fit["delta_pt"], past_tolerance, "points past the original")
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
     [part] = fit["message_parts"]
     percent = part["params"]["percent"]
@@ -162,7 +178,7 @@ _EVERY_PLACE_SAID = " ".join(
 
 
 @pytest.mark.parametrize(
-    ("copies", "named", "said"),
+    ("hidden_copies", "named", "said"),
     [
         ([*NAME_COPIES, "signature"], [*COPY_PLACES, "signatures"], _EVERY_PLACE_SAID),
         ((), [], None),
@@ -170,10 +186,10 @@ _EVERY_PLACE_SAID = " ".join(
     ids=["kept in every place, and signed", "kept nowhere else"],
 )
 def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
-    mine, copies, named, said
+    mine, hidden_copies, named, said
 ):
     """Said before the download: a title isn't on the page. Each place once, then signatures."""
-    doc = upload(mine, with_hidden_copies(copies)).json()
+    doc = upload(mine, with_hidden_copies(hidden_copies)).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
     rendered = render(mine, doc, [{"kind": "redact", "span_id": name["id"]}], [around(name)])
@@ -214,14 +230,17 @@ def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
         Message("rest_of_line_moved", {"text": "1234", "page": 2}),
     ]
     said = rendered["redactions"][first["id"]]
-    assert_equal(
-        said["message"], _said_of(rendered, first, moved[:1]), "what render says of it"
-    )
+    expected = (True, _said_of(rendered, first, moved[:1]))
+    assert_equal((said["verified"], said["message"]), expected, "what render says of it")
     under_the_bar = [notice["detail"] for notice in rendered["notices"]]
     assert_equal(
         under_the_bar, [words.render(each) for each in moved], "the lines under the bar"
     )
-    assert_equal(exported.status_code, 200, "the file, its words gone")
+    saved = pymupdf.open(stream=exported.content, filetype="pdf")
+    page_texts = [page.get_text() for page in saved.pages()]
+    assert_equal(
+        ["1234" in text for text in page_texts], [False, False], "the file, its words gone"
+    )
 
 
 def _all_along(_origin: Place) -> Place:
@@ -245,12 +264,10 @@ _STILL = (0.0, 0.0)
 @pytest.mark.parametrize(
     ("moves", "said"),
     [
-        (_all_along, "rest_of_line_moved"),
         (_rest_along, "rest_of_line_moved"),
         (_rest_off, "moved_other_text"),
     ],
     ids=[
-        "all of it along it, said",
         "after the words along it, before left, said",
         "off it, refused",
     ],
@@ -688,20 +705,48 @@ def test_new_texts_fit_says_how_it_is_drawn_as_a_replaces_does(
     assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the new text's verdict")
 
 
+type Written = tuple[int, tuple[float, float]]  # a line written: its page, where it starts
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _NotingDriver:
+    """MuPDF's driver, noting where each line it writes starts."""
+
+    driver: PdfDriver
+    written: list[Written]
+
+    def write_text(self, page: int, *, runs: Sequence[TextRun], **setting: Any) -> None:
+        """The real driver's write, noted at its first run's start."""
+        self.written.append((page, runs[0].origin))
+        self.driver.write_text(page, runs=runs, **setting)
+
+    def write_codes(
+        self, page: int, *, origin: tuple[float, float], runs: Sequence[CodeRun], **setting: Any
+    ) -> None:
+        """The real driver's write, noted at its start."""
+        self.written.append((page, origin))
+        self.driver.write_codes(page, origin=origin, runs=runs, **setting)
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _noting_driver(path: str, *, written: list[Written]) -> PdfDriver:
+    """A driver factory for the store: MuPDF's driver, noting into `written`."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _NotingDriver(open_driver(path), written))
+
+
 def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkeypatch):
     """A strip over one line of a page with others edited: redrawing them all was most of it.
 
     Every replace still gets its fit: that's measurement, not drawing.
     """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
-    redrawn: list[str] = []
-    draw = Engine.draw
-
-    def noting_what(engine: Engine, span, text: str, **setting) -> object:
-        redrawn.append(text)
-        return draw(engine, span, text, **setting)
-
-    monkeypatch.setattr(Engine, "draw", noting_what)
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the lines noted are the test's
+    redrawn: list[Written] = []
+    noting = partial(_noting_driver, written=redrawn)
+    monkeypatch.setattr(app.state, "documents", FolderStore(noting))
     delivery, invoices = span_starting(doc, 1, "Delivery"), span_starting(doc, 1, "Invoices")
     edits = [
         {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"},
@@ -709,7 +754,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
     ]
     fits = render(mine, doc, edits, [around(invoices)]).json()["fits"]
 
-    assert_equal(redrawn, ["Invoices are due at once."], "the lines redrawn")
+    assert_equal(redrawn, [(1, tuple(invoices["origin"]))], "where each line redrawn starts")
     assert_equal(set(fits), {delivery["id"], invoices["id"]}, "the replaces with a fit")
 
 

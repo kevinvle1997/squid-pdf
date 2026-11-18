@@ -7,7 +7,7 @@ import pytest
 
 from squidpdf.core import Message, Page, open_pdf
 from tests.conftest import TAGGED_LINES
-from tests.helpers import assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal, assert_true
 
 _A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
 _SCALE = 2
@@ -90,4 +90,4 @@ def test_on_a_turned_page_the_span_box_covers_its_ink(turned):
         [png] = engine.box_images(0, _SCALE, [box])
         pix = pymupdf.Pixmap(png)
     darkest = min(pix.samples)
-    assert_true(darkest < _INK, f"darkest channel inside the span box is {darkest}")
+    assert_at_most(darkest, _INK - 1, "the darkest channel inside the span box")

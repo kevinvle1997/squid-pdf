@@ -9,7 +9,7 @@ import re
 import tempfile
 import time
 import zlib
-from collections.abc import Collection, Iterator
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, tzinfo
 from functools import partial
@@ -36,6 +36,7 @@ from tests.api.conftest import (
     Place,
     around,
     drawn_page,
+    render,
     span_starting,
     upload,
     verdicts_of,
@@ -51,6 +52,7 @@ from tests.conftest import (
     cannot_cut,
     each_letter,
     named_with_widths,
+    new_object,
     new_stream,
     with_hidden_copies,
 )
@@ -126,6 +128,7 @@ _PLACES = (
     "twice",
     "twice_hex",
 )
+_TRAILER = -1  # PyMuPDF's xref for the file's trailer
 # A hidden copy as a file writes it: the key, then the text in brackets.
 _HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
 
@@ -186,7 +189,12 @@ def _over(span: dict, text: str) -> dict:
 
 
 def _export(
-    client, doc: dict, edits: list[dict], pages: list[int] | None = None, language: str = "en"
+    client,
+    doc: dict,
+    edits: list[dict],
+    *,
+    pages: list[int] | None = None,
+    language: str = "en",
 ):
     """Ask for the file with `edits` applied, as the browser does, reading `language`."""
     body = {"edits": edits} if pages is None else {"edits": edits, "pages": pages}
@@ -203,7 +211,7 @@ def _opened(response) -> pymupdf.Document:
 
 def _info(pdf: pymupdf.Document, key: str) -> str:
     """What the file's Info holds under `key`; "null" when it holds nothing there."""
-    return pdf.xref_get_key(-1, f"Info/{key}")[1]  # -1: the file's trailer
+    return pdf.xref_get_key(_TRAILER, f"Info/{key}")[1]
 
 
 def _changed_at(pdf: pymupdf.Document) -> datetime:
@@ -250,6 +258,27 @@ def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_stil
     assert_equal(response.headers["Content-Language"], pseudo, "the language it's said in")
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class _NotErasingDriver:
+    """MuPDF's driver, whose erase leaves the page as it was and reads every box clear."""
+
+    driver: PdfDriver
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
+        """Nothing erased; no word left in any box, as an erase that worked says."""
+        return ["" for _box in boxes]
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _not_erasing(path: str) -> PdfDriver:
+    """A driver factory for the store: MuPDF's, its erase broken but saying it worked."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _NotErasingDriver(open_driver(path)))
+
+
 @pytest.mark.parametrize("pages", [None, [1, 0]], ids=["every page", "pages moved"])
 def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     app, mine, doc, monkeypatch, pages
@@ -260,8 +289,7 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     in the file, and the check reads it where its page went. New text over it
     sharing no word isn't blamed, and it's named before one new text covers.
     """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_not_erasing))
     span = span_starting(doc, 1, "Invoices")
     covered = span_starting(doc, 1, "Delivery")  # listed first, under its own "March"
     kept = _files(doc)
@@ -301,237 +329,6 @@ def marked() -> bytes:
     return _marked_pdf(_PLACES)
 
 
-def _marked_pdf(places: Collection[str]) -> bytes:
-    """A tagged page that keeps its card line beside the letters, in each of `places`.
-
-    Most wrap a square: MuPDF's erase drops marked content it leaves empty, and its Properties.
-    """
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_font(fontname="helv")
-    _kind, resources = doc.xref_get_key(page.xref, "Resources")  # "5 0 R": an object of its own
-    resources_xref = int(resources.split()[0])
-    doc.xref_set_key(resources_xref, "Font/Lig", _LIGATURES)
-    number = f"({_NUMBER}) Tj"
-    # The kept line, whose ActualText stays, and its language, which is no hidden copy.
-    kept = f"<</Lang (en-US) /ActualText ({_KEPT})>>"
-    drawing = [f"/Span {kept} BDC BT /helv 12 Tf 72 700 Td ({_KEPT}) Tj ET EMC"]
-    # The number, in an ActualText MuPDF reads as its letters; and an E holding the line.
-    if "drawing" in places:
-        number = f"/Span <</ActualText ({_NUMBER})>> BDC {number} EMC"
-        drawing.append(f"/Span <</E ({_CARD})>> BDC {_SQUARE} EMC")
-    # A marked point (DP): marked content with nothing inside.
-    if "point" in places:
-        drawing.append(f"/Span <</ActualText ({_CARD})>> DP")
-    # The page's Properties, named /MC0, rather than inline.
-    if "properties" in places:
-        doc.xref_set_key(resources_xref, "Properties/MC0", f"<</ActualText ({_CARD})>>")
-        drawing.append(f"/Span /MC0 BDC {_SQUARE} EMC")
-    # A form with an image's Alt naming its file after the line; its own words stay, "A" too.
-    if "form" in places:
-        alt = f"/Figure <</Alt (A scan: {_SCAN})>> BDC {_SQUARE} EMC"
-        figure = new_stream(doc, alt, **_FORM)
-        doc.xref_set_key(resources_xref, "XObject/Fm0", f"{figure} 0 R")
-        drawing.append("/Fm0 Do")
-    # A tiling pattern, the line after a dictionary MuPDF can't read but draws on past.
-    if "pattern" in places:
-        unreadable = f"/Span <</ActualText (Logo) /Bad>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, f"{unreadable} {_AROUND_SQUARE}", **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P0", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P0 scn {_SQUARE}")
-    # A soft mask the page paints a square through; its group is a drawing too.
-    if "smask" in places:
-        group = new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
-        mask = f"<</SMask<</S/Luminosity/G {group} 0 R>>>>"
-        doc.xref_set_key(resources_xref, "ExtGState/GS0", mask)
-        drawing.append(f"q /GS0 gs {_SQUARE} Q")
-    # A Type3 letter "x" the page writes, its image first, as a bitmap font's letters are.
-    if "type3" in places:
-        letter = new_stream(doc, f"1000 0 d0 {_HEX_IMAGE} {_AROUND_SQUARE}")
-        font = doc.get_new_xref()
-        doc.update_object(font, _TYPE3.format(letter=letter))
-        doc.xref_set_key(resources_xref, "Font/T3", f"{font} 0 R")
-        drawing.append("BT /T3 12 Tf 72 500 Td (x) Tj ET")
-    # A square annotation's appearance, the drawing it shows, with an image first.
-    if "annotation" in places:
-        annotation = page.add_rect_annot(pymupdf.Rect(300, 300, 400, 330))
-        _kind, appearance = doc.xref_get_key(annotation.xref, "AP/N")
-        appearance_drawing = f"{_UNFILTERED_IMAGE} {_AROUND_SQUARE}"
-        doc.update_stream(int(appearance.split()[0]), appearance_drawing.encode())
-    # A tiling pattern whose hidden copy has a NUL before the line, where MuPDF stops reading.
-    if "nul" in places:
-        after_nul = f"/Span <</ActualText (Ref\\000{_CARD})>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, after_nul, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P3", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P3 scn {_SQUARE}")
-    # The same as a string of its own (an object of the file), which the properties /MC1 name.
-    if "nul_reference" in places:
-        string = doc.get_new_xref()
-        doc.update_object(string, f"(Ref\\000{_CARD})")
-        doc.xref_set_key(resources_xref, "Properties/MC1", f"<</ActualText {string} 0 R>>")
-        drawing.append(f"/Span /MC1 BDC {_SQUARE} EMC")
-    # A tiling pattern with the dictionary before its tag, which MuPDF reads as if after.
-    if "dictionary_first" in places:
-        first = f"<</ActualText ({_CARD})>> /Span BDC {_SQUARE} EMC"
-        tile = new_stream(doc, first, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P5", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P5 scn {_SQUARE}")
-    # A tiling pattern with ActualText written twice, the line first: MuPDF keeps "Logo".
-    if "twice" in places:
-        twice = f"/Span <</ActualText ({_CARD}) /ActualText (Logo)>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, twice, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
-    # The same, each written in hex, so no ( says a string is there.
-    if "twice_hex" in places:
-        line, logo = (f"<{text.encode().hex()}>" for text in (_CARD, "Logo"))
-        twice = f"/Span <</ActualText {line} /ActualText {logo}>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, twice, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P22", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P22 scn {_SQUARE}")
-    # Alone: a dictionary MuPDF can't read, the line in UTF-16 hex: a check must read its text.
-    if "unreadable" in places:
-        line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # UTF-16, as hex
-        unreadable = f"/Span <</ActualText {line} /Bad>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P1", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P1 scn {_SQUARE}")
-    # Alone: the same, but MuPDF stops reading at a key that's a string, before the line.
-    if "unreadable_first" in places:
-        unreadable = f"/Span << (Logo) /ActualText ({_CARD}) >> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P2", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P2 scn {_SQUARE}")
-    # Alone: the same, but MuPDF's parser stops quietly before the line, at an ID.
-    if "unreadable_id" in places:
-        unreadable = f"/Span <</ActualText (Logo) ID /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P7", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P7 scn {_SQUARE}")
-    # Alone: the same, but a >> in an array before the line, which a count takes as the end.
-    if "unreadable_array" in places:
-        unreadable = f"/Span <</A [ >> ] /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P8", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P8 scn {_SQUARE}")
-    # Alone: the same, then a key that's a string: both readings stop before the line.
-    if "unreadable_both" in places:
-        unreadable = f"/Span <</A [ >> ] (junk) /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P9", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P9 scn {_SQUARE}")
-    # Alone: an image with no EI after its byte, then the line, which MuPDF never reaches.
-    if "unreadable_image" in places:
-        no_end = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 {_AROUND_SQUARE}"
-        tile = new_stream(doc, no_end, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P4", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P4 scn {_SQUARE}")
-    # Alone: the same, but 100 bytes, the first a %, which MuPDF's reader of a drawing takes as
-    # a comment over the line, though a reader ending the image at the first EI reads the line.
-    if "unreadable_image_comment" in places:
-        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID %EI {_AROUND_SQUARE}{' ' * 100}"
-        tile = new_stream(doc, no_end, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P10", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P10 scn {_SQUARE}")
-    # Alone: the same, its first byte a (: MuPDF's reader of a drawing reads one string from it,
-    # the line in UTF-16 octal inside it, its mark of UTF-16 not first.
-    if "unreadable_image_string" in places:
-        in_utf16 = f"\ufeff{_CARD}".encode("utf-16-be")  # its mark first, as Word has it
-        line = "".join(f"\\{byte:03o}" for byte in in_utf16)
-        hidden_copy = f"/Span <</ActualText ({line})>> BDC {_SQUARE} EMC"
-        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID (EI {hidden_copy}{' ' * 100}"
-        tile = new_stream(doc, no_end, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P11", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P11 scn {_SQUARE}")
-    # Alone: an image where a value goes, its byte a <, then the line as UTF-16 hex: MuPDF's
-    # reader of a drawing reads one hex string from that < past the line's, digits out of step.
-    if "unreadable_image_hex" in places:
-        image = "BI /W 1 /H 1 /BPC 8 /CS /G ID <EI"
-        line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"
-        unreadable = f"/Span <</X {image} /ActualText {line}>> BDC {_SQUARE} EMC"
-        tile = new_stream(doc, unreadable, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P12", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P12 scn {_SQUARE}")
-    # Alone: an image MuPDF reads, its 200 bytes counted, holding the line after an EI: a
-    # reader ending the image at its first EI reads the line as marked content.
-    if "image_bytes" in places:
-        image = f"BI /W 200 /H 1 /BPC 8 /CS /G ID {f'EI {_AROUND_SQUARE}':<200} EI"
-        tile = new_stream(doc, image, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P13", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P13 scn {_SQUARE}")
-    # Alone: an image with no EI after its bytes, the first a ( and then a mark of UTF-16, so
-    # its string reads only as UTF-16; a reader ending the image at the EI reads the line plain.
-    if "plain_in_utf16" in places:
-        in_string = f"(\\376\\377 EI {_AROUND_SQUARE})"
-        no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {in_string}{' ' * 100}"
-        tile = new_stream(doc, no_end, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P14", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P14 scn {_SQUARE}")
-    # Alone: a one-byte image, then an EI and a [, where MuPDF looks on for an EI after a space
-    # but a reader taking the first EI past its bytes ends it, and reads the line.
-    if "image_end_bracket" in places:
-        image = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 EI[ ] pop {_AROUND_SQUARE} EI"
-        tile = new_stream(doc, image, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P15", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P15 scn {_SQUARE}")
-    # Alone: a one-dot image compressed (Flate), its dot in a block of its own and the line
-    # after an EI in the next: MuPDF reads every block, a reader stopping at the dot reads on.
-    if "image_flate_tail" in places:
-        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
-        compressed = b"BI /W 1 /H 1 /BPC 8 /CS /G /F /Fl ID " + _stored_flate(b"\0", tail)
-        tile = new_stream(doc, compressed + b" EI", **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P17", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P17 scn {_SQUARE}")
-    # Alone: the same, its filter under both keys: /Filter, Flate, which MuPDF and Poppler read,
-    # and /F, ASCII85, whose count of the same bytes would reach past the line.
-    if "image_both_keys" in places:
-        tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
-        dots = _stored_flate(b"A" * 100, tail)
-        compressed = b"BI /W 100 /H 1 /BPC 8 /CS /G /F /A85 /Filter /Fl ID " + dots
-        tile = new_stream(doc, compressed + b" EI", **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P20", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P20 scn {_SQUARE}")
-    # Alone: four dots in hex, but for letters that aren't hex digits, which a reader takes as
-    # 0s: it has its dots before "EI[", where a count of hex digits alone runs past the line.
-    if "image_hex_letters" in places:
-        image = (
-            f"BI /W 4 /H 1 /BPC 8 /CS /G /F /AHx ID 00gggggg00EI[ ] pop {_AROUND_SQUARE} > EI"
-        )
-        tile = new_stream(doc, image, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P21", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P21 scn {_SQUARE}")
-    # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
-    # so its dots end before "I", but a reader skipping one ends them before "EI[".
-    if "image_crlf" in places:
-        image = f"BI /W 2 /H 1 /BPC 8 /CS /G ID\r\n\0EI[ ] pop {_AROUND_SQUARE} EI"
-        tile = new_stream(doc, image, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P18", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P18 scn {_SQUARE}")
-    # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
-    # after it, as compressed bytes may: no reader ends it there, so the line is only bytes.
-    if "image_holding_end" in places:
-        held = f"EI \xff ({_CARD}) \xff"
-        image = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {held:<100} EI"
-        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
-        tile = new_stream(doc, tagged, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P16", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P16 scn {_SQUARE}")
-    # Alone: the same, its pixels written as ASCII85, all plain, its text an EI and the line: a
-    # reader ends it at its ~>, or once it has its pixels, so the line is only pixels.
-    if "a85_holding_end" in places:
-        text = f"EI\n({_CARD})"
-        pixels = base64.a85decode(text.encode(), ignorechars=b" \n")
-        image = f"BI /W {len(pixels)} /H 1 /BPC 8 /CS /G /F /A85 ID {text}~> EI"
-        tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
-        tile = new_stream(doc, tagged, **_TILING)
-        doc.xref_set_key(resources_xref, "Pattern/P19", f"{tile} 0 R")
-        drawing.append(f"/Pattern cs /P19 scn {_SQUARE}")
-    drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
-    contents = new_stream(doc, "\n".join(drawing))
-    doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
-    return doc.tobytes()
-
-
 def _stored_flate(*blocks: bytes) -> bytes:
     """A zlib stream of `blocks`, each stored as it is: a decoder gives each once it's read."""
     stored = [_stored_block(block, last=False) for block in blocks]
@@ -548,6 +345,246 @@ def _stored_block(block: bytes, *, last: bool) -> bytes:
         + (size ^ 0xFFFF).to_bytes(2, "little")
         + block
     )
+
+
+def _a85_holding_end() -> str:
+    """A tagged figure whose pixels, written as ASCII85, are all plain: an EI and the line."""
+    text = f"EI\n({_CARD})"
+    pixels = base64.a85decode(text.encode(), ignorechars=b" \n")
+    image = f"BI /W {len(pixels)} /H 1 /BPC 8 /CS /G /F /A85 ID {text}~> EI"
+    return f"/Figure <</Alt (A figure)>> BDC {image} EMC"
+
+
+@dataclass(frozen=True, slots=True)
+class _Tile:
+    """A tiling pattern a place keeps the card line in: its resource name, and what it draws."""
+
+    pattern: str
+    drawing: str | bytes
+
+
+_LINE_IN_UTF16_HEX = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # its mark of UTF-16 first
+# The line in UTF-16, its mark first as Word has it, each byte an octal escape.
+_LINE_IN_UTF16_OCTAL = "".join(f"\\{byte:03o}" for byte in f"﻿{_CARD}".encode("utf-16-be"))
+_AFTER_AN_EI = f" EI[ ] pop {_AROUND_SQUARE} ".encode()  # the line, past an EI and a [
+# The places `_marked_pdf` keeps the line in a tiling pattern, each what its tile draws.
+_TILES = {
+    # The line after a dictionary MuPDF can't read but draws on past.
+    "pattern": _Tile(
+        "P0", f"/Span <</ActualText (Logo) /Bad>> BDC {_SQUARE} EMC {_AROUND_SQUARE}"
+    ),
+    # A NUL before the line, where MuPDF stops reading.
+    "nul": _Tile("P3", f"/Span <</ActualText (Ref\\000{_CARD})>> BDC {_SQUARE} EMC"),
+    # The dictionary before its tag, which MuPDF reads as if after.
+    "dictionary_first": _Tile("P5", f"<</ActualText ({_CARD})>> /Span BDC {_SQUARE} EMC"),
+    # ActualText written twice, the line first: MuPDF keeps "Logo".
+    "twice": _Tile(
+        "P6", f"/Span <</ActualText ({_CARD}) /ActualText (Logo)>> BDC {_SQUARE} EMC"
+    ),
+    # The same, each written in hex, so no ( says a string is there.
+    "twice_hex": _Tile(
+        "P22",
+        f"/Span <</ActualText <{_CARD.encode().hex()}> /ActualText <{b'Logo'.hex()}>>>"
+        f" BDC {_SQUARE} EMC",
+    ),
+    # Alone: a dictionary MuPDF can't read, the line in UTF-16 hex: a check must read its text.
+    "unreadable": _Tile(
+        "P1", f"/Span <</ActualText {_LINE_IN_UTF16_HEX} /Bad>> BDC {_SQUARE} EMC"
+    ),
+    # Alone: the same, but MuPDF stops reading at a key that's a string, before the line.
+    "unreadable_first": _Tile(
+        "P2", f"/Span << (Logo) /ActualText ({_CARD}) >> BDC {_SQUARE} EMC"
+    ),
+    # Alone: the same, but MuPDF's parser stops quietly before the line, at an ID.
+    "unreadable_id": _Tile(
+        "P7", f"/Span <</ActualText (Logo) ID /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+    ),
+    # Alone: the same, but a >> in an array before the line, which a count takes as the end.
+    "unreadable_array": _Tile(
+        "P8", f"/Span <</A [ >> ] /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+    ),
+    # Alone: the same, then a key that's a string: both readings stop before the line.
+    "unreadable_both": _Tile(
+        "P9", f"/Span <</A [ >> ] (junk) /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
+    ),
+    # Alone: an image with no EI after its byte, then the line, which MuPDF never reaches.
+    "unreadable_image": _Tile("P4", f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 {_AROUND_SQUARE}"),
+    # Alone: the same, but 100 bytes, the first a %, which MuPDF's reader of a drawing takes as
+    # a comment over the line, though a reader ending the image at the first EI reads the line.
+    "unreadable_image_comment": _Tile(
+        "P10", f"BI /W 100 /H 1 /BPC 8 /CS /G ID %EI {_AROUND_SQUARE}{' ' * 100}"
+    ),
+    # Alone: the same, its first byte a (: MuPDF's reader of a drawing reads one string from it,
+    # the line in UTF-16 octal inside it, its mark of UTF-16 not first.
+    "unreadable_image_string": _Tile(
+        "P11",
+        "BI /W 100 /H 1 /BPC 8 /CS /G ID (EI "
+        f"/Span <</ActualText ({_LINE_IN_UTF16_OCTAL})>> BDC {_SQUARE} EMC{' ' * 100}",
+    ),
+    # Alone: an image where a value goes, its byte a <, then the line as UTF-16 hex: MuPDF's
+    # reader of a drawing reads one hex string from that < past the line's, digits out of step.
+    "unreadable_image_hex": _Tile(
+        "P12",
+        "/Span <</X BI /W 1 /H 1 /BPC 8 /CS /G ID <EI"
+        f" /ActualText {_LINE_IN_UTF16_HEX}>> BDC {_SQUARE} EMC",
+    ),
+    # Alone: an image MuPDF reads, its 200 bytes counted, holding the line after an EI: a
+    # reader ending the image at its first EI reads the line as marked content.
+    "image_bytes": _Tile(
+        "P13", f"BI /W 200 /H 1 /BPC 8 /CS /G ID {f'EI {_AROUND_SQUARE}':<200} EI"
+    ),
+    # Alone: an image with no EI after its bytes, the first a ( and then a mark of UTF-16, so
+    # its string reads only as UTF-16; a reader ending the image at the EI reads the line plain.
+    "plain_in_utf16": _Tile(
+        "P14",
+        f"BI /W 100 /H 1 /BPC 8 /CS /G ID (\\376\\377 EI {_AROUND_SQUARE}){' ' * 100}",
+    ),
+    # Alone: a one-byte image, then an EI and a [, where MuPDF looks on for an EI after a space
+    # but a reader taking the first EI past its bytes ends it, and reads the line.
+    "image_end_bracket": _Tile(
+        "P15", f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 EI[ ] pop {_AROUND_SQUARE} EI"
+    ),
+    # Alone: a one-dot image compressed (Flate), its dot in a block of its own and the line
+    # after an EI in the next: MuPDF reads every block, a reader stopping at the dot reads on.
+    "image_flate_tail": _Tile(
+        "P17",
+        b"BI /W 1 /H 1 /BPC 8 /CS /G /F /Fl ID " + _stored_flate(b"\0", _AFTER_AN_EI) + b" EI",
+    ),
+    # Alone: the same, its filter under both keys: /Filter, Flate, which MuPDF and Poppler read,
+    # and /F, ASCII85, whose count of the same bytes would reach past the line.
+    "image_both_keys": _Tile(
+        "P20",
+        b"BI /W 100 /H 1 /BPC 8 /CS /G /F /A85 /Filter /Fl ID "
+        + _stored_flate(b"A" * 100, _AFTER_AN_EI)
+        + b" EI",
+    ),
+    # Alone: four dots in hex, but for letters that aren't hex digits, which a reader takes as
+    # 0s: it has its dots before "EI[", where a count of hex digits alone runs past the line.
+    "image_hex_letters": _Tile(
+        "P21",
+        f"BI /W 4 /H 1 /BPC 8 /CS /G /F /AHx ID 00gggggg00EI[ ] pop {_AROUND_SQUARE} > EI",
+    ),
+    # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
+    # so its dots end before "I", but a reader skipping one ends them before "EI[".
+    "image_crlf": _Tile(
+        "P18", f"BI /W 2 /H 1 /BPC 8 /CS /G ID\r\n\0EI[ ] pop {_AROUND_SQUARE} EI"
+    ),
+    # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
+    # after it, as compressed bytes may: no reader ends it there, so the line is only bytes.
+    "image_holding_end": _Tile(
+        "P16",
+        "/Figure <</Alt (A figure)>> BDC "
+        f"BI /W 100 /H 1 /BPC 8 /CS /G ID {f'EI \xff ({_CARD}) \xff':<100} EI EMC",
+    ),
+    # Alone: the same, its pixels written as ASCII85, all plain, its text an EI and the line: a
+    # reader ends it at its ~>, or once it has its pixels, so the line is only pixels.
+    "a85_holding_end": _Tile("P19", _a85_holding_end()),
+}
+
+
+def _tiled(doc: pymupdf.Document, resources: int, tile: _Tile) -> list[str]:
+    """`tile` added to the page's patterns; the page's line painting a square with it."""
+    stream = new_stream(doc, tile.drawing, **_TILING)
+    doc.xref_set_key(resources, f"Pattern/{tile.pattern}", f"{stream} 0 R")
+    return [f"/Pattern cs /{tile.pattern} scn {_SQUARE}"]
+
+
+def _in_an_e(_doc: pymupdf.Document, _page: pymupdf.Page, _resources: int) -> list[str]:
+    """An E holding the line, around a square."""
+    return [f"/Span <</E ({_CARD})>> BDC {_SQUARE} EMC"]
+
+
+def _in_a_point(_doc: pymupdf.Document, _page: pymupdf.Page, _resources: int) -> list[str]:
+    """A marked point (DP): marked content with nothing inside."""
+    return [f"/Span <</ActualText ({_CARD})>> DP"]
+
+
+def _in_properties(doc: pymupdf.Document, _page: pymupdf.Page, resources: int) -> list[str]:
+    """The page's Properties, named /MC0, rather than inline."""
+    doc.xref_set_key(resources, "Properties/MC0", f"<</ActualText ({_CARD})>>")
+    return [f"/Span /MC0 BDC {_SQUARE} EMC"]
+
+
+def _in_a_form(doc: pymupdf.Document, _page: pymupdf.Page, resources: int) -> list[str]:
+    """A form, an image's Alt in it naming its file after the line; its words stay, "A" too."""
+    alt = f"/Figure <</Alt (A scan: {_SCAN})>> BDC {_SQUARE} EMC"
+    figure = new_stream(doc, alt, **_FORM)
+    doc.xref_set_key(resources, "XObject/Fm0", f"{figure} 0 R")
+    return ["/Fm0 Do"]
+
+
+def _in_a_soft_mask(doc: pymupdf.Document, _page: pymupdf.Page, resources: int) -> list[str]:
+    """A soft mask the page paints a square through; its group is a drawing too."""
+    group = new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
+    mask = f"<</SMask<</S/Luminosity/G {group} 0 R>>>>"
+    doc.xref_set_key(resources, "ExtGState/GS0", mask)
+    return [f"q /GS0 gs {_SQUARE} Q"]
+
+
+def _in_a_type3_letter(doc: pymupdf.Document, _page: pymupdf.Page, resources: int) -> list[str]:
+    """A Type3 letter "x" the page writes, its image first, as a bitmap font's letters are."""
+    letter = new_stream(doc, f"1000 0 d0 {_HEX_IMAGE} {_AROUND_SQUARE}")
+    font = new_object(doc, _TYPE3.format(letter=letter))
+    doc.xref_set_key(resources, "Font/T3", f"{font} 0 R")
+    return ["BT /T3 12 Tf 72 500 Td (x) Tj ET"]
+
+
+def _in_an_annotation(doc: pymupdf.Document, page: pymupdf.Page, _resources: int) -> list[str]:
+    """A square annotation's appearance, the drawing it shows, with an image first."""
+    annotation = page.add_rect_annot(pymupdf.Rect(300, 300, 400, 330))
+    _kind, appearance = doc.xref_get_key(annotation.xref, "AP/N")
+    appearance_drawing = f"{_UNFILTERED_IMAGE} {_AROUND_SQUARE}"
+    doc.update_stream(int(appearance.split()[0]), appearance_drawing.encode())
+    return []
+
+
+def _in_a_string_apart(doc: pymupdf.Document, _page: pymupdf.Page, resources: int) -> list[str]:
+    """A NUL before the line, in a string of its own (an object of the file) /MC1 names."""
+    string = new_object(doc, f"(Ref\\000{_CARD})")
+    doc.xref_set_key(resources, "Properties/MC1", f"<</ActualText {string} 0 R>>")
+    return [f"/Span /MC1 BDC {_SQUARE} EMC"]
+
+
+# The other places `_marked_pdf` keeps the line, each adding it and giving the page's lines.
+_ELSEWHERE: dict[str, Callable[[pymupdf.Document, pymupdf.Page, int], list[str]]] = {
+    "drawing": _in_an_e,
+    "point": _in_a_point,
+    "properties": _in_properties,
+    "form": _in_a_form,
+    "smask": _in_a_soft_mask,
+    "type3": _in_a_type3_letter,
+    "annotation": _in_an_annotation,
+    "nul_reference": _in_a_string_apart,
+}
+
+
+def _marked_pdf(places: Collection[str]) -> bytes:
+    """A tagged page that keeps its card line beside the letters, in each of `places`.
+
+    Most wrap a square: MuPDF's erase drops marked content it leaves empty, and its Properties.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_font(fontname="helv")
+    _kind, resources = doc.xref_get_key(page.xref, "Resources")  # "5 0 R": an object of its own
+    resources_xref = int(resources.split()[0])
+    doc.xref_set_key(resources_xref, "Font/Lig", _LIGATURES)
+    number = f"({_NUMBER}) Tj"
+    # In "drawing", the number in an ActualText MuPDF reads as its letters.
+    if "drawing" in places:
+        number = f"/Span <</ActualText ({_NUMBER})>> BDC {number} EMC"
+    # The kept line, whose ActualText stays, and its language, which is no hidden copy.
+    kept = f"<</Lang (en-US) /ActualText ({_KEPT})>>"
+    drawing = [f"/Span {kept} BDC BT /helv 12 Tf 72 700 Td ({_KEPT}) Tj ET EMC"]
+    for place in places:
+        if place in _TILES:
+            drawing += _tiled(doc, resources_xref, _TILES[place])
+            continue
+        drawing += _ELSEWHERE[place](doc, page, resources_xref)
+    drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
+    contents = new_stream(doc, "\n".join(drawing))
+    doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
+    return doc.tobytes()
 
 
 # What a save writes of its own: the file's id, random, and its dates, the clock's. Either can
@@ -570,6 +607,32 @@ def _hidden_copies_in(pdf: pymupdf.Document) -> list[tuple[str, str]]:
     """Each ActualText, Alt and E written in the file, as (key, text), wherever it is."""
     # A set: an object packed in an object stream is read twice, alone and in the stream.
     return sorted(set(_HIDDEN_COPY.findall(_everything_in(pdf))))
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _KeepingDriver:
+    """MuPDF's driver, whose redaction leaves every hidden copy and signature as it was."""
+
+    driver: PdfDriver
+
+    def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
+        """Nothing rewritten."""
+
+    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
+        """Nothing rewritten."""
+
+    def drop_signatures(self) -> None:
+        """Nothing dropped."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _keeping_hidden_copies(path: str) -> PdfDriver:
+    """A driver factory for the store: MuPDF's, keeping every hidden copy a redaction holds."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _KeepingDriver(open_driver(path)))
 
 
 def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked):
@@ -616,8 +679,7 @@ def test_a_redaction_leaves_no_hidden_copy_of_its_words_on_the_page(mine, marked
 )
 def test_a_hidden_copy_still_in_the_saved_file_downloads_nothing(app, mine, monkeypatch, place):
     """A hidden copy left in any one place fails the check: no file, the span named."""
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_keeping_hidden_copies))
     doc = upload(mine, _marked_pdf([place])).json()
     card = span_starting(doc, 0, "A US card")
 
@@ -654,9 +716,8 @@ def test_a_hidden_copy_the_redaction_cannot_rewrite_is_warned_at_render_and_refu
     doc = upload(mine, _marked_pdf(["unreadable"])).json()
     card = span_starting(doc, 0, "A US card")
     edits = [_redact(card), *(_over(card, text) for text in new_text)]
-    body = {"edits": edits, "scale": 1, "regions": [around(card)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, edits, [around(card)], scale=1).json()
     exported = _export(mine, doc, edits)
 
     said = words.render(Message("not_redacted", {"text": card["text"], "page": 1}))
@@ -688,10 +749,9 @@ def test_new_text_over_a_redaction_sharing_a_word_with_it_is_named_at_render_and
     """
     made = span_starting(doc, 0, "Made on")
     edits = [*turns, _redact(made), _new_text_at(made, "on", origin_of(made["bbox"]))]
-    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
 
     exported = _export(mine, doc, edits)
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
 
     assert_problem(exported, "redaction_covered", 422)
     said = words.sentence("redaction_covered").format(page=1)
@@ -756,21 +816,19 @@ def test_a_redaction_leaves_no_copy_of_its_words_anywhere_the_file_keeps_one(min
     )
 
 
-@pytest.mark.parametrize("copy", [*NAME_COPIES, *NOT_XML_COPIES, "stamp_in_image"])
+@pytest.mark.parametrize("hidden_copy", [*NAME_COPIES, *NOT_XML_COPIES, "stamp_in_image"])
 def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
-    app, mine, monkeypatch, copy
+    app, mine, monkeypatch, hidden_copy
 ):
     """A title or a bookmark is as much a leak as the page: no file, the span named.
 
-    One copy at a time, so the check is shown to read each on its own.
+    One hidden copy at a time, so the check is shown to read each on its own.
     """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
-    monkeypatch.setattr(Engine, "drop_hidden_copies", lambda _engine, _spans: None)
-    doc = upload(mine, with_hidden_copies([copy])).json()
+    monkeypatch.setattr(app.state, "documents", store.FolderStore(_keeping_hidden_copies))
+    doc = upload(mine, with_hidden_copies([hidden_copy])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
-    body = {"edits": [_redact(name)], "scale": 1, "regions": [around(name)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [_redact(name)], [around(name)], scale=1).json()
     response = _export(mine, doc, [_redact(name)])
 
     verified = rendered["redactions"][name["id"]]["verified"]
@@ -780,10 +838,10 @@ def test_each_hidden_copy_a_redaction_leaves_in_the_file_downloads_nothing(
     assert_equal(response.json()["detail"], said, "what the user reads")
 
 
-@pytest.mark.parametrize("copy", NOT_XML_COPIES)
-def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine, copy):
+@pytest.mark.parametrize("hidden_copy", NOT_XML_COPIES)
+def test_metadata_that_is_not_xml_goes_whole_once_it_holds_a_redacted_word(mine, hidden_copy):
     """It can't be written back without the word as it was, so none of it stays."""
-    doc = upload(mine, with_hidden_copies([copy])).json()
+    doc = upload(mine, with_hidden_copies([hidden_copy])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
     response = _export(mine, doc, [_redact(name)])
@@ -802,9 +860,8 @@ def test_a_redaction_in_a_signed_document_takes_every_signature_away(mine, signe
     """
     doc = upload(mine, with_hidden_copies([signed])).json()
     name = span_starting(doc, 0, REDACTED_NAME)
-    body = {"edits": [_redact(name)], "scale": 1, "regions": [around(name)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [_redact(name)], [around(name)], scale=1).json()
     response = _export(mine, doc, [_redact(name)])
 
     said = words.sentence("signatures_removed")
@@ -888,9 +945,8 @@ def test_a_redaction_leaves_the_metadatas_wrapper_and_typed_values_as_they_were(
     """
     doc = upload(mine, typed_metadata).json()
     line = span_starting(doc, 0, "Begin")
-    body = {"edits": [_redact(line)], "scale": 1, "regions": [around(line)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [_redact(line)], [around(line)], scale=1).json()
     response = _export(mine, doc, [_redact(line)])
 
     places = rendered["redactions"][line["id"]]["hidden_copies"]
@@ -955,8 +1011,8 @@ def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
     field, choice = fields["who"], fields["pick"]
     undrawable, listed = fields["sealed"].xref, fields["team"].xref
     return {
-        "title": pdf.xref_get_key(-1, "Info/Title"),  # -1: the file's trailer
-        "author": pdf.xref_get_key(-1, "Info/Author"),
+        "title": pdf.xref_get_key(_TRAILER, "Info/Title"),
+        "author": pdf.xref_get_key(_TRAILER, "Info/Author"),
         "xmp": re.findall(r">([^<>]+)<", pdf.get_xml_metadata()),
         "page_xmp": re.findall(r">([^<>]+)<", _page_xmp_of(pdf, page)),
         "annotation_xmp": re.findall(r">([^<>]+)<", _annotation_xmp_of(pdf, page)),
@@ -1097,10 +1153,7 @@ def test_page_ops_fold_in_list_order_and_the_last_page_stays(mine, three):
 
     assert_equal(response.headers[_SKIPPED], "3", "the edits left out")
     assert_equal(_lines(_opened(response)), [[_HEADER, "Third page"]], "the page that stays")
-    render = f"/api/documents/{three['id']}/render"
-    skipped = mine.post(render, json={"edits": ops, "scale": 1, "regions": []}).json()[
-        "skipped"
-    ]
+    skipped = render(mine, three, ops, [], scale=1).json()["skipped"]
     said = [(s["edit"], s["code"], s["detail"]) for s in skipped]
     assert_equal(said, [(3, "last_page", words.sentence("last_page"))], "why it was left out")
 
@@ -1216,7 +1269,7 @@ def test_an_exported_file_says_squidpdf_changed_it_and_when(mine, described, edi
     edits = [{"kind": "replace", "span_id": first["id"], "text": "One"}] if edited else []
     asked_at = datetime.now(UTC).replace(microsecond=0)  # a PDF date keeps whole seconds
 
-    response = _export(mine, doc, edits, pages)
+    response = _export(mine, doc, edits, pages=pages)
 
     saved = _opened(response)
     said = [_info(saved, key) for key in ("Producer", "Title", "Creator")]
@@ -1234,13 +1287,13 @@ def _odd_info(shape: str) -> bytes:
     doc = pymupdf.open()
     doc.new_page().insert_text((72, 100), "First page", fontname="helv", fontsize=12)
     if shape == "in the trailer":
-        doc.xref_set_key(-1, "Info", "<</Title(Lease)/Producer(Printer)>>")
+        doc.xref_set_key(_TRAILER, "Info", "<</Title(Lease)/Producer(Printer)>>")
     if shape == "leading nowhere":
-        doc.xref_set_key(-1, "Info", "99 0 R")
+        doc.xref_set_key(_TRAILER, "Info", "99 0 R")
     if shape == "not a dictionary":
         text = doc.get_new_xref()
         doc.update_object(text, "(just words)")
-        doc.xref_set_key(-1, "Info", f"{text} 0 R")
+        doc.xref_set_key(_TRAILER, "Info", f"{text} 0 R")
     return doc.tobytes()
 
 
@@ -1293,7 +1346,7 @@ def _protection_of(pdf_bytes: bytes) -> tuple[list[str], bool]:
 
 def _protection_entry(pdf: pymupdf.Document, key: str) -> str:
     """The file's protection's `key`, read through its object when it's kept in one."""
-    value_type, value = pdf.xref_get_key(-1, f"Encrypt/{key}")  # -1: the trailer
+    value_type, value = pdf.xref_get_key(_TRAILER, f"Encrypt/{key}")
     # In the Encrypt dictionary itself.
     if value_type != "xref":
         return value
@@ -1316,7 +1369,7 @@ def test_a_file_with_only_an_owner_password_downloads_protected_as_it_came(
     second = span_starting(doc, 1, "Second")
     edits = [{"kind": "replace", "span_id": second["id"], "text": "Page two"}]
 
-    response = _export(mine, doc, edits, pages)
+    response = _export(mine, doc, edits, pages=pages)
 
     lines = [line for page in _lines(_opened(response)) for line in page]
     assert_in("Page two", lines, "the download's lines")
@@ -1350,7 +1403,7 @@ def owner_only_without_an_id(three_pages) -> bytes:
     trailer is plain text, and taking the ID out of it moves no object.
     """
     doc = pymupdf.open(stream=three_pages, filetype="pdf")
-    doc.xref_set_key(-1, "ID", "[<> <>]")  # -1: the trailer; MuPDF keeps the empty first part
+    doc.xref_set_key(_TRAILER, "ID", "[<> <>]")  # MuPDF keeps the empty first part
     protected = doc.tobytes(
         encryption=_AES_128,
         owner_pw=_OWNER_PASSWORD,
@@ -1475,13 +1528,18 @@ def _with_update(sent: bytes, objects: dict[int, str]) -> bytes:
     return sent + update.encode()
 
 
+def _encrypt_object(pdf: pymupdf.Document) -> int:
+    """The number of the object the trailer keeps the file's protection (Encrypt) in."""
+    return int(pdf.xref_get_key(_TRAILER, "Encrypt")[1].split()[0])
+
+
 def _with_entry_apart(sent: bytes, entry: str, *, references: int) -> bytes:
     """`sent` with an update keeping its protection's `entry` in an object of its own.
 
     Reached through `references` objects, each naming the next, the last holding it.
     """
     pdf = pymupdf.open(stream=sent, filetype="pdf")
-    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    encrypt = _encrypt_object(pdf)
     apart = pdf.xref_length()  # the next free object number
     source = pdf.xref_object(encrypt, compressed=True)
     value = re.findall(rf"/{entry}({_ENTRY_VALUE})", source)[0]
@@ -1493,7 +1551,7 @@ def _with_entry_apart(sent: bytes, entry: str, *, references: int) -> bytes:
 
 def _entries_apart(pdf: pymupdf.Document) -> list[str]:
     """Each entry of the file's protection kept as an object of its own."""
-    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    encrypt = _encrypt_object(pdf)
     keys = pdf.xref_get_keys(encrypt)
     return [key for key in keys if pdf.xref_get_key(encrypt, key)[0] == "xref"]
 
@@ -1555,7 +1613,7 @@ def _with_crypt_filter_apart(sent: bytes, *, crypt_filters: str, objects: list[s
     The objects take the next free numbers, which the sources name as `{a}` and `{b}`.
     """
     pdf = pymupdf.open(stream=sent, filetype="pdf")
-    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    encrypt = _encrypt_object(pdf)
     a = pdf.xref_length()  # the next free object number
     source = pdf.xref_object(encrypt, compressed=True)
     source = source.replace(_CRYPT_FILTERS, crypt_filters.format(a=a, b=a + 1), 1)
@@ -1582,7 +1640,7 @@ def test_a_crypt_filter_named_twice_is_still_written_in_place(mine, crypt_filter
     response = _export(mine, uploaded.json(), [])
     saved = _opened(response)
     assert_in(_PLAIN_XMP_TITLE, saved[0].get_text(), "the download's page")
-    crypt_filter, _source = saved.xref_get_key(-1, "Encrypt/CF/StdCF")  # -1: the trailer
+    crypt_filter, _source = saved.xref_get_key(_TRAILER, "Encrypt/CF/StdCF")
     assert_equal(crypt_filter, "dict", "how the download keeps its crypt filter")
     said = _protection_of(response.content)
     assert_equal(said, _protection_of(sent), "how the download is protected")
@@ -1594,7 +1652,7 @@ def _with_objects_named_beside_protection(sent: bytes, *, links: str, depth: int
     `depth` objects, each naming the next by `links`, which writes it as `{next}`.
     """
     pdf = pymupdf.open(stream=sent, filetype="pdf")
-    encrypt = int(pdf.xref_get_key(-1, "Encrypt")[1].split()[0])  # -1: the trailer
+    encrypt = _encrypt_object(pdf)
     first = pdf.xref_length()  # the next free object number
     source = pdf.xref_object(encrypt, compressed=True).removesuffix(">>")
     run = {
@@ -1734,14 +1792,9 @@ def test_a_line_the_erase_moves_off_its_box_downloads_nothing(mine, drawing):
     """The check reads every glyph the page draws, on it or off it: none slips away."""
     doc = upload(mine, drawn_page(drawing)).json()
     span = doc["spans"][0]
-    body = {"edits": [_redact(span)], "scale": 1, "regions": [around(span)]}
-
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(span)])
-
-    verified = rendered["redactions"][span["id"]]["verified"]
-    assert_equal(verified, False, "whether render said the words were gone")
-    assert_problem(response, "redaction_failed", 422)
+    _assert_refused_as_still_drawn(
+        mine, doc, span=span, edits=[_redact(span)], regions=[around(span)]
+    )
 
 
 def _dense_line(path: Path) -> bytes:
@@ -1774,13 +1827,12 @@ def test_a_line_whose_neighbours_spell_its_words_once_it_goes_downloads(
     """Only glyphs count, where they're drawn: what's left beside them spells nothing."""
     doc = upload(mine, sent(tmp_path / "dense.pdf")).json()
     span = next(each for each in doc["spans"] if each["text"].startswith(starts))
-    body = {"edits": [_redact(span)], "scale": 1, "regions": [around(span)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [_redact(span)], [around(span)], scale=1).json()
     response = _export(mine, doc, [_redact(span)])
 
     assert_equal(rendered["redactions"][span["id"]]["verified"], True, "render's check")
-    assert_equal(response.status_code, 200, "the download")
+    assert_not_in(span["text"], _lines(_opened(response))[0], "the page's lines, downloaded")
 
 
 # Three lines, apart, one under another.
@@ -1803,14 +1855,9 @@ def test_a_line_whose_letters_the_erase_misses_downloads_nothing(mine, tmp_path)
     named.xref_set_key(font_object, "FirstChar", "null")
     doc = upload(mine, named.tobytes()).json()
     [span] = doc["spans"]
-    body = {"edits": [_redact(span)], "scale": 1, "regions": [around(span)]}
-
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(span)])
-
-    verified = rendered["redactions"][span["id"]]["verified"]
-    assert_equal(verified, False, "whether render said the words were gone")
-    assert_problem(response, "redaction_failed", 422)
+    _assert_refused_as_still_drawn(
+        mine, doc, span=span, edits=[_redact(span)], regions=[around(span)]
+    )
 
 
 # Two lines drawn by a quote after a negative leading: MuPDF's erase swaps them. "Zed",
@@ -1831,14 +1878,7 @@ def test_lines_an_erase_swaps_download_nothing(mine, asked, x):
     account, zed = span_starting(doc, 0, "Acct 1234"), span_starting(doc, 0, "Zed")
     redact = _redact(account) if asked is None else _redact_words(account, asked)
     edits = [redact, _redact(zed)]
-    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
-
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, edits)
-
-    verified = rendered["redactions"][account["id"]]["verified"]
-    assert_equal(verified, False, "whether render said the words were gone")
-    assert_problem(response, "redaction_failed", 422)
+    _assert_refused_as_still_drawn(mine, doc, span=account, edits=edits, regions=[{"page": 0}])
 
 
 @pytest.mark.parametrize(
@@ -1888,11 +1928,6 @@ _PAGE_HEIGHT = 842  # the page `drawn_page` draws on, to place its lines from th
 _STILL = (0.0, 0.0)
 
 
-def _along_further_along(origin: Place) -> Place:
-    """The span further along the redacted one's line, set along it."""
-    return (2.0, 0.0) if origin[0] >= 300 else _STILL
-
-
 def _off_further_along(origin: Place) -> Place:
     """The span further along the redacted one's line, set off it."""
     return (0.0, 3.0) if origin[0] >= 300 else _STILL
@@ -1901,23 +1936,6 @@ def _off_further_along(origin: Place) -> Place:
 def _along_below(origin: Place) -> Place:
     """The line below, set along it."""
     return (2.0, 0.0) if origin[1] > _PAGE_HEIGHT - 80 else _STILL
-
-
-def test_the_rest_of_a_redacted_line_set_along_it_downloads_saying_so(app, mine, monkeypatch):
-    """A span further along the line the erase set along it: the rest of it, said; it goes."""
-    moving = MovingAfterAnErase(_along_further_along)
-    monkeypatch.setattr(app.state, "documents", store.FolderStore(moving))
-    doc = upload(mine, drawn_page(_LEVEL_AND_BELOW)).json()
-    account = span_starting(doc, 0, "Acct")
-    body = {"edits": [_redact(account)], "scale": 1, "regions": [{"page": 0}]}
-
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(account)])
-
-    said = rendered["redactions"][account["id"]]
-    moved = words.render(Message("rest_of_line_moved", {"text": account["text"], "page": 1}))
-    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
-    assert_equal(response.status_code, 200, "the download")
 
 
 @pytest.mark.parametrize(
@@ -1930,9 +1948,8 @@ def test_other_text_an_erase_moves_refuses_the_download_saying_so(
     monkeypatch.setattr(app.state, "documents", store.FolderStore(MovingAfterAnErase(moves)))
     doc = upload(mine, drawn_page(_LEVEL_AND_BELOW)).json()
     account = span_starting(doc, 0, "Acct")
-    body = {"edits": [_redact(account)], "scale": 1, "regions": [{"page": 0}]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [_redact(account)], [{"page": 0}], scale=1).json()
     response = _export(mine, doc, [_redact(account)])
 
     said = rendered["redactions"][account["id"]]
@@ -1971,9 +1988,8 @@ def test_a_line_the_erase_moves_beside_the_redaction_refuses_the_download_saying
     doc = upload(mine, drawn_page(drawing)).json()
     account = span_starting(doc, 0, "Acct")
     redact = _redact(account) if asked is None else _redact_words(account, asked)
-    body = {"edits": [redact], "scale": 1, "regions": [around(account)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, [redact], [around(account)], scale=1).json()
     response = _export(mine, doc, [redact])
 
     said = rendered["redactions"][account["id"]]
@@ -2040,9 +2056,8 @@ def test_words_an_erase_sets_along_their_line_level_with_others_download_nothing
     doc = upload(mine, drawn_page(drawing)).json()
     account = span_starting(doc, 0, "Acct")
     edits = [_redact_words(account, range(5, 9))]
-    body = {"edits": edits, "scale": 1, "regions": [{"page": 0}]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
     response = _export(mine, doc, edits)
 
     verified = rendered["redactions"][account["id"]]["verified"]
@@ -2114,16 +2129,38 @@ def test_the_spans_on_a_whole_redacted_line_swapped_refuse_the_download_as_moved
 def _assert_refused_as_moved(mine, doc: dict, span: dict, edits: list[dict], *, text: str):
     """Render and export of `edits` both refuse them, saying other text moved."""
 
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
-    ).json()
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
     response = _export(mine, doc, edits)
 
     said = rendered["redactions"][span["id"]]
     moved = words.render(Message("moved_other_text", {"text": text, "page": 1}))
     assert_equal((said["verified"], said["message"]), (False, moved), "what render says")
     assert_problem(response, "redaction_moved", 422)
+
+
+def _assert_refused_as_still_drawn(
+    mine, doc: dict, *, span: dict, edits: list[dict], regions: list[dict]
+) -> None:
+    """Render of `regions` says `span`'s words aren't gone, and export refuses them as drawn."""
+    rendered = render(mine, doc, edits, regions, scale=1).json()
+    response = _export(mine, doc, edits)
+
+    verified = rendered["redactions"][span["id"]]["verified"]
+    assert_equal(verified, False, "whether render said the words were gone")
+    assert_problem(response, "redaction_failed", 422)
+
+
+def _assert_downloads_saying_moved(
+    mine, doc: dict, *, span: dict, edits: list[dict], text: str
+) -> None:
+    """Render and export of `edits` both let them go, saying the rest of the line moved."""
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
+    response = _export(mine, doc, edits)
+
+    said = rendered["redactions"][span["id"]]
+    moved = words.render(Message("rest_of_line_moved", {"text": text, "page": 1}))
+    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
+    assert_not_in(text, _opened(response)[0].get_text(), "the downloaded page's text")
 
 
 @pytest.mark.parametrize(
@@ -2143,16 +2180,13 @@ def test_the_rest_of_a_line_set_off_the_page_is_said_removed_unless_some_still_s
     line = span_starting(doc, 0, "1234")
     edits = [_redact_words(line, range(0, 4))]
 
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
-    ).json()
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
     response = _export(mine, doc, edits)
 
     verdict = rendered["redactions"][line["id"]]
     message = words.render(Message(said, {"text": "1234", "page": 1}))
     assert_equal((verdict["verified"], verdict["message"]), (True, message), "what render says")
-    assert_equal(response.status_code, 200, "the download")
+    assert_not_in("1234", _opened(response)[0].get_text(), "the downloaded page's text")
 
 
 @pytest.mark.parametrize(
@@ -2172,9 +2206,8 @@ def test_text_on_the_redacted_line_moved_but_not_as_its_rest_refuses_the_downloa
     doc = upload(mine, drawn_page(drawing)).json()
     account = span_starting(doc, 0, "Acct")
     edits = [_redact_words(account, range(5, 9))]
-    body = {"edits": edits, "scale": 1, "regions": [around(account)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, edits, [around(account)], scale=1).json()
     response = _export(mine, doc, edits)
 
     said = rendered["redactions"][account["id"]]
@@ -2213,9 +2246,8 @@ def test_render_and_export_quote_the_same_words(mine, drawing, asked, said, prob
     edits = [
         _redact(account) if each is None else _redact_words(account, each) for each in asked
     ]
-    body = {"edits": edits, "scale": 1, "regions": [around(account)]}
 
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
+    rendered = render(mine, doc, edits, [around(account)], scale=1).json()
     response = _export(mine, doc, edits)
 
     quoted = "Acct 1234" if asked == [None] else "Acct … Name"
@@ -2242,14 +2274,8 @@ def test_words_an_erase_sets_elsewhere_as_another_line_goes_download_nothing(
     monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
     doc = upload(mine, drawn_page(drawing)).json()
     number = span_starting(doc, 0, "1234")
-    body = {"edits": [_redact(number)], "scale": 1, "regions": [{"page": 0}]}
-
-    rendered = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()
-    response = _export(mine, doc, [_redact(number)])
-
-    verified = rendered["redactions"][number["id"]]["verified"]
-    assert_equal(verified, False, "whether render said the words were gone")
-    assert_problem(response, "redaction_failed", 422)
+    edits = [_redact(number)]
+    _assert_refused_as_still_drawn(mine, doc, span=number, edits=edits, regions=[{"page": 0}])
 
 
 @pytest.mark.parametrize(
@@ -2285,16 +2311,7 @@ def test_a_redacted_word_drawn_elsewhere_downloads_nothing_whatever_else_went(
     doc = upload(mine, drawn_page(drawing)).json()
     line = doc["spans"][0]
     edits = [_redact_words(line, asked)]
-
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
-    ).json()
-    response = _export(mine, doc, edits)
-
-    verified = rendered["redactions"][line["id"]]["verified"]
-    assert_equal(verified, False, "whether render said the words were gone")
-    assert_problem(response, "redaction_failed", 422)
+    _assert_refused_as_still_drawn(mine, doc, span=line, edits=edits, regions=[{"page": 0}])
 
 
 def test_the_same_words_set_along_the_line_are_the_words_still_drawn(mine):
@@ -2468,17 +2485,7 @@ def test_the_rest_of_a_line_set_along_onto_nothing_else_downloads_saying_so(
     doc = upload(mine, drawn_page(drawing)).json()
     account = span_starting(doc, 0, "Acct")
     edits = [_redact_words(account, range(5, 9))]
-
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
-    ).json()
-    response = _export(mine, doc, edits)
-
-    said = rendered["redactions"][account["id"]]
-    moved = words.render(Message("rest_of_line_moved", {"text": "1234", "page": 1}))
-    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
-    assert_equal(response.status_code, 200, "the download")
+    _assert_downloads_saying_moved(mine, doc, span=account, edits=edits, text="1234")
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -2522,10 +2529,7 @@ def test_a_rest_whose_letters_can_t_be_boxed_refuses_saying_it_couldn_t_be_check
     account = span_starting(doc, 0, "Acct")
     edits = [_redact_words(account, range(5, 9))]
 
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [{"page": 0}]},
-    ).json()
+    rendered = render(mine, doc, edits, [{"page": 0}], scale=1).json()
     response = _export(mine, doc, edits)
 
     said = rendered["redactions"][account["id"]]
@@ -2562,17 +2566,7 @@ def test_the_spans_after_a_whole_redaction_set_along_download_saying_so(app, min
     monkeypatch.setattr(app.state, "documents", store.FolderStore(_Rewriting(script)))
     doc = upload(mine, drawn_page(drawing)).json()
     number = span_starting(doc, 0, "1234")
-
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": [_redact(number)], "scale": 1, "regions": [{"page": 0}]},
-    ).json()
-    response = _export(mine, doc, [_redact(number)])
-
-    said = rendered["redactions"][number["id"]]
-    moved = words.render(Message("rest_of_line_moved", {"text": "1234", "page": 1}))
-    assert_equal((said["verified"], said["message"]), (True, moved), "what render says")
-    assert_equal(response.status_code, 200, "the download")
+    _assert_downloads_saying_moved(mine, doc, span=number, edits=[_redact(number)], text="1234")
 
 
 def _on_zed_line(box: Rect) -> bool:
@@ -2595,10 +2589,7 @@ def test_render_checks_a_redaction_after_every_erase_on_its_page_as_export_does(
     account, zed = span_starting(doc, 0, "Acct"), span_starting(doc, 0, "Zed")
     edits = [_redact(account), _redact(zed)]
 
-    rendered = mine.post(
-        f"/api/documents/{doc['id']}/render",
-        json={"edits": edits, "scale": 1, "regions": [around(account)]},
-    ).json()
+    rendered = render(mine, doc, edits, [around(account)], scale=1).json()
     response = _export(mine, doc, edits)
 
     verified = rendered["redactions"][account["id"]]["verified"]
@@ -2865,7 +2856,7 @@ def test_a_link_over_the_line_goes_when_it_holds_the_words_redacted(mine):
 def test_pages_the_document_cannot_give_are_a_problem_not_a_crash(
     mine, doc, pages, problem, status
 ):
-    assert_problem(_export(mine, doc, [], pages), problem, status)
+    assert_problem(_export(mine, doc, [], pages=pages), problem, status)
 
 
 _LOWERED = 3  # each limit, lowered so a test can pass it with a short list
@@ -2913,7 +2904,7 @@ def longest(tmp_path_factory) -> bytes:
 
 
 def test_the_longest_document_exports_within_the_export_timeout(mine, longest, monkeypatch):
-    """The whole way, through the API: #35 held only how a save grows with its pages."""
+    """The whole way, through the API: upload, edit the last page, and download every page."""
     monkeypatch.setattr(documents_constants, "ANALYSE_TIMEOUT_S", _UNTIMED_S)
     doc = upload(mine, longest).json()
     last_page = documents_constants.MAX_PAGES - 1

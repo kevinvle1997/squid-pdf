@@ -40,13 +40,6 @@ def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
     )
 
 
-def test_a_crash_is_a_server_error_without_the_traceback(app):
-    client = TestClient(app, base_url=BASE_URL, raise_server_exceptions=False)
-    response = client.get("/api/crash")
-    assert_problem(response, "server_error", 500)
-    assert_not_in("a bug nobody caught", response.text, "the body of a crash")
-
-
 def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
     """A server error's debug can name a file on the server, so only the log gets it."""
     with caplog.at_level(logging.WARNING, logger="squidpdf.api"):
