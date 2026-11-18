@@ -13,6 +13,7 @@ from pathlib import Path
 
 from squidpdf.core import CATALOG, Face, broadest, face_coverage
 
+# The folder of the faces we ship, where both lists are written beside them.
 _FONTS = Path(__file__).parents[1] / "src" / "squidpdf" / "fonts"
 
 
@@ -22,10 +23,10 @@ def main() -> None:
     (_FONTS / "face-files.json").write_text(
         json.dumps(files, indent=2) + "\n", encoding="utf-8"
     )
-    (_FONTS / "face-letters.json").write_text(face_letters_json(), encoding="utf-8")
+    (_FONTS / "face-letters.json").write_text(_face_letters_json(), encoding="utf-8")
 
 
-def face_letters_json() -> str:
+def _face_letters_json() -> str:
     """Every face's letters and broadest face, as `face-letters.json` holds them, one a line."""
     rows = [
         f"  {json.dumps(face.name)}: {json.dumps(_letters_of(face), separators=(',', ':'))}"

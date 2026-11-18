@@ -152,16 +152,16 @@ def _summary(reports: list[FidelityReport]) -> None:
     """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     counts = Counter(report.state for report in reports)
-    tally = (
+    summary_line = (
         f"\n  {len(reports)} spans · {counts['exact']} exact"
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
     )
     # No text, so no green rate.
     if rate is None:
-        print(f"{tally} · no text")
+        print(f"{summary_line} · no text")
         return
-    print(f"{tally} · {_rate_color(rate)}{rate:.0%} keep the original font{_OFF}")
+    print(f"{summary_line} · {_rate_color(rate)}{rate:.0%} keep the original font{_OFF}")
 
 
 class _UnknownSpan(Exception):
@@ -202,7 +202,7 @@ def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
     with _opened(pdf) as engine:
         index = engine.index()
         # .get: the id is typed on the command line, so the file may have no such span.
-        span = index.get(span_id)
+        span = index.by_id.get(span_id)
         if span is None:
             raise _UnknownSpan(span_id)
         yield _Opened(engine, index, span, rooms=engine.rooms(index, [span]))
@@ -287,6 +287,19 @@ def _edit_arguments(command: argparse.ArgumentParser) -> None:
         default="as-is",
         help="a way out `check` offers: shrink or condense, to fit",
     )
+
+
+def _overwrite_refusal(args: argparse.Namespace) -> str | None:
+    """`edit` and `redact`: why `-o` can't be the PDF read; None when it isn't."""
+    # Saving over the PDF being read would lose the original if anything went wrong.
+    if _same_file(args.pdf, args.out):
+        return f"-o {args.out} is the PDF being read; save to a new file"
+    return None
+
+
+def _same_file(pdf: str, out: str) -> bool:
+    """Whether `out` is `pdf` itself, under this name or another."""
+    return Path(out).exists() and Path(out).samefile(pdf)
 
 
 def _cmd_edit(args: argparse.Namespace) -> int:
@@ -416,13 +429,19 @@ def _cmd_report(args: argparse.Namespace) -> int:
 def _row_of(path: str) -> _Row:
     """One file's line in `report`: its spans assessed, or why it couldn't be read."""
     try:
-        with _opened(path) as engine:
-            reports = engine.assess(engine.index())
-    except Problem as exc:  # damaged or password-protected: says which
+        # As `_run` runs a command: a failure inside MuPDF comes back as the Problem it means.
+        reports = result_of(partial(_assessed, path))
+    except Problem as exc:  # damaged, password-protected, or the library failed: says which
         return _Row(path, read=False, reports=[], note=exc.detail)
     except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
         return _Row(path, read=False, reports=[], note=str(exc)[:_NAME_COL_WIDTH])
     return _Row(path, read=True, reports=reports, note=f"{len(reports)} spans")
+
+
+def _assessed(path: str) -> list[FidelityReport]:
+    """Each span's report, for the PDF at `path`."""
+    with _opened(path) as engine:
+        return engine.assess(engine.index())
 
 
 def _line_of(row: _Row) -> str:
@@ -451,6 +470,14 @@ def _fixture_arguments(command: argparse.ArgumentParser) -> None:
     """`fixture`: where to write, and a page count for a long contract."""
     command.add_argument("out", nargs="?", default=_SAMPLE, type=_new_file)
     command.add_argument("--pages", type=int, help="a long contract of this many pages")
+
+
+def _fixture_refusal(args: argparse.Namespace) -> str | None:
+    """Why `--pages` can't write where it was told; None when it can."""
+    # Others read `_SAMPLE`, so a long contract never replaces it.
+    if args.pages is not None and args.out == _SAMPLE:
+        return f"--pages would replace {_SAMPLE}; name another file"
+    return None
 
 
 def _cmd_fixture(args: argparse.Namespace) -> int:
@@ -571,7 +598,6 @@ def _cmd_billing(args: argparse.Namespace) -> int:
         if refused is not None:
             return _fail(refused)
         user = users.find(email) or user
-    dim, *_colors, off = _colors_of(sys.stdout)
     until = user.paid_until if user.is_paid_at(int(time.time())) else None
     said = (
         Message("billing_unpaid", {"email": email})
@@ -580,7 +606,7 @@ def _cmd_billing(args: argparse.Namespace) -> int:
     )
     print(f"  {words.render(said)}")
     if user.stripe_customer is not None:
-        print(f"  {dim}{user.stripe_customer}{off}")
+        print(f"  {_DIM}{user.stripe_customer}{_OFF}")
     for event in users.ledger_of(user.id):
         print(f"    {_ledger_row(event)}")
     return 0
@@ -666,9 +692,8 @@ def _new_file(path: str) -> str:
     return path
 
 
-def _same_file(pdf: str, out: str) -> bool:
-    """Whether `out` is `pdf` itself, under this name or another."""
-    return Path(out).exists() and Path(out).samefile(pdf)
+def _no_refusal(_args: argparse.Namespace) -> None:
+    """No refusal, for a command whose arguments always run together."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -679,16 +704,36 @@ class _Command:
     summary: str  # its line in `--help`
     arguments: Callable[[argparse.ArgumentParser], None]
     run: Callable[[argparse.Namespace], int]
+    # Why its arguments can't run together, which argparse says; None when they can.
+    refusal: Callable[[argparse.Namespace], str | None] = _no_refusal
 
 
 # In the order `--help` lists them.
 _COMMANDS = (
     _Command("spans", "list editable text and how it would edit", _spans_arguments, _cmd_spans),
     _Command("check", "what would happen if you typed this", _check_arguments, _cmd_check),
-    _Command("edit", "replace a span and save", _edit_arguments, _cmd_edit),
-    _Command("redact", "remove a span and verify it is gone", _redact_arguments, _cmd_redact),
+    _Command(
+        "edit",
+        "replace a span and save",
+        _edit_arguments,
+        _cmd_edit,
+        refusal=_overwrite_refusal,
+    ),
+    _Command(
+        "redact",
+        "remove a span and verify it is gone",
+        _redact_arguments,
+        _cmd_redact,
+        refusal=_overwrite_refusal,
+    ),
     _Command("report", "green rate across a corpus", _report_arguments, _cmd_report),
-    _Command("fixture", "write a sample PDF to try", _fixture_arguments, _cmd_fixture),
+    _Command(
+        "fixture",
+        "write a sample PDF to try",
+        _fixture_arguments,
+        _cmd_fixture,
+        refusal=_fixture_refusal,
+    ),
     _Command(
         "terms", "check a terms file as the server reads it", _terms_arguments, _cmd_terms
     ),
@@ -709,20 +754,8 @@ def _parser() -> argparse.ArgumentParser:
     for each in _COMMANDS:
         command = commands.add_parser(each.name, help=each.summary)
         each.arguments(command)
-        command.set_defaults(fn=each.run)
+        command.set_defaults(fn=each.run, refusal=each.refusal)
     return parser
-
-
-def _refusal_of(args: argparse.Namespace) -> str | None:
-    """Why these arguments can't run together; None when they can."""
-    # Saving over the PDF being read would lose the original if anything went wrong.
-    overwrites = args.cmd in ("edit", "redact") and _same_file(args.pdf, args.out)
-    if overwrites:
-        return f"-o {args.out} is the PDF being read; save to a new file"
-    # Others read `_SAMPLE`, so a long contract never replaces it.
-    if args.cmd == "fixture" and args.pages is not None and args.out == _SAMPLE:
-        return f"--pages would replace {_SAMPLE}; name another file"
-    return None
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -744,7 +777,7 @@ def main(argv: list[str] | None = None) -> int:
     """Parse arguments and run the chosen subcommand."""
     parser = _parser()
     args = parser.parse_args(argv)
-    refusal = _refusal_of(args)
+    refusal = args.refusal(args)
     # Arguments that can't run together: argparse says why, and exits.
     if refusal is not None:
         parser.error(refusal)

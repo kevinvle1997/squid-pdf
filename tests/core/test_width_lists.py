@@ -8,7 +8,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core.pdf.mupdf import open_driver
-from tests.conftest import POPPINS
+from tests.conftest import POPPINS, inner_font_of
 from tests.helpers import assert_at_most, assert_equal
 
 _TWO_BYTE_CODES = 65536  # the most CIDs a two-byte font can have
@@ -21,9 +21,7 @@ def _two_byte_with(path: Path, w: str) -> tuple[str, int]:
     page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())
     page.insert_text((72, 96), "Hello there", fontname="own", fontsize=12)
     [(font_object, *_)] = page.get_fonts()
-    _kind, descendants = doc.xref_get_key(font_object, "DescendantFonts")
-    inner = int(descendants.strip("[]").split()[0])
-    doc.xref_set_key(inner, "W", w)
+    doc.xref_set_key(inner_font_of(doc, font_object), "W", w)
     doc.save(path)
     return str(path), font_object
 

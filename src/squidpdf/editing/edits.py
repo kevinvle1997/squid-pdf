@@ -160,6 +160,6 @@ def _typed_in(edit: Edit) -> str:
     """The new text an edit carries: empty for a redaction or a page op, which draw none."""
     if isinstance(edit, Replace | Insert):
         return edit.text
-    if isinstance(edit, Redact | RotatePage | DeletePage | MovePage):
+    if isinstance(edit, Redact | PageOp):
         return ""
     assert_never(edit)

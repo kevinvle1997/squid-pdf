@@ -1,7 +1,7 @@
-"""Turn an edit log into engine calls, in named steps.
+"""Turn an edit list into engine calls, in named steps.
 
 `core` knows no Replace, so it imports no feature. The steps, in order: `resolve`,
-`log_fits`, `plan`, then `run`.
+`fits_of`, `plan`, then `run`.
 """
 
 from __future__ import annotations
@@ -23,7 +23,8 @@ from squidpdf.core import (
     SpanIndex,
     turn_added,
 )
-from squidpdf.editing.constants import REDRAW_REACH_EM
+from squidpdf.documents.errors import is_page
+from squidpdf.editing import constants
 from squidpdf.editing.edits import (
     DeletePage,
     Edit,
@@ -37,8 +38,8 @@ from squidpdf.editing.edits import (
 )
 from squidpdf.editing.errors import BadReference, RedactionConflict
 from squidpdf.editing.fit import (
+    EditFits,
     Fitted,
-    LogFits,
     Verdict,
     insert_fit,
     insert_span,
@@ -124,15 +125,6 @@ class _Place:
 type Step = _Erase | _Redraw | _Place
 
 
-def is_page(page: int, page_count: int) -> bool:
-    """Whether the document has a page numbered `page`, counting from 0.
-
-    Every edit, region and page list that names a page asks this. Where the
-    answer is no, a bad edit is skipped and a request's own pages are refused.
-    """
-    return 0 <= page < page_count
-
-
 def resolve(
     engine: Engine, index: SpanIndex, *, rooms: Mapping[str, float], edits: Sequence[Edit]
 ) -> Resolved:
@@ -182,12 +174,10 @@ class _EditList:
     def read(self, edit: Edit, *, index: SpanIndex, position: int) -> list[Message]:
         """Read one more edit; returns why it's left out, if it is."""
         # Folded into the pages kept, in list order.
-        if isinstance(edit, RotatePage | DeletePage | MovePage) and _names_pages(
-            edit, self.page_count
-        ):
+        if isinstance(edit, PageOp) and _names_pages(edit, self.page_count):
             return self.pages.fold(edit)
         # A page op naming a page it doesn't have.
-        if isinstance(edit, RotatePage | DeletePage | MovePage):
+        if isinstance(edit, PageOp):
             return [Message("no_page")]
         if isinstance(edit, Insert) and is_page(edit.page, self.page_count):
             self.inserts.append(_ListedInsert(position, edit))
@@ -198,7 +188,7 @@ class _EditList:
         # An edit of a span: its last so far, if the document has the span.
         if isinstance(edit, SpanEdit):
             # .get: the browser can send a span id this document doesn't have.
-            return self.spans.add(edit, index.get(edit.span_id), position=position)
+            return self.spans.add(edit, index.by_id.get(edit.span_id), position=position)
         assert_never(edit)
 
 
@@ -328,8 +318,8 @@ def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
     ]
 
 
-def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
-    """A fit, with its plan, for each replace and insert the log leaves, drawn or not.
+def fits_of(engine: Engine, resolved: Resolved) -> EditFits:
+    """A fit, with its plan, for each replace and insert the edit list leaves, drawn or not.
 
     Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
     """
@@ -339,7 +329,7 @@ def log_fits(engine: Engine, resolved: Resolved) -> LogFits:
         )
         for edited_span in resolved.span_edits
     }
-    return LogFits(
+    return EditFits(
         replaces={span_id: fit for span_id, fit in fits.items() if fit is not None},
         inserts={
             listed.position: insert_fit(engine, listed.insert) for listed in resolved.inserts
@@ -361,7 +351,7 @@ def _fit_of(engine: Engine, edited_span: _EditedSpan, *, room_pt: float) -> Fitt
 def plan(
     engine: Engine,
     resolved: Resolved,
-    fits: LogFits,
+    fits: EditFits,
     *,
     strips: Mapping[int, list[Rect]] | None = None,
 ) -> list[Step]:
@@ -371,18 +361,18 @@ def plan(
     its rows meet a strip; turned text, redrawn level, and inserts anywhere on a drawn page.
     A page with a redaction shown runs all its span edits: the check's answer is export's.
     """
-    shown = [
+    shown_in_strips = [
         edited_span
         for edited_span in resolved.span_edits
-        if strips is None or _shows(strips, edited_span.span)
+        if _in_strips(strips, edited_span.span)
     ]
-    checked = {edited.span.page for edited in shown if isinstance(edited.edit, Redact)}
+    checked = {
+        edited.span.page for edited in shown_in_strips if isinstance(edited.edit, Redact)
+    }
     shown = [
         edited_span
         for edited_span in resolved.span_edits
-        if strips is None
-        or _shows(strips, edited_span.span)
-        or edited_span.span.page in checked
+        if _in_strips(strips, edited_span.span) or edited_span.span.page in checked
     ]
     placed = [
         listed for listed in resolved.inserts if strips is None or listed.insert.page in strips
@@ -402,6 +392,11 @@ def plan(
     ]
 
 
+def _in_strips(strips: Mapping[int, list[Rect]] | None, span: Span) -> bool:
+    """Whether an edit to `span` shows in what's drawn: anywhere, when `strips` is None."""
+    return strips is None or _shows(strips, span)
+
+
 def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     """Whether an edit to `span` shows in the strips drawn on its page."""
     # .get: a page with no strip drawn on it shows no edit.
@@ -410,13 +405,13 @@ def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
     if on_page and span.turned:
         return True
     # Letters drawn at the span's size can reach a little past its box: an accent, a tail.
-    reach = span.size * REDRAW_REACH_EM
+    reach = span.size * constants.REDRAW_REACH_EM
     top, bottom = span.bbox.y0 - reach, span.bbox.y1 + reach
     return any(strip.y0 < bottom and top < strip.y1 for strip in on_page)
 
 
 def _step_for(
-    edited_span: _EditedSpan, fits: LogFits, *, redacted: Mapping[str, Redacted]
+    edited_span: _EditedSpan, fits: EditFits, *, redacted: Mapping[str, Redacted]
 ) -> Step:
     """What one span edit does to the page; `redacted` is what each redaction takes, by id."""
     edit = edited_span.edit
@@ -562,13 +557,13 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
 class Planned:
     """Every edit's fit, and the steps they take on every page: worked out once, then run."""
 
-    fits: LogFits
+    fits: EditFits
     steps: list[Step]
 
 
 def planned_of(engine: Engine, resolved: Resolved) -> Planned:
     """The fits and the steps of every edit. Before any is run: erasing can drop fonts."""
-    fits = log_fits(engine, resolved)
+    fits = fits_of(engine, resolved)
     return Planned(fits, plan(engine, resolved, fits))
 
 
@@ -603,13 +598,13 @@ def _rewritten(resolved: Resolved) -> list[Span]:
 
 @dataclass(frozen=True, slots=True)
 class Verdicts:
-    """How each edit came out: a replace by its span's id, an insert by its place in the log."""
+    """How each edit came out: a replace by its span's id, an insert by its position."""
 
     replaces: dict[str, Verdict]
     inserts: dict[int, Verdict]
 
 
-def verdicts_of(fits: LogFits, ran: Ran) -> Verdicts:
+def verdicts_of(fits: EditFits, ran: Ran) -> Verdicts:
     """How each edit came out: as drawn where `run` drew it, else as planned.
 
     The one way render and export judge an edit, so the note and the export's log agree.

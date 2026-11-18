@@ -1,4 +1,4 @@
-"""Shapes editing shares between the log, the fit reports and what render sends back.
+"""Shapes editing shares between the edit list, the fit reports and what render sends back.
 
 TypedDicts for the JSON, as in `documents/types.py`; no framework, so the pool
 can import them. A name ending in Info is JSON the browser gets.
@@ -37,10 +37,10 @@ type _SkipReason = Literal["bad_reference"]
 class Skipped:
     """An edit left out because what it points at isn't in the document.
 
-    `edit` is its position in the list the browser sent.
+    `position` is its place in the list the browser sent.
     """
 
-    edit: int
+    position: int
     type: _SkipReason
     detail: Message
 
@@ -60,7 +60,7 @@ class InsertNotice:
     It has no span, so it's named by its place in the list the browser sent, as Skipped is.
     """
 
-    edit: int
+    position: int
     detail: Message
 
 
@@ -85,7 +85,7 @@ class Replaced:
 
 @dataclass(frozen=True, slots=True)
 class Applied:
-    """What applying the log left out, what it drew other than asked, and how replaces did."""
+    """What applying the edits left out, what it drew other than asked, and how replaces did."""
 
     skipped: list[Skipped]
     notices: list[Notice]
@@ -97,7 +97,7 @@ class Redacted:
     """What a span's redactions take: its runs of redacted words, and the letters left.
 
     Each run is a span of its own: its words, and the box around their letters. All of the
-    span is one run, with no `rest`.
+    span is one run, and its `rest` is empty.
     """
 
     span: Span  # as the document has it

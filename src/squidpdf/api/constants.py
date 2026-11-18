@@ -27,9 +27,8 @@ UPLOADS_UNDER_WAY = 2
 # Sign-in links an address may ask for a minute: one mistyped address asks twice, and a page
 # sending one to every address it can think of is stopped before it fills an inbox.
 LINKS_PER_MINUTE = 3
-# Sign-in links one inbox is sent while a link still works (LINK_VALID_S), from every address
-# together: a first, and one more for a mail that didn't arrive. Past it, a flood of addresses
-# can't fill an inbox from our sender.
+# Links one inbox is sent while one still works (LINK_VALID_S), from every address together:
+# a first and a resend, so a flood of addresses can't fill an inbox from our sender.
 LINKS_PER_INBOX = 2
 
 # Stripe's pages an address may ask for a minute, its checkout and its portal together: a few

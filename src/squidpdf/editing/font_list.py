@@ -10,7 +10,7 @@ import orjson
 
 # Not through `Engine`: these are our own files, with no document to open.
 from squidpdf.core import BUILD, CATALOG, LogController, LogEvent, Reply, Workers, face_widths
-from squidpdf.editing.constants import FONT_LIST_CACHE, FONT_LIST_TIMEOUT_S
+from squidpdf.editing import constants
 from squidpdf.editing.types import FamilyInfo, FontList
 
 _log = LogController.for_module(__name__)
@@ -59,7 +59,7 @@ class FontListController:
         measuring = _font_list_task.task(self._start_measuring)
         # Shielded: a browser that leaves doesn't stop the measuring others wait for.
         font_list_json = await asyncio.shield(measuring)
-        cache = FONT_LIST_CACHE if build == BUILD else "no-store"
+        cache = constants.FONT_LIST_CACHE if build == BUILD else "no-store"
         return Reply(font_list_json, {"Cache-Control": cache})
 
     def measure_ahead(self) -> None:
@@ -88,7 +88,7 @@ class FontListController:
 
     async def _enqueue_measure_faces(self) -> FontList:
         """List the fonts on a worker."""
-        return await self.workers.run(FONT_LIST_TIMEOUT_S, _measure_faces)
+        return await self.workers.run(constants.FONT_LIST_TIMEOUT_S, _measure_faces)
 
 
 def _log_if_failed(measuring: asyncio.Task[bytes]) -> None:

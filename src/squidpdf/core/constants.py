@@ -13,9 +13,9 @@ GREEN_RATE_TARGET = 0.8  # below this, substitution is the normal case, not the 
 GREEN_RATE_WARN = 0.5  # below this, the CLI marks a document red rather than yellow
 
 # Runs merge into one span on one baseline, one face, and a gap that's only kerning.
-BASELINE_EPS = 0.6
-SIZE_EPS = 0.1
-GAP_RATIO = 0.35
+BASELINE_EPS = 0.6  # pt: two letters' baselines this close are one line
+SIZE_EPS = 0.1  # pt: two runs' sizes this close are one size
+GAP_RATIO = 0.35  # of the size: a gap past this between two runs is a word's, not kerning
 
 # Two copies of a font under one name are one font when every letter both draw
 # is this close in width, per 1000 em: a width list rounds to whole units.

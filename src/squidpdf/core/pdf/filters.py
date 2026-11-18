@@ -12,7 +12,7 @@ import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from squidpdf.core.constants import DECODED_PER_BYTE
+import squidpdf.core.constants as constants
 
 _FLATE_STEP = 4096  # bytes fed to Flate's decoder at a time, before byte by byte
 _A85_GROUP = 5  # characters in a group of ASCII85, which give a byte fewer
@@ -50,7 +50,7 @@ def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
         return 0
     steps = [_FILTERS[name] for name in filters]
     inputs = [written]  # each filter's bytes: what the ones undone before it give
-    at_most = len(written) * DECODED_PER_BYTE
+    at_most = len(written) * constants.DECODED_PER_BYTE
     # zlib, and base64's ASCII85, raise on bytes they can't read.
     try:
         for step in steps[:-1]:

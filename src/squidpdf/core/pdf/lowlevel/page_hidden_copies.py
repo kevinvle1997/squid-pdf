@@ -27,6 +27,7 @@ from squidpdf.core.pdf.lowlevel.objects import (
     bytes_of,
     items_of,
     pdf_of,
+    put_stream,
     put_text,
     resources_of,
     text_of,
@@ -86,7 +87,6 @@ class PageHiddenCopies:
         rewritten: Callable[[str], str],
     ) -> None:
         """Put `rewritten(hidden_copy)` for each hidden copy written in `stream`."""
-        mu = pymupdf.mupdf
         drawing = bytes_of(stream)
         pieces: list[bytes] = []
         kept_to = 0  # where the drawing is still to be copied from
@@ -105,9 +105,7 @@ class PageHiddenCopies:
         if not pieces:
             return
         new_drawing = b"".join([*pieces, drawing[kept_to:]])
-        mu.pdf_update_stream(
-            pdf_of(self.doc), stream, mu.fz_new_buffer_from_copied_data(new_drawing), 0
-        )
+        put_stream(self.doc, stream, new_drawing)
 
     def _hidden_copies_written_in(
         self, drawing: bytes, resources: pymupdf.mupdf.PdfObj

@@ -14,13 +14,9 @@ from functools import partial
 from itertools import chain, groupby
 from typing import Protocol
 
+import squidpdf.core.constants as constants
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import (
-    KEYBOARD_RANGES,
-    LENT_COPIES_KEPT,
-    SAME_FONT_SHARED,
-    SAME_WIDTH,
-)
+from squidpdf.core.constants import KEYBOARD_RANGES
 from squidpdf.core.fonts.coverage import Coverage, coverage_of
 from squidpdf.core.fonts.embedded import EmbeddedFont, FontUnusable
 from squidpdf.core.types import EM, CodedFont, FontCode, PageFont
@@ -40,7 +36,7 @@ class Lent:
 
 @dataclass(frozen=True, slots=True)
 class FontCopy:
-    """One copy of a font in the file, opened, and each letter it really draws."""
+    """One font program from one source, in the file or outside it, and each letter it draws."""
 
     font: PageFont  # where the file keeps it
     embedded: EmbeddedFont
@@ -134,7 +130,7 @@ class PooledFont:
     def copy_for(self, ch: str) -> FontCopy:
         """The copy that draws `ch`, or the span's own when none does."""
         lender = self._lender_of(ch)
-        # No copy draws it: it's measured in the own copy, as before pooling.
+        # No copy draws it: it's measured in the own copy.
         if lender is None:
             return self.own
         return lender
@@ -197,7 +193,6 @@ class PooledFont:
 
         A copy from outside the file that couldn't be had lends nothing: why is kept.
         """
-        # No copy to be had: it lends nothing, and keeps why for the report.
         if isinstance(other, FontUnusable):
             self.not_lent.append(other.reason)
             return
@@ -258,7 +253,7 @@ class _KeptWidths:
         if digest in self.by_digest:
             return self.by_digest[digest]
         # Full: forget the one kept longest.
-        if len(self.by_digest) >= LENT_COPIES_KEPT:
+        if len(self.by_digest) >= constants.LENT_COPIES_KEPT:
             del self.by_digest[next(iter(self.by_digest))]
         widths = self.by_digest[digest] = make()
         return widths
@@ -300,9 +295,11 @@ def why_unlike_listed(copy: FontCopy, listed: Mapping[str, float] | None) -> Mes
         return Message("font_no_width_list")
     shared = [ch for ch in copy.widths if ch in listed and not ch.isspace()]
     # Too few in common: nothing to vouch for it.
-    if len(shared) < SAME_FONT_SHARED:
+    if len(shared) < constants.SAME_FONT_SHARED:
         return Message("copy_too_few_shared")
-    widths_differ = any(abs(copy.widths[ch] - listed[ch]) > SAME_WIDTH for ch in shared)
+    widths_differ = any(
+        abs(copy.widths[ch] - listed[ch]) > constants.SAME_WIDTH for ch in shared
+    )
     # A letter both have is another width: a different font under the same name.
     if widths_differ:
         return Message("copy_other_widths")
@@ -325,10 +322,10 @@ def why_turned_away(
         return Message("copy_stored_apart")
     shared = [ch for ch in other.widths if ch in letters and not ch.isspace()]
     # Too few in common: nothing to vouch for it, so it lends nothing.
-    if len(shared) < SAME_FONT_SHARED:
+    if len(shared) < constants.SAME_FONT_SHARED:
         return Message("copy_too_few_shared")
     widths_differ = any(
-        abs(other.widths[ch] - letters[ch].widths[ch]) > SAME_WIDTH for ch in shared
+        abs(other.widths[ch] - letters[ch].widths[ch]) > constants.SAME_WIDTH for ch in shared
     )
     # A letter both draw is another width: a different font under the same name.
     if widths_differ:

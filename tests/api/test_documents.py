@@ -24,11 +24,11 @@ from squidpdf.core import BUILD, Engine, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
+from squidpdf.documents.disk import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
-from squidpdf.documents.upload import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.editing.constants import FONT_LIST_CACHE
-from tests.api.conftest import BASE_URL, InProcess, drawn_page, upload
+from tests.api.conftest import BASE_URL, NOT_A_PDF, InProcess, drawn_page, upload
 from tests.conftest import SIGNED, StoreWith, log_lines, with_hidden_copies
 from tests.helpers import (
     assert_at_least,
@@ -349,7 +349,7 @@ def test_a_font_written_in_place_keeps_its_resource_name_from_a_font_an_edit_add
 @pytest.mark.parametrize(
     ("body", "problem", "status"),
     [
-        (b"Dear Sir, please find attached.", "not_a_pdf", 415),
+        (NOT_A_PDF, "not_a_pdf", 415),
         # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
         (_locked(), "encrypted", 422),
@@ -488,11 +488,10 @@ def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
     # Room for one whole-disk file, not two; half a disk either way, as above.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total - disk.total // 2)
-    not_a_pdf = b"Dear Sir, please find attached."
 
     # Each passes the check and is refused only once its file is in.
-    assert_problem(upload(mine, not_a_pdf), "not_a_pdf", 415)
-    assert_problem(upload(mine, not_a_pdf), "not_a_pdf", 415)
+    assert_problem(upload(mine, NOT_A_PDF), "not_a_pdf", 415)
+    assert_problem(upload(mine, NOT_A_PDF), "not_a_pdf", 415)
     assert_equal(upload(mine, pdf_bytes).status_code, 201, "an upload after two refused")
 
 

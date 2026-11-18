@@ -134,10 +134,11 @@ class User:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class UserStore:
-    """The users table: who's invited, who has signed in, and who has no document limit.
+    """The accounts, each with its document limit and Stripe customer, and billing's ledger.
 
-    An account taken off with `remove` is gone from every browser signed in to it: each asks
-    the table, so its signed-in cookie names no one.
+    The ledger keeps every event Stripe sent, and what it did. An account taken off with
+    `remove` is gone from every browser signed in to it: each asks the table, so its
+    signed-in cookie names no one.
     """
 
     database: Engine

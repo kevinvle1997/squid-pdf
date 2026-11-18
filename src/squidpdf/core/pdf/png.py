@@ -13,7 +13,7 @@ from itertools import chain
 import pymupdf
 from zlib_ng import zlib_ng
 
-from squidpdf.core.constants import PNG_COLOR_LEVEL, PNG_GRAY_LEVEL
+import squidpdf.core.constants as constants
 
 _SIGNATURE = b"\x89PNG\r\n\x1a\n"  # the bytes every PNG starts with
 _UNFILTERED = b"\x00"  # a row's first byte when its bytes follow as they are
@@ -25,15 +25,14 @@ _INCH_M = 0.0254  # metres in an inch
 
 @dataclass(frozen=True, slots=True)
 class _Layout:
-    """How a PNG lays out its pixels, and how hard zlib works on them."""
+    """How a PNG lays out its pixels."""
 
     color_type: int  # as the PNG header names it
     channels: int  # bytes per pixel
-    level: int  # zlib's
 
 
-_GRAY = _Layout(color_type=0, channels=1, level=PNG_GRAY_LEVEL)
-_COLOR = _Layout(color_type=2, channels=3, level=PNG_COLOR_LEVEL)
+_GRAY = _Layout(color_type=0, channels=1)
+_COLOR = _Layout(color_type=2, channels=3)
 
 
 def png_of(drawn: pymupdf.Pixmap) -> bytes:
@@ -50,12 +49,12 @@ def png_of(drawn: pymupdf.Pixmap) -> bytes:
     red = rgb[0::3]
     # Every pixel grey, as on a page of text: red, the same as green and blue, holds all three.
     if red == rgb[1::3] == rgb[2::3]:
-        return _png_from(red, drawn, layout=_GRAY)
-    return _png_from(rgb, drawn, layout=_COLOR)
+        return _png_from(red, drawn, layout=_GRAY, level=constants.PNG_GRAY_LEVEL)
+    return _png_from(rgb, drawn, layout=_COLOR, level=constants.PNG_COLOR_LEVEL)
 
 
-def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout) -> bytes:
-    """`pixels`, in `drawn`'s rows, as a PNG in `layout` at `drawn`'s size and resolution."""
+def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout, level: int) -> bytes:
+    """`pixels`, in `drawn`'s rows, as a PNG in `layout`, compressed at zlib's `level`."""
     row_bytes = drawn.width * layout.channels
     rows = memoryview(pixels)  # sliced without a copy: the join copies each row once
     unfiltered = b"".join(
@@ -73,7 +72,7 @@ def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout) -> bytes
     chunks = [
         _chunk(b"IHDR", header),
         _chunk(b"pHYs", resolution),
-        _chunk(b"IDAT", zlib_ng.compress(unfiltered, layout.level)),
+        _chunk(b"IDAT", zlib_ng.compress(unfiltered, level)),
         _chunk(b"IEND", b""),
     ]
     return _SIGNATURE + b"".join(chunks)

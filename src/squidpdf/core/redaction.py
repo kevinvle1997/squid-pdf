@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import pairwise, product
 
-from squidpdf.core.constants import MOVED_PT, ROUNDED_PT, SIZE_EPS
+import squidpdf.core.constants as constants
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.types import (
     COPY_PLACES,
@@ -41,6 +41,8 @@ from squidpdf.core.types import (
 _WORD = re.compile(r"[^\W_]+")
 # A box around everything a page can draw: to read all of its letters.
 _EVERYWHERE = Rect(-math.inf, -math.inf, math.inf, math.inf)
+# Two lines whose directions differ less than this read the same way.
+_SAME_WAY = 0.01
 
 # A run drawn after an erase, and the glyphs of the line before it that it was set along.
 type _RunAlong = tuple[list[DrawnGlyph], list[DrawnGlyph]]
@@ -95,7 +97,9 @@ class RedactionCheck:
         Other text drawn in its box at another size isn't its own.
         """
         [letters] = self.driver.letters_in(span.page, [span.bbox])
-        return [letter for letter in letters if abs(letter.size - span.size) <= SIZE_EPS]
+        return [
+            letter for letter in letters if abs(letter.size - span.size) <= constants.SIZE_EPS
+        ]
 
     def still_there(self, spans: Iterable[Span]) -> list[Span]:
         """The spans with any word of their text still in their box. A black box won't hide it.
@@ -108,7 +112,9 @@ class RedactionCheck:
 
     def _left_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Those of `spans`, all on `page`, with any word of their text still in their box."""
-        texts = self.driver.text_in(page, [span.bbox.grown(ROUNDED_PT) for span in spans])
+        texts = self.driver.text_in(
+            page, [span.bbox.grown(constants.ROUNDED_PT) for span in spans]
+        )
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 
@@ -117,7 +123,7 @@ class RedactionCheck:
 
         Ask before the erase. It takes the glyph of each letter whose middle is in a box.
         """
-        reached = [box.grown(ROUNDED_PT) for box in erased]
+        reached = [box.grown(constants.ROUNDED_PT) for box in erased]
         taken = [letter for box in self.driver.letters_in(page, reached) for letter in box]
         return _less(_letters_of(self.driver.drawn_glyphs(page)), taken, near=_same_place)
 
@@ -140,42 +146,20 @@ class RedactionCheck:
         now = _letters_of(drawn)
         gone = _less(list(kept), now, near=_same_place)
         new = _less(now, kept, near=_same_place)
-        went = [[glyph for glyph in gone if _on_line_from(glyph, span)] for span in rests]
-        # Each rest, before: what stayed where it was and what went, on the line, in order.
-        before = [[glyph for glyph in kept if _on_line_from(glyph, span)] for span in rests]
-        on_lines = [glyph for glyph in gone if any(_holds(each, glyph) for each in went)]
-        rest_lines = _runs(on_lines, among=kept)
+        went = [[glyph for glyph in gone if _starts_on_line_of(glyph, span)] for span in rests]
         runs = _runs(_not_on(new, lines), among=now)
         spelling = self._spelling(page, runs, words=words)
         others = [run for run in runs if not any(run is each for each in spelling)]
-        along = [
-            (run, matched)
-            for run in others
-            if (matched := _set_along(run, rest_lines)) is not None
-        ]
-        lined = [
-            (run, matched)
-            for run, matched in along
-            if _one_line(matched, along, went=went, before=before)
-        ]
+        lined = _set_along_rests(others, gone=gone, kept=kept, rests=rests, went=went)
         rest, unchecked = self._rests_landed(page, lined, drawn=drawn, now=now)
         off = [run for run in others if not any(run is each for each, _matched in rest)]
-        gone_lines = _runs(gone, among=kept)
-        moved = [run for run in off if _part_of(run, gone_lines) is not None]
+        moved = _moved(off, gone=gone, kept=kept)
         taken = spelling + [run for run in off if not any(run is each for each in moved)]
         size = self.driver.pages()[page]
-        found = [glyph for _run, matched in rest for glyph in matched]
-        # Set off the page, a glyph of the rest is gone, as far as a reader sees.
-        shown = [
-            was
-            for run, matched in rest
-            for glyph, was in zip(run, matched, strict=True)
-            if _on_page(glyph, size)
-        ]
         return DrawnElsewhere(
-            [glyph for run in taken for glyph in run],
-            [glyph for run in moved for glyph in run],
-            rests=[_rest_now(each, found=found, shown=shown) for each in went],
+            taken=[glyph for run in taken for glyph in run],
+            moved=[glyph for run in moved for glyph in run],
+            rests=_rests_now(went, landed=rest, size=size),
             unchecked=unchecked,
         )
 
@@ -284,8 +268,14 @@ def any_word_left(text: str, left: str) -> bool:
     So a span of one letter is still looked for, as its whole text.
     """
     leftover = "".join(left.split())
-    words = [word for word in text.split() if len(word) > 1]
+    words = [word for word in text.split() if _counts_alone(word)]
     return any(word in leftover for word in [*words, "".join(text.split())])
+
+
+def _counts_alone(word: str) -> bool:
+    """Whether `word` is looked for on its own, not only within the whole text."""
+    # One letter, as "a", "I" or a label's "A", is in most text: alone it would match anywhere.
+    return len(word) > 1
 
 
 def _not_on(glyphs: list[DrawnGlyph], lines: Sequence[DrawnLine]) -> list[DrawnGlyph]:
@@ -312,7 +302,9 @@ def _on_line(glyph: DrawnGlyph, line: DrawnLine) -> bool:
     direction = (cos, -sin)
     offset = (glyph.origin[0] - line.origin[0], glyph.origin[1] - line.origin[1])
     along = offset[0] * direction[0] + offset[1] * direction[1]
-    return abs(_across(direction, offset)) <= MOVED_PT and along >= -MOVED_PT
+    return (
+        abs(_across(direction, offset)) <= constants.MOVED_PT and along >= -constants.MOVED_PT
+    )
 
 
 def _letters_of(glyphs: list[DrawnGlyph]) -> list[DrawnGlyph]:
@@ -344,7 +336,7 @@ def _less[Glyph: (DrawnGlyph, PlacedLetter), Other: (DrawnGlyph, PlacedLetter)](
 
 def _same_place(was: DrawnGlyph | PlacedLetter, now: DrawnGlyph | PlacedLetter) -> bool:
     """Whether `now` starts where `was` did, give or take a rewrite's rounding."""
-    return math.dist(was.origin, now.origin) <= MOVED_PT
+    return math.dist(was.origin, now.origin) <= constants.MOVED_PT
 
 
 def _runs(glyphs: list[DrawnGlyph], *, among: Sequence[DrawnGlyph]) -> list[list[DrawnGlyph]]:
@@ -357,7 +349,7 @@ def _runs(glyphs: list[DrawnGlyph], *, among: Sequence[DrawnGlyph]) -> list[list
     for glyph in glyphs:
         before = at
         at = next(place for place in range(at + 1, len(among)) if among[place] is glyph)
-        joins = bool(runs) and before == at - 1 and _on_line_of(runs[-1][-1], glyph)
+        joins = bool(runs) and before == at - 1 and _starts_on_line_of(glyph, runs[-1][-1])
         if joins:
             runs[-1].append(glyph)
             continue
@@ -365,15 +357,11 @@ def _runs(glyphs: list[DrawnGlyph], *, among: Sequence[DrawnGlyph]) -> list[list
     return runs
 
 
-def _on_line_of(glyph: DrawnGlyph, other: DrawnGlyph) -> bool:
-    """Whether `other` starts on `glyph`'s line, read the same way."""
-    offset = (other.origin[0] - glyph.origin[0], other.origin[1] - glyph.origin[1])
-    same_way = math.dist(glyph.direction, other.direction) <= _SAME_WAY
-    return same_way and abs(_across(glyph.direction, offset)) <= MOVED_PT
-
-
-# Two lines whose directions differ less than this read the same way.
-_SAME_WAY = 0.01
+def _starts_on_line_of(glyph: DrawnGlyph, start: DrawnGlyph | Span) -> bool:
+    """Whether `glyph` starts on the line `start` starts: on its baseline, read the same way."""
+    offset = (glyph.origin[0] - start.origin[0], glyph.origin[1] - start.origin[1])
+    same_way = math.dist(start.direction, glyph.direction) <= _SAME_WAY
+    return same_way and abs(_across(start.direction, offset)) <= constants.MOVED_PT
 
 
 def _part_of(run: list[DrawnGlyph], lines: list[list[DrawnGlyph]]) -> list[DrawnGlyph] | None:
@@ -399,7 +387,10 @@ def _set_along(run: list[DrawnGlyph], lines: list[list[DrawnGlyph]]) -> list[Dra
     for line in lines:
         for start, first in enumerate(line):
             shift = _offset(first, run[0])
-            if first.letter != run[0].letter or abs(_across(first.direction, shift)) > MOVED_PT:
+            if (
+                first.letter != run[0].letter
+                or abs(_across(first.direction, shift)) > constants.MOVED_PT
+            ):
                 continue
             matched = _matched_after(run, line, start=start, shift=shift)
             if matched is not None:
@@ -431,7 +422,10 @@ def _matched_after(
                 place
                 for place in range(at, len(line))
                 if line[place].letter == glyph.letter
-                and (shift is None or math.dist(_offset(line[place], glyph), shift) <= MOVED_PT)
+                and (
+                    shift is None
+                    or math.dist(_offset(line[place], glyph), shift) <= constants.MOVED_PT
+                )
             ),
             None,
         )
@@ -440,13 +434,6 @@ def _matched_after(
         matched.append(found)
         at = found + 1
     return matched
-
-
-def _on_line_from(glyph: DrawnGlyph, span: Span) -> bool:
-    """Whether `glyph` starts on `span`'s line: on its baseline, read the same way."""
-    offset = (glyph.origin[0] - span.origin[0], glyph.origin[1] - span.origin[1])
-    same_way = math.dist(glyph.direction, span.direction) <= _SAME_WAY
-    return same_way and abs(_across(span.direction, offset)) <= MOVED_PT
 
 
 def _spelled(run: list[DrawnGlyph], reading: list[PlacedLetter]) -> str:
@@ -485,7 +472,10 @@ def _spells_any(spelled: str, words: Sequence[str]) -> bool:
     looked_for = [
         word
         for text in words
-        for word in [*(word for word in text.split() if len(word) > 1), " ".join(text.split())]
+        for word in [
+            *(word for word in text.split() if _counts_alone(word)),
+            " ".join(text.split()),
+        ]
     ]
     return any(re.search(_whole_word(word), line) for word in looked_for)
 
@@ -493,6 +483,55 @@ def _spells_any(spelled: str, words: Sequence[str]) -> bool:
 def _whole_word(word: str) -> str:
     """`word` as a pattern: no letter or digit just before or after it."""
     return rf"(?<![^\W_]){re.escape(word)}(?![^\W_])"
+
+
+def _set_along_rests(
+    others: list[list[DrawnGlyph]],
+    *,
+    gone: list[DrawnGlyph],
+    kept: Sequence[DrawnGlyph],
+    rests: Sequence[Span],
+    went: list[list[DrawnGlyph]],
+) -> list[_RunAlong]:
+    """Those of `others` set along a rest of their line that moved as one, and what each was.
+
+    `went` are each of `rests`' glyphs that `gone` holds: those that moved from where they were.
+    """
+    # Each rest, before: what stayed where it was and what went, on the line, in order.
+    before = [[glyph for glyph in kept if _starts_on_line_of(glyph, span)] for span in rests]
+    on_lines = [glyph for glyph in gone if any(_holds(each, glyph) for each in went)]
+    rest_lines = _runs(on_lines, among=kept)
+    along = [
+        (run, matched) for run in others if (matched := _set_along(run, rest_lines)) is not None
+    ]
+    return [
+        (run, matched)
+        for run, matched in along
+        if _one_line(matched, along, went=went, before=before)
+    ]
+
+
+def _moved(
+    off: list[list[DrawnGlyph]], *, gone: list[DrawnGlyph], kept: Sequence[DrawnGlyph]
+) -> list[list[DrawnGlyph]]:
+    """Those of `off` that are some of a line drawn before, in order: moved, not taken."""
+    gone_lines = _runs(gone, among=kept)
+    return [run for run in off if _part_of(run, gone_lines) is not None]
+
+
+def _rests_now(
+    went: list[list[DrawnGlyph]], *, landed: list[_RunAlong], size: Page
+) -> list[RestOfLine]:
+    """What became of each rest of a line whose glyphs `went`, the runs `landed` its rest."""
+    found = [glyph for _run, matched in landed for glyph in matched]
+    # Set off the page, a glyph of the rest is gone, as far as a reader sees.
+    shown = [
+        was
+        for run, matched in landed
+        for glyph, was in zip(run, matched, strict=True)
+        if _on_page(glyph, size)
+    ]
+    return [_rest_now(each, found=found, shown=shown) for each in went]
 
 
 def _rest_now(
@@ -531,7 +570,7 @@ def _one_line(
         if any(_holds(went[at], glyph) for at in lines for glyph in was)
     ]
     shifts = [_offset(was[0], run[0]) for run, was in moving]
-    if any(math.dist(shift, shifts[0]) > MOVED_PT for shift in shifts):
+    if any(math.dist(shift, shifts[0]) > constants.MOVED_PT for shift in shifts):
         return False
     now = {
         id(was): glyph for run, glyphs in moving for glyph, was in zip(run, glyphs, strict=True)
@@ -548,8 +587,9 @@ def _in_order(line: list[DrawnGlyph], *, now: dict[int, DrawnGlyph]) -> bool:
         return True
     direction = line[0].direction
     was = sorted(line, key=lambda glyph: _along(direction, glyph.origin))
+    # .get: a glyph that didn't move is where it was.
     places = [_along(direction, now.get(id(glyph), glyph).origin) for glyph in was]
-    return all(later > earlier - MOVED_PT for earlier, later in pairwise(places))
+    return all(later > earlier - constants.MOVED_PT for earlier, later in pairwise(places))
 
 
 def _lands_on(
@@ -571,18 +611,18 @@ def _lands_on(
     with_it = {
         id(glyph)
         for other, other_was in lined
-        if math.dist(_offset(other_was[0], other[0]), shift) <= MOVED_PT
+        if math.dist(_offset(other_was[0], other[0]), shift) <= constants.MOVED_PT
         for glyph in other
     }
     for glyph, other in product(run, now):
         along, across = _covered(box_now[id(glyph)], box_now[id(other)], glyph.direction)
-        if id(other) in with_it or along <= MOVED_PT or across <= MOVED_PT:
+        if id(other) in with_it or along <= constants.MOVED_PT or across <= constants.MOVED_PT:
             continue
-        if _on_line_of(glyph, other):
+        if _starts_on_line_of(other, glyph):
             return True
         # The move made it, unless the same pair met as much before: their places then.
         then = _covered(box_then[id(glyph)], box_then[id(other)], glyph.direction)
-        if along > then[0] + MOVED_PT or across > then[1] + MOVED_PT:
+        if along > then[0] + constants.MOVED_PT or across > then[1] + constants.MOVED_PT:
             return True
     return False
 
@@ -678,7 +718,10 @@ def _word_choices(run: RedactedRun) -> list[_Choice]:
     words = _WORD.findall(comparable)
     beside = tuple(sorted({run.before, run.after} - {""}))
     whole = r"[\W_]*".join(map(re.escape, words or comparable.split()))
-    return [(whole, beside), *((re.escape(word), beside) for word in words if len(word) > 1)]
+    return [
+        (whole, beside),
+        *((re.escape(word), beside) for word in words if _counts_alone(word)),
+    ]
 
 
 def words_beside(text: str, asked: range) -> tuple[str, str]:

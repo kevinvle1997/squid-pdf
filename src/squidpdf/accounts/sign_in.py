@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
@@ -134,11 +134,12 @@ def _link_minutes() -> int:
     return constants.LINK_VALID_S // _SECONDS_A_MINUTE
 
 
-def signed_in_user(accounts: Accounts, cookie: str | None) -> User | None:
-    """The account a signed-in cookie names; None with no cookie, a bad one, or no account.
+def signed_in_user(accounts: Accounts, cookies: Mapping[str, str]) -> User | None:
+    """The account `cookies` are signed in to; None with no cookie, a bad one, or no account.
 
     Reads the table: a coroutine calls it in a thread.
     """
+    cookie = cookies.get(SIGNED_IN)  # None on a browser that never signed in
     user_id = _signed_in_id(accounts, cookie)
     if user_id is None:
         return None
@@ -154,11 +155,15 @@ def _signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
     return None if read is None else read.value
 
 
-def state_of(accounts: Accounts, user: User | None) -> AccountState:
-    """What the browser is told of an account on a server that offers them.
+def state_of(accounts: Accounts | None, user: User | None) -> AccountState:
+    """What the browser is told of accounts; `accounts` None on a server that keeps none.
 
     Reads the table for one signed in: a coroutine calls it in a thread.
     """
+    if accounts is None:
+        return AccountState(
+            offered=False, invite_only=False, takes_payment=False, signed_in=None
+        )
     return AccountState(
         offered=True,
         invite_only=accounts.invite_only,

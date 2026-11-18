@@ -26,6 +26,7 @@ from fontTools.ttLib.tables.TupleVariation import TupleVariation
 from squidpdf.core import (
     FontSources,
     LineToDraw,
+    constants,
     index_of,
     new_text,
     open_pdf,
@@ -39,13 +40,12 @@ from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Fetch,
-    GoogleFile,
     _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
-    _google_file,  # noqa: PLC2701 (why Google has no file, per font: no sample uses these)
     _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     blob_hash,
     google_fonts,
 )
+from squidpdf.core.fonts.google_files import GoogleFile, google_file
 from squidpdf.core.types import FontDescriptor
 from tests.conftest import POPPINS, POPPINS_TEXT, name_two_byte_font
 from tests.helpers import assert_at_most, assert_equal, assert_false, assert_in, assert_true
@@ -427,7 +427,7 @@ def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
         released.wait(_HANG_S)
         return cut(variable_font, weight)
 
-    monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
+    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
     monkeypatch.setattr(google, "_cut", slow_cut)
     by_path = {google.raw_url(file.path): variable, google.raw_url(other.path): poppins}
     retries = _RetryRecord()
@@ -449,7 +449,7 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     assert_equal(asked, [], "files fetched")
     for font, descriptor, why in _NOT_GOOGLES:
         with pytest.raises(FontUnusable) as raised:
-            _google_file(font, descriptor)
+            google_file(font, descriptor)
         assert_equal(raised.value.reason.key, why, f"why Google has no file for {font}")
 
 
@@ -590,7 +590,7 @@ def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
         released.wait(_HANG_S)
         return poppins
 
-    monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
+    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
     other = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
     retries = _RetryRecord()

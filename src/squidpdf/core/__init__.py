@@ -48,6 +48,7 @@ from squidpdf.core.app.workers import Workers as Workers
 from squidpdf.core.constants import (
     ANALYSIS_TUNING as ANALYSIS_TUNING,
     CONDENSE_LIMIT as CONDENSE_LIMIT,
+    GOOGLE_FONTS_COMMIT as GOOGLE_FONTS_COMMIT,
     GREEN_RATE_TARGET as GREEN_RATE_TARGET,
     GREEN_RATE_WARN as GREEN_RATE_WARN,
     OPTION_KEYS as OPTION_KEYS,
@@ -68,7 +69,11 @@ from squidpdf.core.engine import (
 from squidpdf.core.fit import SubstituteWidths as SubstituteWidths
 from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
 from squidpdf.core.fonts.document import FontSources as FontSources
-from squidpdf.core.fonts.google import google_fonts as google_fonts
+from squidpdf.core.fonts.google import (
+    blob_hash as blob_hash,
+    google_fonts as google_fonts,
+    raw_url as raw_url,
+)
 from squidpdf.core.fonts.loggable import loggable_family as loggable_family
 from squidpdf.core.fonts.look_alike import broadest as broadest
 from squidpdf.core.fonts.names import strip_subset as strip_subset

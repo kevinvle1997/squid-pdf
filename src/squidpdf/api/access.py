@@ -26,7 +26,7 @@ from squidpdf.core import (
 )
 
 # The reply's header naming the request, so a bug report points at its lines.
-REQUEST_ID_HEADER = "Squid-Request-Id"
+_REQUEST_ID_HEADER = "Squid-Request-Id"
 _LEFT = 499  # nginx's status for a request whose browser left before the answer
 _SERVER_ERROR = 500  # from here up, the server's failure: logged as an ERROR
 
@@ -54,7 +54,7 @@ class AccessLog:
             nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
-                MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
+                MutableHeaders(scope=message)[_REQUEST_ID_HEADER] = request_id
             await send(message)
 
         try:

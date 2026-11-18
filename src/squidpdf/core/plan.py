@@ -12,8 +12,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import assert_never
 
+import squidpdf.core.constants as constants
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import TOLERANCE_PT
 from squidpdf.core.fonts.document import DocumentFonts
 from squidpdf.core.fonts.pool import CodedRun, PooledFont
 from squidpdf.core.fonts.substitute import Substitute, face_coverage, face_letters
@@ -33,7 +33,7 @@ def letter_widths(font: FontProgram, letters: Iterable[str]) -> dict[str, float]
     return {ch: round(font.advance(ch) * EM, _WIDTH_DP) for ch in letters}
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class DrawPlan:
     """How a line is drawn: the font that draws it, and the line as it comes out.
 
@@ -81,14 +81,16 @@ class DrawPlanner:
         missing = own.missing(text)
         codes = self.fonts.drawn_codes(span, own)
         if not missing:
-            return DrawPlan(own, text, [], [], codes)
+            return DrawPlan(own, text=text, missing=[], left_out=[], codes=codes)
         substitute = self.fonts.substitute(span, text)
         # Nothing we have draws what it lacks: switching would gain nothing.
         undrawable = set(missing) <= set(substitute.left_out)
         if undrawable:
             kept = "".join(ch for ch in text if ch not in missing)
-            return DrawPlan(own, kept, missing, missing, codes)
-        return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
+            return DrawPlan(own, text=kept, missing=missing, left_out=missing, codes=codes)
+        return DrawPlan(
+            substitute.face, text=substitute.text, missing=missing, left_out=substitute.left_out
+        )
 
     def _plan_in_a_face(self, span: Span, composed: str) -> DrawPlan:
         """How `composed` is drawn in a face we ship, at a span whose own font we can't use."""
@@ -96,9 +98,11 @@ class DrawPlanner:
         missing = face_coverage(look_alike).missing(composed)
         # It's the substitute, and draws the line as typed.
         if not missing:
-            return DrawPlan(look_alike, composed, [], [])
+            return DrawPlan(look_alike, text=composed, missing=[], left_out=[])
         substitute = self.fonts.substitute(span, composed)
-        return DrawPlan(substitute.face, substitute.text, missing, substitute.left_out)
+        return DrawPlan(
+            substitute.face, text=substitute.text, missing=missing, left_out=substitute.left_out
+        )
 
     def substitute_for(self, span: Span, text: str) -> Substitute:
         """The face that draws `text` if the page won't take the span's own font after all."""
@@ -127,7 +131,7 @@ class DrawPlanner:
             return None
         # Spaced or stretched (letter spacing, scaling, a justified line): redraws close it up.
         redrawn = self.width_of(span, own_text, size=span.size)
-        if abs(span.bbox.width - redrawn) > TOLERANCE_PT:
+        if abs(span.bbox.width - redrawn) > constants.TOLERANCE_PT:
             return why_approximate("spaced_text")
         return None
 
@@ -139,11 +143,11 @@ class DrawPlanner:
         if by_code is not None:
             widths = (run.coded.letters[ch].width for run in by_code for ch in run.text)
             return sum(widths) * size / EM + spacing * len(plan.text)
-        font = self.program_of(plan)
+        font = self._program_of(plan)
         _words, width = self.words_of(span, plan.text, font=font, size=size, spacing=spacing)
         return width
 
-    def program_of(self, plan: DrawPlan) -> FontProgram:
+    def _program_of(self, plan: DrawPlan) -> FontProgram:
         """The font program that measures and draws `plan`'s line."""
         drawn_in = plan.drawn_in
         # The file's own copies, pooled: they measure as one font.

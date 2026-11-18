@@ -6,7 +6,7 @@ import pymupdf
 import pytest
 
 from squidpdf.core import words
-from tests.api.conftest import upload
+from tests.api.conftest import NOT_A_PDF, upload
 from tests.conftest import PSEUDO, pseudo_sentence
 from tests.helpers import assert_equal, assert_in, assert_problem
 
@@ -148,7 +148,7 @@ def test_a_document_with_no_text_says_so_with_its_code(pseudo, mine):
 def test_a_problem_is_said_in_the_language_asked_for_with_its_code(pseudo, mine):
     response = mine.post(
         "/api/documents",
-        content=b"Dear Sir, please find attached.",
+        content=NOT_A_PDF,
         headers={"content-type": "application/pdf", **_in(PSEUDO)},
     )
     assert_problem(response, "not_a_pdf", 415)

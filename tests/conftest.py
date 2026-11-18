@@ -106,6 +106,12 @@ def each_span(blocks: list[dict]) -> Iterator[dict]:
             yield from line["spans"]
 
 
+def each_letter(blocks: list[dict]) -> Iterator[dict]:
+    """Every letter get_text("rawdict") read, in reading order."""
+    for span in each_span(blocks):
+        yield from span["chars"]
+
+
 def cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
     """Fails, as fontTools can on an odd font: patched over `Subsetter.subset`."""
     raise ValueError("fontTools can't cut this font")
@@ -118,18 +124,6 @@ def saved_as(face: str) -> str:
     """
     font = TTFont(io.BytesIO(face_bytes(FACES[face])))
     return str(font["name"].getDebugName(_POSTSCRIPT_NAME))
-
-
-def stored_file(path: str, page: int, font: str) -> bytes:
-    """The font file a saved page stores under the name `font`."""
-    doc = pymupdf.open(path)
-    [font_object] = [
-        font_object
-        for font_object, _ext, _kind, name, *_ in doc[page].get_fonts()
-        if name == font
-    ]
-    _name, _ext, _kind, buffer = doc.extract_font(font_object)
-    return buffer
 
 
 def named_only(
@@ -178,13 +172,18 @@ def named_with_widths(path: str, face: str, *, base_font: str) -> str:
     return path
 
 
+def inner_font_of(doc: pymupdf.Document, font_object: int) -> int:
+    """The font inside a two-byte font, which keeps its description and its width list."""
+    _kind, descendants = doc.xref_get_key(font_object, "DescendantFonts")
+    return int(descendants.strip("[]").split()[0])
+
+
 def name_two_byte_font(doc: pymupdf.Document, font_object: int, name: str) -> int:
     """Names a two-byte font and the one inside it `ABCDEF+<name>`, as a real trimmed copy is.
 
     Returns the one inside, which keeps the font's description.
     """
-    _kind, descendants = doc.xref_get_key(font_object, "DescendantFonts")
-    inner = int(descendants.strip("[]").split()[0])
+    inner = inner_font_of(doc, font_object)
     for each_font in (font_object, inner):
         doc.xref_set_key(each_font, "BaseFont", f"/ABCDEF+{name}")
     return inner
@@ -411,15 +410,15 @@ def tagged(tmp_path) -> str:
         marked = b"/P <</MCID 0>> BDC\n" + doc.xref_stream(contents) + b"\nEMC"
         doc.update_stream(contents, marked)
         doc.xref_set_key(page.xref, "StructParents", str(number))
-    tree, document = _new_object(doc), _new_object(doc)
+    tree, document = new_object(doc), new_object(doc)
     paragraphs = [
-        _new_object(doc, f"<</Type/StructElem/S/P/P {document} 0 R/Pg {page.xref} 0 R/K 0>>")
+        new_object(doc, f"<</Type/StructElem/S/P/P {document} 0 R/Pg {page.xref} 0 R/K 0>>")
         for page in doc.pages()
     ]
     kids = " ".join(f"{paragraph} 0 R" for paragraph in paragraphs)
     doc.update_object(document, f"<</Type/StructElem/S/Document/P {tree} 0 R/K [{kids}]>>")
     by_page = " ".join(f"{n} [{paragraph} 0 R]" for n, paragraph in enumerate(paragraphs))
-    parents = _new_object(doc, f"<</Nums [{by_page}]>>")
+    parents = new_object(doc, f"<</Nums [{by_page}]>>")
     root = f"<</Type/StructTreeRoot/K {document} 0 R/ParentTree {parents} 0 R>>"
     doc.update_object(tree, root)
     doc.xref_set_key(doc.pdf_catalog(), "StructTreeRoot", f"{tree} 0 R")
@@ -428,11 +427,20 @@ def tagged(tmp_path) -> str:
     return str(path)
 
 
-def _new_object(doc: pymupdf.Document, source: str = "<<>>") -> int:
+def new_object(doc: pymupdf.Document, source: str = "<<>>") -> int:
     """A new object in `doc` holding `source`; its number."""
     xref = doc.get_new_xref()
     doc.update_object(xref, source)
     return xref
+
+
+def new_stream(doc: pymupdf.Document, data: str | bytes, **keys: str) -> int:
+    """A new stream in `doc` holding `data`, with these keys in its dictionary; its number."""
+    stream = new_object(doc)
+    doc.update_stream(stream, data if isinstance(data, bytes) else data.encode())
+    for key, value in keys.items():
+        doc.xref_set_key(stream, key, value)
+    return stream
 
 
 @pytest.fixture
@@ -668,7 +676,7 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
         doc.xref_set_key(doc.pdf_catalog(), "Perms", f"<</DocMDP {certifying} 0 R>>")
     if "dss" in copies:
         _sign(doc, page, name="kept_checkable", at=(72, 660))
-        certificate = _new_stream(doc, _SIGNED_BYTES)
+        certificate = new_stream(doc, _SIGNED_BYTES)
         by_signature = f"/VRI<</{'A' * 40} <</Cert[{certificate} 0 R]>>>>"  # by its hash
         doc.xref_set_key(
             doc.pdf_catalog(), "DSS", f"<</Certs[{certificate} 0 R]{by_signature}>>"
@@ -689,26 +697,15 @@ def with_hidden_copies(copies: Collection[str]) -> bytes:
 
 def _new_xmp(doc: pymupdf.Document) -> int:
     """New metadata (XMP) in `doc` that holds the name, which nothing names yet; its number."""
-    xmp = _new_stream(doc, _XMP.format(name=REDACTED_NAME).encode())
-    doc.xref_set_key(xmp, "Type", "/Metadata")
-    doc.xref_set_key(xmp, "Subtype", "/XML")
-    return xmp
+    return new_stream(
+        doc, _XMP.format(name=REDACTED_NAME).encode(), Type="/Metadata", Subtype="/XML"
+    )
 
 
 def _set_metadata_bytes(doc: pymupdf.Document, written: bytes) -> None:
     """Give `doc` metadata of these bytes, as written: PyMuPDF writes text only as UTF-8."""
-    stream = _new_stream(doc, written)
-    doc.xref_set_key(stream, "Type", "/Metadata")
-    doc.xref_set_key(stream, "Subtype", "/XML")
+    stream = new_stream(doc, written, Type="/Metadata", Subtype="/XML")
     doc.xref_set_key(doc.pdf_catalog(), "Metadata", f"{stream} 0 R")
-
-
-def _new_stream(doc: pymupdf.Document, written: bytes) -> int:
-    """A new stream in `doc` holding `written`; its number."""
-    stream = doc.get_new_xref()
-    doc.update_object(stream, "<<>>")
-    doc.update_stream(stream, written, new=True)
-    return stream
 
 
 def _add_field(

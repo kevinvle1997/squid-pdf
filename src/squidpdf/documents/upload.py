@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import shutil
-from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import AsyncIterable, Awaitable
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
@@ -16,7 +14,7 @@ from typing import BinaryIO
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, disk, store
 from squidpdf.documents.analyse import analyse_upload
-from squidpdf.documents.errors import NotAPdf, ServerFull, TooLarge
+from squidpdf.documents.errors import NotAPdf, TooLarge
 from squidpdf.documents.meters import Meter
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.store import DocumentStore
@@ -25,49 +23,6 @@ from squidpdf.documents.types import KeptAnalysis
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
 _DIGEST_CHARS = 16  # of a file's SHA-256 a meter keeps: 64 bits, too many to meet by chance
-
-
-@dataclass(slots=True)
-class _UploadsUnderWay:
-    """The disk the uploads under way may yet take, held against the free-disk floor."""
-
-    held_bytes: int = 0  # what each upload under way may yet write
-
-    @contextmanager
-    def holding(self, size: int, *, free: int) -> Iterator[None]:
-        """Hold `size` bytes of disk while the block runs, refused if `free` has no room for it.
-
-        Checked and held in one step on the event loop: two uploads never pass on one room.
-        """
-        room = free - self.held_bytes - size
-        # Read as a module attribute, so a test can raise the floor.
-        if room < constants.MIN_FREE_BYTES:
-            raise ServerFull()
-        self.held_bytes += size
-        try:
-            yield
-        finally:
-            self.held_bytes -= size
-
-    def forget(self) -> None:
-        """Forget every upload held, as a fresh record: only with none under way."""
-        self.held_bytes = 0
-
-
-# This server's uploads under way: its one process takes every upload.
-_uploads_under_way = _UploadsUnderWay()
-
-
-@asynccontextmanager
-async def disk_held(declared: int | None, *, most: int) -> AsyncIterator[None]:
-    """Hold the disk an upload may yet write, against the floor, while the block runs.
-
-    That's its `declared` size, which the server reads no more than, or `most` when
-    it streams without one. Raises ServerFull if the floor has no room for it.
-    """
-    free = await asyncio.to_thread(_documents_disk_free)
-    with _uploads_under_way.holding(most if declared is None else declared, free=free):
-        yield
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -95,33 +50,32 @@ class UploadController:
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
-        async with disk_held(declared, most=constants.MAX_FILE_BYTES):
+        async with disk.disk_held(declared, most=constants.MAX_FILE_BYTES):
             with disk.full_disk_refused():
                 doc_id, folder = await asyncio.to_thread(self.documents.create, owner_digest)
                 await self._deleted_if_it_fails(
                     folder, _save_original(chunks, to=folder / store.ORIGINAL)
                 )
-        # Off the server's thread: a file of the size limit takes a moment to digest.
-        digest = await self._deleted_if_it_fails(
-            folder, asyncio.to_thread(_digest_of, folder / store.ORIGINAL)
-        )
-        await self._deleted_if_it_fails(folder, asyncio.to_thread(meter.check, digest))
-        kept = await self._deleted_if_it_fails(folder, self._enqueue_analyse(folder))
         # Deleted if it fails too: a browser that leaves first never gets the id.
-        expires_at = await self._deleted_if_it_fails(
-            folder, asyncio.to_thread(self.documents.touch, folder)
+        return await self._deleted_if_it_fails(
+            folder, self._judged(doc_id, folder, meter=meter, language=language)
         )
+
+    async def _judged(
+        self, doc_id: str, folder: Path, *, meter: Meter, language: str
+    ) -> Reply[bytes]:
+        """The kept original, checked against `meter`, judged and counted: the reply to send."""
+        # Off the server's thread: a file of the size limit takes a moment to digest.
+        digest = await asyncio.to_thread(_digest_of, folder / store.ORIGINAL)
+        await asyncio.to_thread(meter.check, digest)
+        kept = await self._enqueue_analyse(folder)
+        expires_at = await asyncio.to_thread(self.documents.touch, folder)
         # Off the server's thread: it reads every font's letters and writes them out again.
-        body = await self._deleted_if_it_fails(
-            folder,
-            asyncio.to_thread(
-                document_json, doc_id, expires_at=expires_at, kept=kept, language=language
-            ),
+        body = await asyncio.to_thread(
+            document_json, doc_id, expires_at=expires_at, kept=kept, language=language
         )
         # Counted only once it opens: a damaged file costs none of the allowance.
-        counted = await self._deleted_if_it_fails(
-            folder, asyncio.to_thread(meter.count, digest)
-        )
+        counted = await asyncio.to_thread(meter.count, digest)
         return Reply(body, words.language_headers(language) | counted, HTTPStatus.CREATED)
 
     async def _deleted_if_it_fails[T](self, folder: Path, step: Awaitable[T]) -> T:
@@ -142,13 +96,6 @@ def _digest_of(path: Path) -> str:
     """The file at `path` by its contents, as a meter counts it: one file, one digest."""
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()[:_DIGEST_CHARS]
-
-
-def _documents_disk_free() -> int:
-    """The bytes free on the disk documents are kept on."""
-    root = store.root()
-    root.mkdir(parents=True, exist_ok=True)  # otherwise made by the first upload
-    return shutil.disk_usage(root).free
 
 
 async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:

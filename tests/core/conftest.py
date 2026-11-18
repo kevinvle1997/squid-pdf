@@ -30,10 +30,10 @@ _BY_FIRST_USE = {0x20: "A", 0x21: "B", 0x22: "space", 0x23: "C"}
 _WIDTHS = "500 550 250 600"
 
 # The gapped fixture: its words, their size, and the gap between them, in ems.
-GAPPED_TEXT = "AB BA AB"
-LONE_WORD = "BA"
+_GAPPED_TEXT = "AB BA AB"
+_LONE_WORD = "BA"
 GAPPED_SIZE = 12.0
-GAPPED_LINES = (700, 650, 600)  # each line's baseline, in PDF space
+_GAPPED_LINES = (700, 650, 600)  # each line's baseline, in PDF space
 GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
 _ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
 
@@ -372,7 +372,7 @@ def type3(tmp_path_factory) -> str:
 
 # A numbered list's marker in a Type3 font with two periods, as Chrome prints tabular
 # figures: the narrow one running text uses, and a tabular one as wide as a figure.
-NARROW_PERIOD, TABULAR_PERIOD = 0x2E, 0x2F
+_NARROW_PERIOD, TABULAR_PERIOD = 0x2E, 0x2F
 LIST_MARKER = "1.2."
 
 
@@ -384,7 +384,8 @@ def tabular_period(tmp_path_factory) -> str:
     narrow period is the lower code, and the page draws the tabular one.
     """
     marker = f"31{TABULAR_PERIOD:02X}32{TABULAR_PERIOD:02X}"
-    pairs = "<2E> <002E> <2F> <002E> <31> <0031> <32> <0032>"
+    periods = (_NARROW_PERIOD, TABULAR_PERIOD)
+    pairs = " ".join(f"<{code:02X}> <002E>" for code in periods) + " <31> <0031> <32> <0032>"
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("type3") / "tabular.pdf"),
         {
@@ -396,8 +397,9 @@ def tabular_period(tmp_path_factory) -> str:
             "descriptor": "<</Type/FontDescriptor/FontName/ABCDEF+Drawn-Regular/Flags 32"
             "/ItalicAngle 0/FontBBox[0 0 600 700]>>",
             "font": "<</Type/Font/Subtype/Type3/FontBBox[0 0 600 700]"
-            "/FontMatrix[0.001 0 0 0.001 0 0]/FirstChar 46/LastChar 50"
-            "/Encoding<</Type/Encoding/Differences[46/period 47/period.tf 49/one 50/two]>>"
+            f"/FontMatrix[0.001 0 0 0.001 0 0]/FirstChar {_NARROW_PERIOD}/LastChar 50"
+            f"/Encoding<</Type/Encoding/Differences[{_NARROW_PERIOD}/period"
+            f" {TABULAR_PERIOD}/period.tf 49/one 50/two]>>"
             "/Widths[100 600 0 600 600]"
             "/CharProcs<</period {letter}/period.tf {letter}/one {letter}/two {letter}>>"
             "/ToUnicode {to_unicode}/FontDescriptor {descriptor}>>",
@@ -415,9 +417,9 @@ def type3_copies(tmp_path_factory) -> str:
 def gapped(tmp_path_factory) -> str:
     """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
 
-    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps: GAPPED_TEXT
-    word by word (a piece per gap), GAPPED_TEXT in one TJ run (spaces inside one piece), and
-    LONE_WORD (no gap but the page's).
+    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps: _GAPPED_TEXT
+    word by word (a piece per gap), _GAPPED_TEXT in one TJ run (spaces inside one piece), and
+    _LONE_WORD (no gap but the page's).
     """
     path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
     doc = pymupdf.open()
@@ -426,20 +428,20 @@ def gapped(tmp_path_factory) -> str:
     # "gap" is only the name the page files the font under; MuPDF writes it by glyph id.
     page.insert_font(fontname="gap", fontbuffer=font)
     [(_xref, _ext, _kind, _name, resource, _encoding)] = page.get_fonts()
-    words = GAPPED_TEXT.split()
+    words = _GAPPED_TEXT.split()
     step = (len(words[0]) * _ADVANCE / _EM + GAP_EM) * GAPPED_SIZE
     start = f"BT /{resource} {GAPPED_SIZE} Tf"
     # PDF space: y counts up from the bottom of the page.
     one_by_one = [
-        f"{start} {72 + i * step} {GAPPED_LINES[0]} Td <{_ids(word)}> Tj ET"
+        f"{start} {72 + i * step} {_GAPPED_LINES[0]} Td <{_ids(word)}> Tj ET"
         for i, word in enumerate(words)
     ]
     gap = -round(GAP_EM * _EM)  # a TJ number moves the pen back, in thousandths of an em
     one_run = f" {gap} ".join(f"<{_ids(word)}>" for word in words)
     content = [
         *one_by_one,
-        f"{start} 72 {GAPPED_LINES[1]} Td [{one_run}] TJ ET",
-        f"{start} 72 {GAPPED_LINES[2]} Td <{_ids(LONE_WORD)}> Tj ET",
+        f"{start} 72 {_GAPPED_LINES[1]} Td [{one_run}] TJ ET",
+        f"{start} 72 {_GAPPED_LINES[2]} Td <{_ids(_LONE_WORD)}> Tj ET",
     ]
     xref = doc.get_new_xref()
     doc.update_object(xref, "<<>>")

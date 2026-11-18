@@ -18,7 +18,6 @@ from pydantic import BaseModel
 from squidpdf.accounts.billing.payment_pages import BillingPortalController, CheckoutController
 from squidpdf.accounts.billing.webhook import BillingEventController
 from squidpdf.accounts.bounces import BounceController, is_brevo
-from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import InvitedOnly, NoAccounts
 from squidpdf.accounts.sign_in import (
@@ -54,26 +53,26 @@ class SignInBody(BaseModel):
     token: str
 
 
-def accounts_of(request: Request) -> Accounts | None:
+def _accounts_of(request: Request) -> Accounts | None:
     """The accounts the app read as it started; None on a server that keeps none."""
     return request.app.state.accounts
 
 
-def offered_accounts(accounts: Annotated[Accounts | None, Depends(accounts_of)]) -> Accounts:
+def _offered_accounts(accounts: Annotated[Accounts | None, Depends(_accounts_of)]) -> Accounts:
     """The app's accounts, or no_accounts on a server that keeps none."""
     if accounts is None:
         raise NoAccounts()
     return accounts
 
 
-def controller_with_accounts[C](cls: Callable[[Accounts], C]) -> Callable[[Accounts], C]:
+def _controller_with_accounts[C](cls: Callable[[Accounts], C]) -> Callable[[Accounts], C]:
     """A route's dependency: a new `cls` for each request, with the app's accounts.
 
-    Used as `Depends(controller_with_accounts(LinkController))`, as a document's routes use
+    Used as `Depends(_controller_with_accounts(LinkController))`, as a document's routes use
     `controller_with_workers`; no_accounts on a server that keeps none.
     """
 
-    def with_the_apps_accounts(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> C:
+    def with_the_apps_accounts(accounts: Annotated[Accounts, Depends(_offered_accounts)]) -> C:
         """The controller, built with the app's accounts."""
         return cls(accounts)
 
@@ -81,17 +80,17 @@ def controller_with_accounts[C](cls: Callable[[Accounts], C]) -> Callable[[Accou
 
 
 async def signed_in(
-    request: Request, accounts: Annotated[Accounts | None, Depends(accounts_of)]
+    request: Request, accounts: Annotated[Accounts | None, Depends(_accounts_of)]
 ) -> User | None:
     """The account this browser is signed in to; None if none, or the server keeps none."""
     if accounts is None:
         return None
-    # Off the loop: it reads the table. .get: a browser that never signed in has no cookie.
-    return await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
+    # Off the loop: it reads the table.
+    return await asyncio.to_thread(signed_in_user, accounts, request.cookies)
 
 
 async def admit_invited(
-    request: Request, accounts: Annotated[Accounts | None, Depends(accounts_of)]
+    request: Request, accounts: Annotated[Accounts | None, Depends(_accounts_of)]
 ) -> None:
     """Raise invited_only unless this browser is signed in, where only the invited may work.
 
@@ -100,19 +99,19 @@ async def admit_invited(
     """
     if accounts is None or not accounts.invite_only:
         return
-    # Off the loop: it reads the table. .get: a browser that never signed in has no cookie.
-    user = await asyncio.to_thread(signed_in_user, accounts, request.cookies.get(SIGNED_IN))
+    # Off the loop: it reads the table.
+    user = await asyncio.to_thread(signed_in_user, accounts, request.cookies)
     if user is None:
         raise InvitedOnly()
 
 
-def link_body(body: LinkBody) -> LinkBody:
+def _link_body(body: LinkBody) -> LinkBody:
     """The request's body, read once: the route and the gate on its inbox both take it here."""
     return body
 
 
-async def admit_link_to(
-    request: Request, body: Annotated[LinkBody, Depends(link_body)]
+async def _admit_link_to(
+    request: Request, body: Annotated[LinkBody, Depends(_link_body)]
 ) -> None:
     """Raise rate_limited if the inbox was sent LINKS_PER_INBOX links while one still works.
 
@@ -129,29 +128,24 @@ async def admit_link_to(
         raise RateLimited()
 
 
-def admit_brevo(
-    accounts: Annotated[Accounts, Depends(offered_accounts)],
+def _admit_brevo(
+    accounts: Annotated[Accounts, Depends(_offered_accounts)],
     authorization: Annotated[str | None, Header()] = None,
-) -> Accounts:
-    """The app's accounts, or not_found unless this is Brevo's webhook, with its token.
+) -> None:
+    """Raise not_found unless this is Brevo's webhook, with its token.
 
     Asked before the body is checked, so a stranger's is never read.
     """
     if not is_brevo(accounts, authorization):
         raise NotFound()
-    return accounts
 
 
 @router.get("")
 async def account(
-    accounts: Annotated[Accounts | None, Depends(accounts_of)],
+    accounts: Annotated[Accounts | None, Depends(_accounts_of)],
     user: Annotated[User | None, Depends(signed_in)],
 ) -> AccountState:
     """Whether this server offers accounts, and which this browser is signed in to."""
-    if accounts is None:
-        return AccountState(
-            offered=False, invite_only=False, takes_payment=False, signed_in=None
-        )
     # Off the loop: it reads the table for the month's documents.
     return await asyncio.to_thread(state_of, accounts, user)
 
@@ -160,12 +154,12 @@ async def account(
     "/link",
     status_code=202,
     response_model=LinkSent,
-    dependencies=[Depends(rate.admit_link), Depends(admit_link_to)],
+    dependencies=[Depends(rate.admit_link), Depends(_admit_link_to)],
 )
 async def send_link(
-    body: Annotated[LinkBody, Depends(link_body)],
+    body: Annotated[LinkBody, Depends(_link_body)],
     link_controller: Annotated[
-        LinkController, Depends(controller_with_accounts(LinkController))
+        LinkController, Depends(_controller_with_accounts(LinkController))
     ],
     language: ReaderLanguage,
 ) -> Response:
@@ -178,7 +172,7 @@ async def send_link(
 async def sign_in(
     body: SignInBody,
     sign_in_controller: Annotated[
-        SignInController, Depends(controller_with_accounts(SignInController))
+        SignInController, Depends(_controller_with_accounts(SignInController))
     ],
 ) -> Response:
     """Sign this browser in with a link's token, its account made on first use."""
@@ -187,20 +181,20 @@ async def sign_in(
 
 
 @router.post("/sign-out", response_model=AccountState)
-async def sign_out(accounts: Annotated[Accounts, Depends(offered_accounts)]) -> Response:
+async def sign_out(accounts: Annotated[Accounts, Depends(_offered_accounts)]) -> Response:
     """Sign this browser out: its signed-in cookie cleared."""
     return response_of(signed_out(accounts), media_type=_JSON)
 
 
-@router.post("/mail-events", status_code=204)
+@router.post("/mail-events", status_code=204, dependencies=[Depends(_admit_brevo)])
 async def mail_events(
-    # Brevo sends one event, or a list where its webhook batches them.
     body: MailEvent | list[MailEvent],
-    accounts: Annotated[Accounts, Depends(admit_brevo)],
+    bounce_controller: Annotated[
+        BounceController, Depends(_controller_with_accounts(BounceController))
+    ],
 ) -> Response:
     """Brevo's webhook: note each address mail can never reach."""
-    events = body if isinstance(body, list) else [body]
-    return response_of(await BounceController(accounts).note(events), media_type=_JSON)
+    return response_of(await bounce_controller.note(body), media_type=_JSON)
 
 
 @router.post(
@@ -208,7 +202,7 @@ async def mail_events(
 )
 async def checkout(
     checkout_controller: Annotated[
-        CheckoutController, Depends(controller_with_accounts(CheckoutController))
+        CheckoutController, Depends(_controller_with_accounts(CheckoutController))
     ],
     user: Annotated[User | None, Depends(signed_in)],
 ) -> Response:
@@ -223,7 +217,7 @@ async def checkout(
 )
 async def billing_portal(
     billing_portal_controller: Annotated[
-        BillingPortalController, Depends(controller_with_accounts(BillingPortalController))
+        BillingPortalController, Depends(_controller_with_accounts(BillingPortalController))
     ],
     user: Annotated[User | None, Depends(signed_in)],
 ) -> Response:
@@ -235,7 +229,7 @@ async def billing_portal(
 async def billing_events(
     request: Request,
     billing_event_controller: Annotated[
-        BillingEventController, Depends(controller_with_accounts(BillingEventController))
+        BillingEventController, Depends(_controller_with_accounts(BillingEventController))
     ],
     stripe_signature: Annotated[str | None, Header()] = None,
 ) -> Response:

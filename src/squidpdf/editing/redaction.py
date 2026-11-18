@@ -131,7 +131,7 @@ class RedactionController:
         """What the redactions of the span `span_id` take."""
         return next(each for each in self.redacted if each.span.id == span_id)
 
-    def drawn_elsewhere(
+    def _drawn_elsewhere(
         self, engine: Engine, *, page: int, original: int
     ) -> tuple[DrawnElsewhere, dict[str, RestOfLine]]:
         """What `page` draws where it shouldn't, and the rest of each span's line, by span id.
@@ -275,7 +275,7 @@ def _words_left(
     """
     hidden = engine.redaction.still_hidden(placed)
     checked_pages = {
-        page: checked.drawn_elsewhere(engine, page=page, original=pages[page])
+        page: checked._drawn_elsewhere(engine, page=page, original=pages[page])
         for page in {run.page for run in placed}
     }
     drawn_elsewhere = {page: elsewhere for page, (elsewhere, _rests) in checked_pages.items()}

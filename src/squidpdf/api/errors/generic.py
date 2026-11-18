@@ -13,7 +13,7 @@ class MethodNotAllowed(Problem):
 
 
 class RequestTooLarge(Problem):
-    """A request body past `MAX_BODY_BYTES`: any but an upload's, which checks its own size."""
+    """A body past `MAX_BODY_BYTES`: any but an upload's or a font's, which check their own."""
 
     type = "request_too_large"
     status = 413
@@ -38,7 +38,7 @@ class ServerError(Problem):
 
 
 class RateLimited(Problem):
-    """Too much from one address: uploads this minute, uploads at once, or jobs waiting."""
+    """Too much from one address or to one inbox: uploads, links, payment pages, or jobs."""
 
     type = "rate_limited"
     status = 429

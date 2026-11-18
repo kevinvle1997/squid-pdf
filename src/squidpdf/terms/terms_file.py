@@ -75,6 +75,25 @@ _IN_LINES = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _ReadFailure:
+    """A way reading the terms file fails, and the sentence refusing it."""
+
+    raised: type[OSError]
+    refusal: str  # its sentence's key in core/app/words, given the file and the system's why
+
+
+# First match wins, so OSError, the others' superclass, comes last.
+_READ_FAILURES = (
+    _ReadFailure(FileNotFoundError, "terms_missing"),  # nothing at the path
+    # A folder, as Docker makes at a missing path.
+    _ReadFailure(IsADirectoryError, "terms_folder"),
+    _ReadFailure(PermissionError, "terms_not_permitted"),  # the app's user may not read it
+    # A file where a folder should be, or the disk failed.
+    _ReadFailure(OSError, "terms_unreadable"),
+)
+
+
 class TermsUnreadable(Exception):
     """Why the page can't show a terms file, said with the file and the line."""
 
@@ -127,17 +146,10 @@ def _written_in(path: Path) -> str:
     """The file's text, a byte-order mark left out, as Notepad saves one."""
     try:
         written = path.read_bytes()
-    except FileNotFoundError:  # read_bytes: nothing at the path
-        raise TermsUnreadable(Message("terms_missing", {"path": str(path)})) from None
-    except IsADirectoryError:  # read_bytes: a folder, as Docker makes at a missing path
-        raise TermsUnreadable(Message("terms_folder", {"path": str(path)})) from None
-    except PermissionError:  # read_bytes: the app's user may not read it
-        raise TermsUnreadable(Message("terms_not_permitted", {"path": str(path)})) from None
-    except OSError as failed:  # read_bytes: a file where a folder should be, or the disk failed
+    except OSError as failed:  # read_bytes: the file isn't there, or can't be read
+        refusal = next(row.refusal for row in _READ_FAILURES if isinstance(failed, row.raised))
         why = failed.strerror or str(failed)
-        raise TermsUnreadable(
-            Message("terms_unreadable", {"path": str(path), "why": why})
-        ) from None
+        raise TermsUnreadable(Message(refusal, {"path": str(path), "why": why})) from None
     try:
         return written.decode("utf-8-sig")
     except UnicodeDecodeError as failed:  # decode: bytes that aren't UTF-8, at `start`

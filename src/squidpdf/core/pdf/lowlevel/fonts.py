@@ -14,7 +14,7 @@ import pymupdf
 from squidpdf.core.app.message import Message
 from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.pdf.lowlevel.errors import MUPDF_ERRORS
-from squidpdf.core.pdf.lowlevel.objects import PDF_NULL, pdf_of
+from squidpdf.core.pdf.lowlevel.objects import PDF_NULL, PDF_REFERENCE, object_number, pdf_of
 from squidpdf.core.types import FontCode, GlyphId
 
 _ONE_BYTE_CODES = 256  # a simple font has codes 0-255
@@ -29,9 +29,6 @@ _TWO_BYTE_CODES = 65536  # a two-byte font has codes 0-65535
 _WHOLE_NUMBER = re.compile(r"-?\d+")
 
 _IDENTITY_ENCODINGS = ("/Identity-H", "/Identity-V")  # a two-byte font whose codes are its CIDs
-
-# An object reference, `12 0 R`: the number is what's kept.
-_OBJECT_REFERENCE = re.compile(r"(\d+) \d+ R")
 
 # The object the first entry of an array points at: "[15 0 R]" -> 15.
 _FIRST_REFERENCE = re.compile(r"\[\s*(\d+)\s+\d+\s+R")
@@ -76,9 +73,9 @@ class FontRecords:
         widths: dict[str, float] = {}
         with self._mupdf_font_record(font_object) as font:
             for code in listed:
-                cid = pymupdf.mupdf.ll_pdf_lookup_cmap(font.encoding, code)
+                cid = _cid_of(font, code)
                 letter = _letter_of(font, code, cid)
-                width = pymupdf.mupdf.ll_pdf_lookup_hmtx(font, cid).w
+                width = _width_of(font, cid)
                 if letter is not None and width > 0:
                     widths.setdefault(letter, width)  # lowest code first: the one a page writes
         return widths
@@ -113,8 +110,8 @@ class FontRecords:
         """
         value_type, value = self.doc.xref_get_key(font_object, "DescendantFonts")
         # The list kept as an object of its own ("12 0 R"): read it there.
-        if value_type == "xref":
-            listed = int(value.split()[0])
+        if value_type == PDF_REFERENCE:
+            listed = object_number(value)
             # A damaged file can point past its last object: there's no list to read.
             if not self._has_object(listed):
                 return None
@@ -136,9 +133,8 @@ class FontRecords:
         if value_type == PDF_NULL:
             return None
         # Kept in an object of its own, `9 0 R`: what that object holds.
-        referenced = _OBJECT_REFERENCE.search(value) if value_type == "xref" else None
-        if referenced is not None:
-            return self.doc.xref_object(int(referenced.group(1)), compressed=True)
+        if value_type == PDF_REFERENCE:
+            return self.doc.xref_object(object_number(value), compressed=True)
         return value
 
     def text_font_name(self, font_object: int) -> str | None:
@@ -182,19 +178,30 @@ class FontRecords:
 
 def _font_code(font: pymupdf.mupdf.pdf_font_desc, value: int) -> FontCode | None:
     """What code `value` draws in a font MuPDF has loaded, or None if it isn't one letter."""
-    mu = pymupdf.mupdf
-    codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, value)
+    letter = _listed_letter_of(font, value)
     # No letter, or several (like "fi").
-    if not 0 <= codepoint <= sys.maxunicode:
+    if letter is None:
         return None
-    # The font's internal number for the code, which picks its shape and width.
-    cid = mu.ll_pdf_lookup_cmap(font.encoding, value)
+    cid = _cid_of(font, value)
     return FontCode(
-        value=value,
-        letter=chr(codepoint),
-        glyph=_glyph_of(font, cid),
-        width=mu.ll_pdf_lookup_hmtx(font, cid).w,
+        value=value, letter=letter, glyph=_glyph_of(font, cid), width=_width_of(font, cid)
     )
+
+
+def _listed_letter_of(font: pymupdf.mupdf.pdf_font_desc, code: int) -> str | None:
+    """The letter a code is by the font's letter list (ToUnicode); None for none or several."""
+    codepoint = pymupdf.mupdf.ll_pdf_lookup_cmap(font.to_unicode, code)
+    return chr(codepoint) if 0 <= codepoint <= sys.maxunicode else None
+
+
+def _cid_of(font: pymupdf.mupdf.pdf_font_desc, code: int) -> int:
+    """The font's internal number for a code (its CID), which picks its shape and width."""
+    return pymupdf.mupdf.ll_pdf_lookup_cmap(font.encoding, code)
+
+
+def _width_of(font: pymupdf.mupdf.pdf_font_desc, cid: int) -> float:
+    """How wide the font's own record says `cid` is, per 1000 em."""
+    return pymupdf.mupdf.ll_pdf_lookup_hmtx(font, cid).w
 
 
 def _glyph_of(font: pymupdf.mupdf.pdf_font_desc, cid: int) -> GlyphId:
@@ -214,11 +221,9 @@ def _letter_of(font: pymupdf.mupdf.pdf_font_desc, code: int, cid: int) -> str | 
 
     None when neither says, or the code is several letters (like "fi").
     """
-    mu = pymupdf.mupdf
     # Its letter list (ToUnicode), when it has one.
     if font.to_unicode is not None:
-        codepoint = mu.ll_pdf_lookup_cmap(font.to_unicode, code)
-        return chr(codepoint) if 0 <= codepoint <= sys.maxunicode else None
+        return _listed_letter_of(font, code)
     # MuPDF's own, worked out from the encoding's letter names: a C array, read in place.
     if cid >= font.cid_to_ucs_len:
         return None

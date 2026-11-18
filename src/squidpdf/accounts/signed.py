@@ -17,7 +17,7 @@ import orjson
 
 # What a value is signed for: a link that signs someone in, the cookie that says they are, the
 # cookie listing the files a browser opened without an account, or an address that bounced.
-Purpose = Literal["link", "signed_in", "counted", "bounced"]
+_Purpose = Literal["link", "signed_in", "counted", "bounced"]
 _SEPARATOR = "."
 
 
@@ -29,13 +29,13 @@ class Signed:
     until: int
 
 
-def signed(value: str, *, purpose: Purpose, until: int, secret: bytes) -> str:
+def signed(value: str, *, purpose: _Purpose, until: int, secret: bytes) -> str:
     """`value`, good for `purpose` until `until` (Unix seconds), as text safe in a URL."""
     payload = _encoded(orjson.dumps({"value": value, "until": until}))
     return f"{payload}{_SEPARATOR}{_signature(payload, purpose=purpose, secret=secret)}"
 
 
-def read_signed(token: str, *, purpose: Purpose, now: int, secret: bytes) -> Signed | None:
+def read_signed(token: str, *, purpose: _Purpose, now: int, secret: bytes) -> Signed | None:
     """What `token` was signed with for `purpose`; None if past, altered or not ours."""
     payload, _, signature = token.partition(_SEPARATOR)
     expected = _signature(payload, purpose=purpose, secret=secret)
@@ -52,12 +52,12 @@ def read_signed(token: str, *, purpose: Purpose, now: int, secret: bytes) -> Sig
     return Signed(read["value"], read["until"])
 
 
-def digest_of(value: str, *, purpose: Purpose, secret: bytes) -> str:
+def digest_of(value: str, *, purpose: _Purpose, secret: bytes) -> str:
     """`value` as only `secret` makes it for `purpose`: the same each time, never read back."""
     return _signature(value, purpose=purpose, secret=secret)
 
 
-def _signature(payload: str, *, purpose: Purpose, secret: bytes) -> str:
+def _signature(payload: str, *, purpose: _Purpose, secret: bytes) -> str:
     """`payload`'s HMAC for `purpose`, as text safe in a URL."""
     signing = f"{purpose}{_SEPARATOR}{payload}".encode()
     return _encoded(hmac.digest(secret, signing, hashlib.sha256))

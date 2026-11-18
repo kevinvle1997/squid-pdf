@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 
-from squidpdf.core.constants import BASELINE_EPS, GAP_RATIO, SIZE_EPS
+import squidpdf.core.constants as constants
 from squidpdf.core.types import (
     Fragment,
     Rect,
@@ -73,18 +73,18 @@ def _continues(previous: TextPiece, piece: TextPiece) -> bool:
     """Whether `piece` carries on the span that `previous` ends."""
     if not same_font(previous, piece):
         return False
-    if abs(previous.size - piece.size) > SIZE_EPS:
+    if abs(previous.size - piece.size) > constants.SIZE_EPS:
         return False
     # Another colour or opacity: a span is redrawn in one.
     if previous.color != piece.color or previous.opacity != piece.opacity:
         return False
     _x, previous_y = previous.origin
     _x, y = piece.origin
-    if abs(previous_y - y) > BASELINE_EPS:
+    if abs(previous_y - y) > constants.BASELINE_EPS:
         return False
     # Close enough: a small negative gap is kerning pulling letters together.
     gap = piece.box.x0 - previous.box.x1
-    return _KERNING_PT <= gap <= piece.size * GAP_RATIO
+    return _KERNING_PT <= gap <= piece.size * constants.GAP_RATIO
 
 
 def _span_from(page: int, group: list[TextPiece], ordinal: int) -> Span:

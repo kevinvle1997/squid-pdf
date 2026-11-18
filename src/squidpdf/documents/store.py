@@ -39,7 +39,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import constants
 from squidpdf.documents.attached import AttachedFiles, attached_files
-from squidpdf.documents.disk import full_disk_refused
+from squidpdf.documents.disk import full_disk_refused, root
 from squidpdf.documents.errors import Gone
 from squidpdf.documents.types import KeptAnalysis
 
@@ -62,11 +62,6 @@ _ID_BYTES = 16
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
 _TRASH = ".trash-"  # a deleted document's folder, moved aside while it's emptied
 _TRASHED_FOLDER_PATTERN = re.compile(re.escape(_TRASH) + _DOCUMENT_ID_PATTERN.pattern)
-
-
-def root() -> Path:
-    """The folder every document lives under: `SQUIDPDF_DATA`, or ./data."""
-    return Path(os.environ.get("SQUIDPDF_DATA", "data")).resolve()  # unset in development
 
 
 class DocumentStore(Protocol):

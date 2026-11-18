@@ -51,16 +51,21 @@ def _catalog_for(tag: str, *, refused: set[str]) -> str | None:
 
 def _quality_of(weight: str) -> float:
     """The `q=` in what follows a tag: 1 when it isn't there, 0 when it can't be read."""
-    for param in weight.split(";"):
-        name, _, value = param.partition("=")
-        if name.strip().lower() == "q":
-            try:
-                quality = float(value)
-            except ValueError:  # not a number, like "q=high"
-                return 0.0
-            # Past the range the header allows, or NaN, which fails both comparisons.
-            return quality if 0 <= quality <= 1 else 0.0
-    return 1.0
+    params = (param.partition("=") for param in weight.split(";"))
+    written = next((value for name, _, value in params if name.strip().lower() == "q"), None)
+    if written is None:
+        return 1.0
+    return _quality_written_as(written)
+
+
+def _quality_written_as(written: str) -> float:
+    """The quality `q=` gives as `written`: 0 when it isn't a number the header allows."""
+    try:
+        quality = float(written)
+    except ValueError:  # not a number, like "q=high"
+        return 0.0
+    # Past the range the header allows, or NaN, which fails both comparisons.
+    return quality if 0 <= quality <= 1 else 0.0
 
 
 def language_of(request: Request) -> str:

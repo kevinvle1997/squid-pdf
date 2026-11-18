@@ -14,7 +14,7 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import ANALYSIS_TUNING, BUILD, Engine, plan
+from squidpdf.core import ANALYSIS_TUNING, BUILD, Engine, constants
 from squidpdf.core.constants import FETCH_TIMEOUT_S
 from squidpdf.core.fonts import google
 from squidpdf.documents import analyse, store
@@ -89,7 +89,7 @@ def _google_through(monkeypatch, download: Callable[[str], bytes]) -> list[str]:
     monkeypatch.delenv("SQUIDPDF_NO_FETCH", raising=False)
     monkeypatch.setattr(google, "_download", counted)
     google._retry_record.forget()
-    monkeypatch.setattr(google, "FETCH_TIMEOUT_S", _DEADLINE_S)
+    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
     return asked
 
 
@@ -162,7 +162,7 @@ def test_a_retune_judges_the_saved_index_again(monkeypatch):
     [before] = orjson.loads(analyse.analyse_upload(FOLDER_STORE, folder, MAX_PAGES).spans)
     loose = 1000.0
     # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
-    monkeypatch.setattr(plan, "TOLERANCE_PT", loose)
+    monkeypatch.setattr(constants, "TOLERANCE_PT", loose)
     monkeypatch.setattr(store, "ANALYSIS_TUNING", ANALYSIS_TUNING | {"tolerance_pt": loose})
 
     kept = store.load_analysis(folder, BUILD)

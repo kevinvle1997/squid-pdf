@@ -97,5 +97,14 @@ class NoSuchPage(Problem):
     status = 422
 
 
+def is_page(page: int, page_count: int) -> bool:
+    """Whether the document has a page numbered `page`, counting from 0.
+
+    Every edit, region and page list that names a page asks this. Where the
+    answer is no, a bad edit is skipped and a request's own pages are refused.
+    """
+    return 0 <= page < page_count
+
+
 class Gone(NotFound):
     """Deleted while a request was using it: it expired mid-way, so the browser re-uploads."""

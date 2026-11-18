@@ -5,11 +5,11 @@ from __future__ import annotations
 import codecs
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pymupdf
 
-from squidpdf.core.constants import IMAGE_SOONER_BY
+import squidpdf.core.constants as constants
 from squidpdf.core.pdf.filters import fewest_giving, marks_its_end
 from squidpdf.core.pdf.lowlevel.drawings import appearance_streams, each_drawing
 from squidpdf.core.pdf.lowlevel.lexing import (
@@ -142,7 +142,7 @@ def read_past_image(
     counted = min(fewest_giving(written, filters, row * loaded.h()) for filters in readings)
     return InlineImage(
         written,
-        counted=max(counted - IMAGE_SOONER_BY, 0),
+        counted=max(counted - constants.IMAGE_SOONER_BY, 0),
         marks_its_end=all(marks_its_end(filters) for filters in readings),
     )
 
@@ -239,7 +239,7 @@ def _texts_held_in(held: bytes) -> list[str]:
 class InlineImage:
     """An image written into a drawing, which MuPDF reads past."""
 
-    written: bytes  # its bytes, from past its ID to the EI MuPDF ends it at
+    written: bytes = field(repr=False)  # its bytes, from past its ID to the EI MuPDF ends it at
     counted: int  # the fewest of them a reader that counts its bytes may take as the image
     # Whether its filter ends it, so a reader that doesn't count looks for that.
     marks_its_end: bool

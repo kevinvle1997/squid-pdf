@@ -15,12 +15,12 @@ from squidpdf.terms.types import Terms
 router = APIRouter(prefix="/api/terms")
 
 
-def terms_of(request: Request) -> Terms | None:
+def _terms_of(request: Request) -> Terms | None:
     """The terms the app read as it started; None where its deployment named none."""
     return request.app.state.terms
 
 
 @router.get("")
-async def terms(deployed: Annotated[Terms | None, Depends(terms_of)]) -> Terms | None:
+async def terms(deployed: Annotated[Terms | None, Depends(_terms_of)]) -> Terms | None:
     """The service's terms, as its deployment wrote them; null where it wrote none."""
     return deployed

@@ -55,7 +55,8 @@ class AttachedFonts:
     def own_for(self, font: PageFont) -> FontCopy | None:
         """The user's copy, for a font the page only names; None when they attached none.
 
-        Raises FontUnusable when it isn't the font the page's width list describes.
+        Raises FontUnusable when the file attached can't be opened, or isn't the font the
+        page's width list describes.
         """
         name = strip_subset(font.name)
         if name not in self.files:

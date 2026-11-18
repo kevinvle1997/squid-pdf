@@ -27,7 +27,7 @@ _ATTACHED_LOCK = ".fonts-lock"  # held by whoever attaches or removes a copy, an
 _ATTACHED_DIGEST_SIZE = 8  # bytes of each digest in a copy's file name, and of a set's
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@dataclass(frozen=True, slots=True)
 class AttachedFiles:
     """The user's own copies of a document's fonts, by the font's name: each read when asked.
 

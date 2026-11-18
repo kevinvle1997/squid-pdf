@@ -13,14 +13,14 @@ import pymupdf
 import pytest
 
 from squidpdf.core import Engine, LineToDraw, Span, index_of, new_text, open_pdf
-from tests.conftest import each_span, named_only, saved_as
+from tests.conftest import each_span, name_two_byte_font, named_only, saved_as
 from tests.helpers import assert_equal
 
 # The own font: MuPDF's Nimbus Sans, stored trimmed and renamed Calibri, so its
 # look-alike is Carlito, which has é whole but no separate accent to put on an e.
 _OWN_TEXT = "Café Bistro"
 _OWN_READS_AS = "NimbusSans-Regular"  # the stored font's own name, which a redraw in it reads
-_CALIBRI = "ABCDEF+Calibri"
+_CALIBRI = "Calibri"
 _CARLITO = "Carlito Regular"
 _SIZE = 12.0
 _INSERT_AT = (72.0, 300.0)
@@ -35,10 +35,7 @@ def _own_font_file(path: str) -> str:
     page.insert_text((72, 96), _OWN_TEXT, fontname="own", fontsize=_SIZE)
     doc.subset_fonts(verbose=False)
     [(font_object, *_)] = page.get_fonts()
-    # A two-byte font names itself twice: on the font and on the one inside it.
-    _value_type, descendants = doc.xref_get_key(font_object, "DescendantFonts")
-    for each_font in (font_object, int(descendants.strip("[]").split()[0])):
-        doc.xref_set_key(each_font, "BaseFont", f"/{_CALIBRI}")
+    name_two_byte_font(doc, font_object, _CALIBRI)
     doc.save(path)
     return path
 

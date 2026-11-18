@@ -107,7 +107,7 @@ class _OffsetRun:
 
 
 @dataclass(frozen=True, slots=True)
-class DrawnLine:
+class DrawReport:
     """A line drawn: the face we ship that drew it, None for the file's own font, and its notes.
 
     `notices` are what came out other than asked.
@@ -132,33 +132,37 @@ class PageWriter:
     # By the face's file, or Google's source for its copy: one font file each.
     added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
-    def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> DrawnLine:
+    def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> DrawReport:
         """Draw `text` at the span's baseline as `plan` says, in a face if the page refuses."""
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
         # The whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             self._write_in_face(span, drawn_in, text=plan.text, setting=setting)
-            return DrawnLine(drawn_in, _said_left_out(plan.left_out))
+            return DrawReport(drawn_in, _said_left_out(plan.left_out))
         # The file's own font, written by code as the original was.
         if isinstance(drawn_in, PooledFont) and by_code is not None:
             self._write_codes(span, by_code, setting=setting)
-            return DrawnLine(None, _said_left_out(plan.left_out))
+            return DrawReport(None, _said_left_out(plan.left_out))
         # The file's own copies of the font, by letter, once the page has them.
         if isinstance(drawn_in, PooledFont):
-            try:
-                resources = self._resources(span.page, drawn_in, plan.text)
-            except FontUnusable as problem:  # the page wouldn't take a copy after all
-                substitute = self.plans.substitute_for(span, text)
-                self._write_in_face(
-                    span, substitute.face, text=substitute.text, setting=setting
-                )
-                notices = [problem.reason, *_said_left_out(substitute.left_out)]
-                return DrawnLine(substitute.face, notices)
-            self._note_lent_letters(drawn_in, plan.text)
-            self._write(span, plan.text, font=drawn_in, resources=resources, setting=setting)
-            return DrawnLine(None, _said_left_out(plan.left_out))
+            return self._draw_by_letter(span, drawn_in, text=text, plan=plan, setting=setting)
         assert_never(drawn_in)
+
+    def _draw_by_letter(
+        self, span: Span, own: PooledFont, *, text: str, plan: DrawPlan, setting: Setting
+    ) -> DrawReport:
+        """Draw `plan`'s line in `own`, the file's copies, by letter; in a face if refused."""
+        try:
+            resources = self._resources(span.page, own, plan.text)
+        except FontUnusable as problem:  # the page wouldn't take a copy after all
+            substitute = self.plans.substitute_for(span, text)
+            self._write_in_face(span, substitute.face, text=substitute.text, setting=setting)
+            notices = [problem.reason, *_said_left_out(substitute.left_out)]
+            return DrawReport(substitute.face, notices)
+        self._note_lent_letters(own, plan.text)
+        self._write(span, plan.text, font=own, resources=resources, setting=setting)
+        return DrawReport(None, _said_left_out(plan.left_out))
 
     def forget_pages(self) -> None:
         """Forget each page's resource names: the pages were just renumbered."""

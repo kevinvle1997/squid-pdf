@@ -5,12 +5,11 @@ pdfTeX's fonts have none; a redraw drew each as the empty glyph, too wide and re
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pymupdf
 import pytest
 
 from squidpdf.core import LineToDraw, Span, open_pdf
+from tests.conftest import each_letter
 from tests.core.conftest import GAP_EM, GAPPED_SIZE
 from tests.helpers import assert_at_most, assert_close, assert_equal
 
@@ -23,19 +22,11 @@ _SAME_PT = 0.01  # rounding, far below a pixel
 _GAPS_OF_THEIR_OWN, _GAPS_IN_ONE_RUN, _LONE_WORD = 0, 1, 2
 
 
-def _each_letter(blocks: list[dict]) -> Iterator[dict]:
-    """Every letter get_text("rawdict") read, in reading order."""
-    for block in blocks:
-        for line in block["lines"]:
-            for piece in line["spans"]:
-                yield from piece["chars"]
-
-
 def _letters(path: str, span: Span) -> list[tuple[str, float, float]]:
     """Each letter on the span's line as MuPDF reads it back: itself, its start and its end."""
     blocks = pymupdf.open(path)[span.page].get_text("rawdict")["blocks"]
     baseline = span.origin[1]
-    on_line = (c for c in _each_letter(blocks) if abs(c["origin"][1] - baseline) < _SAME_PT)
+    on_line = (c for c in each_letter(blocks) if abs(c["origin"][1] - baseline) < _SAME_PT)
     return [(c["c"], c["origin"][0], c["bbox"][2]) for c in on_line]
 
 
