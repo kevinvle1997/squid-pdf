@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass, field
 from email.utils import parseaddr
@@ -119,7 +119,16 @@ class Accounts:
     billing: Billing | None  # None where the deployment takes no payment
     # Letters go out on threads of their own: a mail server that hangs holds these, never
     # the threads every upload and read share.
-    mail_threads: ThreadPoolExecutor = field(default_factory=_mail_threads, repr=False)
+    mail_threads: Executor = field(default_factory=_mail_threads, repr=False)
+
+    async def send_mail(self, task: Callable[[], None]) -> None:
+        """Run `task` on mail's threads and wait for it, the request's id carried along."""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self.mail_threads, partial(copy_context().run, task))
+
+    def send_mail_unawaited(self, task: Callable[[], None]) -> None:
+        """Start `task` on mail's threads and go on, the request's id carried along."""
+        self.mail_threads.submit(copy_context().run, task)
 
 
 def named_users() -> UserStore | None:

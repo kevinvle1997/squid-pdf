@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import httpx
@@ -39,8 +42,29 @@ class _NotedMail:
         self.letters.append(letter)
 
 
+class _RightAway(Executor):
+    """Mail's threads as these tests run them: at once, in the caller's thread.
+
+    An invite-only link goes out after its reply; run at once, its letter is noted before
+    the test reads it. The test of the wait itself has threads of its own.
+    """
+
+    def submit[T](self, fn: Callable[..., T], /, *args: object, **kwargs: object) -> Future[T]:
+        done: Future[T] = Future()
+        try:
+            done.set_result(fn(*args, **kwargs))
+        except Exception as failed:  # noqa: BLE001 (handed back, as a thread's future would)
+            done.set_exception(failed)
+        return done
+
+
 def _accounts(
-    tmp_path, mailer: Mailer, *, invite_only: bool = False, allowance: Allowance | None = None
+    tmp_path,
+    mailer: Mailer,
+    *,
+    invite_only: bool = False,
+    allowance: Allowance | None = None,
+    mail_threads: Executor | None = None,
 ) -> Accounts:
     """Accounts kept in a fresh table, their letters sent through `mailer`, bounces heard."""
     users = open_users(tmp_path / "users.sqlite3")
@@ -53,6 +77,7 @@ def _accounts(
         allowance=allowance,
         webhook_token=_WEBHOOK_TOKEN,
         billing=None,
+        mail_threads=_RightAway() if mail_threads is None else mail_threads,
     )
 
 
@@ -271,7 +296,7 @@ def test_brevo_refusing_a_link_says_whether_to_wait(
 
 
 def test_invite_only_a_refused_link_is_said_as_any_address_is(
-    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient]
+    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient], caplog
 ):
     """Refused only for the invited, it would tell anyone who is invited."""
 
@@ -285,9 +310,11 @@ def test_invite_only_a_refused_link_is_said_as_any_address_is(
     accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
     monkeypatch.setattr(app.state, "accounts", accounts)
     reader = browser()
-    invited = reader.post("/api/account/link", json={"email": _EMAIL})
+    with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
+        invited = reader.post("/api/account/link", json={"email": _EMAIL})
     stranger = reader.post("/api/account/link", json={"email": "stranger@example.com"})
     assert_equal(invited.status_code, 202, "the invited, refused")
+    assert_in("link_not_sent_unsaid", caplog.text, "why, said in the log alone")
     assert_equal(
         invited.json()["sentence"].replace(_EMAIL, "<email>"),
         stranger.json()["sentence"].replace("stranger@example.com", "<email>"),
@@ -486,6 +513,34 @@ def test_invite_only_an_address_no_one_invited_gets_no_link_and_hears_what_the_i
         assert_equal(sent.status_code, 202, "the same reply")
         assert_in("If ", sent.json()["sentence"], "said as a condition")
     assert_equal([letter.to for letter in invited_mail.letters], [_EMAIL], "letters sent")
+
+
+@dataclass(slots=True)
+class _HeldMail:
+    """A mail server that takes each letter only once `open` is set: a slow one, held."""
+
+    open: threading.Event = field(default_factory=threading.Event)
+    letters: list[Letter] = field(default_factory=list)
+
+    def send(self, letter: Letter) -> None:
+        self.open.wait(timeout=10)
+        self.letters.append(letter)
+
+
+def test_invite_only_a_link_is_answered_before_its_mail_goes_so_the_wait_tells_nothing(
+    app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient]
+):
+    """Waited for, a slow mail server would tell, by the time taken, who is invited."""
+    held = _HeldMail()
+    with ThreadPoolExecutor(1) as mail_threads:
+        accounts = _accounts(tmp_path, held, invite_only=True, mail_threads=mail_threads)
+        accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+        monkeypatch.setattr(app.state, "accounts", accounts)
+        sent = browser().post("/api/account/link", json={"email": _EMAIL})
+        assert_equal(sent.status_code, 202, "answered, the mail server still holding it")
+        assert_equal(held.letters, [], "the letter, as the reply came")
+        held.open.set()
+    assert_equal([letter.to for letter in held.letters], [_EMAIL], "sent after it")
 
 
 def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
