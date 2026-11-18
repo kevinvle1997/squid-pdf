@@ -52,9 +52,7 @@ jobs:
         run: docker run --rm squidpdf-test uv run pytest -q tests/test_cli.py
 
   frontend:
-    # Noble, as the WebKit job's image is: Playwright builds Chromium for no newer Ubuntu, and
-    # ubuntu-latest is one.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
