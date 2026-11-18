@@ -30,7 +30,7 @@ from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import UserStore, open_users
 from squidpdf.api.app import create_app
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_in, assert_problem
+from tests.helpers import assert_close, assert_equal, assert_in, assert_problem
 
 _SECRET = b"a test's secret, long enough to sign with"
 _EMAIL = "payer@example.com"
@@ -64,12 +64,14 @@ class _NoMail:
 class _Stripe:
     """Stripe as these tests play it: each customer's subscriptions, and every call it's sent.
 
-    `troubles` answer the first calls, in order, before Stripe answers as it should.
+    `troubles` answer the first calls, in order, before Stripe answers as it should; a
+    customer `gone` is one Stripe hasn't got.
     """
 
     subscriptions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     asked: list[httpx.Request] = field(default_factory=list)
     troubles: list[httpx.Response | Exception] = field(default_factory=list)
+    gone: set[str] = field(default_factory=set)
 
     def answer(self, request: httpx.Request) -> httpx.Response:
         """Stripe's answer to `request`: a trouble while any is left, else the subscriptions."""
@@ -80,6 +82,10 @@ class _Stripe:
                 raise trouble
             return trouble
         if request.method == "POST":
+            customer = parse_qs(request.content.decode()).get("customer", [""])[0]
+            if customer in self.gone:
+                missing = {"type": "invalid_request_error", "code": "resource_missing"}
+                return httpx.Response(400, json={"error": missing})
             return httpx.Response(200, json=_MADE[request.url.path])
         customer = request.url.params["customer"]
         listed = self.subscriptions.get(customer, [])
@@ -487,7 +493,8 @@ def test_an_account_goes_to_stripes_checkout_its_customer_made_once(
     (made, made_form, made_key), (paid, paid_form, first_key) = stripe.posted()
     assert_equal(made, "/v1/customers", "a customer first")
     assert_equal(made_form["email"], [_EMAIL], "their address, for receipts")
-    assert_equal(made_key, f"squidpdf-customer-{account}", "made once for the account")
+    assert_equal(made_key.startswith("squidpdf-customer-"), True, "a key of the call's own")
+    assert_equal(made_form["metadata[account]"], [account], "the account it's for")
     assert_equal(paid, "/v1/checkout/sessions", "then the checkout")
     for name, value in {
         "customer": "cus_made",
@@ -495,8 +502,13 @@ def test_an_account_goes_to_stripes_checkout_its_customer_made_once(
         "line_items[0][price]": _PRICE,
         "automatic_tax[enabled]": "true",
         "success_url": f"{_SITE}/?billing=paid",
+        "subscription_data[metadata][account]": account,
     }.items():
         assert_equal(paid_form[name], [value], name)
+    expires_in = int(paid_form["expires_at"][0]) - time.time()
+    assert_close(
+        expires_in, constants.CHECKOUT_VALID_S, within=60, label="an old tab can't pay"
+    )
     reader.post("/api/account/checkout")
     *_, (again, _again_form, second_key) = stripe.posted()
     assert_equal(len(stripe.posted()), 3, "no second customer")
@@ -565,3 +577,34 @@ def test_the_portal_opens_for_an_account_that_went_to_pay_and_not_one_that_never
     assert_equal((path, form["customer"]), ("/v1/billing_portal/sessions", [_CUSTOMER]), "")
     assert_equal(form["return_url"], [f"{_SITE}/"], "back to the app")
     assert_equal(key.startswith("squidpdf-portal-"), True, "its own key")
+
+
+def test_an_account_stripe_bills_already_is_sent_to_manage_it_not_to_pay_again(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """Its paid time here can be late, or its renewal retried: Stripe is asked first."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    stripe.subscriptions[_CUSTOMER] = [_subscription("past_due", until=until, account=account)]
+    assert_problem(reader.post("/api/account/checkout"), "already_subscribed", 409)
+    assert_equal(stripe.posted(), [], "no checkout made")
+
+
+def test_a_customer_stripe_hasnt_got_is_made_again_to_pay_and_never_paid_to_manage(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """As one made with the test key, the server since on its live key, or deleted in Stripe."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, "cus_gone")
+    stripe.gone.add("cus_gone")
+    assert_problem(reader.post("/api/account/billing-portal"), "never_paid", 404)
+    paying.keep_customer(account, "cus_gone")
+    went = reader.post("/api/account/checkout")
+    assert_equal(went.status_code, 200, "Stripe's page, for a customer made again")
+    paths = [path for path, _form, _key in stripe.posted()]
+    expected = ["/v1/billing_portal/sessions", "/v1/checkout/sessions", "/v1/customers"]
+    assert_equal(paths, [*expected, "/v1/checkout/sessions"], "what was made")
+    assert_equal(paying.joined(_EMAIL, now=0).stripe_customer, "cus_made", "the customer kept")

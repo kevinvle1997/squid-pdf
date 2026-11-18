@@ -153,6 +153,20 @@ async def admit_link(request: Request) -> None:
         raise RateLimited()
 
 
+async def admit_payment_page(request: Request) -> None:
+    """Raise rate_limited if this address asked for PAYMENT_PAGES_PER_MINUTE of Stripe's pages.
+
+    Each asks Stripe, on billing's few threads, which the webhook needs too.
+    """
+    recent: RecentStarts = request.app.state.recent_payment_pages  # made in the lifespan
+    # Read as a module attribute, so a test can change the limit.
+    admitted = recent.admit(
+        _address_of(request), now=time.monotonic(), limit=constants.PAYMENT_PAGES_PER_MINUTE
+    )
+    if not admitted:
+        raise RateLimited()
+
+
 async def upload_turn(request: Request) -> AsyncIterator[None]:
     """Hold one of this address's turns at an upload, a PDF or a font's copy, until answered.
 

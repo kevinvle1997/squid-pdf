@@ -32,6 +32,10 @@ LINKS_PER_MINUTE = 3
 # can't fill an inbox from our sender.
 LINKS_PER_INBOX = 2
 
+# Stripe's pages an address may ask for a minute, its checkout and its portal together: a few
+# presses, and a page asking without end is stopped before it holds billing's threads.
+PAYMENT_PAGES_PER_MINUTE = 5
+
 # Every request body but an upload's or a font's, which check their own size.
 MAX_BODY_BYTES = 5 * _MB
 

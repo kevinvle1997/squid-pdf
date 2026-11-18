@@ -208,6 +208,16 @@ class UserStore:
             row = connection.execute(query).first()
         return None if row is None else row.stripe_customer
 
+    def forget_customer(self, user_id: str, customer: str) -> None:
+        """Forget the account's Stripe customer, if still `customer`: Stripe hasn't got it."""
+        forgotten = (
+            _USERS.update()
+            .where(_USERS.c.id == user_id, _USERS.c.stripe_customer == customer)
+            .values(stripe_customer=None)
+        )
+        with self.database.begin() as connection:
+            connection.execute(forgotten)
+
     def has_billing_event(self, event_id: str) -> bool:
         """Whether the ledger has the event `event_id` already."""
         query = select(_BILLING_EVENTS.c.id).where(_BILLING_EVENTS.c.id == event_id)

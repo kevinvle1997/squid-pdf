@@ -33,6 +33,9 @@ STRIPE_ATTEMPTS = 3
 # The wait before the second try, doubled before each after it and cut by up to half at
 # random, so retries from many requests don't land on Stripe together.
 STRIPE_FIRST_WAIT_S = 0.5
+# How long a checkout's page takes payment: Stripe's least. An old tab, finished later, would
+# start a second subscription.
+CHECKOUT_VALID_S = 30 * 60
 # How old a webhook's signature may be: a copy of an old one, sent again by anyone, is refused.
 STRIPE_SIGNATURE_AGE_S = 5 * 60
 # Longest address a mail server takes (RFC 5321's path, less its brackets).
