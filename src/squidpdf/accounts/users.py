@@ -16,6 +16,7 @@ from typing import Any, Literal
 from sqlalchemy import (
     Boolean,
     Column,
+    ColumnElement,
     Engine,
     Integer,
     MetaData,
@@ -27,8 +28,10 @@ from sqlalchemy import (
     create_engine,
     event,
     exists,
+    func,
     select,
     text,
+    true,
 )
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import OperationalError
@@ -36,7 +39,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateTable
 
 from squidpdf.accounts import constants
-from squidpdf.accounts.errors import NotAnEmail
+from squidpdf.accounts.errors import MonthlyDocumentsUsed, NotAnEmail
 from squidpdf.accounts.signed import digest_of
 from squidpdf.accounts.types import BillingEvent, BillingOutcome
 
@@ -320,11 +323,12 @@ class UserStore:
             return frozenset()
         return _counted_from(row.month, row.counted, month=month)
 
-    def count(self, user_id: str, digest: str, *, month: str) -> None:
+    def count(self, user_id: str, digest: str, *, month: str, limit: int | None) -> None:
         """Count the file `digest` against the account in `month`, a new month afresh.
 
-        One statement, so two uploads counted at once both count: SQLite's driver starts
-        a transaction only at the write, so a read before it could be overwritten.
+        Raises MonthlyDocumentsUsed if `digest` is new and `limit` are counted; None is
+        no limit. One statement, so two uploads at once can't both pass the limit, or
+        overwrite each other: SQLite's driver starts a transaction only at the write.
         """
         this_month = _USERS.c.month == month
         listed = (" " + _USERS.c.counted + " ").contains(f" {digest} ", autoescape=True)
@@ -335,11 +339,20 @@ class UserStore:
         # No row for an account removed while its upload was under way: nothing to add to.
         counting = (
             _USERS.update()
-            .where(_USERS.c.id == user_id, ~(this_month & listed))
+            .where(_USERS.c.id == user_id, ~(this_month & listed), _has_room(month, limit))
             .values(month=month, counted=added)
         )
+        query = select(_USERS.c.month, _USERS.c.counted).where(_USERS.c.id == user_id)
         with self.database.begin() as connection:
-            connection.execute(counting)
+            if connection.execute(counting).rowcount > 0:
+                return
+            # Read in the write's transaction, so no other count lands between.
+            row = connection.execute(query).first()
+        # With no limit, or no account, nothing is refused: the file was listed already.
+        if limit is None or row is None:
+            return
+        if digest not in _counted_from(row.month, row.counted, month=month):
+            raise MonthlyDocumentsUsed(monthly=limit)
 
     def _one(self, query: Select[Any]) -> User | None:
         """The one account `query` finds; None if it finds none."""
@@ -432,6 +445,20 @@ def _counted_from(counted_month: str | None, counted: str, *, month: str) -> fro
     if counted_month != month:
         return frozenset()
     return frozenset(counted.split())
+
+
+def _has_room(month: str, limit: int | None) -> ColumnElement[bool]:
+    """Whether a row counts fewer than `limit` files in `month`; always, with no limit."""
+    if limit is None:
+        return true()
+    spaces = func.length(_USERS.c.counted) - func.length(
+        func.replace(_USERS.c.counted, " ", "")
+    )
+    in_month = case(
+        ((_USERS.c.month == month) & (_USERS.c.counted != ""), spaces + 1),
+        else_=0,
+    )
+    return in_month < limit
 
 
 def _paid_time_set(connection: Any, event: BillingEvent) -> bool:

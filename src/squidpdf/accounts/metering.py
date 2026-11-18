@@ -70,8 +70,13 @@ class _AccountMeter:
             raise MonthlyDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:
-        """Count `digest` against this month's, kept in the table: no header needed."""
-        self.accounts.users.count(self.user.id, digest, month=this_month())
+        """Count `digest` against this month's, kept in the table: no header needed.
+
+        The count is the gate: of two new files at once with one left, the second is
+        refused here, with MonthlyDocumentsUsed, only after its analysis ran.
+        """
+        limit = None if self.user.has_no_limit_at(int(time.time())) else self.allowance.monthly
+        self.accounts.users.count(self.user.id, digest, month=this_month(), limit=limit)
         return {}
 
 

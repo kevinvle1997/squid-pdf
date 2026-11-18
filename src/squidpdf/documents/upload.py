@@ -67,6 +67,7 @@ class UploadController:
         """The kept original, checked against `meter`, judged and counted: the reply to send."""
         # Off the server's thread: a file of the size limit takes a moment to digest.
         digest = await asyncio.to_thread(_digest_of, folder / store.ORIGINAL)
+        # Refused before its analysis; the count refuses again, should another take the last.
         await asyncio.to_thread(meter.check, digest)
         kept = await self._enqueue_analyse(folder)
         expires_at = await asyncio.to_thread(self.documents.touch, folder)
@@ -74,7 +75,7 @@ class UploadController:
         body = await asyncio.to_thread(
             document_json, doc_id, expires_at=expires_at, kept=kept, language=language
         )
-        # Counted only once it opens: a damaged file costs none of the allowance.
+        # Counted only once it opens, so a damaged file costs none; a refusal here deletes it.
         counted = await asyncio.to_thread(meter.count, digest)
         return Reply(body, words.language_headers(language) | counted, HTTPStatus.CREATED)
 

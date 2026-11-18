@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance
+from squidpdf.accounts.errors import MonthlyDocumentsUsed
 from squidpdf.accounts.mail import Letter, MailController, Mailer, SmtpMailer, brevo_mailer
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
@@ -666,12 +667,26 @@ def test_a_months_count_starts_afresh_in_the_next(tmp_path):
     """The API can't wait a month, so the table is asked directly."""
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
-    users.count(user.id, "a", month="2026-10")
-    users.count(user.id, "b", month="2026-10")
+    users.count(user.id, "a", month="2026-10", limit=None)
+    users.count(user.id, "b", month="2026-10", limit=None)
     assert_equal(users.counted_in(user.id, month="2026-10"), {"a", "b"}, "October's")
     assert_equal(users.counted_in(user.id, month="2026-11"), set(), "November's, before any")
-    users.count(user.id, "c", month="2026-11")
+    users.count(user.id, "c", month="2026-11", limit=None)
     assert_equal(users.counted_in(user.id, month="2026-11"), {"c"}, "November's, after one")
+
+
+def test_the_count_refuses_a_new_file_past_the_limit_so_two_at_once_cannot_both_pass(tmp_path):
+    """The API can't send two uploads at once without faking it, so the table is asked."""
+    users = open_users(tmp_path / "users.sqlite3")
+    user = users.joined(_EMAIL, now=0)
+    users.count(user.id, "a", month="2026-11", limit=2)
+    users.count(user.id, "b", month="2026-11", limit=2)
+    with pytest.raises(MonthlyDocumentsUsed):
+        users.count(user.id, "c", month="2026-11", limit=2)
+    users.count(user.id, "a", month="2026-11", limit=2)
+    assert_equal(users.counted_in(user.id, month="2026-11"), {"a", "b"}, "the month's two")
+    users.count(user.id, "c", month="2026-11", limit=None)
+    assert_equal(users.counted_in(user.id, month="2026-11"), {"a", "b", "c"}, "no limit")
 
 
 @pytest.mark.parametrize(
@@ -756,10 +771,10 @@ def test_an_account_removed_while_its_upload_is_under_way_has_nothing_counted_an
     """
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
-    users.count(user.id, "a", month="2026-11")
+    users.count(user.id, "a", month="2026-11", limit=None)
     users.remove(_EMAIL, now=0)
     assert_equal(users.counted_in(user.id, month="2026-11"), set(), "none counted")
-    users.count(user.id, "b", month="2026-11")
+    users.count(user.id, "b", month="2026-11", limit=None)
     assert_equal(users.get(user.id), None, "and no account made by counting")
 
 
