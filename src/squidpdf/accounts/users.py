@@ -188,6 +188,43 @@ class UserStore:
             kept = connection.execute(select(_USERS.c.id).where(_USERS.c.email == email))
             return "no_account" if kept.first() is None else "paying"
 
+    def find_by_customer(self, customer: str) -> User | None:
+        """The account whose Stripe customer is `customer`; None if none has it."""
+        return self._one(select(_USERS).where(_USERS.c.stripe_customer == customer))
+
+    def keep_customer(self, user_id: str, customer: str) -> str | None:
+        """The account's Stripe customer: `customer` if it had none; None if it's gone.
+
+        One transaction, so an account asked to pay twice at once keeps one customer.
+        """
+        kept = (
+            _USERS.update()
+            .where(_USERS.c.id == user_id, _USERS.c.stripe_customer.is_(None))
+            .values(stripe_customer=customer)
+        )
+        with self.database.begin() as connection:
+            connection.execute(kept)
+            query = select(_USERS.c.stripe_customer).where(_USERS.c.id == user_id)
+            row = connection.execute(query).first()
+        return None if row is None else row.stripe_customer
+
+    def has_billing_event(self, event_id: str) -> bool:
+        """Whether the ledger has the event `event_id` already."""
+        query = select(_BILLING_EVENTS.c.id).where(_BILLING_EVENTS.c.id == event_id)
+        with self.database.connect() as connection:
+            return connection.execute(query).first() is not None
+
+    def billing_of(self, user_id: str) -> list[BillingEvent]:
+        """Every event the ledger has that set the account's paid time, oldest first."""
+        query = (
+            select(_BILLING_EVENTS)
+            .where(_BILLING_EVENTS.c.account == user_id)
+            .order_by(_BILLING_EVENTS.c.created, _BILLING_EVENTS.c.received_at)
+        )
+        with self.database.connect() as connection:
+            rows = connection.execute(query).all()
+        return [_billing_event_from(row) for row in rows]
+
     def apply_billing(self, billing: BillingEvent, *, now: int) -> BillingOutcome | None:
         """Set the paid time `billing` says, and keep it in the ledger with what it did.
 
@@ -340,6 +377,20 @@ def _paid_time_set(connection: Any, billing: BillingEvent) -> bool:
         .values(paid_until=billing.paid_until, paid_read_at=billing.read_at)
     )
     return connection.execute(paid).rowcount > 0
+
+
+def _billing_event_from(row: Row[Any]) -> BillingEvent:
+    """A row of the ledger, read by name."""
+    return BillingEvent(
+        row.id,
+        type=row.type,
+        created=row.created,
+        customer=row.customer,
+        account=row.account,
+        outcome=row.outcome,
+        paid_until=row.paid_until,
+        read_at=row.read_at,
+    )
 
 
 def _user_from(row: Row[Any]) -> User:

@@ -10,6 +10,7 @@ squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 squidpdf terms   [terms.md]            check a terms file as the server will read it
 squidpdf invite  email [--unlimited]   let someone in; --unlimited lifts their document limit
 squidpdf remove  email                 take someone's account off, and sign them out everywhere
+squidpdf billing email                 what Stripe said of someone's account, event by event
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
@@ -27,11 +28,13 @@ from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TextIO, assert_never, get_args
 
 from squidpdf.accounts.deployment import named_users
+from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import checked_email
 from squidpdf.core import (
     DEFAULT_DRIVER_FACTORY,
@@ -523,6 +526,47 @@ def _cmd_remove(args: argparse.Namespace) -> int:
     assert_never(removal)
 
 
+def _billing_arguments(command: argparse.ArgumentParser) -> None:
+    """`billing`: the address whose account's ledger to show."""
+    command.add_argument("email")
+
+
+def _cmd_billing(args: argparse.Namespace) -> int:
+    """Show whether the account under `email` is paid, and each event that set it, in order."""
+    users = named_users()
+    if users is None:
+        return _fail(words.render(Message("no_database")))
+    email = checked_email(args.email)
+    user = users.find(email)
+    if user is None:
+        return _fail(words.render(Message("billing_no_account", {"email": email})))
+    dim, *_colors, off = _colors_of(sys.stdout)
+    until = user.paid_until if user.is_paid_at(int(time.time())) else None
+    said = (
+        Message("billing_unpaid", {"email": email})
+        if until is None
+        else Message("billing_paid", {"email": email, "until": _when(until)})
+    )
+    print(f"  {words.render(said)}")
+    if user.stripe_customer is not None:
+        print(f"  {dim}{user.stripe_customer}{off}")
+    for billing in users.billing_of(user.id):
+        print(f"    {_billing_row(billing)}")
+    return 0
+
+
+def _billing_row(billing: BillingEvent) -> str:
+    """One line of the ledger: when Stripe made the event, what it was, what it set."""
+    set_to = "-" if billing.paid_until is None else _when(billing.paid_until)
+    made = _when(billing.created)
+    return f"{made}  {billing.type:<34} {billing.outcome:<10} {set_to}  {billing.id}"
+
+
+def _when(seconds: int) -> str:
+    """A time in Unix seconds, as the ledger's lines write it, in UTC."""
+    return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
 def _fail(said: str, *, hint: str = "") -> int:
     """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colors_of(sys.stderr)
@@ -592,6 +636,7 @@ _COMMANDS = (
     ),
     _Command("invite", "let someone sign in, limited or not", _invite_arguments, _cmd_invite),
     _Command("remove", "take someone's account off", _remove_arguments, _cmd_remove),
+    _Command("billing", "what Stripe said of an account", _billing_arguments, _cmd_billing),
 )
 
 

@@ -1,19 +1,25 @@
 """Accounts as the deployment configures them, from its environment (env.example).
 
 None of it is set on a self-hosted copy, which then keeps no accounts. Naming the database
-but not the rest, or an allowance with no database or only half of it, stops the app
-starting, saying what's missing, rather than failing on the first sign-in or upload.
+but not the rest, or an allowance or payments with no database or only half set, stops the
+app starting, saying what's missing, rather than failing on the first sign-in or payment.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
+import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from email.utils import parseaddr
+from functools import partial
 from pathlib import Path
 
 from squidpdf.accounts import constants
+from squidpdf.accounts.billing.stripe_api import StripeApi, stripe_api
 from squidpdf.accounts.errors import NotAnEmail
 from squidpdf.accounts.mail import MailController, Mailer, Security, SmtpMailer, brevo_mailer
 from squidpdf.accounts.users import UserStore, checked_email, open_users
@@ -45,6 +51,14 @@ _SECURITIES: dict[str, Security] = {"tls": "tls", "starttls": "starttls"}
 _FREE_DOCUMENTS = "SQUIDPDF_FREE_DOCUMENTS"
 _DOCUMENTS_A_MONTH = "SQUIDPDF_DOCUMENTS_A_MONTH"
 _ALLOWANCE = (_FREE_DOCUMENTS, _DOCUMENTS_A_MONTH)
+# Stripe, where the deployment takes payment: its secret key and its webhook's signing secret,
+# both or neither, and only with an allowance for payment to lift.
+_STRIPE_KEY = "SQUIDPDF_STRIPE_KEY"
+_STRIPE_WEBHOOK_SECRET = "SQUIDPDF_STRIPE_WEBHOOK_SECRET"
+_STRIPE = (_STRIPE_KEY, _STRIPE_WEBHOOK_SECRET)
+# How each begins as Stripe makes them: a secret or restricted key, and a signing secret.
+_STRIPE_KEY_STARTS = ("sk_", "rk_")
+_WEBHOOK_SECRET_STARTS = "whsec_"
 _MIN_SECRET_CHARS = 32  # 192 bits as base64, the least; env.example's command writes 256
 
 
@@ -65,6 +79,30 @@ def _mail_threads() -> ThreadPoolExecutor:
     return ThreadPoolExecutor(constants.MAIL_THREADS, thread_name_prefix="mail")
 
 
+def _billing_threads() -> ThreadPoolExecutor:
+    """The threads Stripe is called on, BILLING_THREADS of them."""
+    return ThreadPoolExecutor(constants.BILLING_THREADS, thread_name_prefix="billing")
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Billing:
+    """What taking payment needs: Stripe, its webhook's secret, and threads of its own."""
+
+    stripe: StripeApi
+    webhook_secret: bytes  # signs each event Stripe's webhook sends
+    # Stripe is called on threads of its own: a Stripe that hangs holds these, never the
+    # threads every upload and read share.
+    threads: ThreadPoolExecutor = field(default_factory=_billing_threads, repr=False)
+    # Held from asking Stripe for an event to keeping the answer, so two events about one
+    # customer can't keep their answers in the wrong order.
+    applying: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    async def run[T](self, task: Callable[[], T]) -> T:
+        """What `task()` returns, run on billing's threads, the request's id carried along."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.threads, partial(copy_context().run, task))
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class Accounts:
     """What accounts need: the table, the mail, the secret and address, who may, how many.
@@ -79,6 +117,7 @@ class Accounts:
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
     allowance: Allowance | None  # None where the deployment meters nothing
     webhook_token: bytes | None  # what Brevo's webhook sends; None where it has none
+    billing: Billing | None  # None where the deployment takes no payment
     # Letters go out on threads of their own: a mail server that hangs holds these, never
     # the threads every upload and read share.
     mail_threads: ThreadPoolExecutor = field(default_factory=_mail_threads, repr=False)
@@ -103,14 +142,16 @@ def deployed_accounts() -> Accounts | None:
     site = os.environ[_SITE].rstrip("/")
     if not site.startswith("https://"):
         raise AccountsUnset(f"{_SITE} must start with https://, as a link it opens must")
+    allowance = _allowance()
     return Accounts(
         users,
         MailController(_mailer(), users),
         secret=secret,
         site=site,
         invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in
-        allowance=_allowance(),
+        allowance=allowance,
         webhook_token=_webhook_token(),
+        billing=_billing(allowance),
     )
 
 
@@ -141,9 +182,29 @@ def _allowance() -> Allowance | None:
 
 
 def _refuse_metering_without_accounts() -> None:
-    """Raise AccountsUnset if an allowance is set with no database to keep accounts in."""
+    """Raise AccountsUnset if an allowance or payments are set with no database for accounts."""
     if any(os.environ.get(name) for name in _ALLOWANCE):  # .get: unset is the usual case
         raise AccountsUnset(f"metering asks for an account, so it needs {_DATABASE} too")
+    if any(os.environ.get(name) for name in _STRIPE):  # .get: unset is the usual case
+        raise AccountsUnset(f"an account is what pays, so payments need {_DATABASE} too")
+
+
+def _billing(allowance: Allowance | None) -> Billing | None:
+    """Stripe, where the environment sets its key and webhook's secret; None where neither."""
+    named = [os.environ.get(name) for name in _STRIPE]  # .get: unset takes no payment
+    if not any(named):
+        return None
+    if not all(named):
+        raise AccountsUnset(f"payments need both {' and '.join(_STRIPE)}, or neither")
+    if allowance is None:
+        raise AccountsUnset(f"payment lifts a limit, so it needs {' and '.join(_ALLOWANCE)}")
+    key, webhook_secret = (os.environ[name] for name in _STRIPE)
+    # Neither value goes in the message: each is a secret.
+    if not key.startswith(_STRIPE_KEY_STARTS):
+        raise AccountsUnset(f"{_STRIPE_KEY} is no Stripe secret key, which starts sk_ or rk_")
+    if not webhook_secret.startswith(_WEBHOOK_SECRET_STARTS):
+        raise AccountsUnset(f"{_STRIPE_WEBHOOK_SECRET} is no signing secret, as whsec_...")
+    return Billing(stripe_api(key), webhook_secret=webhook_secret.encode())
 
 
 def _count_in(name: str) -> int:

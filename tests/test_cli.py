@@ -552,6 +552,35 @@ def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends
     assert_equal(main(["remove", "payer@example.com"]), 0, "exit code, cancelled")
 
 
+def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(
+    tmp_path, monkeypatch, capsys
+):
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    users = open_users(database)
+    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    users.keep_customer(account, "cus_test")
+    assert_equal(main(["billing", "payer@example.com"]), 0, "exit code, never paid")
+    assert_in("payer@example.com has no paid month", capsys.readouterr().out, "said")
+    paid = BillingEvent(
+        "evt_paid",
+        type="invoice.paid",
+        created=0,
+        customer="cus_test",
+        account=account,
+        outcome="applied",
+        paid_until=2**31,
+        read_at=1,
+    )
+    users.apply_billing(paid, now=0)
+    assert_equal(main(["billing", "payer@example.com"]), 0, "exit code, paid")
+    shown = capsys.readouterr().out
+    assert_in("paid until 2038-01-19 03:14 UTC", shown, "until when")
+    assert_in("cus_test", shown, "the Stripe customer")
+    assert_in("invoice.paid", shown, "the event")
+    assert_equal(main(["billing", "stranger@example.com"]), 1, "exit code, no account")
+
+
 def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
     monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
     assert_equal(main(["invite", "friend@example.com"]), 1, "exit code")
