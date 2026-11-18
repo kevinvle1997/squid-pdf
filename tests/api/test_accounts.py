@@ -672,15 +672,15 @@ def test_a_months_count_starts_afresh_in_the_next(tmp_path):
     ("named", "refused_for"),
     [
         (
-            {"SQUIDPDF_FREE_DOCUMENTS": "3", "SQUIDPDF_DOCUMENTS_A_MONTH": "10"},
+            {"SQUIDPDF_FREE_DOCUMENTS": "1", "SQUIDPDF_DOCUMENTS_A_MONTH": "2"},
             "SQUIDPDF_DATABASE",
         ),
-        ({"SQUIDPDF_DATABASE": "users.sqlite3", "SQUIDPDF_FREE_DOCUMENTS": "3"}, "neither"),
+        ({"SQUIDPDF_DATABASE": "users.sqlite3", "SQUIDPDF_FREE_DOCUMENTS": "1"}, "neither"),
         (
             {
                 "SQUIDPDF_DATABASE": "users.sqlite3",
-                "SQUIDPDF_FREE_DOCUMENTS": "three",
-                "SQUIDPDF_DOCUMENTS_A_MONTH": "10",
+                "SQUIDPDF_FREE_DOCUMENTS": "one",
+                "SQUIDPDF_DOCUMENTS_A_MONTH": "2",
             },
             "not a number",
         ),
