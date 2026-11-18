@@ -485,7 +485,6 @@ def _line_drawn_by(step: Step) -> tuple[int, DrawnLine] | None:
     """The line a step draws, and its page; None for one that only erases."""
     if isinstance(step, _Erase):
         return None
-    # A replace is redrawn level, at its span's start.
     if isinstance(step, _Redraw):
         return step.span.page, DrawnLine(step.text, step.span.origin, turn_ccw=0)
     if isinstance(step, _Place):

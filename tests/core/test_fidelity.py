@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from itertools import pairwise
 from statistics import median
+from typing import Any, cast
 
 import pymupdf
 import pytest
@@ -23,8 +26,8 @@ from squidpdf.core import (
 )
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.names import strip_subset
-from squidpdf.core.pdf.driver import FontProgram
-from squidpdf.core.pdf.mupdf import _MuPDFDriver  # noqa: PLC2701 (counts the calls the engine makes on its driver)
+from squidpdf.core.pdf.driver import FontProgram, PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
 from tests.conftest import (
     REFERENCED_PAGE,
     TYPE3_TEXTS,
@@ -541,7 +544,31 @@ def test_a_font_drawn_by_code_borrows_from_a_coded_copy_on_another_page(merged_c
     _assert_drawn_in_both_copies(merged_coded, out)
 
 
-def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
+@dataclass(frozen=True, slots=True, eq=False)
+class _OpeningDriver:
+    """MuPDF's driver, noting each font program the engine opens."""
+
+    driver: PdfDriver
+    opened: list[bytes]
+
+    def open_font(self, font_file: bytes) -> FontProgram:
+        """The real driver's answer, noted."""
+        self.opened.append(font_file)
+        return self.driver.open_font(font_file)
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _opening_driver(path: str, *, opened: list[bytes]) -> PdfDriver:
+    """A driver factory for `open_pdf`: MuPDF's driver, noting into `opened`."""
+    noting = _OpeningDriver(open_driver(path), opened=opened)
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, noting)
+
+
+def test_a_font_every_page_shares_is_read_once(tmp_path):
     # Three pages, one stored font object: a long document's usual shape. Trimmed,
     # as a generator leaves it, which also names it the way its spans are named.
     doc = pymupdf.open()
@@ -554,15 +581,8 @@ def test_a_font_every_page_shares_is_read_once(tmp_path, monkeypatch):
     path = str(tmp_path / "shared.pdf")
     doc.save(path)
     opened: list[bytes] = []
-    open_font = _MuPDFDriver.open_font
 
-    def counted(self: _MuPDFDriver, font_file: bytes) -> FontProgram:
-        opened.append(font_file)
-        return open_font(self, font_file)
-
-    monkeypatch.setattr(_MuPDFDriver, "open_font", counted)
-
-    with open_pdf(path) as engine:
+    with open_pdf(path, driver_factory=partial(_opening_driver, opened=opened)) as engine:
         reports = engine.assess(engine.index())
 
     assert_all(reports, lambda r: r.state == "exact", lambda r: r.span_id)
