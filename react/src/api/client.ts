@@ -6,6 +6,7 @@ import type {
   FileNoticeInfo,
   FontList,
   LinkSent,
+  PaymentPage,
   Problem,
   ProblemInfo,
   Render,
@@ -150,6 +151,18 @@ export async function signIn(token: string): Promise<AccountState> {
 export async function signOut(): Promise<AccountState> {
   const response = await send("/api/account/sign-out", { method: "POST" });
   return (await response.json()) as AccountState;
+}
+
+/** Stripe's checkout, where this browser's account pays monthly for no document limit. */
+export async function checkout(): Promise<PaymentPage> {
+  const response = await send("/api/account/checkout", { method: "POST" });
+  return (await response.json()) as PaymentPage;
+}
+
+/** Stripe's portal, where this browser's account manages what it pays. */
+export async function billingPortal(): Promise<PaymentPage> {
+  const response = await send("/api/account/billing-portal", { method: "POST" });
+  return (await response.json()) as PaymentPage;
 }
 
 /** A POST of `body` as JSON. */

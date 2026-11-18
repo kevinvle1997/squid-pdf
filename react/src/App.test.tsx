@@ -4,7 +4,18 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import { userEvent } from "vitest/browser";
 import { App } from "./App";
-import { account, askForLink, ProblemError, signIn, signOut, terms, upload } from "./api/client";
+import { goTo } from "./accounts/billing";
+import {
+  account,
+  askForLink,
+  billingPortal,
+  checkout,
+  ProblemError,
+  signIn,
+  signOut,
+  terms,
+  upload,
+} from "./api/client";
 import type { Render, Terms } from "./api/types";
 import { SOMETHING_WENT_WRONG } from "./bugs";
 import {
@@ -29,7 +40,11 @@ vi.mock(import("./api/client"), async (original) => ({
   askForLink: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
+  checkout: vi.fn(),
+  billingPortal: vi.fn(),
 }));
+// Leaving for Stripe's page would leave the test's own: where it goes is noted instead.
+vi.mock(import("./accounts/billing"), async (original) => ({ ...(await original()), goTo: vi.fn() }));
 // The browser's real storage, but a delete can be held under way.
 vi.mock(import("./documents/localPersistence"), async (original) => {
   const module = await original();
@@ -47,6 +62,9 @@ beforeEach(async () => {
   vi.mocked(askForLink).mockReset();
   vi.mocked(signIn).mockReset();
   vi.mocked(signOut).mockReset();
+  vi.mocked(checkout).mockReset();
+  vi.mocked(billingPortal).mockReset();
+  vi.mocked(goTo).mockReset();
   // The browser's real storage, one test at a time: each starts with nothing persisted.
   await forgetPersisted();
 });
@@ -484,4 +502,80 @@ test("a file past those a browser opens without an account asks it to sign in, i
   await expect.element(screen.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect.element(screen.getByText(free)).toBeVisible();
   await expect.element(screen.getByRole("link", { name: "squid-pdf" })).toHaveAttribute("href", "/");
+});
+
+const MONTH_USED = "Your account has opened all 2 of this month's documents. More open at the start of next month.";
+const CHECKOUT_URL = "https://checkout.stripe.com/c/pay/cs_test";
+
+test("an account past its month, where the server takes payment, goes to Stripe's checkout from the landing", async () => {
+  vi.mocked(account).mockResolvedValue(anAccount({ takes_payment: true, signed_in: aSignedIn() }));
+  vi.mocked(upload).mockRejectedValue(
+    new ProblemError({ ...aProblem(403, MONTH_USED), type: "monthly_documents_used" }),
+  );
+  vi.mocked(checkout).mockResolvedValue({ url: CHECKOUT_URL });
+  const screen = await render(<App />);
+  choose(screen.container, "contract.pdf");
+  await expect.element(screen.getByRole("status")).toHaveTextContent(MONTH_USED);
+  await userEvent.click(screen.getByRole("button", { name: "Pay for no limit" }));
+  await expect.poll(() => vi.mocked(goTo).mock.calls).toEqual([[CHECKOUT_URL]]);
+  expect(checkout).toHaveBeenCalledOnce();
+});
+
+test("where the server takes no payment, the month's limit is the server's words alone", async () => {
+  vi.mocked(account).mockResolvedValue(anAccount({ signed_in: aSignedIn() }));
+  vi.mocked(upload).mockRejectedValue(
+    new ProblemError({ ...aProblem(403, MONTH_USED), type: "monthly_documents_used" }),
+  );
+  const screen = await render(<App />);
+  choose(screen.container, "contract.pdf");
+  await expect.element(screen.getByRole("status")).toHaveTextContent(MONTH_USED);
+  await expect.element(screen.getByRole("button", { name: "Pay for no limit" })).not.toBeInTheDocument();
+});
+
+test("going to pay that fails says why, and the way to pay stays", async () => {
+  const unreachable = "Payments can't be reached just now, so nothing was charged. Try again in a few minutes.";
+  vi.mocked(account).mockResolvedValue(anAccount({ takes_payment: true, signed_in: aSignedIn() }));
+  vi.mocked(upload).mockRejectedValue(
+    new ProblemError({ ...aProblem(403, MONTH_USED), type: "monthly_documents_used" }),
+  );
+  vi.mocked(checkout).mockRejectedValue(new ProblemError(aProblem(503, unreachable)));
+  const screen = await render(<App />);
+  choose(screen.container, "contract.pdf");
+  await userEvent.click(screen.getByRole("button", { name: "Pay for no limit" }));
+  await expect.element(screen.getByText(unreachable)).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Pay for no limit" })).toBeEnabled();
+  expect(goTo).not.toHaveBeenCalled();
+});
+
+test("back from Stripe's checkout, the landing waits for its word, then says until when the month is paid", async () => {
+  window.history.replaceState(null, "", "/?billing=paid");
+  onTestFinished(() => window.history.replaceState(null, "", "/"));
+  const until = Date.UTC(2026, 11, 18, 12) / 1000;
+  vi.mocked(account)
+    .mockResolvedValueOnce(anAccount({ takes_payment: true, signed_in: aSignedIn({ has_billing: true }) }))
+    .mockResolvedValueOnce(anAccount({ takes_payment: true, signed_in: aSignedIn({ has_billing: true }) }))
+    .mockResolvedValue(
+      anAccount({ takes_payment: true, signed_in: aSignedIn({ has_billing: true, paid_until: until }) }),
+    );
+  const screen = await render(<App />);
+  await expect
+    .element(screen.getByRole("status"))
+    .toHaveTextContent("Paid. Your limit lifts as soon as Stripe confirms it.");
+  expect(window.location.search).toBe("");
+  await expect
+    .element(screen.getByRole("status"), { timeout: 10_000 })
+    .toHaveTextContent("Paid: your account has no document limit until December 18.");
+  await expect.element(screen.getByText("No document limit until December 18")).toBeVisible();
+});
+
+test("a paying account manages its billing from the landing, in Stripe's portal", async () => {
+  const until = Date.UTC(2026, 11, 18, 12) / 1000;
+  const portal = "https://billing.stripe.com/p/session/test";
+  vi.mocked(account).mockResolvedValue(
+    anAccount({ takes_payment: true, signed_in: aSignedIn({ has_billing: true, paid_until: until }) }),
+  );
+  vi.mocked(billingPortal).mockResolvedValue({ url: portal });
+  const screen = await render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "Manage billing" }));
+  await expect.poll(() => vi.mocked(goTo).mock.calls).toEqual([[portal]]);
 });
