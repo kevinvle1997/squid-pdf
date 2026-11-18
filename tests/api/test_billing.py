@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import itertools
 import json
 import logging
 import time
@@ -65,22 +66,30 @@ class _Stripe:
     """Stripe as these tests play it: each customer's subscriptions, and every call it's sent.
 
     `troubles` answer the first calls, in order, before Stripe answers as it should; a
-    customer `gone` is one Stripe hasn't got.
+    customer `gone` is one Stripe hasn't got; `charges` names each charge's customer; a
+    cancel of a subscription `lost` goes through, but its answer is lost on the way.
     """
 
     subscriptions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     asked: list[httpx.Request] = field(default_factory=list)
     troubles: list[httpx.Response | Exception] = field(default_factory=list)
     gone: set[str] = field(default_factory=set)
+    charges: dict[str, str] = field(default_factory=dict)
+    lost: set[str] = field(default_factory=set)
 
     def answer(self, request: httpx.Request) -> httpx.Response:
-        """Stripe's answer to `request`: a trouble while any is left, else the subscriptions."""
+        """Stripe's answer to `request`: a trouble while any is left, else as Stripe would."""
         self.asked.append(request)
         if self.troubles:
             trouble = self.troubles.pop(0)
             if isinstance(trouble, Exception):
                 raise trouble
             return trouble
+        named = request.url.path.rsplit("/", 1)[-1]
+        if request.method == "DELETE":
+            return self._cancelled(named)
+        if request.url.path.startswith("/v1/charges/"):
+            return httpx.Response(200, json={"id": named, "customer": self.charges[named]})
         if request.method == "POST":
             customer = parse_qs(request.content.decode()).get("customer", [""])[0]
             if customer in self.gone:
@@ -90,6 +99,26 @@ class _Stripe:
         customer = request.url.params["customer"]
         listed = self.subscriptions.get(customer, [])
         return httpx.Response(200, json={"object": "list", "data": listed, "has_more": False})
+
+    def _cancelled(self, subscription: str) -> httpx.Response:
+        """The subscription by the id `subscription`, cancelled now; none, if it's ended."""
+        for each in itertools.chain.from_iterable(self.subscriptions.values()):
+            if each["id"] == subscription and each["status"] != "canceled":
+                each["status"] = "canceled"
+                if subscription in self.lost:
+                    self.lost.discard(subscription)
+                    raise httpx.ReadTimeout("Stripe's answer never arrived")
+                return httpx.Response(200, json=each)
+        missing = {"type": "invalid_request_error", "code": "resource_missing"}
+        return httpx.Response(404, json={"error": missing})
+
+    def cancelled(self) -> list[tuple[str, dict[str, list[str]]]]:
+        """Each subscription Stripe was told to cancel, and the form that said why."""
+        return [
+            (each.url.path.rsplit("/", 1)[-1], parse_qs(each.content.decode()))
+            for each in self.asked
+            if each.method == "DELETE"
+        ]
 
     def posted(self) -> list[tuple[str, dict[str, list[str]], str]]:
         """Each POST Stripe was sent: its path, its form, and its idempotency key."""
@@ -148,12 +177,14 @@ def _webhook(
     *,
     kind: str = "customer.subscription.updated",
     customer: str | None = _CUSTOMER,
+    charge: str | None = None,
     signed_at: int | None = None,
     secret: bytes = _WEBHOOK_SECRET,
 ) -> httpx.Response:
     """Post an event to the webhook as Stripe does, signed with `secret` at `signed_at`."""
     at = int(time.time()) if signed_at is None else signed_at
-    about = {} if customer is None else {"customer": customer}
+    named = {"customer": customer, "charge": charge}
+    about = {key: value for key, value in named.items() if value is not None}
     said = {"id": event, "type": kind, "created": at, "data": {"object": about}}
     payload = json.dumps(said).encode()
     signature = hmac.new(secret, f"{at}.".encode() + payload, hashlib.sha256).hexdigest()
@@ -161,9 +192,20 @@ def _webhook(
     return reader.post("/api/account/billing-events", content=payload, headers=headers)
 
 
-def _subscription(status: str, *, until: int, account: str) -> dict[str, Any]:
+def _dispute_event(
+    reader: TestClient, event: str, *, kind: str = "charge.dispute.created"
+) -> httpx.Response:
+    """Post an event about a dispute of the charge `ch_disputed`, which names no customer."""
+    return _webhook(reader, event, kind=kind, customer=None, charge="ch_disputed")
+
+
+def _subscription(
+    status: str, *, until: int, account: str, subscription: str = "sub_test", created: int = 0
+) -> dict[str, Any]:
     """A subscription as Stripe lists it, made by `account`'s checkout, paid to `until`."""
     return {
+        "id": subscription,
+        "created": created,
         "status": status,
         "metadata": {"account": account},
         "items": {"data": [{"current_period_end": until}]},
@@ -356,12 +398,12 @@ def test_stripe_down_past_every_try_leaves_the_event_for_stripe_to_send_again(
 def test_an_event_billing_doesnt_act_on_is_kept_and_stripe_isnt_asked(
     paying, stripe, browser: Callable[[], TestClient], caplog
 ):
-    """A payment for no account, or a dispute, is whoever runs the server's to look into."""
+    """A payment for no account, or how a dispute ends, is for whoever runs the server."""
     reader = browser()
     with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
         _webhook(reader, "evt_price", kind="price.updated", customer=None)
         _webhook(reader, "evt_stranger", kind="invoice.paid", customer="cus_from_the_dashboard")
-        _webhook(reader, "evt_disputed", kind="charge.dispute.created", customer=None)
+        _dispute_event(reader, "evt_disputed", kind="charge.dispute.closed")
     assert_equal(stripe.asked, [], "Stripe asked")
     for event in ("evt_price", "evt_stranger", "evt_disputed"):
         assert_equal(paying.has_ledger_event(event), True, f"{event} kept")
@@ -388,6 +430,78 @@ def test_only_the_accounts_own_subscription_still_collected_lifts_the_limit(
         assert_equal(_webhook(reader, "evt_paid").status_code, 204, "heard")
     assert_equal(paying.ledger_of(account)[0].paid_until, None, "no paid time")
     assert_in("billing_subscribed_twice", caplog.text, "two billing at once, said")
+
+
+def test_a_dispute_ends_the_accounts_own_subscription_at_once_and_brings_its_limit_back(
+    paying, stripe, browser: Callable[[], TestClient], pdf_bytes
+):
+    """Whoever disputes a charge won't pay the next, and each dispute costs a fee: none follows.
+
+    Only what the account's checkout made: one billed for anything else is the server's to end.
+    """
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    own = _subscription("active", until=until, account=account, subscription="sub_own")
+    other = _subscription("active", until=until, account="another", subscription="sub_other")
+    stripe.subscriptions[_CUSTOMER] = [own, other]
+    stripe.charges["ch_disputed"] = _CUSTOMER
+    files = _files(pdf_bytes, 3)
+    _webhook(reader, "evt_paid")
+    upload(reader, files[0])
+    assert_equal(upload(reader, files[1]).status_code, 201, "paid: past the month's one")
+    assert_equal(_dispute_event(reader, "evt_disputed").status_code, 204, "heard")
+    [(cancelled, form)] = stripe.cancelled()
+    assert_equal(cancelled, "sub_own", "the account's own, cancelled")
+    assert_in("evt_disputed", form["cancellation_details[comment]"][0], "why, kept in Stripe")
+    assert_equal(other["status"], "active", "another's, left to whoever runs the server")
+    assert_problem(upload(reader, files[2]), "monthly_documents_used", 403)
+    kept = paying.ledger_of(account)[-1]
+    assert_equal((kept.customer, kept.paid_until), (_CUSTOMER, None), "kept, with its customer")
+    assert_equal(_dispute_event(reader, "evt_disputed").status_code, 204, "sent again")
+    assert_equal(len(stripe.cancelled()), 1, "kept already: nothing cancelled again")
+
+
+def test_a_dispute_leaves_a_subscription_bought_since_billing(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """Stripe sends a dispute again until it hears back: maybe after the account paid afresh."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    disputed = _subscription("active", until=until, account=account, subscription="sub_old")
+    since = _subscription(
+        "active", until=until, account=account, subscription="sub_new", created=2**40
+    )
+    stripe.subscriptions[_CUSTOMER] = [disputed, since]
+    stripe.charges["ch_disputed"] = _CUSTOMER
+    assert_equal(_dispute_event(reader, "evt_disputed").status_code, 204, "heard")
+    assert_equal([each for each, _form in stripe.cancelled()], ["sub_old"], "the one disputed")
+    assert_equal(paying.ledger_of(account)[-1].paid_until, until, "paid, by the one since")
+
+
+def test_a_cancel_whose_answer_was_lost_is_found_done_on_the_retry(
+    paying, stripe, browser: Callable[[], TestClient], caplog
+):
+    """Stripe ended it, but never said so: the retry finds it gone, and the event is kept."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=until, account=account)]
+    stripe.charges["ch_disputed"] = _CUSTOMER
+    stripe.lost = {"sub_test"}
+    with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
+        assert_equal(_dispute_event(reader, "evt_disputed").status_code, 204, "heard")
+    assert_equal(len(stripe.cancelled()), 2, "sent again, once its answer was lost")
+    assert_in(
+        "stripe_cancelled call=/v1/subscriptions/sub_test already=true",
+        caplog.text,
+        "found done, said",
+    )
+    assert_equal(paying.ledger_of(account)[-1].paid_until, None, "kept, with no paid time")
 
 
 def test_a_customer_stripe_hasnt_got_pays_for_nothing_and_is_asked_once(
