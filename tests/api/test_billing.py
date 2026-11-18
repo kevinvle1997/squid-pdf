@@ -58,8 +58,8 @@ def _signed_in_as(reader: TestClient, users: UserStore, email: str = _EMAIL) -> 
     return user.id
 
 
-def _paid(account: str, *, event: str, until: int | None) -> BillingEvent:
-    """An event that set `account`'s paid time to `until`, as Stripe's webhook would."""
+def _paid(account: str, *, event: str, until: int | None, read_at: int) -> BillingEvent:
+    """An event setting `account`'s paid time to `until`, as Stripe said asked at `read_at`."""
     return BillingEvent(
         event,
         type="customer.subscription.updated",
@@ -68,6 +68,7 @@ def _paid(account: str, *, event: str, until: int | None) -> BillingEvent:
         account=account,
         outcome="applied",
         paid_until=until,
+        read_at=read_at,
     )
 
 
@@ -85,28 +86,36 @@ def test_a_paid_month_lifts_the_limit_until_paid_time_and_the_renewals_leeway_ru
     assert_equal(upload(reader, files[0]).status_code, 201, "the month's one")
     assert_problem(upload(reader, files[1]), "monthly_documents_used", 403)
     now = int(time.time())
-    users.apply_billing(_paid(account, event="evt_paid", until=now + 3600), now=now)
+    users.apply_billing(_paid(account, event="evt_paid", until=now + 3600, read_at=1), now=now)
     assert_equal(upload(reader, files[1]).status_code, 201, "paid: past the month's one")
     # The month ended a minute ago, and its renewal is still being charged.
-    users.apply_billing(_paid(account, event="evt_renewing", until=now - 60), now=now)
+    renewing = _paid(account, event="evt_renewing", until=now - 60, read_at=2)
+    users.apply_billing(renewing, now=now)
     assert_equal(upload(reader, files[2]).status_code, 201, "within the renewal's leeway")
     ran_out = now - constants.RENEWAL_LEEWAY_S - 60
-    users.apply_billing(_paid(account, event="evt_unpaid", until=ran_out), now=now)
+    users.apply_billing(_paid(account, event="evt_unpaid", until=ran_out, read_at=3), now=now)
     assert_problem(upload(reader, files[3]), "monthly_documents_used", 403)
 
 
-def test_an_event_sent_again_changes_nothing_it_set_since(
+def test_an_event_sent_again_or_read_of_stripe_before_the_last_changes_nothing(
     users, browser: Callable[[], TestClient], pdf_bytes
 ):
-    """Stripe sends an event again until it hears back: the ledger knows it, and keeps now."""
+    """Stripe sends an event again until it hears back, and two can land out of order.
+
+    The paid time kept is from the latest read of Stripe, wherever it was made.
+    """
     reader = browser()
     account = _signed_in_as(reader, users)
-    files = _files(pdf_bytes, 2)
+    files = _files(pdf_bytes, 3)
     upload(reader, files[0])
     now = int(time.time())
-    paid = _paid(account, event="evt_paid", until=now + 3600)
-    assert_equal(users.apply_billing(paid, now=now), True, "new")
-    cancelled = _paid(account, event="evt_cancelled", until=None)
-    assert_equal(users.apply_billing(cancelled, now=now), True, "new")
-    assert_equal(users.apply_billing(paid, now=now), False, "the first, sent again")
+    paid = _paid(account, event="evt_paid", until=now + 3600, read_at=1)
+    assert_equal(users.apply_billing(paid, now=now), "applied", "new")
+    cancelled = _paid(account, event="evt_cancelled", until=None, read_at=3)
+    assert_equal(users.apply_billing(cancelled, now=now), "applied", "new")
+    assert_equal(users.apply_billing(paid, now=now), None, "the first, sent again")
     assert_problem(upload(reader, files[1]), "monthly_documents_used", 403)
+    # Asked of Stripe before the cancellation was, its answer landing after.
+    late = _paid(account, event="evt_late", until=now + 3600, read_at=2)
+    assert_equal(users.apply_billing(late, now=now), "superseded", "kept, not applied")
+    assert_problem(upload(reader, files[2]), "monthly_documents_used", 403)

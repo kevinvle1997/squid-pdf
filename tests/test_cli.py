@@ -540,6 +540,7 @@ def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends
             account=account,
             outcome="applied",
             paid_until=until,
+            read_at=now * 1000 + (0 if until is not None else 1),
         )
         users.apply_billing(billing, now=now)
 
