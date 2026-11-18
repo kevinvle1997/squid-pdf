@@ -1,5 +1,6 @@
-"""The accounts' tables: each person signed in or invited, by email, and what billing did.
+"""The accounts' tables: who's signed in or invited, what billing did, and bounced addresses.
 
+An address that bounced with no account is kept only as a digest keyed with the secret.
 SQLite in one file, through SQLAlchemy, so moving to a server database later changes the
 URL and little else. Every call blocks on the disk: a coroutine makes it in a thread.
 """
@@ -34,6 +35,7 @@ from sqlalchemy.schema import CreateTable
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.errors import NotAnEmail
+from squidpdf.accounts.signed import digest_of
 from squidpdf.accounts.types import BillingEvent, BillingOutcome
 
 _ID_BYTES = 16
@@ -76,6 +78,14 @@ _ADDED_COLUMNS = {
 }
 _ONE_ACCOUNT_A_CUSTOMER = (
     "CREATE UNIQUE INDEX IF NOT EXISTS users_stripe_customer ON users (stripe_customer)"
+)
+# Addresses mail can never reach that no account has, kept only as `_bounce_digest` makes
+# them: keyed with the server's secret, so a copy of this file alone holds no stranger's.
+_BOUNCED_ADDRESSES = Table(
+    "bounced_addresses",
+    _TABLES,
+    Column("digest", Text, primary_key=True),
+    Column("bounced_at", Integer, nullable=False),  # Unix seconds
 )
 # Every event Stripe has sent, once each, and what it did: never changed, never deleted, so it
 # stays the record of what billing did, an account's removal included.
@@ -141,23 +151,54 @@ class UserStore:
             connection.execute(added.on_conflict_do_nothing(index_elements=[_USERS.c.email]))
             return _user_written(connection, email)
 
-    def invite(self, email: str, *, now: int, is_unlimited: bool) -> User:
-        """The account under `email`, made if need be, with or without a document limit."""
+    def invite(self, email: str, *, now: int, is_unlimited: bool, secret: bytes) -> User:
+        """The account under `email`, made if need be, with or without a document limit.
+
+        Invited, the address is trusted mended: a bounce kept for it, by `secret`, goes.
+        """
         added = insert(_USERS).values(_new_row(email, now=now, is_unlimited=is_unlimited))
         kept = added.on_conflict_do_update(
             index_elements=[_USERS.c.email],
-            # Invited again, they're trusted to have mended their address.
             set_={"is_unlimited": is_unlimited, "bounced_at": None},
         )
+        digest = _BOUNCED_ADDRESSES.c.digest == _bounce_digest(email, secret=secret)
         with self.database.begin() as connection:
             connection.execute(kept)
+            connection.execute(_BOUNCED_ADDRESSES.delete().where(digest))
             return _user_written(connection, email)
 
-    def note_bounce(self, email: str, *, now: int) -> bool:
-        """Note that mail to `email` can never be delivered; whether an account has it."""
+    def note_bounce(self, email: str, *, secret: bytes, now: int) -> bool:
+        """Note that mail to `email` can never be delivered; whether an account has it.
+
+        An address no account has is kept only as a digest keyed with `secret`.
+        """
         noted = _USERS.update().where(_USERS.c.email == email).values(bounced_at=now)
+        digest = _bounce_digest(email, secret=secret)
+        kept = (
+            insert(_BOUNCED_ADDRESSES)
+            .values(digest=digest, bounced_at=now)
+            .on_conflict_do_update(
+                index_elements=[_BOUNCED_ADDRESSES.c.digest], set_={"bounced_at": now}
+            )
+        )
         with self.database.begin() as connection:
-            return connection.execute(noted).rowcount > 0
+            if connection.execute(noted).rowcount > 0:
+                return True
+            connection.execute(kept)
+            return False
+
+    def has_bounced(self, email: str, *, secret: bytes) -> bool:
+        """Whether mail to `email` came back as never deliverable, to an account or not."""
+        account = self.find(email)
+        # An account is the record once there is one, so its invitation clears it even where
+        # the command line's secret wasn't the server's.
+        if account is not None:
+            return account.bounced_at is not None
+        digest = _BOUNCED_ADDRESSES.c.digest == _bounce_digest(email, secret=secret)
+        with self.database.connect() as connection:
+            return (
+                connection.execute(select(_BOUNCED_ADDRESSES).where(digest)).first() is not None
+            )
 
     def spend_link(self, email: str, *, until: int) -> bool:
         """Use up the link that holds `until` for `email`'s account; whether it was unused.
@@ -316,6 +357,11 @@ def open_users(path: Path) -> UserStore:
     with database.begin() as connection:
         connection.execute(text(_ONE_ACCOUNT_A_CUSTOMER))
     return UserStore(database)
+
+
+def _bounce_digest(email: str, *, secret: bytes) -> str:
+    """`email` as the bounced addresses keep one no account has: keyed with `secret`."""
+    return digest_of(email, purpose="bounced", secret=secret)
 
 
 def checked_email(typed: str) -> str:

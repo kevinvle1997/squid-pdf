@@ -139,6 +139,12 @@ def named_users() -> UserStore | None:
     return open_users(Path(named))
 
 
+def named_secret() -> bytes:
+    """The secret `SQUIDPDF_SECRET` holds, for the command line; AccountsUnset if none."""
+    _require(_SECRET)
+    return _secret_in(_SECRET)
+
+
 def deployed_accounts() -> Accounts | None:
     """Accounts as the environment sets them up; None where it names no database."""
     users = named_users()
@@ -153,7 +159,7 @@ def deployed_accounts() -> Accounts | None:
     allowance = _allowance()
     return Accounts(
         users,
-        MailController(_mailer(), users),
+        MailController(_mailer(), users, secret=secret),
         secret=secret,
         site=site,
         invite_only=bool(os.environ.get(_INVITE_ONLY)),  # .get: unset, anyone may sign in

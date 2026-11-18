@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from squidpdf.accounts.users import UserStore
@@ -38,6 +38,7 @@ class MailController:
 
     mailer: Mailer
     users: UserStore  # who has bounced
+    secret: bytes = field(repr=False)  # keys the digest an address no account has is kept as
 
     def send_sign_in_link(self, email: str, *, link: str, minutes: int, language: str) -> None:
         """Send `email` the `link` signing it in for `minutes`, or raise why it wasn't.
@@ -55,6 +56,5 @@ class MailController:
         self.mailer.send(Letter(email, subject=subject, body=body))
 
     def _has_bounced(self, email: str) -> bool:
-        """Whether mail to `email` came back as never deliverable; no account, none has."""
-        account = self.users.find(email)
-        return account is not None and account.bounced_at is not None
+        """Whether mail to `email` came back as never deliverable, to an account or not."""
+        return self.users.has_bounced(email, secret=self.secret)
