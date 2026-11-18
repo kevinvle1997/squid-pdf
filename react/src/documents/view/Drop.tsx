@@ -11,6 +11,7 @@ import styles from "./Drop.module.css";
 
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
+const DAY = new Intl.DateTimeFormat("en", { day: "numeric", month: "long" });
 
 interface Props {
   landing: Landing;
@@ -18,6 +19,11 @@ interface Props {
   persisted: Persisted<unknown> | null; // offered while the landing waits
   forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
   signedInAs: string | null; // the address this browser is signed in as, on a server that keeps accounts
+  paidUntil: number | null; // the account has no document limit until then, Unix seconds, its month paid
+  payment: { sentence: string; failed: boolean } | null; // what paying, or coming back from it, came to
+  goingToStripe: boolean; // the server is asked for Stripe's page, so its buttons wait
+  onPay: (() => void) | null; // offered where the server takes payment and the account has a limit to lift
+  onManageBilling: (() => void) | null; // offered where the account has billing in Stripe's portal
   onSignOut: () => void;
   onChoose: (file: File) => void;
   onReopen: () => void; // the document persisted here opens again, with its changes
@@ -31,6 +37,11 @@ export function Drop({
   persisted,
   forgetFailed,
   signedInAs,
+  paidUntil,
+  payment,
+  goingToStripe,
+  onPay,
+  onManageBilling,
   onSignOut,
   onChoose,
   onReopen,
@@ -66,8 +77,15 @@ export function Drop({
         <p className={styles.status} role="status">
           {landing.kind === "opening" && <Progress {...landing} />}
           {landing.kind === "failed" && <Warn mark>{landing.detail}</Warn>}
+          {landing.kind === "month used" && <Warn mark>{landing.detail}</Warn>}
           {offered !== null && forgetFailed !== null && <Warn mark>{forgetFailed}</Warn>}
+          {payment !== null && (payment.failed ? <Warn mark>{payment.sentence}</Warn> : payment.sentence)}
         </p>
+        {landing.kind === "month used" && onPay !== null && (
+          <Button className={styles.pay} onPress={onPay} isDisabled={goingToStripe}>
+            Pay for no limit
+          </Button>
+        )}
         {offered !== null && (
           <div className={styles.persisted}>
             <p className={styles.persistedSentence}>
@@ -85,6 +103,12 @@ export function Drop({
         {signedInAs !== null && (
           <p className={styles.signedIn}>
             <span>Signed in as {signedInAs}</span>
+            {paidUntil !== null && <span>No document limit until {DAY.format(paidUntil * 1000)}</span>}
+            {onManageBilling !== null && (
+              <Button variant="quiet" onPress={onManageBilling} isDisabled={goingToStripe}>
+                Manage billing
+              </Button>
+            )}
             {/* Quiet: the sheet's one action is choosing a PDF. */}
             {/* Its line goes once signed out, so focus goes on to the sheet's one action, never to body. */}
             <Button

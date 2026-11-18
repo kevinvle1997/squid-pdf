@@ -14,6 +14,11 @@ function waiting() {
       persisted={null}
       forgetFailed={null}
       signedInAs={null}
+      paidUntil={null}
+      payment={null}
+      goingToStripe={false}
+      onPay={null}
+      onManageBilling={null}
       onSignOut={vi.fn()}
       onChoose={vi.fn()}
       onReopen={vi.fn()}
@@ -51,6 +56,11 @@ test("a document persisted here is offered to open again, with deleting it quiet
       persisted={persisted}
       forgetFailed={null}
       signedInAs={null}
+      paidUntil={null}
+      payment={null}
+      goingToStripe={false}
+      onPay={null}
+      onManageBilling={null}
       onSignOut={vi.fn()}
       onChoose={vi.fn()}
       onReopen={vi.fn()}

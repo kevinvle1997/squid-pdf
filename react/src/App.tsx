@@ -1,6 +1,28 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import styles from "./App.module.css";
-import { type AccountAnswer, accountAtStart, mustSignIn, signedInAs, signedOut, tokenIn } from "./accounts/account";
+import {
+  type AccountAnswer,
+  accountAnswer,
+  accountAtStart,
+  mustSignIn,
+  signedInAs,
+  signedOut,
+  tokenIn,
+} from "./accounts/account";
+import {
+  accountOncePaid,
+  type BackFromPaying,
+  backFrom,
+  billingPortalPage,
+  checkoutPage,
+  type Going,
+  goTo,
+  isBackFromPaying,
+  mayManageBilling,
+  mayPay,
+  paidUntil,
+  paymentSaid,
+} from "./accounts/billing";
 import { SignInScreen } from "./accounts/view/SignInScreen";
 import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
 import { type Landing, type Opened, openFile, type SignInFirst } from "./documents/open";
@@ -43,6 +65,10 @@ function Screens() {
   // A sign-in link's token, read once as the app starts: the link's page is left for the landing at once.
   const [linkToken] = useState(() => tokenIn(window.location.pathname, window.location.hash));
   const [linkFailed, setLinkFailed] = useState<string | null>(null);
+  // Sent back by Stripe's checkout, paid: read once as the app starts, as a link's token is.
+  const [backFromPaying] = useState(() => isBackFromPaying(window.location.search));
+  const [back, setBack] = useState<BackFromPaying | null>(backFromPaying ? { kind: "waiting" } : null);
+  const [going, setGoing] = useState<Going>({ kind: "idle" });
 
   // Read as the landing first shows: it's outside React, in the browser's storage, and on the server.
   useEffect(() => {
@@ -51,15 +77,21 @@ function Screens() {
     termsAnswer().then(setTerms);
     accountAtStart(linkToken).then((started) => {
       // The landing's address: the token leaves the address bar, and a reload doesn't trade it again.
-      if (linkToken !== null) window.history.replaceState(null, "", "/");
+      if (linkToken !== null || backFromPaying) window.history.replaceState(null, "", "/");
       setLinkFailed(started.linkFailed);
       setAccount(started.account);
+      if (!backFromPaying) return;
+      // Stripe's word reaches the server a moment after the browser: the account is asked until it's paid.
+      accountOncePaid(accountAnswer).then((paid) => {
+        setAccount(paid);
+        setBack(backFrom(paid));
+      });
     });
     // The terms' link waits for the interface's font: in a stand-in its line can wrap, and jump back as the
     // font comes. A font that fails to load leaves the stand-in for good, so the link comes anyway.
     const loaded = () => setFontLoaded(true);
     document.fonts.load(`1em ${getComputedStyle(document.body).fontFamily}`).then(loaded, loaded);
-  }, [linkToken]);
+  }, [linkToken, backFromPaying]);
 
   // The offer lasts as long as it says: as the server's hour runs out while the landing is open, the copy goes.
   useEffect(() => {
@@ -84,6 +116,19 @@ function Screens() {
     setAccount(answer);
     // Signing out is leaving this browser to others: the document persisted here goes too.
     await forget();
+  }
+
+  // To Stripe's checkout or portal: the server names the page, and the browser leaves for it.
+  async function goToStripe(page: () => ReturnType<typeof checkoutPage>) {
+    // One at a time: a second press would ask Stripe for a second page.
+    if (going.kind === "under way") return;
+    setGoing({ kind: "under way" });
+    const went = await page();
+    if (went.kind === "failed") {
+      setGoing(went);
+      return;
+    }
+    goTo(went.url);
   }
 
   function reopen() {
@@ -139,6 +184,11 @@ function Screens() {
       <Drop
         landing={landing}
         signedInAs={signedInAs(account)}
+        paidUntil={paidUntil(account)}
+        payment={paymentSaid(going, back)}
+        goingToStripe={going.kind === "under way"}
+        onPay={mayPay(account) ? () => void goToStripe(checkoutPage) : null}
+        onManageBilling={mayManageBilling(account) ? () => void goToStripe(billingPortalPage) : null}
         onSignOut={() => void signOut()}
         termsHref={fontLoaded ? termsHrefOf(terms) : null}
         persisted={persisted}
