@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Proves a running stack serves what a stranger reaches: the browser app, the
 # health check, the terms where the deployment names them, compression and the
-# security headers. Then, where anyone may open documents, an upload, an export
-# with one edit and a delete; where only the invited may, that a stranger's
-# upload is refused. Needs curl and jq.
+# security headers; where the deployment takes payment, that an event Stripe
+# didn't sign is refused. Then, where anyone may open documents, an upload, an
+# export with one edit and a delete; where only the invited may, that a
+# stranger's upload is refused. Needs curl and jq.
 #
 #   deploy/check.sh https://your.domain [root.crt]
 #
@@ -103,7 +104,19 @@ pass "a built file the build doesn't have is missing, not the app's page, and no
 
 read -r status seconds < <(call "${browser[@]}" "$base/api/account")
 [[ $status == 200 ]] || fail "/api/account answered $status: $(head -c "$shown_bytes" "$work/body")"
-if jq -e '.invite_only' "$work/body" >/dev/null; then
+account=$(cat "$work/body")
+if jq -e '.takes_payment' <<<"$account" >/dev/null; then
+  # Served, the route answers a GET 405: so the 404 below is the app's refusal, not a path it lacks.
+  read -r status seconds < <(call "${browser[@]}" "$base/api/account/billing-events")
+  [[ $status == 405 ]] && jq -e '.type == "method_not_allowed"' "$work/body" >/dev/null ||
+    fail "Stripe's webhook answered a GET $status, not 405: $(head -c "$shown_bytes" "$work/body")"
+  read -r status seconds < <(call "${browser[@]}" --header 'content-type: application/json' \
+    --data '{"id": "evt_unsigned", "type": "invoice.paid"}' "$base/api/account/billing-events")
+  [[ $status == 404 ]] && jq -e '.type == "not_found"' "$work/body" >/dev/null ||
+    fail "an event Stripe didn't sign answered $status, not 404: $(head -c "$shown_bytes" "$work/body")"
+  pass "payments: an event Stripe didn't sign is refused"
+fi
+if jq -e '.invite_only' <<<"$account" >/dev/null; then
   read -r status seconds < <(call "${browser[@]}" --header 'content-type: application/pdf' \
     --data-binary @"$pdf" "$base/api/documents")
   [[ $status == 401 ]] && jq -e '.type == "invited_only"' "$work/body" >/dev/null ||
@@ -111,7 +124,7 @@ if jq -e '.invite_only' "$work/body" >/dev/null; then
   pass "invite-only: a stranger's upload is refused, so the document steps are skipped"
   exit 0
 fi
-pass "anyone may open a document: $(jq -c . "$work/body")"
+pass "anyone may open a document: $(jq -c . <<<"$account")"
 
 read -r status seconds < <(call "${browser[@]}" --header 'content-type: application/pdf' \
   --data-binary @"$pdf" "$base/api/documents")

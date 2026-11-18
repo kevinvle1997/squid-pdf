@@ -287,6 +287,22 @@ jobs:
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
           grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
+      # As a deployer takes payment (env.example), with keys Stripe never made: the app starts
+      # on them, billing.sh reads an account's ledger, and an event Stripe didn't sign is
+      # refused, without Stripe ever being asked.
+      - name: Payments, checked
+        shell: bash
+        run: |
+          {
+            printf 'SQUIDPDF_%s\n' FREE_DOCUMENTS=1 DOCUMENTS_A_MONTH=2
+            printf 'SQUIDPDF_STRIPE_%s\n' KEY=sk_test_ci WEBHOOK_SECRET=whsec_ci PRICE=price_ci
+          } >> .env
+          docker compose up --detach --wait
+          deploy/billing.sh friend@example.com | tee /tmp/billing.txt
+          grep -q "friend@example.com has no paid month" /tmp/billing.txt
+          deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-payments.txt
+          grep -q "^ok    payments: an event Stripe didn't sign is refused" /tmp/check-payments.txt
+
       # As a deployer turns the backup on (env.example), to a folder on the runner in place of a
       # bucket: the same services and Litestream, one replica kind apart. The accounts volume is
       # then lost on purpose, and a plain `up` has to put it back, or not start the app.
