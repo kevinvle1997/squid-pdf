@@ -130,13 +130,7 @@ async def admit_upload(request: Request) -> None:
     A dependency of the upload route, so it runs before any of the body is
     read. Async, so it runs on the event loop and two uploads never count at once.
     """
-    recent_uploads: RecentStarts = request.app.state.recent_uploads  # made in the lifespan
-    # Read as a module attribute, so a test can change the limit.
-    admitted = recent_uploads.admit(
-        _address_of(request), now=time.monotonic(), limit=constants.UPLOADS_PER_MINUTE
-    )
-    if not admitted:
-        raise RateLimited()
+    _admit(request, request.app.state.recent_uploads, limit=constants.UPLOADS_PER_MINUTE)
 
 
 async def admit_link(request: Request) -> None:
@@ -144,13 +138,7 @@ async def admit_link(request: Request) -> None:
 
     Before the link is sent, so a page can't fill someone's inbox from one address.
     """
-    recent_links: RecentStarts = request.app.state.recent_links  # made in the lifespan
-    # Read as a module attribute, so a test can change the limit.
-    admitted = recent_links.admit(
-        _address_of(request), now=time.monotonic(), limit=constants.LINKS_PER_MINUTE
-    )
-    if not admitted:
-        raise RateLimited()
+    _admit(request, request.app.state.recent_links, limit=constants.LINKS_PER_MINUTE)
 
 
 async def admit_payment_page(request: Request) -> None:
@@ -158,13 +146,8 @@ async def admit_payment_page(request: Request) -> None:
 
     Each asks Stripe, on billing's few threads, which the webhook needs too.
     """
-    recent: RecentStarts = request.app.state.recent_payment_pages  # made in the lifespan
-    # Read as a module attribute, so a test can change the limit.
-    admitted = recent.admit(
-        _address_of(request), now=time.monotonic(), limit=constants.PAYMENT_PAGES_PER_MINUTE
-    )
-    if not admitted:
-        raise RateLimited()
+    recent = request.app.state.recent_payment_pages
+    _admit(request, recent, limit=constants.PAYMENT_PAGES_PER_MINUTE)
 
 
 async def upload_turn(request: Request) -> AsyncIterator[None]:
@@ -189,6 +172,16 @@ def workers_in_turn(
     every worker. They wait, not refused, since the page images near the view ask at once.
     """
     return _WorkersInTurn(workers, request.app.state.job_turns, _address_of(request))
+
+
+def _admit(request: Request, recent: RecentStarts, *, limit: int) -> None:
+    """Raise rate_limited if this address has started `limit` of `recent`'s within its window.
+
+    `recent` is the app's, made in the lifespan; `limit` is read from `constants` by its
+    caller each time, so a test can change it.
+    """
+    if not recent.admit(_address_of(request), now=time.monotonic(), limit=limit):
+        raise RateLimited()
 
 
 def _address_of(request: Request) -> str:

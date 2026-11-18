@@ -10,7 +10,7 @@ squidpdf fixture out.pdf --pages N     a long contract, for timing the browser
 squidpdf terms   [terms.md]            check a terms file as the server will read it
 squidpdf invite  email [--unlimited]   let someone in; --unlimited lifts their document limit
 squidpdf remove  email                 take someone's account off, and sign them out everywhere
-squidpdf billing email [--sync]        what Stripe said of someone's account; --sync asks again
+squidpdf billing email [--resync]      what Stripe said of an account; --resync asks again
 """
 
 # Speaks English only: everything it tells a person goes through core/app/words/.
@@ -33,8 +33,8 @@ from functools import partial
 from pathlib import Path
 from typing import TextIO, assert_never, get_args
 
-from squidpdf.accounts.billing.events import resync
-from squidpdf.accounts.billing.removal import removal_of
+from squidpdf.accounts.billing.removal import remove_account
+from squidpdf.accounts.billing.webhook import resync
 from squidpdf.accounts.deployment import AccountsUnset, Billing, deployed_accounts, named_users
 from squidpdf.accounts.errors import PaymentsUnavailable
 from squidpdf.accounts.types import BillingEvent
@@ -517,14 +517,17 @@ def _cmd_remove(args: argparse.Namespace) -> int:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
     try:
-        removal = removal_of(users, _billing_here(), email)
+        removal = remove_account(users, email, billing_here=_billing_here)
     except PaymentsUnavailable as unasked:  # raised by Stripe's client: nothing was removed
         return _fail(unasked.detail)
+    except AccountsUnset as unset:  # raised by _billing_here: set up in part, Stripe unasked
+        said = words.render(Message("billing_unchecked", {"email": email}))
+        return _fail(said, hint=f"({unset})")
     # A typo leaves the person still in: said, so it's caught.
     if removal == "no_account":
         return _fail(words.render(Message("no_account", {"email": email})))
     # Gone, they'd still be charged: their subscription is cancelled in Stripe first.
-    if removal == "paying" or removal == "subscribed":
+    if removal == "paying":
         return _fail(words.render(Message("still_paying", {"email": email})))
     if removal == "unchecked":
         return _fail(words.render(Message("billing_unchecked", {"email": email})))
@@ -538,7 +541,7 @@ def _billing_arguments(command: argparse.ArgumentParser) -> None:
     """`billing`: the address whose ledger to show, and whether to ask Stripe again first."""
     command.add_argument("email")
     command.add_argument(
-        "--sync",
+        "--resync",
         action="store_true",
         help="ask Stripe again, as when an event was lost, and keep its answer in the ledger",
     )
@@ -553,7 +556,7 @@ def _cmd_billing(args: argparse.Namespace) -> int:
     user = users.find(email)
     if user is None:
         return _fail(words.render(Message("billing_no_account", {"email": email})))
-    if args.sync:
+    if args.resync:
         refused = _resynced(users, user)
         if refused is not None:
             return _fail(refused)
@@ -568,8 +571,8 @@ def _cmd_billing(args: argparse.Namespace) -> int:
     print(f"  {words.render(said)}")
     if user.stripe_customer is not None:
         print(f"  {dim}{user.stripe_customer}{off}")
-    for billing in users.billing_of(user.id):
-        print(f"    {_billing_row(billing)}")
+    for event in users.ledger_of(user.id):
+        print(f"    {_ledger_row(event)}")
     return 0
 
 
@@ -577,9 +580,13 @@ def _resynced(users: UserStore, user: User) -> str | None:
     """Ask Stripe again for `user`'s paid time, kept in the ledger; why it couldn't, if not."""
     if user.stripe_customer is None:
         return words.render(Message("billing_no_customer", {"email": user.email}))
-    billing = _billing_here()
+    unchecked = words.render(Message("billing_unchecked", {"email": user.email}))
+    try:
+        billing = _billing_here()
+    except AccountsUnset as unset:  # raised by _billing_here: set up in part, Stripe unasked
+        return f"{unchecked} ({unset})"
     if billing is None:
-        return words.render(Message("billing_unchecked", {"email": user.email}))
+        return unchecked
     try:
         resync(users, billing, user, customer=user.stripe_customer)
     except PaymentsUnavailable as unasked:  # raised by Stripe's client: nothing was kept
@@ -588,19 +595,19 @@ def _resynced(users: UserStore, user: User) -> str | None:
 
 
 def _billing_here() -> Billing | None:
-    """How this server takes payment, as its environment sets it; None where it takes none."""
-    try:
-        accounts = deployed_accounts()
-    except AccountsUnset:  # raised by deployed_accounts: set up in part, so Stripe isn't asked
-        return None
+    """How this server takes payment, as its environment sets it; None where it takes none.
+
+    Raises AccountsUnset where it's set up in part, saying what's missing.
+    """
+    accounts = deployed_accounts()
     return None if accounts is None else accounts.billing
 
 
-def _billing_row(billing: BillingEvent) -> str:
+def _ledger_row(event: BillingEvent) -> str:
     """One line of the ledger: when Stripe made the event, what it was, what it set."""
-    set_to = "-" if billing.paid_until is None else _when(billing.paid_until)
-    made = _when(billing.created)
-    return f"{made}  {billing.type:<34} {billing.outcome:<10} {set_to}  {billing.id}"
+    set_to = "-" if event.paid_until is None else _when(event.paid_until)
+    made = _when(event.created)
+    return f"{made}  {event.type:<34} {event.outcome:<10} {set_to}  {event.id}"
 
 
 def _when(seconds: int) -> str:

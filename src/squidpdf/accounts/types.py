@@ -58,14 +58,12 @@ class StripeEvent:
 class Subscriptions:
     """What Stripe has of an account's subscriptions now: until when paid, and how many bill."""
 
-    paid_until: (
-        int | None
-    )  # the latest end of a paid month among the account's own; None if none
-    live: int  # its customer's that bill, or may yet: any not cancelled or expired
+    paid_until: int | None  # the latest paid month's end of the account's own; None if none
+    unended: int  # its customer's not cancelled or expired, which bill, or may yet
 
 
-# What a billing event did: set an account's paid time; read Stripe before a read kept already,
-# so it set nothing; named a customer no account has; or was of a kind billing doesn't act on.
+# What a billing event did, as the ledger keeps it: superseded is Stripe asked before the
+# paid time kept already was, so it set nothing.
 BillingOutcome = Literal["applied", "superseded", "no_account", "ignored"]
 
 
@@ -80,4 +78,6 @@ class BillingEvent:
     account: str | None  # the account whose paid time it set; None where it set none
     outcome: BillingOutcome
     paid_until: int | None  # the paid time Stripe said, Unix seconds; None for none
-    read_at: int | None  # when Stripe was asked for it, Unix ms; None where it wasn't asked
+    paid_read_at: (
+        int | None
+    )  # when Stripe was asked for it, Unix ms; None where it wasn't asked

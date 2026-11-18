@@ -83,12 +83,9 @@ class StripeApi:
     client: httpx.Client  # carries the key: never logged
 
     def new_customer(self, *, account: str, email: str) -> str:
-        """A new Stripe customer for `account`, by its id, sending receipts to `email`.
-
-        Its key is this call's, not the account's: Stripe keeps a key's answer a day, so a
-        server error kept under the account's would refuse it until then.
-        """
+        """A new Stripe customer for `account`, by its id, sending receipts to `email`."""
         form = {"email": email, "metadata[account]": account}
+        # The call's key, not the account's: Stripe keeps a key's answer a day, an error too.
         return self._post("/v1/customers", form=form, key=_one_call("customer"))["id"]
 
     def checkout_url(self, *, customer: str, account: str, price: str, site: str) -> str:
@@ -115,7 +112,7 @@ class StripeApi:
         made = self._post("/v1/checkout/sessions", form=form, key=_one_call("checkout"))
         return made["url"]
 
-    def portal_url(self, *, customer: str, site: str) -> str:
+    def billing_portal_url(self, *, customer: str, site: str) -> str:
         """Where `customer` mends a card, reads invoices, cancels; NotAtStripe if it's gone."""
         form = {"customer": customer, "return_url": f"{site}/"}
         made = self._post("/v1/billing_portal/sessions", form=form, key=_one_call("portal"))
@@ -134,10 +131,11 @@ class StripeApi:
                 self.client.build_request("GET", "/v1/subscriptions", params=params)
             )
         except NotAtStripe:  # raised by _answer_to: a customer Stripe hasn't got pays nothing
-            return Subscriptions(paid_until=None, live=0)
+            return Subscriptions(paid_until=None, unended=0)
         listing = listed["data"]
-        live = sum(each["status"] not in _ENDED_STATUSES for each in listing)
-        return Subscriptions(paid_until=_paid_until_in(listing, account=account), live=live)
+        unended = sum(each["status"] not in _ENDED_STATUSES for each in listing)
+        paid_until = _paid_until_in(listing, account=account)
+        return Subscriptions(paid_until=paid_until, unended=unended)
 
     def _post(self, path: str, *, form: dict[str, str], key: str) -> dict[str, Any]:
         """What Stripe made of `form` at `path`, made once for `key` however often it's sent."""

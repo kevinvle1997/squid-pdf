@@ -15,8 +15,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 
-from squidpdf.accounts.billing.checkout import BillingPortalController, CheckoutController
-from squidpdf.accounts.billing.events import BillingEventController
+from squidpdf.accounts.billing.payment_pages import BillingPortalController, CheckoutController
+from squidpdf.accounts.billing.webhook import BillingEventController
 from squidpdf.accounts.bounces import BounceController, is_brevo
 from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts

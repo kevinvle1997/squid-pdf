@@ -90,10 +90,10 @@ _BILLING_EVENTS = Table(
     Column("account", Text, nullable=True),  # an account's id, kept once the account is gone
     Column("outcome", Text, nullable=False),
     Column("paid_until", Integer, nullable=True),
-    Column("read_at", Integer, nullable=True),  # when Stripe was asked, Unix ms
+    Column("paid_read_at", Integer, nullable=True),  # when Stripe was asked, Unix ms
 )
 
-# What `remove` did: took the account off, found none, or kept it, its month still paid.
+# What `remove` did: took the account off, found none, or kept it, as it's paying.
 Removal = Literal["removed", "no_account", "paying"]
 
 
@@ -218,13 +218,13 @@ class UserStore:
         with self.database.begin() as connection:
             connection.execute(forgotten)
 
-    def has_billing_event(self, event_id: str) -> bool:
+    def has_ledger_event(self, event_id: str) -> bool:
         """Whether the ledger has the event `event_id` already."""
         query = select(_BILLING_EVENTS.c.id).where(_BILLING_EVENTS.c.id == event_id)
         with self.database.connect() as connection:
             return connection.execute(query).first() is not None
 
-    def billing_of(self, user_id: str) -> list[BillingEvent]:
+    def ledger_of(self, user_id: str) -> list[BillingEvent]:
         """Every event the ledger has that set the account's paid time, oldest first."""
         query = (
             select(_BILLING_EVENTS)
@@ -235,27 +235,27 @@ class UserStore:
             rows = connection.execute(query).all()
         return [_billing_event_from(row) for row in rows]
 
-    def apply_billing(self, billing: BillingEvent, *, now: int) -> BillingOutcome | None:
-        """Set the paid time `billing` says, and keep it in the ledger with what it did.
+    def apply_billing(self, event: BillingEvent, *, now: int) -> BillingOutcome | None:
+        """Set the paid time `event` says, and keep it in the ledger with what it did.
 
         One transaction, so the ledger says what each event did. Paid time Stripe was asked
         for before the time kept already is kept in the ledger only: the later read stands,
         whichever process, or event, made it. None for an event the ledger has already.
         """
-        outcome = billing.outcome
+        outcome = event.outcome
         with self.database.begin() as connection:
-            if outcome == "applied" and not _paid_time_set(connection, billing):
+            if outcome == "applied" and not _paid_time_set(connection, event):
                 outcome = "superseded"
             kept = insert(_BILLING_EVENTS).values(
-                id=billing.id,
-                type=billing.type,
-                created=billing.created,
+                id=event.id,
+                type=event.type,
+                created=event.created,
                 received_at=now,
-                customer=billing.customer,
-                account=billing.account,
+                customer=event.customer,
+                account=event.account,
                 outcome=outcome,
-                paid_until=billing.paid_until,
-                read_at=billing.read_at,
+                paid_until=event.paid_until,
+                paid_read_at=event.paid_read_at,
             )
             noted = connection.execute(kept.on_conflict_do_nothing(index_elements=["id"]))
             return outcome if noted.rowcount > 0 else None
@@ -376,15 +376,15 @@ def _counted_from(counted_month: str | None, counted: str, *, month: str) -> fro
     return frozenset(counted.split())
 
 
-def _paid_time_set(connection: Any, billing: BillingEvent) -> bool:
-    """Set the paid time `billing` says, unless the time kept was asked of Stripe later."""
+def _paid_time_set(connection: Any, event: BillingEvent) -> bool:
+    """Set the paid time `event` says, unless the time kept was asked of Stripe later."""
     asked_later = _USERS.c.paid_read_at.is_not(None) & (
-        _USERS.c.paid_read_at >= billing.read_at
+        _USERS.c.paid_read_at >= event.paid_read_at
     )
     paid = (
         _USERS.update()
-        .where(_USERS.c.id == billing.account, ~asked_later)
-        .values(paid_until=billing.paid_until, paid_read_at=billing.read_at)
+        .where(_USERS.c.id == event.account, ~asked_later)
+        .values(paid_until=event.paid_until, paid_read_at=event.paid_read_at)
     )
     return connection.execute(paid).rowcount > 0
 
@@ -399,7 +399,7 @@ def _billing_event_from(row: Row[Any]) -> BillingEvent:
         account=row.account,
         outcome=row.outcome,
         paid_until=row.paid_until,
-        read_at=row.read_at,
+        paid_read_at=row.paid_read_at,
     )
 
 
