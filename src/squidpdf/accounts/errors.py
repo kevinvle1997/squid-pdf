@@ -68,10 +68,10 @@ class AlreadySubscribed(Problem):
     status = 409
 
 
-class NeverPaid(Problem):
+class NoBilling(Problem):
     """The account has never gone to pay, so Stripe has no billing of it to manage."""
 
-    type = "never_paid"
+    type = "no_billing"
     status = 404
 
 

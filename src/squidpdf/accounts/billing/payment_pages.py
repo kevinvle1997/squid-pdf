@@ -15,7 +15,7 @@ from squidpdf.accounts.deployment import Accounts, Billing
 from squidpdf.accounts.errors import (
     AlreadySubscribed,
     AlreadyUnlimited,
-    NeverPaid,
+    NoBilling,
     NoPayments,
     SignInToPay,
 )
@@ -57,14 +57,14 @@ class BillingPortalController:
     async def portal(self, user: User | None) -> Reply[PaymentPage]:
         """Where `user` manages what they pay: Stripe's portal, for the account's customer.
 
-        Raises NoPayments, SignInToPay, or NeverPaid for an account that has never gone to
+        Raises NoPayments, SignInToPay, or NoBilling for an account that has never gone to
         pay; PaymentsUnavailable while Stripe can't be asked.
         """
         billing = _billing_of(self.accounts)
         if user is None:
             raise SignInToPay()
         if user.stripe_customer is None:
-            raise NeverPaid()
+            raise NoBilling()
         managing = partial(
             _portal_url, self.accounts.users, billing, user, customer=user.stripe_customer
         )
@@ -86,15 +86,24 @@ def _checkout_url(users: UserStore, billing: Billing, user: User, *, site: str) 
     yet be paid, so a second subscription would pay twice.
     """
     customer = user.stripe_customer
-    if customer is not None:
-        if billing.stripe.subscriptions(customer, account=user.id).live > 0:
-            raise AlreadySubscribed()
-        try:
-            return _checkout_for(billing, user, customer=customer, site=site)
-        except NotAtStripe:  # raised by Stripe's client: deleted, or made with the test key
-            users.forget_customer(user.id, customer)
-    made = _customer_of(users, billing, user)
-    return _checkout_for(billing, user, customer=made, site=site)
+    if customer is None:
+        return _checkout_for(
+            billing, user, customer=_customer_of(users, billing, user), site=site
+        )
+    if billing.stripe.subscriptions(customer, account=user.id).unended > 0:
+        raise AlreadySubscribed()
+    return _checkout_as_kept(users, billing, user, customer=customer, site=site)
+
+
+def _checkout_as_kept(
+    users: UserStore, billing: Billing, user: User, *, customer: str, site: str
+) -> str:
+    """Stripe's checkout as the `customer` kept; as a new one, where Stripe hasn't got it."""
+    try:
+        return _checkout_for(billing, user, customer=customer, site=site)
+    except NotAtStripe:  # raised by Stripe's client: deleted, or made with the test key
+        users.forget_customer(user.id, customer)
+    return _checkout_for(billing, user, customer=_customer_of(users, billing, user), site=site)
 
 
 def _checkout_for(billing: Billing, user: User, *, customer: str, site: str) -> str:
@@ -107,12 +116,12 @@ def _checkout_for(billing: Billing, user: User, *, customer: str, site: str) -> 
 def _portal_url(
     users: UserStore, billing: Billing, user: User, *, customer: str, site: str
 ) -> str:
-    """Stripe's portal for `customer`; NeverPaid, and forgotten, where Stripe hasn't got it."""
+    """Stripe's portal for `customer`; NoBilling, and forgotten, where Stripe hasn't got it."""
     try:
-        return billing.stripe.portal_url(customer=customer, site=site)
+        return billing.stripe.billing_portal_url(customer=customer, site=site)
     except NotAtStripe:  # raised by Stripe's client: deleted, or made with the test key
         users.forget_customer(user.id, customer)
-        raise NeverPaid() from None
+        raise NoBilling() from None
 
 
 def _customer_of(users: UserStore, billing: Billing, user: User) -> str:

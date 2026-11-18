@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 
-from squidpdf.accounts.billing.stripe_webhook import stripe_event_in
+from squidpdf.accounts.billing.stripe_signature import stripe_event_in
 from squidpdf.accounts.deployment import Accounts, Billing
 from squidpdf.accounts.types import BillingEvent, BillingOutcome, StripeEvent
 from squidpdf.accounts.users import User, UserStore
@@ -83,7 +83,7 @@ def resync(
 def _apply(users: UserStore, billing: Billing, event: StripeEvent) -> None:
     """Keep `event` in the ledger, once, and set the paid time it leads to."""
     # Sent again, as Stripe does until it hears back: kept already, so Stripe isn't asked.
-    if users.has_billing_event(event.id):
+    if users.has_ledger_event(event.id):
         _log.write(LogEvent.BILLING_EVENT_REPEATED)
         return
     if event.type.startswith(_DISPUTE_EVENTS):
@@ -109,11 +109,11 @@ def _paid_event(
     billing: Billing, event: StripeEvent, *, account: User, customer: str
 ) -> BillingEvent:
     """`event` with the paid time Stripe says `account` has now, and when it was asked."""
-    read_at = time.time_ns() // 1_000_000
+    paid_read_at = time.time_ns() // 1_000_000
     subscriptions = billing.stripe.subscriptions(customer, account=account.id)
     # Two that bill at once: it's paying twice, which whoever runs the server mends in Stripe.
-    if subscriptions.live > 1:
-        _log.write(LogEvent.BILLING_SUBSCRIBED_TWICE, live=subscriptions.live)
+    if subscriptions.unended > 1:
+        _log.write(LogEvent.BILLING_SUBSCRIBED_TWICE, unended=subscriptions.unended)
     return BillingEvent(
         event.id,
         type=event.type,
@@ -122,7 +122,7 @@ def _paid_event(
         account=account.id,
         outcome="applied",
         paid_until=subscriptions.paid_until,
-        read_at=read_at,
+        paid_read_at=paid_read_at,
     )
 
 
@@ -136,5 +136,5 @@ def _kept(event: StripeEvent, *, outcome: BillingOutcome) -> BillingEvent:
         account=None,
         outcome=outcome,
         paid_until=None,
-        read_at=None,
+        paid_read_at=None,
     )
