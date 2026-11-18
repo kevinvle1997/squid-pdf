@@ -137,7 +137,7 @@ def _keeping_accounts(
     store = open_users(tmp_path / "users.sqlite3")
     accounts = Accounts(
         store,
-        MailController(_NoMail(), store),
+        MailController(_NoMail(), store, secret=_SECRET),
         secret=_SECRET,
         site=_SITE,
         invite_only=False,
@@ -523,7 +523,7 @@ def test_an_account_stripe_bills_still_is_kept_and_one_it_bills_nothing_removed(
 ):
     """`squidpdf remove` asks this; the command line can't be handed a Stripe of a test's."""
     billing = app.state.accounts.billing
-    account = paying.invite(_EMAIL, now=0, is_unlimited=False).id
+    account = paying.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET).id
     paying.keep_customer(account, _CUSTOMER)
     # A renewal's charge failed, and Stripe tries the card again: it may yet bill them.
     until = int(time.time()) + _MONTH_S
@@ -655,7 +655,7 @@ def test_paying_again_or_for_an_unlimited_friend_is_refused_and_stripe_isnt_aske
     paying, stripe, browser: Callable[[], TestClient]
 ):
     friend = browser()
-    paying.invite("friend@example.com", now=0, is_unlimited=True)
+    paying.invite("friend@example.com", now=0, is_unlimited=True, secret=_SECRET)
     _signed_in_as(friend, paying, "friend@example.com")
     assert_problem(friend.post("/api/account/checkout"), "already_unlimited", 409)
     payer = browser()

@@ -34,7 +34,7 @@ class BounceController:
         for email in bounced:
             # Off the loop: it writes the table.
             had_account = await asyncio.to_thread(
-                self.accounts.users.note_bounce, email, now=now
+                self.accounts.users.note_bounce, email, secret=self.accounts.secret, now=now
             )
             _log.write(LogEvent.MAIL_BOUNCE_NOTED, had_account=had_account)
         return Reply(b"", {}, HTTPStatus.NO_CONTENT)

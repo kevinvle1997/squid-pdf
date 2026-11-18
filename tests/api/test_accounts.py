@@ -70,7 +70,7 @@ def _accounts(
     users = open_users(tmp_path / "users.sqlite3")
     return Accounts(
         users,
-        MailController(mailer, users),
+        MailController(mailer, users, secret=_SECRET),
         secret=_SECRET,
         site=_SITE,
         invite_only=invite_only,
@@ -224,7 +224,7 @@ def test_what_cannot_be_an_email_address_is_refused_before_anything_is_sent(
 def test_a_friend_invited_without_a_limit_signs_in_as_one(
     mail, app: FastAPI, browser: Callable[[], TestClient]
 ):
-    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=True)
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=True, secret=_SECRET)
     reader = browser()
     reader.post("/api/account/link", json={"email": _EMAIL})
     signed_in = reader.post("/api/account/sign-in", json={"token": _token_in(mail.letters[0])})
@@ -307,7 +307,7 @@ def test_invite_only_a_refused_link_is_said_as_any_address_is(
         "k", sender="sign-in@example.com", transport=httpx.MockTransport(brevo)
     )
     accounts = _accounts(tmp_path, mailer, invite_only=True)
-    accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     monkeypatch.setattr(app.state, "accounts", accounts)
     reader = browser()
     with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
@@ -350,7 +350,7 @@ def test_a_hard_bounce_stops_links_to_the_address_until_it_is_invited_again(
     invited_mail, app: FastAPI, browser: Callable[[], TestClient]
 ):
     users = app.state.accounts.users
-    users.invite(_EMAIL, now=0, is_unlimited=False)
+    users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     reader, brevo = browser(), browser()
     bearer = {"Authorization": f"Bearer {_WEBHOOK_TOKEN.decode()}"}
     bounced = {"event": "hard_bounce", "email": _EMAIL.upper(), "reason": "no such mailbox"}
@@ -369,9 +369,31 @@ def test_a_hard_bounce_stops_links_to_the_address_until_it_is_invited_again(
     sent = reader.post("/api/account/link", json={"email": _EMAIL})
     assert_equal(sent.status_code, 202, "said the same as any address")
     assert_equal(len(invited_mail.letters), 1, "nothing more went to a bounced address")
-    users.invite(_EMAIL, now=1, is_unlimited=False)
+    users.invite(_EMAIL, now=1, is_unlimited=False, secret=_SECRET)
     reader.post("/api/account/link", json={"email": _EMAIL})
     assert_equal(len(invited_mail.letters), 2, "invited again, links go to it again")
+
+
+def test_where_anyone_may_sign_in_an_address_with_no_account_that_bounced_gets_no_more_links(
+    mail, browser: Callable[[], TestClient], tmp_path
+):
+    """A mistyped address never signs in, so it never has an account to mark: it's kept apart.
+
+    Kept as a keyed digest, so the file never holds the address of someone who isn't in.
+    """
+    reader, brevo = browser(), browser()
+    stranger = "mistyped@example.com"
+    reader.post("/api/account/link", json={"email": stranger})
+    assert_equal(len(mail.letters), 1, "the first link")
+    bearer = {"Authorization": f"Bearer {_WEBHOOK_TOKEN.decode()}"}
+    bounced = {"event": "hard_bounce", "email": stranger}
+    noted = brevo.post("/api/account/mail-events", json=bounced, headers=bearer)
+    assert_equal(noted.status_code, 204, "noted")
+    sent = reader.post("/api/account/link", json={"email": stranger})
+    assert_equal(sent.status_code, 202, "said the same as any address")
+    assert_equal(len(mail.letters), 1, "nothing more went to it")
+    kept = b"".join(path.read_bytes() for path in tmp_path.iterdir() if path.is_file())
+    assert_equal(stranger.encode() in kept, False, "the address on disk")
 
 
 def test_a_table_made_before_bounces_used_links_and_billing_were_kept_opens_with_none(tmp_path):
@@ -494,7 +516,7 @@ def test_invite_only_a_stranger_opens_nothing_until_invited_and_signed_in(
     # What the landing needs before anyone signs in.
     for open_path in ("/api/health", "/api/terms", "/api/account"):
         assert_equal(reader.get(open_path).status_code, 200, open_path)
-    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     reader.post("/api/account/link", json={"email": _EMAIL})
     reader.post("/api/account/sign-in", json={"token": _token_in(invited_mail.letters[0])})
     assert_equal(upload(reader, pdf_bytes).status_code, 201, "signed in, the upload is read")
@@ -506,7 +528,7 @@ def test_invite_only_an_address_no_one_invited_gets_no_link_and_hears_what_the_i
     invited_mail, app: FastAPI, browser: Callable[[], TestClient]
 ):
     """Whether someone is invited is theirs and the server's to know, no one else's."""
-    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     stranger = browser().post("/api/account/link", json={"email": "stranger@example.com"})
     invited = browser().post("/api/account/link", json={"email": _EMAIL})
     for sent in (stranger, invited):
@@ -534,7 +556,7 @@ def test_invite_only_a_link_is_answered_before_its_mail_goes_so_the_wait_tells_n
     held = _HeldMail()
     with ThreadPoolExecutor(1) as mail_threads:
         accounts = _accounts(tmp_path, held, invite_only=True, mail_threads=mail_threads)
-        accounts.users.invite(_EMAIL, now=0, is_unlimited=False)
+        accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
         monkeypatch.setattr(app.state, "accounts", accounts)
         sent = browser().post("/api/account/link", json={"email": _EMAIL})
         assert_equal(sent.status_code, 202, "answered, the mail server still holding it")
@@ -627,7 +649,7 @@ def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
 def test_an_unlimited_friend_opens_as_many_as_they_like(
     metered_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
 ):
-    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=True)
+    app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=True, secret=_SECRET)
     reader = browser()
     _sign_in(reader, metered_mail)
     for opened in _files(pdf_bytes, 5):
@@ -692,7 +714,7 @@ def test_invite_only_a_removed_friend_is_let_go_from_every_browser_at_once(
     invited_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
 ):
     users = app.state.accounts.users
-    users.invite(_EMAIL, now=0, is_unlimited=False)
+    users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     laptop, phone = browser(), browser()
     _sign_in(laptop, invited_mail)
     _sign_in_a_moment_later(phone)
@@ -739,7 +761,7 @@ def test_a_removed_address_is_gone_from_the_file_not_only_the_table(tmp_path):
     """A deletion leaves its bytes in the file's free space unless they're overwritten."""
     database = tmp_path / "users.sqlite3"
     users = open_users(database)
-    users.invite("secret-person@example.com", now=0, is_unlimited=False)
+    users.invite("secret-person@example.com", now=0, is_unlimited=False, secret=_SECRET)
     users.remove("secret-person@example.com", now=0)
     kept = b"".join(path.read_bytes() for path in tmp_path.iterdir() if path.is_file())
     assert_equal(b"secret-person@example.com" in kept, False, "the address on disk")

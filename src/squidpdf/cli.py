@@ -35,7 +35,13 @@ from typing import TextIO, assert_never, get_args
 
 from squidpdf.accounts.billing.removal import remove_account
 from squidpdf.accounts.billing.webhook import resync
-from squidpdf.accounts.deployment import AccountsUnset, Billing, deployed_accounts, named_users
+from squidpdf.accounts.deployment import (
+    AccountsUnset,
+    Billing,
+    deployed_accounts,
+    named_secret,
+    named_users,
+)
 from squidpdf.accounts.errors import PaymentsUnavailable
 from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import User, UserStore, checked_email
@@ -499,7 +505,11 @@ def _cmd_invite(args: argparse.Namespace) -> int:
     if users is None:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
-    user = users.invite(email, now=int(time.time()), is_unlimited=args.unlimited)
+    try:
+        secret = named_secret()
+    except AccountsUnset as unset:  # raised by named_secret: none set, or one too short
+        return _fail(words.render(Message("no_secret", {"email": email})), hint=f"({unset})")
+    user = users.invite(email, now=int(time.time()), is_unlimited=args.unlimited, secret=secret)
     said = "invited_unlimited" if user.is_unlimited else "invited"
     print(f"  {_GREEN}{words.render(Message(said, {'email': user.email}))}{_OFF}")
     return 0

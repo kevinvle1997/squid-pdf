@@ -26,6 +26,9 @@ from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
 from tests.conftest import OTHER_LINE, named_only, with_hidden_copies
 from tests.helpers import assert_equal, assert_false, assert_in, assert_not_in, assert_true
 
+# What the server signs and keys bounces with, as the environment would set it.
+_SECRET = b"a test's secret, long enough to sign with"
+
 
 def _span_id(pdf: str, needle: str) -> str:
     """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
@@ -512,6 +515,7 @@ def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_ag
 ):
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
     assert_equal(main(["invite", " Friend@Example.com", "--unlimited"]), 0, "exit code")
     assert_in("friend@example.com is invited, and may use", capsys.readouterr().out, "said")
     friend = open_users(database).find("friend@example.com")
@@ -528,7 +532,7 @@ def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     users = open_users(database)
-    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     now = int(time.time())
 
     def paid_until(until: int | None, *, event: str) -> None:
@@ -558,7 +562,7 @@ def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     users = open_users(database)
-    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     users.keep_customer(account, "cus_test")
     assert_equal(main(["billing", "payer@example.com"]), 0, "exit code, never paid")
     assert_in("payer@example.com has no paid month", capsys.readouterr().out, "said")
@@ -586,13 +590,41 @@ def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(tmp_path, monkey
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     users = open_users(database)
-    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     users.keep_customer(account, "cus_test")
     assert_equal(main(["remove", "payer@example.com"]), 1, "exit code, remove")
     assert_in("isn't set up to ask Stripe", capsys.readouterr().err, "said")
     assert_equal(users.find("payer@example.com") is None, False, "the account is kept")
     assert_equal(main(["billing", "payer@example.com", "--resync"]), 1, "exit code, sync")
     assert_in("isn't set up to ask Stripe", capsys.readouterr().err, "said")
+
+
+def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(
+    tmp_path, monkeypatch
+):
+    """Invited, the address is trusted mended: its account, taken off later, blocks nothing."""
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
+    users = open_users(database)
+    users.note_bounce("friend@example.com", secret=_SECRET, now=0)
+    assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), True, "bounced")
+    assert_equal(main(["invite", "friend@example.com"]), 0, "exit code")
+    assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), False, "cleared")
+    users.remove("friend@example.com", now=1)
+    assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), False, "taken off")
+
+
+def test_invite_without_the_servers_secret_invites_no_one_and_says_so(
+    tmp_path, monkeypatch, capsys
+):
+    """Run where the server isn't, it would leave a bounce kept for the address standing."""
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    monkeypatch.delenv("SQUIDPDF_SECRET", raising=False)
+    assert_equal(main(["invite", "friend@example.com"]), 1, "exit code")
+    assert_in("SQUIDPDF_SECRET", capsys.readouterr().err, "what it needs")
+    assert_equal(open_users(database).find("friend@example.com"), None, "no one invited")
 
 
 def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
@@ -606,6 +638,7 @@ def test_remove_takes_an_account_off_and_says_when_there_was_none(
 ):
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
     main(["invite", "friend@example.com", "--unlimited"])
     capsys.readouterr()
     assert_equal(main(["remove", " Friend@Example.com"]), 0, "exit code")

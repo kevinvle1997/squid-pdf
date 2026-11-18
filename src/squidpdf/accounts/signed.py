@@ -15,9 +15,9 @@ from typing import Literal
 
 import orjson
 
-# What a value is signed for: a link that signs someone in, the cookie that says they are, or
-# the cookie listing the files a browser opened without an account.
-Purpose = Literal["link", "signed_in", "counted"]
+# What a value is signed for: a link that signs someone in, the cookie that says they are, the
+# cookie listing the files a browser opened without an account, or an address that bounced.
+Purpose = Literal["link", "signed_in", "counted", "bounced"]
 _SEPARATOR = "."
 
 
@@ -50,6 +50,11 @@ def read_signed(token: str, *, purpose: Purpose, now: int, secret: bytes) -> Sig
     if read["until"] <= now:
         return None
     return Signed(read["value"], read["until"])
+
+
+def digest_of(value: str, *, purpose: Purpose, secret: bytes) -> str:
+    """`value` as only `secret` makes it for `purpose`: the same each time, never read back."""
+    return _signature(value, purpose=purpose, secret=secret)
 
 
 def _signature(payload: str, *, purpose: Purpose, secret: bytes) -> str:
