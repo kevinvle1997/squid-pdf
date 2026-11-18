@@ -128,12 +128,12 @@ def test_work_past_its_timeout_is_killed_and_called_too_slow(runner, pool):
     assert_at_most(waited, _ENOUGH_S, f"seconds waited for a {_TIMEOUT_S} s timeout")
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="the memory ceiling is Linux only")
 def _return_too_much_to_send_back() -> bytes:
     """Work whose result fits under the memory ceiling, but not beside its copy to send back."""
     return bytes(WORKER_MEMORY_BYTES * 3 // 5)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the memory ceiling is Linux only")
 @pytest.mark.parametrize(
     "task",
     [_overeat, _return_too_much_to_send_back],
