@@ -1,9 +1,9 @@
-"""What the browser is told about accounts, and what Brevo's webhook tells the server."""
+"""What the browser is told about accounts, and what Brevo and Stripe tell the server."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 class SignedIn(TypedDict):
@@ -33,3 +33,21 @@ class MailEvent:
 
     event: str
     email: str
+
+
+# What a billing event did: set an account's paid time, named a customer no account has, or
+# was of a kind billing doesn't act on.
+BillingOutcome = Literal["applied", "no_account", "ignored"]
+
+
+@dataclass(frozen=True, slots=True)
+class BillingEvent:
+    """One event Stripe sent, as the ledger keeps it: what it was, and what it did."""
+
+    id: str  # Stripe's own, so the same event sent again is the same row
+    type: str  # Stripe's word for it, as customer.subscription.updated
+    created: int  # when Stripe made it, Unix seconds
+    customer: str | None  # the Stripe customer it's about; None for one about none
+    account: str | None  # the account whose paid time it set; None where it set none
+    outcome: BillingOutcome
+    paid_until: int | None  # the paid time it set, Unix seconds; None for none

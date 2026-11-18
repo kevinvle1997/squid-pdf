@@ -6,8 +6,9 @@
 #
 # Each is signed out of every browser at once, and their account and its count are gone;
 # their documents go when their hour runs out, as everyone's do. Where only the invited may
-# sign in, they're out until invited again; where anyone may, they can sign up afresh. Stops at the first address the
-# app has no account for; those before it are gone.
+# sign in, they're out until invited again; where anyone may, they can sign up afresh. An
+# account whose month is paid is kept: cancel its subscription in Stripe first. Stops at the
+# first address the app has no account for, or keeps; those before it are gone.
 set -euo pipefail
 
 usage() {

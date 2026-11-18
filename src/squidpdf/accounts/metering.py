@@ -60,8 +60,11 @@ class _AccountMeter:
     user: User
 
     def check(self, digest: str) -> None:
-        """Raise MonthlyDocumentsUsed if `digest` is new and the month's are used."""
-        if self.user.is_unlimited:
+        """Raise MonthlyDocumentsUsed if `digest` is new and the month's are used.
+
+        None counts against an unlimited account, or one whose month is paid.
+        """
+        if self.user.is_unlimited or self.user.is_paid_at(int(time.time())):
             return
         counted = self.accounts.users.counted_in(self.user.id, month=_this_month())
         is_new = digest not in counted

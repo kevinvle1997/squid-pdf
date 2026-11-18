@@ -370,3 +370,4 @@ no_database = "SQUIDPDF_DATABASE names no database, so this server keeps no acco
 # What `squidpdf remove` says.
 removed = "{email} is removed and signed out everywhere. Their documents go when their hour runs out, as everyone's do."
 no_account = "{email} has no account here, so nothing was removed."
+still_paying = "{email} pays for no document limit, so nothing was removed: they'd be charged for an account that's gone. Cancel their subscription in Stripe, then remove them."
