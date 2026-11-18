@@ -272,6 +272,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checkout
+         * @description Where this browser's account pays monthly for no document limit: Stripe's checkout.
+         */
+        post: operations["checkout_api_account_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/billing-portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Billing Portal
+         * @description Where this browser's account manages what it pays: Stripe's portal.
+         */
+        post: operations["billing_portal_api_account_billing_portal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/billing-events": {
         parameters: {
             query?: never;
@@ -327,6 +367,8 @@ export interface components {
             offered: boolean;
             /** Invite Only */
             invite_only: boolean;
+            /** Takes Payment */
+            takes_payment: boolean;
             signed_in: components["schemas"]["SignedIn"] | null;
         };
         /**
@@ -758,6 +800,14 @@ export interface components {
         };
         Param: string | number | string[];
         /**
+         * PaymentPage
+         * @description Stripe's page this browser goes to next: its checkout, or its portal.
+         */
+        PaymentPage: {
+            /** Url */
+            url: string;
+        };
+        /**
          * ProblemInfo
          * @description A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
          *
@@ -769,7 +819,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "free_documents_used" | "invalid_request" | "invited_only" | "link_expired" | "mail_limit_reached" | "mail_not_sent" | "method_not_allowed" | "monthly_documents_used" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_invited" | "not_sent_as_pdf" | "payments_unavailable" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
+            type: "already_unlimited" | "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "free_documents_used" | "invalid_request" | "invited_only" | "link_expired" | "mail_limit_reached" | "mail_not_sent" | "method_not_allowed" | "monthly_documents_used" | "never_paid" | "no_accounts" | "no_payments" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_invited" | "not_sent_as_pdf" | "payments_unavailable" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "sign_in_to_pay" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -1066,6 +1116,10 @@ export interface components {
             email: string;
             /** Is Unlimited */
             is_unlimited: boolean;
+            /** Paid Until */
+            paid_until: number | null;
+            /** Has Billing */
+            has_billing: boolean;
         };
         /**
          * SkippedInfo
@@ -1698,6 +1752,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    checkout_api_account_checkout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentPage"];
+                };
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    billing_portal_api_account_billing_portal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentPage"];
+                };
             };
             /** @description Problem Details: what went wrong, in the reader's words */
             default: {

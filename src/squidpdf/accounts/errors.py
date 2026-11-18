@@ -40,6 +40,34 @@ class PaymentsUnavailable(Problem):
     status = 503
 
 
+class NoPayments(Problem):
+    """This server takes no payment, as a self-hosted copy takes none."""
+
+    type = "no_payments"
+    status = 404
+
+
+class SignInToPay(Problem):
+    """No account is signed in: payment lifts an account's limit, so one must be."""
+
+    type = "sign_in_to_pay"
+    status = 401
+
+
+class AlreadyUnlimited(Problem):
+    """The account has no document limit already: a friend's, or a month paid."""
+
+    type = "already_unlimited"
+    status = 409
+
+
+class NeverPaid(Problem):
+    """The account has never gone to pay, so Stripe has no billing of it to manage."""
+
+    type = "never_paid"
+    status = 404
+
+
 class NoAccounts(Problem):
     """This server keeps no accounts, as a self-hosted copy keeps none."""
 

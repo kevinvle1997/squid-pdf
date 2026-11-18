@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { anAccount } from "../fixtures";
+import { anAccount, aSignedIn } from "../fixtures";
 import { mustSignIn, signedInAs, tokenIn } from "./account";
 
 describe("tokenIn", () => {
@@ -18,7 +18,7 @@ describe("tokenIn", () => {
 describe("mustSignIn", () => {
   test("only a browser not signed in, on a server open to invited people only, must sign in first", () => {
     const stranger = anAccount({ invite_only: true });
-    const invited = anAccount({ invite_only: true, signed_in: { email: "a@example.com", is_unlimited: false } });
+    const invited = anAccount({ invite_only: true, signed_in: aSignedIn({ email: "a@example.com" }) });
     expect(mustSignIn({ kind: "read", state: stranger })).toBe(true);
     expect(mustSignIn({ kind: "read", state: invited })).toBe(false);
     expect(mustSignIn({ kind: "read", state: anAccount() })).toBe(false);
@@ -29,7 +29,7 @@ describe("mustSignIn", () => {
 });
 
 test("signedInAs names the address signed in, and nothing where none is", () => {
-  const state = anAccount({ signed_in: { email: "a@example.com", is_unlimited: false } });
+  const state = anAccount({ signed_in: aSignedIn({ email: "a@example.com" }) });
   expect(signedInAs({ kind: "read", state })).toBe("a@example.com");
   expect(signedInAs({ kind: "read", state: anAccount() })).toBeNull();
   expect(signedInAs({ kind: "asking" })).toBeNull();

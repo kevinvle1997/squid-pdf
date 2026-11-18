@@ -11,6 +11,8 @@ class SignedIn(TypedDict):
 
     email: str
     is_unlimited: bool  # uses as many documents as they like
+    paid_until: int | None  # paid for no document limit until then, Unix seconds; None if not
+    has_billing: bool  # has gone to pay, so Stripe's portal has their billing
 
 
 class AccountState(TypedDict):
@@ -18,7 +20,14 @@ class AccountState(TypedDict):
 
     offered: bool  # false on a server that keeps none, as a self-hosted copy
     invite_only: bool  # only invited people may sign in, and only they open documents
+    takes_payment: bool  # an account may pay for no document limit
     signed_in: SignedIn | None
+
+
+class PaymentPage(TypedDict):
+    """Stripe's page this browser goes to next: its checkout, or its portal."""
+
+    url: str
 
 
 class LinkSent(TypedDict):

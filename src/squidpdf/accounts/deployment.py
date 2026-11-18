@@ -50,14 +50,16 @@ _SECURITIES: dict[str, Security] = {"tls": "tls", "starttls": "starttls"}
 _FREE_DOCUMENTS = "SQUIDPDF_FREE_DOCUMENTS"
 _DOCUMENTS_A_MONTH = "SQUIDPDF_DOCUMENTS_A_MONTH"
 _ALLOWANCE = (_FREE_DOCUMENTS, _DOCUMENTS_A_MONTH)
-# Stripe, where the deployment takes payment: its secret key and its webhook's signing secret,
-# both or neither, and only with an allowance for payment to lift.
+# Stripe, where the deployment takes payment: its secret key, its webhook's signing secret and
+# the monthly price paid, all or none, and only with an allowance for payment to lift.
 _STRIPE_KEY = "SQUIDPDF_STRIPE_KEY"
 _STRIPE_WEBHOOK_SECRET = "SQUIDPDF_STRIPE_WEBHOOK_SECRET"
-_STRIPE = (_STRIPE_KEY, _STRIPE_WEBHOOK_SECRET)
-# How each begins as Stripe makes them: a secret or restricted key, and a signing secret.
+_STRIPE_PRICE = "SQUIDPDF_STRIPE_PRICE"
+_STRIPE = (_STRIPE_KEY, _STRIPE_WEBHOOK_SECRET, _STRIPE_PRICE)
+# How each begins as Stripe makes them: a secret or restricted key, a signing secret, a price.
 _STRIPE_KEY_STARTS = ("sk_", "rk_")
 _WEBHOOK_SECRET_STARTS = "whsec_"
+_PRICE_STARTS = "price_"
 _MIN_SECRET_CHARS = 32  # 192 bits as base64, the least; env.example's command writes 256
 
 
@@ -85,10 +87,11 @@ def _billing_threads() -> ThreadPoolExecutor:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Billing:
-    """What taking payment needs: Stripe, its webhook's secret, and threads of its own."""
+    """What taking payment needs: Stripe, its webhook's secret, the price, its own threads."""
 
     stripe: StripeApi
     webhook_secret: bytes = field(repr=False)  # signs each event Stripe's webhook sends
+    price: str  # Stripe's monthly price an account pays, as price_...
     # Stripe is called on threads of its own: a Stripe that hangs holds these, never the
     # threads every upload and read share.
     threads: ThreadPoolExecutor = field(default_factory=_billing_threads, repr=False)
@@ -186,21 +189,23 @@ def _refuse_metering_without_accounts() -> None:
 
 
 def _billing(allowance: Allowance | None) -> Billing | None:
-    """Stripe, where the environment sets its key and webhook's secret; None where neither."""
+    """Stripe, where the environment sets its key, secret and price; None where none."""
     named = [os.environ.get(name) for name in _STRIPE]  # .get: unset takes no payment
     if not any(named):
         return None
     if not all(named):
-        raise AccountsUnset(f"payments need both {' and '.join(_STRIPE)}, or neither")
+        raise AccountsUnset(f"payments need all of {', '.join(_STRIPE)}, or none")
     if allowance is None:
         raise AccountsUnset(f"payment lifts a limit, so it needs {' and '.join(_ALLOWANCE)}")
-    key, webhook_secret = (os.environ[name] for name in _STRIPE)
-    # Neither value goes in the message: each is a secret.
+    key, webhook_secret, price = (os.environ[name] for name in _STRIPE)
+    # No value goes in the message: the key and the secret are secrets.
     if not key.startswith(_STRIPE_KEY_STARTS):
         raise AccountsUnset(f"{_STRIPE_KEY} is no Stripe secret key, which starts sk_ or rk_")
     if not webhook_secret.startswith(_WEBHOOK_SECRET_STARTS):
         raise AccountsUnset(f"{_STRIPE_WEBHOOK_SECRET} is no signing secret, as whsec_...")
-    return Billing(stripe_api(key), webhook_secret=webhook_secret.encode())
+    if not price.startswith(_PRICE_STARTS):
+        raise AccountsUnset(f"{_STRIPE_PRICE} is no Stripe price, as price_...")
+    return Billing(stripe_api(key), webhook_secret=webhook_secret.encode(), price=price)
 
 
 def _count_in(name: str) -> int:

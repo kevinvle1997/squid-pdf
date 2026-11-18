@@ -15,7 +15,7 @@ import {
   persistState,
 } from "./documents/localPersistence";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
-import { aDoc, aFont, anAccount, aProblem, aSpan, TERMS } from "./fixtures";
+import { aDoc, aFont, anAccount, aProblem, aSignedIn, aSpan, TERMS } from "./fixtures";
 import { animationsDone, emulateTouchScreen } from "./testing";
 
 vi.mock(import("./api/client"), async (original) => ({
@@ -402,7 +402,7 @@ test("the terms' page says why it can't read them in the status that was waiting
   await expect.element(screen.getByRole("button", { name: "Reload" })).toBeVisible();
 });
 
-const INVITED = { email: "friend@example.com", is_unlimited: false };
+const INVITED = aSignedIn({ email: "friend@example.com" });
 const LINK_SENT = "If friend@example.com is invited, a link is on its way.";
 
 test("open to invited people only, a browser not signed in is asked to, and told where its link went", async () => {
