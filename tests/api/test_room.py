@@ -85,9 +85,22 @@ def _add_walls_page(doc: pymupdf.Document) -> None:
     first_width = pymupdf.get_text_length(_KERNED[0], fontsize=_SIZE)
     page.insert_text((72, 100), _KERNED[0], fontsize=_SIZE)
     page.insert_text((72 + first_width - 0.3, 100), _KERNED[1], fontsize=_SIZE, fontname="hebo")
+
     page.insert_text((72, 200), _LONG, fontsize=_SIZE)
     page.insert_text((72, 214), "short", fontsize=_SIZE)
     page.insert_text((_TURNED_X, 230), "TURNED", fontsize=_SIZE, rotate=90)
+
+    _draw_grid(page)
+    for row, text in enumerate(_GRID):
+        page.insert_text((74, 300 + row * 20), text, fontsize=_SIZE)
+
+    page.insert_text((72, 500), _LONG, fontsize=_SIZE)
+    page.insert_text((72, 514), _RULED, fontsize=_SIZE)
+    page.draw_line((_RULE_X, 480), (_RULE_X, 700), width=_RULE_WIDTH)
+
+
+def _draw_grid(page: pymupdf.Page) -> None:
+    """A table grid of two rows and two columns, drawn as one path."""
     grid = page.new_shape()
     for row in range(2):
         top = 288 + row * 20
@@ -95,11 +108,6 @@ def _add_walls_page(doc: pymupdf.Document) -> None:
         grid.draw_rect(pymupdf.Rect(_CELL_X, top, 300, top + 20))
     grid.finish(color=(0, 0, 0), width=_GRID_STROKE)
     grid.commit()
-    for row, text in enumerate(_GRID):
-        page.insert_text((74, 300 + row * 20), text, fontsize=_SIZE)
-    page.insert_text((72, 500), _LONG, fontsize=_SIZE)
-    page.insert_text((72, 514), _RULED, fontsize=_SIZE)
-    page.draw_line((_RULE_X, 480), (_RULE_X, 700), width=_RULE_WIDTH)
 
 
 @pytest.fixture
