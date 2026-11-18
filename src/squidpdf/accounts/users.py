@@ -30,10 +30,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
+from sqlalchemy.schema import CreateTable
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.errors import NotAnEmail
-from squidpdf.accounts.types import BillingEvent
+from squidpdf.accounts.types import BillingEvent, BillingOutcome
 
 _ID_BYTES = 16
 # What a To: header reads as one address ending and another, or a name, beginning.
@@ -61,6 +62,8 @@ _USERS = Table(
     Column("stripe_customer", Text, nullable=True),
     # Until when Stripe last said the account's month is paid (Unix seconds); None if never.
     Column("paid_until", Integer, nullable=True),
+    # When Stripe was asked for that (Unix ms): an answer asked for before it never replaces it.
+    Column("paid_read_at", Integer, nullable=True),
 )
 # Columns added since the table was first made, each added to a table from before it, with
 # its SQL type: SQLite adds no column as UNIQUE, so the customer's index is made apart.
@@ -69,6 +72,7 @@ _ADDED_COLUMNS = {
     "link_until": "INTEGER",
     "stripe_customer": "TEXT",
     "paid_until": "INTEGER",
+    "paid_read_at": "INTEGER",
 }
 _ONE_ACCOUNT_A_CUSTOMER = (
     "CREATE UNIQUE INDEX IF NOT EXISTS users_stripe_customer ON users (stripe_customer)"
@@ -86,6 +90,7 @@ _BILLING_EVENTS = Table(
     Column("account", Text, nullable=True),  # an account's id, kept once the account is gone
     Column("outcome", Text, nullable=False),
     Column("paid_until", Integer, nullable=True),
+    Column("read_at", Integer, nullable=True),  # when Stripe was asked, Unix ms
 )
 
 # What `remove` did: took the account off, found none, or kept it, its month still paid.
@@ -183,31 +188,30 @@ class UserStore:
             kept = connection.execute(select(_USERS.c.id).where(_USERS.c.email == email))
             return "no_account" if kept.first() is None else "paying"
 
-    def apply_billing(self, billing: BillingEvent, *, now: int) -> bool:
-        """Keep `billing` in the ledger, and set the paid time it says; whether it was new.
+    def apply_billing(self, billing: BillingEvent, *, now: int) -> BillingOutcome | None:
+        """Set the paid time `billing` says, and keep it in the ledger with what it did.
 
-        One transaction: an event is in the ledger exactly when its paid time is set, and
-        one sent again changes nothing.
+        One transaction, so the ledger says what each event did. Paid time Stripe was asked
+        for before the time kept already is kept in the ledger only: the later read stands,
+        whichever process, or event, made it. None for an event the ledger has already.
         """
-        kept = insert(_BILLING_EVENTS).values(
-            id=billing.id,
-            type=billing.type,
-            created=billing.created,
-            received_at=now,
-            customer=billing.customer,
-            account=billing.account,
-            outcome=billing.outcome,
-            paid_until=billing.paid_until,
-        )
+        outcome = billing.outcome
         with self.database.begin() as connection:
+            if outcome == "applied" and not _paid_time_set(connection, billing):
+                outcome = "superseded"
+            kept = insert(_BILLING_EVENTS).values(
+                id=billing.id,
+                type=billing.type,
+                created=billing.created,
+                received_at=now,
+                customer=billing.customer,
+                account=billing.account,
+                outcome=outcome,
+                paid_until=billing.paid_until,
+                read_at=billing.read_at,
+            )
             noted = connection.execute(kept.on_conflict_do_nothing(index_elements=["id"]))
-            # Sent again: what it set is set already, and anything since must stand.
-            if noted.rowcount == 0:
-                return False
-            if billing.outcome == "applied":
-                paid = _USERS.update().where(_USERS.c.id == billing.account)
-                connection.execute(paid.values(paid_until=billing.paid_until))
-            return True
+            return outcome if noted.rowcount > 0 else None
 
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
         """The files the account opened in `month`, by digest: none, once a new one starts.
@@ -255,7 +259,11 @@ def open_users(path: Path) -> UserStore:
     # A connection per use, closed after: a file opens in microseconds, and none is left open.
     database = create_engine(f"sqlite:///{path}", poolclass=NullPool)
     event.listen(database, "connect", _set_up_connection)
-    _TABLES.create_all(database)
+    # IF NOT EXISTS: create_all looks, then makes, which races the app and the command line
+    # opening a new file at once.
+    with database.begin() as connection:
+        for table in _TABLES.sorted_tables:
+            connection.execute(CreateTable(table, if_not_exists=True))
     for column, kind in _ADDED_COLUMNS.items():
         _add_column(database, column, kind=kind)
     with database.begin() as connection:
@@ -319,6 +327,19 @@ def _counted_from(counted_month: str | None, counted: str, *, month: str) -> fro
     if counted_month != month:
         return frozenset()
     return frozenset(counted.split())
+
+
+def _paid_time_set(connection: Any, billing: BillingEvent) -> bool:
+    """Set the paid time `billing` says, unless the time kept was asked of Stripe later."""
+    asked_later = _USERS.c.paid_read_at.is_not(None) & (
+        _USERS.c.paid_read_at >= billing.read_at
+    )
+    paid = (
+        _USERS.update()
+        .where(_USERS.c.id == billing.account, ~asked_later)
+        .values(paid_until=billing.paid_until, paid_read_at=billing.read_at)
+    )
+    return connection.execute(paid).rowcount > 0
 
 
 def _user_from(row: Row[Any]) -> User:

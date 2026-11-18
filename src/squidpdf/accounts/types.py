@@ -35,9 +35,9 @@ class MailEvent:
     email: str
 
 
-# What a billing event did: set an account's paid time, named a customer no account has, or
-# was of a kind billing doesn't act on.
-BillingOutcome = Literal["applied", "no_account", "ignored"]
+# What a billing event did: set an account's paid time; read Stripe before a read kept already,
+# so it set nothing; named a customer no account has; or was of a kind billing doesn't act on.
+BillingOutcome = Literal["applied", "superseded", "no_account", "ignored"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,4 +50,5 @@ class BillingEvent:
     customer: str | None  # the Stripe customer it's about; None for one about none
     account: str | None  # the account whose paid time it set; None where it set none
     outcome: BillingOutcome
-    paid_until: int | None  # the paid time it set, Unix seconds; None for none
+    paid_until: int | None  # the paid time Stripe said, Unix seconds; None for none
+    read_at: int | None  # when Stripe was asked for it, Unix ms; None where it wasn't asked
