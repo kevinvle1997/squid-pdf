@@ -150,10 +150,9 @@ def _draw_regions(
         redactions = redactions_of(
             engine, resolved, redacted_by(steps), edited=edited_by(steps)
         )
-        hidden = redactions.hidden_places(engine)  # before run: it takes the words out
         ran = run(engine, steps)
         verdicts = verdicts_of(fits, ran)
-        redaction_per_span = redactions.drawn(engine, hidden=hidden)
+        redaction_per_span = redactions.drawn(engine)
         images = _draw(engine, regions, drawn_pages=drawn_pages)
 
     return Rendered(

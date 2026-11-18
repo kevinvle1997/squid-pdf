@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 import pymupdf
 import pytest
@@ -36,8 +37,9 @@ TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on eac
 
 @dataclass(frozen=True, slots=True)
 class StoreWith:
-    """The folder store, with a test's own open, touch or sweep: a race it sets up."""
+    """The folder store, with a test's own open, touch or sweep: a race, or a full disk."""
 
+    opens_to_write: Callable[[Path], BinaryIO] = FOLDER_STORE.open_to_write
     opens_original: Callable[[Path], Engine] = FOLDER_STORE.open_original
     touches: Callable[[Path], float] = FOLDER_STORE.touch
     sweeps: Callable[[], None] = FOLDER_STORE.sweep
@@ -54,6 +56,10 @@ class StoreWith:
     def find(self, doc_id: str) -> tuple[Path, str] | None:
         """The folder store's."""
         return FOLDER_STORE.find(doc_id)
+
+    def open_to_write(self, folder: Path) -> BinaryIO:
+        """The test's, or the folder store's."""
+        return self.opens_to_write(folder)
 
     def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
         """The folder store's."""

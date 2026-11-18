@@ -22,8 +22,8 @@ import pytest
 from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import open_users
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
-from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
-from tests.conftest import OTHER_LINE, named_only, with_hidden_copies
+from squidpdf.core import Fidelity, Message, open_pdf, words
+from tests.conftest import OTHER_LINE, named_only, new_stream, with_hidden_copies
 from tests.helpers import (
     assert_at_least,
     assert_equal,
@@ -309,18 +309,48 @@ def test_a_protected_files_plain_xmp_is_left_out_of_the_saved_file_and_said(
     assert_in(words.sentence("plain_xmp_dropped"), capsys.readouterr().out, "what it says")
 
 
-def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(
-    pdf, tmp_path, monkeypatch, capsys
-):
+# The line `_kept_where_no_redaction_reaches` draws, and keeps a hidden copy of.
+_KEPT_LINE = "Secret plan"
+# A tiling pattern: painted in its own colours, a 20 point tile every 20 points.
+_TILING = {
+    "PatternType": "1",
+    "PaintType": "1",
+    "TilingType": "1",
+    "BBox": "[0 0 20 20]",
+    "XStep": "20",
+    "YStep": "20",
+    "Resources": "<<>>",
+}
+
+
+def _kept_where_no_redaction_reaches(path: Path) -> str:
+    """A page drawing `_KEPT_LINE`, a copy of it kept in a dictionary MuPDF can't read.
+
+    The copy is a screen reader's, in a tiling pattern the page paints a square with: the
+    redaction can't rewrite it, so the re-read finds the words still in the file.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 600), _KEPT_LINE, fontname="helv", fontsize=12)
+    tile = f"/Span <</ActualText ({_KEPT_LINE}) /Bad>> BDC 10 10 20 20 re f EMC"
+    pattern = new_stream(doc, tile, **_TILING)
+    _kind, resources = doc.xref_get_key(page.xref, "Resources")  # "3 0 R": an object
+    doc.xref_set_key(int(resources.split()[0]), "Pattern/P1", f"{pattern} 0 R")
+    [contents] = page.get_contents()
+    painted = doc.xref_stream(contents) + b"\n/Pattern cs /P1 scn 10 10 20 20 re f"
+    doc.update_stream(contents, painted)
+    doc.save(path)
+    return str(path)
+
+
+def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(tmp_path, capsys):
     """Text still in the saved file means no file is kept."""
-    monkeypatch.setattr(RedactionCheck, "still_there", lambda _check, spans: list(spans))
+    pdf = _kept_where_no_redaction_reaches(tmp_path / "kept.pdf")
     out_pdf = tmp_path / "redacted.pdf"
 
-    code = main(["redact", pdf, _span_id(pdf, "Invoices"), "-o", str(out_pdf)])
+    code = main(["redact", pdf, _span_id(pdf, _KEPT_LINE), "-o", str(out_pdf)])
 
-    said = words.sentence("redaction_failed").format(
-        text="Invoices are due within thirty days.", page=2
-    )
+    said = words.sentence("redaction_failed").format(text=_KEPT_LINE, page=1)
     assert_equal(code, 1, "exit code of `squidpdf redact` when the text is still there")
     assert_in(said, capsys.readouterr().err, "the redact output")
     assert_false(out_pdf.exists(), "a file kept with the text still in it")

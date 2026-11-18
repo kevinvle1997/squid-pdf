@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import IO, Any
+from typing import BinaryIO
 
 import httpx
 import pymupdf
@@ -547,24 +547,33 @@ class _FileOnAFullDisk(io.FileIO):
         return _write_on_a_full_disk()
 
 
-def _original_on_a_full_disk(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> IO[Any]:
-    """`path` opened as Path.open opens it, but the upload's original on a full disk."""
-    if path.name == store.ORIGINAL:
-        return _FileOnAFullDisk(path, "wb")
-    return open(path, mode, *args, **kwargs)
+def _opened_on_a_full_disk(folder: Path) -> BinaryIO:
+    """The upload's original, opened on a disk with no room left for it."""
+    return _FileOnAFullDisk(folder / store.ORIGINAL, "wb")
+
+
+def _owner_on_a_full_disk(_app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its owner's write refused: inside the store's create, which keeps nothing if it fails."""
+    monkeypatch.setattr(Path, "write_text", _write_on_a_full_disk)
+
+
+def _original_on_a_full_disk(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its original's write refused, by a store that opens it on a full disk."""
+    full = StoreWith(opens_to_write=_opened_on_a_full_disk)
+    monkeypatch.setattr(app.state, "documents", full)
 
 
 # An upload's first write is its owner's, and its largest its original's.
 @pytest.mark.parametrize(
-    ("method", "on_a_full_disk"),
-    [("write_text", _write_on_a_full_disk), ("open", _original_on_a_full_disk)],
+    "fill_the_disk",
+    [_owner_on_a_full_disk, _original_on_a_full_disk],
     ids=["writing its owner", "writing its original"],
 )
 def test_a_disk_that_fills_up_as_an_upload_is_kept_is_server_full(
-    mine, pdf_bytes, monkeypatch, method, on_a_full_disk
+    app, mine, pdf_bytes, monkeypatch, fill_the_disk
 ):
     """A disk that runs out past the floor's check is server_full, not a bug."""
-    monkeypatch.setattr(Path, method, on_a_full_disk)
+    fill_the_disk(app, monkeypatch)
     before = _kept()
     assert_problem(upload(mine, pdf_bytes), "server_full", 503)
     assert_equal(_kept(), before, "documents on disk after a refusal")

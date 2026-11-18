@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
-from typing import BinaryIO
 
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, disk, store
@@ -54,7 +53,7 @@ class UploadController:
             with disk.full_disk_refused():
                 doc_id, folder = await asyncio.to_thread(self.documents.create, owner_digest)
                 await self._deleted_if_it_fails(
-                    folder, _save_original(chunks, to=folder / store.ORIGINAL)
+                    folder, _save_original(chunks, documents=self.documents, folder=folder)
                 )
         # Deleted if it fails too: a browser that leaves first never gets the id.
         return await self._deleted_if_it_fails(
@@ -99,13 +98,15 @@ def _digest_of(path: Path) -> str:
         return hashlib.file_digest(file, "sha256").hexdigest()[:_DIGEST_CHARS]
 
 
-async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
-    """Stream the upload to `to`, refused as soon as it's too big or plainly not a PDF.
+async def _save_original(
+    chunks: AsyncIterable[bytes], *, documents: DocumentStore, folder: Path
+) -> None:
+    """Stream the upload to its original in `folder`, refused once too big or plainly no PDF.
 
     Opened, written and closed off the server's thread: a disk can be slow.
     """
     size, first_kb = 0, b""
-    out = await asyncio.to_thread(_opened_to_write, to)
+    out = await asyncio.to_thread(documents.open_to_write, folder)
     try:
         async for chunk in chunks:
             size += len(chunk)
@@ -120,8 +121,3 @@ async def _save_original(chunks: AsyncIterable[bytes], *, to: Path) -> None:
         await asyncio.to_thread(out.close)
     if _PDF_HEADER not in first_kb:
         raise NotAPdf()
-
-
-def _opened_to_write(path: Path) -> BinaryIO:
-    """`path`, opened to be written from its start."""
-    return path.open("wb")

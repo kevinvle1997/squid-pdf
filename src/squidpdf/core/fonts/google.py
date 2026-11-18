@@ -35,7 +35,7 @@ from squidpdf.core.types import PageFont
 _log = LogController.for_module(__name__)
 
 _RAW = "https://raw.githubusercontent.com/google/fonts"
-# Set to anything: never fetch. For tests, and a server with no way out.
+# Set to anything: GitHub is never asked. For tests, and a server with no way out.
 _NO_FETCH = "SQUIDPDF_NO_FETCH"
 _WIDTH = 100  # a variable font's usual width, as `fonts/README.md` cuts ours
 _HASH_SUFFIX = ".sha1"  # a cut copy's own hash, in a file beside it
@@ -43,7 +43,7 @@ _EVERY_FILE = "*"  # in a _RetryRecord: a download got no answer, so the network
 
 
 # The bytes at a URL; raises when it can't, HTTPStatusError if the server answered without them.
-type _Download = Callable[[str], bytes]
+type GoogleDownload = Callable[[str], bytes]
 # The engine's way to Google's copy: its bytes, or None when there's none to be had.
 type Fetch = Callable[[GoogleFile], bytes | None]
 
@@ -90,7 +90,7 @@ class _RetryRecord:
             self.retry_at.clear()
 
 
-# This process's record of what failed to come.
+# This process's record of what failed to come from GitHub.
 _retry_record = _RetryRecord()
 
 
@@ -144,7 +144,7 @@ def raw_url(path: str) -> str:
 
 
 def _fetched(
-    file: GoogleFile, *, folder: Path, download: _Download | None, retries: _RetryRecord
+    file: GoogleFile, *, folder: Path, download: GoogleDownload | None, retries: _RetryRecord
 ) -> bytes | None:
     """Google's copy of `file`, ready to draw with; None when there's none to be had.
 
@@ -214,7 +214,7 @@ class _Fetching:
     """One download under way in the background, and what it tells the one waiting on it."""
 
     cached_path: Path  # where it's cached
-    download: _Download
+    download: GoogleDownload
     retries: _RetryRecord  # the record of failures, lifted for every file once an answer comes
     # The copy, ready to draw with, or None; put once, whether or not anyone still waits.
     answer: queue.Queue[bytes | None] = field(default_factory=lambda: queue.Queue(maxsize=1))
@@ -356,15 +356,24 @@ def _cache_folder() -> Path:
     return Path(user_caches, "squidpdf", "fonts").resolve()
 
 
-def google_fonts(*, folder: Path | None = None, cache_only: bool = False) -> Fetch | None:
+def google_fonts(
+    *,
+    folder: Path | None = None,
+    cache_only: bool = False,
+    download: GoogleDownload | None = None,
+) -> Fetch | None:
     """The way to Google's copies: from the cache in `folder`, else fetched and kept there.
 
-    `folder` is `_cache_folder()` unless given, as the server gives its own. With
-    `cache_only`, the cache alone, never the network. None when
+    `folder` is `_cache_folder()` unless given. With `cache_only`, never the network. A test's
+    `download` stands in for GitHub, with its own record of failures. Without one, None when
     SQUIDPDF_NO_FETCH is set: then only the file's own copies lend.
     """
-    if os.environ.get(_NO_FETCH):
+    if download is None and os.environ.get(_NO_FETCH):
         return None
     cache = _cache_folder() if folder is None else folder
-    github_download = None if cache_only else _download
-    return partial(_fetched, folder=cache, download=github_download, retries=_retry_record)
+    # The process's record is GitHub's: a stand-in's failures say nothing of it.
+    retries = _retry_record if download is None else _RetryRecord()
+    way_out = _download if download is None else download
+    return partial(
+        _fetched, folder=cache, download=None if cache_only else way_out, retries=retries
+    )

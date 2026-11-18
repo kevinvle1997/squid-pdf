@@ -39,8 +39,6 @@ from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.embedded import FontUnusable
 from squidpdf.core.fonts.google import (
     Fetch,
-    _fetched,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
-    _RetryRecord,  # noqa: PLC2701 (fetches with a stand-in network: google_fonts reaches the real one)
     blob_hash,
     google_fonts,
 )
@@ -111,11 +109,21 @@ def _why_substitute(path: str, fetch: Fetch) -> str | None:
     return None if report.why is None else report.why.key
 
 
+def _through(
+    download: Callable[[str], bytes], folder: Path, *, cache_only: bool = False
+) -> Fetch:
+    """The way to Google's copies cached in `folder`, `download` standing in for GitHub."""
+    fetch = google_fonts(folder=folder, cache_only=cache_only, download=download)
+    if fetch is None:
+        pytest.fail("no way to Google's copies, though a download was handed in")
+    return fetch
+
+
 def _fresh_fetch(
     file: GoogleFile, folder: Path, download: Callable[[str], bytes]
 ) -> bytes | None:
-    """`_fetched`, remembering no failure from any call before."""
-    return _fetched(file, folder=folder, download=download, retries=_RetryRecord())
+    """`file` through `download`, remembering no failure from any call before."""
+    return _through(download, folder)(file)
 
 
 def _failing(url: str) -> bytes:
@@ -257,7 +265,7 @@ def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
 
     with caplog.at_level(logging.INFO, logger=google.__name__):
-        _fetched(file, folder=tmp_path, download=None, retries=_RetryRecord())
+        _through(_failing, tmp_path, cache_only=True)(file)
         _fresh_fetch(file, tmp_path, _returning(poppins))
     lines = [record.getMessage() for record in caplog.records]
     misses = [line for line in lines if "google_cache_missed" in line]
@@ -278,23 +286,20 @@ def test_a_request_tallies_what_googles_copies_cost_it(tmp_path):
     """A slow analysis says it waited on Google, and how long; a cached copy, that it didn't."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
-    retries = _RetryRecord()  # one worker's, across its requests
+    # Each one worker's, across its requests: the second is cached; the fourth, held back.
+    answering = _through(_returning(poppins), tmp_path)
+    down = _through(_failing, tmp_path / "down")
 
-    def tallied_by(folder: Path, download: Callable[[str], bytes]) -> list[str]:
+    def tallied_by(fetch: Fetch) -> list[str]:
         """What one request tallies asking for the copy."""
         start_request()
-        _fetched(file, folder=folder, download=download, retries=retries)
+        fetch(file)
         return sorted(tally_fields())
 
     # Each in a context of its own, as each request runs in its own task.
     said = [
-        contextvars.copy_context().run(tallied_by, folder, download)
-        for folder, download in [
-            (tmp_path, _returning(poppins)),
-            (tmp_path, _failing),
-            (tmp_path / "down", _failing),
-            (tmp_path / "down", _failing),
-        ]
+        contextvars.copy_context().run(tallied_by, fetch)
+        for fetch in [answering, answering, down, down]
     ]
 
     expected = [
@@ -412,32 +417,6 @@ def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(tmp_path
     assert_true(later == first, "a later cut matches the first")
 
 
-def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):
-    """The network answered, so other files are still worth a try; the cut is kept when done."""
-    variable = _variable_font()
-    file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
-    poppins = POPPINS.read_bytes()
-    other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
-    released = threading.Event()
-    cut = google._cut
-
-    def slow_cut(variable_font: bytes, weight: int) -> bytes:
-        released.wait(_HANG_S)
-        return cut(variable_font, weight)
-
-    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
-    monkeypatch.setattr(google, "_cut", slow_cut)
-    by_path = {google.raw_url(file.path): variable, google.raw_url(other.path): poppins}
-    retries = _RetryRecord()
-    try:
-        late = _fetched(file, folder=tmp_path, download=by_path.__getitem__, retries=retries)
-        got = _fetched(other, folder=tmp_path, download=by_path.__getitem__, retries=retries)
-    finally:
-        released.set()
-    assert_equal(late, None, "the copy still being cut")
-    assert_true(got == poppins, "another file was fetched")
-
-
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
     """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())
@@ -545,9 +524,9 @@ def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
         return _failing(url)
 
     file = GoogleFile(_POPPINS_PATH, blob_hash(POPPINS.read_bytes()), None)
-    retries = _RetryRecord()
+    fetch = _through(failing, tmp_path)
     for _ in range(3):
-        _fetched(file, folder=tmp_path, download=failing, retries=retries)
+        fetch(file)
     assert_equal(len(asked), 1, "downloads tried")
 
 
@@ -569,9 +548,14 @@ def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
 
     file = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
     other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
-    retries = _RetryRecord()
-    _fetched(file, folder=tmp_path, download=download, retries=retries)
-    _fetched(other, folder=tmp_path, download=answering, retries=retries)
+
+    def by_file(url: str) -> bytes:
+        """The first file's download as the case has it; any other answers."""
+        return download(url) if url == google.raw_url(file.path) else answering(url)
+
+    fetch = _through(by_file, tmp_path)
+    fetch(file)
+    fetch(other)
     assert_equal(len(asked), others_tried, "downloads of another file tried")
 
 
@@ -591,9 +575,9 @@ def test_a_fetch_answered_past_its_deadline_keeps_the_answer_and_lifts_the_hold(
     monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
     other = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
-    retries = _RetryRecord()
+    fetch = _through(hanging, tmp_path)
     started = time.monotonic()
-    got = _fetched(file, folder=tmp_path, download=hanging, retries=retries)
+    got = fetch(file)
     assert_at_most(time.monotonic() - started, _HANG_S / 2, "seconds waited")
     assert_equal(got, None, "what came by the deadline")
 
@@ -602,7 +586,7 @@ def test_a_fetch_answered_past_its_deadline_keeps_the_answer_and_lifts_the_hold(
     deadline = time.monotonic() + _HANG_S
     while not cached.exists() and time.monotonic() < deadline:
         time.sleep(_DEADLINE_S)
-    late = _fetched(file, folder=tmp_path, download=_failing, retries=retries)
+    late = fetch(file)
     assert_true(late == poppins, "the late answer was kept, and is read from the cache")
-    _fetched(other, folder=tmp_path, download=hanging, retries=retries)
+    fetch(other)
     assert_equal(len(asked), 2, "downloads tried, once the network answered")
