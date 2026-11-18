@@ -471,6 +471,16 @@ export interface components {
             detail: string;
         };
         /**
+         * DocumentsLeft
+         * @description How many of this month's documents an account has left, of how many it opens a month.
+         */
+        DocumentsLeft: {
+            /** Left */
+            left: number;
+            /** Monthly */
+            monthly: number;
+        };
+        /**
          * ExportBody
          * @description What export reads from the request body. No `pages` means every page.
          */
@@ -1120,6 +1130,7 @@ export interface components {
             paid_until: number | null;
             /** Has Billing */
             has_billing: boolean;
+            documents_left: components["schemas"]["DocumentsLeft"] | null;
         };
         /**
          * SkippedInfo

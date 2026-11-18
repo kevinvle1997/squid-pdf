@@ -532,6 +532,31 @@ test("where the server takes no payment, the month's limit is the server's words
   await expect.element(screen.getByRole("button", { name: "Pay for no limit" })).not.toBeInTheDocument();
 });
 
+test("signed in with a limit, the landing counts this month's documents left, until the status says they're used", async () => {
+  const left = { left: 2, monthly: 3 };
+  vi.mocked(account).mockResolvedValue(anAccount({ signed_in: aSignedIn({ documents_left: left }) }));
+  vi.mocked(upload).mockRejectedValue(
+    new ProblemError({ ...aProblem(403, MONTH_USED), type: "monthly_documents_used" }),
+  );
+  const screen = await render(<App />);
+  await expect.element(screen.getByText("2 of 3 documents left this month")).toBeVisible();
+  choose(screen.container, "contract.pdf");
+  await expect.element(screen.getByRole("status")).toHaveTextContent(MONTH_USED);
+  await expect.element(screen.getByText("left this month", { exact: false })).not.toBeInTheDocument();
+});
+
+test("back on the landing after a file, its count is asked for again, so it never shows one from before", async () => {
+  const signedIn = (left: number) => anAccount({ signed_in: aSignedIn({ documents_left: { left, monthly: 3 } }) });
+  // Another tab opened one meanwhile.
+  vi.mocked(account).mockResolvedValueOnce(signedIn(2)).mockResolvedValue(signedIn(1));
+  vi.mocked(upload).mockRejectedValue(new ProblemError(aProblem(422, "This file isn't a PDF.")));
+  const screen = await render(<App />);
+  await expect.element(screen.getByText("2 of 3 documents left this month")).toBeVisible();
+  choose(screen.container, "contract.pdf");
+  await expect.element(screen.getByRole("status")).toHaveTextContent("This file isn't a PDF.");
+  await expect.element(screen.getByText("1 of 3 documents left this month")).toBeVisible();
+});
+
 test("going to pay that fails says why, and the way to pay stays", async () => {
   const unreachable = "Payments can't be reached just now, so nothing was charged. Try again in a few minutes.";
   vi.mocked(account).mockResolvedValue(anAccount({ takes_payment: true, signed_in: aSignedIn() }));

@@ -146,6 +146,7 @@ def test_a_link_by_email_signs_a_browser_in_and_makes_its_account(
             "is_unlimited": False,
             "paid_until": None,
             "has_billing": False,
+            "documents_left": None,
         },
     }
     assert_equal(signed_in.json(), expected, "signed in")
@@ -581,6 +582,11 @@ def metered_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
     return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False, allowance=allowance)
 
 
+def _documents_left(reader: TestClient) -> dict[str, int] | None:
+    """What the server tells `reader` of the documents its account has left this month."""
+    return reader.get("/api/account").json()["signed_in"]["documents_left"]
+
+
 def _files(pdf_bytes: bytes, count: int) -> list[bytes]:
     """`count` different files that each open: the sample, a comment after its end apiece."""
     return [pdf_bytes + f"\n% file {number}\n".encode() for number in range(count)]
@@ -636,10 +642,12 @@ def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
     for opened in files[:2]:
         upload(reader, opened)
     _sign_in(reader, metered_mail)
+    assert_equal(_documents_left(reader), {"left": 3, "monthly": 3}, "said, before any")
     for opened in (*files[:2], files[2]):
         assert_equal(upload(reader, opened).status_code, 201, "this month's three")
     assert_equal(upload(reader, files[0]).status_code, 201, "one counted, opened again")
     assert_problem(upload(reader, files[3]), "monthly_documents_used", 403)
+    assert_equal(_documents_left(reader), {"left": 0, "monthly": 3}, "said, once used")
     # The same account in another browser has used the same month.
     elsewhere = browser()
     _sign_in_a_moment_later(elsewhere)
@@ -654,6 +662,7 @@ def test_an_unlimited_friend_opens_as_many_as_they_like(
     _sign_in(reader, metered_mail)
     for opened in _files(pdf_bytes, 5):
         assert_equal(upload(reader, opened).status_code, 201, "past the month's three")
+    assert_equal(_documents_left(reader), None, "no count where no limit applies")
 
 
 def test_a_months_count_starts_afresh_in_the_next(tmp_path):

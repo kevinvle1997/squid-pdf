@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -124,6 +125,10 @@ class User:
         return (
             self.paid_until is not None and now < self.paid_until + constants.RENEWAL_LEEWAY_S
         )
+
+    def has_no_limit_at(self, now: int) -> bool:
+        """Whether no document limit applies at `now`: unlimited, or its month paid."""
+        return self.is_unlimited or self.is_paid_at(now)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -357,6 +362,11 @@ def open_users(path: Path) -> UserStore:
     with database.begin() as connection:
         connection.execute(text(_ONE_ACCOUNT_A_CUSTOMER))
     return UserStore(database)
+
+
+def this_month() -> str:
+    """The month a count is for, as "2026-11", in UTC: the same for every server."""
+    return datetime.now(UTC).strftime("%Y-%m")
 
 
 def _bounce_digest(email: str, *, secret: bytes) -> str:

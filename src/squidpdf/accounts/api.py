@@ -152,7 +152,8 @@ async def account(
         return AccountState(
             offered=False, invite_only=False, takes_payment=False, signed_in=None
         )
-    return state_of(accounts, user)
+    # Off the loop: it reads the table for the month's documents.
+    return await asyncio.to_thread(state_of, accounts, user)
 
 
 @router.post(

@@ -10,7 +10,6 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.cookies import COUNTED, SIGNED_IN, cookie_header
@@ -18,7 +17,7 @@ from squidpdf.accounts.deployment import Accounts, Allowance
 from squidpdf.accounts.errors import FreeDocumentsUsed, MonthlyDocumentsUsed
 from squidpdf.accounts.sign_in import signed_in_user
 from squidpdf.accounts.signed import read_signed, signed
-from squidpdf.accounts.users import User
+from squidpdf.accounts.users import User, this_month
 from squidpdf.documents.meters import Meter
 
 
@@ -64,16 +63,16 @@ class _AccountMeter:
 
         None counts against an unlimited account, or one whose month is paid.
         """
-        if self.user.is_unlimited or self.user.is_paid_at(int(time.time())):
+        if self.user.has_no_limit_at(int(time.time())):
             return
-        counted = self.accounts.users.counted_in(self.user.id, month=_this_month())
+        counted = self.accounts.users.counted_in(self.user.id, month=this_month())
         is_new = digest not in counted
         if is_new and len(counted) >= self.allowance.monthly:
             raise MonthlyDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:
         """Count `digest` against this month's, kept in the table: no header needed."""
-        self.accounts.users.count(self.user.id, digest, month=_this_month())
+        self.accounts.users.count(self.user.id, digest, month=this_month())
         return {}
 
 
@@ -99,8 +98,3 @@ class _BrowserMeter:
         until = int(time.time()) + constants.COUNTED_KEPT_S
         cookie = signed(listed, purpose="counted", until=until, secret=self.accounts.secret)
         return {"Set-Cookie": cookie_header(COUNTED, cookie, max_age=constants.COUNTED_KEPT_S)}
-
-
-def _this_month() -> str:
-    """The month a count is for, as "2026-11", in UTC: the same for every server."""
-    return datetime.now(UTC).strftime("%Y-%m")

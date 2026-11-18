@@ -252,6 +252,8 @@ def test_a_paid_month_lifts_the_limit_until_paid_time_and_the_renewals_leeway_ru
         _paid(account, event="evt_paid", until=now + 3600, paid_read_at=1), now=now
     )
     assert_equal(upload(reader, files[1]).status_code, 201, "paid: past the month's one")
+    signed_in = reader.get("/api/account").json()["signed_in"]
+    assert_equal(signed_in["documents_left"], None, "no count while no limit applies")
     # The month ended a minute ago, and its renewal is still being charged.
     renewing = _paid(account, event="evt_renewing", until=now - 60, paid_read_at=2)
     users.apply_billing(renewing, now=now)

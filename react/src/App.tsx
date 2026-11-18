@@ -4,6 +4,7 @@ import {
   type AccountAnswer,
   accountAnswer,
   accountAtStart,
+  documentsLeft,
   mustSignIn,
   signedInAs,
   signedOut,
@@ -166,6 +167,11 @@ function Screens() {
       setScreen((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
     );
     setScreen(opening);
+    // A file opened may have counted against the month: the landing shows its count afresh next time.
+    if (documentsLeft(account) === null) return;
+    const asked = await accountAnswer();
+    // Unanswered, the count read before stays: a failure here is no news to the landing.
+    if (asked.kind === "read") setAccount(asked);
   }
 
   // A deployment with no terms has no such page: the path shows the landing, as any other does.
@@ -184,6 +190,7 @@ function Screens() {
       <Drop
         landing={landing}
         signedInAs={signedInAs(account)}
+        documentsLeft={documentsLeft(account)}
         paidUntil={paidUntil(account)}
         payment={paymentSaid(going, back)}
         goingToStripe={going.kind === "under way"}

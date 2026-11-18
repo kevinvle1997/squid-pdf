@@ -19,8 +19,8 @@ from squidpdf.accounts.cookies import SIGNED_IN, cookie_header
 from squidpdf.accounts.deployment import Accounts
 from squidpdf.accounts.errors import LinkExpired, MailLimitReached, MailNotSent, NotInvited
 from squidpdf.accounts.signed import Signed, read_signed, signed
-from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
-from squidpdf.accounts.users import User, checked_email
+from squidpdf.accounts.types import AccountState, DocumentsLeft, LinkSent, SignedIn
+from squidpdf.accounts.users import User, checked_email, this_month
 from squidpdf.core import ERROR, LogController, LogEvent, Message, Reply, words
 
 _log = LogController.for_module(__name__)
@@ -97,7 +97,8 @@ class SignInController:
         headers = {
             "Set-Cookie": cookie_header(SIGNED_IN, cookie, max_age=constants.SIGNED_IN_S)
         }
-        return Reply(state_of(self.accounts, user), headers, HTTPStatus.OK)
+        state = await asyncio.to_thread(state_of, self.accounts, user)
+        return Reply(state, headers, HTTPStatus.OK)
 
     def _user_signing_in(self, link: Signed, *, now: int) -> User:
         """The account `link` signs in to, the link used up; LinkExpired if it was already."""
@@ -154,24 +155,39 @@ def _signed_in_id(accounts: Accounts, cookie: str | None) -> str | None:
 
 
 def state_of(accounts: Accounts, user: User | None) -> AccountState:
-    """What the browser is told of an account on a server that offers them."""
+    """What the browser is told of an account on a server that offers them.
+
+    Reads the table for one signed in: a coroutine calls it in a thread.
+    """
     return AccountState(
         offered=True,
         invite_only=accounts.invite_only,
         takes_payment=accounts.billing is not None,
-        signed_in=None if user is None else _signed_in_as(user),
+        signed_in=None if user is None else _signed_in_as(accounts, user),
     )
 
 
-def _signed_in_as(user: User) -> SignedIn:
+def _signed_in_as(accounts: Accounts, user: User) -> SignedIn:
     """What the browser is told of the account it's signed in to."""
-    paid = user.is_paid_at(int(time.time()))
+    now = int(time.time())
     return SignedIn(
         email=user.email,
         is_unlimited=user.is_unlimited,
-        paid_until=user.paid_until if paid else None,
+        paid_until=user.paid_until if user.is_paid_at(now) else None,
         has_billing=user.stripe_customer is not None,
+        documents_left=_documents_left(accounts, user, now=now),
     )
+
+
+def _documents_left(accounts: Accounts, user: User, *, now: int) -> DocumentsLeft | None:
+    """How many of this month's documents `user` has left; None where no limit applies."""
+    allowance = accounts.allowance
+    if allowance is None or user.has_no_limit_at(now):
+        return None
+    opened = len(accounts.users.counted_in(user.id, month=this_month()))
+    # Fewer a month than it opened already, where the deployment lowered the number since.
+    left = max(allowance.monthly - opened, 0)
+    return DocumentsLeft(left=left, monthly=allowance.monthly)
 
 
 def signed_out(accounts: Accounts) -> Reply[AccountState]:

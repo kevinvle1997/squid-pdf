@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { DropZone, FileTrigger, isFileDropItem } from "react-aria-components";
+import type { DocumentsLeft } from "../../api/types";
 import { AfterDelay } from "../../ui/AfterDelay";
 import { Button } from "../../ui/Button";
 import { Num } from "../../ui/Num";
@@ -12,6 +13,8 @@ import styles from "./Drop.module.css";
 const PERCENT = new Intl.NumberFormat("en", { style: "percent" });
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { day: "numeric", month: "long" });
+const WHOLE = new Intl.NumberFormat("en");
+const PLURAL = new Intl.PluralRules("en");
 
 interface Props {
   landing: Landing;
@@ -19,6 +22,7 @@ interface Props {
   persisted: Persisted<unknown> | null; // offered while the landing waits
   forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
   signedInAs: string | null; // the address this browser is signed in as, on a server that keeps accounts
+  documentsLeft: DocumentsLeft | null; // this month's the account has left, where a limit applies to it
   paidUntil: number | null; // the account has no document limit until then, Unix seconds, its month paid
   payment: { sentence: string; failed: boolean } | null; // what paying, or coming back from it, came to
   goingToStripe: boolean; // the server is asked for Stripe's page, so its buttons wait
@@ -37,6 +41,7 @@ export function Drop({
   persisted,
   forgetFailed,
   signedInAs,
+  documentsLeft,
   paidUntil,
   payment,
   goingToStripe,
@@ -103,6 +108,8 @@ export function Drop({
         {signedInAs !== null && (
           <p className={styles.signedIn}>
             <span>Signed in as {signedInAs}</span>
+            {/* Past the month's, the status says so already. */}
+            {documentsLeft !== null && landing.kind !== "month used" && <LeftThisMonth {...documentsLeft} />}
             {paidUntil !== null && <span>No document limit until {DAY.format(paidUntil * 1000)}</span>}
             {onManageBilling !== null && (
               <Button variant="quiet" onPress={onManageBilling} isDisabled={goingToStripe}>
@@ -124,6 +131,16 @@ export function Drop({
         )}
       </SheetScreen>
     </DropZone>
+  );
+}
+
+/** How many of this month's documents are left: "2 of 3 documents left this month". */
+function LeftThisMonth({ left, monthly }: DocumentsLeft) {
+  const documents = PLURAL.select(monthly) === "one" ? "document" : "documents";
+  return (
+    <span>
+      <Num>{WHOLE.format(left)}</Num> of <Num>{WHOLE.format(monthly)}</Num> {documents} left this month
+    </span>
   );
 }
 
