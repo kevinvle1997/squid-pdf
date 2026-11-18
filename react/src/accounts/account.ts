@@ -1,6 +1,6 @@
 // Who this browser is signed in as, on a server that keeps accounts, and signing in by a link sent by email.
 import { account, askForLink, signIn, signOut } from "../api/client";
-import type { AccountState } from "../api/types";
+import type { AccountState, DocumentsLeft } from "../api/types";
 import { sentenceOf } from "../bugs";
 
 /** Where a sign-in link opens: a page of the app's own, its token after the `#`, which reaches no server's log. */
@@ -77,6 +77,11 @@ export function tokenIn(pathname: string, hash: string): string | null {
 /** Whether this browser must sign in before it opens a document: only invited people may, and it isn't signed in. */
 export function mustSignIn(answer: AccountAnswer): boolean {
   return answer.kind === "read" && answer.state.invite_only && answer.state.signed_in === null;
+}
+
+/** How many of this month's documents the account signed in has left, of how many; null where no limit applies. */
+export function documentsLeft(answer: AccountAnswer): DocumentsLeft | null {
+  return answer.kind === "read" ? (answer.state.signed_in?.documents_left ?? null) : null;
 }
 
 /** The address this browser is signed in as; null where it isn't, or the server keeps no accounts. */

@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 
+class DocumentsLeft(TypedDict):
+    """How many of this month's documents an account has left, of how many it opens a month."""
+
+    left: int
+    monthly: int
+
+
 class SignedIn(TypedDict):
     """The account this browser is signed in to."""
 
@@ -13,6 +20,7 @@ class SignedIn(TypedDict):
     is_unlimited: bool  # uses as many documents as they like
     paid_until: int | None  # paid for no document limit until then, Unix seconds; None if not
     has_billing: bool  # has gone to pay, so Stripe's portal has their billing
+    documents_left: DocumentsLeft | None  # None where no limit applies to it
 
 
 class AccountState(TypedDict):

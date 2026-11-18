@@ -39,7 +39,7 @@ class CheckoutController:
         billing = _billing_of(self.accounts)
         if user is None:
             raise SignInToPay()
-        if user.is_unlimited or user.is_paid_at(int(time.time())):
+        if user.has_no_limit_at(int(time.time())):
             raise AlreadyUnlimited()
         paying = partial(
             _checkout_url, self.accounts.users, billing, user, site=self.accounts.site

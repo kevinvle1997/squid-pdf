@@ -46,6 +46,7 @@ export type FontList = Schemas["FontList"];
 export type Terms = Schemas["Terms"];
 export type TermsPiece = Schemas["TermsWords"] | Schemas["TermsEmail"];
 export type SignedIn = Schemas["SignedIn"];
+export type DocumentsLeft = Schemas["DocumentsLeft"];
 export type AccountState = Schemas["AccountState"];
 export type PaymentPage = Schemas["PaymentPage"];
 export type LinkSent = Schemas["LinkSent"];

@@ -387,5 +387,12 @@ export function anAccount(fields: Partial<AccountState> = {}): AccountState {
 
 /** An account signed in to, with a document limit, that has never gone to pay. */
 export function aSignedIn(fields: Partial<SignedIn> = {}): SignedIn {
-  return { email: "friend@example.com", is_unlimited: false, paid_until: null, has_billing: false, ...fields };
+  return {
+    email: "friend@example.com",
+    is_unlimited: false,
+    paid_until: null,
+    has_billing: false,
+    documents_left: null,
+    ...fields,
+  };
 }
