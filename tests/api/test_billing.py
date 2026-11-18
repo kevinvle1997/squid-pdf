@@ -282,6 +282,8 @@ def test_an_event_sent_again_or_read_of_stripe_before_the_last_changes_nothing(
     cancelled = _paid(account, event="evt_cancelled", until=None, paid_read_at=3)
     assert_equal(users.apply_billing(cancelled, now=now), "applied", "new")
     assert_equal(users.apply_billing(paid, now=now), None, "the first, sent again")
+    read_again = _paid(account, event="evt_paid", until=now + 3600, paid_read_at=4)
+    assert_equal(users.apply_billing(read_again, now=now), None, "sent again, Stripe read anew")
     assert_problem(upload(reader, files[1]), "monthly_documents_used", 403)
     # Asked of Stripe before the cancellation was, its answer landing after.
     late = _paid(account, event="evt_late", until=now + 3600, paid_read_at=2)

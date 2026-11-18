@@ -26,6 +26,7 @@ from sqlalchemy import (
     case,
     create_engine,
     event,
+    exists,
     select,
     text,
 )
@@ -433,13 +434,17 @@ def _counted_from(counted_month: str | None, counted: str, *, month: str) -> fro
 
 
 def _paid_time_set(connection: Any, event: BillingEvent) -> bool:
-    """Set the paid time `event` says, unless the time kept was asked of Stripe later."""
+    """Set the paid time `event` says, unless the time kept was asked of Stripe later.
+
+    An event the ledger has already sets none: a copy Stripe sent again may read it anew.
+    """
     asked_later = _USERS.c.paid_read_at.is_not(None) & (
         _USERS.c.paid_read_at >= event.paid_read_at
     )
+    kept_already = exists().where(_BILLING_EVENTS.c.id == event.id)
     paid = (
         _USERS.update()
-        .where(_USERS.c.id == event.account, ~asked_later)
+        .where(_USERS.c.id == event.account, ~asked_later, ~kept_already)
         .values(paid_until=event.paid_until, paid_read_at=event.paid_read_at)
     )
     return connection.execute(paid).rowcount > 0
