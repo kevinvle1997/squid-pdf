@@ -1,5 +1,5 @@
 {
-  "about": "One span and edit each, read by tests/editing/test_fit.py and react/src/editing/fit.test.ts: the server and the browser must give the same verdict. The rules are the server's own. Each of `verdicts` is a line in a stored copy of a font with no shape for `lacking`, or one the file only names, judged at upload as `span` says, then typed into.",
+  "about": "One span and edit each, read by tests/editing/test_fit.py and, in the browser, by react/src/editing/fit.test.ts (`rules` and `cases`) and react/src/editing/verdicts.test.ts (`verdicts`): the server and the browser must give the same verdict. The rules are the server's own. Each of `verdicts` is a line in a stored copy of a font with no shape for `lacking`, or one the file only names, judged at upload as `span` says, then typed into.",
   "rules": {
     "tolerance_pt": 4,
     "room_slack_pt": 0.1,

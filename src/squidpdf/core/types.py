@@ -475,10 +475,6 @@ class SpanIndex:
         """Every span, in the order it was extracted."""
         return iter(self.by_id.values())
 
-    def __len__(self) -> int:
-        """How many spans are in the document."""
-        return len(self.by_id)
-
 
 def index_of(spans: Iterable[Span]) -> SpanIndex:
     """The index of a document's spans, given in the order they were extracted."""

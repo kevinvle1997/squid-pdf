@@ -75,6 +75,7 @@ def test_an_answer_already_begun_runs_to_its_end():
         await send({"type": "http.response.body", "body": b"done"})
 
     async def record(message: Message) -> None:
+        """Note what the app sent."""
         sent.append(message["type"])
 
     asyncio.run(

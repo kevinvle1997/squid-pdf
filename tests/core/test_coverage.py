@@ -21,7 +21,8 @@ from squidpdf.core.fonts.coverage import coverage_of
 from squidpdf.core.fonts.look_alike import broadest
 from squidpdf.core.fonts.substitute import face_coverage
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE
-from tests.helpers import assert_equal, assert_in, assert_not_in, assert_true
+from tests.core.conftest import finished_font
+from tests.helpers import assert_close, assert_equal, assert_in, assert_not_in, assert_true
 
 _EM = 1000  # glyph advances are per 1000 em
 _WIDTH_TOLERANCE_PT = 0.01  # the table rounds each advance
@@ -116,9 +117,10 @@ def test_glyph_advances_agree_with_the_server_measure(engine):
         widths = engine.widths(span)
         word = "".join(ch for ch in "March" if ch in widths)
         from_table = sum(widths[ch] for ch in word) * span.size / _EM
-        assert_equal(
+        assert_close(
             from_table,
-            pytest.approx(engine.fit.measure(span, word), abs=_WIDTH_TOLERANCE_PT),
+            engine.fit.measure(span, word),
+            _WIDTH_TOLERANCE_PT,
             f"width of {word!r} in {span.font}",
         )
 
@@ -147,13 +149,8 @@ def _built_of_parts(*, parts_drawn: bool) -> bytes:
     builder = FontBuilder(_EM, isTTF=True)
     builder.setupGlyphOrder([".notdef", "A", "acute", "Aacute"])
     builder.setupCharacterMap({ord("A"): "A", 0xB4: "acute", ord("Á"): "Aacute"})
-    pen = TTGlyphPen(None)
-    if parts_drawn:
-        pen.moveTo((50, 0))
-        pen.lineTo((50, 700))
-        pen.lineTo((550, 0))
-        pen.closePath()
-    part = pen.glyph()
+    empty = TTGlyphPen(None).glyph()
+    part = _triangle() if parts_drawn else empty
     built = Glyph()
     built.numberOfContours = -1  # a glyph made of others, not of its own outline
     built.components = []
@@ -161,16 +158,19 @@ def _built_of_parts(*, parts_drawn: bool) -> bytes:
         component = GlyphComponent()
         component.glyphName, component.x, component.y, component.flags = name, 0, 0, 0
         built.components.append(component)
-    empty = TTGlyphPen(None).glyph()
     builder.setupGlyf({".notdef": empty, "A": part, "acute": part, "Aacute": built})
     builder.setupHorizontalMetrics({name: (600, 0) for name in builder.font.getGlyphOrder()})
-    builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupNameTable({"familyName": "Built", "styleName": "Regular"})
-    builder.setupOS2()
-    builder.setupPost()
-    font_file = io.BytesIO()
-    builder.save(font_file)
-    return font_file.getvalue()
+    return finished_font(builder, family="Built")
+
+
+def _triangle() -> Glyph:
+    """A plain filled triangle: the test only asks whether a part has a shape."""
+    pen = TTGlyphPen(None)
+    pen.moveTo((50, 0))
+    pen.lineTo((50, 700))
+    pen.lineTo((550, 0))
+    pen.closePath()
+    return pen.glyph()
 
 
 @pytest.mark.parametrize("parts_drawn", [True, False], ids=["parts kept", "parts emptied"])

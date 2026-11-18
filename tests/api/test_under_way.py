@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -14,25 +14,15 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
-from fastapi.testclient import TestClient
 
-from squidpdf.api import constants as limits, pool, rate
-from squidpdf.api.app import create_app
+from squidpdf.api import pool, rate
 from tests.api.conftest import BASE_URL, NOT_A_PDF, ONE_ADDRESS, OTHER_ADDRESS
 from tests.helpers import assert_at_least, assert_equal, assert_in, assert_problem, assert_true
 
 _PDF = {"content-type": "application/pdf"}
 
 
-@pytest.fixture
-def own_app(tmp_path, monkeypatch) -> Iterator[TestClient]:
-    """An app of its own, started: every other test sends from the one test address."""
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
-    with TestClient(create_app()) as server:  # runs the lifespan: the pool and the sweeper
-        yield server
-
-
-@dataclass
+@dataclass(slots=True)
 class _Held:
     """A request whose body stops after its first chunk until the test lets it go on."""
 
@@ -72,7 +62,7 @@ def _browser(app: FastAPI, address: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url=BASE_URL)
 
 
-@dataclass
+@dataclass(slots=True)
 class _HeldPool:
     """The app's pool, each job held at its worker until the test lets them all go on."""
 
@@ -80,7 +70,7 @@ class _HeldPool:
     go_on: asyncio.Event = field(default_factory=asyncio.Event)
     at_work: int = 0  # jobs a worker has now
 
-    async def run(self, timeout, task):
+    async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task` on the app's pool, once the test says so."""
         self.at_work += 1
         await self.go_on.wait()
@@ -120,17 +110,16 @@ async def _jobs_past_the_turns(app: FastAPI, pdf_bytes: bytes) -> dict[str, Any]
 
 
 def test_an_address_past_its_jobs_at_work_waits_its_turn_and_past_those_waiting_is_refused(
-    own_app, pdf_bytes, monkeypatch
+    own_app, pdf_bytes
 ):
     """One address can't hold every worker, and a browser's burst of page images still loads.
 
     Another address's job goes to a worker while the first's waits: the wait holds none.
     """
-    monkeypatch.setattr(limits, "JOBS_AT_WORK", 1)
-    monkeypatch.setattr(limits, "JOBS_WAITING", 1)
-    if own_app.portal is None:
-        pytest.fail("the app isn't started")
-    said = own_app.portal.call(partial(_jobs_past_the_turns, own_app.app, pdf_bytes))
+    with own_app.started(JOBS_AT_WORK=1, JOBS_WAITING=1) as server:
+        if server.portal is None:
+            pytest.fail("the app isn't started")
+        said = server.portal.call(partial(_jobs_past_the_turns, own_app.app, pdf_bytes))
 
     assert_problem(said["one_more"], "rate_limited", 429)
     assert_equal(
@@ -201,14 +190,16 @@ async def _uploads_past_the_limit(
 
 
 def test_an_address_past_its_uploads_under_way_is_refused_pdfs_and_fonts_together(
-    own_app, pdf_bytes, monkeypatch
+    own_app, pdf_bytes
 ):
     """A trickled upload holds disk against the floor: one address can't hold all of it."""
-    monkeypatch.setattr(limits, "UPLOADS_UNDER_WAY", 1)
     font = Path(__file__).read_bytes()  # never read as a font: refused or not by its count
-    if own_app.portal is None:
-        pytest.fail("the app isn't started")
-    said = own_app.portal.call(partial(_uploads_past_the_limit, own_app.app, pdf_bytes, font))
+    with own_app.started(UPLOADS_UNDER_WAY=1) as server:
+        if server.portal is None:
+            pytest.fail("the app isn't started")
+        said = server.portal.call(
+            partial(_uploads_past_the_limit, own_app.app, pdf_bytes, font)
+        )
 
     assert_problem(said["font_meanwhile"], "rate_limited", 429)
     assert_problem(said["pdf_meanwhile"], "rate_limited", 429)

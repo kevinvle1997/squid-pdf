@@ -7,7 +7,7 @@ import errno
 import io
 import os
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -20,18 +20,18 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, Engine, words
+from squidpdf.core import BUILD, words
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.documents.disk import _UploadsUnderWay  # noqa: PLC2701 (a holder's forget test needs a fresh one)
 from squidpdf.documents.errors import Gone
-from squidpdf.documents.types import KeptAnalysis
 from squidpdf.editing.constants import FONT_LIST_CACHE
 from tests.api.conftest import BASE_URL, NOT_A_PDF, InProcess, drawn_page, upload
 from tests.conftest import SIGNED, StoreWith, log_lines, with_hidden_copies
 from tests.helpers import (
     assert_at_least,
+    assert_at_most,
     assert_equal,
     assert_every_field_filled,
     assert_not_in,
@@ -183,9 +183,8 @@ def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
     params = {"scale": max(limits.PAGE_SCALES), "build": doc["build"]}
     png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
     pix = pymupdf.Pixmap(png)
-    assert_true(
-        pix.width * pix.height <= MAX_IMAGE_PIXELS,
-        f"{pix.width}x{pix.height} is past the pixel limit",
+    assert_at_most(
+        pix.width * pix.height, MAX_IMAGE_PIXELS, f"pixels in {pix.width}x{pix.height}"
     )
 
 
@@ -618,7 +617,7 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_not_in("content-type", again.headers, "the type of a body a 304 doesn't have")
     expires = datetime.fromisoformat(again.headers["squid-expires-at"])
     uploaded = datetime.fromisoformat(doc["expires_at"])
-    assert_true(expires >= uploaded, f"it now expires {expires}, uploaded {uploaded}")
+    assert_at_least(expires.timestamp(), uploaded.timestamp(), "when it now expires")
     said_in_body = first.json()["expires_at"]
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
 
@@ -722,22 +721,20 @@ def test_a_read_after_what_its_reply_is_made_of_changes_gets_a_new_body_not_a_30
         assert_equal(again.json()[part][name], now, "what the reply now sends")
 
 
-def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc, monkeypatch):
+def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc):
     """A 304 carries no body, so its spans, nearly all of a long document, aren't read."""
     url = f"/api/documents/{doc['id']}"
     first = mine.get(url)
-    reads: list[object] = []
-    load_analysis = store.load_analysis
-
-    def counted(folder, *args, **kwargs) -> KeptAnalysis | None:
-        reads.append(folder)
-        return load_analysis(folder, *args, **kwargs)
-
-    monkeypatch.setattr(store, "load_analysis", counted)
+    folder = store.root() / doc["id"]
+    analysis = [*folder.glob("*analysis-*.json"), *folder.glob("*spans-*.json")]
+    assert_equal(len(analysis), 2, "the analysis's files kept, its facts and its spans")
+    # A folder where each was: reading one is an error, a 500, not a 304.
+    for path in analysis:
+        path.unlink()
+        path.mkdir()
     again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
 
     assert_equal(again.status_code, 304, "status of a read the browser has already")
-    assert_equal(len(reads), 0, "times the analysis was read")
 
 
 def _a_new_build(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -762,14 +759,10 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
     The read that works it out says so on its line, the one spike a deploy makes.
     """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patches below reach it
-
-    def reindex(self):
-        """Stands in for the engine's index, to fail if anything builds one."""
-        raise AssertionError("the index was rebuilt")
-
-    monkeypatch.setattr(Engine, "index", reindex)
     deploy(monkeypatch)
     folder = store.root() / doc["id"]
+    [index_file] = folder.glob("*index.json")
+    index_before = (index_file.read_bytes(), index_file.stat().st_mtime_ns)
     assert_equal(
         store.load_analysis_digest(folder, read.BUILD), None, "the analysis kept before"
     )
@@ -780,6 +773,8 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
     assert_equal(reply.json()["build"], read.BUILD, "the build it was worked out under")
     ids = [span["id"] for span in reply.json()["spans"]]
     assert_equal(ids, [span["id"] for span in doc["spans"]], "span ids across the deploy")
+    index_after = (index_file.read_bytes(), index_file.stat().st_mtime_ns)
+    assert_equal(index_after, index_before, "the index kept at upload, never written again")
     kept_again = store.load_analysis(folder, read.BUILD)
     assert_true(kept_again is not None, "the analysis, kept again under this build and format")
     mine.get(f"/api/documents/{doc['id']}")
@@ -791,7 +786,8 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
 class _NoWorkerAsked:
     """A pool that fails the test if it's asked: a busy one would answer too_slow instead."""
 
-    async def run(self, _timeout, _task):
+    async def run[T](self, _timeout: float, _task: Callable[[], T]) -> T:
+        """Fails the test."""
         pytest.fail("a worker was asked about a document already gone")
 
 

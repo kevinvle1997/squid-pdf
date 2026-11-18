@@ -6,7 +6,9 @@ import io
 import shutil
 import threading
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import orjson
 import pymupdf
@@ -14,13 +16,15 @@ import pytest
 from fontTools.subset import Options, Subsetter
 from fontTools.ttLib import TTFont
 
-from squidpdf.core import ANALYSIS_TUNING, BUILD, Engine, constants
+from squidpdf.core import ANALYSIS_TUNING, BUILD, Page, constants
 from squidpdf.core.constants import FETCH_TIMEOUT_S
 from squidpdf.core.fonts import google
+from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.store import FOLDER_STORE
+from squidpdf.documents.store import FOLDER_STORE, FolderStore
 from tests.conftest import POPPINS, drawn_with, name_two_byte_font, type3_copies_at
 from tests.helpers import assert_at_most, assert_equal
 
@@ -71,26 +75,33 @@ def _trimmed(line: str) -> bytes:
     return out.getvalue()
 
 
+type GoogleThrough = Callable[[Callable[[str], bytes]], list[str]]
+
+
 @pytest.fixture
-def fetches_forgotten() -> Iterator[None]:
-    """Google's record of failed fetches is this process's: the test's go with it."""
-    yield
-    google._retry_record.forget()
+def google_through(monkeypatch) -> Iterator[GoogleThrough]:
+    """Lets a test reach Google through a download of its own, fresh as a new worker.
 
+    Each call returns what it's asked. It reaches google's private download and retry record:
+    no public call swaps the one or forgets the other, and the record is this process's.
+    """
 
-def _google_through(monkeypatch, download: Callable[[str], bytes]) -> list[str]:
-    """Let this test reach Google through `download`, fresh as a new worker; what it's asked."""
-    asked: list[str] = []
+    def through(download: Callable[[str], bytes]) -> list[str]:
+        """Downloads go to `download` from now on, with no failure remembered."""
+        asked: list[str] = []
 
-    def counted(url: str) -> bytes:
-        asked.append(url)
-        return download(url)
+        def counted(url: str) -> bytes:
+            asked.append(url)
+            return download(url)
+
+        monkeypatch.setattr(google, "_download", counted)
+        google._retry_record.forget()
+        return asked
 
     monkeypatch.delenv("SQUIDPDF_NO_FETCH", raising=False)
-    monkeypatch.setattr(google, "_download", counted)
-    google._retry_record.forget()
     monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
-    return asked
+    yield through
+    google._retry_record.forget()
 
 
 def _render_fit(folder: Path, family: str) -> list[str]:
@@ -101,7 +112,7 @@ def _render_fit(folder: Path, family: str) -> list[str]:
 
 
 def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
-    in_google_families, monkeypatch, fetches_forgotten
+    in_google_families, google_through
 ):
     """One fetch deadline however many families, inside the analysis's; renders never fetch."""
     released = threading.Event()
@@ -111,12 +122,12 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
         raise TimeoutError(url)
 
     try:
-        asked = _google_through(monkeypatch, hanging)
+        asked = google_through(hanging)
         analyse.analyse_upload(FOLDER_STORE, in_google_families, MAX_PAGES)
         assert_equal(len(asked), 1, "downloads waited on by the analysis")
         assert_at_most(FETCH_TIMEOUT_S, ANALYSE_TIMEOUT_S, "one wait, in the analysis's time")
 
-        asked = _google_through(monkeypatch, hanging)
+        asked = google_through(hanging)
         missing = _render_fit(in_google_families, _FAMILIES[0])
         assert_equal(
             (missing, asked), (["Y", "a", "y"], []), "a render's fit, and its downloads"
@@ -126,16 +137,16 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
 
 
 def test_a_render_lends_what_the_analysis_fetched_and_no_more(
-    in_google_families, monkeypatch, fetches_forgotten
+    in_google_families, google_through
 ):
     """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
-    _google_through(monkeypatch, lambda _url: poppins)  # only Poppins' file has its hash
+    google_through(lambda _url: poppins)  # only Poppins' file has its hash
     analyse.analyse_upload(FOLDER_STORE, in_google_families, MAX_PAGES)
     cached = sorted(path.name for path in (store.root() / "fonts").rglob("*.ttf"))
     assert_equal(cached, ["Poppins-Regular.ttf"], "what the analysis cached")
 
-    asked = _google_through(monkeypatch, lambda _url: poppins)
+    asked = google_through(lambda _url: poppins)
     fits = [_render_fit(in_google_families, family) for family in _FAMILIES]
     lacked = ["Y", "a", "y"]
     assert_equal(fits, [[], lacked, lacked], "what each family's line can't draw, at render")
@@ -199,15 +210,28 @@ def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
     assert_equal(named, expected, "each copy: named by its object, shown by its font")
 
 
-def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(
-    folder, monkeypatch
-):
-    """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
+@dataclass(frozen=True, slots=True)
+class _UnreadPagesDriver:
+    """MuPDF's driver, failing if anything reads every page's size."""
 
-    def read_pages(self):
+    driver: PdfDriver
+
+    def pages(self) -> list[Page]:
         """Stands in for reading every page's size, to fail if anything does."""
         raise AssertionError("the pages were read")
 
-    monkeypatch.setattr(Engine, "pages", read_pages)
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _unread_pages(path: str) -> PdfDriver:
+    """A driver factory for the store: MuPDF's, failing if the pages' sizes are read."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _UnreadPagesDriver(open_driver(path)))
+
+
+def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(folder):
+    """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
     with pytest.raises(TooManyPages):
-        analyse.analyse_upload(FOLDER_STORE, folder, 1)  # the sample has two
+        analyse.analyse_upload(FolderStore(_unread_pages), folder, 1)  # the sample has two

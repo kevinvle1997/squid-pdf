@@ -1,7 +1,7 @@
 """Every constant a feature keeps in its constants.py is read somewhere in the app.
 
-A limit nothing reads looks enforced and isn't: UPLOADS_PER_MINUTE sat unread
-until #42. Read from the source, as tests/test_layers.py reads imports.
+A limit nothing reads looks enforced and isn't, so each name must have a reader.
+Read from the source, as tests/test_layers.py reads imports.
 """
 
 from __future__ import annotations

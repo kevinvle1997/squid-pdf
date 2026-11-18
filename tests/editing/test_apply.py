@@ -7,7 +7,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, assert_never, cast
+from typing import Any, Literal, assert_never, cast
 
 import pymupdf
 import pytest
@@ -16,17 +16,20 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core import (
     DEFAULT_DRIVER_FACTORY,
-    Engine,
+    FACES,
     QuarterTurn,
+    Rect,
     Span,
     SpanIndex,
     new_text,
     open_pdf,
+    strip_subset,
     words,
 )
-from squidpdf.core.fonts.catalog import FACES, face_bytes
+from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
-from squidpdf.core.fonts.names import strip_subset
+from squidpdf.core.pdf.driver import PdfDriver
+from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.editing import (
     Applied,
     BadReference,
@@ -135,7 +138,7 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
     """`face` is stored cut down, still draws `text`, and keeps its hinting."""
     cut = _stored_file(str(path), page, face)
     shipped = face_bytes(FACES[face])
-    assert_true(len(cut) < len(shipped), f"{face} stored {len(cut)} bytes of {len(shipped)}")
+    assert_at_most(len(cut), len(shipped) - 1, f"bytes {face} stored, cut from {len(shipped)}")
     assert_equal(coverage_of(cut).missing(text), [], f"letters {face} lost in the cut")
     kept = [table for table in _HINTING if table in TTFont(io.BytesIO(cut))]
     shipped_hinting = [table for table in _HINTING if table in TTFont(io.BytesIO(shipped))]
@@ -169,7 +172,7 @@ def _substituted(engine) -> Span:
 def test_redaction_really_removes_the_text(engine, tmp_path):
     """A covering rectangle would pass a visual check and fail this."""
     index = engine.index()
-    span = next(s for s in index if s.page == 1)
+    span = next(s for s in index if s.page == EMBEDDED_PAGE)
     edits = [Redact(span.id)]
     resolved = _resolved(engine, index, edits)
     planned = planned_of(engine, resolved)
@@ -458,7 +461,7 @@ def test_a_strategy_not_offered_is_drawn_as_is(engine, tmp_path):
     drawn = _drawn(out, REFERENCED_PAGE, _FAR_LONGER)
     _x0, _y0, end, _y1 = drawn["bbox"]
     assert_equal(drawn["size"], span.size, "type size of a run left long")
-    assert_true(end > span.bbox.x1 + _EDGE_PT, "a run left long runs long")
+    assert_at_least(end, span.bbox.x1 + _EDGE_PT, "where a run left long ends")
 
 
 def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_path):
@@ -851,15 +854,35 @@ def _three_pages(path: str) -> str:
     return path
 
 
-def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_path, monkeypatch):
+@dataclass(frozen=True, slots=True)
+class _NotErasingDriver:
+    """MuPDF's driver, whose erase leaves every letter and says it left none."""
+
+    driver: PdfDriver
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
+        """Nothing erased, and nothing read as left in any box."""
+        return ["" for _box in boxes]
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def _not_erasing(path: str) -> PdfDriver:
+    """A driver factory for `open_pdf`: MuPDF's, with an erase that erases nothing."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _NotErasingDriver(open_driver(path)))
+
+
+def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_path):
     """Whoever renumbers the pages, the check reads the order worked out once.
 
     The erase is what's broken here: the text really is still in the file, one
     page earlier than it was, so reading it on its old page would pass.
     """
-    monkeypatch.setattr(Engine, "remove", lambda _engine, _spans, then_drawn: [])
     path, out = _three_pages(str(tmp_path / "three.pdf")), str(tmp_path / "out.pdf")
-    with open_pdf(path) as engine:
+    with open_pdf(path, driver_factory=_not_erasing) as engine:
         index = engine.index()
         [secret] = [span for span in index if span.text.startswith("SECRET")]
         resolved = _resolved(engine, index, [Redact(secret.id)])

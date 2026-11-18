@@ -23,7 +23,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants
-from squidpdf.api.app import create_app
 from squidpdf.api.constants import WORKER_MEMORY_BYTES, WORKERS
 from squidpdf.api.pool import WorkerPool, start_pool
 from squidpdf.core import (
@@ -34,7 +33,7 @@ from squidpdf.core import (
     tally_fields,
 )
 from squidpdf.editing.constants import EXPORT_TIMEOUT_S, FONT_LIST_TIMEOUT_S, RENDER_TIMEOUT_S
-from tests.api.conftest import BASE_URL, DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
+from tests.api.conftest import DOCUMENT_ID, LOGGED_PATH, SERVER_PATH, upload
 from tests.conftest import LOG_LINE, log_lines
 from tests.helpers import (
     assert_all,
@@ -180,13 +179,11 @@ def _kill_idle_worker(client: TestClient, pool: WorkerPool) -> None:
     assert_true(gone, f"the killed worker was reaped within {_ENOUGH_S} s")
 
 
-def test_the_api_works_on_after_an_idle_worker_is_killed(tmp_path, monkeypatch, pdf_bytes):
+def test_the_api_works_on_after_an_idle_worker_is_killed(own_app, pdf_bytes):
     """Its own app: this breaks the pool on purpose."""
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
-    app = create_app()
-    with TestClient(app, base_url=BASE_URL) as client:
+    with own_app.started() as client:
         doc = upload(client, pdf_bytes).json()
-        _kill_idle_worker(client, app.state.pool)
+        _kill_idle_worker(client, own_app.app.state.pool)
         page = client.get(
             f"/api/documents/{doc['id']}/pages/0", params={"scale": 1, "build": doc["build"]}
         )
@@ -328,16 +325,14 @@ def _no_channels(*_args: object) -> None:
     ],
 )
 def test_pdf_work_says_no_workers_when_no_worker_can_start(
-    tmp_path, monkeypatch, caplog, pdf_bytes, patched, replacement, health_sees_it
+    own_app, monkeypatch, caplog, pdf_bytes, patched, replacement, health_sees_it
 ):
     """Its own app, as it breaks the pool: the second page finds the new pool broken too."""
-    monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
-    app = create_app()
-    with TestClient(app, base_url=BASE_URL) as client:
+    with own_app.started() as client:
         doc = upload(client, pdf_bytes).json()
         page = f"/api/documents/{doc['id']}/pages/0"
         params = {"scale": 1, "build": doc["build"]}
-        _kill_idle_worker(client, app.state.pool)
+        _kill_idle_worker(client, own_app.app.state.pool)
         with monkeypatch.context() as machine:
             machine.setattr(pebble.pool.process, patched, replacement)
             broken_pages = [client.get(page, params=params) for _ in range(2)]

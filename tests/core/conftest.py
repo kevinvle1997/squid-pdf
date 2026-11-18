@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from string import Formatter
 
 import pymupdf
@@ -45,19 +46,41 @@ _DESCRIPTOR = (
 )
 
 
-def _square() -> Glyph:
-    """A plain filled square, 500 wide and 700 tall.
+def square(width: int = 500) -> Glyph:
+    """A plain filled box, `width` wide and 700 tall, 50 in from the left.
 
-    The tests only ask whether a letter has a shape, not what it looks like,
-    so A and B are both drawn as this.
+    The tests only ask whether a letter has a shape, or how wide it is, not
+    what it looks like.
     """
     pen = TTGlyphPen(None)
     pen.moveTo((50, 0))
     pen.lineTo((50, 700))
-    pen.lineTo((550, 700))
-    pen.lineTo((550, 0))
+    pen.lineTo((50 + width, 700))
+    pen.lineTo((50 + width, 0))
     pen.closePath()
     return pen.glyph()
+
+
+def finished_font(
+    builder: FontBuilder,
+    *,
+    family: str,
+    before_saving: Callable[[FontBuilder], None] | None = None,
+) -> bytes:
+    """`builder`'s font, given the header, names, OS/2 and post every test font has, saved.
+
+    `before_saving` changes what those need first: a variable font's axes are
+    named in the name table, and OS/2 reads the letter table (cmap) whole.
+    """
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupOS2()
+    builder.setupPost()
+    if before_saving is not None:
+        before_saving(builder)
+    out = io.BytesIO()
+    builder.save(out)
+    return out.getvalue()
 
 
 def _truetype(
@@ -72,22 +95,21 @@ def _truetype(
     builder = FontBuilder(_EM, isTTF=True)
     builder.setupGlyphOrder(_GLYPHS)
     builder.setupCharacterMap(cmap or {})
-    square, empty = _square(), TTGlyphPen(None).glyph()
-    builder.setupGlyf({n: square if n in ("A", "B") else empty for n in _GLYPHS})
+    shaped, empty = square(), TTGlyphPen(None).glyph()
+    builder.setupGlyf({n: shaped if n in ("A", "B") else empty for n in _GLYPHS})
     builder.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
-    builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
-    builder.setupOS2()
-    builder.setupPost()
-    if cmap is None:
-        del builder.font["cmap"]
-    elif symbol:
-        table = builder.font["cmap"]
-        table.tables = table.tables[:1]
-        table.tables[0].platformID, table.tables[0].platEncID = 3, 0
-    out = io.BytesIO()
-    builder.save(out)
-    return out.getvalue()
+
+    def as_asked(built: FontBuilder) -> None:
+        """Its letter table as `cmap` and `symbol` ask: gone, or a symbol one alone."""
+        if cmap is None:
+            del built.font["cmap"]
+            return
+        if symbol:
+            table = built.font["cmap"]
+            table.tables = table.tables[:1]
+            table.tables[0].platformID, table.tables[0].platEncID = 3, 0
+
+    return finished_font(builder, family=family, before_saving=as_asked)
 
 
 # The fixtures below write a one-page PDF by hand, object by object, so the
@@ -147,11 +169,17 @@ def symbolic(tmp_path_factory) -> str:
     )
 
 
-@pytest.fixture(scope="module")
-def coded_symbol(tmp_path_factory) -> str:
-    """ABBA in a symbol-cmap TrueType, codes by first use, with a ToUnicode, as tickets are."""
+def _in_coded_symbol(
+    path: str,
+    content: bytes,
+    *,
+    box: str | None = None,
+    resources: str = "",
+    resource: str = "F1",
+) -> str:
+    """One page drawing `content` in a symbol-cmap TrueType coded by first use."""
     return _embed_by_hand(
-        str(tmp_path_factory.mktemp("coded") / "symbol.pdf"),
+        path,
         {
             "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
             "to_unicode": to_unicode(
@@ -159,13 +187,25 @@ def coded_symbol(tmp_path_factory) -> str:
                 "1 beginbfrange <20> <21> <0041> endbfrange"
                 " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
             ),
-            "content": b"BT /F1 12 Tf 172 700 Td <20212120> Tj ET",
+            "content": content,
         },
         {
             "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
             "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
             f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
         },
+        box=box,
+        resources=resources,
+        resource=resource,
+    )
+
+
+@pytest.fixture(scope="module")
+def coded_symbol(tmp_path_factory) -> str:
+    """ABBA in a symbol-cmap TrueType, codes by first use, with a ToUnicode, as tickets are."""
+    return _in_coded_symbol(
+        str(tmp_path_factory.mktemp("coded") / "symbol.pdf"),
+        b"BT /F1 12 Tf 172 700 Td <20212120> Tj ET",
         box=_OFFSET_BOX,
     )
 
@@ -176,23 +216,10 @@ def coded_under(path: str, resource: str) -> str:
     `resource` is written as a PDF writes a name, a space as #20. Two lines, so
     that erasing one leaves the font on the page, under that name.
     """
-    return _embed_by_hand(
+    return _in_coded_symbol(
         path,
-        {
-            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
-            "to_unicode": to_unicode(
-                "<00> <FF>",
-                "1 beginbfrange <20> <21> <0041> endbfrange"
-                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
-            ),
-            "content": f"BT /{resource} 12 Tf 172 700 Td <20212120> Tj ET"
-            f" BT /{resource} 12 Tf 172 600 Td <2120> Tj ET".encode(),
-        },
-        {
-            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
-            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
-            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
-        },
+        f"BT /{resource} 12 Tf 172 700 Td <20212120> Tj ET"
+        f" BT /{resource} 12 Tf 172 600 Td <2120> Tj ET".encode(),
         resource=resource,
     )
 
@@ -200,22 +227,9 @@ def coded_under(path: str, resource: str) -> str:
 @pytest.fixture(scope="module")
 def coded_translucent(tmp_path_factory) -> str:
     """The symbol fixture's ABBA, painted at TRANSLUCENT opacity by a graphics state (/GS1)."""
-    return _embed_by_hand(
+    return _in_coded_symbol(
         str(tmp_path_factory.mktemp("coded") / "translucent.pdf"),
-        {
-            "file": _truetype({_SYMBOL_OFFSET + c: n for c, n in _BY_FIRST_USE.items()}),
-            "to_unicode": to_unicode(
-                "<00> <FF>",
-                "1 beginbfrange <20> <21> <0041> endbfrange"
-                " 2 beginbfchar <22> <0020> <23> <0043> endbfchar",
-            ),
-            "content": b"q /GS1 gs BT /F1 12 Tf 172 700 Td <20212120> Tj ET Q",
-        },
-        {
-            "descriptor": _DESCRIPTOR.replace("{name}", "Coded"),
-            "font": "<</Type/Font/Subtype/TrueType/BaseFont/Coded/FirstChar 32/LastChar 35"
-            f"/Widths[{_WIDTHS}]/FontDescriptor {{descriptor}}/ToUnicode {{to_unicode}}>>",
-        },
+        b"q /GS1 gs BT /F1 12 Tf 172 700 Td <20212120> Tj ET Q",
         resources=f"/ExtGState<</GS1<</ca {TRANSLUCENT}>>>>",
     )
 

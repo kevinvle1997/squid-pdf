@@ -20,7 +20,6 @@ import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
-from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
 from squidpdf.core import (
@@ -48,7 +47,15 @@ from squidpdf.core.fonts.google import (
 from squidpdf.core.fonts.google_files import GoogleFile, google_file
 from squidpdf.core.types import FontDescriptor
 from tests.conftest import POPPINS, POPPINS_TEXT, name_two_byte_font
-from tests.helpers import assert_at_most, assert_equal, assert_false, assert_in, assert_true
+from tests.core.conftest import finished_font, square
+from tests.helpers import (
+    assert_at_most,
+    assert_equal,
+    assert_false,
+    assert_in,
+    assert_not_in,
+    assert_true,
+)
 
 _WANTED = "Yearly Hello"  # Y, a and y aren't in the file's copy of Poppins
 _LACKED = ["Y", "a", "y"]
@@ -152,7 +159,7 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     lending = [file for file in font_files if coverage_of(file).covers("Y")]
     assert_equal(len(lending), 1, "font files on the page that draw a Y")
     # Cut down to what was drawn, as a face we ship is: not the whole font.
-    assert_true(len(lending[0]) < len(POPPINS.read_bytes()), "Google's copy was trimmed")
+    assert_at_most(len(lending[0]), len(POPPINS.read_bytes()) - 1, "Google's copy's size")
 
 
 def test_googles_copy_lends_only_the_letters_it_draws(poppins_subset):
@@ -330,8 +337,8 @@ def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, cap
         got = _fresh_fetch(file, tmp_path, _returning(poppins))
 
     assert_true(got == poppins, "Google's copy was handed back")
-    assert_true("damaged" in caplog.text, "the bad copy was logged")
-    assert_false("google_cache_missed" in caplog.text, "a damaged copy logged as a miss too")
+    assert_in("damaged", caplog.text, "the bad copy was logged")
+    assert_not_in("google_cache_missed", caplog.text, "a damaged copy logged as a miss too")
     assert_true(cached.read_bytes() == poppins, "the cache holds Google's copy after")
 
 
@@ -351,17 +358,6 @@ def test_a_damaged_copy_on_a_read_only_disk_is_left_and_fetched_again(tmp_path, 
     assert_true(got == poppins, "Google's copy was handed back")
 
 
-def _square(width: int) -> Glyph:
-    """A plain filled box `width` wide: the test only measures how wide A is."""
-    pen = TTGlyphPen(None)
-    pen.moveTo((0, 0))
-    pen.lineTo((0, 700))
-    pen.lineTo((width, 700))
-    pen.lineTo((width, 0))
-    pen.closePath()
-    return pen.glyph()
-
-
 def _variable_font() -> bytes:
     """A made-up variable font with one letter, A: 500 wide at weight 400, wider when bolder.
 
@@ -369,21 +365,19 @@ def _variable_font() -> bytes:
     advance (points three, four and six: two corners, then the right phantom point) out by
     _WIDE at 900, so A is 620 wide at 700.
     """
-    fb = FontBuilder(_EM, isTTF=True)
-    fb.setupGlyphOrder([".notdef", "A"])
-    fb.setupCharacterMap({ord("A"): "A"})
-    fb.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "A": _square(500)})
-    fb.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 0)})
-    fb.setupHorizontalHeader(ascent=800, descent=-200)
-    fb.setupNameTable({"familyName": "Madeup", "styleName": "Regular"})
-    fb.setupOS2()
-    fb.setupPost()
-    fb.setupFvar(axes=[("wght", 100, 400, 900, "Weight")], instances=[])
+    builder = FontBuilder(_EM, isTTF=True)
+    builder.setupGlyphOrder([".notdef", "A"])
+    builder.setupCharacterMap({ord("A"): "A"})
+    builder.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "A": square()})
+    builder.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 50)})
+    return finished_font(builder, family="Madeup", before_saving=_bolder_is_wider)
+
+
+def _bolder_is_wider(builder: FontBuilder) -> None:
+    """A weight axis whose one variation moves A's right edge and advance _WIDE out at 900."""
+    builder.setupFvar(axes=[("wght", 100, 400, 900, "Weight")], instances=[])
     moved = [(0, 0), (0, 0), (_WIDE, 0), (_WIDE, 0), (0, 0), (_WIDE, 0), (0, 0), (0, 0)]
-    fb.setupGvar({"A": [TupleVariation({"wght": (0, 1, 1)}, moved)]})
-    out = io.BytesIO()
-    fb.save(out)
-    return out.getvalue()
+    builder.setupGvar({"A": [TupleVariation({"wght": (0, 1, 1)}, moved)]})
 
 
 def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(tmp_path):
@@ -395,7 +389,7 @@ def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(t
     if got is None:
         pytest.fail("no copy was had")
     cut = TTFont(io.BytesIO(got))
-    assert_false("fvar" in cut, "the cut still varies")
+    assert_not_in("fvar", cut, "the cut still varies")
     assert_equal(cut["hmtx"]["A"][0], 620, "A's width at weight 700")
     again = _fresh_fetch(file, tmp_path, _failing)
     assert_true(again == got, "the cut is read back from the cache")
@@ -404,14 +398,18 @@ def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(t
     assert_equal(_fresh_fetch(file, tmp_path, _failing), None, "a cut gone bad")
 
 
-def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(monkeypatch):
+def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(tmp_path, monkeypatch):
     """Two workers may cut one file at once, each keeping its hash: they must agree."""
     variable = _variable_font()
+    file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
     # fontTools stamps a saved font with the time, read from here when it's set.
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
-    first = google._cut(variable, 700)
+    first = _fresh_fetch(file, tmp_path / "first", _returning(variable))
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "2000000000")
-    assert_true(google._cut(variable, 700) == first, "a later cut matches the first")
+    later = _fresh_fetch(file, tmp_path / "later", _returning(variable))
+    if first is None:
+        pytest.fail("no copy was had")
+    assert_true(later == first, "a later cut matches the first")
 
 
 def test_a_slow_cut_holds_back_only_its_own_file(tmp_path, monkeypatch):

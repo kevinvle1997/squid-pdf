@@ -103,7 +103,7 @@ def test_a_failure_no_row_claims_goes_up_as_it_is_and_the_top_calls_it_a_server_
 
 
 def test_a_file_the_machine_cannot_write_is_a_server_error_not_too_heavy(engine, tmp_path):
-    """A document deleted mid-export once answered "needs more memory" (review 1.8)."""
+    """A document deleted mid-export once answered "needs more memory"."""
     with pytest.raises(Problem) as caught:
         result_of(partial(engine.save, str(tmp_path / "deleted" / "out.pdf")))
     said = (caught.value.type, caught.value.status)
