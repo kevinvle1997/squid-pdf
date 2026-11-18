@@ -61,6 +61,13 @@ class AlreadyUnlimited(Problem):
     status = 409
 
 
+class AlreadySubscribed(Problem):
+    """Stripe bills the account already, or may yet: a second subscription would pay twice."""
+
+    type = "already_subscribed"
+    status = 409
+
+
 class NeverPaid(Problem):
     """The account has never gone to pay, so Stripe has no billing of it to manage."""
 

@@ -54,6 +54,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # What each address has going, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentStarts()
     app.state.recent_links = RecentStarts()
+    app.state.recent_payment_pages = RecentStarts()
     # What each inbox was sent, counted as long as a link works.
     app.state.recent_links_to = RecentStarts(window_s=LINK_VALID_S)
     app.state.upload_turns = Turns()

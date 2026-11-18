@@ -202,7 +202,9 @@ async def mail_events(
     return response_of(await BounceController(accounts).note(events), media_type=_JSON)
 
 
-@router.post("/checkout", response_model=PaymentPage)
+@router.post(
+    "/checkout", response_model=PaymentPage, dependencies=[Depends(rate.admit_payment_page)]
+)
 async def checkout(
     checkout_controller: Annotated[
         CheckoutController, Depends(controller_with_accounts(CheckoutController))
@@ -213,7 +215,11 @@ async def checkout(
     return response_of(await checkout_controller.checkout(user), media_type=_JSON)
 
 
-@router.post("/billing-portal", response_model=PaymentPage)
+@router.post(
+    "/billing-portal",
+    response_model=PaymentPage,
+    dependencies=[Depends(rate.admit_payment_page)],
+)
 async def billing_portal(
     billing_portal_controller: Annotated[
         BillingPortalController, Depends(controller_with_accounts(BillingPortalController))

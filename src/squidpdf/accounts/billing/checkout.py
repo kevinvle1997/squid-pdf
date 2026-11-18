@@ -10,8 +10,15 @@ from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 
+from squidpdf.accounts.billing.stripe_api import NotAtStripe
 from squidpdf.accounts.deployment import Accounts, Billing
-from squidpdf.accounts.errors import AlreadyUnlimited, NeverPaid, NoPayments, SignInToPay
+from squidpdf.accounts.errors import (
+    AlreadySubscribed,
+    AlreadyUnlimited,
+    NeverPaid,
+    NoPayments,
+    SignInToPay,
+)
 from squidpdf.accounts.types import PaymentPage
 from squidpdf.accounts.users import User, UserStore
 from squidpdf.core import Reply
@@ -26,8 +33,8 @@ class CheckoutController:
     async def checkout(self, user: User | None) -> Reply[PaymentPage]:
         """Where `user` pays: Stripe's checkout, for the account's customer, made on first use.
 
-        Raises NoPayments, SignInToPay, or AlreadyUnlimited for an account with no limit to
-        lift: it would pay twice. PaymentsUnavailable while Stripe can't be asked.
+        Raises NoPayments, SignInToPay, AlreadyUnlimited for an account with no limit to
+        lift, AlreadySubscribed for one Stripe bills already, or PaymentsUnavailable.
         """
         billing = _billing_of(self.accounts)
         if user is None:
@@ -59,9 +66,9 @@ class BillingPortalController:
         if user.stripe_customer is None:
             raise NeverPaid()
         managing = partial(
-            billing.stripe.portal_url, customer=user.stripe_customer, site=self.accounts.site
+            _portal_url, self.accounts.users, billing, user, customer=user.stripe_customer
         )
-        url = await billing.run(managing)
+        url = await billing.run(partial(managing, site=self.accounts.site))
         return Reply(PaymentPage(url=url), {}, HTTPStatus.OK)
 
 
@@ -73,11 +80,39 @@ def _billing_of(accounts: Accounts) -> Billing:
 
 
 def _checkout_url(users: UserStore, billing: Billing, user: User, *, site: str) -> str:
-    """Stripe's checkout for `user`'s customer, made first where it has none."""
-    customer = user.stripe_customer or _customer_of(users, billing, user)
+    """Stripe's checkout for `user`'s customer, made first where it has none.
+
+    Asks Stripe first: its paid time here can be late, and a renewal Stripe retries may
+    yet be paid, so a second subscription would pay twice.
+    """
+    customer = user.stripe_customer
+    if customer is not None:
+        if billing.stripe.subscriptions(customer, account=user.id).live > 0:
+            raise AlreadySubscribed()
+        try:
+            return _checkout_for(billing, user, customer=customer, site=site)
+        except NotAtStripe:  # raised by Stripe's client: deleted, or made with the test key
+            users.forget_customer(user.id, customer)
+    made = _customer_of(users, billing, user)
+    return _checkout_for(billing, user, customer=made, site=site)
+
+
+def _checkout_for(billing: Billing, user: User, *, customer: str, site: str) -> str:
+    """Stripe's checkout for `user`, as `customer`."""
     return billing.stripe.checkout_url(
         customer=customer, account=user.id, price=billing.price, site=site
     )
+
+
+def _portal_url(
+    users: UserStore, billing: Billing, user: User, *, customer: str, site: str
+) -> str:
+    """Stripe's portal for `customer`; NeverPaid, and forgotten, where Stripe hasn't got it."""
+    try:
+        return billing.stripe.portal_url(customer=customer, site=site)
+    except NotAtStripe:  # raised by Stripe's client: deleted, or made with the test key
+        users.forget_customer(user.id, customer)
+        raise NeverPaid() from None
 
 
 def _customer_of(users: UserStore, billing: Billing, user: User) -> str:

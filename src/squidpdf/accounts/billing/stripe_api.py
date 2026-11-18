@@ -83,19 +83,19 @@ class StripeApi:
     client: httpx.Client  # carries the key: never logged
 
     def new_customer(self, *, account: str, email: str) -> str:
-        """A Stripe customer for `account`, by its id: made once, however often it's asked.
+        """A new Stripe customer for `account`, by its id, sending receipts to `email`.
 
-        Its key is the account's, so a retry, or a second payment asked at once, gets the
-        customer the first made.
+        Its key is this call's, not the account's: Stripe keeps a key's answer a day, so a
+        server error kept under the account's would refuse it until then.
         """
         form = {"email": email, "metadata[account]": account}
-        made = self._post("/v1/customers", form=form, key=f"squidpdf-customer-{account}")
-        return made["id"]
+        return self._post("/v1/customers", form=form, key=_one_call("customer"))["id"]
 
     def checkout_url(self, *, customer: str, account: str, price: str, site: str) -> str:
         """Where `customer` pays monthly for `price`, its tax worked out by Stripe Tax.
 
         Stripe's own page takes the card, so none reaches this server; back at `site` after.
+        It takes payment CHECKOUT_VALID_S. Raises NotAtStripe for a customer Stripe hasn't got.
         """
         form = {
             "mode": "subscription",
@@ -110,12 +110,13 @@ class StripeApi:
             "subscription_data[metadata][account]": account,
             "success_url": f"{site}{_PAID_PATH}",
             "cancel_url": f"{site}/",
+            "expires_at": str(int(time.time()) + constants.CHECKOUT_VALID_S),
         }
         made = self._post("/v1/checkout/sessions", form=form, key=_one_call("checkout"))
         return made["url"]
 
     def portal_url(self, *, customer: str, site: str) -> str:
-        """Where `customer` changes their card, reads their invoices or cancels; then `site`."""
+        """Where `customer` mends a card, reads invoices, cancels; NotAtStripe if it's gone."""
         form = {"customer": customer, "return_url": f"{site}/"}
         made = self._post("/v1/billing_portal/sessions", form=form, key=_one_call("portal"))
         return made["url"]
