@@ -644,7 +644,7 @@ def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(da
     assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), True, "bounced")
     assert_equal(main(["invite", "friend@example.com"]), 0, "exit code")
     assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), False, "cleared")
-    users.remove("friend@example.com", now=1)
+    users.remove("friend@example.com", now=1, secret=_SECRET)
     assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), False, "taken off")
 
 
