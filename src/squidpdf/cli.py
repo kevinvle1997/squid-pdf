@@ -29,7 +29,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import TextIO, get_args
+from typing import TextIO, assert_never, get_args
 
 from squidpdf.accounts.deployment import named_users
 from squidpdf.accounts.users import checked_email
@@ -510,11 +510,17 @@ def _cmd_remove(args: argparse.Namespace) -> int:
     if users is None:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
+    removal = users.remove(email, now=int(time.time()))
     # A typo leaves the person still in: said, so it's caught.
-    if not users.remove(email):
+    if removal == "no_account":
         return _fail(words.render(Message("no_account", {"email": email})))
-    print(f"  {_GREEN}{words.render(Message('removed', {'email': email}))}{_OFF}")
-    return 0
+    # Gone, they'd still be charged: their subscription is cancelled in Stripe first.
+    if removal == "paying":
+        return _fail(words.render(Message("still_paying", {"email": email})))
+    if removal == "removed":
+        print(f"  {_GREEN}{words.render(Message('removed', {'email': email}))}{_OFF}")
+        return 0
+    assert_never(removal)
 
 
 def _fail(said: str, *, hint: str = "") -> int:

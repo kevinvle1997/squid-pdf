@@ -12,12 +12,14 @@ import pty
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Literal, get_args
 
 import pymupdf
 import pytest
 
+from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import open_users
 from squidpdf.cli import _MARKS, main  # noqa: PLC2701 (every fidelity has a mark)
 from squidpdf.core import Fidelity, Message, RedactionCheck, open_pdf, words
@@ -517,6 +519,36 @@ def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_ag
     assert_equal(main(["invite", "friend@example.com"]), 0, "invited again, without it")
     again = open_users(database).find("friend@example.com")
     assert_equal(again and again.is_unlimited, False, "the limit is back")
+
+
+def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends(
+    tmp_path, monkeypatch, capsys
+):
+    """Removed while paying, they'd be charged for an account that's gone."""
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    users = open_users(database)
+    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    now = int(time.time())
+
+    def paid_until(until: int | None, *, event: str) -> None:
+        billing = BillingEvent(
+            event,
+            type="customer.subscription.updated",
+            created=now,
+            customer="cus_test",
+            account=account,
+            outcome="applied",
+            paid_until=until,
+        )
+        users.apply_billing(billing, now=now)
+
+    paid_until(now + 3600, event="evt_paid")
+    assert_equal(main(["remove", "payer@example.com"]), 1, "exit code, still paying")
+    assert_in("Cancel their subscription in Stripe", capsys.readouterr().err, "said")
+    assert_equal(users.find("payer@example.com") is None, False, "the account is kept")
+    paid_until(None, event="evt_cancelled")
+    assert_equal(main(["remove", "payer@example.com"]), 0, "exit code, cancelled")
 
 
 def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):

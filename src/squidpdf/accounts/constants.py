@@ -16,5 +16,8 @@ MAIL_TIMEOUT_S = 20
 # Letters sent at once. A link waits its turn behind them, so a hung mail server holds
 # these alone, never the threads the server's disk work shares: a few, as links are rare.
 MAIL_THREADS = 2
+# Stripe charges a renewal up to an hour after the paid month ends, so paid time runs this
+# much past it: the charge lands before the limit comes back. A failed charge gets no more.
+RENEWAL_LEEWAY_S = 2 * 60 * 60
 # Longest address a mail server takes (RFC 5321's path, less its brackets).
 MAX_EMAIL_CHARS = 254

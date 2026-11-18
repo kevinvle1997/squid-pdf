@@ -1,4 +1,4 @@
-"""The one table: each person who has signed in or been invited, by their email.
+"""The accounts' tables: each person signed in or invited, by email, and what billing did.
 
 SQLite in one file, through SQLAlchemy, so moving to a server database later changes the
 URL and little else. Every call blocks on the disk: a coroutine makes it in a thread.
@@ -9,7 +9,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import (
     Boolean,
@@ -33,6 +33,7 @@ from sqlalchemy.pool import NullPool
 
 from squidpdf.accounts import constants
 from squidpdf.accounts.errors import NotAnEmail
+from squidpdf.accounts.types import BillingEvent
 
 _ID_BYTES = 16
 # What a To: header reads as one address ending and another, or a name, beginning.
@@ -56,9 +57,39 @@ _USERS = Table(
     # Until when the last sign-in link used held (Unix seconds); None until one is used. A link
     # is used once, and an older one is used up with it.
     Column("link_until", Integer, nullable=True),
+    # The account's customer at Stripe, made the first time it goes to pay; None before.
+    Column("stripe_customer", Text, nullable=True),
+    # Until when Stripe last said the account's month is paid (Unix seconds); None if never.
+    Column("paid_until", Integer, nullable=True),
 )
-# Columns added since the table was first made, each added to a table from before it.
-_ADDED_COLUMNS = ("bounced_at", "link_until")
+# Columns added since the table was first made, each added to a table from before it, with
+# its SQL type: SQLite adds no column as UNIQUE, so the customer's index is made apart.
+_ADDED_COLUMNS = {
+    "bounced_at": "INTEGER",
+    "link_until": "INTEGER",
+    "stripe_customer": "TEXT",
+    "paid_until": "INTEGER",
+}
+_ONE_ACCOUNT_A_CUSTOMER = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_stripe_customer ON users (stripe_customer)"
+)
+# Every event Stripe has sent, once each, and what it did: never changed, never deleted, so it
+# stays the record of what billing did, an account's removal included.
+_BILLING_EVENTS = Table(
+    "billing_events",
+    _TABLES,
+    Column("id", Text, primary_key=True),  # Stripe's: the same event sent again is no new row
+    Column("type", Text, nullable=False),
+    Column("created", Integer, nullable=False),  # Stripe's time, Unix seconds
+    Column("received_at", Integer, nullable=False),  # ours, Unix seconds
+    Column("customer", Text, nullable=True),
+    Column("account", Text, nullable=True),  # an account's id, kept once the account is gone
+    Column("outcome", Text, nullable=False),
+    Column("paid_until", Integer, nullable=True),
+)
+
+# What `remove` did: took the account off, found none, or kept it, its month still paid.
+Removal = Literal["removed", "no_account", "paying"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +101,14 @@ class User:
     created_at: int
     is_unlimited: bool
     bounced_at: int | None  # mail to them came back as never deliverable, so none is sent
+    stripe_customer: str | None  # their customer at Stripe; None until they first go to pay
+    paid_until: int | None  # until when Stripe last said their month is paid; None if never
+
+    def is_paid_at(self, now: int) -> bool:
+        """Whether paid time runs at `now`, a renewal's charge allowed for: no limit then."""
+        return (
+            self.paid_until is not None and now < self.paid_until + constants.RENEWAL_LEEWAY_S
+        )
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -128,11 +167,47 @@ class UserStore:
         with self.database.begin() as connection:
             return connection.execute(spending).rowcount > 0
 
-    def remove(self, email: str) -> bool:
-        """Take the account under `email` off the table, its count too; whether it had one."""
+    def remove(self, email: str, *, now: int) -> Removal:
+        """Take the account under `email` off the table, its count too, unless it's paying.
+
+        One transaction, so paid time a webhook sets can't land between the look and the
+        delete: an account whose month is paid would be charged for nothing.
+        """
+        unpaid = _USERS.c.paid_until.is_(None) | (
+            _USERS.c.paid_until <= now - constants.RENEWAL_LEEWAY_S
+        )
         with self.database.begin() as connection:
-            removed = connection.execute(_USERS.delete().where(_USERS.c.email == email))
-        return removed.rowcount > 0
+            removed = connection.execute(_USERS.delete().where(_USERS.c.email == email, unpaid))
+            if removed.rowcount > 0:
+                return "removed"
+            kept = connection.execute(select(_USERS.c.id).where(_USERS.c.email == email))
+            return "no_account" if kept.first() is None else "paying"
+
+    def apply_billing(self, billing: BillingEvent, *, now: int) -> bool:
+        """Keep `billing` in the ledger, and set the paid time it says; whether it was new.
+
+        One transaction: an event is in the ledger exactly when its paid time is set, and
+        one sent again changes nothing.
+        """
+        kept = insert(_BILLING_EVENTS).values(
+            id=billing.id,
+            type=billing.type,
+            created=billing.created,
+            received_at=now,
+            customer=billing.customer,
+            account=billing.account,
+            outcome=billing.outcome,
+            paid_until=billing.paid_until,
+        )
+        with self.database.begin() as connection:
+            noted = connection.execute(kept.on_conflict_do_nothing(index_elements=["id"]))
+            # Sent again: what it set is set already, and anything since must stand.
+            if noted.rowcount == 0:
+                return False
+            if billing.outcome == "applied":
+                paid = _USERS.update().where(_USERS.c.id == billing.account)
+                connection.execute(paid.values(paid_until=billing.paid_until))
+            return True
 
     def counted_in(self, user_id: str, *, month: str) -> frozenset[str]:
         """The files the account opened in `month`, by digest: none, once a new one starts.
@@ -181,8 +256,10 @@ def open_users(path: Path) -> UserStore:
     database = create_engine(f"sqlite:///{path}", poolclass=NullPool)
     event.listen(database, "connect", _set_up_connection)
     _TABLES.create_all(database)
-    for column in _ADDED_COLUMNS:
-        _add_column(database, column)
+    for column, kind in _ADDED_COLUMNS.items():
+        _add_column(database, column, kind=kind)
+    with database.begin() as connection:
+        connection.execute(text(_ONE_ACCOUNT_A_CUSTOMER))
     return UserStore(database)
 
 
@@ -208,15 +285,15 @@ def _set_up_connection(connection: Any, _record: Any) -> None:
     connection.execute("PRAGMA secure_delete=ON")
 
 
-def _add_column(database: Engine, column: str) -> None:
-    """Add the nullable integer `column` to a table made before it was one; its rows read None.
+def _add_column(database: Engine, column: str, *, kind: str) -> None:
+    """Add the nullable `column`, of SQL type `kind`, to a table made before it; rows read None.
 
     Tried on every open: SQLite has no ADD COLUMN IF NOT EXISTS, and a look first
     would race the app and the command line opening the file at once.
     """
     try:
         with database.begin() as connection:
-            connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} INTEGER"))
+            connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} {kind}"))
     except OperationalError as refused:  # raised by SQLite, as a column already there is
         if "duplicate column name" not in str(refused):
             raise
@@ -252,4 +329,6 @@ def _user_from(row: Row[Any]) -> User:
         created_at=row.created_at,
         is_unlimited=row.is_unlimited,
         bounced_at=row.bounced_at,
+        stripe_customer=row.stripe_customer,
+        paid_until=row.paid_until,
     )
