@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
@@ -20,7 +21,7 @@ from squidpdf.accounts.errors import LinkExpired, MailLimitReached, MailNotSent,
 from squidpdf.accounts.signed import Signed, read_signed, signed
 from squidpdf.accounts.types import AccountState, LinkSent, SignedIn
 from squidpdf.accounts.users import User, checked_email
-from squidpdf.core import LogController, LogEvent, Message, Reply, words
+from squidpdf.core import ERROR, LogController, LogEvent, Message, Reply, words
 
 _log = LogController.for_module(__name__)
 
@@ -38,7 +39,7 @@ class LinkController:
         """Email a link that signs in as `typed`, good for LINK_VALID_S; say where it went.
 
         Invite-only, an address no one invited gets nothing, and is told what an invited one
-        is: whether someone is invited is no one else's to find out.
+        is: whether someone is invited is no one else's to find out, by the words or the wait.
         """
         email = checked_email(typed)
         said = "link_sent_if_invited" if self.accounts.invite_only else "link_sent"
@@ -48,27 +49,23 @@ class LinkController:
         reply = Reply(
             LinkSent(sentence=sentence), words.language_headers(language), HTTPStatus.ACCEPTED
         )
-        if self.accounts.invite_only:
-            invited = await asyncio.to_thread(self.accounts.users.find, email)
-            # No one invited them: nothing is sent, and the reply is what the invited get.
-            if invited is None:
-                return reply
-        try:
+        sending = partial(
+            self.accounts.mail.send_sign_in_link,
+            email,
+            link=self._link_for(email),
+            minutes=_link_minutes(),
+            language=language,
+        )
+        if not self.accounts.invite_only:
             # On mail's own threads: a mailer can take seconds to answer, or hang.
-            sending = partial(
-                self.accounts.mail.send_sign_in_link,
-                email,
-                link=self._link_for(email),
-                minutes=_link_minutes(),
-                language=language,
-            )
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(self.accounts.mail_threads, sending)
-        except (MailNotSent, MailLimitReached) as refused:  # raised by the mailer
-            # Said only to the invited, a refusal would tell anyone who is: the log keeps it.
-            if not self.accounts.invite_only:
-                raise
-            _log.write(LogEvent.LINK_NOT_SENT_UNSAID, refused)
+            await self.accounts.send_mail(sending)
+            return reply
+        invited = await asyncio.to_thread(self.accounts.users.find, email)
+        # No one invited them: nothing is sent, and the reply is what the invited get.
+        if invited is None:
+            return reply
+        # Sent after the reply: waited for, the mailer's seconds would tell who is invited.
+        self.accounts.send_mail_unawaited(partial(_send_unawaited, sending))
         return reply
 
     def _link_for(self, email: str) -> str:
@@ -119,6 +116,16 @@ class SignInController:
         if invited is None:
             raise NotInvited()
         return invited
+
+
+def _send_unawaited(sending: Callable[[], None]) -> None:
+    """Send a link no reply waits for; why it wasn't sent is the log's alone to say."""
+    try:
+        sending()
+    except (MailNotSent, MailLimitReached) as refused:  # raised by the mailer: it said no
+        _log.write(LogEvent.LINK_NOT_SENT_UNSAID, refused)
+    except Exception as failed:  # noqa: BLE001 (raised by a bug: no reply is left to say it)
+        _log.write(LogEvent.LINK_NOT_SENT_UNSAID, failed, level=ERROR)
 
 
 def _link_minutes() -> int:
