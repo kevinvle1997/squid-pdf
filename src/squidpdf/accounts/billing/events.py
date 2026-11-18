@@ -1,7 +1,8 @@
 """Hearing Stripe's webhook: each event checked, kept in the ledger once, and its paid time set.
 
 What an event says is never trusted alone: billing asks Stripe for the customer's
-subscriptions as they stand, so an event sent twice, late or out of order sets the same.
+subscriptions as they stand, and the latest answer asked for stands, so an event sent
+twice, late or out of order sets the same. `resync` asks again by hand, kept as an event.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from http import HTTPStatus
 from squidpdf.accounts.billing.stripe_webhook import stripe_event_in
 from squidpdf.accounts.deployment import Accounts, Billing
 from squidpdf.accounts.types import BillingEvent, BillingOutcome, StripeEvent
-from squidpdf.accounts.users import UserStore
+from squidpdf.accounts.users import User, UserStore
 from squidpdf.core import LogController, LogEvent, NotFound, Reply
 
 _log = LogController.for_module(__name__)
@@ -33,6 +34,10 @@ _PAYMENT_EVENTS = frozenset(
         "invoice.payment_failed",
     }
 )
+# A dispute leaves the subscription billing: whoever runs the server decides, in Stripe.
+_DISPUTE_EVENTS = "charge.dispute."
+# What a resync by hand is kept in the ledger as, beside Stripe's own events.
+_RESYNC = "squidpdf.resync"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -59,20 +64,32 @@ class BillingEventController:
         return Reply(b"", {}, HTTPStatus.NO_CONTENT)
 
 
-def _apply(users: UserStore, billing: Billing, event: StripeEvent) -> None:
-    """Keep `event` in the ledger and set the paid time it leads to, once; on a billing thread.
+def resync(
+    users: UserStore, billing: Billing, account: User, *, customer: str
+) -> BillingOutcome | None:
+    """Ask Stripe again for `account`'s paid time, by its `customer`, and keep it as our event.
 
-    Under the lock from asking Stripe to keeping its answer: a later event's answer can't
-    be overwritten by an earlier one's, read before it.
+    For whoever runs the server, when an event was lost: Stripe's own resent keeps its id,
+    which the ledger has already. Raises PaymentsUnavailable when Stripe can't be asked.
     """
-    with billing.applying:
-        # Sent again, as Stripe does until it hears back: kept already, so Stripe isn't asked.
-        if users.has_billing_event(event.id):
-            _log.write(LogEvent.BILLING_EVENT_REPEATED)
-            return
-        applied = _billing_event(users, billing, event)
-        users.apply_billing(applied, now=int(time.time()))
-        _log.write(LogEvent.BILLING_EVENT_NOTED, applied=applied.outcome == "applied")
+    now = int(time.time())
+    asked = StripeEvent(
+        f"{_RESYNC}-{now}-{account.id}", type=_RESYNC, created=now, customer=customer
+    )
+    paid = _paid_event(billing, asked, account=account, customer=customer)
+    return users.apply_billing(paid, now=now)
+
+
+def _apply(users: UserStore, billing: Billing, event: StripeEvent) -> None:
+    """Keep `event` in the ledger, once, and set the paid time it leads to."""
+    # Sent again, as Stripe does until it hears back: kept already, so Stripe isn't asked.
+    if users.has_billing_event(event.id):
+        _log.write(LogEvent.BILLING_EVENT_REPEATED)
+        return
+    if event.type.startswith(_DISPUTE_EVENTS):
+        _log.write(LogEvent.BILLING_DISPUTED)
+    kept = users.apply_billing(_billing_event(users, billing, event), now=int(time.time()))
+    _log.write(LogEvent.BILLING_EVENT_NOTED, applied=kept == "applied")
 
 
 def _billing_event(users: UserStore, billing: Billing, event: StripeEvent) -> BillingEvent:
@@ -80,19 +97,31 @@ def _billing_event(users: UserStore, billing: Billing, event: StripeEvent) -> Bi
     if event.type not in _PAYMENT_EVENTS or event.customer is None:
         return _kept(event, outcome="ignored")
     account = users.find_by_customer(event.customer)
-    # A customer made in Stripe's dashboard, not by an account going to pay.
+    # A customer made in Stripe's dashboard, or kept by an account removed since: it may be
+    # billed with no account to show for it, so whoever runs the server looks in Stripe.
     if account is None:
+        _log.write(LogEvent.BILLING_CUSTOMER_UNKNOWN)
         return _kept(event, outcome="no_account")
+    return _paid_event(billing, event, account=account, customer=event.customer)
+
+
+def _paid_event(
+    billing: Billing, event: StripeEvent, *, account: User, customer: str
+) -> BillingEvent:
+    """`event` with the paid time Stripe says `account` has now, and when it was asked."""
     read_at = time.time_ns() // 1_000_000
-    paid_until = billing.stripe.paid_until(event.customer)
+    subscriptions = billing.stripe.subscriptions(customer, account=account.id)
+    # Two that bill at once: it's paying twice, which whoever runs the server mends in Stripe.
+    if subscriptions.live > 1:
+        _log.write(LogEvent.BILLING_SUBSCRIBED_TWICE, live=subscriptions.live)
     return BillingEvent(
         event.id,
         type=event.type,
         created=event.created,
-        customer=event.customer,
+        customer=customer,
         account=account.id,
         outcome="applied",
-        paid_until=paid_until,
+        paid_until=subscriptions.paid_until,
         read_at=read_at,
     )
 

@@ -376,3 +376,5 @@ still_paying = "{email} pays for no document limit, so nothing was removed: they
 billing_paid = "{email} has no document limit: their month is paid until {until}."
 billing_unpaid = "{email} has no paid month."
 billing_no_account = "{email} has no account here."
+billing_no_customer = "{email} has never gone to pay, so Stripe has nothing of theirs to ask about."
+billing_unchecked = "{email} has billing at Stripe, and this server isn't set up to ask Stripe about it, so nothing was done."

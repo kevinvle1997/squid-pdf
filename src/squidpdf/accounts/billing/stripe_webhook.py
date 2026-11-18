@@ -14,6 +14,8 @@ from squidpdf.accounts.types import StripeEvent
 # endpoint's secrets while one is being rolled over).
 _SIGNED_AT = "t"
 _SIGNATURE = "v1"
+# Digits in a Unix time in seconds, ten until the year 2286: a longer one isn't Stripe's.
+_MOST_TIME_DIGITS = 12
 
 
 def stripe_event_in(
@@ -42,9 +44,14 @@ def _parts_of(signature: str) -> tuple[int | None, list[str]]:
     signed_at = [value for key, _equals, value in pairs if key == _SIGNED_AT]
     signatures = [value for key, _equals, value in pairs if key == _SIGNATURE]
     # One time, in digits: anything else isn't Stripe's.
-    if len(signed_at) != 1 or not (signed_at[0].isascii() and signed_at[0].isdigit()):
+    if len(signed_at) != 1 or not _is_time(signed_at[0]):
         return None, signatures
     return int(signed_at[0]), signatures
+
+
+def _is_time(text: str) -> bool:
+    """Whether `text` reads as a Unix time in seconds: ASCII digits, as many as one has."""
+    return text.isascii() and text.isdigit() and len(text) <= _MOST_TIME_DIGITS
 
 
 def _event_from(said: dict[str, Any]) -> StripeEvent:

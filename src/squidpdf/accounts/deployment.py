@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
@@ -89,13 +88,10 @@ class Billing:
     """What taking payment needs: Stripe, its webhook's secret, and threads of its own."""
 
     stripe: StripeApi
-    webhook_secret: bytes  # signs each event Stripe's webhook sends
+    webhook_secret: bytes = field(repr=False)  # signs each event Stripe's webhook sends
     # Stripe is called on threads of its own: a Stripe that hangs holds these, never the
     # threads every upload and read share.
     threads: ThreadPoolExecutor = field(default_factory=_billing_threads, repr=False)
-    # Held from asking Stripe for an event to keeping the answer, so two events about one
-    # customer can't keep their answers in the wrong order.
-    applying: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     async def run[T](self, task: Callable[[], T]) -> T:
         """What `task()` returns, run on billing's threads, the request's id carried along."""
@@ -112,7 +108,7 @@ class Accounts:
 
     users: UserStore
     mail: MailController
-    secret: bytes  # signs links and the signed-in cookie
+    secret: bytes = field(repr=False)  # signs links and the signed-in cookie
     site: str  # where a link sends its reader, with no slash at the end
     invite_only: bool  # only those `squidpdf invite` let in sign in and open documents
     allowance: Allowance | None  # None where the deployment meters nothing
