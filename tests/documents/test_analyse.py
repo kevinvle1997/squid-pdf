@@ -5,8 +5,8 @@ from __future__ import annotations
 import io
 import shutil
 import threading
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,7 +18,6 @@ from fontTools.ttLib import TTFont
 
 from squidpdf.core import ANALYSIS_TUNING, BUILD, Page, constants
 from squidpdf.core.constants import FETCH_TIMEOUT_S
-from squidpdf.core.fonts import google
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import analyse, store
@@ -75,38 +74,38 @@ def _trimmed(line: str) -> bytes:
     return out.getvalue()
 
 
-type GoogleThrough = Callable[[Callable[[str], bytes]], list[str]]
+@dataclass(frozen=True, slots=True)
+class _Google:
+    """A store whose Google is a test's download, and what that download is asked."""
+
+    store: FolderStore
+    asked: list[str]
+
+
+type GoogleThrough = Callable[[Callable[[str], bytes]], _Google]
 
 
 @pytest.fixture
-def google_through(monkeypatch) -> Iterator[GoogleThrough]:
-    """Lets a test reach Google through a download of its own, fresh as a new worker.
+def google_through(monkeypatch) -> GoogleThrough:
+    """Lets a test reach Google through a download of its own, fresh as a new worker."""
+    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
 
-    Each call returns what it's asked. It reaches google's private download and retry record:
-    no public call swaps the one or forgets the other, and the record is this process's.
-    """
-
-    def through(download: Callable[[str], bytes]) -> list[str]:
-        """Downloads go to `download` from now on, with no failure remembered."""
+    def through(download: Callable[[str], bytes]) -> _Google:
+        """A store whose downloads go to `download`, with no failure remembered."""
         asked: list[str] = []
 
         def counted(url: str) -> bytes:
             asked.append(url)
             return download(url)
 
-        monkeypatch.setattr(google, "_download", counted)
-        google._retry_record.forget()
-        return asked
+        return _Google(replace(FOLDER_STORE, google_download=counted), asked)
 
-    monkeypatch.delenv("SQUIDPDF_NO_FETCH", raising=False)
-    monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
-    yield through
-    google._retry_record.forget()
+    return through
 
 
-def _render_fit(folder: Path, family: str) -> list[str]:
+def _render_fit(documents: FolderStore, folder: Path, family: str) -> list[str]:
     """What a render's fit says the line in `family` can't draw of _WANTED."""
-    with FOLDER_STORE.open_original(folder) as engine:
+    with documents.open_original(folder) as engine:
         span = next(span for span in engine.index() if span.font.endswith(family))
         return engine.fit.plan_for(span, _WANTED).missing
 
@@ -122,15 +121,15 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
         raise TimeoutError(url)
 
     try:
-        asked = google_through(hanging)
-        analyse.analyse_upload(FOLDER_STORE, in_google_families, MAX_PAGES)
-        assert_equal(len(asked), 1, "downloads waited on by the analysis")
+        google = google_through(hanging)
+        analyse.analyse_upload(google.store, in_google_families, MAX_PAGES)
+        assert_equal(len(google.asked), 1, "downloads waited on by the analysis")
         assert_at_most(FETCH_TIMEOUT_S, ANALYSE_TIMEOUT_S, "one wait, in the analysis's time")
 
-        asked = google_through(hanging)
-        missing = _render_fit(in_google_families, _FAMILIES[0])
+        google = google_through(hanging)
+        missing = _render_fit(google.store, in_google_families, _FAMILIES[0])
         assert_equal(
-            (missing, asked), (["Y", "a", "y"], []), "a render's fit, and its downloads"
+            (missing, google.asked), (["Y", "a", "y"], []), "a render's fit, and its downloads"
         )
     finally:
         released.set()
@@ -141,16 +140,16 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
 ):
     """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
-    google_through(lambda _url: poppins)  # only Poppins' file has its hash
-    analyse.analyse_upload(FOLDER_STORE, in_google_families, MAX_PAGES)
+    google = google_through(lambda _url: poppins)  # only Poppins' file has its hash
+    analyse.analyse_upload(google.store, in_google_families, MAX_PAGES)
     cached = sorted(path.name for path in (store.root() / "fonts").rglob("*.ttf"))
     assert_equal(cached, ["Poppins-Regular.ttf"], "what the analysis cached")
 
-    asked = google_through(lambda _url: poppins)
-    fits = [_render_fit(in_google_families, family) for family in _FAMILIES]
+    google = google_through(lambda _url: poppins)
+    fits = [_render_fit(google.store, in_google_families, family) for family in _FAMILIES]
     lacked = ["Y", "a", "y"]
     assert_equal(fits, [[], lacked, lacked], "what each family's line can't draw, at render")
-    assert_equal(asked, [], "downloads at render")
+    assert_equal(google.asked, [], "downloads at render")
 
 
 def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkeypatch):

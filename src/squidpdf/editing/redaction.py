@@ -49,21 +49,13 @@ class RedactionController:
     edited: dict[int, EditedPage]  # what the edits erase and draw, by original page
     # The glyphs each page with a redaction still draws once erased, by original page.
     kept: dict[int, list[DrawnGlyph]]
+    # Where else each redacted span's words have a hidden copy, read before the edits took them.
+    hidden: dict[str, list[HiddenPlace]]
 
-    def hidden_places(self, engine: Engine) -> dict[str, list[HiddenPlace]]:
-        """Where else each redacted span's words have a hidden copy, by span id.
-
-        Ask before the edits run: they take the words out.
-        """
-        return engine.redaction.hidden_places(runs_of(self.redacted))
-
-    def drawn(
-        self, engine: Engine, *, hidden: dict[str, list[HiddenPlace]]
-    ) -> dict[str, Redaction]:
+    def drawn(self, engine: Engine) -> dict[str, Redaction]:
         """Each redaction as the document in memory has it, by span id.
 
         Render's early run of export's check, on pages still numbered as in the original.
-        `hidden` is what `hidden_places` said before the edits.
         """
         runs = runs_of(self.redacted)
         pages = {run.page: run.page for run in runs}
@@ -75,7 +67,7 @@ class RedactionController:
         return {
             each.span.id: Redaction(
                 each.span.id not in still_there | moved | unchecked,
-                hidden[each.span.id],
+                self.hidden[each.span.id],
                 covered=each.span.id in blamed,
                 moved=each.span.id in moved - still_there,
                 unchecked=each.span.id in unchecked - still_there - moved,
@@ -178,7 +170,7 @@ def redactions_of(
     """The controller for what each span loses, `redacted`, with the new text over each.
 
     `edited` is what the edits erase and draw. Call it before the edits run: erasing can drop
-    the fonts new text is measured with, and it reads what each page draws now.
+    the fonts new text is measured with, and it reads what each page draws and hides now.
     """
     runs = runs_of(redacted)
     return RedactionController(
@@ -189,6 +181,7 @@ def redactions_of(
             page: engine.redaction.kept_by(page, edited[page].erased)
             for page in {run.page for run in runs}
         },
+        hidden=engine.redaction.hidden_places(runs),
     )
 
 

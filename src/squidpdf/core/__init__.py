@@ -70,6 +70,7 @@ from squidpdf.core.fit import SubstituteWidths as SubstituteWidths
 from squidpdf.core.fonts.catalog import CATALOG as CATALOG, FACES as FACES
 from squidpdf.core.fonts.document import FontSources as FontSources
 from squidpdf.core.fonts.google import (
+    GoogleDownload as GoogleDownload,
     blob_hash as blob_hash,
     google_fonts as google_fonts,
     raw_url as raw_url,

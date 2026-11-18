@@ -28,6 +28,7 @@ from squidpdf.core import (
     DriverFactory,
     Engine,
     FontSources,
+    GoogleDownload,
     Page,
     SpanIndex,
     google_fonts,
@@ -84,6 +85,10 @@ class DocumentStore(Protocol):
         """The document's folder and its owner's hash, or None if there's no such document."""
         ...
 
+    def open_to_write(self, folder: Path) -> BinaryIO:
+        """The document's original, opened to be written from its start, as it's uploaded."""
+        ...
+
     def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
         """The document's original, open to be judged, fetching what it lends; or Gone."""
         ...
@@ -110,6 +115,7 @@ class FolderStore:
     """Documents kept one folder each under `root()`, opened in `driver_factory`'s driver."""
 
     driver_factory: DriverFactory
+    google_download: GoogleDownload | None = None  # a test's stand-in for GitHub; None: GitHub
 
     def create(self, owner_digest: str) -> tuple[str, Path]:
         """A new, empty document folder that answers to this owner; none is left if it fails."""
@@ -138,6 +144,10 @@ class FolderStore:
             return None
         return folder, owner_digest
 
+    def open_to_write(self, folder: Path) -> BinaryIO:
+        """The document's original, opened to be written from its start, as it's uploaded."""
+        return (folder / ORIGINAL).open("wb")
+
     def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
         """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
 
@@ -145,7 +155,7 @@ class FolderStore:
         beside the documents (the sweep passes over it). Every other open reads
         that cache alone, so it lends what the analysis fetched and never waits.
         """
-        google = google_fonts(folder=root() / _GOOGLE_FONTS)
+        google = google_fonts(folder=root() / _GOOGLE_FONTS, download=self.google_download)
         sources = FontSources(google=google, attached=attached)
         try:
             return open_pdf(
@@ -161,7 +171,9 @@ class FolderStore:
         Google's copy of a font lends the letters its copies in the file lack, from
         the cache the analysis filled: a render never waits on the network.
         """
-        google = google_fonts(folder=root() / _GOOGLE_FONTS, cache_only=True)
+        google = google_fonts(
+            folder=root() / _GOOGLE_FONTS, cache_only=True, download=self.google_download
+        )
         sources = FontSources(google=google, attached=attached_files(folder))
         try:
             return open_pdf(
