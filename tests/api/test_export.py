@@ -48,6 +48,7 @@ from tests.conftest import (
     OTHER_LINE,
     REDACTED_NAME,
     SIGNED,
+    TAGGED_LINES,
     StoreWith,
     cannot_cut,
     each_letter,
@@ -228,6 +229,12 @@ def _files(doc: dict) -> list[str]:
 def _lines(pdf: pymupdf.Document) -> list[list[str]]:
     """Each page's lines of text, in page order."""
     return [page.get_text().splitlines() for page in pdf.pages()]
+
+
+def _page_objects(pdf: pymupdf.Document) -> int:
+    """How many page objects the file holds, whether its page list names them or not."""
+    types = [pdf.xref_get_key(xref, "Type")[1] for xref in range(1, pdf.xref_length())]
+    return types.count("/Page")
 
 
 def test_a_face_that_could_not_be_cut_down_is_said_in_a_header_and_the_file_still_comes(
@@ -1236,7 +1243,12 @@ def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(min
     expected = [("file", "tags_dropped", words.sentence("tags_dropped"))]
     got = [(n["kind"], n["code"], n["detail"]) for n in said]
     assert_equal(got, expected, "what came out other than asked")
-    assert_equal(_opened(response).page_count, 1, "pages in the file")
+    saved = _opened(response)
+    assert_equal(
+        [page.get_text().strip() for page in saved.pages()], TAGGED_LINES[:1], "pages' text"
+    )
+    # Kept by its tags, the page left out would still be in the file, unseen but readable.
+    assert_equal(_page_objects(saved), 1, "page objects in the file")
 
 
 @pytest.fixture(scope="module")
@@ -1753,6 +1765,14 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_named_in_the_header(mine, do
 
     assert_equal(response.headers[_SKIPPED], "0, 2", "edits left out")
     assert_in("ninety days", _opened(response)[1].get_text(), "the edit that was good")
+    # The header has room for places only: render says why each was left out.
+    skipped = render(mine, doc, edits, []).json()["skipped"]
+    said = [(s["edit"], s["type"], s["detail"]) for s in skipped]
+    expected = [
+        (0, "bad_reference", words.sentence("no_span")),
+        (2, "bad_reference", words.sentence("no_page")),
+    ]
+    assert_equal(said, expected, "why each edit was left out")
 
 
 @pytest.mark.parametrize(
