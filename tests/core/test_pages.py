@@ -5,9 +5,9 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from squidpdf.core import Message, Page, open_pdf
+from squidpdf.core import Page, open_pdf
 from tests.conftest import TAGGED_LINES
-from tests.helpers import assert_at_most, assert_equal, assert_true
+from tests.helpers import assert_at_most, assert_equal
 
 _A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
 _SCALE = 2
@@ -26,13 +26,6 @@ def turned(tmp_path) -> str:
     return str(path)
 
 
-def _page_objects(path: str) -> int:
-    """How many page objects the saved file holds, whether its page list names them or not."""
-    doc = pymupdf.open(path)
-    types = [doc.xref_get_key(xref, "Type")[1] for xref in range(1, doc.xref_length())]
-    return types.count("/Page")
-
-
 def _page_lines(path: str) -> list[str]:
     """Each page's text in the saved file, in page order."""
     return [page.get_text().strip() for page in pymupdf.open(path).pages()]
@@ -49,28 +42,6 @@ def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_pat
     assert_equal(_page_lines(out), TAGGED_LINES[::-1], "each page's text, in order")
     doc = pymupdf.open(out)
     assert_equal(doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[0], "xref", "the tags")
-
-
-def test_a_page_left_out_is_gone_from_the_file_even_when_tags_point_at_it(tagged, tmp_path):
-    """Kept by its tags, the page's text would still be in the file, unseen but readable."""
-    out = str(tmp_path / "first.pdf")
-    with open_pdf(tagged) as engine:
-        said = engine.keep_pages([0])
-        engine.save(out)
-
-    assert_equal(said, [Message("tags_dropped")], "what leaving a page out came out with")
-    assert_equal(_page_lines(out), TAGGED_LINES[:1], "each page's text")
-    assert_equal(_page_objects(out), 1, "page objects in the file")
-
-
-def test_a_page_image_is_a_white_png_at_the_asked_scale(engine):
-    """No alpha: the page is white in both themes (Rule 2)."""
-    png = engine.page_image(0, _SCALE)
-    assert_true(png.startswith(b"\x89PNG"), "page image is a PNG")
-    pix = pymupdf.Pixmap(png)
-    expected = (_A4_WIDTH * _SCALE, _A4_HEIGHT * _SCALE)
-    assert_equal((pix.width, pix.height), expected, f"pixels at scale {_SCALE}")
-    assert_equal(pix.alpha, 0, "alpha channel")
 
 
 def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):

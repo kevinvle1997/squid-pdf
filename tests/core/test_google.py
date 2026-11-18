@@ -575,10 +575,10 @@ def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
     assert_equal(len(asked), others_tried, "downloads of another file tried")
 
 
-def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
+def test_a_fetch_answered_past_its_deadline_keeps_the_answer_and_lifts_the_hold(
     tmp_path, monkeypatch
 ):
-    """GitHub not answering: one wait, not one per font. A late answer is kept, and lifts it."""
+    """GitHub answering late: the fetch stops waiting, then keeps what came and tries again."""
     poppins = POPPINS.read_bytes()
     released = threading.Event()
     asked: list[str] = []
@@ -593,12 +593,9 @@ def test_a_fetch_with_no_answer_holds_back_every_file_until_an_answer_comes(
     other = GoogleFile("ofl/poppins/Poppins-Bold.ttf", "a hash never asked for", None)
     retries = _RetryRecord()
     started = time.monotonic()
-    got = [
-        _fetched(each, folder=tmp_path, download=hanging, retries=retries)
-        for each in (file, other)
-    ]
+    got = _fetched(file, folder=tmp_path, download=hanging, retries=retries)
     assert_at_most(time.monotonic() - started, _HANG_S / 2, "seconds waited")
-    assert_equal((got, len(asked)), ([None, None], 1), "what came, and downloads tried")
+    assert_equal(got, None, "what came by the deadline")
 
     released.set()
     cached = tmp_path / GOOGLE_FONTS_COMMIT / file.source

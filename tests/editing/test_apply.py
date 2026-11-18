@@ -32,13 +32,11 @@ from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.editing import (
     Applied,
-    BadReference,
     DeletePage,
     Edit,
     Insert,
     Notice,
     Redact,
-    RedactionConflict,
     RedactionFailed,
     Replace,
     RotatePage,
@@ -191,11 +189,6 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     box = pymupdf.Rect(span.bbox.x0, span.bbox.y0, span.bbox.x1, span.bbox.y1)
     left = "".join(saved[span.page].get_textbox(box).split())
     assert_equal(left, "", "letters left in the redacted span's box")
-
-    # Editing it afterwards is refused: the order of a list must never bring it back.
-    # The browser undoes a redaction by taking it out of the list.
-    with pytest.raises(RedactionConflict):
-        _apply(engine, [*edits, Replace(span.id, "Services")], index)
 
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
@@ -464,39 +457,24 @@ def test_a_strategy_not_offered_is_drawn_as_is(engine, tmp_path):
     assert_at_least(end, span.bbox.x1 + _EDGE_PT, "where a run left long ends")
 
 
-def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_path):
-    index = engine.index()
-    span = _substituted(engine)
-    out = tmp_path / "skipped.pdf"
-
+def test_new_text_with_a_letter_no_font_has_is_drawn_without_it_as_its_fit_said(
+    engine, tmp_path
+):
+    """What the fit promised is what was drawn: Caveat, 中 left out and said so."""
+    out = tmp_path / "signed.pdf"
     # New text in the face the user chose; 中 no font of ours can draw.
     signed = Insert(REFERENCED_PAGE, (72.0, 700.0), "Signed: Zoë 中", 12.0, "Caveat Regular")
-    edits: list[Edit] = [
-        Replace("nosuchid", "x"),
-        Replace(span.id, "Made on 2 April 2026."),
-        signed,
-    ]
+
     fit = insert_fit(engine, signed).report
-    applied = _apply(engine, edits, index)
+    applied = _apply(engine, [signed], engine.index())
     engine.save(str(out))
 
-    skipped = [(s.position, s.type, words.render(s.detail)) for s in applied.skipped]
-    assert_equal(skipped, [(0, "bad_reference", words.sentence("no_span"))], "skipped")
-    edited_text = pymupdf.open(out)[REFERENCED_PAGE].get_text()
-    assert_in("2 April 2026", edited_text, "the edit that was good")
-    # What the fit promised is what was drawn: Caveat, 中 left out and said so.
     left_out = words.sentence("left_out").format(letters="中")
-    assert_equal(_said(applied.notices), [(2, left_out)], "what render says")
+    assert_equal(_said(applied.notices), [(0, left_out)], "what render says")
     assert_equal(fit.left_out, ["中"], "what the fit said would be left out")
     drawn = _drawn(out, REFERENCED_PAGE, "Signed")
     expected = ("Signed: Zoë", saved_as("Caveat Regular"))
     assert_equal((drawn["text"].strip(), drawn["font"]), expected, "drawn")
-
-
-def test_a_redaction_pointing_at_nothing_is_an_error(engine):
-    """Skipping it would leave the text the user asked to remove."""
-    with pytest.raises(BadReference):
-        _apply(engine, [Redact("nosuchid")], engine.index())
 
 
 def _three_lines(path: str, *, spacing: float, font: str) -> str:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import io
+import math
 import os
 import shutil
 from collections.abc import AsyncIterator, Callable
@@ -163,6 +164,8 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     )
     pix = pymupdf.Pixmap(response.content)
     assert_equal((pix.width, pix.height), (595 * 2, 842 * 2), "pixels at scale 2")
+    # No alpha: the page is white in both themes (Rule 2).
+    assert_equal((pix.alpha, set(pix.pixel(0, 0))), (0, {255}), "alpha, and the margin's ink")
 
     # Under an old build it's still drawn, but not to keep.
     params = {"scale": 1, "build": "an-older-build"}
@@ -176,16 +179,28 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     )
 
 
-def test_a_page_past_the_pixel_limit_gets_a_smaller_scale(mine):
-    big = pymupdf.open()
-    big.new_page(width=_HUGE_PT, height=_HUGE_PT)
-    doc = upload(mine, big.tobytes()).json()
-    params = {"scale": max(limits.PAGE_SCALES), "build": doc["build"]}
-    png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
-    pix = pymupdf.Pixmap(png)
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [(612, 792), (_HUGE_PT, _HUGE_PT)],
+    ids=["a letter page, well under", "a poster, over"],
+)
+def test_a_page_is_drawn_as_large_as_the_pixel_limit_allows(mine, width, height):
+    page = pymupdf.open()
+    page.new_page(width=width, height=height)
+    doc = upload(mine, page.tobytes()).json()
+    asked = max(limits.PAGE_SCALES)
+    params = {"scale": asked, "build": doc["build"]}
+    pix = pymupdf.Pixmap(mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content)
+    largest = (math.ceil(width * asked), math.ceil(height * asked))
+    assert_at_least(pix.width, 1, "pixels across")
+    assert_at_most(pix.height, largest[1], f"pixels down, at {asked} per point at most")
     assert_at_most(
         pix.width * pix.height, MAX_IMAGE_PIXELS, f"pixels in {pix.width}x{pix.height}"
     )
+    if width * height * asked**2 < MAX_IMAGE_PIXELS / 2:
+        assert_equal(
+            (pix.width, pix.height), largest, "the size of a page well under the limit"
+        )
 
 
 def test_deleting_it_leaves_nothing_behind(mine, doc):
