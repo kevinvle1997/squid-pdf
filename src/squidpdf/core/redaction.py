@@ -147,14 +147,18 @@ class RedactionCheck:
         gone = _less(list(kept), now, near=_same_place)
         new = _less(now, kept, near=_same_place)
         went = [[glyph for glyph in gone if _starts_on_line_of(glyph, span)] for span in rests]
+
         runs = _runs(_not_on(new, lines), among=now)
         spelling = self._spelling(page, runs, words=words)
         others = [run for run in runs if not any(run is each for each in spelling)]
+
         lined = _set_along_rests(others, gone=gone, kept=kept, rests=rests, went=went)
         rest, unchecked = self._rests_landed(page, lined, drawn=drawn, now=now)
+
         off = [run for run in others if not any(run is each for each, _matched in rest)]
         moved = _moved(off, gone=gone, kept=kept)
         taken = spelling + [run for run in off if not any(run is each for each in moved)]
+
         size = self.driver.pages()[page]
         return DrawnElsewhere(
             taken=[glyph for run in taken for glyph in run],
