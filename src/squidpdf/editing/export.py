@@ -34,20 +34,19 @@ from squidpdf.core import (
     words,
 )
 from squidpdf.documents import store
-from squidpdf.documents.errors import NoSuchPage
+from squidpdf.documents.errors import NoSuchPage, is_page
 from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
+from squidpdf.editing import constants
 from squidpdf.editing.apply import (
     apply_edits,
     edited_by,
-    is_page,
     page_order,
     planned_of,
     redacted_in,
     resolve,
 )
-from squidpdf.editing.constants import EXPORT_TIMEOUT_S
 from squidpdf.editing.edits import Edit, check_edits
 from squidpdf.editing.errors import (
     RedactionCovered,
@@ -118,7 +117,7 @@ class ExportController:
     ) -> Exported:
         """Make the PDF on a worker."""
         task = partial(_make_pdf, self.documents, folder, scratch, edits=edits, pages=pages)
-        return await self.workers.run(EXPORT_TIMEOUT_S, task)
+        return await self.workers.run(constants.EXPORT_TIMEOUT_S, task)
 
 
 def _opened_to_read(path: Path) -> BufferedReader:
@@ -154,7 +153,7 @@ def _make_pdf(
             driver_factory=documents.driver_factory,
         )
     _tally_by_fidelity(saved.applied.replaced)
-    skipped = [skip.edit for skip in saved.applied.skipped]
+    skipped = [skip.position for skip in saved.applied.skipped]
     # Only the file's own notices: render already said apply's.
     return Exported(skipped_edits=skipped, file_notices=saved.notices)
 

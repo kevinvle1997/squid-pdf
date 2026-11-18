@@ -1,7 +1,7 @@
 """Work the worker pool runs for documents: what the browser needs before the first edit.
 
-Framework-free and handed only paths and numbers, so the pool can pickle it and
-a test can call it directly.
+Framework-free and handed the store, then paths and numbers, so the pool can pickle it
+and a test can call it directly.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from squidpdf.documents.types import (
 )
 
 _SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
+_ROOM_DP = 2  # a line's room, in points: a hundredth is finer than any line is set
 
 
 def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> KeptAnalysis:
@@ -214,7 +215,7 @@ def _span_info(
         "same_widths": report.same_widths,
         "in_file": report.in_file,
         "letter_spacing_em": round(report.letter_spacing, _SPACING_DP),
-        "room_pt": round(room_pt, 2),
+        "room_pt": round(room_pt, _ROOM_DP),
         "form_field": form_field,
         "turned": span.turned,
     }

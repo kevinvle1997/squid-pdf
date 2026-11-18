@@ -31,7 +31,7 @@ _LEVEL_WIDTH = 5  # "ERROR", the longest
 # a document's id, which a library's error or a server error's debug can name.
 _DOCUMENT_FOLDER = re.compile(r"(?<=[/\\])[A-Za-z0-9_-]{22}(?=[/\\'\"\s:]|$)", re.MULTILINE)
 _HIDDEN = "<document>"  # what stands in for one in the log
-_MS_PER_S = 1000
+_MS_PER_S = 1000  # milliseconds in a second, as a tally writes a wait
 
 # The request the running code answers, if any: set by the API, read into every line.
 _REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -39,7 +39,7 @@ _REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 )
 
 
-class Level(Enum):
+class _Level(Enum):
     """How much a line matters: its event's usual level, unless the call says otherwise."""
 
     INFO = logging.INFO
@@ -47,9 +47,9 @@ class Level(Enum):
     ERROR = logging.ERROR
 
 
-INFO, WARN, ERROR = Level.INFO, Level.WARN, Level.ERROR
+INFO, WARN, ERROR = _Level.INFO, _Level.WARN, _Level.ERROR
 # The level's name as a line writes it, by the stdlib's number.
-_LEVEL_NAMES = {level.value: level.name for level in Level}
+_LEVEL_NAMES = {level.value: level.name for level in _Level}
 
 
 class Tally(StrEnum):
@@ -77,7 +77,7 @@ class _Outcome(StrEnum):
     FAILED = "failed"  # something went wrong: its traceback follows the line
 
 
-NOTED, SKIPPED, FAILED = _Outcome.NOTED, _Outcome.SKIPPED, _Outcome.FAILED
+_NOTED, _SKIPPED, _FAILED = _Outcome.NOTED, _Outcome.SKIPPED, _Outcome.FAILED
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +86,7 @@ class _EventFacts:
 
     written: str
     outcome: _Outcome
-    level: Level  # a call can say this one matters more, or less
+    level: _Level  # a call can say this one matters more, or less
 
 
 class LogEvent(Enum):
@@ -96,38 +96,38 @@ class LogEvent(Enum):
     unless a call says this one matters more or less.
     """
 
-    REQUEST_DONE = _EventFacts("request_done", NOTED, INFO)
-    UNHANDLED = _EventFacts("unhandled", FAILED, ERROR)
-    PROBLEM_SENT_WITHOUT_DEBUG = _EventFacts("problem_sent_without_debug", FAILED, WARN)
-    TASK_FAILED_CALLER_LEFT = _EventFacts("task_failed_caller_left", FAILED, ERROR)
-    NO_WORKER_STARTED = _EventFacts("no_worker_started", FAILED, WARN)
-    POOL_REFUSED_TASK = _EventFacts("pool_refused_task", FAILED, WARN)
-    POOL_NEVER_ANSWERED = _EventFacts("pool_never_answered", SKIPPED, WARN)
-    POOL_BROKE = _EventFacts("pool_broke", FAILED, WARN)
-    SWEEP_FAILED = _EventFacts("sweep_failed", FAILED, ERROR)
-    FONT_LIST_FAILED = _EventFacts("font_list_failed", FAILED, ERROR)
-    GOOGLE_CACHE_MISSED = _EventFacts("google_cache_missed", SKIPPED, INFO)
-    GOOGLE_FETCH_LATE = _EventFacts("google_fetch_late", SKIPPED, WARN)
-    GOOGLE_FETCH_FAILED = _EventFacts("google_fetch_failed", FAILED, WARN)
-    GOOGLE_NOT_ON_GITHUB = _EventFacts("google_not_on_github", FAILED, WARN)
-    GOOGLE_WRONG_FILE = _EventFacts("google_wrong_file", SKIPPED, WARN)
-    GOOGLE_CUT_FAILED = _EventFacts("google_cut_failed", FAILED, WARN)
-    GOOGLE_CACHE_DAMAGED = _EventFacts("google_cache_damaged", SKIPPED, WARN)
-    GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", FAILED, WARN)
-    GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", FAILED, WARN)
-    EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", NOTED, INFO)
-    STRIPE_POSTED = _EventFacts("stripe_posted", NOTED, INFO)
-    STRIPE_CANCELLED = _EventFacts("stripe_cancelled", NOTED, WARN)
-    STRIPE_RETRIED = _EventFacts("stripe_retried", SKIPPED, WARN)
-    STRIPE_SIGNATURE_REFUSED = _EventFacts("stripe_signature_refused", SKIPPED, WARN)
-    BILLING_EVENT_NOTED = _EventFacts("billing_event_noted", NOTED, INFO)
-    BILLING_EVENT_REPEATED = _EventFacts("billing_event_repeated", SKIPPED, INFO)
-    BILLING_CUSTOMER_UNKNOWN = _EventFacts("billing_customer_unknown", SKIPPED, WARN)
-    BILLING_SUBSCRIBED_TWICE = _EventFacts("billing_subscribed_twice", NOTED, ERROR)
-    BILLING_DISPUTED = _EventFacts("billing_disputed", NOTED, WARN)
-    LINK_NOT_SENT_UNSAID = _EventFacts("link_not_sent_unsaid", FAILED, WARN)
-    MAIL_BOUNCE_NOTED = _EventFacts("mail_bounce_noted", NOTED, INFO)
-    MAIL_TO_BOUNCED_SKIPPED = _EventFacts("mail_to_bounced_skipped", SKIPPED, INFO)
+    REQUEST_DONE = _EventFacts("request_done", _NOTED, INFO)
+    UNHANDLED = _EventFacts("unhandled", _FAILED, ERROR)
+    PROBLEM_SENT_WITHOUT_DEBUG = _EventFacts("problem_sent_without_debug", _FAILED, WARN)
+    TASK_FAILED_CALLER_LEFT = _EventFacts("task_failed_caller_left", _FAILED, ERROR)
+    NO_WORKER_STARTED = _EventFacts("no_worker_started", _FAILED, WARN)
+    POOL_REFUSED_TASK = _EventFacts("pool_refused_task", _FAILED, WARN)
+    POOL_NEVER_ANSWERED = _EventFacts("pool_never_answered", _SKIPPED, WARN)
+    POOL_BROKE = _EventFacts("pool_broke", _FAILED, WARN)
+    SWEEP_FAILED = _EventFacts("sweep_failed", _FAILED, ERROR)
+    FONT_LIST_FAILED = _EventFacts("font_list_failed", _FAILED, ERROR)
+    GOOGLE_CACHE_MISSED = _EventFacts("google_cache_missed", _SKIPPED, INFO)
+    GOOGLE_FETCH_LATE = _EventFacts("google_fetch_late", _SKIPPED, WARN)
+    GOOGLE_FETCH_FAILED = _EventFacts("google_fetch_failed", _FAILED, WARN)
+    GOOGLE_NOT_ON_GITHUB = _EventFacts("google_not_on_github", _FAILED, WARN)
+    GOOGLE_WRONG_FILE = _EventFacts("google_wrong_file", _SKIPPED, WARN)
+    GOOGLE_CUT_FAILED = _EventFacts("google_cut_failed", _FAILED, WARN)
+    GOOGLE_CACHE_DAMAGED = _EventFacts("google_cache_damaged", _SKIPPED, WARN)
+    GOOGLE_DAMAGED_KEPT = _EventFacts("google_damaged_kept", _FAILED, WARN)
+    GOOGLE_NOT_CACHED = _EventFacts("google_not_cached", _FAILED, WARN)
+    EDIT_IN_SUBSTITUTE = _EventFacts("edit_in_substitute", _NOTED, INFO)
+    STRIPE_POSTED = _EventFacts("stripe_posted", _NOTED, INFO)
+    STRIPE_CANCELLED = _EventFacts("stripe_cancelled", _NOTED, WARN)
+    STRIPE_RETRIED = _EventFacts("stripe_retried", _SKIPPED, WARN)
+    STRIPE_SIGNATURE_REFUSED = _EventFacts("stripe_signature_refused", _SKIPPED, WARN)
+    BILLING_EVENT_NOTED = _EventFacts("billing_event_noted", _NOTED, INFO)
+    BILLING_EVENT_REPEATED = _EventFacts("billing_event_repeated", _SKIPPED, INFO)
+    BILLING_CUSTOMER_UNKNOWN = _EventFacts("billing_customer_unknown", _SKIPPED, WARN)
+    BILLING_SUBSCRIBED_TWICE = _EventFacts("billing_subscribed_twice", _NOTED, ERROR)
+    BILLING_DISPUTED = _EventFacts("billing_disputed", _NOTED, WARN)
+    LINK_NOT_SENT_UNSAID = _EventFacts("link_not_sent_unsaid", _FAILED, WARN)
+    MAIL_BOUNCE_NOTED = _EventFacts("mail_bounce_noted", _NOTED, INFO)
+    MAIL_TO_BOUNCED_SKIPPED = _EventFacts("mail_to_bounced_skipped", _SKIPPED, INFO)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +169,7 @@ _TALLIES: contextvars.ContextVar[Tallies | None] = contextvars.ContextVar(
 _CARRIED = "squidpdf_tallies"
 
 
-type Field = int | float | bool | Enum | OwnText
+type _Field = int | float | bool | Enum | OwnText
 # How a field of each type is written. Looked up along the value's ancestry, so a bool is
 # written as one before it's an int, and an enum of strings as an enum; a plain str has none.
 _WRITTEN: dict[type, Callable[[Any], str]] = {
@@ -199,8 +199,8 @@ class LogController:
         failure: BaseException | None = None,
         /,
         *,
-        level: Level | None = None,
-        **fields: Field,
+        level: _Level | None = None,
+        **fields: _Field,
     ) -> None:
         """One line for `event`, its fields checked, with the request it's for.
 
@@ -208,7 +208,7 @@ class LogController:
         follow the line; any other takes none. Raises TypeError when that's wrong.
         """
         facts = event.value
-        if (failure is not None) != (facts.outcome is FAILED):
+        if (failure is not None) != (facts.outcome is _FAILED):
             raise TypeError(f"{facts.written}: what failed goes with a failed event, and only")
         words = [f"{facts.outcome:<{_OUTCOME_WIDTH}}", self.module, facts.written]
         words += [f"{key}={_written(value)}" for key, value in fields.items()]
@@ -232,8 +232,8 @@ class LogController:
             root.addHandler(_Lines())
 
 
-def _written(value: Field) -> str:
-    """A field's value as the line writes it. Raises TypeError for anything but a Field."""
+def _written(value: _Field) -> str:
+    """A field's value as the line writes it. Raises TypeError for anything but a `_Field`."""
     ancestry = type(value).__mro__
     write = next((_WRITTEN[kind] for kind in ancestry if kind in _WRITTEN), None)
     # A str may be a file's words: one of ours comes as an enum or OwnText.

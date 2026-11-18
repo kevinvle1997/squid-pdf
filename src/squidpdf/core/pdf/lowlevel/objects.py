@@ -10,6 +10,7 @@ import pymupdf
 from squidpdf.core.pdf.lowlevel.lexing import lexer_of
 
 PDF_NULL = "null"  # what an absent entry reads as; setting an entry to it removes it
+PDF_REFERENCE = "xref"  # what an entry kept in an object of its own reads as, "12 0 R"
 
 # The keys a hidden copy is kept under, in marked content and in a tag.
 HIDDEN_COPY_KEYS = ("ActualText", "Alt", "E")
@@ -21,6 +22,11 @@ UTF16_MARKS = (codecs.BOM_UTF16_BE, codecs.BOM_UTF16_LE)
 def pdf_of(doc: pymupdf.Document) -> pymupdf.mupdf.PdfDocument:
     """The same document, as MuPDF's low-level API needs it."""
     return pymupdf.mupdf.pdf_document_from_fz_document(doc.this)
+
+
+def object_number(reference: str) -> int:
+    """The object a reference points at: "12 0 R" -> 12."""
+    return int(reference.split()[0])
 
 
 def root_of(doc: pymupdf.Document) -> pymupdf.mupdf.PdfObj:

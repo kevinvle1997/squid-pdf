@@ -28,11 +28,18 @@ from tests.api.conftest import (
     edit_counts,
     export_lines,
     refusing_own_copies,
+    render,
     span_starting,
     upload,
     verdicts_of,
 )
-from tests.conftest import NAME_COPIES, REDACTED_NAME, in_a_copy_lacking, with_hidden_copies
+from tests.conftest import (
+    NAME_COPIES,
+    REDACTED_NAME,
+    each_letter,
+    in_a_copy_lacking,
+    with_hidden_copies,
+)
 from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
 
 _SCALE = 2
@@ -72,12 +79,6 @@ def lacking_a_letter(tmp_path_factory) -> bytes:
     """One line whose stored copy of its font has no shape for the "€" it holds."""
     path = str(tmp_path_factory.mktemp("fx") / "lacking.pdf")
     return Path(in_a_copy_lacking(path, text=_LACKING_LINE, lacking="€")).read_bytes()
-
-
-def _render(client, doc: dict, edits: list[dict], regions: list[dict], *, scale: int = _SCALE):
-    """Ask for `regions` drawn with `edits`, as the browser does."""
-    body = {"edits": edits, "scale": scale, "regions": regions}
-    return client.post(f"/api/documents/{doc['id']}/render", json=body)
 
 
 def _png(image: dict) -> bytes:
@@ -126,7 +127,7 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
     span = span_starting(doc, 0, "Made")
     edit = {"kind": "replace", "span_id": span["id"], "text": span["text"] + _LONGER}
 
-    fit = _render(mine, doc, [edit], []).json()["fits"][span["id"]]
+    fit = render(mine, doc, [edit], []).json()["fits"][span["id"]]
 
     assert_true(fit["delta_pt"] > TOLERANCE_PT, f"{fit['delta_pt']} pt past the original")
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
@@ -141,7 +142,7 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
         percent, fit["delta_pt"] / wide * 100, 1, "how far past, as a share of the line"
     )
     # Taken, a way out ends the line where the original did: nothing runs long.
-    shrunk = _render(mine, doc, [{**edit, "strategy": "shrink"}], []).json()["fits"][span["id"]]
+    shrunk = render(mine, doc, [{**edit, "strategy": "shrink"}], []).json()["fits"][span["id"]]
     assert_equal((shrunk["strategy"], shrunk["message"]), ("shrink", None), "a way out taken")
 
 
@@ -175,7 +176,7 @@ def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
     doc = upload(mine, with_hidden_copies(copies)).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
-    rendered = _render(mine, doc, [{"kind": "redact", "span_id": name["id"]}], [around(name)])
+    rendered = render(mine, doc, [{"kind": "redact", "span_id": name["id"]}], [around(name)])
 
     expected = {"verified": True, "hidden_copies": named, "message": said}
     assert_equal(verdicts_of(rendered.json()), {name["id"]: expected}, "what render says")
@@ -205,7 +206,7 @@ def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
         {"kind": "redact", "span_id": second["id"], "range": [5, 9]},
     ]
 
-    rendered = _render(mine, doc, edits, [{"page": 0}, {"page": 1}]).json()
+    rendered = render(mine, doc, edits, [{"page": 0}, {"page": 1}]).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
 
     moved = [
@@ -263,7 +264,7 @@ def test_the_rest_of_a_line_set_along_it_downloads_saying_so_and_set_off_it_does
     span = span_starting(doc, 0, "Acct")
     edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}]
 
-    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+    rendered = render(mine, doc, edits, [{"page": 0}]).json()
     exported = mine.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
 
     verdict = rendered["redactions"][span["id"]]
@@ -326,7 +327,7 @@ def test_what_a_redactions_erase_did_to_the_rest_of_its_line_is_said_only_when_t
     span = span_starting(doc, 0, starts)
     edits = [{"kind": "redact", "span_id": span["id"], "range": asked}]
 
-    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+    rendered = render(mine, doc, edits, [{"page": 0}]).json()
 
     said = rendered["redactions"][span["id"]]
     assert_equal(said["verified"], True, "whether the words are gone")
@@ -345,20 +346,13 @@ def test_each_run_of_words_redacted_comes_with_the_box_its_letters_take(mine, tu
     span = span_starting(doc, 0, "Acct")
     edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}]
 
-    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+    rendered = render(mine, doc, edits, [{"page": 0}]).json()
 
     [run] = rendered["redactions"][span["id"]]["runs"]
     assert_equal(run["range"], [5, 9], "the run's words, by code point")
     box = run["box"]
     page = pymupdf.open(stream=sent, filetype="pdf")[0]
-    letters = [
-        char
-        for block in page.get_text("rawdict")["blocks"]
-        for line in block["lines"]
-        for piece in line["spans"]
-        for char in piece["chars"]
-    ]
-    for char in letters:
+    for char in each_letter(page.get_text("rawdict")["blocks"]):
         x0, y0, x1, y1 = char["bbox"]
         middle = ((x0 + x1) / 2, (y0 + y1) / 2)
         inside = box["x0"] <= middle[0] <= box["x1"] and box["y0"] <= middle[1] <= box["y1"]
@@ -373,7 +367,7 @@ def test_new_text_over_the_line_moves_none_of_the_rest_of_it(mine):
     insert = {**_INSERT, "origin": [box["x0"] + 28, box["y1"] - 3], "text": "XXXX"}
     edits = [{"kind": "redact", "span_id": span["id"], "range": [5, 9]}, insert]
 
-    rendered = _render(mine, doc, edits, [{"page": 0}]).json()
+    rendered = render(mine, doc, edits, [{"page": 0}]).json()
 
     said = rendered["redactions"][span["id"]]
     assert_equal((said["verified"], said["message"]), (True, None), "what render says of it")
@@ -406,8 +400,8 @@ def test_rows_with_no_edits_are_the_page_image_exactly(
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
     # Asked apart: one request never asks for the same rows twice.
-    strip_image = _render(mine, doc, [edit], [strip], scale=scale).json()["images"][0]
-    whole_page = _render(mine, doc, [edit], [{"page": 0}], scale=scale).json()["images"][0]
+    strip_image = render(mine, doc, [edit], [strip], scale=scale).json()["images"][0]
+    whole_page = render(mine, doc, [edit], [{"page": 0}], scale=scale).json()["images"][0]
 
     params = {"scale": scale, "build": doc["build"]}
     page_png = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params).content
@@ -439,7 +433,7 @@ def test_rows_with_no_edits_are_the_page_image_exactly(
 )
 def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     """Not drawn mirrored, not a crash in the worker: the browser sent something wrong."""
-    response = _render(mine, doc, [{**_INSERT, **change}], [{"page": 0}])
+    response = render(mine, doc, [{**_INSERT, **change}], [{"page": 0}])
     assert_problem(response, "invalid_request", 400)
     assert_in(field, response.json()["debug"], "what a developer reads")
 
@@ -498,7 +492,7 @@ def test_new_text_with_a_joiner_or_a_narrow_space_is_drawn(mine, doc, kind, char
     insert = {**_INSERT, "text": f"Sig{character}ned"}
     edit = replace if kind == "replace" else insert
 
-    response = _render(mine, doc, [edit], [{"page": 0}])
+    response = render(mine, doc, [edit], [{"page": 0}])
 
     assert_equal(response.status_code, 200, f"U+{ord(character):04X} drawn, not refused")
 
@@ -507,7 +501,7 @@ def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
     """Never guessed as a replace: `kind` is what tells the edits apart."""
     span = span_starting(doc, 0, "Made")
 
-    response = _render(mine, doc, [{"span_id": span["id"], "text": "x"}], [{"page": 0}])
+    response = render(mine, doc, [{"span_id": span["id"], "text": "x"}], [{"page": 0}])
 
     assert_problem(response, "invalid_request", 400)
     assert_in("kind", response.json()["debug"], "what a developer reads")
@@ -520,7 +514,7 @@ def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
 )
 def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
     """Nothing to draw there: the browser asked for rows the page doesn't have."""
-    assert_problem(_render(mine, doc, [], [region]), "invalid_request", 400)
+    assert_problem(render(mine, doc, [], [region]), "invalid_request", 400)
 
 
 def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypatch):
@@ -528,7 +522,7 @@ def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypat
     monkeypatch.setattr(editing_constants, "MAX_REGIONS", _LOWERED)
     strips = [{"page": 0, "y0": 100 * row, "y1": 100 * row + 50} for row in range(_LOWERED + 1)]
 
-    response = _render(mine, doc, [], strips)
+    response = render(mine, doc, [], strips)
 
     assert_problem(response, "invalid_request", 400)
     assert_in("regions", response.json()["debug"], "what a developer reads")
@@ -539,7 +533,7 @@ def test_regions_on_more_pages_than_a_render_draws_are_a_bad_request(mine, doc, 
     monkeypatch.setattr(editing_constants, "MAX_RENDER_PAGES", 1)
     pages = [{"page": 0, "y0": 100, "y1": 150}, {"page": 1, "y0": 100, "y1": 150}]
 
-    response = _render(mine, doc, [], pages)
+    response = render(mine, doc, [], pages)
 
     assert_problem(response, "invalid_request", 400)
     assert_in("pages", response.json()["debug"], "what a developer reads")
@@ -571,7 +565,7 @@ def test_the_browser_asks_for_no_more_pages_than_a_render_draws():
 )
 def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions):
     """The browser joins rows that touch into one strip, so it never asks for a row twice."""
-    response = _render(mine, doc, [], regions)
+    response = render(mine, doc, [], regions)
 
     assert_problem(response, "invalid_request", 400)
     assert_in("regions", response.json()["debug"], "what a developer reads")
@@ -653,7 +647,7 @@ def test_an_edits_fit_says_how_it_is_drawn_as_its_export_counts_it(
     [span] = doc["spans"]
     edits = [{"kind": "replace", "span_id": span["id"], "text": "Total 2"}]
 
-    fit = _render(mine, doc, edits, [around(span)]).json()["fits"][span["id"]]
+    fit = render(mine, doc, edits, [around(span)]).json()["fits"][span["id"]]
     counts = edit_counts(export_lines(mine, doc, edits, capsys))
 
     upload_verdict = (span["fidelity"], span["substitute"], span["in_file"])
@@ -689,7 +683,7 @@ def test_new_texts_fit_says_how_it_is_drawn_as_a_replaces_does(
     [span] = doc["spans"]
     insert = {**_INSERT, "text": text, "font": span["font"] if font == _PAGE_FONT else font}
 
-    [fit] = _render(mine, doc, [insert], [{"page": 0}]).json()["insert_fits"]
+    [fit] = render(mine, doc, [insert], [{"page": 0}]).json()["insert_fits"]
 
     assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the new text's verdict")
 
@@ -713,7 +707,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
         {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"},
         {"kind": "replace", "span_id": invoices["id"], "text": "Invoices are due at once."},
     ]
-    fits = _render(mine, doc, edits, [around(invoices)]).json()["fits"]
+    fits = render(mine, doc, edits, [around(invoices)]).json()["fits"]
 
     assert_equal(redrawn, ["Invoices are due at once."], "the lines redrawn")
     assert_equal(set(fits), {delivery["id"], invoices["id"]}, "the replaces with a fit")
@@ -731,7 +725,7 @@ def test_render_reads_the_page_list_once(app, mine, doc, monkeypatch):
 
     monkeypatch.setattr(store, "load_pages", counted)
 
-    response = _render(mine, doc, [], [{"page": 0}])
+    response = render(mine, doc, [], [{"page": 0}])
 
     assert_equal(response.status_code, 200, "render status")
     assert_equal(len(reads), 1, "times the page list was read")

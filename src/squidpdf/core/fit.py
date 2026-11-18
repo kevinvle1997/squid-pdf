@@ -15,7 +15,7 @@ from squidpdf.core.pdf.driver import DriverError
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.types import Face, Span
 
-_PERCENT = 100
+_PERCENT = 100  # a ratio's hundredths, to say it as a percentage
 
 
 @dataclass(frozen=True, slots=True)

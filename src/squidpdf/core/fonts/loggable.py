@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from squidpdf.core.fonts.catalog import CATALOG
-from squidpdf.core.fonts.google import google_family_key
+from squidpdf.core.fonts.google_files import google_family_key
 from squidpdf.core.fonts.names import bare_name
 
 # Every family we ship, and every document font one of ours has the widths of, by bare name.

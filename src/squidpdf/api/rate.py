@@ -1,4 +1,4 @@
-"""What each address may have going: uploads and links a minute, uploads and jobs at once.
+"""What each address may have going: uploads, links and payment pages a minute, and at once.
 
 Each is checked before any of the body is read. An IPv6 address counts with the
 rest of its /64, the block one home or machine is given: counted apart, each
@@ -28,22 +28,22 @@ _IPV6_BLOCK_BITS = 64  # an IPv6 address's block: the /64 one home or machine is
 
 @dataclass(slots=True)
 class RecentStarts:
-    """When each address started its requests of one kind in the last `window_s`, oldest first.
+    """When requests of one kind started in the last `window_s`, by what they count against.
 
-    An address is as `_counted_as` gives it: an IPv6 one is its /64; or an email address.
+    That is an address's block, as `_counted_as` gives it, or an inbox; each one's oldest first.
     """
 
     started: dict[str, deque[float]] = field(default_factory=dict, repr=False)
     forgotten_at: float = 0.0  # when addresses quiet for the window were last dropped
     window_s: float = _WINDOW_S  # how long a start counts: a minute, unless made otherwise
 
-    def admit(self, address: str, *, now: float, limit: int) -> bool:
-        """Count a request from `address` at `now`, unless it started `limit` in the window."""
+    def admit(self, counted_against: str, *, now: float, limit: int) -> bool:
+        """Count a request at `now` against `counted_against`, unless `limit` are counted."""
         since = now - self.window_s
-        # Once a window, drop every address quiet for one, so a flood of them can't pile up.
+        # Once a window, drop all quiet for one, so a flood of addresses can't pile up.
         if self.forgotten_at < since:
             self.forget_quiet(now)
-        times = self.started.setdefault(address, deque())
+        times = self.started.setdefault(counted_against, deque())
         while times and times[0] <= since:
             times.popleft()
         if len(times) >= limit:
@@ -52,7 +52,7 @@ class RecentStarts:
         return True
 
     def forget_quiet(self, now: float) -> None:
-        """Drop every address that started no request in the window before `now`."""
+        """Drop all that started no request in the window before `now`."""
         since = now - self.window_s
         self.started = {
             key: times for key, times in self.started.items() if times and times[-1] > since

@@ -61,7 +61,6 @@ from tests.conftest import (
     each_span,
     named_only,
     saved_as,
-    stored_file,
 )
 from tests.helpers import (
     assert_at_least,
@@ -114,15 +113,27 @@ def _about(notice: Notice) -> str | int | None:
     if isinstance(notice, SpanNotice):
         return notice.span_id
     if isinstance(notice, InsertNotice):
-        return notice.edit
+        return notice.position
     if isinstance(notice, FileNotice):
         return None
     assert_never(notice)
 
 
+def _stored_file(path: str, page: int, font: str) -> bytes:
+    """The font file a saved page stores under the name `font`."""
+    doc = pymupdf.open(path)
+    [font_object] = [
+        font_object
+        for font_object, _ext, _kind, name, *_ in doc[page].get_fonts()
+        if name == font
+    ]
+    _name, _ext, _kind, buffer = doc.extract_font(font_object)
+    return buffer
+
+
 def _assert_cut(path, page: int, face: str, text: str) -> None:
     """`face` is stored cut down, still draws `text`, and keeps its hinting."""
-    cut = stored_file(str(path), page, face)
+    cut = _stored_file(str(path), page, face)
     shipped = face_bytes(FACES[face])
     assert_true(len(cut) < len(shipped), f"{face} stored {len(cut)} bytes of {len(shipped)}")
     assert_equal(coverage_of(cut).missing(text), [], f"letters {face} lost in the cut")
@@ -272,8 +283,8 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
     own = strip_subset(span.font)
     [own_name] = [f[3] for f in pymupdf.open(pdf)[EMBEDDED_PAGE].get_fonts() if own in f[3]]
     assert_equal(
-        stored_file(str(out), EMBEDDED_PAGE, own_name),
-        stored_file(pdf, EMBEDDED_PAGE, own_name),
+        _stored_file(str(out), EMBEDDED_PAGE, own_name),
+        _stored_file(pdf, EMBEDDED_PAGE, own_name),
         "the document's own font file, saved and as it came",
     )
 
@@ -293,7 +304,7 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
 
     said = words.sentence("face_not_trimmed").format(font="Liberation Serif Regular")
     assert_equal([words.render(m) for m in said_on_save], [said], "what save tells the user")
-    stored = stored_file(str(out), REFERENCED_PAGE, "Liberation Serif Regular")
+    stored = _stored_file(str(out), REFERENCED_PAGE, "Liberation Serif Regular")
     shipped = face_bytes(FACES["Liberation Serif Regular"])
     assert_true(stored == shipped, "the whole shipped file went in")
     drawn = _drawn(out, REFERENCED_PAGE, "Made on")
@@ -466,7 +477,7 @@ def test_an_edit_pointing_at_nothing_is_skipped_and_the_rest_drawn(engine, tmp_p
     applied = _apply(engine, edits, index)
     engine.save(str(out))
 
-    skipped = [(s.edit, s.type, words.render(s.detail)) for s in applied.skipped]
+    skipped = [(s.position, s.type, words.render(s.detail)) for s in applied.skipped]
     assert_equal(skipped, [(0, "bad_reference", words.sentence("no_span"))], "skipped")
     edited_text = pymupdf.open(out)[REFERENCED_PAGE].get_text()
     assert_in("2 April 2026", edited_text, "the edit that was good")

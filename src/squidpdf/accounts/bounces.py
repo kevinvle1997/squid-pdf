@@ -25,8 +25,10 @@ class BounceController:
 
     accounts: Accounts
 
-    async def note(self, events: list[MailEvent]) -> Reply[bytes]:
-        """Note each hard bounce in `events`, and no other kind; nothing is sent back."""
+    async def note(self, sent: MailEvent | list[MailEvent]) -> Reply[bytes]:
+        """Note each hard bounce in `sent`, and no other kind; nothing is sent back."""
+        # Brevo sends one event, or a list where its webhook batches them.
+        events = sent if isinstance(sent, list) else [sent]
         bounced = [
             checked_email(event.email) for event in events if event.event == _HARD_BOUNCE
         ]

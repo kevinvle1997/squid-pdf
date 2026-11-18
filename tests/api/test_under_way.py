@@ -18,13 +18,10 @@ from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits, pool, rate
 from squidpdf.api.app import create_app
-from tests.api.conftest import BASE_URL
+from tests.api.conftest import BASE_URL, NOT_A_PDF, ONE_ADDRESS, OTHER_ADDRESS
 from tests.helpers import assert_at_least, assert_equal, assert_in, assert_problem, assert_true
 
-_ONE = "192.0.2.1"  # addresses kept for documentation, so nobody's real one
-_OTHER = "198.51.100.7"
 _PDF = {"content-type": "application/pdf"}
-_NOT_A_PDF = b"Dear Sir, please find attached."
 
 
 @pytest.fixture
@@ -99,7 +96,7 @@ class _HeldPool:
 
 async def _jobs_past_the_turns(app: FastAPI, pdf_bytes: bytes) -> dict[str, Any]:
     """One address's page images at work and waiting, then one more; another's meanwhile."""
-    async with _browser(app, _ONE) as one, _browser(app, _OTHER) as other:
+    async with _browser(app, ONE_ADDRESS) as one, _browser(app, OTHER_ADDRESS) as other:
         docs = [
             (await browser.post("/api/documents", content=pdf_bytes, headers=_PDF)).json()
             for browser in (one, other)
@@ -112,7 +109,7 @@ async def _jobs_past_the_turns(app: FastAPI, pdf_bytes: bytes) -> dict[str, Any]
         at_work = asyncio.ensure_future(one.get(page_of[0]))
         await _until(lambda: held.at_work == 1)
         waiting = asyncio.ensure_future(one.get(page_of[0]))
-        await _until(lambda: app.state.job_turns.lines[_ONE].in_line == 2)
+        await _until(lambda: app.state.job_turns.lines[ONE_ADDRESS].in_line == 2)
         one_more = await one.get(page_of[0])
         elsewhere = asyncio.ensure_future(other.get(page_of[1]))
         await _until(lambda: held.at_work == 2)
@@ -176,7 +173,7 @@ async def _uploads_past_the_limit(
     app: FastAPI, pdf_bytes: bytes, font: bytes
 ) -> dict[str, Any]:
     """A PDF under way, then a font; a font under way, then a PDF; another address meanwhile."""
-    async with _browser(app, _ONE) as one, _browser(app, _OTHER) as other:
+    async with _browser(app, ONE_ADDRESS) as one, _browser(app, OTHER_ADDRESS) as other:
         doc = (await one.post("/api/documents", content=pdf_bytes, headers=_PDF)).json()
         font_url = f"/api/documents/{doc['id']}/fonts/Any"
         upload = partial(one.post, "/api/documents", headers=_PDF)
@@ -184,7 +181,7 @@ async def _uploads_past_the_limit(
         pdf = _held(lambda body: upload(content=body), pdf_bytes)
         await pdf.reading.wait()
         font_meanwhile = await one.put(font_url, content=font)
-        elsewhere = await other.post("/api/documents", content=_NOT_A_PDF, headers=_PDF)
+        elsewhere = await other.post("/api/documents", content=NOT_A_PDF, headers=_PDF)
         pdf.go_on.set()
         await pdf.sent
 

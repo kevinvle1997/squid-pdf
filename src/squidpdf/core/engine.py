@@ -13,9 +13,9 @@ from datetime import datetime
 from functools import partial
 from typing import assert_never
 
+import squidpdf.core.constants as constants
 from squidpdf.core.app.errors import ErrorController
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import GOOGLE_FONTS_COMMIT, LIBRARY_VERSION, ROUNDED_PT
 from squidpdf.core.fit import LineFit
 from squidpdf.core.fonts.attached import AttachedFonts
 from squidpdf.core.fonts.catalog import face_bytes_anew
@@ -46,14 +46,14 @@ from squidpdf.core.types import (
     by_page,
     turn_added,
 )
-from squidpdf.core.writer import DrawnLine, PageWriter, Setting
+from squidpdf.core.writer import DrawReport, PageWriter, Setting
 
 # Core's own: every failure below the API, said as the Problem it means.
 CORE_ERRORS = ErrorController(MUPDF_FAILURES)
 
 # What drew and judged a page, Google's pin too: a new one may draw and judge it differently.
-_GOOGLE = GOOGLE_FONTS_COMMIT[:7]
-BUILD = f"{DRIVER_BUILD}.fonts-{LIBRARY_VERSION}.google-{_GOOGLE}"
+_GOOGLE = constants.GOOGLE_FONTS_COMMIT[:7]
+BUILD = f"{DRIVER_BUILD}.fonts-{constants.LIBRARY_VERSION}.google-{_GOOGLE}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -191,14 +191,22 @@ class Engine:
         drawn_in = plan.drawn_in
         # The file's own font draws it, as the page sets the span or not quite.
         if isinstance(drawn_in, PooledFont):
-            own = self.plans.plan_for(span, span.text) if own_text is None else own_text
-            unlike = self.plans.unlike(span, plan, own_text=own)
-            if unlike is None:
-                return FidelityReport(span.id, "exact", span.font, in_file=True)
-            return FidelityReport(span.id, "approximate", span.font, in_file=True, why=unlike)
+            return self._own_font_report(span, plan, own_text=own_text)
         if isinstance(drawn_in, Face):
             return self._substitute_report(span, drawn_in)
         assert_never(drawn_in)
+
+    def _own_font_report(
+        self, span: Span, plan: DrawPlan, *, own_text: DrawPlan | None
+    ) -> FidelityReport:
+        """Exact or approximate: the own font draws `plan`, as the page sets the span or not."""
+        own = self.plans.plan_for(span, span.text) if own_text is None else own_text
+        unlike = self.plans.unlike(span, plan, own_text=own)
+        if unlike is None:
+            return FidelityReport(span.id, state="exact", font=span.font, in_file=True)
+        return FidelityReport(
+            span.id, state="approximate", font=span.font, in_file=True, why=unlike
+        )
 
     def _substitute_report(self, span: Span, drawn_in: Face) -> FidelityReport:
         """Substitute: `drawn_in`, a face we ship, draws the span in its font's place."""
@@ -206,8 +214,8 @@ class Engine:
         why = found.reason if isinstance(found, FontUnusable) else found.why_missing(span.text)
         return FidelityReport(
             span.id,
-            "substitute",
-            span.font,
+            state="substitute",
+            font=span.font,
             in_file=isinstance(found, PooledFont),
             substitute=drawn_in.name,
             why=why,
@@ -250,7 +258,9 @@ class Engine:
 
     def _erased_on(self, page: int, spans: list[Span]) -> list[Span]:
         """Erase `spans`, all on `page`; returns those with any word of their text left."""
-        texts = self.driver.erase_text(page, [span.bbox.grown(ROUNDED_PT) for span in spans])
+        texts = self.driver.erase_text(
+            page, [span.bbox.grown(constants.ROUNDED_PT) for span in spans]
+        )
         pairs = zip(spans, texts, strict=True)
         return [span for span, left in pairs if any_word_left(span.text, left)]
 
@@ -301,7 +311,7 @@ class Engine:
         size: float | None = None,
         scale_x: float = 1.0,
         turn_ccw: QuarterTurn = 0,
-    ) -> DrawnLine:
+    ) -> DrawReport:
         """Redraw `text` at the span's baseline, in the font `LineFit.plan_for` names.
 
         `plan` is `LineFit.plan_for`'s answer from before the erase; None plans it here.
@@ -311,7 +321,9 @@ class Engine:
         planned = self.plans.plan_for(span, text) if plan is None else plan
         drawn_size = span.size if size is None else size
         spacing = planned.letter_spacing_at(drawn_size)
-        setting = Setting(drawn_size, scale_x, turn_ccw, letter_spacing=spacing)
+        setting = Setting(
+            drawn_size, scale_x=scale_x, turn_ccw=turn_ccw, letter_spacing=spacing
+        )
         return self.writer.draw(span, text, plan=planned, setting=setting)
 
     def turn_pages(self, turns: Mapping[int, QuarterTurn]) -> None:

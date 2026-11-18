@@ -23,7 +23,7 @@ from squidpdf.accounts.signed import signed
 from squidpdf.accounts.users import open_users
 from squidpdf.api import constants as limits
 from squidpdf.api.app import create_app
-from tests.api.conftest import BASE_URL, browser_on, upload
+from tests.api.conftest import BASE_URL, ONE_ADDRESS, OTHER_ADDRESS, browser_on, upload
 from tests.helpers import assert_equal, assert_in, assert_problem, assert_true
 
 _SECRET = b"a test's secret, long enough to sign with"
@@ -435,8 +435,8 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, monkeypatc
     app = create_app()
     app.state.accounts = _accounts(tmp_path, noted)
     with TestClient(app) as server:  # runs the lifespan, which makes the counts
-        reader = browser_on(server, client=("192.0.2.1", 1))
-        neighbour = browser_on(server, client=("198.51.100.7", 1))
+        reader = browser_on(server, client=(ONE_ADDRESS, 1))
+        neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(
             reader.post("/api/account/link", json={"email": _EMAIL}).status_code, 202, "1"
         )
@@ -458,8 +458,8 @@ def test_an_inbox_sent_its_links_while_one_works_is_told_to_wait_from_any_addres
     app = create_app()
     app.state.accounts = _accounts(tmp_path, noted)
     with TestClient(app) as server:  # runs the lifespan, which makes the counts
-        reader = browser_on(server, client=("192.0.2.1", 1))
-        neighbour = browser_on(server, client=("198.51.100.7", 1))
+        reader = browser_on(server, client=(ONE_ADDRESS, 1))
+        neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(
             reader.post("/api/account/link", json={"email": _EMAIL}).status_code, 202, "1"
         )

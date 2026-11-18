@@ -12,7 +12,7 @@ import pymupdf
 from squidpdf.core import FontSources, Message, open_pdf
 from squidpdf.core.fonts import pool
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.core.fonts.google import GoogleFile
+from squidpdf.core.fonts.google_files import GoogleFile
 from squidpdf.core.fonts.pool import _KeptWidths  # noqa: PLC2701 (the bound on a holder kept for a worker's life)
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver

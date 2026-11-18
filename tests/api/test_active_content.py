@@ -10,6 +10,7 @@ import pytest
 
 from squidpdf.documents import store
 from tests.api.conftest import upload
+from tests.conftest import new_object, new_stream
 from tests.helpers import assert_equal, assert_in, assert_not_in
 
 _LINE = "Hello there"
@@ -22,23 +23,9 @@ _ACTIVE_MARKS = re.compile(
 )
 
 
-def _new_object(doc: pymupdf.Document, source: str) -> int:
-    """A new object in `doc` holding `source`; its number."""
-    xref = doc.get_new_xref()
-    doc.update_object(xref, source)
-    return xref
-
-
-def _new_stream(doc: pymupdf.Document, source: str, data: bytes) -> int:
-    """A new stream in `doc`, its dictionary `source` and its bytes `data`; its number."""
-    xref = _new_object(doc, source)
-    doc.update_stream(xref, data)
-    return xref
-
-
 def _link(doc: pymupdf.Document, action: str) -> int:
     """A link over the same box, doing `action`; its number."""
-    return _new_object(doc, f"<</Type/Annot/Subtype/Link/Rect {_LINK_BOX}/A {action}>>")
+    return new_object(doc, f"<</Type/Annot/Subtype/Link/Rect {_LINK_BOX}/A {action}>>")
 
 
 def _written_over(doc: pymupdf.Document, sources: dict[int, str]) -> bytes:
@@ -75,38 +62,38 @@ def active() -> bytes:
     """
     doc = _one_page()
     page = doc[0]
-    script = _new_object(doc, "<</S/JavaScript/JS(app.alert('opened'))>>")
-    attached = _new_stream(doc, "<</Type/EmbeddedFile>>", b"the attached file")
-    filespec = _new_object(doc, f"<</Type/Filespec/F(notes.txt)/EF<</F {attached} 0 R>>>>")
+    script = new_object(doc, "<</S/JavaScript/JS(app.alert('opened'))>>")
+    attached = new_stream(doc, b"the attached file", Type="/EmbeddedFile")
+    filespec = new_object(doc, f"<</Type/Filespec/F(notes.txt)/EF<</F {attached} 0 R>>>>")
     scripts, files = f"<</Names[(run){script} 0 R]>>", f"<</Names[(n){filespec} 0 R]>>"
     names = f"<</JavaScript {scripts}/EmbeddedFiles {files}>>"
     catalog = doc.pdf_catalog()
     doc.xref_set_key(catalog, "OpenAction", f"{script} 0 R")
     doc.xref_set_key(catalog, "Names", names)
-    field = _new_object(doc, "<<>>")  # written over below, by hand
+    field = new_object(doc)  # written over below, by hand
     form = f"<</Fields[{field} 0 R]/XFA(<script>app.alert(2)</script>)>>"
     doc.xref_set_key(catalog, "AcroForm", form)
     doc.xref_set_key(catalog, "AF", "[<</Type/Filespec/F(//server/share/notes.txt)>>]")
-    on_3d = _new_stream(doc, "<</Type/3D/Subtype/U3D>>", b"")
-    doc.xref_set_key(on_3d, "OnInstantiate", f"{_new_stream(doc, '<<>>', b'app.alert(3)')} 0 R")
+    on_3d = new_stream(doc, b"", Type="/3D", Subtype="/U3D")
+    doc.xref_set_key(on_3d, "OnInstantiate", f"{new_stream(doc, b'app.alert(3)')} 0 R")
     annotations = [
         _link(doc, "<</S/Launch/F(calc.exe)>>"),
         _link(doc, "<</S/GoToR/F(other.pdf)/D[0/Fit]>>"),
         _link(doc, "<</S/URI/URI(javascript:app.alert(1))>>"),
         _link(doc, f"<</S/GoTo/D[{page.xref} 0 R/Fit]>>"),
         _link(doc, f"<</S/URI/URI({_WEB_LINK})>>"),
-        _new_object(
+        new_object(
             doc, f"<</Type/Annot/Subtype/FileAttachment/Rect {_LINK_BOX}/FS {filespec} 0 R>>"
         ),
-        _new_object(doc, f"<</Type/Annot/Subtype/3D/Rect {_LINK_BOX}/3DD {on_3d} 0 R>>"),
-        _new_object(
+        new_object(doc, f"<</Type/Annot/Subtype/3D/Rect {_LINK_BOX}/3DD {on_3d} 0 R>>"),
+        new_object(
             doc, f"<</Type/Annot/Subtype/Movie/Rect {_LINK_BOX}/Movie<</F(film.mov)>>>>"
         ),
     ]
     doc.xref_set_key(page.xref, "Annots", "[" + " ".join(f"{n} 0 R" for n in annotations) + "]")
     # Drawn from another file: its bytes here are what a reader shows without it.
-    remote = _new_stream(
-        doc, "<</Type/XObject/Subtype/Form/BBox[0 0 10 10]/F(remote.pdf)>>", b""
+    remote = new_stream(
+        doc, b"", Type="/XObject", Subtype="/Form", BBox="[0 0 10 10]", F="(remote.pdf)"
     )
     resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])  # its own object
     doc.xref_set_key(resources, "XObject", f"<</Far {remote} 0 R>>")
@@ -132,9 +119,7 @@ def plain() -> bytes:
     page = doc[0]
     catalog = doc.pdf_catalog()
     doc.xref_set_key(catalog, "OpenAction", f"[{page.xref} 0 R/Fit]")
-    figure = _new_object(
-        doc, f"<</Type/StructElem/S/Figure/Pg {page.xref} 0 R/A<</O/Layout>>>>"
-    )
+    figure = new_object(doc, f"<</Type/StructElem/S/Figure/Pg {page.xref} 0 R/A<</O/Layout>>>>")
     doc.xref_set_key(catalog, "StructTreeRoot", f"<</Type/StructTreeRoot/K {figure} 0 R>>")
     link = _link(doc, f"<</S/URI/URI({_WEB_LINK})>>")
     doc.xref_set_key(page.xref, "Annots", f"[{link} 0 R]")

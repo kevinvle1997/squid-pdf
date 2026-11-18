@@ -25,6 +25,13 @@ from tests.helpers import assert_equal
 # The owner cookie is Secure, so a browser only sends it back over https.
 BASE_URL = "https://testserver"
 _MARGIN_PT = 4  # above and below a line, as the browser pads its strip
+_RENDER_SCALE = 2  # pixels per point a render is drawn at, unless a test asks otherwise
+
+# A letter, not a PDF: refused before any work.
+NOT_A_PDF = b"Dear Sir, please find attached."
+# Two browsers' addresses, kept for documentation, so nobody's real one.
+ONE_ADDRESS = "192.0.2.1"
+OTHER_ADDRESS = "198.51.100.7"
 
 
 # A document's file on the server, as MuPDF names one it couldn't open, and as the log
@@ -207,21 +214,6 @@ class MovingAfterAnErase:
         return cast(PdfDriver, moving)
 
 
-# The facts of `with_a_card_line`: its one line, and its two numbers, by code point.
-CARD_LINE = "Card 4421 then 9918 ends"
-FIRST_NUMBER = range(5, 9)
-SECOND_NUMBER = range(15, 19)
-
-
-def with_a_card_line() -> bytes:
-    """A page whose one line holds two numbers, its title the line's words: a hidden copy."""
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_text((72, 100), CARD_LINE, fontname="helv", fontsize=12)
-    doc.set_metadata({"title": CARD_LINE})
-    return doc.tobytes()
-
-
 def drawn_page(
     drawing: str, *, title: str = "", link: tuple[str, str] | None = None, pages: int = 1
 ) -> bytes:
@@ -271,6 +263,19 @@ def mine(browser: Callable[[], TestClient]) -> TestClient:
 def doc(mine: TestClient, pdf_bytes: bytes) -> dict:
     """The sample PDF as uploaded by `mine`: what the upload answered."""
     return upload(mine, pdf_bytes).json()
+
+
+def render(
+    client: TestClient,
+    doc: dict,
+    edits: list[dict],
+    regions: list[dict],
+    *,
+    scale: int = _RENDER_SCALE,
+) -> Response:
+    """Ask for `regions` of an uploaded `doc` drawn with `edits`, as the browser does."""
+    body = {"edits": edits, "scale": scale, "regions": regions}
+    return client.post(f"/api/documents/{doc['id']}/render", json=body)
 
 
 def span_starting(doc: dict, page: int, starts: str) -> dict:

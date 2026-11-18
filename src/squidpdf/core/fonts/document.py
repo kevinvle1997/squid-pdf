@@ -14,8 +14,8 @@ from functools import partial
 from itertools import pairwise
 from statistics import median
 
+import squidpdf.core.constants as constants
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import BASELINE_EPS, LETTER_SPACING_MIN_EM
 from squidpdf.core.fonts.attached import AttachedFonts, FontFiles
 from squidpdf.core.fonts.embedded import FontUnusable, made_once, open_embedded, remembered
 from squidpdf.core.fonts.google import Fetch, GoogleFontController
@@ -79,7 +79,9 @@ class _PageFacts:
     # The same fonts by their PDF object, which is how text names the font that draws it.
     by_object: dict[int, PageFont]
     # The page's usual gap for a space, by the font's object and name, and the font measured in.
-    usual_gaps: dict[tuple[int | None, str, FontProgram], float] = field(default_factory=dict)
+    usual_gaps: dict[tuple[int | None, str, FontProgram], float] = field(
+        default_factory=dict, repr=False
+    )
     # A span's font with its other copies, by the page's copy of it, or why it can't be.
     pools: dict[PageFont, PooledFont | FontUnusable] = field(default_factory=dict, repr=False)
 
@@ -128,24 +130,26 @@ def _by_height(glyphs: list[DrawnGlyph]) -> _GlyphsByHeight:
 class _FontCache:
     """What has been looked up about the document's fonts, each filled in on first use.
 
-    A copy of a font, and the name its copies share, by how its page lists it
-    (its object, its name there, whether a form uses it), so pages that list it
-    alike share one. A page's facts and text by page number; every letter, by that name.
+    A page's facts and text by page number, and the letters of the page last asked about;
+    a copy, and the name its copies share, by the whole `PageFont` its page lists; a look-alike
+    by the font's object and name; every letter of a font by the name its copies share.
     """
 
     # What each page says, by page number, read when the page is first asked about.
-    pages: dict[int, _PageFacts] = field(default_factory=dict)
+    pages: dict[int, _PageFacts] = field(default_factory=dict, repr=False)
     # Each page's text as it was, by page number: kept from the index, else read when needed.
     # Apart from `pages`, so the index keeps a page's text without reading its fonts.
     lines: dict[int, list[list[TextPiece]]] = field(default_factory=dict, repr=False)
     # Each copy of a font in the file, opened, or why it can't be used.
-    copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict)
+    copies: dict[PageFont, FontCopy | FontUnusable] = field(default_factory=dict, repr=False)
     # The name each font's copies share, read on first use: every walk asks it of every font.
-    copies_names: dict[PageFont, str] = field(default_factory=dict)
-    # Each font's look-alike, by its name and object (None: not on the page).
-    look_alikes: dict[tuple[str, int | None], LookAlike] = field(default_factory=dict)
+    copies_names: dict[PageFont, str] = field(default_factory=dict, repr=False)
+    # Each font's look-alike, by its object (None: not on the page) and name.
+    look_alikes: dict[tuple[int | None, str], LookAlike] = field(
+        default_factory=dict, repr=False
+    )
     # Every letter a font's copies draw, by the name they share, once a walk opened them all.
-    every_letter: dict[str, frozenset[str]] = field(default_factory=dict)
+    every_letter: dict[str, frozenset[str]] = field(default_factory=dict, repr=False)
     # The letters the page last asked about draws: one page's, since a page's are many,
     # and spans are judged page by page.
     glyphs: _PageGlyphs | None = field(default=None, repr=False)
@@ -173,19 +177,19 @@ class _FontCache:
         return made_once(self.copies_names, font, make)
 
     def look_alike(
-        self, key: tuple[str, int | None], make: Callable[[], LookAlike]
+        self, key: tuple[int | None, str], make: Callable[[], LookAlike]
     ) -> LookAlike:
-        """A font's look-alike, by its name and object, chosen on first use."""
+        """A font's look-alike, by its object and name, chosen on first use."""
         return made_once(self.look_alikes, key, make)
 
-    def every_letter_of(self, name: str) -> frozenset[str] | None:
-        """Every letter of the font `name`; None until known."""
+    def every_letter_of(self, copies_name: str) -> frozenset[str] | None:
+        """Every letter of the font whose copies share `copies_name`; None until known."""
         # .get: no pool may have walked every copy yet.
-        return self.every_letter.get(name)
+        return self.every_letter.get(copies_name)
 
-    def keep_every_letter(self, name: str, letters: frozenset[str]) -> None:
-        """Keep every letter of the font `name`."""
-        self.every_letter[name] = letters
+    def keep_every_letter(self, copies_name: str, letters: frozenset[str]) -> None:
+        """Keep every letter of the font whose copies share `copies_name`."""
+        self.every_letter[copies_name] = letters
 
     def page_glyphs(self, page: int, make: Callable[[], list[DrawnGlyph]]) -> _GlyphsByHeight:
         """The letters `page` draws, with their shapes, read unless it's the page last asked."""
@@ -365,23 +369,23 @@ class DocumentFonts:
         This page's first, then the nearest page's: the order a letter is
         borrowed in. A page's fonts are read only when the walk reaches it.
         """
-        font_name = self._copies_name(own)
+        copies_name = self._copies_name(own)
         # The own copy may be listed under another name, found by the one its text reads.
         seen = {own.font_object}
         for font in self._fonts_nearest_first(page):
             is_other_copy = (
-                font.font_object not in seen and self._copies_name(font) == font_name
+                font.font_object not in seen and self._copies_name(font) == copies_name
             )
             if is_other_copy:
                 seen.add(font.font_object)  # one font object on several pages is one copy
                 yield font
 
     def _copies_name(self, font: PageFont) -> str:
-        """The name every copy of the font goes by, subset prefix aside, read once."""
+        """The name the font's copies share, subset prefix aside, read once."""
         return self.cache.copies_name(font, partial(self._read_copies_name, font))
 
     def _read_copies_name(self, font: PageFont) -> str:
-        """The name every copy of the font goes by, subset prefix aside.
+        """The name the font's copies share, subset prefix aside.
 
         A Type3 font's own name is often its object's, so no two copies share it:
         the font its description names stands in, when it names one.
@@ -439,8 +443,8 @@ class DocumentFonts:
         Once a walk has seen every copy, a later one stops when the pool's `letters`
         hold all theirs: a copy left could lend only a letter it has.
         """
-        name = self._copies_name(own.font)
-        every_letter = self.cache.every_letter_of(name)
+        copies_name = self._copies_name(own.font)
+        every_letter = self.cache.every_letter_of(copies_name)
         drawn = set(own.widths)
         for font in self._other_copies(page, own.font):
             pool_has_them_all = every_letter is not None and letters.keys() >= every_letter
@@ -451,7 +455,7 @@ class DocumentFonts:
             if isinstance(copy, FontCopy):
                 drawn.update(copy.widths)
                 yield copy
-        self.cache.keep_every_letter(name, frozenset(drawn))
+        self.cache.keep_every_letter(copies_name, frozenset(drawn))
 
     def shown_name(self, span: Span) -> str:
         """The name the reader knows the span's font by, subset prefix aside.
@@ -467,7 +471,7 @@ class DocumentFonts:
         """The look-alike for the span's font, in its style: the face we ship we'd use."""
         page_font = self._page_font(span)
         font_object = None if page_font is None else page_font.font_object
-        key = (span.font, font_object)
+        key = (font_object, span.font)
         return self.cache.look_alike(key, partial(self._look_alike_of, span, font_object))
 
     def _look_alike_of(self, span: Span, font_object: int | None) -> LookAlike:
@@ -523,9 +527,9 @@ class DocumentFonts:
             (b.origin[0] - a.origin[0] - width_of(a)) / span.size for a, b in pairs
         )
         by_boxes = median((b.origin[0] - a.origin[0] - a.width) / span.size for a, b in pairs)
-        spaced = abs(by_widths) >= LETTER_SPACING_MIN_EM
+        spaced = abs(by_widths) >= constants.LETTER_SPACING_MIN_EM
         # Narrowed, not spaced: each letter's box is as narrow as it's set apart.
-        agreed = abs(by_widths - by_boxes) < LETTER_SPACING_MIN_EM
+        agreed = abs(by_widths - by_boxes) < constants.LETTER_SPACING_MIN_EM
         return by_widths if spaced and agreed else 0.0
 
     def usual_gap(self, span: Span, font: FontProgram) -> float:
@@ -584,7 +588,7 @@ def _within_a_word(letter: DrawnGlyph, following: DrawnGlyph) -> bool:
     """
     drawn = letter.glyph != _LIGATURE_TAIL and following.glyph != _LIGATURE_TAIL
     letters = not letter.letter.isspace() and not following.letter.isspace()
-    level = abs(letter.origin[1] - following.origin[1]) <= BASELINE_EPS
+    level = abs(letter.origin[1] - following.origin[1]) <= constants.BASELINE_EPS
     onward = following.origin[0] > letter.origin[0]
     return drawn and letters and level and onward
 

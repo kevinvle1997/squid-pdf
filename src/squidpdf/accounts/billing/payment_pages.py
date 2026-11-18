@@ -66,9 +66,14 @@ class BillingPortalController:
         if user.stripe_customer is None:
             raise NoBilling()
         managing = partial(
-            _portal_url, self.accounts.users, billing, user, customer=user.stripe_customer
+            _portal_url,
+            self.accounts.users,
+            billing,
+            user,
+            customer=user.stripe_customer,
+            site=self.accounts.site,
         )
-        url = await billing.run(partial(managing, site=self.accounts.site))
+        url = await billing.run(managing)
         return Reply(PaymentPage(url=url), {}, HTTPStatus.OK)
 
 

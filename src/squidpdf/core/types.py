@@ -15,7 +15,7 @@ from typing import Any, Literal, NewType, get_args
 
 import orjson
 
-from squidpdf.core.constants import TURN_TOLERANCE
+import squidpdf.core.constants as constants
 
 # Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
 Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
@@ -194,7 +194,7 @@ class PageFont:
     kind: FontKind
     file_type: FontFileType
     resource: str  # its resource name on the page, e.g. "F1"
-    encoding: str  # how codes map to letters, e.g. "WinAnsiEncoding"
+    codes_are_cids: bool  # a two-byte font set across whose codes are its CIDs (Identity-H)
     in_form: bool  # used inside a form (a reusable drawing), not by the page itself
 
     @property
@@ -251,7 +251,7 @@ class Span:
         """True when its line isn't level: tilted past TURN_TOLERANCE, or upside down."""
         horizontal, vertical = self.direction
         # Upside down has no vertical part, only a leftward one.
-        return horizontal < 0 or abs(vertical) > TURN_TOLERANCE
+        return horizontal < 0 or abs(vertical) > constants.TURN_TOLERANCE
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -458,7 +458,7 @@ def new_text(
     )
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@dataclass(frozen=True, slots=True)
 class SpanIndex:
     """Every editable span in a document, built once and never rebuilt. Made by `index_of`.
 
@@ -478,10 +478,6 @@ class SpanIndex:
     def __len__(self) -> int:
         """How many spans are in the document."""
         return len(self.by_id)
-
-    def get(self, span_id: str) -> Span | None:
-        """Look up one span by id, or None if it does not exist."""
-        return self.by_id.get(span_id)
 
 
 def index_of(spans: Iterable[Span]) -> SpanIndex:

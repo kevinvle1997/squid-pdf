@@ -141,11 +141,11 @@ class Fitted:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class LogFits:
-    """A fit for every replace and insert an edit log leaves, drawn or not."""
+class EditFits:
+    """A fit for every replace and insert an edit list leaves, drawn or not."""
 
     replaces: dict[str, Fitted]  # by the replaced span's id
-    inserts: dict[int, Fitted]  # by the insert's place in the log
+    inserts: dict[int, Fitted]  # by the insert's place in the edit list
 
 
 def runs_past(delta_pt: float, room_pt: float) -> bool:

@@ -111,7 +111,11 @@ def why_unredacted(redaction: Redaction) -> Message:
 
 def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:
     """An edit left out, as the browser gets it: why, in words and unsaid."""
-    return {"edit": skipped.edit, "type": skipped.type, **words.said(skipped.detail, language)}
+    return {
+        "edit": skipped.position,
+        "type": skipped.type,
+        **words.said(skipped.detail, language),
+    }
 
 
 def notice_info(notice: Notice, language: str) -> NoticeInfo:
@@ -125,7 +129,7 @@ def notice_info(notice: Notice, language: str) -> NoticeInfo:
         return {"kind": "span", "span_id": notice.span_id, **said}
     # An insert, which has no span: named by its place in the list the browser sent.
     if isinstance(notice, InsertNotice):
-        return {"kind": "insert", "edit": notice.edit, **said}
+        return {"kind": "insert", "edit": notice.position, **said}
     if isinstance(notice, FileNotice):
         return {"kind": "file", **said}
     assert_never(notice)

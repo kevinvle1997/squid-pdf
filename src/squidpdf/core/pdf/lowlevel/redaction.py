@@ -74,10 +74,12 @@ class PageRedaction:
         for place in reversed(marks):
             mu.pdf_array_delete(listed, place)
         _sync_annotations(self.doc, page)
-        yield
-        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        _put_back(listed, before, mu.PDF_ENUM_NAME_Redact)
-        _sync_annotations(self.doc, page)
+        try:
+            yield
+        finally:
+            listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+            _put_back(listed, before, mu.PDF_ENUM_NAME_Redact)
+            _sync_annotations(self.doc, page)
 
     @contextmanager
     def links_kept(self, page: int) -> Iterator[None]:
@@ -90,14 +92,18 @@ class PageRedaction:
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        # The list as it was, a copy that holds on to each entry while MuPDF drops some.
-        before = mu.pdf_copy_array(listed) if mu.pdf_is_array(listed) else None
-        yield
-        if before is None:
+        # No list of annotations: no link to lose.
+        if not mu.pdf_is_array(listed):
+            yield
             return
-        listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
-        _sync_links(self.doc, page)
+        # The list as it was, a copy that holds on to each entry while MuPDF drops some.
+        before = mu.pdf_copy_array(listed)
+        try:
+            yield
+        finally:
+            listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+            _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
+            _sync_links(self.doc, page)
 
     def drop_links(
         self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None

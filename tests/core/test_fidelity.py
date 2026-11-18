@@ -32,6 +32,7 @@ from tests.conftest import (
     REFERENCED_PAGE,
     TYPE3_TEXTS,
     drawn_with,
+    each_letter,
     each_span,
     named_only,
     saved_as,
@@ -422,10 +423,9 @@ def _font_files(doc: pymupdf.Document, page: int) -> set[bytes]:
 def _blank_letters(page: pymupdf.Page) -> list[str]:
     """The letters on a page that put no ink down, in order."""
     blocks = page.get_text("rawdict")["blocks"]
-    letters = [char for span in each_span(blocks) for char in span["chars"]]
     return [
         char["c"]
-        for char in letters
+        for char in each_letter(blocks)
         if not char["c"].isspace() and not _inked(page, pymupdf.Rect(char["bbox"]))
     ]
 

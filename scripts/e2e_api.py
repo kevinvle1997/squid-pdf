@@ -15,6 +15,7 @@ import uvicorn
 from squidpdf.api import constants
 
 _SUITE_AT_ONCE = 1_000  # past what any run asks for, from its one address
+# The API's per-address limits, by their names in `api/constants.py`.
 _PER_ADDRESS = ("UPLOADS_PER_MINUTE", "UPLOADS_UNDER_WAY", "JOBS_AT_WORK")
 
 

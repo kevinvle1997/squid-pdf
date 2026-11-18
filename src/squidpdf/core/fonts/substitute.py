@@ -47,19 +47,17 @@ def substitute_for(look_alike: Face, text: str) -> Substitute:
     broadest face we ship leaves out fewer, the look-alike on a tie. One face
     for the whole line: two would look like a mistake.
     """
-    in_look_alike = _try_face(look_alike, text)
+    in_look_alike = _drawn_in(look_alike, text)
     # No face could leave out fewer.
     if not in_look_alike.left_out:
         return in_look_alike
-    candidates = [in_look_alike, _try_face(broadest(look_alike), text)]
+    candidates = [in_look_alike, _drawn_in(broadest(look_alike), text)]
     # min keeps the first of a tie
     return min(candidates, key=lambda candidate: len(candidate.left_out))
 
 
-def _try_face(face: Face, text: str) -> Substitute:
+def _drawn_in(face: Face, text: str) -> Substitute:
     """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
-    if not left_out:
-        return Substitute(face, text, left_out)
     kept = "".join(ch for ch in text if ch not in left_out)
     return Substitute(face, kept, left_out)

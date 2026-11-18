@@ -81,7 +81,7 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
         if passes == 1:
             raise OSError("the disk said no")
 
-    monkeypatch.setattr(documents, "SWEEP_EVERY_S", 0)
+    monkeypatch.setattr(constants, "SWEEP_EVERY_S", 0)
 
     async def sweep_until_a_second_pass() -> None:
         """Sweep until a pass runs after the failed one, or patience runs out."""

@@ -11,9 +11,8 @@ from pathlib import Path
 import xxhash
 
 from squidpdf.core import BUILD, Reply, Tally, Workers, tally, words
-from squidpdf.documents import store
+from squidpdf.documents import constants, store
 from squidpdf.documents.analyse import analyse
-from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, DOCUMENT_CACHE
 from squidpdf.documents.replies import document_json, reply_digest, time_of
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis, Loaded
@@ -61,14 +60,14 @@ class ReadController:
     async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
         """Analyse the document on a worker."""
         task = partial(analyse, self.documents, folder)
-        return await self.workers.run(ANALYSE_TIMEOUT_S, task)
+        return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 
 def _headers_of(doc: Loaded, etag: str, language: str) -> dict[str, str]:
     """The headers of a read, the same on a 200 and a 304."""
     return {
         "ETag": etag,
-        "Cache-Control": DOCUMENT_CACHE,
+        "Cache-Control": constants.DOCUMENT_CACHE,
         EXPIRES_HEADER: time_of(doc.expires_at),
         **words.language_headers(language),
     }

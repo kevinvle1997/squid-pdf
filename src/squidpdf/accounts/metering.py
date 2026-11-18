@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from squidpdf.accounts import constants
-from squidpdf.accounts.cookies import COUNTED, SIGNED_IN, cookie_header
+from squidpdf.accounts.cookies import COUNTED, cookie_header
 from squidpdf.accounts.deployment import Accounts, Allowance
 from squidpdf.accounts.errors import FreeDocumentsUsed, MonthlyDocumentsUsed
 from squidpdf.accounts.sign_in import signed_in_user
@@ -34,8 +34,7 @@ class AccountMeters:
         Reads the table: a browser signed in to an account since removed counts as one
         with none.
         """
-        # .get: a browser that never signed in has no cookie.
-        user = signed_in_user(self.accounts, cookies.get(SIGNED_IN))
+        user = signed_in_user(self.accounts, cookies)
         if user is not None:
             return _AccountMeter(self.accounts, self.allowance, user=user)
         return _BrowserMeter(self.accounts, self.allowance, counted=self._counted_in(cookies))

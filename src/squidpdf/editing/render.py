@@ -26,7 +26,7 @@ from squidpdf.core import (
     words,
 )
 from squidpdf.documents import store
-from squidpdf.documents.errors import NoSuchPage
+from squidpdf.documents.errors import NoSuchPage, is_page
 from squidpdf.documents.free_space import kept_rooms
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
@@ -35,8 +35,7 @@ from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
 from squidpdf.editing.apply import (
     edited_by,
-    is_page,
-    log_fits,
+    fits_of,
     plan,
     redacted_by,
     resolve,
@@ -145,7 +144,7 @@ def _draw_regions(
     rooms = kept_rooms(documents, folder, index)
     with documents.open_original(folder) as engine:
         resolved = resolve(engine, index, rooms=rooms, edits=edits)
-        fits = log_fits(engine, resolved)  # before run: erasing can drop the fonts it measures
+        fits = fits_of(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)
         # Before run too: erasing can drop the fonts new text is measured with.
         redactions = redactions_of(

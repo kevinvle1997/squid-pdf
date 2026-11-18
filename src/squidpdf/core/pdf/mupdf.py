@@ -18,9 +18,9 @@ from typing import Any
 
 import pymupdf
 
+import squidpdf.core.constants as constants
 from squidpdf.core.app.errors import Damaged, Encrypted, Failure, TooHeavy, machine_failure
 from squidpdf.core.app.message import Message
-from squidpdf.core.constants import GARBAGE_COLLECT
 from squidpdf.core.fonts.catalog import face_bytes
 from squidpdf.core.pdf.driver import DriverError, FontProgram, PdfDriver
 from squidpdf.core.pdf.lowlevel import (
@@ -29,7 +29,9 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_SYSTEM_ERRORS,
     MUPDF_TOO_HEAVY,
     PDF_NULL,
+    PDF_REFERENCE,
     PdfFile,
+    object_number,
     pdf_file,
 )
 from squidpdf.core.pdf.png import png_of
@@ -110,6 +112,8 @@ _FILE_TYPES: dict[str, FontFileType] = {
     "cid": "cff",
     "pfa": "type1",
 }
+# The encoding of a two-byte font set across whose codes are its CIDs, as PyMuPDF names it.
+_IDENTITY_ACROSS = "Identity-H"
 
 # What MuPDF's list of a page's drawing calls names a picture or shading; paths come apart.
 _PICTURE_KINDS = ("fill-image", "fill-imgmask", "fill-shade")
@@ -215,16 +219,38 @@ def open_driver(path: str) -> PdfDriver:
     return _MuPDFDriver(doc, file)
 
 
+@dataclass(slots=True)
+class _ChangedPages:
+    """What the driver did to each page, by its object, whose number survives renumbering."""
+
+    pages: dict[int, _ChangedPage] = field(default_factory=dict)
+
+    def page(self, page_object: int) -> _ChangedPage:
+        """What the driver did to page `page_object` so far, kept from the first change on."""
+        return self.pages.setdefault(page_object, _ChangedPage())
+
+
+@dataclass(slots=True)
+class _OpenedPrograms:
+    """Each font `write_text` wrote in, opened from the file it stores, by its object: a few."""
+
+    programs: dict[int, _MuPDFFont] = field(default_factory=dict)
+
+    def program(self, font_object: int, make: Callable[[], _MuPDFFont]) -> _MuPDFFont:
+        """Font `font_object`'s file, opened by `make` the first time it's asked for."""
+        if font_object not in self.programs:
+            self.programs[font_object] = make()
+        return self.programs[font_object]
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class _MuPDFDriver:
     """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `open_driver`."""
 
     doc: pymupdf.Document
     file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
-    # What this driver did to each page, by its object, whose number survives renumbering.
-    changed: dict[int, _ChangedPage] = field(default_factory=dict, repr=False)
-    # Each font `write_text` wrote in, opened from the file it stores, by its object: a few.
-    programs: dict[int, _MuPDFFont] = field(default_factory=dict, repr=False)
+    changed: _ChangedPages = field(default_factory=_ChangedPages, repr=False)
+    programs: _OpenedPrograms = field(default_factory=_OpenedPrograms, repr=False)
 
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
@@ -309,17 +335,7 @@ class _MuPDFDriver:
 
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
         """Each letter the page's own drawing writes, on it or off it, and the shape picked."""
-        return [
-            DrawnGlyph(
-                chr(letter),
-                GlyphId(glyph),
-                (origin[0], origin[1]),
-                box[2] - box[0],
-                direction=(run["dir"][0], run["dir"][1]),
-            )
-            for run in self.file.glyphs.drawn(page)
-            for letter, glyph, origin, box in run["chars"]
-        ]
+        return self.file.glyphs.drawn(page)
 
     def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
         """The box each of `drawn_glyphs` takes as drawn, in its order; None if unread."""
@@ -395,7 +411,7 @@ class _MuPDFDriver:
             # .get: "n/a" when only named, or stored in a way MuPDF can't name.
             file_type=_FILE_TYPES.get(listed.file_type, "none"),
             resource=listed.resource,
-            encoding=listed.encoding,
+            codes_are_cids=listed.encoding == _IDENTITY_ACROSS,
             in_form=listed.referencer != 0,
         )
 
@@ -428,7 +444,7 @@ class _MuPDFDriver:
         if owner is None:
             return None
         value_type, _value = self.doc.xref_get_key(owner, "FontDescriptor")
-        if value_type == "null":
+        if value_type == PDF_NULL:
             return None
         flags = self._number(owner, "FontDescriptor/Flags")
         angle = self._number(owner, "FontDescriptor/ItalicAngle")
@@ -447,7 +463,7 @@ class _MuPDFDriver:
         """
         value_type, _value = self.doc.xref_get_key(font_object, "DescendantFonts")
         # A simple font describes itself.
-        if value_type not in ("array", "xref"):
+        if value_type not in ("array", PDF_REFERENCE):
             return font_object
         return self.file.fonts.inner_font(font_object)
 
@@ -507,7 +523,7 @@ class _MuPDFDriver:
 
     def _changed_page(self, page: int) -> _ChangedPage:
         """What this driver did to the page so far, kept from the first change on."""
-        return self.changed.setdefault(self.doc[page].xref, _ChangedPage())
+        return self.changed.page(self.doc[page].xref)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside each box, for real.
@@ -586,27 +602,23 @@ class _MuPDFDriver:
         that font's widths. PyMuPDF's writers only take letters, so it's written
         out here.
         """
-        x, y = self.file.additions.to_pdf_space(page, origin)
+        start = self.file.additions.to_pdf_space(page, origin)
         resources = self._resources_of(page, {run.font_object for run in runs})
         shown = " ".join(
-            f"{_written_name(resources[run.font_object])} {size:.{_PDF_DP}f} Tf"
-            f" <{run.codes.hex()}> Tj"
-            for run in runs
+            _written_codes(run, resource=resources[run.font_object], size=size) for run in runs
         )
-        # See-through: a graphics state that paints at `opacity`.
-        paint = (
-            f" /{self.file.additions.add_opacity(page, opacity)} gs" if opacity < SOLID else ""
-        )
-        # Where the text goes: narrowed along its line, turned, and placed.
-        cos, sin = QUARTER_TURNS[turn_ccw]
-        matrix = [scale_x * cos, scale_x * sin, -sin, cos, x, y]
-        placed = " ".join(f"{number:.{_PDF_DP}f}" for number in matrix)
-        color_operands = " ".join(f"{channel:.{_PDF_DP}f}" for channel in color)
-        # Save the page's settings, set color, place the text, write each run in
-        # its font and size, then put the settings back.
+        paint = self._codes_paint_at(page, opacity)
+        placed = _written_placing(start, scale_x=scale_x, turn_ccw=turn_ccw)
         spaced = _written_spacing(letter_spacing)
-        stream = f"q{paint} BT {color_operands} rg {placed} Tm{spaced} {shown} ET Q"
+        stream = f"q{paint} BT {_written_numbers(color)} rg {placed} Tm{spaced} {shown} ET Q"
         self._add_content(page, stream.encode())
+
+    def _codes_paint_at(self, page: int, opacity: float) -> str:
+        """The graphics state `write_codes` paints at `opacity`, after a space; or none."""
+        # Solid: the page's own state paints it.
+        if opacity >= SOLID:
+            return ""
+        return f" /{self.file.additions.add_opacity(page, opacity)} gs"
 
     def _resources_of(self, page: int, font_objects: set[int]) -> dict[int, str]:
         """The page's resource name for each font in `font_objects`, giving one to any it lacks.
@@ -690,9 +702,9 @@ class _MuPDFDriver:
 
     def _program_of(self, font_object: int) -> _MuPDFFont:
         """Font `font_object`'s file, opened to look its letters up in; opened once."""
-        if font_object not in self.programs:
-            self.programs[font_object] = _mupdf_font(self.font_bytes(font_object))
-        return self.programs[font_object]
+        return self.programs.program(
+            font_object, lambda: _mupdf_font(self.font_bytes(font_object))
+        )
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
@@ -741,7 +753,7 @@ class _MuPDFDriver:
         # Object streams compress the plain objects too: a face's width list is most of it.
         self.doc.save(
             path,
-            garbage=GARBAGE_COLLECT,
+            garbage=constants.GARBAGE_COLLECT,
             deflate=True,
             use_objstms=True,
             encryption=_KEEP_PROTECTION,
@@ -749,8 +761,9 @@ class _MuPDFDriver:
 
     def _fill_in_missing_id(self) -> None:
         """Give a protected file with no ID the empty one a reader takes it to have."""
-        protected = self.doc.xref_get_key(_TRAILER, "Encrypt")[0] != PDF_NULL
-        has_id = self.doc.xref_get_key(_TRAILER, "ID")[0] != PDF_NULL
+        protection_type, _protection = self.doc.xref_get_key(_TRAILER, "Encrypt")
+        id_type, _id = self.doc.xref_get_key(_TRAILER, "ID")
+        protected, has_id = protection_type != PDF_NULL, id_type != PDF_NULL
         if not protected or has_id:
             return
         # Its key was made from the empty first part: a fresh ID written whole would lock it.
@@ -771,14 +784,16 @@ class _MuPDFDriver:
             )
         # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self.doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
-        value = next((value for value_type, value in stored if value_type == "xref"), None)
+        value = next(
+            (value for value_type, value in stored if value_type == PDF_REFERENCE), None
+        )
         # No file where MuPDF stores ours: someone else's font.
         if value is None:
             raise DriverError(
                 self._why_kept_whole(font_object),
                 debug=f"font {font_object} has no file to swap",
             )
-        file_xref = _object_number(value)
+        file_xref = object_number(value)
         self.doc.update_stream(file_xref, font_file)
         # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
@@ -950,11 +965,6 @@ def _shows_text(kind: str, value: object) -> bool:
     return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
-def _object_number(reference: str) -> int:
-    """The object a reference points at: "7 0 R" -> 7."""
-    return int(reference.split()[0])
-
-
 def _ink_of(drawing: dict[str, Any]) -> float:
     """How far a path's ink reaches past its outline: half its stroke, if it's stroked."""
     # A fill alone, or a hairline, which MuPDF draws as thin as it can.
@@ -1049,6 +1059,25 @@ def _is_plain(byte: int) -> bool:
     return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
 
 
+def _written_numbers(numbers: Iterable[float]) -> str:
+    """Numbers as `write_codes` writes them: each to _PDF_DP decimals, a space apart."""
+    return " ".join(f"{number:.{_PDF_DP}f}" for number in numbers)
+
+
+def _written_codes(run: CodeRun, *, resource: str, size: float) -> str:
+    """One run of `write_codes`: its font, named `resource`, at `size`, then its codes."""
+    return f"{_written_name(resource)} {_written_numbers([size])} Tf <{run.codes.hex()}> Tj"
+
+
+def _written_placing(
+    start: tuple[float, float], *, scale_x: float, turn_ccw: QuarterTurn
+) -> str:
+    """The matrix placing `write_codes`'s text: narrowed along its line, turned, placed."""
+    cos, sin = QUARTER_TURNS[turn_ccw]
+    x, y = start
+    return _written_numbers([scale_x * cos, scale_x * sin, -sin, cos, x, y])
+
+
 def _written_spacing(letter_spacing: float) -> str:
     """Letter spacing as a drawing sets it, after a space; nothing when it's none."""
     return f" {letter_spacing:.{_PDF_DP}f} Tc" if letter_spacing else ""
@@ -1097,8 +1126,6 @@ def _written_run(
     """One run, written from `start` in the PDF's coordinates: its glyphs in `resource`."""
     placed = pymupdf.format_g(_turned_back(start, style.turn_ccw))
     narrowed = _written_narrowing(start, style.scale_x)
-    # Save the page's settings, paint, narrow and turn about the run's start, place it,
-    # write its glyphs in its font, size and colour, then put the settings back.
     return (
         f"\nq\n{style.paint}BT\n{narrowed}{_written_turn(style.turn_ccw)}"
         f"1 0 0 1 {placed} Tm\n{_written_name(resource)} {style.setting} [<{glyphs}>]TJ"

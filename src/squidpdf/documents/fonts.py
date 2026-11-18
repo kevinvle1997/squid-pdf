@@ -27,7 +27,6 @@ from squidpdf.documents.errors import (
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import KeptAnalysis, Loaded
-from squidpdf.documents.upload import disk_held
 
 # Why the engine turned a copy away, by its reason, as the Problem that tells the user; any
 # other reason (another width, too few letters shared) is a mismatch.
@@ -69,7 +68,7 @@ class AttachController:
             raise TooManyFonts(constants.MAX_FONTS)
         arriving = await asyncio.to_thread(attached.arriving_font, doc.folder)
         try:
-            async with disk_held(declared, most=constants.MAX_FONT_BYTES):
+            async with disk.disk_held(declared, most=constants.MAX_FONT_BYTES):
                 await _save_font(chunks, to=arriving)
             kept = await self._enqueue_attach_font(doc.folder, name=name, arrived=arriving)
         finally:

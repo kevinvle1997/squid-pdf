@@ -57,11 +57,6 @@ def assert_close(actual: float, expected: float, within: float, label: str) -> N
     assert off <= within, f"{label}: expected {expected!r} within {within!r}, got {actual!r}"
 
 
-def assert_between(value: float, low: float, high: float, label: str) -> None:
-    """Assert `low < value < high`; name what was being measured."""
-    assert low < value < high, f"{label}: {value!r} not between {low!r} and {high!r}"
-
-
 def assert_every_field_filled(holder: DataclassInstance, fresh: object, label: str) -> None:
     """Assert no field of `holder` is as `fresh` has it; name each one that is.
 
@@ -82,18 +77,6 @@ def assert_all[T](
     """Assert `predicate` holds for every item; name the ones that don't."""
     bad = [describe(i) for i in items if not predicate(i)]
     assert not bad, f"failed for: {', '.join(bad)}"
-
-
-def assert_any[T](
-    items: Iterable[T],
-    predicate: Callable[[T], bool],
-    describe: Callable[[T], str] = repr,
-) -> None:
-    """Assert `predicate` holds for at least one item; list what was checked."""
-    items = list(items)
-    assert any(predicate(i) for i in items), (
-        f"none matched, checked: {', '.join(describe(i) for i in items)}"
-    )
 
 
 def assert_problem(response: Response, problem_type: str, status: int) -> None:

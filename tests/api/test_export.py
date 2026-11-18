@@ -31,9 +31,6 @@ from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
 from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
-    CARD_LINE,
-    FIRST_NUMBER,
-    SECOND_NUMBER,
     InProcess,
     MovingAfterAnErase,
     Place,
@@ -42,7 +39,6 @@ from tests.api.conftest import (
     span_starting,
     upload,
     verdicts_of,
-    with_a_card_line,
 )
 from tests.conftest import (
     CHOSEN,
@@ -53,7 +49,9 @@ from tests.conftest import (
     SIGNED,
     StoreWith,
     cannot_cut,
+    each_letter,
     named_with_widths,
+    new_stream,
     with_hidden_copies,
 )
 from tests.helpers import (
@@ -282,6 +280,21 @@ def test_a_redaction_the_check_cannot_confirm_downloads_nothing(
     assert_equal(_files(doc), kept, "the document's files after the export")
 
 
+# The facts of `_with_a_card_line`: its one line, and its two numbers, by code point.
+_TWO_NUMBERS_LINE = "Card 4421 then 9918 ends"
+_FIRST_NUMBER = range(5, 9)
+_SECOND_NUMBER = range(15, 19)
+
+
+def _with_a_card_line() -> bytes:
+    """A page whose one line holds two numbers, its title the line's words: a hidden copy."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), _TWO_NUMBERS_LINE, fontname="helv", fontsize=12)
+    doc.set_metadata({"title": _TWO_NUMBERS_LINE})
+    return doc.tobytes()
+
+
 @pytest.fixture(scope="module")
 def marked() -> bytes:
     """A tagged page that keeps its card number beside the letters, in each place a page can."""
@@ -317,24 +330,24 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     # A form with an image's Alt naming its file after the line; its own words stay, "A" too.
     if "form" in places:
         alt = f"/Figure <</Alt (A scan: {_SCAN})>> BDC {_SQUARE} EMC"
-        figure = _new_stream(doc, alt, **_FORM)
+        figure = new_stream(doc, alt, **_FORM)
         doc.xref_set_key(resources_xref, "XObject/Fm0", f"{figure} 0 R")
         drawing.append("/Fm0 Do")
     # A tiling pattern, the line after a dictionary MuPDF can't read but draws on past.
     if "pattern" in places:
         unreadable = f"/Span <</ActualText (Logo) /Bad>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, f"{unreadable} {_AROUND_SQUARE}", **_TILING)
+        tile = new_stream(doc, f"{unreadable} {_AROUND_SQUARE}", **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P0", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P0 scn {_SQUARE}")
     # A soft mask the page paints a square through; its group is a drawing too.
     if "smask" in places:
-        group = _new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
+        group = new_stream(doc, _AROUND_SQUARE, **_FORM, Group="<</S/Transparency>>")
         mask = f"<</SMask<</S/Luminosity/G {group} 0 R>>>>"
         doc.xref_set_key(resources_xref, "ExtGState/GS0", mask)
         drawing.append(f"q /GS0 gs {_SQUARE} Q")
     # A Type3 letter "x" the page writes, its image first, as a bitmap font's letters are.
     if "type3" in places:
-        letter = _new_stream(doc, f"1000 0 d0 {_HEX_IMAGE} {_AROUND_SQUARE}")
+        letter = new_stream(doc, f"1000 0 d0 {_HEX_IMAGE} {_AROUND_SQUARE}")
         font = doc.get_new_xref()
         doc.update_object(font, _TYPE3.format(letter=letter))
         doc.xref_set_key(resources_xref, "Font/T3", f"{font} 0 R")
@@ -348,7 +361,7 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     # A tiling pattern whose hidden copy has a NUL before the line, where MuPDF stops reading.
     if "nul" in places:
         after_nul = f"/Span <</ActualText (Ref\\000{_CARD})>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, after_nul, **_TILING)
+        tile = new_stream(doc, after_nul, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P3", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P3 scn {_SQUARE}")
     # The same as a string of its own (an object of the file), which the properties /MC1 name.
@@ -360,64 +373,64 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     # A tiling pattern with the dictionary before its tag, which MuPDF reads as if after.
     if "dictionary_first" in places:
         first = f"<</ActualText ({_CARD})>> /Span BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, first, **_TILING)
+        tile = new_stream(doc, first, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P5", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P5 scn {_SQUARE}")
     # A tiling pattern with ActualText written twice, the line first: MuPDF keeps "Logo".
     if "twice" in places:
         twice = f"/Span <</ActualText ({_CARD}) /ActualText (Logo)>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, twice, **_TILING)
+        tile = new_stream(doc, twice, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P6", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P6 scn {_SQUARE}")
     # The same, each written in hex, so no ( says a string is there.
     if "twice_hex" in places:
         line, logo = (f"<{text.encode().hex()}>" for text in (_CARD, "Logo"))
         twice = f"/Span <</ActualText {line} /ActualText {logo}>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, twice, **_TILING)
+        tile = new_stream(doc, twice, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P22", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P22 scn {_SQUARE}")
     # Alone: a dictionary MuPDF can't read, the line in UTF-16 hex: a check must read its text.
     if "unreadable" in places:
         line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"  # UTF-16, as hex
         unreadable = f"/Span <</ActualText {line} /Bad>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P1", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P1 scn {_SQUARE}")
     # Alone: the same, but MuPDF stops reading at a key that's a string, before the line.
     if "unreadable_first" in places:
         unreadable = f"/Span << (Logo) /ActualText ({_CARD}) >> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P2", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P2 scn {_SQUARE}")
     # Alone: the same, but MuPDF's parser stops quietly before the line, at an ID.
     if "unreadable_id" in places:
         unreadable = f"/Span <</ActualText (Logo) ID /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P7", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P7 scn {_SQUARE}")
     # Alone: the same, but a >> in an array before the line, which a count takes as the end.
     if "unreadable_array" in places:
         unreadable = f"/Span <</A [ >> ] /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P8", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P8 scn {_SQUARE}")
     # Alone: the same, then a key that's a string: both readings stop before the line.
     if "unreadable_both" in places:
         unreadable = f"/Span <</A [ >> ] (junk) /ActualText ({_CARD})>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P9", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P9 scn {_SQUARE}")
     # Alone: an image with no EI after its byte, then the line, which MuPDF never reaches.
     if "unreadable_image" in places:
         no_end = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 {_AROUND_SQUARE}"
-        tile = _new_stream(doc, no_end, **_TILING)
+        tile = new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P4", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P4 scn {_SQUARE}")
     # Alone: the same, but 100 bytes, the first a %, which MuPDF's reader of a drawing takes as
     # a comment over the line, though a reader ending the image at the first EI reads the line.
     if "unreadable_image_comment" in places:
         no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID %EI {_AROUND_SQUARE}{' ' * 100}"
-        tile = _new_stream(doc, no_end, **_TILING)
+        tile = new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P10", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P10 scn {_SQUARE}")
     # Alone: the same, its first byte a (: MuPDF's reader of a drawing reads one string from it,
@@ -427,7 +440,7 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         line = "".join(f"\\{byte:03o}" for byte in in_utf16)
         hidden_copy = f"/Span <</ActualText ({line})>> BDC {_SQUARE} EMC"
         no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID (EI {hidden_copy}{' ' * 100}"
-        tile = _new_stream(doc, no_end, **_TILING)
+        tile = new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P11", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P11 scn {_SQUARE}")
     # Alone: an image where a value goes, its byte a <, then the line as UTF-16 hex: MuPDF's
@@ -436,14 +449,14 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         image = "BI /W 1 /H 1 /BPC 8 /CS /G ID <EI"
         line = f"<FEFF{_CARD.encode('utf-16-be').hex()}>"
         unreadable = f"/Span <</X {image} /ActualText {line}>> BDC {_SQUARE} EMC"
-        tile = _new_stream(doc, unreadable, **_TILING)
+        tile = new_stream(doc, unreadable, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P12", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P12 scn {_SQUARE}")
     # Alone: an image MuPDF reads, its 200 bytes counted, holding the line after an EI: a
     # reader ending the image at its first EI reads the line as marked content.
     if "image_bytes" in places:
         image = f"BI /W 200 /H 1 /BPC 8 /CS /G ID {f'EI {_AROUND_SQUARE}':<200} EI"
-        tile = _new_stream(doc, image, **_TILING)
+        tile = new_stream(doc, image, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P13", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P13 scn {_SQUARE}")
     # Alone: an image with no EI after its bytes, the first a ( and then a mark of UTF-16, so
@@ -451,14 +464,14 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     if "plain_in_utf16" in places:
         in_string = f"(\\376\\377 EI {_AROUND_SQUARE})"
         no_end = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {in_string}{' ' * 100}"
-        tile = _new_stream(doc, no_end, **_TILING)
+        tile = new_stream(doc, no_end, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P14", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P14 scn {_SQUARE}")
     # Alone: a one-byte image, then an EI and a [, where MuPDF looks on for an EI after a space
     # but a reader taking the first EI past its bytes ends it, and reads the line.
     if "image_end_bracket" in places:
         image = f"BI /W 1 /H 1 /BPC 8 /CS /G ID \0 EI[ ] pop {_AROUND_SQUARE} EI"
-        tile = _new_stream(doc, image, **_TILING)
+        tile = new_stream(doc, image, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P15", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P15 scn {_SQUARE}")
     # Alone: a one-dot image compressed (Flate), its dot in a block of its own and the line
@@ -466,7 +479,7 @@ def _marked_pdf(places: Collection[str]) -> bytes:
     if "image_flate_tail" in places:
         tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
         compressed = b"BI /W 1 /H 1 /BPC 8 /CS /G /F /Fl ID " + _stored_flate(b"\0", tail)
-        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        tile = new_stream(doc, compressed + b" EI", **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P17", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P17 scn {_SQUARE}")
     # Alone: the same, its filter under both keys: /Filter, Flate, which MuPDF and Poppler read,
@@ -475,7 +488,7 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         tail = f" EI[ ] pop {_AROUND_SQUARE} ".encode()
         dots = _stored_flate(b"A" * 100, tail)
         compressed = b"BI /W 100 /H 1 /BPC 8 /CS /G /F /A85 /Filter /Fl ID " + dots
-        tile = _new_stream(doc, compressed + b" EI", **_TILING)
+        tile = new_stream(doc, compressed + b" EI", **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P20", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P20 scn {_SQUARE}")
     # Alone: four dots in hex, but for letters that aren't hex digits, which a reader takes as
@@ -484,14 +497,14 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         image = (
             f"BI /W 4 /H 1 /BPC 8 /CS /G /F /AHx ID 00gggggg00EI[ ] pop {_AROUND_SQUARE} > EI"
         )
-        tile = _new_stream(doc, image, **_TILING)
+        tile = new_stream(doc, image, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P21", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P21 scn {_SQUARE}")
     # Alone: two dots after a carriage return and line feed, the second an E: MuPDF skips both,
     # so its dots end before "I", but a reader skipping one ends them before "EI[".
     if "image_crlf" in places:
         image = f"BI /W 2 /H 1 /BPC 8 /CS /G ID\r\n\0EI[ ] pop {_AROUND_SQUARE} EI"
-        tile = _new_stream(doc, image, **_TILING)
+        tile = new_stream(doc, image, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P18", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P18 scn {_SQUARE}")
     # Alone: a tagged figure, its image's 100 bytes holding an EI with bytes no drawing has
@@ -500,7 +513,7 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         held = f"EI \xff ({_CARD}) \xff"
         image = f"BI /W 100 /H 1 /BPC 8 /CS /G ID {held:<100} EI"
         tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
-        tile = _new_stream(doc, tagged, **_TILING)
+        tile = new_stream(doc, tagged, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P16", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P16 scn {_SQUARE}")
     # Alone: the same, its pixels written as ASCII85, all plain, its text an EI and the line: a
@@ -510,23 +523,13 @@ def _marked_pdf(places: Collection[str]) -> bytes:
         pixels = base64.a85decode(text.encode(), ignorechars=b" \n")
         image = f"BI /W {len(pixels)} /H 1 /BPC 8 /CS /G /F /A85 ID {text}~> EI"
         tagged = f"/Figure <</Alt (A figure)>> BDC {image} EMC"
-        tile = _new_stream(doc, tagged, **_TILING)
+        tile = new_stream(doc, tagged, **_TILING)
         doc.xref_set_key(resources_xref, "Pattern/P19", f"{tile} 0 R")
         drawing.append(f"/Pattern cs /P19 scn {_SQUARE}")
     drawing.append(f"BT /Lig 12 Tf 72 600 Td (A US card on \\001le: ) Tj {number} ET")
-    contents = _new_stream(doc, "\n".join(drawing))
+    contents = new_stream(doc, "\n".join(drawing))
     doc.xref_set_key(page.xref, "Contents", f"{contents} 0 R")
     return doc.tobytes()
-
-
-def _new_stream(doc: pymupdf.Document, drawing: str | bytes, **keys: str) -> int:
-    """A new stream in `doc` holding `drawing`, with these keys; its number."""
-    xref = doc.get_new_xref()
-    doc.update_object(xref, "<<>>")
-    doc.update_stream(xref, drawing if isinstance(drawing, bytes) else drawing.encode())
-    for key, value in keys.items():
-        doc.xref_set_key(xref, key, value)
-    return xref
 
 
 def _stored_flate(*blocks: bytes) -> bytes:
@@ -1030,7 +1033,7 @@ def test_an_export_killed_at_its_timeout_leaves_nothing_in_the_temp_folder(
     monkeypatch.setattr(app.state, "pool", own_pool)
     # A store whose driver hangs as it opens the original, in the worker.
     monkeypatch.setattr(app.state, "documents", store.FolderStore(_stalling_driver))
-    monkeypatch.setattr(export, "EXPORT_TIMEOUT_S", _STALLED_TIMEOUT_S)
+    monkeypatch.setattr(editing_constants, "EXPORT_TIMEOUT_S", _STALLED_TIMEOUT_S)
     span = span_starting(doc, 1, "Invoices")
 
     response = _export(mine, doc, [{"kind": "replace", "span_id": span["id"], "text": "x"}])
@@ -2630,7 +2633,7 @@ def test_a_redaction_pointing_at_nothing_fails_the_export(mine, doc):
 )
 def test_a_redaction_of_words_its_line_does_not_have_fails_the_export(mine, asked):
     """As one pointing at nothing: skipping it would send the words the user asked to remove."""
-    doc = upload(mine, with_a_card_line()).json()
+    doc = upload(mine, _with_a_card_line()).json()
     card = span_starting(doc, 0, "Card")
 
     response = _export(mine, doc, [{"kind": "redact", "span_id": card["id"], "range": asked}])
@@ -2649,18 +2652,15 @@ def _letters_drawn(pdf: pymupdf.Document) -> list[tuple[str, float, float]]:
     """Each letter the first page draws, and where its baseline starts, to 0.01 pt."""
     return [
         (char["c"], round(char["origin"][0], 2), round(char["origin"][1], 2))
-        for block in pdf[0].get_text("rawdict")["blocks"]
-        for line in block["lines"]
-        for piece in line["spans"]
-        for char in piece["chars"]
+        for char in each_letter(pdf[0].get_text("rawdict")["blocks"])
     ]
 
 
 @pytest.mark.parametrize(
     ("ranges", "title"),
     [
-        ([FIRST_NUMBER], "Card then 9918 ends"),
-        ([FIRST_NUMBER, SECOND_NUMBER], "Card then ends"),
+        ([_FIRST_NUMBER], "Card then 9918 ends"),
+        ([_FIRST_NUMBER, _SECOND_NUMBER], "Card then ends"),
         # "4421 then" and "then 9918", which overlap: one run, from the first to the last.
         ([range(5, 14), range(10, 19)], "Card ends"),
     ],
@@ -2684,12 +2684,12 @@ def test_a_save_whose_date_spells_a_word_redacted_is_still_without_it(app, mine,
     """The save's own date and id aren't the document's words: they can spell any digits."""
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the clock below reaches it
     monkeypatch.setattr(export, "datetime", _At)
-    _assert_words_go_and_the_rest_stays(mine, [FIRST_NUMBER, SECOND_NUMBER], "Card then ends")
+    _assert_words_go_and_the_rest_stays(mine, [_FIRST_NUMBER, _SECOND_NUMBER], "Card then ends")
 
 
 def _assert_words_go_and_the_rest_stays(mine, ranges: list[range], title: str) -> None:
     """Each of `ranges` of the card line goes, and every other letter stays put."""
-    sent = with_a_card_line()
+    sent = _with_a_card_line()
     doc = upload(mine, sent).json()
     card = span_starting(doc, 0, "Card")
     before = _letters_drawn(pymupdf.open(stream=sent, filetype="pdf"))
@@ -2702,7 +2702,7 @@ def _assert_words_go_and_the_rest_stays(mine, ranges: list[range], title: str) -
     assert_equal(_letters_drawn(saved), kept, "the line's other letters, each where it was")
     assert_equal(_info(saved, "Title"), title, "the title, less the words redacted")
     everything = _everything_in(saved)
-    for word in re.finditer(r"\S+", CARD_LINE):
+    for word in re.finditer(r"\S+", _TWO_NUMBERS_LINE):
         if taken.issuperset(range(word.start(), word.end())):
             assert_not_in(word[0], everything, "a word redacted, anywhere in the file")
 
