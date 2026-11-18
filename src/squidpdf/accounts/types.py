@@ -35,6 +35,16 @@ class MailEvent:
     email: str
 
 
+@dataclass(frozen=True, slots=True)
+class StripeEvent:
+    """What Stripe's webhook said happened, its signature checked: the parts billing reads."""
+
+    id: str
+    type: str  # Stripe's word for it, as invoice.paid
+    created: int  # when Stripe made it, Unix seconds
+    customer: str | None  # the Stripe customer it's about; None for one about none
+
+
 # What a billing event did: set an account's paid time; read Stripe before a read kept already,
 # so it set nothing; named a customer no account has; or was of a kind billing doesn't act on.
 BillingOutcome = Literal["applied", "superseded", "no_account", "ignored"]

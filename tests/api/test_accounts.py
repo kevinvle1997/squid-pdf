@@ -52,6 +52,7 @@ def _accounts(
         invite_only=invite_only,
         allowance=allowance,
         webhook_token=_WEBHOOK_TOKEN,
+        billing=None,
     )
 
 

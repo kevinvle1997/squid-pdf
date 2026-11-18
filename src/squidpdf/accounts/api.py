@@ -1,4 +1,4 @@
-"""Accounts over HTTP: a sign-in link asked for and used, signing out, and Brevo's bounces.
+"""Accounts over HTTP: a sign-in link asked for and used, signing out, and two webhooks.
 
 Routes are HTTP only: read the request, call the action's controller, send what it hands
 back. Reading the account and signing out have none: each is one look at the cookie. Also
@@ -15,6 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 
+from squidpdf.accounts.billing.events import BillingEventController
 from squidpdf.accounts.bounces import BounceController, is_brevo
 from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts
@@ -196,3 +197,20 @@ async def mail_events(
     """Brevo's webhook: note each address mail can never reach."""
     events = body if isinstance(body, list) else [body]
     return response_of(await BounceController(accounts).note(events), media_type=_JSON)
+
+
+@router.post("/billing-events", status_code=204)
+async def billing_events(
+    request: Request,
+    billing_event_controller: Annotated[
+        BillingEventController, Depends(controller_with_accounts(BillingEventController))
+    ],
+    stripe_signature: Annotated[str | None, Header()] = None,
+) -> Response:
+    """Stripe's webhook: keep each event once, and set the paid time it leads to.
+
+    Its body is read as the bytes Stripe signed: read as JSON first, no signature holds.
+    """
+    payload = await request.body()
+    reply = await billing_event_controller.note(payload, signature=stripe_signature)
+    return response_of(reply, media_type=_JSON)

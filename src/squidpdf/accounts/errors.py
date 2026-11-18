@@ -33,6 +33,13 @@ class MailLimitReached(Problem):
     status = 503
 
 
+class PaymentsUnavailable(Problem):
+    """Stripe didn't answer, or refused, after every try: nothing was charged."""
+
+    type = "payments_unavailable"
+    status = 503
+
+
 class NoAccounts(Problem):
     """This server keeps no accounts, as a self-hosted copy keeps none."""
 

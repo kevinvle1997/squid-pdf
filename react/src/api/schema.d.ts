@@ -272,6 +272,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/billing-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Billing Events
+         * @description Stripe's webhook: keep each event once, and set the paid time it leads to.
+         *
+         *     Its body is read as the bytes Stripe signed: read as JSON first, no signature holds.
+         */
+        post: operations["billing_events_api_account_billing_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -747,7 +769,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "free_documents_used" | "invalid_request" | "invited_only" | "link_expired" | "mail_limit_reached" | "mail_not_sent" | "method_not_allowed" | "monthly_documents_used" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_invited" | "not_sent_as_pdf" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
+            type: "bad_range" | "bad_reference" | "damaged" | "encrypted" | "font_mismatch" | "font_unchecked" | "free_documents_used" | "invalid_request" | "invited_only" | "link_expired" | "mail_limit_reached" | "mail_not_sent" | "method_not_allowed" | "monthly_documents_used" | "no_accounts" | "no_such_font" | "no_such_page" | "no_workers" | "not_a_font" | "not_a_pdf" | "not_an_email" | "not_found" | "not_invited" | "not_sent_as_pdf" | "payments_unavailable" | "rate_limited" | "redaction_conflict" | "redaction_covered" | "redaction_failed" | "redaction_moved" | "redaction_unchecked" | "request_too_large" | "server_error" | "server_full" | "text_too_long" | "too_heavy" | "too_large" | "too_many_edits" | "too_many_fonts" | "too_many_pages" | "too_slow";
             /** Status */
             status: number;
             /** Detail */
@@ -1669,6 +1691,36 @@ export interface operations {
                 "application/json": components["schemas"]["MailEvent"] | components["schemas"]["MailEvent"][];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Problem Details: what went wrong, in the reader's words */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemInfo"];
+                    "application/json": components["schemas"]["ProblemInfo"];
+                };
+            };
+        };
+    };
+    billing_events_api_account_billing_events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "stripe-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {

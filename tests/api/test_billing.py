@@ -2,26 +2,37 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts import constants
+from squidpdf.accounts.billing.stripe_api import stripe_api
 from squidpdf.accounts.cookies import SIGNED_IN
-from squidpdf.accounts.deployment import Accounts, Allowance
+from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance, Billing
 from squidpdf.accounts.mail import Letter, MailController
 from squidpdf.accounts.metering import AccountMeters
 from squidpdf.accounts.signed import signed
 from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import UserStore, open_users
+from squidpdf.api.app import create_app
 from tests.api.conftest import upload
 from tests.helpers import assert_equal, assert_problem
 
 _SECRET = b"a test's secret, long enough to sign with"
 _EMAIL = "payer@example.com"
+_WEBHOOK_SECRET = b"whsec_a test's signing secret"
+_CUSTOMER = "cus_test"
+_MONTH_S = 30 * 24 * 60 * 60
 
 
 class _NoMail:
@@ -31,8 +42,33 @@ class _NoMail:
         raise AssertionError(f"no email in these tests, but one to {letter.to}")
 
 
-@pytest.fixture
-def users(app: FastAPI, tmp_path, monkeypatch) -> UserStore:
+@dataclass(slots=True)
+class _Stripe:
+    """Stripe as these tests play it: each customer's subscriptions, and every call it's sent.
+
+    `troubles` answer the first calls, in order, before Stripe answers as it should.
+    """
+
+    subscriptions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    asked: list[httpx.Request] = field(default_factory=list)
+    troubles: list[httpx.Response | Exception] = field(default_factory=list)
+
+    def answer(self, request: httpx.Request) -> httpx.Response:
+        """Stripe's answer to `request`: a trouble while any is left, else the subscriptions."""
+        self.asked.append(request)
+        if self.troubles:
+            trouble = self.troubles.pop(0)
+            if isinstance(trouble, Exception):
+                raise trouble
+            return trouble
+        customer = request.url.params["customer"]
+        listed = self.subscriptions.get(customer, [])
+        return httpx.Response(200, json={"object": "list", "data": listed, "has_more": False})
+
+
+def _keeping_accounts(
+    app: FastAPI, tmp_path, monkeypatch, *, billing: Billing | None
+) -> UserStore:
     """The app keeping accounts in a fresh table, an account opening one document a month."""
     allowance = Allowance(free=1, monthly=1)
     store = open_users(tmp_path / "users.sqlite3")
@@ -44,10 +80,56 @@ def users(app: FastAPI, tmp_path, monkeypatch) -> UserStore:
         invite_only=False,
         allowance=allowance,
         webhook_token=None,
+        billing=billing,
     )
     monkeypatch.setattr(app.state, "accounts", accounts)
     monkeypatch.setattr(app.state, "meters", AccountMeters(accounts, allowance))
     return store
+
+
+@pytest.fixture
+def users(app: FastAPI, tmp_path, monkeypatch) -> UserStore:
+    """Accounts on a server that takes no payment."""
+    return _keeping_accounts(app, tmp_path, monkeypatch, billing=None)
+
+
+@pytest.fixture
+def stripe() -> _Stripe:
+    """Stripe as these tests play it, with no subscriptions yet."""
+    return _Stripe()
+
+
+@pytest.fixture
+def paying(app: FastAPI, tmp_path, monkeypatch, stripe: _Stripe) -> UserStore:
+    """Accounts on a server that takes payment through `stripe`, retrying without a wait."""
+    monkeypatch.setattr(constants, "STRIPE_FIRST_WAIT_S", 0)
+    api = stripe_api("sk_test_key", transport=httpx.MockTransport(stripe.answer))
+    billing = Billing(api, webhook_secret=_WEBHOOK_SECRET)
+    return _keeping_accounts(app, tmp_path, monkeypatch, billing=billing)
+
+
+def _webhook(
+    reader: TestClient,
+    event: str,
+    *,
+    kind: str = "customer.subscription.updated",
+    customer: str | None = _CUSTOMER,
+    signed_at: int | None = None,
+    secret: bytes = _WEBHOOK_SECRET,
+) -> httpx.Response:
+    """Post an event to the webhook as Stripe does, signed with `secret` at `signed_at`."""
+    at = int(time.time()) if signed_at is None else signed_at
+    about = {} if customer is None else {"customer": customer}
+    said = {"id": event, "type": kind, "created": at, "data": {"object": about}}
+    payload = json.dumps(said).encode()
+    signature = hmac.new(secret, f"{at}.".encode() + payload, hashlib.sha256).hexdigest()
+    headers = {"Stripe-Signature": f"t={at},v1={signature}"}
+    return reader.post("/api/account/billing-events", content=payload, headers=headers)
+
+
+def _subscription(status: str, *, until: int) -> dict[str, Any]:
+    """A subscription as Stripe lists it, in `status`, its one item paid to `until`."""
+    return {"status": status, "items": {"data": [{"current_period_end": until}]}}
 
 
 def _signed_in_as(reader: TestClient, users: UserStore, email: str = _EMAIL) -> str:
@@ -119,3 +201,166 @@ def test_an_event_sent_again_or_read_of_stripe_before_the_last_changes_nothing(
     late = _paid(account, event="evt_late", until=now + 3600, read_at=2)
     assert_equal(users.apply_billing(late, now=now), "superseded", "kept, not applied")
     assert_problem(upload(reader, files[2]), "monthly_documents_used", 403)
+
+
+def test_a_subscription_stripe_tells_of_lifts_the_limit_and_a_failed_renewal_brings_it_back(
+    paying, stripe, browser: Callable[[], TestClient], pdf_bytes
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    files = _files(pdf_bytes, 3)
+    upload(reader, files[0])
+    assert_problem(upload(reader, files[1]), "monthly_documents_used", 403)
+    now = int(time.time())
+    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=now + _MONTH_S)]
+    paid = _webhook(reader, "evt_paid", kind="checkout.session.completed")
+    assert_equal(paid.status_code, 204, "heard")
+    assert_equal(upload(reader, files[1]).status_code, 201, "past the month's one")
+    [asked] = stripe.asked
+    assert_equal(asked.headers["Authorization"], "Bearer sk_test_key", "the key")
+    assert_equal(asked.headers["Stripe-Version"], constants.STRIPE_API_VERSION, "pinned")
+    # The renewal's charge failed: Stripe moved the period on, but the month isn't paid.
+    stripe.subscriptions[_CUSTOMER] = [_subscription("past_due", until=now + 2 * _MONTH_S)]
+    _webhook(reader, "evt_failed", kind="invoice.payment_failed")
+    assert_problem(upload(reader, files[2]), "monthly_documents_used", 403)
+    ledger = [(each.id, each.outcome, each.paid_until) for each in paying.billing_of(account)]
+    expected = [("evt_paid", "applied", now + _MONTH_S), ("evt_failed", "applied", None)]
+    assert_equal(ledger, expected, "the ledger")
+
+
+def test_an_event_sent_again_is_kept_once_and_stripe_is_asked_once(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    for _sent in range(2):
+        assert_equal(_webhook(reader, "evt_once").status_code, 204, "heard each time")
+    assert_equal(len(stripe.asked), 1, "Stripe asked")
+    assert_equal(len(paying.billing_of(account)), 1, "kept in the ledger")
+
+
+def test_an_event_not_signed_by_stripe_lately_is_not_found_and_changes_nothing(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    stale = int(time.time()) - constants.STRIPE_SIGNATURE_AGE_S - 60
+    refused = [
+        _webhook(reader, "evt_forged", secret=b"whsec_someone else's"),
+        _webhook(reader, "evt_replayed", signed_at=stale),
+        reader.post("/api/account/billing-events", content=b"{}"),
+    ]
+    # Signed for one body, sent with another.
+    good = _webhook(reader, "evt_good")
+    altered = good.request.content.replace(b"evt_good", b"evt_bad")
+    refused.append(
+        reader.post(
+            "/api/account/billing-events",
+            content=altered,
+            headers={"Stripe-Signature": good.request.headers["Stripe-Signature"]},
+        )
+    )
+    for each in refused:
+        assert_problem(each, "not_found", 404)
+    assert_equal([each.id for each in paying.billing_of(account)], ["evt_good"], "kept")
+
+
+def test_stripe_failing_for_a_moment_is_asked_again_with_the_same_request(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=until)]
+    stripe.troubles = [httpx.ConnectError("no route to Stripe"), httpx.Response(500)]
+    assert_equal(_webhook(reader, "evt_paid").status_code, 204, "heard, at the third try")
+    assert_equal(len({str(each.url) for each in stripe.asked}), 1, "one request, sent again")
+    assert_equal(len(stripe.asked), 3, "tries")
+    assert_equal(paying.billing_of(account)[0].paid_until, until, "set")
+
+
+def test_stripe_down_past_every_try_leaves_the_event_for_stripe_to_send_again(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """Answered 503, Stripe sends the event again later: nothing is kept until it's applied."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    stripe.troubles = [httpx.Response(503)] * constants.STRIPE_ATTEMPTS
+    assert_problem(_webhook(reader, "evt_paid"), "payments_unavailable", 503)
+    assert_equal(paying.billing_of(account), [], "nothing kept")
+    # Refused for good, as a bad key is: tried once.
+    stripe.troubles = [httpx.Response(401, json={"error": {"type": "invalid_request_error"}})]
+    assert_problem(_webhook(reader, "evt_paid"), "payments_unavailable", 503)
+    assert_equal(len(stripe.asked), constants.STRIPE_ATTEMPTS + 1, "tries")
+    assert_equal(_webhook(reader, "evt_paid").status_code, 204, "sent again, once it answers")
+    assert_equal(len(paying.billing_of(account)), 1, "kept")
+
+
+def test_an_event_billing_doesnt_act_on_is_kept_and_stripe_isnt_asked(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    reader = browser()
+    _webhook(reader, "evt_price", kind="price.updated", customer=None)
+    _webhook(reader, "evt_stranger", kind="invoice.paid", customer="cus_from_the_dashboard")
+    assert_equal(stripe.asked, [], "Stripe asked")
+    for event in ("evt_price", "evt_stranger"):
+        assert_equal(paying.has_billing_event(event), True, f"{event} kept")
+
+
+@pytest.mark.parametrize(
+    ("named", "refused_for"),
+    [
+        ({"SQUIDPDF_STRIPE_KEY": "sk_test_key"}, "both"),
+        (
+            {"SQUIDPDF_STRIPE_KEY": "pk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "whsec_x"},
+            "no Stripe secret key",
+        ),
+        (
+            {"SQUIDPDF_STRIPE_KEY": "sk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "x"},
+            "no signing secret",
+        ),
+    ],
+    ids=["one of two", "a publishable key", "no signing secret"],
+)
+def test_payments_set_half_or_with_the_wrong_keys_stop_the_start(
+    tmp_path, monkeypatch, named, refused_for
+):
+    """Said as the server starts, not on the first payment; no secret is in what's said."""
+    accounts_need = {
+        "SQUIDPDF_DATABASE": str(tmp_path / "users.sqlite3"),
+        "SQUIDPDF_SECRET": _SECRET.decode(),
+        "SQUIDPDF_SITE": "https://pdf.example.com",
+        "SQUIDPDF_MAIL_FROM": "sign-in@example.com",
+        "SQUIDPDF_BREVO_KEY": "a-brevo-key",
+        "SQUIDPDF_FREE_DOCUMENTS": "1",
+        "SQUIDPDF_DOCUMENTS_A_MONTH": "1",
+    }
+    for name, value in (accounts_need | named).items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(AccountsUnset, match=refused_for) as refused:
+        create_app()
+    assert_equal("sk_test_key" in str(refused.value), False, "the key in what's said")
+
+
+def test_payments_with_nothing_to_lift_or_no_accounts_stop_the_start(tmp_path, monkeypatch):
+    stripe = {"SQUIDPDF_STRIPE_KEY": "sk_test_key", "SQUIDPDF_STRIPE_WEBHOOK_SECRET": "whsec_x"}
+    for name, value in stripe.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
+    with pytest.raises(AccountsUnset, match="an account is what pays"):
+        create_app()
+    for name, value in {
+        "SQUIDPDF_DATABASE": str(tmp_path / "users.sqlite3"),
+        "SQUIDPDF_SECRET": _SECRET.decode(),
+        "SQUIDPDF_SITE": "https://pdf.example.com",
+        "SQUIDPDF_MAIL_FROM": "sign-in@example.com",
+        "SQUIDPDF_BREVO_KEY": "a-brevo-key",
+    }.items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(AccountsUnset, match="payment lifts a limit"):
+        create_app()
