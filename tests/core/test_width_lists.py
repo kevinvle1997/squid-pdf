@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from squidpdf.core.pdf.mupdf import open_driver
 from tests.conftest import POPPINS
@@ -39,8 +40,10 @@ def test_a_run_past_every_code_a_font_can_have_stops_there(tmp_path):
     """`0 4000000000 500` would list four billion CIDs: it lists the codes a font can have."""
     path, font_object = _two_byte_with(tmp_path / "run.pdf", "[0 4000000000 500]")
 
-    widths = open_driver(path).listed_widths(font_object) or {}
+    widths = open_driver(path).listed_widths(font_object)
 
+    if widths is None:
+        pytest.fail("the long run was read as no list")
     assert_at_most(len(widths), _TWO_BYTE_CODES, "letters read from one long run")
 
 
