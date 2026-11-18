@@ -581,6 +581,20 @@ def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(
     assert_equal(main(["billing", "stranger@example.com"]), 1, "exit code, no account")
 
 
+def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(tmp_path, monkeypatch, capsys):
+    """Without Stripe's keys, the command line can't ask Stripe, so it changes nothing."""
+    database = tmp_path / "users.sqlite3"
+    monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
+    users = open_users(database)
+    account = users.invite("payer@example.com", now=0, is_unlimited=False).id
+    users.keep_customer(account, "cus_test")
+    assert_equal(main(["remove", "payer@example.com"]), 1, "exit code, remove")
+    assert_in("isn't set up to ask Stripe", capsys.readouterr().err, "said")
+    assert_equal(users.find("payer@example.com") is None, False, "the account is kept")
+    assert_equal(main(["billing", "payer@example.com", "--sync"]), 1, "exit code, sync")
+    assert_in("isn't set up to ask Stripe", capsys.readouterr().err, "said")
+
+
 def test_invite_on_a_server_with_no_database_says_so(monkeypatch, capsys):
     monkeypatch.delenv("SQUIDPDF_DATABASE", raising=False)
     assert_equal(main(["invite", "friend@example.com"]), 1, "exit code")

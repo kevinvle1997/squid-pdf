@@ -45,6 +45,16 @@ class StripeEvent:
     customer: str | None  # the Stripe customer it's about; None for one about none
 
 
+@dataclass(frozen=True, slots=True)
+class Subscriptions:
+    """What Stripe has of an account's subscriptions now: until when paid, and how many bill."""
+
+    paid_until: (
+        int | None
+    )  # the latest end of a paid month among the account's own; None if none
+    live: int  # its customer's that bill, or may yet: any not cancelled or expired
+
+
 # What a billing event did: set an account's paid time; read Stripe before a read kept already,
 # so it set nothing; named a customer no account has; or was of a kind billing doesn't act on.
 BillingOutcome = Literal["applied", "superseded", "no_account", "ignored"]

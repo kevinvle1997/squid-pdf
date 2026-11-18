@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.accounts import constants
+from squidpdf.accounts.billing.events import resync
+from squidpdf.accounts.billing.removal import removal_of
 from squidpdf.accounts.billing.stripe_api import stripe_api
 from squidpdf.accounts.cookies import SIGNED_IN
 from squidpdf.accounts.deployment import Accounts, AccountsUnset, Allowance, Billing
@@ -26,7 +29,7 @@ from squidpdf.accounts.types import BillingEvent
 from squidpdf.accounts.users import UserStore, open_users
 from squidpdf.api.app import create_app
 from tests.api.conftest import upload
-from tests.helpers import assert_equal, assert_problem
+from tests.helpers import assert_equal, assert_in, assert_problem
 
 _SECRET = b"a test's secret, long enough to sign with"
 _EMAIL = "payer@example.com"
@@ -127,9 +130,13 @@ def _webhook(
     return reader.post("/api/account/billing-events", content=payload, headers=headers)
 
 
-def _subscription(status: str, *, until: int) -> dict[str, Any]:
-    """A subscription as Stripe lists it, in `status`, its one item paid to `until`."""
-    return {"status": status, "items": {"data": [{"current_period_end": until}]}}
+def _subscription(status: str, *, until: int, account: str) -> dict[str, Any]:
+    """A subscription as Stripe lists it, made by `account`'s checkout, paid to `until`."""
+    return {
+        "status": status,
+        "metadata": {"account": account},
+        "items": {"data": [{"current_period_end": until}]},
+    }
 
 
 def _signed_in_as(reader: TestClient, users: UserStore, email: str = _EMAIL) -> str:
@@ -213,7 +220,9 @@ def test_a_subscription_stripe_tells_of_lifts_the_limit_and_a_failed_renewal_bri
     upload(reader, files[0])
     assert_problem(upload(reader, files[1]), "monthly_documents_used", 403)
     now = int(time.time())
-    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=now + _MONTH_S)]
+    stripe.subscriptions[_CUSTOMER] = [
+        _subscription("active", until=now + _MONTH_S, account=account)
+    ]
     paid = _webhook(reader, "evt_paid", kind="checkout.session.completed")
     assert_equal(paid.status_code, 204, "heard")
     assert_equal(upload(reader, files[1]).status_code, 201, "past the month's one")
@@ -221,7 +230,9 @@ def test_a_subscription_stripe_tells_of_lifts_the_limit_and_a_failed_renewal_bri
     assert_equal(asked.headers["Authorization"], "Bearer sk_test_key", "the key")
     assert_equal(asked.headers["Stripe-Version"], constants.STRIPE_API_VERSION, "pinned")
     # The renewal's charge failed: Stripe moved the period on, but the month isn't paid.
-    stripe.subscriptions[_CUSTOMER] = [_subscription("past_due", until=now + 2 * _MONTH_S)]
+    stripe.subscriptions[_CUSTOMER] = [
+        _subscription("past_due", until=now + 2 * _MONTH_S, account=account)
+    ]
     _webhook(reader, "evt_failed", kind="invoice.payment_failed")
     assert_problem(upload(reader, files[2]), "monthly_documents_used", 403)
     ledger = [(each.id, each.outcome, each.paid_until) for each in paying.billing_of(account)]
@@ -252,6 +263,12 @@ def test_an_event_not_signed_by_stripe_lately_is_not_found_and_changes_nothing(
         _webhook(reader, "evt_forged", secret=b"whsec_someone else's"),
         _webhook(reader, "evt_replayed", signed_at=stale),
         reader.post("/api/account/billing-events", content=b"{}"),
+        # A time too long to be one, which Python's int refuses to read.
+        reader.post(
+            "/api/account/billing-events",
+            content=b"{}",
+            headers={"Stripe-Signature": f"t={'9' * 5000},v1=x"},
+        ),
     ]
     # Signed for one body, sent with another.
     good = _webhook(reader, "evt_good")
@@ -275,7 +292,7 @@ def test_stripe_failing_for_a_moment_is_asked_again_with_the_same_request(
     account = _signed_in_as(reader, paying)
     paying.keep_customer(account, _CUSTOMER)
     until = int(time.time()) + _MONTH_S
-    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=until)]
+    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=until, account=account)]
     stripe.troubles = [httpx.ConnectError("no route to Stripe"), httpx.Response(500)]
     assert_equal(_webhook(reader, "evt_paid").status_code, 204, "heard, at the third try")
     assert_equal(len({str(each.url) for each in stripe.asked}), 1, "one request, sent again")
@@ -302,14 +319,89 @@ def test_stripe_down_past_every_try_leaves_the_event_for_stripe_to_send_again(
 
 
 def test_an_event_billing_doesnt_act_on_is_kept_and_stripe_isnt_asked(
-    paying, stripe, browser: Callable[[], TestClient]
+    paying, stripe, browser: Callable[[], TestClient], caplog
+):
+    """A payment for no account, or a dispute, is whoever runs the server's to look into."""
+    reader = browser()
+    with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
+        _webhook(reader, "evt_price", kind="price.updated", customer=None)
+        _webhook(reader, "evt_stranger", kind="invoice.paid", customer="cus_from_the_dashboard")
+        _webhook(reader, "evt_disputed", kind="charge.dispute.created", customer=None)
+    assert_equal(stripe.asked, [], "Stripe asked")
+    for event in ("evt_price", "evt_stranger", "evt_disputed"):
+        assert_equal(paying.has_billing_event(event), True, f"{event} kept")
+    assert_in("billing_customer_unknown", caplog.text, "a payment for no account, said")
+    assert_in("billing_disputed", caplog.text, "a dispute, said")
+
+
+def test_only_the_accounts_own_subscription_still_collected_lifts_the_limit(
+    paying, stripe, browser: Callable[[], TestClient], caplog
 ):
     reader = browser()
-    _webhook(reader, "evt_price", kind="price.updated", customer=None)
-    _webhook(reader, "evt_stranger", kind="invoice.paid", customer="cus_from_the_dashboard")
-    assert_equal(stripe.asked, [], "Stripe asked")
-    for event in ("evt_price", "evt_stranger"):
-        assert_equal(paying.has_billing_event(event), True, f"{event} kept")
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    until = int(time.time()) + _MONTH_S
+    paused = _subscription("active", until=until, account=account) | {
+        "pause_collection": {"behavior": "void"}
+    }
+    # One Stripe bills the same customer for something else, and one whose collection is paused.
+    stripe.subscriptions[_CUSTOMER] = [
+        _subscription("active", until=until, account="another account"),
+        paused,
+    ]
+    with caplog.at_level(logging.WARNING, logger="squidpdf.accounts"):
+        assert_equal(_webhook(reader, "evt_paid").status_code, 204, "heard")
+    assert_equal(paying.billing_of(account)[0].paid_until, None, "no paid time")
+    assert_in("billing_subscribed_twice", caplog.text, "two billing at once, said")
+
+
+def test_a_customer_stripe_hasnt_got_pays_for_nothing_and_is_asked_once(
+    paying, stripe, browser: Callable[[], TestClient]
+):
+    """As one made in test mode, the server since on its live key, or deleted in Stripe."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    missing = {"error": {"type": "invalid_request_error", "code": "resource_missing"}}
+    stripe.troubles = [httpx.Response(400, json=missing)]
+    assert_equal(_webhook(reader, "evt_paid").status_code, 204, "heard")
+    assert_equal(len(stripe.asked), 1, "asked once: it won't be there next time either")
+    assert_equal(paying.billing_of(account)[0].paid_until, None, "no paid time")
+
+
+def test_an_account_stripe_bills_still_is_kept_and_one_it_bills_nothing_removed(
+    paying, stripe, app: FastAPI
+):
+    """`squidpdf remove` asks this; the command line can't be handed a Stripe of a test's."""
+    billing = app.state.accounts.billing
+    account = paying.invite(_EMAIL, now=0, is_unlimited=False).id
+    paying.keep_customer(account, _CUSTOMER)
+    # A renewal's charge failed, and Stripe tries the card again: it may yet bill them.
+    until = int(time.time()) + _MONTH_S
+    stripe.subscriptions[_CUSTOMER] = [_subscription("past_due", until=until, account=account)]
+    assert_equal(removal_of(paying, billing, _EMAIL), "subscribed", "billed still")
+    assert_equal(removal_of(paying, None, _EMAIL), "unchecked", "Stripe not set up here")
+    stripe.subscriptions[_CUSTOMER] = [_subscription("canceled", until=until, account=account)]
+    assert_equal(removal_of(paying, billing, _EMAIL), "removed", "billed nothing")
+
+
+def test_a_resync_asks_stripe_again_and_keeps_its_answer_in_the_ledger(
+    paying, stripe, app: FastAPI, browser: Callable[[], TestClient]
+):
+    """For an event lost, or kept wrong: Stripe's own resent has an id the ledger has."""
+    reader = browser()
+    account = _signed_in_as(reader, paying)
+    paying.keep_customer(account, _CUSTOMER)
+    _webhook(reader, "evt_paid")
+    until = int(time.time()) + _MONTH_S
+    stripe.subscriptions[_CUSTOMER] = [_subscription("active", until=until, account=account)]
+    user = paying.joined(_EMAIL, now=0)  # the account signed in, as it reads now
+    kept = resync(paying, app.state.accounts.billing, user, customer=_CUSTOMER)
+    assert_equal(kept, "applied", "what the resync did")
+    ledger = paying.billing_of(account)
+    kinds = [each.type for each in ledger]
+    assert_equal(kinds, ["customer.subscription.updated", "squidpdf.resync"], "kept, in order")
+    assert_equal(ledger[-1].paid_until, until, "the paid time Stripe said")
 
 
 @pytest.mark.parametrize(
