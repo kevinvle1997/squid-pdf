@@ -35,8 +35,8 @@
   --bar-rule: #33405C;
   --bar-rule-soft: #283552;
   --bar-field: #172137;
-  --bar-change: #B5CCFF;
-  --bar-warn: #FFAE95;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
   --bar-act: #D9B566;      /* the one action on the bar: gold foil */
   --bar-act-ink: #1C1608;
 
@@ -117,8 +117,8 @@
     --ground-ink: #F1EEE6;
     --ground-ink-lo: #C9CCD6;
     --ground-ink-faint: #848CA0;
-    --ground-change: #B5CCFF;
-    --ground-warn: #FFAE95;
+    --ground-change: #8FAEFF;
+    --ground-warn: #F0904F;
     --strip: #1A2131;
     --field: #141A27;
     --rule: #38425A;
@@ -126,8 +126,8 @@
     --ink: #F1EEE6;
     --ink-lo: #BCC0CC;
     --ink-faint: #79819A;
-    --change: #B5CCFF;
-    --warn: #FFAE95;
+    --change: #8FAEFF;
+    --warn: #F0904F;
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
@@ -138,8 +138,8 @@
     --bar-rule: #232C42;
     --bar-rule-soft: #1B2336;
     --bar-field: #0D1220;
-    --bar-change: #B5CCFF;
-    --bar-warn: #FFAE95;
+    --bar-change: #8FAEFF;
+    --bar-warn: #F0904F;
   }
 }
 :root[data-theme="dark"] {
@@ -151,8 +151,8 @@
   --ground-ink: #F1EEE6;
   --ground-ink-lo: #C9CCD6;
   --ground-ink-faint: #848CA0;
-  --ground-change: #B5CCFF;
-  --ground-warn: #FFAE95;
+  --ground-change: #8FAEFF;
+  --ground-warn: #F0904F;
   --strip: #1A2131;
   --field: #141A27;
   --rule: #38425A;
@@ -160,8 +160,8 @@
   --ink: #F1EEE6;
   --ink-lo: #BCC0CC;
   --ink-faint: #79819A;
-  --change: #B5CCFF;
-  --warn: #FFAE95;
+  --change: #8FAEFF;
+  --warn: #F0904F;
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
@@ -172,6 +172,6 @@
   --bar-rule: #232C42;
   --bar-rule-soft: #1B2336;
   --bar-field: #0D1220;
-  --bar-change: #B5CCFF;
-  --bar-warn: #FFAE95;
+  --bar-change: #8FAEFF;
+  --bar-warn: #F0904F;
 }
