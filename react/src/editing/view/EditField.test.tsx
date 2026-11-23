@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { learnDateLanguages } from "../dateNames";
-import "@fontsource/funnel-sans/600.css";
+import "@fontsource/figtree/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
 import { pageUrl, renderStrips } from "../../api/client";
