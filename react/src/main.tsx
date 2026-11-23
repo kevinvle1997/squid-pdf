@@ -1,7 +1,7 @@
-import "@fontsource/funnel-display/800.css";
-import "@fontsource/funnel-sans/400.css";
-import "@fontsource/funnel-sans/500.css";
-import "@fontsource/funnel-sans/600.css";
+import "@fontsource/figtree/400.css";
+import "@fontsource/figtree/500.css";
+import "@fontsource/figtree/600.css";
+import "@fontsource/fraunces/600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import { StrictMode } from "react";

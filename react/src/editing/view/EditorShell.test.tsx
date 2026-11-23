@@ -2646,7 +2646,7 @@ describe("how to start", () => {
     }
   });
 
-  test("a reading persisted before its sentences were sent shows no note, squid and all", async () => {
+  test("a reading persisted before its sentences were sent shows no note on how to start", async () => {
     const older = { ...SENTENCES };
     for (const key of ["how_to_fix", "how_to_add", "how_to_fix_touch", "how_to_add_touch"] as const) {
       Reflect.deleteProperty(older, key);

@@ -1,5 +1,5 @@
-/* The squid's word bubble: the highlighter, the squid's voice, with the page's ink on it in both themes. It sits
-   beside the first page, never on it; set in the interface's face, as the chrome is. */
+/* The note on how to start: the highlighter, with the page's ink on it in both themes. It sits beside the first
+   page, never on it; set in the interface's face, as the chrome is. */
 .words {
   margin: 0; padding: var(--s2) var(--s4);
   display: flex; flex-direction: column; gap: var(--s2);
@@ -19,9 +19,8 @@
   max-width: calc(var(--page-start) + var(--s5) - var(--s4) + var(--margin-width));
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1);
 }
-.squid { width: 90px; height: 90px; margin-inline-end: var(--s4); }
 .above { display: none; }
-/* No margin beside the page: the words go above the first page, and the squid stays out of the way. */
+/* No margin beside the page: the note goes above the first page. */
 @media (max-width: 820px) {
   .beside { display: none; }
   .above { display: flex; justify-content: center; margin-block-end: var(--s4); }

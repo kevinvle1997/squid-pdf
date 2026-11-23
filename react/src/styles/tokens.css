@@ -2,43 +2,43 @@
    Tokens are roles, never colours. Nothing else in the app defines a colour. */
 :root {
   color-scheme: light; /* the browser's own scrollbars and controls follow the theme */
-  /* The mat: an olive-warm stone grey, with its grid. In the light theme a step below the bar and the
-     white page; in the dark lifted to a mid grey, since the page never dims and a near-black mat makes
-     it glare. What's drawn on it reads as on it. */
-  --ground: #E0DED3;
-  --ground-line: #DAD8CC;       /* the mat's grid, a line every step */
-  --ground-line-major: #D2D0C3; /* and a firmer one every fifth */
-  --ground-ink: #23221B;
-  --ground-ink-lo: #525046;
-  --ground-ink-faint: #747266;  /* crop marks */
-  --ground-change: #0E56A5;     /* blue pencil on the mat: a shade darker than the page's, so a note holds AA across a firmer grid line */
-  --ground-warn: #B5361F;
+  /* The mat: grey bookcloth, a linen weave. In the light theme a step below the white page; in the dark
+     a navy buckram, lifted off black, since the page never dims and a near-black mat makes it glare.
+     What's drawn on it reads as on it. */
+  --ground: #C9CDD3;
+  --ground-weft: #C2C6CC;  /* the weave's threads across, a shade darker */
+  --ground-warp: #CED2D7;  /* and its threads down, a shade lighter */
+  --ground-hover: #BCC1C8; /* a link's fill on the mat, a step past the threads */
+  --ground-ink: #161B26;
+  --ground-ink-lo: #353D4D;
+  --ground-ink-faint: #5F6878;  /* crop marks */
+  --ground-change: #0A458B;     /* blue pencil on the mat: a shade darker than the page's, so a note holds AA on the cloth */
+  --ground-warn: #952A16;
   --strip: #FFFFFF;      /* a surface: notices, popovers, tooltips; a slip on the page is the sheet's */
   --field: #FFFFFF;      /* inside a text input in the chrome */
-  --rule: #D6D3C8;       /* dividers, and the borders of buttons and inputs */
-  --rule-soft: #EFEDE5;  /* hover fills, keycaps, dividers inside a slip */
-  --ink: #23221B;        /* text, and the one filled button */
-  --ink-lo: #5F5D53;     /* the faintest text allowed */
-  --ink-faint: #8A887C;  /* lines and disabled marks, never text: cut lines */
+  --rule: #C8CDD6;       /* dividers, and the borders of buttons and inputs */
+  --rule-soft: #EEF0F3;  /* hover fills, keycaps, dividers inside a slip */
+  --ink: #161B26;        /* text, and the one filled button */
+  --ink-lo: #4A5263;     /* the faintest text allowed */
+  --ink-faint: #8C93A0;  /* lines and disabled marks, never text: cut lines */
   --change: #0F5CB0;     /* blue pencil, as an editor marks a proof: you did something, and the focus ring */
   --warn: #B5361F;       /* proofreader's red, far from the blue in every kind of colour vision; never blue */
   --lift-1: 0 1px 2px rgba(32, 32, 32, .10), 0 4px 14px rgba(32, 32, 32, .12);  /* a slip over the page */
   --lift-2: 0 1px 3px rgba(32, 32, 32, .10), 0 14px 36px rgba(32, 32, 32, .18); /* what opens from the bar */
   --sheet-shadow: 0 1px 2px rgba(32, 32, 32, .16), 0 10px 30px rgba(32, 32, 32, .14);
-  /* The bar: one step from the mat on the same warm scale, a hairline apart, never its opposite: lighter
-     than the mat in the light theme, darker in the dark. The highlighter is its one action. What's set
-     on it reads as on it. */
-  --bar: #FAF9F4;
-  --bar-ink: #23221B;
-  --bar-ink-lo: #5F5D53;
-  --bar-ink-faint: #7E7C70; /* lines, and a field's edge, which holds 3:1 */
-  --bar-rule: #D6D3C8;
-  --bar-rule-soft: #EEECE3;
-  --bar-field: #FFFFFF;
-  --bar-change: #0F5CB0;
-  --bar-warn: #B5361F;
-  --bar-act: #FFE45C;      /* the one action on the bar: the highlighter */
-  --bar-act-ink: #202020;
+  /* The bar: the book's spine, navy cloth in both themes, a headband stitched along its foot in gold foil and
+     cream. Gold foil is its one action. What's set on it reads as on it. */
+  --bar: #1E2A44;
+  --bar-ink: #F4EFE3;
+  --bar-ink-lo: #CFC9BB;
+  --bar-ink-faint: #8F93A2; /* lines, and a field's edge, which holds 3:1 */
+  --bar-rule: #33405C;
+  --bar-rule-soft: #283552;
+  --bar-field: #172137;
+  --bar-change: #B5CCFF;
+  --bar-warn: #FFAE95;
+  --bar-act: #D9B566;      /* the one action on the bar: gold foil */
+  --bar-act-ink: #1C1608;
 
   /* The page never themes, so neither do the marks drawn on it, nor what's set on a white sheet. */
   --sheet: #FFFFFF;
@@ -51,8 +51,9 @@
   --sheet-rule: #CECECE;
   --sheet-rule-soft: #E8E8E8;
 
-  /* The one action on the bar and the landing's promise, ink on it in both themes. Never on a page. */
-  --highlighter: #FFE45C; /* Export, what the landing promises */
+  /* Pale gold, the foil's light: the landing's promise and the note on how to start, ink on it in both themes.
+     Never on a page. */
+  --highlighter: #EBD08A;
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
@@ -60,11 +61,11 @@
   /* Small to large, so a parent never shares the radius of a child it holds tight. Paper is square: a
      page, and the bars, which run edge to edge. What's handled has a small corner, as tools draw a
      button, and what floats is rounded. */
-  --r-1: 3px; /* keycaps, the checkbox's box */
-  --r-2: 8px; /* what's pressed or typed into: every button, choice and field, and a shortcut's tip */
-  --r-3: 12px; /* the landing's drop zone, inside its sheet */
-  --r-4: 20px; /* what floats: slips, popovers, notes */
-  --r-5: 28px; /* the landing's sheet: its zone's radius and the padding round it */
+  --r-1: 2px; /* keycaps, the checkbox's box */
+  --r-2: 4px; /* what's pressed or typed into: every button, choice and field, and a shortcut's tip */
+  --r-3: 6px; /* the landing's drop zone, inside its sheet */
+  --r-4: 8px; /* what floats: slips, popovers, notes */
+  --r-5: 10px; /* the landing's sheet, a board's corner: its zone, padded past its own radius, is a surface of its own */
 
   /* rem, so the reader's own text-size setting works */
   --fs-micro: .6875rem;  /* measurements and keys */
@@ -75,10 +76,10 @@
   --fs-display: clamp(2.25rem, 1.5rem + 3vw, 3.5rem); /* the one heading on the landing and the crash screen */
   --fs-lead: clamp(1.5rem, 0.75rem + 1.6vw, 2rem); /* the landing's promise under the sheet: between the steps and the display */
 
-  /* One family in two cuts: Funnel Sans for reading at the interface's sizes, Funnel Display for the
-     headings. The system faces after it draw what it lacks, ⌘ and the arrows. */
-  --ui: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Funnel Display", ui-sans-serif, system-ui, sans-serif; /* the display step, and the landing's promise */
+  /* Figtree for reading at the interface's sizes, Fraunces, a book face, for the headings and the document's
+     name. The system faces after them draw what they lack, ⌘ and the arrows. */
+  --ui: "Figtree", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --display: "Fraunces", ui-serif, Georgia, serif; /* the display step, the landing's promise, the document's name */
 
   --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
   --dur-press: 100ms;
@@ -109,66 +110,68 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground: #3B3931;
-    --ground-line: #413F37;
-    --ground-line-major: #47453C;
-    --ground-ink: #EFEDE6;
-    --ground-ink-lo: #CFCBBF;
-    --ground-ink-faint: #8F8C81;
-    --ground-change: #B3C6FF;
-    --ground-warn: #F0904F;
-    --strip: #2D2B25;
-    --field: #22201B;
-    --rule: #4A473F;
-    --rule-soft: #37352E;
-    --ink: #EFEDE6;
-    --ink-lo: #B8B5AA;
-    --ink-faint: #7D7A70;
-    --change: #8FAEFF;
-    --warn: #F0904F;
+    --ground: #222A3C;
+    --ground-weft: #212839;
+    --ground-warp: #383F50;
+    --ground-hover: #2E3649;
+    --ground-ink: #F1EEE6;
+    --ground-ink-lo: #C9CCD6;
+    --ground-ink-faint: #848CA0;
+    --ground-change: #B5CCFF;
+    --ground-warn: #FFAE95;
+    --strip: #1A2131;
+    --field: #141A27;
+    --rule: #38425A;
+    --rule-soft: #252E42;
+    --ink: #F1EEE6;
+    --ink-lo: #BCC0CC;
+    --ink-faint: #79819A;
+    --change: #B5CCFF;
+    --warn: #FFAE95;
     --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
     --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
     --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-    --bar: #25231E;
-    --bar-ink: #EFEDE6;
-    --bar-ink-lo: #B8B5AA;
-    --bar-ink-faint: #7D7A70;
-    --bar-rule: #37352E;
-    --bar-rule-soft: #302E28;
-    --bar-field: #1C1B17;
-    --bar-change: #8FAEFF;
-    --bar-warn: #F0904F;
+    --bar: #121828;
+    --bar-ink: #F1EEE6;
+    --bar-ink-lo: #BCC0CC;
+    --bar-ink-faint: #79819A;
+    --bar-rule: #232C42;
+    --bar-rule-soft: #1B2336;
+    --bar-field: #0D1220;
+    --bar-change: #B5CCFF;
+    --bar-warn: #FFAE95;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #3B3931;
-  --ground-line: #413F37;
-  --ground-line-major: #47453C;
-  --ground-ink: #EFEDE6;
-  --ground-ink-lo: #CFCBBF;
-  --ground-ink-faint: #8F8C81;
-  --ground-change: #B3C6FF;
-  --ground-warn: #F0904F;
-  --strip: #2D2B25;
-  --field: #22201B;
-  --rule: #4A473F;
-  --rule-soft: #37352E;
-  --ink: #EFEDE6;
-  --ink-lo: #B8B5AA;
-  --ink-faint: #7D7A70;
-  --change: #8FAEFF;
-  --warn: #F0904F;
+  --ground: #222A3C;
+  --ground-weft: #212839;
+  --ground-warp: #383F50;
+  --ground-hover: #2E3649;
+  --ground-ink: #F1EEE6;
+  --ground-ink-lo: #C9CCD6;
+  --ground-ink-faint: #848CA0;
+  --ground-change: #B5CCFF;
+  --ground-warn: #FFAE95;
+  --strip: #1A2131;
+  --field: #141A27;
+  --rule: #38425A;
+  --rule-soft: #252E42;
+  --ink: #F1EEE6;
+  --ink-lo: #BCC0CC;
+  --ink-faint: #79819A;
+  --change: #B5CCFF;
+  --warn: #FFAE95;
   --lift-1: 0 1px 2px rgba(0, 0, 0, .40), 0 4px 16px rgba(0, 0, 0, .45);
   --lift-2: 0 1px 3px rgba(0, 0, 0, .45), 0 14px 40px rgba(0, 0, 0, .55);
   --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .50), 0 16px 44px rgba(0, 0, 0, .50);
-  --bar: #25231E;
-  --bar-ink: #EFEDE6;
-  --bar-ink-lo: #B8B5AA;
-  --bar-ink-faint: #7D7A70;
-  --bar-rule: #37352E;
-  --bar-rule-soft: #302E28;
-  --bar-field: #1C1B17;
-  --bar-change: #8FAEFF;
-  --bar-warn: #F0904F;
+  --bar: #121828;
+  --bar-ink: #F1EEE6;
+  --bar-ink-lo: #BCC0CC;
+  --bar-ink-faint: #79819A;
+  --bar-rule: #232C42;
+  --bar-rule-soft: #1B2336;
+  --bar-field: #0D1220;
+  --bar-change: #B5CCFF;
+  --bar-warn: #FFAE95;
 }

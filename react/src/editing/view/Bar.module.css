@@ -5,16 +5,19 @@
   container-type: inline-size;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
   min-height: var(--bar-height); padding-block: var(--s2); padding-inline: var(--s4);
+  /* The spine's headband: gold foil and cream thread wound along its foot, in place of the masthead's hairline. */
+  border-block-end: var(--s1) solid;
+  border-image: repeating-linear-gradient(90deg, var(--bar-act) 0 5px, var(--bar-ink) 5px 10px) 1;
 }
 .file {
   display: flex; align-items: baseline; gap: var(--s2);
   padding-inline-start: var(--s4); border-inline-start: 1px solid var(--rule);
   min-width: 0;
 }
-/* The document's name, set as the wordmark beside it is: the one title on the screen, leading its row by weight. */
+/* The document's name, in the book face, as a title on a spine: the one title on the screen, leading its row. */
 .name {
   margin: 0;
-  font-family: var(--ui); font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.015em;
+  font-family: var(--display); font-size: var(--fs-lg); font-weight: 600; letter-spacing: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .meta { font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; font-variant-numeric: tabular-nums; }
