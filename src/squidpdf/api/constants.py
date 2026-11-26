@@ -46,6 +46,9 @@ JOBS_WAITING = 30  # per IP, beyond those at work; past both, refused
 # Workers. Each feature's timeouts are in its own constants.py.
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
+# New objects a worker makes before Python collects garbage, 25 times its default: a page's
+# letters are many small objects, soon gone, and each full collection walks its caches too.
+WORKER_GC_THRESHOLD = 50_000
 # Then replaced, so the memory a worker creeps up over mixed tasks never nears the cap;
 # rarely, since each new worker imports everything and fills its caches again.
 TASKS_PER_WORKER = 500

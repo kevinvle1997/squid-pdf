@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
 import io
 import multiprocessing
 import pickle
@@ -446,9 +447,11 @@ def current(request: Request) -> WorkerPool:
 
 
 def _start_worker() -> None:
-    """Set a new worker up: its lines formatted as the server's, its memory capped."""
+    """Set a new worker up: lines as the server's, memory capped, garbage collected in bulk."""
     LogController.configure()
     _limit_memory()
+    # The youngest objects' alone: the older ones are collected every so many of its passes.
+    gc.set_threshold(constants.WORKER_GC_THRESHOLD)
 
 
 def _limit_memory() -> None:
